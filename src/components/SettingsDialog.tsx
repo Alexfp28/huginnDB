@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Copy, Trash2 } from "lucide-react";
 import {
   Dialog,
@@ -17,12 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  useThemeStore,
-  selectActiveTheme,
-  selectAllThemes,
-} from "@/stores/theme";
-import { COLOR_KEYS, type ThemeColors } from "@/lib/themes";
+import { useThemeStore, selectActiveTheme } from "@/stores/theme";
+import { BUILT_IN_THEMES, COLOR_KEYS, type ThemeColors } from "@/lib/themes";
 
 interface Props {
   open: boolean;
@@ -30,7 +26,7 @@ interface Props {
 }
 
 export function SettingsDialog({ open, onOpenChange }: Props) {
-  const themes = useThemeStore(selectAllThemes);
+  const customThemes = useThemeStore((s) => s.customThemes);
   const active = useThemeStore(selectActiveTheme);
   const setThemeId = useThemeStore((s) => s.setThemeId);
   const updateColor = useThemeStore((s) => s.updateActiveColor);
@@ -38,6 +34,11 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
   const duplicate = useThemeStore((s) => s.duplicateAsCustom);
   const deleteCustom = useThemeStore((s) => s.deleteCustom);
   const [newName, setNewName] = useState("");
+
+  const themes = useMemo(
+    () => [...BUILT_IN_THEMES, ...customThemes],
+    [customThemes],
+  );
 
   function handleDuplicate() {
     const name = newName.trim() || `${active.name} copy`;

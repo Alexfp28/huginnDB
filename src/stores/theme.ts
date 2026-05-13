@@ -154,11 +154,12 @@ export const useThemeStore = create<ThemeState>()(
   ),
 );
 
-// Convenience selectors so components don't need to know about the resolver.
+// Returns a reference-stable Theme object (an element of BUILT_IN_THEMES
+// or state.customThemes). Safe to use as a zustand selector.
 export function selectActiveTheme(state: ThemeState): Theme {
   return resolveActive(state);
 }
-
-export function selectAllThemes(state: ThemeState): Theme[] {
-  return allThemes(state);
-}
+// Note: do NOT add a selector that returns the concatenation of built-ins
+// + customThemes — that would return a fresh array every render and
+// trigger an infinite re-render loop. Concatenate at the component level
+// inside a useMemo over state.customThemes.
