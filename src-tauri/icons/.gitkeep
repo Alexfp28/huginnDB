@@ -1,0 +1,4 @@
+# Tauri requires icons at build time. Drop your PNG/ICO/ICNS into this folder
+# (32x32.png, 128x128.png, 128x128@2x.png, icon.icns, icon.ico) before
+# running `pnpm tauri:build`. See https://v2.tauri.app/develop/icons/ for
+# generation instructions: `pnpm tauri icon path/to/source.png`.
