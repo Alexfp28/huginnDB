@@ -108,7 +108,7 @@ macOS is not a primary target yet but the build should work — please file an i
 ### From source
 
 ```bash
-git clone https://github.com/<org>/huginn.git
+git clone https://github.com/Alexfp28/huginn.git
 cd huginn
 pnpm install
 pnpm tauri:dev          # dev mode with HMR

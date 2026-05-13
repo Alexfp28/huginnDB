@@ -15,7 +15,7 @@ Until Huginn reaches `1.0`, only the latest tagged release on `main` is supporte
 
 **Do not open a public issue for security problems.**
 
-Email the maintainers at `security@huginn.invalid` (replace once the project has a real address) with:
+Email the maintainers at `contact@shion.es` with:
 
 1. A description of the issue, including the assumed threat model.
 2. Steps to reproduce, ideally with a minimal test case.
