@@ -65,6 +65,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Dockview now follows the active app theme.** The built-in `themeAbyss`
+  / `themeLight` were swapped for a custom theme whose `--dv-*` CSS
+  variables resolve to our shadcn-style tokens (`--background`,
+  `--foreground`, `--border`, `--primary`, …). This means tab strips,
+  resize sashes, drop overlays, floating panels, and context menus all
+  inherit whichever theme the user has selected in the Settings dialog —
+  no more visual mismatch when switching between custom themes.
+- **More discoverable panel drag-and-drop.** Tabs now show a `grab` /
+  `grabbing` cursor, and the drag-over overlay uses a primary-tinted
+  background with a dashed 2 px border so the drop targets are easy to
+  see. `dndPanelOverlay: 'group'` makes the overlay cover the full panel
+  group instead of just the content area.
+
 - **Connections sidebar removed.** The persistent `ConnectionList` panel
   in the sidebar is gone — its functionality moved into the File menu
   and the new `ManageConnectionsDialog`. This frees up vertical space

@@ -7,7 +7,29 @@
  * import on the App module.
  */
 
-import type { DockviewApi } from "dockview-react";
+import type { DockviewApi, DockviewTheme } from "dockview-react";
+
+/**
+ * Custom dockview theme that defers all colours to the app's existing
+ * CSS variables (`--background`, `--foreground`, `--border`, …) defined
+ * in `src/index.css`. The `className` here must match the selector in
+ * the bridge CSS block.
+ *
+ * `dndPanelOverlay: 'group'` makes the drag-over highlight cover the
+ * full panel group (tabs + content) rather than just the content area,
+ * so the drop target is easy to see. `dndOverlayMounting: 'absolute'`
+ * positions the overlay against the dockview root, which behaves more
+ * predictably when panels are nested inside split groups.
+ */
+export const huginnDockviewTheme: DockviewTheme = {
+  name: "huginndb",
+  className: "dockview-theme-huginndb",
+  dndPanelOverlay: "group",
+  dndOverlayMounting: "absolute",
+  dndTabIndicator: "fill",
+  dndOverlayBorder: "2px dashed hsl(var(--primary))",
+  tabGroupIndicator: "none",
+};
 
 /** localStorage key for the persisted dockview layout JSON. */
 export const LAYOUT_STORAGE_KEY = "huginndb.layout";

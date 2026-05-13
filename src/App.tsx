@@ -14,8 +14,6 @@ import { useEffect, useMemo, useState } from "react";
 import "dockview-react/dist/styles/dockview.css";
 import {
   DockviewReact,
-  themeAbyss,
-  themeLight,
   type DockviewReadyEvent,
   type IDockviewPanelProps,
 } from "dockview-react";
@@ -32,6 +30,7 @@ import { SavedQueriesPanel } from "@/components/SavedQueriesPanel";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
+  huginnDockviewTheme,
   persistLayout,
   registerDockviewApi,
   restoreOrInitLayout,
@@ -189,7 +188,7 @@ export default function App() {
           <DockviewReact
             components={COMPONENTS}
             onReady={onDockviewReady}
-            theme={activeTheme.mode === "dark" ? themeAbyss : themeLight}
+            theme={huginnDockviewTheme}
           />
         </div>
         <StatusBar />
