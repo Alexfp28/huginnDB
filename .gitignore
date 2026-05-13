@@ -30,6 +30,7 @@ src-tauri/Cargo.lock
 
 # OS
 Thumbs.db
+sample-data
 
 # Local env
 .env
