@@ -72,6 +72,13 @@ export const api = {
     table: string,
   ) => invoke<IndexInfo[]>("list_indexes", { connectionId, schema, table }),
 
+  /**
+   * Return a short version string for the connected server, e.g.
+   * `"sqlite 3.45.3"`, `"postgresql 16.2"`, `"mysql 8.0.35"`.
+   */
+  serverVersion: (connectionId: string) =>
+    invoke<string>("server_version", { connectionId }),
+
   // Query execution ------------------------------------------------------
 
   /** Run arbitrary SQL on the connection. */

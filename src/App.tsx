@@ -6,7 +6,7 @@
  * panel; both halves are independently resizable.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Moon, Settings, Sun } from "lucide-react";
 import { useConnections } from "@/stores/connections";
@@ -25,11 +25,19 @@ type SidebarMode = "schema" | "saved";
 
 export default function App() {
   const active = useConnections((s) => s.active);
+  const profiles = useConnections((s) => s.profiles);
   const activeTheme = useThemeStore(selectActiveTheme);
   const setMode = useThemeStore((s) => s.setActiveMode);
   const [selected, setSelected] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>("schema");
+
+  // Derived from stable store references; safe against the Zustand
+  // infinite-re-render gotcha because both inputs are stable references.
+  const selectedProfile = useMemo(
+    () => profiles.find((p) => p.id === selected) ?? null,
+    [profiles, selected],
+  );
 
   useEffect(() => {
     if (selected && !active.has(selected)) setSelected(null);
@@ -40,11 +48,28 @@ export default function App() {
     <TooltipProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
         <header className="flex h-9 items-center justify-between border-b border-border px-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold tracking-tight">Huginn</span>
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-              alpha
-            </span>
+          <div className="flex items-center gap-2 font-mono text-sm">
+            <span className="font-semibold tracking-tight">huginn</span>
+            {selectedProfile && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="text-muted-foreground">
+                  {selectedProfile.driver === "sqlite"
+                    ? (selectedProfile.database.split(/[/\\]/).pop() ??
+                      selectedProfile.database)
+                    : selectedProfile.database}
+                </span>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="text-muted-foreground">
+                  {selectedProfile.driver}
+                </span>
+              </>
+            )}
+            {!selectedProfile && (
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-sans uppercase text-muted-foreground">
+                alpha
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <Button

@@ -46,6 +46,12 @@ export interface TableInfo {
   schema: string;
   name: string;
   kind: "table" | "view";
+  /**
+   * Approximate row count from the engine's statistics catalog.
+   * Undefined for SQLite (no reliable catalog source without N+1 queries)
+   * and for views on any driver.
+   */
+  row_count?: number;
 }
 
 /** Column metadata as displayed in the schema explorer. */
@@ -97,6 +103,8 @@ export interface AppTab {
   table?: string;
   /** Initial / current SQL for query tabs. */
   query?: string;
+  /** Stats from the most recent query execution in this tab. */
+  lastQueryStats?: { rows: number; elapsed_ms: number };
 }
 
 /** One entry in the persisted query history. */

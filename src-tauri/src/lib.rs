@@ -45,6 +45,7 @@ pub fn run() {
             commands::schema::list_tables,
             commands::schema::list_columns,
             commands::schema::list_indexes,
+            commands::schema::server_version,
             commands::query::execute_query,
             commands::query::fetch_table_data,
             commands::query::update_cell,

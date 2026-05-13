@@ -1,4 +1,4 @@
-//! Schema introspection commands (databases, tables, columns, indexes).
+//! Schema introspection commands (databases, tables, columns, indexes, server info).
 //!
 //! Every command takes a `connection_id` so it can resolve the right pool
 //! from [`crate::state::AppState`]. Queries are written against the
@@ -24,6 +24,18 @@ pub struct TableInfo {
     pub name: String,
     /// "table" or "view".
     pub kind: String,
+    /// Approximate row count sourced from the engine's statistics catalog.
+    ///
+    /// - **Postgres** — `pg_stat_user_tables.n_live_tup` (updated by autovacuum; may be 0
+    ///   for brand-new tables or views).
+    /// - **MySQL** — `information_schema.TABLES.TABLE_ROWS` (engine-maintained estimate;
+    ///   can differ significantly from `COUNT(*)` on InnoDB).
+    /// - **SQLite** — always `None`. Reliable per-table counts require individual
+    ///   `COUNT(*)` queries, which become prohibitively expensive on schemas with
+    ///   many tables. Use `SELECT COUNT(*) FROM table` manually when an exact count
+    ///   is needed.
+    #[serde(rename = "row_count")]
+    pub row_count: Option<u64>,
 }
 
 /// Column metadata as displayed in the schema explorer.
@@ -85,7 +97,10 @@ pub async fn list_databases(
     Ok(names.into_iter().map(|n| DatabaseInfo { name: n }).collect())
 }
 
-/// List user-visible tables and views.
+/// List user-visible tables and views, with approximate row counts where available.
+///
+/// Row counts are sourced from engine statistics catalogs in a single query to
+/// avoid N+1 round-trips. See [`TableInfo::row_count`] for per-driver details.
 #[tauri::command]
 pub async fn list_tables(
     state: State<'_, AppState>,
@@ -95,11 +110,16 @@ pub async fn list_tables(
     let pool = pool_for(state.inner(), &connection_id)?;
     let tables = match pool {
         DbPool::Postgres(p) => {
+            // LEFT JOIN against pg_stat_user_tables fetches approximate live-row counts
+            // for tables in one round-trip. Views never have stat entries, so their
+            // n_live_tup will be NULL (→ row_count: None).
             let rows = sqlx::query(
-                "SELECT table_schema, table_name, table_type \
-                 FROM information_schema.tables \
-                 WHERE table_schema NOT IN ('pg_catalog', 'information_schema') \
-                 ORDER BY table_schema, table_name",
+                "SELECT t.table_schema, t.table_name, t.table_type, s.n_live_tup \
+                 FROM information_schema.tables t \
+                 LEFT JOIN pg_stat_user_tables s \
+                   ON s.schemaname = t.table_schema AND s.relname = t.table_name \
+                 WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema') \
+                 ORDER BY t.table_schema, t.table_name",
             )
             .fetch_all(&p)
             .await?;
@@ -112,13 +132,18 @@ pub async fn list_tables(
                     } else {
                         "table".into()
                     },
+                    row_count: r
+                        .get::<Option<i64>, _>("n_live_tup")
+                        .map(|v| v.unsigned_abs()),
                 })
                 .collect()
         }
         DbPool::Mysql(p) => {
             let db = database.unwrap_or_default();
+            // TABLE_ROWS is an engine-maintained estimate stored in information_schema;
+            // no extra queries needed.
             let rows = sqlx::query(
-                "SELECT table_schema, table_name, table_type \
+                "SELECT table_schema, table_name, table_type, table_rows \
                  FROM information_schema.tables \
                  WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) \
                  ORDER BY table_schema, table_name",
@@ -139,6 +164,7 @@ pub async fn list_tables(
                     } else {
                         "table".into()
                     },
+                    row_count: r.get::<Option<u64>, _>("table_rows"),
                 })
                 .collect()
         }
@@ -156,6 +182,11 @@ pub async fn list_tables(
                     schema: "main".into(),
                     name: r.get::<String, _>("name"),
                     kind: r.get::<String, _>("type"),
+                    // SQLite has no statistics catalog with per-table row counts.
+                    // sqlite_stat1 only exists after ANALYZE and is unreliable for
+                    // fresh databases. N individual COUNT(*) queries would block the
+                    // UI on large schemas.
+                    row_count: None,
                 })
                 .collect()
         }
@@ -337,4 +368,51 @@ pub async fn list_indexes(
         }
     };
     Ok(idx)
+}
+
+/// Return a short version string for the connected server.
+///
+/// The string is formatted as `"{engine} {version}"` for easy display in
+/// the status bar (e.g. `"sqlite 3.45.3"`, `"postgresql 16.2"`, `"mysql 8.0.35"`).
+///
+/// Drivers:
+/// - **Postgres** — `SELECT version()`, first two tokens lowercased.
+/// - **MySQL** — `SELECT VERSION()`, stripped to `major.minor.patch` before the
+///   distro suffix.
+/// - **SQLite** — `SELECT sqlite_version()`.
+#[tauri::command]
+pub async fn server_version(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<String> {
+    let pool = pool_for(state.inner(), &connection_id)?;
+    let version = match pool {
+        DbPool::Postgres(p) => {
+            let raw: String = sqlx::query_scalar("SELECT version()")
+                .fetch_one(&p)
+                .await?;
+            // Full string is like "PostgreSQL 16.2 on x86_64-pc-linux-gnu, ...".
+            // Extract and lowercase the first two whitespace-delimited tokens.
+            raw.splitn(3, ' ')
+                .take(2)
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_lowercase()
+        }
+        DbPool::Mysql(p) => {
+            let raw: String = sqlx::query_scalar("SELECT VERSION()")
+                .fetch_one(&p)
+                .await?;
+            // Strip the distro/build suffix (everything after the first `-`).
+            let ver = raw.split('-').next().unwrap_or(&raw);
+            format!("mysql {ver}")
+        }
+        DbPool::Sqlite(p) => {
+            let raw: String = sqlx::query_scalar("SELECT sqlite_version()")
+                .fetch_one(&p)
+                .await?;
+            format!("sqlite {raw}")
+        }
+    };
+    Ok(version)
 }

@@ -11,7 +11,42 @@ import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { Button } from "@/components/ui/button";
 import { ConnectionDialog } from "@/components/ConnectionDialog";
-import type { ConnectionProfile } from "@/types";
+import { cn } from "@/lib/utils";
+import type { ConnectionProfile, Driver } from "@/types";
+
+/** Visual metadata for each supported database driver. */
+const DRIVER_BADGE: Record<Driver, { label: string; className: string }> = {
+  postgres: {
+    label: "PG",
+    className: "bg-blue-600/80 text-white",
+  },
+  mysql: {
+    label: "MY",
+    className: "bg-orange-500/80 text-white",
+  },
+  sqlite: {
+    label: "SQL",
+    className: "bg-amber-500/80 text-black",
+  },
+};
+
+/**
+ * Small pill that identifies the database driver for a connection profile.
+ * Kept as a named component so it can be reused elsewhere (e.g. tab headers).
+ */
+function DriverBadge({ driver }: { driver: Driver }) {
+  const { label, className } = DRIVER_BADGE[driver];
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-wide",
+        className,
+      )}
+    >
+      {label}
+    </span>
+  );
+}
 
 export function ConnectionList({
   selectedConnectionId,
@@ -20,7 +55,8 @@ export function ConnectionList({
   selectedConnectionId: string | null;
   onSelect: (id: string | null) => void;
 }) {
-  const { profiles, active, refresh, connect, disconnect, remove } = useConnections();
+  const { profiles, active, refresh, connect, disconnect, remove } =
+    useConnections();
   const refreshSchema = useSchema((s) => s.refresh);
   const dropSchema = useSchema((s) => s.drop);
   const closeTabs = useTabs((s) => s.closeForConnection);
@@ -84,28 +120,36 @@ export function ConnectionList({
           return (
             <div
               key={p.id}
-              className={`group flex items-center gap-2 border-l-2 px-3 py-2 text-sm transition-colors ${
+              className={cn(
+                "group flex items-center gap-2 border-l-2 px-3 py-2 text-sm transition-colors",
                 isSelected
                   ? "border-primary bg-accent/40"
-                  : "border-transparent hover:bg-accent/30"
-              }`}
+                  : "border-transparent hover:bg-accent/30",
+              )}
               onClick={() => isActive && onSelect(p.id)}
             >
-              <div className="flex-1 cursor-default truncate">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      isActive ? "bg-emerald-400" : "bg-muted-foreground/40"
-                    }`}
-                  />
-                  <span className="truncate font-medium">{p.name}</span>
+              {/* Status dot */}
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  isActive ? "bg-emerald-400" : "bg-muted-foreground/40",
+                )}
+              />
+
+              {/* Name + subtitle */}
+              <div className="min-w-0 flex-1 cursor-default">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-medium">{p.name}</span>
+                  <DriverBadge driver={p.driver} />
                 </div>
-                <div className="truncate text-xs text-muted-foreground">
+                <div className="truncate text-[11px] text-muted-foreground">
                   {p.driver === "sqlite"
-                    ? `sqlite · ${p.database}`
-                    : `${p.driver} · ${p.host}:${p.port}/${p.database}`}
+                    ? p.database.split(/[/\\]/).pop() ?? p.database
+                    : `${p.host}:${p.port}/${p.database}`}
                 </div>
               </div>
+
+              {/* Hover actions */}
               <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 {isActive ? (
                   <Button

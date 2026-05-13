@@ -8,14 +8,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- Modular `db` layer in the Rust backend (`pool`, `sql`, `values`) and a
-  centralised `keychain` module. Every public Rust item now carries a
-  Rustdoc comment.
-- JSDoc on every TypeScript store, command wrapper, and component.
-- `src/lib/constants.ts` consolidating UI tunables (page sizes, query
-  history cap, default ports, localStorage keys).
-- `LICENSE` (MIT), `CONTRIBUTING.md`, `SECURITY.md`, this `CHANGELOG.md`,
-  and `.editorconfig`.
+- **Driver badges** in the connection list sidebar: each profile now shows a
+  coloured pill (`PG` / `MY` / `SQL`) identifying its backend at a glance.
+- **Approximate row counts** in the schema explorer tree, sourced without
+  N+1 queries:
+  - PostgreSQL: `pg_stat_user_tables.n_live_tup` (autovacuum-maintained).
+  - MySQL: `information_schema.TABLES.TABLE_ROWS` (engine estimate).
+  - SQLite: not shown — no reliable catalog source without per-table
+    `COUNT(*)` queries.
+- **`server_version` Tauri command** — queries the connected server for its
+  version string (`"sqlite 3.45.3"`, `"postgresql 16.2"`, `"mysql 8.0.35"`)
+  and caches it in the connections store after each successful connect.
+- **Grouped schema tree**: tables and views are now separated into expandable
+  `tables` / `views` / `indexes` sections within each schema node.
+- **Editor info bar** at the bottom of the Monaco panel, showing the
+  `Ctrl+Enter · Run` shortcut hint, the connected database name, live line
+  and character count, and `sql · utf-8` encoding info.
+- **Compact `CellPreview` panel**: single-clicking a grid cell now opens a
+  floating panel anchored to the bottom-right of the data grid, showing the
+  column name, detected content type (JSON / XML / SQL / TEXT), and a
+  formatted preview. `F11` escalates to the full Monaco editor; `Esc` closes.
+- **Numeric value colouring** in the data grid: columns with integer,
+  float, decimal, real, or money types are rendered in amber (`text-amber-400`).
+- **Row selection highlight**: clicking a row applies a blue tint; the last
+  selected row is tracked as local state (not persisted).
+- **Rich status bar**: now shows live query stats (row count + elapsed time),
+  server encoding (`utf-8`), the connected server version, and the total
+  number of entries in the query history ring buffer.
+- **Header breadcrumb**: the title bar now shows `huginn · <db> · <driver>`
+  when a connection is selected, or just `huginn` with the `alpha` badge when
+  idle.
+- **Tab bar polish**: active tab indicated by a bottom border (`border-primary`);
+  close button hidden on inactive tabs and visible on hover; no `»` prefix on
+  query tabs; default new query tab title is `query.sql`.
+- `formatCount` and `isNumericType` pure utility functions added to
+  `src/lib/utils.ts`, documented and reused across components.
+- `lastQueryStats` field on `AppTab` + `updateQueryStats` action in the tabs
+  store, used to propagate execution metadata from `QueryEditorTab` to the
+  status bar.
+- `versions: Record<string, string>` map in the connections store, populated
+  on connect and cleared on disconnect.
 
 ## [0.1.0-alpha] — 2026-05-13
 

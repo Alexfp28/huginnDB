@@ -22,3 +22,41 @@ export function formatBytes(n: number) {
   }
   return `${n.toFixed(1)} ${units[i]}`;
 }
+
+/**
+ * Format a row/record count for compact display in the schema explorer.
+ *
+ * @param n - The count to format.
+ * @returns Human-readable string: raw below 1 000, `1.2k` up to 1 M,
+ *   `1.2M` above that.
+ */
+export function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+/**
+ * Return `true` if the SQL data-type string represents a numeric type.
+ *
+ * Matches the normalised type names produced by all three drivers:
+ * - Postgres: `integer`, `bigint`, `numeric`, `real`, `double precision`, etc.
+ * - MySQL: `int(11)`, `float`, `decimal(10,2)`, etc.
+ * - SQLite: `INT`, `REAL`, `NUMERIC`, etc. (case-insensitive affinity names).
+ *
+ * @param dataType - The `data_type` string from `ColumnMeta`.
+ */
+export function isNumericType(dataType: string): boolean {
+  const t = dataType.toLowerCase();
+  return (
+    t.includes("int") ||
+    t.includes("float") ||
+    t.includes("double") ||
+    t.includes("decimal") ||
+    t.includes("numeric") ||
+    t.includes("real") ||
+    t.includes("money") ||
+    t.includes("serial") ||
+    t === "number"
+  );
+}
