@@ -1,87 +1,36 @@
+//! Connection-profile and lifecycle commands.
+
+use crate::db::pool::{open_pool, smoke_test};
 use crate::error::{AppError, AppResult};
-use crate::state::{AppState, ConnectionProfile, DbPool, Driver};
+use crate::keychain;
+use crate::state::{AppState, ConnectionProfile, Driver};
 use crate::store;
-use sqlx::mysql::MySqlPoolOptions;
-use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use tauri::State;
 use uuid::Uuid;
 
-const KEYRING_SERVICE: &str = "io.huginn.app";
-
-fn build_url(profile: &ConnectionProfile, password: &str) -> String {
-    let pwd = urlencoding(password);
-    let user = urlencoding(&profile.username);
-    match profile.driver {
-        Driver::Postgres => format!(
-            "postgres://{}:{}@{}:{}/{}{}",
-            user, pwd, profile.host, profile.port, profile.database,
-            if profile.ssl { "?sslmode=require" } else { "" }
-        ),
-        Driver::Mysql => format!(
-            "mysql://{}:{}@{}:{}/{}{}",
-            user, pwd, profile.host, profile.port, profile.database,
-            if profile.ssl { "?ssl-mode=REQUIRED" } else { "" }
-        ),
-        Driver::Sqlite => {
-            // For SQLite the `database` field is the file path.
-            format!("sqlite://{}", profile.database)
-        }
-    }
-}
-
-fn urlencoding(s: &str) -> String {
-    url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
-}
-
-async fn open_pool(profile: &ConnectionProfile, password: &str) -> AppResult<DbPool> {
-    let url = build_url(profile, password);
-    match profile.driver {
-        Driver::Postgres => {
-            let pool = PgPoolOptions::new()
-                .max_connections(5)
-                .connect(&url)
-                .await?;
-            Ok(DbPool::Postgres(pool))
-        }
-        Driver::Mysql => {
-            let pool = MySqlPoolOptions::new()
-                .max_connections(5)
-                .connect(&url)
-                .await?;
-            Ok(DbPool::Mysql(pool))
-        }
-        Driver::Sqlite => {
-            let pool = SqlitePoolOptions::new()
-                .max_connections(1)
-                .connect(&url)
-                .await?;
-            Ok(DbPool::Sqlite(pool))
-        }
-    }
-}
-
-fn read_password(profile: &ConnectionProfile) -> AppResult<String> {
+/// Look up the password for `profile` from the OS keychain.
+///
+/// SQLite profiles never store a password (the database is a local file),
+/// so we short-circuit with the empty string for them.
+fn resolve_password(profile: &ConnectionProfile) -> AppResult<String> {
     if matches!(profile.driver, Driver::Sqlite) {
         return Ok(String::new());
     }
-    let account = profile.keyring_account();
-    let entry = keyring::Entry::new(KEYRING_SERVICE, &account)?;
-    match entry.get_password() {
-        Ok(p) => Ok(p),
-        Err(keyring::Error::NoEntry) => Err(AppError::NotFound(format!(
-            "no stored password for {}",
-            account
-        ))),
-        Err(e) => Err(AppError::Keyring(e)),
-    }
+    keychain::require_password(&profile.keyring_account())
 }
 
+/// Return every saved profile.
 #[tauri::command]
 pub fn list_profiles(state: State<'_, AppState>) -> AppResult<Vec<ConnectionProfile>> {
     Ok(state.profiles.read().clone())
 }
 
+/// Create or update a profile.
+///
+/// * `profile` — profile to persist. If `profile.id` is empty a fresh
+///   UUID is generated.
+/// * `password` — if provided, written to the OS keychain. Passing `None`
+///   leaves any existing stored password untouched.
 #[tauri::command]
 pub fn save_profile(
     state: State<'_, AppState>,
@@ -94,8 +43,7 @@ pub fn save_profile(
 
     if let Some(pw) = password {
         if !matches!(profile.driver, Driver::Sqlite) {
-            let entry = keyring::Entry::new(KEYRING_SERVICE, &profile.keyring_account())?;
-            entry.set_password(&pw)?;
+            keychain::set_password(&profile.keyring_account(), &pw)?;
         }
     }
 
@@ -111,6 +59,7 @@ pub fn save_profile(
     Ok(profile)
 }
 
+/// Delete the profile with `id` and its associated keychain entry.
 #[tauri::command]
 pub fn delete_profile(state: State<'_, AppState>, id: String) -> AppResult<()> {
     let mut profiles = state.profiles.write();
@@ -120,14 +69,17 @@ pub fn delete_profile(state: State<'_, AppState>, id: String) -> AppResult<()> {
         .map(|i| profiles.remove(i));
     if let Some(p) = removed {
         if !matches!(p.driver, Driver::Sqlite) {
-            let entry = keyring::Entry::new(KEYRING_SERVICE, &p.keyring_account())?;
-            let _ = entry.delete_credential();
+            keychain::delete_password(&p.keyring_account())?;
         }
     }
     store::save_profiles(&profiles)?;
     Ok(())
 }
 
+/// Try opening `profile` end-to-end and execute `SELECT 1` against it.
+///
+/// Used by the "Test" button in the connection dialog. The temporary pool
+/// is dropped immediately after the round-trip.
 #[tauri::command]
 pub async fn test_connection(
     profile: ConnectionProfile,
@@ -135,24 +87,14 @@ pub async fn test_connection(
 ) -> AppResult<String> {
     let pw = match password {
         Some(p) => p,
-        None => read_password(&profile)?,
+        None => resolve_password(&profile)?,
     };
-    let pool = open_pool(&profile, &pw).await?;
-    // Run a trivial query to confirm.
-    match pool {
-        DbPool::Postgres(p) => {
-            sqlx::query("SELECT 1").execute(&p).await?;
-        }
-        DbPool::Mysql(p) => {
-            sqlx::query("SELECT 1").execute(&p).await?;
-        }
-        DbPool::Sqlite(p) => {
-            sqlx::query("SELECT 1").execute(&p).await?;
-        }
-    }
+    smoke_test(&profile, &pw).await?;
     Ok("ok".into())
 }
 
+/// Open a long-lived pool for the profile `id` and add it to
+/// [`crate::state::ActiveConnections`].
 #[tauri::command]
 pub async fn connect(
     state: State<'_, AppState>,
@@ -165,11 +107,11 @@ pub async fn connect(
         .iter()
         .find(|p| p.id == id)
         .cloned()
-        .ok_or_else(|| AppError::NotFound(format!("profile {}", id)))?;
+        .ok_or_else(|| AppError::NotFound(format!("profile {id}")))?;
 
     let pw = match password {
         Some(p) => p,
-        None => read_password(&profile)?,
+        None => resolve_password(&profile)?,
     };
 
     let pool = open_pool(&profile, &pw).await?;
@@ -177,12 +119,15 @@ pub async fn connect(
     Ok(())
 }
 
+/// Drop the active pool for `id`, if any.
 #[tauri::command]
 pub fn disconnect(state: State<'_, AppState>, id: String) -> AppResult<()> {
     state.connections.write().remove(&id);
     Ok(())
 }
 
+/// Ids of every currently active connection. Used by the frontend to
+/// reconcile its in-memory state after reloads.
 #[tauri::command]
 pub fn active_connections(state: State<'_, AppState>) -> AppResult<Vec<String>> {
     Ok(state.connections.read().ids())

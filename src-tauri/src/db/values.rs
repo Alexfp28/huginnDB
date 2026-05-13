@@ -1,0 +1,167 @@
+//! Extraction of typed values from `sqlx` rows into `serde_json::Value`.
+//!
+//! These helpers are the boundary between strongly typed driver values and
+//! the dynamic shape the frontend ingests. Each driver gets its own
+//! function because the type-info APIs and supported encodings differ:
+//!
+//! * Postgres reports a stable upper-case OID name (`INT4`, `JSONB`, …).
+//! * MySQL reports the full column type string (`varchar(255)`, …) which
+//!   we pattern-match on substrings.
+//! * SQLite is dynamically typed; we attempt several decodings in order
+//!   and fall back to NULL.
+//!
+//! Unknown types degrade to `Value::Null` rather than failing the whole
+//! query, so the user can still inspect the rest of the result set when a
+//! single column doesn't decode.
+
+use serde_json::{json, Value};
+use sqlx::{Column, Row, TypeInfo, ValueRef};
+
+/// Extract column `idx` from a Postgres row.
+pub fn pg_value(row: &sqlx::postgres::PgRow, idx: usize) -> Value {
+    let raw = match row.try_get_raw(idx) {
+        Ok(r) => r,
+        Err(_) => return Value::Null,
+    };
+    if raw.is_null() {
+        return Value::Null;
+    }
+
+    match raw.type_info().name() {
+        "BOOL" => row.try_get::<bool, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
+        "INT2" => row.try_get::<i16, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
+        "INT4" => row.try_get::<i32, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
+        "INT8" => row.try_get::<i64, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
+        "FLOAT4" => row.try_get::<f32, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
+        "FLOAT8" => row.try_get::<f64, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
+        "JSON" | "JSONB" => row.try_get::<Value, _>(idx).unwrap_or(Value::Null),
+        "TIMESTAMP" => row
+            .try_get::<chrono::NaiveDateTime, _>(idx)
+            .map(|v| json!(v.to_string()))
+            .unwrap_or(Value::Null),
+        "TIMESTAMPTZ" => row
+            .try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
+            .map(|v| json!(v.to_rfc3339()))
+            .unwrap_or(Value::Null),
+        "DATE" => row
+            .try_get::<chrono::NaiveDate, _>(idx)
+            .map(|v| json!(v.to_string()))
+            .unwrap_or(Value::Null),
+        "UUID" => row
+            .try_get::<uuid::Uuid, _>(idx)
+            .map(|v| json!(v.to_string()))
+            .unwrap_or(Value::Null),
+        "BYTEA" => row
+            .try_get::<Vec<u8>, _>(idx)
+            .map(|v| json!(format!("\\x{}", hex(&v))))
+            .unwrap_or(Value::Null),
+        // Strings and unknown types share the same fallback because
+        // Postgres serialises most textual types as Rust `String`.
+        _ => row
+            .try_get::<String, _>(idx)
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    }
+}
+
+/// Extract column `idx` from a MySQL row.
+pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
+    let raw = match row.try_get_raw(idx) {
+        Ok(r) => r,
+        Err(_) => return Value::Null,
+    };
+    if raw.is_null() {
+        return Value::Null;
+    }
+    let name = raw.type_info().name().to_uppercase();
+
+    if name.contains("INT") {
+        return row
+            .try_get::<i64, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null);
+    }
+    if name.contains("FLOAT") || name.contains("DOUBLE") || name.contains("DECIMAL") {
+        return row
+            .try_get::<f64, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null);
+    }
+    if name == "BOOL" || name == "TINYINT(1)" {
+        return row
+            .try_get::<bool, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null);
+    }
+    if name.contains("JSON") {
+        return row.try_get::<Value, _>(idx).unwrap_or(Value::Null);
+    }
+    if name.contains("BLOB") || name.contains("BINARY") {
+        return row
+            .try_get::<Vec<u8>, _>(idx)
+            .map(|v| json!(hex(&v)))
+            .unwrap_or(Value::Null);
+    }
+    row.try_get::<String, _>(idx)
+        .map(Value::String)
+        .unwrap_or(Value::Null)
+}
+
+/// Extract column `idx` from a SQLite row.
+pub fn sqlite_value(row: &sqlx::sqlite::SqliteRow, idx: usize) -> Value {
+    let raw = match row.try_get_raw(idx) {
+        Ok(r) => r,
+        Err(_) => return Value::Null,
+    };
+    if raw.is_null() {
+        return Value::Null;
+    }
+    // SQLite is dynamically typed; try the supported affinities in order.
+    if let Ok(v) = row.try_get::<i64, _>(idx) {
+        return json!(v);
+    }
+    if let Ok(v) = row.try_get::<f64, _>(idx) {
+        return json!(v);
+    }
+    if let Ok(v) = row.try_get::<String, _>(idx) {
+        return Value::String(v);
+    }
+    if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
+        return json!(hex(&v));
+    }
+    Value::Null
+}
+
+/// Map the columns of a `sqlx` row into `(name, type_name)` pairs.
+pub fn pg_columns(row: &sqlx::postgres::PgRow) -> Vec<(String, String)> {
+    row.columns()
+        .iter()
+        .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
+        .collect()
+}
+
+/// See [`pg_columns`].
+pub fn mysql_columns(row: &sqlx::mysql::MySqlRow) -> Vec<(String, String)> {
+    row.columns()
+        .iter()
+        .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
+        .collect()
+}
+
+/// See [`pg_columns`].
+pub fn sqlite_columns(row: &sqlx::sqlite::SqliteRow) -> Vec<(String, String)> {
+    row.columns()
+        .iter()
+        .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
+        .collect()
+}
+
+/// Lowercase hex encoding of a byte slice.
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(&mut s, "{b:02x}");
+    }
+    s
+}

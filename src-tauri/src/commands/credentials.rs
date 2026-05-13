@@ -1,32 +1,27 @@
-use crate::error::{AppError, AppResult};
-use keyring::Entry;
+//! Low-level credential commands.
+//!
+//! These are exposed in addition to [`crate::commands::connection`] for
+//! cases where the frontend wants to read or remove a password directly
+//! (e.g. when prompting the user before reconnecting). All routes through
+//! the centralised [`crate::keychain`] module.
 
-const SERVICE: &str = "io.huginn.app";
+use crate::error::AppResult;
+use crate::keychain;
 
-fn entry(account: &str) -> AppResult<Entry> {
-    Entry::new(SERVICE, account).map_err(AppError::from)
-}
-
+/// Store `password` under `account` in the OS keychain.
 #[tauri::command]
 pub fn store_password(account: String, password: String) -> AppResult<()> {
-    entry(&account)?.set_password(&password)?;
-    Ok(())
+    keychain::set_password(&account, &password)
 }
 
+/// Return the password for `account`, or `None` if no entry exists.
 #[tauri::command]
 pub fn load_password(account: String) -> AppResult<Option<String>> {
-    match entry(&account)?.get_password() {
-        Ok(p) => Ok(Some(p)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(AppError::Keyring(e)),
-    }
+    keychain::get_password(&account)
 }
 
+/// Remove the entry for `account`. Succeeds if it didn't exist.
 #[tauri::command]
 pub fn delete_password(account: String) -> AppResult<()> {
-    match entry(&account)?.delete_credential() {
-        Ok(_) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(AppError::Keyring(e)),
-    }
+    keychain::delete_password(&account)
 }

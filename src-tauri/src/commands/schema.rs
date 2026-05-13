@@ -1,21 +1,32 @@
+//! Schema introspection commands (databases, tables, columns, indexes).
+//!
+//! Every command takes a `connection_id` so it can resolve the right pool
+//! from [`crate::state::AppState`]. Queries are written against the
+//! standard `information_schema` views where available, with `pg_*` /
+//! `sqlite_master` fallbacks for engine-specific metadata.
+
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
 use serde::Serialize;
 use sqlx::Row;
 use tauri::State;
 
+/// One row in the database/catalog list.
 #[derive(Debug, Serialize)]
 pub struct DatabaseInfo {
     pub name: String,
 }
 
+/// One row in the table/view list.
 #[derive(Debug, Serialize)]
 pub struct TableInfo {
     pub schema: String,
     pub name: String,
-    pub kind: String, // "table" or "view"
+    /// "table" or "view".
+    pub kind: String,
 }
 
+/// Column metadata as displayed in the schema explorer.
 #[derive(Debug, Serialize)]
 pub struct ColumnInfo {
     pub name: String,
@@ -24,6 +35,7 @@ pub struct ColumnInfo {
     pub is_primary_key: bool,
 }
 
+/// Index summary including the participating columns.
 #[derive(Debug, Serialize)]
 pub struct IndexInfo {
     pub name: String,
@@ -31,6 +43,7 @@ pub struct IndexInfo {
     pub unique: bool,
 }
 
+/// Resolve the active pool for `id`, or fail with [`AppError::NotConnected`].
 fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
     state
         .connections
@@ -39,6 +52,7 @@ fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
         .ok_or_else(|| AppError::NotConnected(id.to_string()))
 }
 
+/// List visible databases / schemas / catalogs for the connection.
 #[tauri::command]
 pub async fn list_databases(
     state: State<'_, AppState>,
@@ -48,7 +62,9 @@ pub async fn list_databases(
     let names: Vec<String> = match pool {
         DbPool::Postgres(p) => {
             sqlx::query_scalar(
-                "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
+                "SELECT datname FROM pg_database \
+                 WHERE datistemplate = false \
+                 ORDER BY datname",
             )
             .fetch_all(&p)
             .await?
@@ -56,17 +72,20 @@ pub async fn list_databases(
         DbPool::Mysql(p) => {
             sqlx::query_scalar(
                 "SELECT schema_name FROM information_schema.schemata \
-                 WHERE schema_name NOT IN ('information_schema','performance_schema','mysql','sys') \
+                 WHERE schema_name NOT IN ('information_schema', 'performance_schema', \
+                                           'mysql', 'sys') \
                  ORDER BY schema_name",
             )
             .fetch_all(&p)
             .await?
         }
+        // SQLite is single-file; pretend the file is one schema named "main".
         DbPool::Sqlite(_) => vec!["main".to_string()],
     };
     Ok(names.into_iter().map(|n| DatabaseInfo { name: n }).collect())
 }
 
+/// List user-visible tables and views.
 #[tauri::command]
 pub async fn list_tables(
     state: State<'_, AppState>,
@@ -79,7 +98,7 @@ pub async fn list_tables(
             let rows = sqlx::query(
                 "SELECT table_schema, table_name, table_type \
                  FROM information_schema.tables \
-                 WHERE table_schema NOT IN ('pg_catalog','information_schema') \
+                 WHERE table_schema NOT IN ('pg_catalog', 'information_schema') \
                  ORDER BY table_schema, table_name",
             )
             .fetch_all(&p)
@@ -125,8 +144,10 @@ pub async fn list_tables(
         }
         DbPool::Sqlite(p) => {
             let rows = sqlx::query(
-                "SELECT name, type FROM sqlite_master WHERE type IN ('table','view') \
-                 AND name NOT LIKE 'sqlite_%' ORDER BY name",
+                "SELECT name, type FROM sqlite_master \
+                 WHERE type IN ('table', 'view') \
+                 AND name NOT LIKE 'sqlite_%' \
+                 ORDER BY name",
             )
             .fetch_all(&p)
             .await?;
@@ -142,6 +163,11 @@ pub async fn list_tables(
     Ok(tables)
 }
 
+/// List columns for `schema.table` in catalog order.
+///
+/// The `is_primary_key` flag is determined by joining against
+/// `information_schema.table_constraints` (Postgres), `column_key`
+/// (MySQL), or the `pk` field of `PRAGMA table_info` (SQLite).
 #[tauri::command]
 pub async fn list_columns(
     state: State<'_, AppState>,
@@ -186,7 +212,8 @@ pub async fn list_columns(
             let rows = sqlx::query(
                 "SELECT column_name, column_type, is_nullable, column_key \
                  FROM information_schema.columns \
-                 WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ? \
+                 WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) \
+                   AND table_name = ? \
                  ORDER BY ordinal_position",
             )
             .bind(schema.unwrap_or_default())
@@ -203,6 +230,9 @@ pub async fn list_columns(
                 .collect()
         }
         DbPool::Sqlite(p) => {
+            // PRAGMA does not accept bound parameters; identifiers are
+            // quoted defensively even though they come from a trusted
+            // catalog lookup.
             let q = format!("PRAGMA table_info(\"{}\")", table.replace('"', "\"\""));
             let rows = sqlx::query(&q).fetch_all(&p).await?;
             rows.into_iter()
@@ -218,6 +248,7 @@ pub async fn list_columns(
     Ok(cols)
 }
 
+/// List indexes for `schema.table`, with the columns each one covers.
 #[tauri::command]
 pub async fn list_indexes(
     state: State<'_, AppState>,
@@ -258,7 +289,8 @@ pub async fn list_indexes(
             let rows = sqlx::query(
                 "SELECT index_name, column_name, non_unique \
                  FROM information_schema.statistics \
-                 WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ? \
+                 WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) \
+                   AND table_name = ? \
                  ORDER BY index_name, seq_in_index",
             )
             .bind(schema.unwrap_or_default())
