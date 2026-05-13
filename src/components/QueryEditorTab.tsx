@@ -23,10 +23,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const theme = useThemeStore(selectActiveTheme);
   const schemaState = useSchema((s) => s.byConnection[connectionId]);
   const addHistory = useQueryHistory((s) => s.add);
-  const history = useQueryHistory((s) =>
-    s.entries.filter((e) => e.connectionId === connectionId),
-  );
+  const allHistory = useQueryHistory((s) => s.entries);
   const clearHistory = useQueryHistory((s) => s.clear);
+  const history = useMemo(
+    () => allHistory.filter((e) => e.connectionId === connectionId),
+    [allHistory, connectionId],
+  );
 
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
