@@ -1,3 +1,10 @@
+/**
+ * Tab body for browsing one database table. Loads pages via
+ * `api.fetchTableData`, supports sort + filter, and routes cell edits
+ * to `api.updateCell` (requires a PK column to be present in the
+ * result set).
+ */
+
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { api } from "@/lib/tauri";
@@ -5,14 +12,13 @@ import { useSchema } from "@/stores/schema";
 import type { QueryResult } from "@/types";
 import { DataGrid } from "@/components/DataGrid";
 import { Button } from "@/components/ui/button";
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from "@/lib/constants";
 
 interface Props {
   connectionId: string;
   schema?: string;
   table: string;
 }
-
-const PAGE_SIZE_OPTIONS = [50, 100, 250, 500];
 
 export function TableDataTab({ connectionId, schema, table }: Props) {
   const loadColumns = useSchema((s) => s.loadColumns);
@@ -24,7 +30,7 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState(100);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [sortColumn, setSortColumn] = useState<string | undefined>();
   const [sortDesc, setSortDesc] = useState(false);
   const [filter, setFilter] = useState("");

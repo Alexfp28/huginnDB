@@ -1,3 +1,13 @@
+/**
+ * Create / edit a connection profile.
+ *
+ * The dialog re-shapes itself based on the selected driver: SQLite hides
+ * the network fields and asks only for a database file path. Passwords
+ * are submitted to the backend separately from profile metadata so
+ * `api.saveProfile(profile, password)` can route them to the OS
+ * keychain.
+ */
+
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -19,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/tauri";
+import { DEFAULT_PORTS } from "@/lib/constants";
 import type { ConnectionProfile, Driver } from "@/types";
 import { useConnections } from "@/stores/connections";
 
@@ -27,12 +38,6 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   initial?: ConnectionProfile | null;
 }
-
-const DEFAULT_PORTS: Record<Driver, number> = {
-  postgres: 5432,
-  mysql: 3306,
-  sqlite: 0,
-};
 
 export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
   const save = useConnections((s) => s.save);

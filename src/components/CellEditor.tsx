@@ -1,3 +1,13 @@
+/**
+ * Cell editor — Huginn's star feature. A full Monaco editor presented
+ * inside a dialog (or fullscreen via `F11`) with auto-detected JSON /
+ * XML / SQL highlighting, format/beautify, and live JSON validation.
+ *
+ * The editor is read-only when no `onSave` callback is provided; when
+ * one is provided, the user's content is passed back to it as a string
+ * on save.
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import { Maximize2, Minimize2 } from "lucide-react";
 import {

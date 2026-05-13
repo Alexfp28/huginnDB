@@ -1,3 +1,9 @@
+/**
+ * Tab strip + active-tab body for the main workspace. Holds either a
+ * `TableDataTab` or a `QueryEditorTab` depending on the active tab's
+ * `kind`.
+ */
+
 import { Plus, X } from "lucide-react";
 import { useTabs } from "@/stores/tabs";
 import { Button } from "@/components/ui/button";

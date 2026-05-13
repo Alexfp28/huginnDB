@@ -1,3 +1,9 @@
+/**
+ * Modal for saving the current SQL query into the library, or editing
+ * an existing entry. Tag-list parsing is intentionally trivial (split
+ * on commas) so the input stays free-form.
+ */
+
 import { useEffect, useState } from "react";
 import {
   Dialog,

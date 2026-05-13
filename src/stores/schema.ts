@@ -1,3 +1,9 @@
+/**
+ * Schema store — per-connection cache of database / table / column /
+ * index metadata, plus the expanded-node bookkeeping for the explorer
+ * tree. Data is fetched lazily as the user expands tree nodes.
+ */
+
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
 import type {
@@ -7,11 +13,15 @@ import type {
   TableInfo,
 } from "@/types";
 
+/** Per-connection slice of schema state. */
 interface ConnectionSchema {
   databases: DatabaseInfo[];
   tables: TableInfo[];
+  /** Columns keyed by `${schema}.${table}`. */
   columns: Record<string, ColumnInfo[]>;
+  /** Indexes keyed by `${schema}.${table}`. */
   indexes: Record<string, IndexInfo[]>;
+  /** Set of tree-node keys (e.g. `schema:public`, `table:public.users`). */
   expanded: Set<string>;
   loading: boolean;
   error: string | null;
@@ -19,18 +29,23 @@ interface ConnectionSchema {
 
 interface SchemaState {
   byConnection: Record<string, ConnectionSchema>;
+  /** Re-fetch databases + tables for `connectionId`. */
   refresh: (connectionId: string) => Promise<void>;
+  /** Toggle a tree-node key in the `expanded` set. */
   toggleNode: (connectionId: string, key: string) => void;
+  /** Populate `columns[tableKey(schema, table)]`. */
   loadColumns: (
     connectionId: string,
     schema: string | undefined,
     table: string,
   ) => Promise<void>;
+  /** Populate `indexes[tableKey(schema, table)]`. */
   loadIndexes: (
     connectionId: string,
     schema: string | undefined,
     table: string,
   ) => Promise<void>;
+  /** Drop all cached data for `connectionId` (called on disconnect). */
   drop: (connectionId: string) => void;
 }
 
@@ -46,7 +61,8 @@ function emptyState(): ConnectionSchema {
   };
 }
 
-function tableKey(schema: string | undefined, table: string) {
+/** Stable cache key for a (schema, table) pair. */
+export function tableKey(schema: string | undefined, table: string) {
   return `${schema ?? ""}.${table}`;
 }
 
@@ -138,5 +154,3 @@ export const useSchema = create<SchemaState>((set, get) => ({
     });
   },
 }));
-
-export { tableKey };

@@ -1,3 +1,9 @@
+/**
+ * Sidebar panel listing the user's saved queries with search, edit,
+ * delete, and "open in new tab" actions. Backed by the
+ * `useSavedQueries` zustand store (persisted to localStorage).
+ */
+
 import { useMemo, useState } from "react";
 import { Bookmark, Pencil, Play, Search, Trash2 } from "lucide-react";
 import { useSavedQueries, type SavedQuery } from "@/stores/savedQueries";

@@ -1,3 +1,10 @@
+/**
+ * Generic data grid used for both table data and ad-hoc query results.
+ * Built on top of TanStack Table; rows are virtualised by the browser
+ * via the parent's `overflow-auto`. Each cell exposes a maximise button
+ * to pop the value open in the full Monaco-based `CellEditor`.
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import {
   flexRender,

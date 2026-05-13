@@ -1,3 +1,11 @@
+/**
+ * Top-level layout: header with theme/settings buttons, two-column
+ * body (resizable sidebar + main workspace), status bar at the bottom.
+ *
+ * The sidebar itself contains a Connections panel above a Schema/Saved
+ * panel; both halves are independently resizable.
+ */
+
 import { useEffect, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Moon, Settings, Sun } from "lucide-react";

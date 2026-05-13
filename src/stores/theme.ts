@@ -1,5 +1,20 @@
+/**
+ * Theme store — drives the look of the entire app.
+ *
+ * Conceptually there is exactly one "active" theme at any moment. The
+ * store knows which one it is via `themeId` plus a list of any
+ * user-defined custom themes. Built-in themes are referenced by id and
+ * never mutated; editing one auto-forks into a new custom theme so the
+ * presets stay pristine.
+ *
+ * CSS variable updates are flushed eagerly inside each action so the
+ * UI re-paints synchronously — the persisted localStorage write
+ * happens asynchronously via the `persist` middleware.
+ */
+
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { STORAGE_KEYS } from "@/lib/constants";
 import {
   BUILT_IN_THEMES,
   applyTheme,
@@ -142,7 +157,7 @@ export const useThemeStore = create<ThemeState>()(
       },
     }),
     {
-      name: "huginn.theme.v2",
+      name: STORAGE_KEYS.theme,
       partialize: (state) => ({
         themeId: state.themeId,
         customThemes: state.customThemes,

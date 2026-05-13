@@ -1,3 +1,10 @@
+/**
+ * Tree-style explorer of databases / schemas / tables / columns for the
+ * currently selected connection. Columns are lazy-loaded the first time
+ * a table node is expanded. Single-click on a table opens it in a data
+ * tab.
+ */
+
 import { useEffect } from "react";
 import { ChevronDown, ChevronRight, Database, RefreshCw, Table as TableIcon, Eye, KeyRound } from "lucide-react";
 import { useSchema, tableKey } from "@/stores/schema";

@@ -1,5 +1,12 @@
+/**
+ * Saved queries library — a user-curated collection of named SQL
+ * snippets. Persisted to localStorage and surfaced in the "Saved" tab
+ * of the sidebar.
+ */
+
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { STORAGE_KEYS } from "@/lib/constants";
 
 export interface SavedQuery {
   id: string;
@@ -7,6 +14,11 @@ export interface SavedQuery {
   description: string;
   sql: string;
   tags: string[];
+  /**
+   * Optional binding to a specific connection. Saved queries can be
+   * opened from any connection regardless of this field; it is purely
+   * informational for now.
+   */
   connectionId?: string | null;
   createdAt: number;
   updatedAt: number;
@@ -19,8 +31,12 @@ interface SavedQueriesState {
       connectionId?: string | null;
     },
   ) => SavedQuery;
-  update: (id: string, patch: Partial<Omit<SavedQuery, "id" | "createdAt">>) => void;
+  update: (
+    id: string,
+    patch: Partial<Omit<SavedQuery, "id" | "createdAt">>,
+  ) => void;
   remove: (id: string) => void;
+  /** Return entries that include `tag`. */
   byTag: (tag: string) => SavedQuery[];
 }
 
@@ -51,9 +67,10 @@ export const useSavedQueries = create<SavedQueriesState>()(
           ),
         }));
       },
-      remove: (id) => set((s) => ({ items: s.items.filter((q) => q.id !== id) })),
+      remove: (id) =>
+        set((s) => ({ items: s.items.filter((q) => q.id !== id) })),
       byTag: (tag) => get().items.filter((q) => q.tags.includes(tag)),
     }),
-    { name: "huginn.savedQueries" },
+    { name: STORAGE_KEYS.savedQueries },
   ),
 );

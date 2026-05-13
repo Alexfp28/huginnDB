@@ -1,3 +1,9 @@
+/**
+ * Top half of the sidebar: list of saved connection profiles with
+ * connect / disconnect / edit / delete actions and a "+" button to
+ * launch the connection dialog.
+ */
+
 import { useEffect, useState } from "react";
 import { Plug, PlugZap, Plus, Pencil, Trash2 } from "lucide-react";
 import { useConnections } from "@/stores/connections";

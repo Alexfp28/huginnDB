@@ -1,3 +1,9 @@
+/**
+ * Bottom status bar. Reports the names of currently-connected profiles,
+ * the active tab's identifier, and the app version. Intentionally
+ * minimal so it stays out of the way.
+ */
+
 import { useConnections } from "@/stores/connections";
 import { useTabs } from "@/stores/tabs";
 

@@ -1,17 +1,35 @@
+/**
+ * Connections store — saved profiles + the set of profiles that are
+ * currently open. Mirrors the Tauri-managed Rust state, refreshed via
+ * `api.listProfiles` / `api.activeConnections`.
+ */
+
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
 import type { ConnectionProfile } from "@/types";
 
 interface ConnectionsState {
+  /** Profiles persisted on disk (no passwords). */
   profiles: ConnectionProfile[];
+  /** Ids of profiles that currently have a live pool in the backend. */
   active: Set<string>;
   loading: boolean;
   error: string | null;
+  /** Pull `profiles` and `active` from the backend. */
   refresh: () => Promise<void>;
-  save: (profile: ConnectionProfile, password?: string) => Promise<ConnectionProfile>;
+  /** Create or update a profile; the keychain entry is written when
+   *  `password` is provided. */
+  save: (
+    profile: ConnectionProfile,
+    password?: string,
+  ) => Promise<ConnectionProfile>;
+  /** Delete a profile and its keychain entry. */
   remove: (id: string) => Promise<void>;
+  /** Open a pool for `id`. Falls back to the stored password if `password` is omitted. */
   connect: (id: string, password?: string) => Promise<void>;
+  /** Close the pool for `id`. */
   disconnect: (id: string) => Promise<void>;
+  /** Convenience helper for components. */
   isActive: (id: string) => boolean;
 }
 

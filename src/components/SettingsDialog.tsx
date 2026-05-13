@@ -1,3 +1,9 @@
+/**
+ * Settings panel. Currently scoped to theme selection + per-colour
+ * editing. Editing a built-in theme automatically forks it into a new
+ * custom theme so the presets remain pristine.
+ */
+
 import { useMemo, useState } from "react";
 import { Copy, Trash2 } from "lucide-react";
 import {

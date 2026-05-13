@@ -1,3 +1,10 @@
+/**
+ * Tab body for ad-hoc SQL queries. Hosts a Monaco editor on top and a
+ * `DataGrid` of results below, separated by a vertical resize handle.
+ * `Ctrl+Enter` runs the query; the history sidebar lists prior runs
+ * (filtered to the current connection) and can re-load any of them.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import { Bookmark, History, Play, Trash2 } from "lucide-react";
