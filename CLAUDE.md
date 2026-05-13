@@ -4,9 +4,9 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 
 ## Identity
 
-- **Huginn** — desktop database manager, Tauri 2 (Rust backend) + React + TypeScript frontend.
+- **HuginnDB** — desktop database manager, Tauri 2 (Rust backend) + React + TypeScript frontend.
 - Targets PostgreSQL, MySQL, SQLite. Inspired by HeidiSQL but minimal-UI / keyboard-first / Monaco-everywhere.
-- Public repo: <https://github.com/Alexfp28/huggin> (repo slug is `huggin` — typo carried over from the local folder name; the *product* is "Huginn").
+- Public repo: <https://github.com/Alexfp28/huggin> (repo slug is `huggin` — typo carried over from the local folder name; the *product* is "HuginnDB").
 - License: MIT. Status: **alpha**, just published.
 
 ## Maintainer / collaboration notes
@@ -72,7 +72,7 @@ These bit us during the first sessions. Don't repeat them.
 
 6. **The MySQL `order_clause` previously had a brittle string-rewriting hack** to convert `"col"` → `` `col` ``. Now `fetch_table_data` computes `pg_or_sqlite` once and passes the right boolean to `quote_ident` from the start. Don't reintroduce the hack.
 
-7. **Repo name vs product name.** GitHub slug is `huggin` (two g's), product is `Huginn`. If we rename the repo on GitHub later, also update the two URLs in `README.md` and `CONTRIBUTING.md`.
+7. **Repo name vs product name.** GitHub slug is `huggin` (two g's), product is `HuginnDB`. If we rename the repo on GitHub later, also update the two URLs in `README.md` and `CONTRIBUTING.md`.
 
 ## Workflow
 
@@ -87,7 +87,7 @@ pnpm tauri:build
 mkdir -p sample-data
 curl -L -o sample-data/chinook.db `
   https://github.com/lerocha/chinook-database/raw/master/ChinookDatabase/DataSources/Chinook_Sqlite.sqlite
-# then in Huginn: + connection → SQLite → path to chinook.db
+# then in HuginnDB: + connection → SQLite → path to chinook.db
 ```
 
 `sample-data/` is gitignored on purpose — don't commit fixtures.

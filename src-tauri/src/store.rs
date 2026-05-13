@@ -3,10 +3,10 @@
 //! Profiles live in a single JSON file inside the platform config
 //! directory:
 //!
-//! * Windows — `%APPDATA%\Huginn\profiles.json`
-//! * Linux   — `$XDG_CONFIG_HOME/Huginn/profiles.json`
-//!                 (or `~/.config/Huginn/profiles.json`)
-//! * macOS   — `~/Library/Application Support/Huginn/profiles.json`
+//! * Windows — `%APPDATA%\HuginnDB\profiles.json`
+//! * Linux   — `$XDG_CONFIG_HOME/HuginnDB/profiles.json`
+//!                 (or `~/.config/HuginnDB/profiles.json`)
+//! * macOS   — `~/Library/Application Support/HuginnDB/profiles.json`
 //!
 //! **Passwords are never written here** — see [`crate::keychain`].
 
@@ -18,7 +18,7 @@ use std::path::PathBuf;
 const PROFILES_FILE: &str = "profiles.json";
 
 /// Application directory within the platform's config base.
-const APP_DIR: &str = "Huginn";
+const APP_DIR: &str = "HuginnDB";
 
 /// Resolve (and create on demand) the path where profiles live.
 fn profiles_path() -> AppResult<PathBuf> {

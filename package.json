@@ -1,8 +1,8 @@
 {
-  "name": "huginn",
+  "name": "huginndb",
   "private": true,
   "version": "0.1.0",
-  "description": "Huginn — a minimal, fast cross-platform desktop database manager.",
+  "description": "HuginnDB — a minimal, fast cross-platform desktop database manager.",
   "type": "module",
   "scripts": {
     "dev": "vite",

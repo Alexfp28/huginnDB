@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Huginn are documented in this file.
+All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
@@ -72,7 +72,7 @@ delivered during the first design session.
   history sidebar (last 50 entries, per-connection filter).
 - Saved queries library with name, description, tags, and "open in new
   query tab" action. Persisted to localStorage.
-- Themes — five built-in presets (Huginn Dark, Huginn Light, Dim,
+- Themes — five built-in presets (HuginnDB Dark, HuginnDB Light, Dim,
   Solarized Dark, High Contrast) plus a visual colour editor that
   auto-forks built-ins into custom themes on first edit.
 - Resizable horizontal and vertical panels for sidebar width and

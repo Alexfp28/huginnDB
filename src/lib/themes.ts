@@ -60,7 +60,7 @@ export const COLOR_KEYS: { key: keyof ThemeColors; label: string }[] = [
 export const BUILT_IN_THEMES: Theme[] = [
   {
     id: "dark",
-    name: "Huginn Dark",
+    name: "HuginnDB Dark",
     mode: "dark",
     builtin: true,
     colors: {
@@ -87,7 +87,7 @@ export const BUILT_IN_THEMES: Theme[] = [
   },
   {
     id: "light",
-    name: "Huginn Light",
+    name: "HuginnDB Light",
     mode: "light",
     builtin: true,
     colors: {

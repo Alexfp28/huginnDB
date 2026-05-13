@@ -89,7 +89,7 @@ export function TabbedArea({ connectionId }: Props) {
         {!activeTab && (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
             <div className="font-mono text-lg font-semibold text-foreground">
-              huginn
+              huginndb
             </div>
             <div>
               {connectionId

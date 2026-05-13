@@ -47,30 +47,36 @@ export default function App() {
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-        <header className="flex h-9 items-center justify-between border-b border-border px-3">
-          <div className="flex items-center gap-2 font-mono text-sm">
-            <span className="font-semibold tracking-tight">huginn</span>
-            {selectedProfile && (
-              <>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="text-muted-foreground">
-                  {selectedProfile.driver === "sqlite"
-                    ? (selectedProfile.database.split(/[/\\]/).pop() ??
-                      selectedProfile.database)
-                    : selectedProfile.database}
+        <header className="relative flex h-9 items-center border-b border-border px-3">
+          {/* Centred breadcrumb — absolutely positioned so it stays in the
+              middle of the bar regardless of the action button widths. */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="flex items-center gap-2 font-mono text-sm">
+              <span className="font-semibold tracking-tight">huginndb</span>
+              {selectedProfile && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="text-muted-foreground">
+                    {selectedProfile.driver === "sqlite"
+                      ? (selectedProfile.database.split(/[/\\]/).pop() ??
+                        selectedProfile.database)
+                      : selectedProfile.database}
+                  </span>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="text-muted-foreground">
+                    {selectedProfile.driver}
+                  </span>
+                </>
+              )}
+              {!selectedProfile && (
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-sans uppercase text-muted-foreground">
+                  alpha
                 </span>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="text-muted-foreground">
-                  {selectedProfile.driver}
-                </span>
-              </>
-            )}
-            {!selectedProfile && (
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-sans uppercase text-muted-foreground">
-                alpha
-              </span>
-            )}
+              )}
+            </div>
           </div>
+          {/* Invisible spacer to push action buttons to the right */}
+          <div className="flex-1" />
           <div className="flex items-center gap-1">
             <Button
               size="icon"

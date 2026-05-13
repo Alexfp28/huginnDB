@@ -1,4 +1,4 @@
-//! Huginn — desktop database manager.
+//! HuginnDB — desktop database manager.
 //!
 //! The library crate hosts all of the Tauri command handlers and the
 //! shared state they operate on. `main.rs` is a thin shim that calls
@@ -54,5 +54,5 @@ pub fn run() {
             commands::credentials::delete_password,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Huginn");
+        .expect("error while running HuginnDB");
 }

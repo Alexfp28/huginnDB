@@ -28,7 +28,7 @@ export const SIDEBAR_DEFAULT_PERCENT = 20;
 
 /** localStorage keys used by zustand persist middleware. */
 export const STORAGE_KEYS = {
-  theme: "huginn.theme.v2",
-  queryHistory: "huginn.queryHistory",
-  savedQueries: "huginn.savedQueries",
+  theme: "huginndb.theme.v2",
+  queryHistory: "huginndb.queryHistory",
+  savedQueries: "huginndb.savedQueries",
 } as const;

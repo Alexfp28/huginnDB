@@ -1,6 +1,6 @@
-# Contributing to Huginn
+# Contributing to HuginnDB
 
-Thanks for taking the time to contribute. Huginn is a young project; clear, well-scoped contributions are the fastest way to get changes shipped.
+Thanks for taking the time to contribute. HuginnDB is a young project; clear, well-scoped contributions are the fastest way to get changes shipped.
 
 ## Ground rules
 

@@ -1,10 +1,10 @@
 # Security Policy
 
-Huginn handles credentials and runs arbitrary SQL against user-configured databases. We take vulnerabilities in this surface seriously.
+HuginnDB handles credentials and runs arbitrary SQL against user-configured databases. We take vulnerabilities in this surface seriously.
 
 ## Supported versions
 
-Until Huginn reaches `1.0`, only the latest tagged release on `main` is supported with security fixes. Pre-release builds (`alpha`, `beta`) receive fixes on a best-effort basis.
+Until HuginnDB reaches `1.0`, only the latest tagged release on `main` is supported with security fixes. Pre-release builds (`alpha`, `beta`) receive fixes on a best-effort basis.
 
 | Version | Supported          |
 | ------- | ------------------ |
@@ -26,7 +26,7 @@ We aim to acknowledge reports within **72 hours** and to issue a fix or mitigati
 
 ## Hardening guidelines
 
-Huginn is a desktop application; the threat model is primarily a malicious or compromised database on the network rather than a remote attacker reaching the user. Even so:
+HuginnDB is a desktop application; the threat model is primarily a malicious or compromised database on the network rather than a remote attacker reaching the user. Even so:
 
 - Passwords are persisted to the OS keychain via the [`keyring`](https://crates.io/crates/keyring) crate. They are never written to the on-disk profile file or to any log.
 - The frontend never receives a fully-formed connection string or password from the backend — the backend resolves them at the moment of use.
