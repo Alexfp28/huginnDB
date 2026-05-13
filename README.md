@@ -7,10 +7,11 @@ A minimal, fast, cross-platform desktop database manager — inspired by HeidiSQ
 - Connection manager for PostgreSQL, MySQL, and SQLite — credentials stored in the OS keychain (Windows Credential Manager / libsecret).
 - Schema explorer: databases → tables/views → columns with type badges + PK indicator, plus indexes.
 - Paginated, sortable, filterable table data browser (TanStack Table) with inline editing.
-- **Expanded cell editor (star feature)**: any cell can be popped open into a full Monaco editor with auto-detected JSON / XML / SQL / plain-text highlighting, validation, and format/beautify.
-- SQL query editor (Monaco) with schema-aware autocomplete, Ctrl+Enter to run, query history (last 50), and a dedicated results grid.
+- **Expanded cell editor (star feature)**: any cell can be popped open into a Monaco editor with auto-detected JSON / XML / SQL / plain-text highlighting, validation, and format/beautify. **Fullscreen toggle** (button or `F11`) for max focus; `Esc` exits fullscreen, second `Esc` closes.
+- SQL query editor (Monaco, self-hosted — no CDN dependency) with schema-aware autocomplete, `Ctrl+Enter` to run, query history (last 50), and a dedicated results grid.
+- **Saved queries library** — bookmark current SQL with name, description, and tags. Persisted to local storage. A dedicated `Saved` panel in the sidebar lists, filters, edits, and opens them in a new tab.
+- **Themes** — 5 built-in presets (Huginn Dark, Huginn Light, Dim, Solarized Dark, High Contrast) + a visual color editor. Edits to a built-in theme auto-fork into a new custom theme so presets stay pristine. Custom themes are persisted locally.
 - Tabbed workspace with resizable sidebar + horizontal / vertical resizable panels.
-- Dark mode by default, light mode toggle, persisted to local storage.
 - Status bar with connection state, current tab, and version.
 
 ## Prerequisites
@@ -84,7 +85,9 @@ huggin/
 |---|---|
 | Run SQL query | `Ctrl+Enter` |
 | Expand cell in editor | Double-click cell, or click the maximize icon |
-| Toggle theme | Top-right sun/moon icon |
+| Fullscreen cell editor | `F11` (toggle), `Esc` to exit |
+| Toggle light / dark | Sun/moon icon top-right |
+| Open settings & themes | Gear icon top-right |
 
 ## Roadmap (post-MVP)
 

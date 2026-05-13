@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,8 @@ import {
 } from "@/components/ui/select";
 import Editor from "@monaco-editor/react";
 import { detectLanguage, tryFormat, type ContentLanguage } from "@/lib/detectContentType";
-import { useThemeStore } from "@/stores/theme";
+import { useThemeStore, selectActiveTheme } from "@/stores/theme";
+import { cn } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -35,11 +37,12 @@ export function CellEditor({
   readonly,
   onSave,
 }: Props) {
-  const theme = useThemeStore((s) => s.theme);
+  const theme = useThemeStore(selectActiveTheme);
   const [value, setValue] = useState(initialValue);
   const detected = useMemo(() => detectLanguage(initialValue ?? ""), [initialValue]);
   const [language, setLanguage] = useState<ContentLanguage>(detected);
   const [saving, setSaving] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -47,6 +50,22 @@ export function CellEditor({
       setLanguage(detectLanguage(initialValue ?? ""));
     }
   }, [open, initialValue]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!open) return;
+      if (e.key === "F11") {
+        e.preventDefault();
+        setFullscreen((v) => !v);
+      }
+      if (e.key === "Escape" && fullscreen) {
+        e.preventDefault();
+        setFullscreen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, fullscreen]);
 
   function handleFormat() {
     setValue((v) => tryFormat(v, language));
@@ -67,13 +86,33 @@ export function CellEditor({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[80vh] max-w-5xl flex-col gap-3 p-4">
+      <DialogContent
+        className={cn(
+          "flex flex-col gap-3 p-4",
+          fullscreen
+            ? "left-0 top-0 h-screen w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0"
+            : "h-[80vh] max-w-5xl",
+        )}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <span>{columnName ?? "Cell editor"}</span>
             <span className="text-xs font-normal text-muted-foreground">
               {value.length.toLocaleString()} chars
             </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-auto mr-8"
+              onClick={() => setFullscreen((v) => !v)}
+              title={fullscreen ? "Exit fullscreen (Esc / F11)" : "Fullscreen (F11)"}
+            >
+              {fullscreen ? (
+                <Minimize2 className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
+            </Button>
           </DialogTitle>
         </DialogHeader>
         <div className="flex items-center gap-2">
@@ -100,7 +139,7 @@ export function CellEditor({
             height="100%"
             value={value}
             language={language}
-            theme={theme === "dark" ? "vs-dark" : "vs-light"}
+            theme={theme.mode === "dark" ? "vs-dark" : "vs-light"}
             onChange={(v) => setValue(v ?? "")}
             options={{
               readOnly: !!readonly,

@@ -11,6 +11,12 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    include: ["monaco-editor/esm/vs/editor/editor.api"],
+  },
+  worker: {
+    format: "es",
+  },
   clearScreen: false,
   server: {
     port: 1420,

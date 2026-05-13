@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor, { type Monaco } from "@monaco-editor/react";
-import { Play, History, Trash2 } from "lucide-react";
+import { Bookmark, History, Play, Trash2 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
-import { useThemeStore } from "@/stores/theme";
+import { useThemeStore, selectActiveTheme } from "@/stores/theme";
 import { useQueryHistory } from "@/stores/queryHistory";
 import type { QueryResult } from "@/types";
 import { DataGrid } from "@/components/DataGrid";
 import { Button } from "@/components/ui/button";
+import { SaveQueryDialog } from "@/components/SaveQueryDialog";
 
 interface Props {
   tabId: string;
@@ -19,7 +20,7 @@ interface Props {
 export function QueryEditorTab({ tabId, connectionId }: Props) {
   const tab = useTabs((s) => s.tabs.find((t) => t.id === tabId));
   const updateQuery = useTabs((s) => s.updateQuery);
-  const theme = useThemeStore((s) => s.theme);
+  const theme = useThemeStore(selectActiveTheme);
   const schemaState = useSchema((s) => s.byConnection[connectionId]);
   const addHistory = useQueryHistory((s) => s.add);
   const history = useQueryHistory((s) =>
@@ -31,6 +32,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const editorRef = useRef<unknown>(null);
 
@@ -128,6 +130,15 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             <Button
               size="sm"
               variant="ghost"
+              onClick={() => setSaveDialogOpen(true)}
+              disabled={!sql.trim()}
+              title="Save query"
+            >
+              <Bookmark className="h-3 w-3" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={() => setShowHistory((v) => !v)}
               title="Query history"
             >
@@ -147,7 +158,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               <Editor
                 height="100%"
                 language="sql"
-                theme={theme === "dark" ? "vs-dark" : "vs-light"}
+                theme={theme.mode === "dark" ? "vs-dark" : "vs-light"}
                 value={sql}
                 onChange={(v) => updateQuery(tabId, v ?? "")}
                 onMount={handleMount}
@@ -218,6 +229,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           )}
         </div>
       </Panel>
+      <SaveQueryDialog
+        open={saveDialogOpen}
+        onOpenChange={setSaveDialogOpen}
+        sql={sql}
+        connectionId={connectionId}
+      />
     </PanelGroup>
   );
 }
