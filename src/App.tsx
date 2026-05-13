@@ -1,9 +1,12 @@
 /**
- * Top-level layout: header with theme/settings buttons, two-column
- * body (resizable sidebar + main workspace), status bar at the bottom.
+ * Top-level layout: header (File menu + centered breadcrumb + theme /
+ * settings actions), two-column body (resizable sidebar + main
+ * workspace), status bar at the bottom.
  *
- * The sidebar itself contains a Connections panel above a Schema/Saved
- * panel; both halves are independently resizable.
+ * The sidebar hosts the Schema / Saved switcher; the right column is
+ * the TabbedArea. Connection management has moved to the top-left
+ * File menu — there's no longer a persistent Connections panel in the
+ * sidebar.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -11,7 +14,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Moon, Settings, Sun } from "lucide-react";
 import { useConnections } from "@/stores/connections";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
-import { ConnectionList } from "@/components/ConnectionList";
+import { FileMenu } from "@/components/FileMenu";
 import { SchemaExplorer } from "@/components/SchemaExplorer";
 import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
@@ -26,11 +29,19 @@ type SidebarMode = "schema" | "saved";
 export default function App() {
   const active = useConnections((s) => s.active);
   const profiles = useConnections((s) => s.profiles);
+  const refreshConnections = useConnections((s) => s.refresh);
   const activeTheme = useThemeStore(selectActiveTheme);
   const setMode = useThemeStore((s) => s.setActiveMode);
   const [selected, setSelected] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>("schema");
+
+  // The File menu no longer triggers an initial `refresh()` on mount
+  // (it used to live inside ConnectionList). Pull the profile list once
+  // at startup so the dropdown is populated.
+  useEffect(() => {
+    refreshConnections();
+  }, [refreshConnections]);
 
   // Derived from stable store references; safe against the Zustand
   // infinite-re-render gotcha because both inputs are stable references.
@@ -47,7 +58,10 @@ export default function App() {
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-        <header className="relative flex h-9 items-center border-b border-border px-3">
+        <header className="relative flex h-9 items-center border-b border-border px-2">
+          {/* Left — File menu */}
+          <FileMenu selectedConnectionId={selected} onSelect={setSelected} />
+
           {/* Centred breadcrumb — absolutely positioned so it stays in the
               middle of the bar regardless of the action button widths. */}
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -75,9 +89,9 @@ export default function App() {
               )}
             </div>
           </div>
-          {/* Invisible spacer to push action buttons to the right */}
-          <div className="flex-1" />
-          <div className="flex items-center gap-1">
+
+          {/* Right — theme + settings */}
+          <div className="ml-auto flex items-center gap-1">
             <Button
               size="icon"
               variant="ghost"
@@ -104,46 +118,35 @@ export default function App() {
         <div className="flex-1 overflow-hidden">
           <PanelGroup direction="horizontal">
             <Panel defaultSize={20} minSize={14} maxSize={40}>
-              <PanelGroup direction="vertical" className="h-full">
-                <Panel defaultSize={40} minSize={20}>
-                  <ConnectionList
-                    selectedConnectionId={selected}
-                    onSelect={setSelected}
-                  />
-                </Panel>
-                <PanelResizeHandle className="h-1 bg-border hover:bg-primary/30" />
-                <Panel defaultSize={60} minSize={20}>
-                  <div className="flex h-full flex-col">
-                    <div className="flex items-center gap-0.5 border-b border-border bg-card/40 px-2 py-1">
-                      <SidebarTab
-                        active={sidebarMode === "schema"}
-                        onClick={() => setSidebarMode("schema")}
-                      >
-                        Schema
-                      </SidebarTab>
-                      <SidebarTab
-                        active={sidebarMode === "saved"}
-                        onClick={() => setSidebarMode("saved")}
-                      >
-                        Saved
-                      </SidebarTab>
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      {sidebarMode === "schema" ? (
-                        selected ? (
-                          <SchemaExplorer connectionId={selected} />
-                        ) : (
-                          <div className="flex h-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
-                            Connect to a database to browse its schema.
-                          </div>
-                        )
-                      ) : (
-                        <SavedQueriesPanel connectionId={selected} />
-                      )}
-                    </div>
-                  </div>
-                </Panel>
-              </PanelGroup>
+              <div className="flex h-full flex-col">
+                <div className="flex items-center gap-0.5 border-b border-border bg-card/40 px-2 py-1">
+                  <SidebarTab
+                    active={sidebarMode === "schema"}
+                    onClick={() => setSidebarMode("schema")}
+                  >
+                    Schema
+                  </SidebarTab>
+                  <SidebarTab
+                    active={sidebarMode === "saved"}
+                    onClick={() => setSidebarMode("saved")}
+                  >
+                    Saved
+                  </SidebarTab>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  {sidebarMode === "schema" ? (
+                    selected ? (
+                      <SchemaExplorer connectionId={selected} />
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
+                        Connect to a database from the File menu to browse its schema.
+                      </div>
+                    )
+                  ) : (
+                    <SavedQueriesPanel connectionId={selected} />
+                  )}
+                </div>
+              </div>
             </Panel>
             <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30" />
             <Panel defaultSize={80}>
