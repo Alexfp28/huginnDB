@@ -16,7 +16,15 @@
  */
 
 import { useState } from "react";
-import { ChevronDown, FolderOpen, PlugZap, Plus, Settings } from "lucide-react";
+import {
+  ChevronDown,
+  FolderOpen,
+  LayoutGrid,
+  PlugZap,
+  Plus,
+  Settings,
+} from "lucide-react";
+import { resetLayout } from "@/lib/dockview";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
@@ -150,6 +158,10 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
           >
             <PlugZap className="mr-2 h-3.5 w-3.5" />
             Disconnect all
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={resetLayout} className="text-xs">
+            <LayoutGrid className="mr-2 h-3.5 w-3.5" />
+            Reset window layout
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

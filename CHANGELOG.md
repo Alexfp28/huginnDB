@@ -48,6 +48,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   status bar.
 - `versions: Record<string, string>` map in the connections store, populated
   on connect and cleared on disconnect.
+- **File menu** in the top-left of the header — single dropdown surface
+  for connection management. Lists every saved profile (click to connect,
+  click again to select if already active), with `New connection…`,
+  `Manage connections…` (opens the existing connection list in a modal),
+  `Disconnect all`, and `Reset window layout` entries.
+- **Drag-and-drop docking workspace** (powered by `dockview-react`) —
+  the Schema, Saved, and Workspace (TabbedArea) panels can be dragged,
+  resized, tabbed together, or split into rows / columns. The arrangement
+  is persisted to `localStorage` under `huginndb.layout` and survives
+  reloads; `Reset window layout` in the File menu wipes it back to the
+  default (Schema + Saved tabbed on the left, Workspace on the right).
+- New `useUi` Zustand store holding the `selectedConnectionId` so the
+  three dockview panels can all read the same value without prop-drilling
+  through the dockview boundary.
+
+### Changed
+
+- **Connections sidebar removed.** The persistent `ConnectionList` panel
+  in the sidebar is gone — its functionality moved into the File menu
+  and the new `ManageConnectionsDialog`. This frees up vertical space
+  for the Schema explorer once the user has finished configuring their
+  profiles.
+- **Rename: Huginn → HuginnDB.** Product name, Cargo package, Tauri
+  productName / identifier (`io.huginndb.app`), keychain service, on-disk
+  config directory (`%APPDATA%\HuginnDB\…`), localStorage keys
+  (`huginndb.theme.v2`, `huginndb.queryHistory`, `huginndb.savedQueries`),
+  built-in theme names (`HuginnDB Dark / Light`), and all public docs.
+  The GitHub repo slug remains `huggin` (original typo) and is
+  unchanged.
+
+### Migration notes for alpha users
+
+- Saved connection profiles will not be found on first launch after this
+  update because the config directory moved from `%APPDATA%\Huginn\` to
+  `%APPDATA%\HuginnDB\`. Recreate them through the File menu, or copy
+  `profiles.json` across by hand. Stored passwords in the OS keychain
+  remain under their original service id, so they will need to be
+  re-saved as well (the keychain service id is now `io.huginndb.app`).
+- The persisted theme will be reset because the localStorage key
+  changed; pick your theme again from the Settings dialog.
 
 ## [0.1.0-alpha] — 2026-05-13
 
