@@ -88,8 +88,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   config directory (`%APPDATA%\HuginnDB\…`), localStorage keys
   (`huginndb.theme.v2`, `huginndb.queryHistory`, `huginndb.savedQueries`),
   built-in theme names (`HuginnDB Dark / Light`), and all public docs.
-  The GitHub repo slug remains `huggin` (original typo) and is
-  unchanged.
+  The GitHub repository was subsequently renamed from `huggin` to
+  `huginnDB` to match.
 
 ### Migration notes for alpha users
 
