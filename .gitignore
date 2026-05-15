@@ -35,3 +35,6 @@ sample-data
 # Local env
 .env
 .env.local
+
+# Claude Code local settings
+.claude/

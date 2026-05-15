@@ -36,6 +36,17 @@ pub struct TableInfo {
     ///   is needed.
     #[serde(rename = "row_count")]
     pub row_count: Option<u64>,
+    /// Approximate on-disk size in bytes (data + indexes) sourced from the engine.
+    ///
+    /// - **Postgres** — `pg_total_relation_size(...)`, only for ordinary tables
+    ///   (`pg_class.relkind = 'r'`); views and foreign tables yield `None`.
+    /// - **MySQL** — `DATA_LENGTH + INDEX_LENGTH` from `information_schema.TABLES`.
+    ///   `None` for views.
+    /// - **SQLite** — best-effort via the optional `dbstat` virtual table. If the
+    ///   build does not include `dbstat`, the first probe fails and every entry
+    ///   in this list falls back to `None` for the rest of the call.
+    #[serde(rename = "size_bytes")]
+    pub size_bytes: Option<u64>,
 }
 
 /// Column metadata as displayed in the schema explorer.
@@ -113,11 +124,20 @@ pub async fn list_tables(
             // LEFT JOIN against pg_stat_user_tables fetches approximate live-row counts
             // for tables in one round-trip. Views never have stat entries, so their
             // n_live_tup will be NULL (→ row_count: None).
+            //
+            // pg_total_relation_size only makes sense for ordinary tables; calling it
+            // on a view raises an error, so we gate the call on relkind = 'r' via a
+            // LEFT JOIN against pg_class. Anything else yields NULL.
             let rows = sqlx::query(
-                "SELECT t.table_schema, t.table_name, t.table_type, s.n_live_tup \
+                "SELECT t.table_schema, t.table_name, t.table_type, s.n_live_tup, \
+                        CASE WHEN c.relkind = 'r' \
+                             THEN pg_total_relation_size(c.oid) \
+                             ELSE NULL END AS size_bytes \
                  FROM information_schema.tables t \
                  LEFT JOIN pg_stat_user_tables s \
                    ON s.schemaname = t.table_schema AND s.relname = t.table_name \
+                 LEFT JOIN pg_namespace n ON n.nspname = t.table_schema \
+                 LEFT JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = t.table_name \
                  WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema') \
                  ORDER BY t.table_schema, t.table_name",
             )
@@ -135,6 +155,9 @@ pub async fn list_tables(
                     row_count: r
                         .get::<Option<i64>, _>("n_live_tup")
                         .map(|v| v.unsigned_abs()),
+                    size_bytes: r
+                        .get::<Option<i64>, _>("size_bytes")
+                        .map(|v| v.unsigned_abs()),
                 })
                 .collect()
         }
@@ -143,7 +166,8 @@ pub async fn list_tables(
             // TABLE_ROWS is an engine-maintained estimate stored in information_schema;
             // no extra queries needed.
             let rows = sqlx::query(
-                "SELECT table_schema, table_name, table_type, table_rows \
+                "SELECT table_schema, table_name, table_type, table_rows, \
+                        (IFNULL(data_length, 0) + IFNULL(index_length, 0)) AS size_bytes \
                  FROM information_schema.tables \
                  WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) \
                  ORDER BY table_schema, table_name",
@@ -152,19 +176,24 @@ pub async fn list_tables(
             .fetch_all(&p)
             .await?;
             rows.into_iter()
-                .map(|r| TableInfo {
-                    schema: r.get::<String, _>("table_schema"),
-                    name: r.get::<String, _>("table_name"),
-                    kind: if r
+                .map(|r| {
+                    let is_view = r
                         .get::<String, _>("table_type")
                         .to_uppercase()
-                        .contains("VIEW")
-                    {
-                        "view".into()
-                    } else {
-                        "table".into()
-                    },
-                    row_count: r.get::<Option<u64>, _>("table_rows"),
+                        .contains("VIEW");
+                    TableInfo {
+                        schema: r.get::<String, _>("table_schema"),
+                        name: r.get::<String, _>("table_name"),
+                        kind: if is_view { "view".into() } else { "table".into() },
+                        row_count: r.get::<Option<u64>, _>("table_rows"),
+                        // Views report length columns as NULL; the IFNULL coalesces
+                        // them to 0, so suppress that here for clarity.
+                        size_bytes: if is_view {
+                            None
+                        } else {
+                            r.get::<Option<u64>, _>("size_bytes")
+                        },
+                    }
                 })
                 .collect()
         }
@@ -177,18 +206,45 @@ pub async fn list_tables(
             )
             .fetch_all(&p)
             .await?;
-            rows.into_iter()
-                .map(|r| TableInfo {
+            // Per-table size comes from the optional `dbstat` virtual table.
+            // It is a compile-time feature of SQLite and may be absent on some
+            // builds; the first probe failure flips `dbstat_available` to false
+            // so we don't spam errors for every remaining table.
+            let mut dbstat_available = true;
+            let mut out = Vec::with_capacity(rows.len());
+            for r in rows {
+                let name: String = r.get("name");
+                let kind: String = r.get("type");
+                let size_bytes = if dbstat_available && kind == "table" {
+                    match sqlx::query_scalar::<_, Option<i64>>(
+                        "SELECT SUM(pgsize) FROM dbstat WHERE name = ?",
+                    )
+                    .bind(&name)
+                    .fetch_one(&p)
+                    .await
+                    {
+                        Ok(v) => v.map(|n| n.unsigned_abs()),
+                        Err(_) => {
+                            dbstat_available = false;
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+                out.push(TableInfo {
                     schema: "main".into(),
-                    name: r.get::<String, _>("name"),
-                    kind: r.get::<String, _>("type"),
+                    name,
+                    kind,
                     // SQLite has no statistics catalog with per-table row counts.
                     // sqlite_stat1 only exists after ANALYZE and is unreliable for
                     // fresh databases. N individual COUNT(*) queries would block the
                     // UI on large schemas.
                     row_count: None,
-                })
-                .collect()
+                    size_bytes,
+                });
+            }
+            out
         }
     };
     Ok(tables)

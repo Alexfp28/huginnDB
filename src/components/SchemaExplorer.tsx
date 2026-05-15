@@ -26,8 +26,9 @@ import {
 } from "lucide-react";
 import { useSchema, tableKey } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
+import { useViewPrefs, type SchemaTableMetric } from "@/stores/viewPrefs";
 import { Button } from "@/components/ui/button";
-import { formatCount } from "@/lib/utils";
+import { formatBytes, formatCount } from "@/lib/utils";
 import type { TableInfo } from "@/types";
 
 export function SchemaExplorer({ connectionId }: { connectionId: string }) {
@@ -175,6 +176,17 @@ interface SectionProps {
   openTab: ReturnType<typeof useTabs.getState>["open"];
 }
 
+/** Renders the right-aligned per-table metric badge (row count or size). */
+function tableMetricLabel(t: TableInfo, metric: SchemaTableMetric): string | null {
+  if (metric === "row-count" && t.row_count !== undefined) {
+    return formatCount(t.row_count);
+  }
+  if (metric === "size" && t.size_bytes !== undefined) {
+    return formatBytes(t.size_bytes);
+  }
+  return null;
+}
+
 /** Expandable section listing a set of tables or views within a schema. */
 function TableSection({
   label,
@@ -188,6 +200,7 @@ function TableSection({
   openTab,
 }: SectionProps) {
   const isOpen = cs.expanded.has(sectionKey);
+  const metric = useViewPrefs((s) => s.schemaTableMetric);
 
   return (
     <div>
@@ -249,17 +262,21 @@ function TableSection({
                   >
                     {t.name}
                   </span>
-                  {/* Approximate row count from engine statistics */}
-                  {t.row_count !== undefined && (
-                    <span className="ml-auto shrink-0 pl-2 text-[10px] text-muted-foreground">
-                      {formatCount(t.row_count)}
-                    </span>
-                  )}
+                  {/* Engine-estimated metric (row count or size), per
+                      the user's `View` menu preference. */}
+                  {(() => {
+                    const badge = tableMetricLabel(t, metric);
+                    return badge ? (
+                      <span className="ml-auto shrink-0 pl-2 text-[10px] text-muted-foreground">
+                        {badge}
+                      </span>
+                    ) : null;
+                  })()}
                 </button>
               </div>
 
               {tableOpen && (
-                <div className="ml-10 border-l border-border/50 pl-2">
+                <div className="ml-10 border-l border-border/50 pl-2 pr-2">
                   {cols ? (
                     cols.map((c) => (
                       <div
@@ -267,16 +284,16 @@ function TableSection({
                         className="flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground"
                       >
                         {c.is_primary_key && (
-                          <KeyRound className="h-2.5 w-2.5 text-amber-400" />
+                          <KeyRound className="h-2.5 w-2.5 shrink-0 text-amber-400" />
                         )}
                         <span className="truncate">{c.name}</span>
-                        <span className="ml-auto pl-2 text-[10px] uppercase">
+                        <span className="ml-auto shrink-0 pl-2 text-[10px] uppercase">
                           {c.data_type}
                         </span>
                       </div>
                     ))
                   ) : (
-                    <div className="py-0.5 text-[11px] italic text-muted-foreground">
+                    <div className="py-0.5 pl-1 text-[11px] italic text-muted-foreground">
                       loading…
                     </div>
                   )}

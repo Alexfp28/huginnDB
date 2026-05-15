@@ -22,6 +22,7 @@ import { useConnections } from "@/stores/connections";
 import { useUi } from "@/stores/ui";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
 import { FileMenu } from "@/components/FileMenu";
+import { ViewMenu } from "@/components/ViewMenu";
 import { SchemaExplorer } from "@/components/SchemaExplorer";
 import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
@@ -126,8 +127,9 @@ export default function App() {
     <TooltipProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
         <header className="relative flex h-9 items-center border-b border-border px-2">
-          {/* Left — File menu */}
+          {/* Left — File + View menus */}
           <FileMenu selectedConnectionId={selected} onSelect={setSelected} />
+          <ViewMenu />
 
           {/* Centred breadcrumb — absolutely positioned so it stays in the
               middle of the bar regardless of action button widths. */}

@@ -52,6 +52,12 @@ export interface TableInfo {
    * and for views on any driver.
    */
   row_count?: number;
+  /**
+   * Approximate on-disk size in bytes (data + indexes).
+   * Undefined for views, and for SQLite when the `dbstat` virtual table is
+   * unavailable.
+   */
+  size_bytes?: number;
 }
 
 /** Column metadata as displayed in the schema explorer. */

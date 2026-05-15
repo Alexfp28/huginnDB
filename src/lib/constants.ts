@@ -31,4 +31,5 @@ export const STORAGE_KEYS = {
   theme: "huginndb.theme.v2",
   queryHistory: "huginndb.queryHistory",
   savedQueries: "huginndb.savedQueries",
+  viewPrefs: "huginndb.viewPrefs.v1",
 } as const;

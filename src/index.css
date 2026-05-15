@@ -150,6 +150,14 @@
   --dv-floating-group-dragging-opacity: 0.5;
 }
 
+/* Keep sashes below floating UI layers (dropdowns, dialogs, tooltips).
+   dockview may apply z-index via inline styles, so !important is required.
+   Radix portals render in <body> outside dockview's stacking context and
+   sit at z-index 50, so z-index 1 here is sufficient. */
+.dockview-theme-huginndb .dv-sash {
+  z-index: 1 !important;
+}
+
 /* Make the resize sash easier to grab. Default dockview sashes are 4 px;
    bump the hover state so users have a visible cue. */
 .dockview-theme-huginndb .dv-sash:hover {
