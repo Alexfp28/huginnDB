@@ -49,6 +49,8 @@ pub fn run() {
             commands::query::execute_query,
             commands::query::fetch_table_data,
             commands::query::update_cell,
+            commands::query::delete_rows,
+            commands::query::insert_row,
             commands::credentials::store_password,
             commands::credentials::load_password,
             commands::credentials::delete_password,

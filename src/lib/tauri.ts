@@ -13,13 +13,15 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CellValue,
+  ColumnFilter,
   ColumnInfo,
   ConnectionProfile,
   DatabaseInfo,
   IndexInfo,
   QueryResult,
+  RowValue,
   TableInfo,
-  CellValue,
 } from "@/types";
 
 export const api = {
@@ -85,7 +87,15 @@ export const api = {
   executeQuery: (connectionId: string, sql: string) =>
     invoke<QueryResult>("execute_query", { connectionId, sql }),
 
-  /** Paginated SELECT against a known table with optional sort. */
+  /**
+   * Paginated SELECT against a known table.
+   *
+   * - `filters`: structured column predicates (chips), AND-composed.
+   * - `search` + `searchColumns`: free-text needle applied as
+   *   case-insensitive `LIKE` across the supplied columns and
+   *   OR-composed with itself, then AND-composed with `filters`.
+   *   The needle is escaped against LIKE metacharacters server-side.
+   */
   fetchTableData: (args: {
     connectionId: string;
     schema?: string;
@@ -94,6 +104,9 @@ export const api = {
     offset: number;
     orderBy?: string;
     orderDesc?: boolean;
+    filters?: ColumnFilter[];
+    search?: string;
+    searchColumns?: string[];
   }) => invoke<QueryResult>("fetch_table_data", args),
 
   /**
@@ -110,4 +123,26 @@ export const api = {
     column: string;
     value: string | null;
   }) => invoke<number>("update_cell", args),
+
+  /** DELETE one or more rows by primary key. */
+  deleteRows: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    pkColumn: string;
+    pkValues: CellValue[];
+  }) => invoke<number>("delete_rows", args),
+
+  /**
+   * INSERT one row from the supplied column/value pairs. When `pkColumn`
+   * is given on Postgres, the generated PK is returned via `RETURNING`;
+   * MySQL/SQLite return their `last_insert_id`/`last_insert_rowid`.
+   */
+  insertRow: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    pkColumn?: string;
+    values: RowValue[];
+  }) => invoke<CellValue>("insert_row", args),
 };

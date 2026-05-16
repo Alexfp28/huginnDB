@@ -39,6 +39,11 @@ interface Props {
    * persisting it via `api.updateCell`.
    */
   onSave?: (value: string) => Promise<void>;
+  /**
+   * If provided, the panel renders a "Set NULL" action (Ctrl+Shift+N).
+   * Persists `null` for the cell via the caller's update path.
+   */
+  onSetNull?: () => Promise<void>;
 }
 
 export function CellPreview({
@@ -47,6 +52,7 @@ export function CellPreview({
   onClose,
   onFullscreen,
   onSave,
+  onSetNull,
 }: Props) {
   /** String representation of the raw cell value. */
   const rawText = useMemo(() => {
@@ -72,11 +78,14 @@ export function CellPreview({
       } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         onSave?.(rawText);
+      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        onSetNull?.();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, onFullscreen, onSave, rawText]);
+  }, [onClose, onFullscreen, onSave, onSetNull, rawText]);
 
   const isNull = value === null || value === undefined;
 
@@ -139,6 +148,15 @@ export function CellPreview({
             title="Save cell value"
           >
             ⌘ S save
+          </button>
+        )}
+        {onSetNull && (
+          <button
+            className="hover:text-muted-foreground"
+            onClick={() => onSetNull()}
+            title="Set this cell to NULL"
+          >
+            ⌘⇧ N null
           </button>
         )}
         <button

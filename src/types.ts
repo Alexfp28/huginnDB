@@ -113,6 +113,46 @@ export interface AppTab {
   lastQueryStats?: { rows: number; elapsed_ms: number };
 }
 
+/**
+ * Comparison operator for `ColumnFilter`. Mirrors the closed set the
+ * backend accepts in `fetch_table_data`. `is_null` / `is_not_null` ignore
+ * the `value` field.
+ */
+export type FilterOp = "eq" | "ne" | "is_null" | "is_not_null";
+
+/** A single column-level predicate AND-composed in `fetch_table_data`. */
+export interface ColumnFilter {
+  column: string;
+  op: FilterOp;
+  value?: CellValue;
+}
+
+/** One column/value pair used when building an INSERT. */
+export interface RowValue {
+  column: string;
+  value: string | null;
+}
+
+/**
+ * Per-cell state for the inline insert/duplicate draft row.
+ *
+ * `touched=false` means the user has not interacted with this cell, so the
+ * column is omitted from the INSERT and the database default is used.
+ * `touched=true` + `value=null` is an explicit `NULL`. `touched=true` +
+ * `value="some string"` is bound as text.
+ */
+export interface DraftCell {
+  value: string | null;
+  touched: boolean;
+}
+
+/** Inline draft row state owned by `TableDataTab`. */
+export interface DraftRow {
+  cells: Record<string, DraftCell>;
+  error: string | null;
+  saving: boolean;
+}
+
 /** One entry in the persisted query history. */
 export interface QueryHistoryEntry {
   id: string;

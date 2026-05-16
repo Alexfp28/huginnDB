@@ -9,6 +9,7 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
+import { useFilterHistory } from "@/stores/filterHistory";
 import type { ConnectionProfile } from "@/types";
 
 interface ConnectionsState {
@@ -95,6 +96,9 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
       delete versions[id];
       return { active, versions };
     });
+    // The user asked for filter history to be tied to the connection
+    // lifetime; wipe it when the pool closes.
+    useFilterHistory.getState().clearForConnection(id);
   },
   isActive: (id) => get().active.has(id),
   getVersion: (id) => get().versions[id],

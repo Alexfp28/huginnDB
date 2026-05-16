@@ -8,6 +8,66 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Right-click context menu on data-grid cells**, modelled after HeidiSQL.
+  Items: `Copy`, `Copy with column name` (renders as `col = 'value'` in the
+  clipboard), `Set NULL` (PK-aware, only when the table is editable),
+  `Filter by this value`, `Filter excluding this value`, plus row-level
+  `Insert row…`, `Duplicate row…`, and `Delete row`. Built on a new
+  `ContextMenu` wrapper (`src/components/ui/context-menu.tsx`) over
+  `@radix-ui/react-context-menu`.
+- **Server-side column filters with chip UI.** Right-clicking a cell can
+  push a `ColumnFilter` onto the table tab; the filter survives pagination
+  and refetches, and renders as a removable chip above the grid.
+- **Server-side free-text search in the toolbar input.** The grid's
+  "Filter rows…" box now sends a debounced (~250 ms) `LIKE`/`ILIKE`
+  match across every column, case-insensitively, so typed needles
+  surface rows from any page — not just the one currently rendered.
+  User input is escaped against LIKE metacharacters (`%`, `_`, `\`).
+  AND-composed with the chip filters.
+- **Filter history dropdown** next to the search input. Keeps an
+  in-memory, per-connection list of recent searches (newest first,
+  capped at 20, deduplicated) so the same needle can be re-applied to
+  another table without retyping. Backed by a transient Zustand store
+  (`useFilterHistory` in `src/stores/filterHistory.ts`) that is wiped
+  when the connection is disconnected and discarded on app reload.
+
+### Fixed
+
+- **Search and chip filters no longer leak between table tabs.**
+  `TabbedArea` now passes `key={activeTab.id}` to `TableDataTab` and
+  `QueryEditorTab`, so switching between two table tabs unmounts and
+  remounts the body. The previous behaviour reused a single React
+  instance and dragged the search input, server filters, and any
+  in-progress draft row across tabs.
+- **`delete_rows` Tauri command** — `DELETE FROM <qt> WHERE <pk> IN (?, …)`
+  with driver-appropriate placeholders (`$1, $2 …` for Postgres, `?` for
+  MySQL/SQLite). Accepts a `Vec` of PK values so the same command will
+  serve multi-row deletion when that lands.
+- **`insert_row` Tauri command** — INSERTs from an ordered
+  `Vec<RowValue>` of `{ column, value: Option<String> }` pairs, with
+  `RETURNING <pk>` on Postgres when `pk_column` is supplied, and
+  `last_insert_id` / `last_insert_rowid` on MySQL/SQLite. Backs both the
+  Insert and Duplicate flows.
+- **Inline draft row for Insert and Duplicate**, HeidiSQL-style.
+  Choosing "Insert row…" or "Duplicate row…" pins a draft row to the
+  top of the grid with a primary-tinted background. Each cell is a
+  text input — Tab moves between fields, `Esc` cancels, and either
+  pressing `Enter` or clicking outside the row commits the INSERT.
+  Untouched cells are omitted from the statement so database defaults
+  apply. Auto-increment primary keys (PK whose type contains
+  `int` / `serial` / `rowid`) render as an `auto` placeholder. Nullable
+  cells get an inline `∅` button to force an explicit `NULL`. If the
+  backend rejects the INSERT, the draft survives with the typed values
+  and shows the error inline so the user can correct and retry.
+- **`filters` parameter on `fetch_table_data`** — an optional ordered
+  list of `ColumnFilter { column, op, value }` where `op` is one of
+  `eq`, `ne`, `is_null`, `is_not_null`. Identifiers are quoted via
+  `quote_ident`; values are always sent as binds. The companion
+  `SELECT COUNT(*)` also respects the filter so pagination footers stay
+  accurate.
+- **`Set NULL` action in `CellPreview`** — Ctrl+Shift+N or the new
+  button writes `null` for the current cell when the panel was opened
+  with a save handler.
 - **Driver badges** in the connection list sidebar: each profile now shows a
   coloured pill (`PG` / `MY` / `SQL`) identifying its backend at a glance.
 - **Approximate row counts** in the schema explorer tree, sourced without

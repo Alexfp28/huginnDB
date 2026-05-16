@@ -103,8 +103,15 @@ export function TabbedArea({ connectionId }: Props) {
             )}
           </div>
         )}
+        {/*
+         * `key={activeTab.id}` forces React to mount a fresh component
+         * instance per tab. Without it, switching between two table tabs
+         * reuses the same `TableDataTab` and its `useState` hooks
+         * (filter input, server filters, draft row) leak across tabs.
+         */}
         {activeTab && activeTab.kind === "table" && (
           <TableDataTab
+            key={activeTab.id}
             connectionId={activeTab.connectionId}
             schema={activeTab.schema}
             table={activeTab.table!}
@@ -112,6 +119,7 @@ export function TabbedArea({ connectionId }: Props) {
         )}
         {activeTab && activeTab.kind === "query" && (
           <QueryEditorTab
+            key={activeTab.id}
             tabId={activeTab.id}
             connectionId={activeTab.connectionId}
           />
