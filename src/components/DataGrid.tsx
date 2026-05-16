@@ -67,11 +67,17 @@ interface Props {
   globalFilter?: string;
   onGlobalFilterChange?: (v: string) => void;
   /**
+   * Called when the user explicitly commits the current search — by
+   * pressing Enter, picking an entry from the history dropdown, or
+   * hitting the clear (×) button. Receives the value being committed
+   * so callers don't depend on the not-yet-flushed `onChange` state.
+   */
+  onGlobalFilterSubmit?: (v: string) => void;
+  /**
    * Newest-first list of recent search queries shown in a small
    * dropdown next to the filter input. Empty list → no dropdown button.
    */
   searchHistory?: string[];
-  onPickHistory?: (q: string) => void;
 
   /** Server-side column filters; rendered as chips. */
   serverFilters?: ColumnFilter[];
@@ -138,8 +144,8 @@ export function DataGrid({
   sortDesc,
   globalFilter,
   onGlobalFilterChange,
+  onGlobalFilterSubmit,
   searchHistory,
-  onPickHistory,
   serverFilters,
   onAddFilter,
   onRemoveFilter,
@@ -291,8 +297,8 @@ export function DataGrid({
         <SearchInput
           value={globalFilter ?? ""}
           onChange={onGlobalFilterChange}
+          onSubmit={onGlobalFilterSubmit}
           history={searchHistory ?? []}
-          onPickHistory={onPickHistory}
         />
         {serverFilters?.map((f, i) => (
           <span
@@ -608,21 +614,22 @@ export function DataGrid({
 /**
  * Toolbar search input with an optional history dropdown.
  *
- * The history list comes in as a controlled prop so the parent decides
- * the scope (per-connection, per-tab, etc.). Picking an entry replaces
- * the input value via `onChange` — the parent's debounce handler then
- * commits it to the backend just like a fresh keystroke.
+ * Submitting is explicit: typing only updates the input value, and the
+ * search is applied to the backend on Enter, on picking a history
+ * entry, or on clicking the clear (×) button. This stops every
+ * keystroke from creating a history entry and avoids spurious refetches
+ * while the user is still composing the query.
  */
 function SearchInput({
   value,
   onChange,
+  onSubmit,
   history,
-  onPickHistory,
 }: {
   value: string;
   onChange?: (v: string) => void;
+  onSubmit?: (v: string) => void;
   history: string[];
-  onPickHistory?: (q: string) => void;
 }) {
   const hasHistory = history.length > 0;
   const hasValue = value.length > 0;
@@ -630,16 +637,27 @@ function SearchInput({
     <div className="flex h-7 items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
       <input
         className="w-56 bg-transparent px-2 text-xs focus:outline-none"
-        placeholder="Filter rows…"
+        placeholder="Filter rows… (Enter)"
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onSubmit?.(value);
+          }
+        }}
       />
       {hasValue && (
         <button
           type="button"
           className="flex items-center justify-center px-1.5 text-muted-foreground/70 hover:bg-accent/30 hover:text-foreground"
           title="Clear filter"
-          onClick={() => onChange?.("")}
+          onClick={() => {
+            // Clear immediately + apply, so the grid actually refetches
+            // and the user sees the unfiltered rows.
+            onChange?.("");
+            onSubmit?.("");
+          }}
         >
           <X className="h-3 w-3" />
         </button>
@@ -661,7 +679,7 @@ function SearchInput({
                 key={q}
                 onSelect={() => {
                   onChange?.(q);
-                  onPickHistory?.(q);
+                  onSubmit?.(q);
                 }}
                 className="font-mono text-xs"
               >

@@ -19,17 +19,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   push a `ColumnFilter` onto the table tab; the filter survives pagination
   and refetches, and renders as a removable chip above the grid.
 - **Server-side free-text search in the toolbar input.** The grid's
-  "Filter rows…" box now sends a debounced (~250 ms) `LIKE`/`ILIKE`
-  match across every column, case-insensitively, so typed needles
-  surface rows from any page — not just the one currently rendered.
-  User input is escaped against LIKE metacharacters (`%`, `_`, `\`).
-  AND-composed with the chip filters.
+  "Filter rows…" box sends a `LIKE`/`ILIKE` match across every column,
+  case-insensitively, so typed needles surface rows from any page —
+  not just the one currently rendered. Submission is explicit: Enter
+  commits, the clear (×) button applies an empty filter, and picking
+  a history entry applies it immediately. Typing alone does not
+  refetch. User input is escaped against LIKE metacharacters
+  (`%`, `_`, `\`). AND-composed with the chip filters.
 - **Filter history dropdown** next to the search input. Keeps an
   in-memory, per-connection list of recent searches (newest first,
   capped at 20, deduplicated) so the same needle can be re-applied to
-  another table without retyping. Backed by a transient Zustand store
-  (`useFilterHistory` in `src/stores/filterHistory.ts`) that is wiped
-  when the connection is disconnected and discarded on app reload.
+  another table without retyping. Entries are only recorded when the
+  user explicitly commits (Enter / dropdown pick), so the list stays
+  meaningful rather than collecting every keystroke. Backed by a
+  transient Zustand store (`useFilterHistory` in
+  `src/stores/filterHistory.ts`) that is wiped when the connection is
+  disconnected and discarded on app reload.
 
 ### Fixed
 

@@ -12,10 +12,11 @@
  * backend rejects the row, the draft survives with an inline error so
  * the user can fix and retry without losing what they typed.
  *
- * Filtering model: the toolbar input applies a debounced server-side
- * "any column contains" search (case-insensitive `LIKE`/`ILIKE`),
- * so it surfaces matches across the whole table — including rows on
- * other pages. The grid's right-click "Filter by this value" pushes
+ * Filtering model: the toolbar input applies a server-side "any column
+ * contains" search (case-insensitive `LIKE`/`ILIKE`), committed on
+ * Enter (or via the history dropdown / clear button) so each keystroke
+ * does not refetch and the history dropdown only collects deliberate
+ * queries. The grid's right-click "Filter by this value" pushes
  * structured `ColumnFilter` entries onto `serverFilters`, which
  * compose with the search via `AND`.
  */
@@ -111,10 +112,10 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [sortColumn, setSortColumn] = useState<string | undefined>();
   const [sortDesc, setSortDesc] = useState(false);
-  /** Free-text search bound to the toolbar input (raw, not debounced). */
+  /** Free-text search bound to the toolbar input (uncommitted draft). */
   const [filter, setFilter] = useState("");
-  /** Debounced version sent to the backend so we don't refetch per keystroke. */
-  const [debouncedFilter, setDebouncedFilter] = useState("");
+  /** What was actually committed via Enter — drives the backend fetch. */
+  const [appliedFilter, setAppliedFilter] = useState("");
   const [serverFilters, setServerFilters] = useState<ColumnFilter[]>([]);
 
   const pushHistory = useFilterHistory((s) => s.push);
@@ -122,21 +123,20 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
     (s) => s.byConnection[connectionId],
   );
 
-  /** Debounce the search input: ~250 ms is enough to feel live without
-   *  hammering the database on every character. */
-  useEffect(() => {
-    if (filter === debouncedFilter) return;
-    const id = window.setTimeout(() => {
-      setDebouncedFilter(filter);
-      setOffset(0);
-      // Record only meaningful searches — short fragments would crowd
-      // the dropdown without giving the user anything to re-apply.
-      if (filter.trim().length >= 2) {
-        pushHistory(connectionId, filter);
-      }
-    }, 250);
-    return () => window.clearTimeout(id);
-  }, [filter, debouncedFilter, connectionId, pushHistory]);
+  /**
+   * Apply the supplied value: refetch from page 0 and, if the query is
+   * non-trivial, record it in the per-connection history. The value is
+   * passed explicitly (rather than read from `filter`) so callers can
+   * commit a value that `setFilter` hasn't flushed yet — e.g. picking a
+   * history entry or hitting the clear button.
+   */
+  function submitFilter(value: string) {
+    setAppliedFilter(value);
+    setOffset(0);
+    if (value.trim().length >= 2) {
+      pushHistory(connectionId, value);
+    }
+  }
 
   const searchColumns = useMemo(
     () => cols?.map((c) => c.name) ?? [],
@@ -161,8 +161,8 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
         orderBy: sortColumn,
         orderDesc: sortDesc,
         filters: serverFilters.length ? serverFilters : undefined,
-        search: debouncedFilter || undefined,
-        searchColumns: debouncedFilter ? searchColumns : undefined,
+        search: appliedFilter || undefined,
+        searchColumns: appliedFilter ? searchColumns : undefined,
       });
       setResult(r);
     } catch (e) {
@@ -179,7 +179,7 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
     sortColumn,
     sortDesc,
     serverFilters,
-    debouncedFilter,
+    appliedFilter,
     searchColumns,
   ]);
 
@@ -401,6 +401,7 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
             }}
             globalFilter={filter}
             onGlobalFilterChange={setFilter}
+            onGlobalFilterSubmit={submitFilter}
             searchHistory={filterHistory ?? []}
             serverFilters={serverFilters}
             onAddFilter={onAddFilter}
