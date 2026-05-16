@@ -47,6 +47,12 @@ interface SchemaState {
   ) => Promise<void>;
   /** Drop all cached data for `connectionId` (called on disconnect). */
   drop: (connectionId: string) => void;
+  /**
+   * Replace the expanded-node set for `connectionId` in one shot. Used by
+   * the persisted-workspace hydration path so the saved tree state lands
+   * without firing N `toggleNode` events.
+   */
+  replaceExpanded: (connectionId: string, expanded: Set<string>) => void;
 }
 
 function emptyState(): ConnectionSchema {
@@ -143,6 +149,15 @@ export const useSchema = create<SchemaState>((set, get) => ({
           ...cur,
           indexes: { ...cur.indexes, [tableKey(schema, table)]: idx },
         },
+      },
+    }));
+  },
+  replaceExpanded: (connectionId, expanded) => {
+    const cur = get().byConnection[connectionId] ?? emptyState();
+    set((state) => ({
+      byConnection: {
+        ...state.byConnection,
+        [connectionId]: { ...cur, expanded },
       },
     }));
   },

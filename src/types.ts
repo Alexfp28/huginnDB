@@ -8,11 +8,40 @@
 /** SQL backend supported by a profile. */
 export type Driver = "postgres" | "mysql" | "sqlite";
 
-/** Optional SSH tunnel configuration (UI only for now). */
+/**
+ * Authentication method for the SSH tunnel. The actual secret (password or
+ * private-key passphrase) never appears in the profile; it lives in the OS
+ * keychain under `${profile.id}::ssh::${ssh.username}` and is resolved at
+ * connect time.
+ */
+export type SshAuth =
+  | { kind: "password" }
+  | { kind: "key"; path: string };
+
+/**
+ * How the client decides whether to trust the SSH server's host key.
+ *
+ * - `strict`     — only accept keys that match a previously stored
+ *                  fingerprint for this `host:port`. Reject unknown servers.
+ * - `accept-new` — accept and remember unknown servers on first connect
+ *                  (TOFU); reject mismatches afterwards. Recommended default
+ *                  and what `ssh -o StrictHostKeyChecking=accept-new` does.
+ * - `accept-any` — accept any presented key without checking. Use only for
+ *                  throwaway test setups; offers no MITM protection.
+ */
+export type HostKeyPolicy = "strict" | "accept-new" | "accept-any";
+
+/** Optional SSH tunnel configuration. */
 export interface SshTunnel {
   host: string;
+  /** Default 22. */
   port: number;
   username: string;
+  auth: SshAuth;
+  /** Local port to bind for the tunnel listener. 0 = auto-assign. */
+  local_port: number;
+  /** Host-key trust policy. Defaults to `accept-new` (TOFU). */
+  host_key_policy: HostKeyPolicy;
 }
 
 /**
@@ -66,6 +95,32 @@ export interface ColumnInfo {
   data_type: string;
   nullable: boolean;
   is_primary_key: boolean;
+  /**
+   * For single-column FOREIGN KEY constraints, the schema/table/column the
+   * value must exist in. All three are `null` for non-FK columns or for
+   * composite FKs (which we don't surface in this iteration).
+   */
+  referenced_schema?: string | null;
+  referenced_table?: string | null;
+  referenced_column?: string | null;
+}
+
+/** One row in an FK dropdown. */
+export interface FkOption {
+  /** Stringified referenced primary-key value. */
+  value: string;
+  /**
+   * Optional human-readable label (first textual non-PK column). When absent
+   * the UI falls back to displaying `value` only.
+   */
+  label: string | null;
+}
+
+/** Result page returned by `fetch_fk_options`. */
+export interface FkOptionsPage {
+  options: FkOption[];
+  /** True when more rows match than the requested limit. */
+  has_more: boolean;
 }
 
 /** Index summary including the participating columns. */
@@ -151,6 +206,71 @@ export interface DraftRow {
   cells: Record<string, DraftCell>;
   error: string | null;
   saving: boolean;
+}
+
+/**
+ * User preferences. Mirrors `Preferences` in `src-tauri/src/prefs.rs`.
+ *
+ * Persisted to `prefs.json` in the platform config dir. The frontend store
+ * always sends a full snapshot — partial updates are merged client-side.
+ */
+export interface Preferences {
+  version: number;
+  editor: EditorPrefs;
+  grid: GridPrefs;
+  ui: UiPrefs;
+}
+
+export interface EditorPrefs {
+  fontFamily: string;
+  fontSize: number;
+  tabSize: number;
+  wordWrap: boolean;
+  minimap: boolean;
+  lineNumbers: boolean;
+  formatOnPaste: boolean;
+}
+
+export interface GridPrefs {
+  rowHeight: number;
+  nullDisplay: string;
+  truncateLongTextAt: number;
+  zebraStripes: boolean;
+  stickyHeader: boolean;
+  defaultPageSize: number;
+}
+
+/** Schema-tree metric column. Source of truth for the enum is the frontend. */
+export type SchemaTableMetric = "none" | "row-count" | "size";
+
+/** Supported UI languages. Add a locale here, a translation file under
+ *  `src/lib/i18n/locales/`, and a `<SelectItem>` entry in GeneralSection. */
+export type AppLanguage = "en" | "es";
+
+export interface UiPrefs {
+  confirmDestructive: boolean;
+  queryHistoryLimit: number;
+  restoreTabsOnOpen: boolean;
+  schemaTableMetric: SchemaTableMetric;
+  language: AppLanguage;
+}
+
+/** Persisted workspace for a single connection. */
+export interface ConnectionTabState {
+  tabs: PersistedTab[];
+  activeTabId: string | null;
+  expandedSchemaNodes: string[];
+  /** Unix seconds; refreshed each save. Drives LRU pruning. */
+  lastOpened: number;
+}
+
+export interface PersistedTab {
+  id: string;
+  kind: TabKind;
+  schema: string | null;
+  table: string | null;
+  query: string | null;
+  title: string | null;
 }
 
 /** One entry in the persisted query history. */

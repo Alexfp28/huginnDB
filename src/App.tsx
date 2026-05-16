@@ -10,7 +10,7 @@
  * wipes it back to the default.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import "dockview-react/dist/styles/dockview.css";
 import {
   DockviewReact,
@@ -21,6 +21,10 @@ import { Moon, Settings, Sun } from "lucide-react";
 import { useConnections } from "@/stores/connections";
 import { useUi } from "@/stores/ui";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
+import { usePreferences } from "@/stores/preferences";
+import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
+import { useTranslation } from "react-i18next";
+import { setLanguage } from "@/lib/i18n";
 import { FileMenu } from "@/components/FileMenu";
 import { ViewMenu } from "@/components/ViewMenu";
 import { SchemaExplorer } from "@/components/SchemaExplorer";
@@ -44,10 +48,11 @@ import {
 
 function SchemaPanel() {
   const id = useUi((s) => s.selectedConnectionId);
+  const { t } = useTranslation();
   if (!id) {
     return (
       <div className="flex h-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
-        Connect to a database from the File menu to browse its schema.
+        {t("common.emptyConnectDatabase")}
       </div>
     );
   }
@@ -89,13 +94,42 @@ export default function App() {
   const setSelected = useUi((s) => s.setSelectedConnectionId);
   const activeTheme = useThemeStore(selectActiveTheme);
   const setMode = useThemeStore((s) => s.setActiveMode);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const hydratePreferences = usePreferences((s) => s.hydrate);
+  const language = usePreferences((s) => s.prefs.ui.language);
+  const openSettings = useSettingsDialog((s) => s.openAt);
+  const { t } = useTranslation();
 
   // Initial profile load — used to live inside ConnectionList, which is
   // no longer mounted at startup.
   useEffect(() => {
     refreshConnections();
   }, [refreshConnections]);
+
+  // Hydrate preferences from disk before the user can interact with the
+  // settings UI. Failures fall back to defaults inside the store itself,
+  // so we don't gate the rest of the boot on this promise.
+  useEffect(() => {
+    void hydratePreferences();
+  }, [hydratePreferences]);
+
+  // Forward the user's language choice into i18next whenever it changes
+  // (on hydrate, or when the user picks a different option in Settings).
+  useEffect(() => {
+    setLanguage(language);
+  }, [language]);
+
+  // Global Ctrl/Cmd+, opens the preferences dialog. We attach to `window`
+  // so the binding works regardless of focus inside the panel layout.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        openSettings();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openSettings]);
 
   // Stable derived breadcrumb metadata; both inputs are reference-stable
   // store values, so this satisfies the Zustand selector invariant.
@@ -135,7 +169,9 @@ export default function App() {
               middle of the bar regardless of action button widths. */}
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div className="flex items-center gap-2 font-mono text-sm">
-              <span className="font-semibold tracking-tight">huginndb</span>
+              <span className="font-semibold tracking-tight">
+                {t("common.brand")}
+              </span>
               {selectedProfile && (
                 <>
                   <span className="text-muted-foreground/40">·</span>
@@ -153,7 +189,7 @@ export default function App() {
               )}
               {!selectedProfile && (
                 <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-sans uppercase text-muted-foreground">
-                  alpha
+                  {t("common.alpha")}
                 </span>
               )}
             </div>
@@ -167,7 +203,7 @@ export default function App() {
               onClick={() =>
                 setMode(activeTheme.mode === "dark" ? "light" : "dark")
               }
-              title="Toggle light / dark"
+              title={t("common.tooltipToggleTheme")}
             >
               {activeTheme.mode === "dark" ? (
                 <Sun className="h-4 w-4" />
@@ -178,14 +214,14 @@ export default function App() {
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => setSettingsOpen(true)}
-              title="Settings & themes"
+              onClick={() => openSettings()}
+              title={t("common.tooltipOpenPreferences")}
             >
               <Settings className="h-4 w-4" />
             </Button>
           </div>
         </header>
-        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+        <SettingsDialog />
         <div className="flex-1 overflow-hidden">
           <DockviewReact
             components={COMPONENTS}

@@ -50,12 +50,19 @@ pub struct TableInfo {
 }
 
 /// Column metadata as displayed in the schema explorer.
+///
+/// `referenced_*` fields are populated for **single-column** FOREIGN KEY
+/// constraints only. Composite FKs are intentionally ignored in this
+/// iteration — the UI degrades to a plain text input for them.
 #[derive(Debug, Serialize)]
 pub struct ColumnInfo {
     pub name: String,
     pub data_type: String,
     pub nullable: bool,
     pub is_primary_key: bool,
+    pub referenced_schema: Option<String>,
+    pub referenced_table: Option<String>,
+    pub referenced_column: Option<String>,
 }
 
 /// Index summary including the participating columns.
@@ -105,7 +112,10 @@ pub async fn list_databases(
         // SQLite is single-file; pretend the file is one schema named "main".
         DbPool::Sqlite(_) => vec!["main".to_string()],
     };
-    Ok(names.into_iter().map(|n| DatabaseInfo { name: n }).collect())
+    Ok(names
+        .into_iter()
+        .map(|n| DatabaseInfo { name: n })
+        .collect())
 }
 
 /// List user-visible tables and views, with approximate row counts where available.
@@ -184,7 +194,11 @@ pub async fn list_tables(
                     TableInfo {
                         schema: r.get::<String, _>("table_schema"),
                         name: r.get::<String, _>("table_name"),
-                        kind: if is_view { "view".into() } else { "table".into() },
+                        kind: if is_view {
+                            "view".into()
+                        } else {
+                            "table".into()
+                        },
                         row_count: r.get::<Option<u64>, _>("table_rows"),
                         // Views report length columns as NULL; the IFNULL coalesces
                         // them to 0, so suppress that here for clarity.
@@ -255,6 +269,11 @@ pub async fn list_tables(
 /// The `is_primary_key` flag is determined by joining against
 /// `information_schema.table_constraints` (Postgres), `column_key`
 /// (MySQL), or the `pk` field of `PRAGMA table_info` (SQLite).
+///
+/// Single-column foreign-key references are surfaced via
+/// `referenced_schema` / `referenced_table` / `referenced_column`.
+/// Composite FKs are deliberately filtered out to keep the FK-dropdown
+/// UI simple — they fall back to a plain text input.
 #[tauri::command]
 pub async fn list_columns(
     state: State<'_, AppState>,
@@ -262,10 +281,25 @@ pub async fn list_columns(
     schema: Option<String>,
     table: String,
 ) -> AppResult<Vec<ColumnInfo>> {
-    let pool = pool_for(state.inner(), &connection_id)?;
+    list_columns_inner(state.inner(), &connection_id, schema, table).await
+}
+
+/// Borrowed-state variant of [`list_columns`] so other command handlers can
+/// reuse the catalog lookup without re-entering the Tauri State guard.
+pub async fn list_columns_inner(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<Vec<ColumnInfo>> {
+    let pool = pool_for(state, connection_id)?;
     let cols = match pool {
         DbPool::Postgres(p) => {
             let schema = schema.unwrap_or_else(|| "public".into());
+            // The LATERAL subquery walks `pg_constraint` for foreign keys whose
+            // conrelid matches the column's table and whose single-element
+            // conkey points at this column. We restrict to length-1 conkey to
+            // ignore composite FKs.
             let rows = sqlx::query(
                 "SELECT c.column_name, c.data_type, c.is_nullable, \
                         EXISTS ( \
@@ -277,8 +311,27 @@ pub async fn list_columns(
                               AND tc.table_schema = c.table_schema \
                               AND tc.table_name = c.table_name \
                               AND k.column_name = c.column_name \
-                        ) AS is_pk \
+                        ) AS is_pk, \
+                        fk.ref_schema, fk.ref_table, fk.ref_column \
                  FROM information_schema.columns c \
+                 LEFT JOIN LATERAL ( \
+                     SELECT n2.nspname AS ref_schema, \
+                            cl2.relname AS ref_table, \
+                            att2.attname AS ref_column \
+                     FROM pg_constraint con \
+                     JOIN pg_class cl  ON cl.oid  = con.conrelid \
+                     JOIN pg_namespace n  ON n.oid  = cl.relnamespace \
+                     JOIN pg_class cl2 ON cl2.oid = con.confrelid \
+                     JOIN pg_namespace n2 ON n2.oid = cl2.relnamespace \
+                     JOIN pg_attribute att  ON att.attrelid  = cl.oid  AND att.attnum  = con.conkey[1] \
+                     JOIN pg_attribute att2 ON att2.attrelid = cl2.oid AND att2.attnum = con.confkey[1] \
+                     WHERE con.contype = 'f' \
+                       AND array_length(con.conkey, 1) = 1 \
+                       AND n.nspname  = c.table_schema \
+                       AND cl.relname = c.table_name \
+                       AND att.attname = c.column_name \
+                     LIMIT 1 \
+                 ) fk ON TRUE \
                  WHERE c.table_schema = $1 AND c.table_name = $2 \
                  ORDER BY c.ordinal_position",
             )
@@ -292,10 +345,14 @@ pub async fn list_columns(
                     data_type: r.get::<String, _>("data_type"),
                     nullable: r.get::<String, _>("is_nullable") == "YES",
                     is_primary_key: r.get::<bool, _>("is_pk"),
+                    referenced_schema: r.get::<Option<String>, _>("ref_schema"),
+                    referenced_table: r.get::<Option<String>, _>("ref_table"),
+                    referenced_column: r.get::<Option<String>, _>("ref_column"),
                 })
                 .collect()
         }
         DbPool::Mysql(p) => {
+            let schema_arg = schema.unwrap_or_default();
             let rows = sqlx::query(
                 "SELECT column_name, column_type, is_nullable, column_key \
                  FROM information_schema.columns \
@@ -303,16 +360,63 @@ pub async fn list_columns(
                    AND table_name = ? \
                  ORDER BY ordinal_position",
             )
-            .bind(schema.unwrap_or_default())
+            .bind(&schema_arg)
             .bind(&table)
             .fetch_all(&p)
             .await?;
+            // Separate query for FK metadata. Filtered to single-column FKs
+            // via a constraint-name lookup with COUNT(*) = 1.
+            let fk_rows = sqlx::query(
+                "SELECT k.column_name, \
+                        k.referenced_table_schema AS ref_schema, \
+                        k.referenced_table_name   AS ref_table, \
+                        k.referenced_column_name  AS ref_column \
+                 FROM information_schema.key_column_usage k \
+                 WHERE k.table_schema = COALESCE(NULLIF(?, ''), DATABASE()) \
+                   AND k.table_name = ? \
+                   AND k.referenced_table_name IS NOT NULL \
+                   AND k.ordinal_position = 1 \
+                   AND k.constraint_name IN ( \
+                       SELECT constraint_name FROM information_schema.key_column_usage \
+                       WHERE table_schema = k.table_schema \
+                         AND table_name = k.table_name \
+                         AND referenced_table_name IS NOT NULL \
+                       GROUP BY constraint_name HAVING COUNT(*) = 1 \
+                   )",
+            )
+            .bind(&schema_arg)
+            .bind(&table)
+            .fetch_all(&p)
+            .await?;
+            use std::collections::HashMap;
+            let mut fk_map: HashMap<String, (Option<String>, Option<String>, Option<String>)> =
+                HashMap::new();
+            for r in fk_rows {
+                fk_map.insert(
+                    r.get::<String, _>("column_name"),
+                    (
+                        r.get::<Option<String>, _>("ref_schema"),
+                        r.get::<Option<String>, _>("ref_table"),
+                        r.get::<Option<String>, _>("ref_column"),
+                    ),
+                );
+            }
             rows.into_iter()
-                .map(|r| ColumnInfo {
-                    name: r.get::<String, _>("column_name"),
-                    data_type: r.get::<String, _>("column_type"),
-                    nullable: r.get::<String, _>("is_nullable") == "YES",
-                    is_primary_key: r.get::<String, _>("column_key") == "PRI",
+                .map(|r| {
+                    let name: String = r.get("column_name");
+                    let (ref_schema, ref_table, ref_column) = fk_map
+                        .get(&name)
+                        .cloned()
+                        .unwrap_or((None, None, None));
+                    ColumnInfo {
+                        name,
+                        data_type: r.get::<String, _>("column_type"),
+                        nullable: r.get::<String, _>("is_nullable") == "YES",
+                        is_primary_key: r.get::<String, _>("column_key") == "PRI",
+                        referenced_schema: ref_schema,
+                        referenced_table: ref_table,
+                        referenced_column: ref_column,
+                    }
                 })
                 .collect()
         }
@@ -322,12 +426,72 @@ pub async fn list_columns(
             // catalog lookup.
             let q = format!("PRAGMA table_info(\"{}\")", table.replace('"', "\"\""));
             let rows = sqlx::query(&q).fetch_all(&p).await?;
+            // foreign_key_list yields one row per column of each constraint.
+            // Group by `id` to filter composite FKs.
+            let fk_q = format!(
+                "PRAGMA foreign_key_list(\"{}\")",
+                table.replace('"', "\"\"")
+            );
+            let fk_rows = sqlx::query(&fk_q).fetch_all(&p).await?;
+            use std::collections::HashMap;
+            // (id) -> Vec<(from, target_table, target_col_opt)>
+            let mut groups: HashMap<i64, Vec<(String, String, Option<String>)>> = HashMap::new();
+            for r in fk_rows {
+                let id: i64 = r.get("id");
+                let from: String = r.get("from");
+                let target_table: String = r.get("table");
+                let to: Option<String> = r.try_get("to").ok().flatten();
+                groups.entry(id).or_default().push((from, target_table, to));
+            }
+            let mut fk_map: HashMap<String, (String, Option<String>)> = HashMap::new();
+            for parts in groups.into_values() {
+                if parts.len() == 1 {
+                    let (from, target_table, to) = parts.into_iter().next().unwrap();
+                    fk_map.insert(from, (target_table, to));
+                }
+            }
+            // Resolve any FK with NULL `to` (implicit PK) by inspecting the
+            // target table once each.
+            use std::collections::HashSet;
+            let needs_pk_resolution: HashSet<String> = fk_map
+                .values()
+                .filter_map(|(t, to)| to.is_none().then(|| t.clone()))
+                .collect();
+            let mut pk_cache: HashMap<String, Option<String>> = HashMap::new();
+            for target in needs_pk_resolution {
+                let q2 = format!(
+                    "PRAGMA table_info(\"{}\")",
+                    target.replace('"', "\"\"")
+                );
+                let pk = match sqlx::query(&q2).fetch_all(&p).await {
+                    Ok(target_rows) => target_rows
+                        .into_iter()
+                        .find(|r| r.get::<i64, _>("pk") > 0)
+                        .map(|r| r.get::<String, _>("name")),
+                    Err(_) => None,
+                };
+                pk_cache.insert(target, pk);
+            }
             rows.into_iter()
-                .map(|r| ColumnInfo {
-                    name: r.get::<String, _>("name"),
-                    data_type: r.get::<String, _>("type"),
-                    nullable: r.get::<i64, _>("notnull") == 0,
-                    is_primary_key: r.get::<i64, _>("pk") > 0,
+                .map(|r| {
+                    let name: String = r.get("name");
+                    let (ref_table, ref_column) = match fk_map.get(&name) {
+                        Some((t, Some(c))) => (Some(t.clone()), Some(c.clone())),
+                        Some((t, None)) => (
+                            Some(t.clone()),
+                            pk_cache.get(t).cloned().unwrap_or(None),
+                        ),
+                        None => (None, None),
+                    };
+                    ColumnInfo {
+                        name,
+                        data_type: r.get::<String, _>("type"),
+                        nullable: r.get::<i64, _>("notnull") == 0,
+                        is_primary_key: r.get::<i64, _>("pk") > 0,
+                        referenced_schema: None,
+                        referenced_table: ref_table,
+                        referenced_column: ref_column,
+                    }
                 })
                 .collect()
         }
@@ -444,9 +608,7 @@ pub async fn server_version(
     let pool = pool_for(state.inner(), &connection_id)?;
     let version = match pool {
         DbPool::Postgres(p) => {
-            let raw: String = sqlx::query_scalar("SELECT version()")
-                .fetch_one(&p)
-                .await?;
+            let raw: String = sqlx::query_scalar("SELECT version()").fetch_one(&p).await?;
             // Full string is like "PostgreSQL 16.2 on x86_64-pc-linux-gnu, ...".
             // Extract and lowercase the first two whitespace-delimited tokens.
             raw.splitn(3, ' ')
@@ -456,9 +618,7 @@ pub async fn server_version(
                 .to_lowercase()
         }
         DbPool::Mysql(p) => {
-            let raw: String = sqlx::query_scalar("SELECT VERSION()")
-                .fetch_one(&p)
-                .await?;
+            let raw: String = sqlx::query_scalar("SELECT VERSION()").fetch_one(&p).await?;
             // Strip the distro/build suffix (everything after the first `-`).
             let ver = raw.split('-').next().unwrap_or(&raw);
             format!("mysql {ver}")

@@ -14,6 +14,7 @@
  */
 
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
@@ -26,12 +27,14 @@ import {
 } from "lucide-react";
 import { useSchema, tableKey } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
-import { useViewPrefs, type SchemaTableMetric } from "@/stores/viewPrefs";
+import { usePreferences } from "@/stores/preferences";
+import type { SchemaTableMetric } from "@/types";
 import { Button } from "@/components/ui/button";
 import { formatBytes, formatCount } from "@/lib/utils";
 import type { TableInfo } from "@/types";
 
 export function SchemaExplorer({ connectionId }: { connectionId: string }) {
+  const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[connectionId]);
   const refresh = useSchema((s) => s.refresh);
   const toggleNode = useSchema((s) => s.toggleNode);
@@ -45,7 +48,7 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
   if (!cs) {
     return (
       <div className="px-3 py-3 text-xs text-muted-foreground">
-        Loading schema…
+        {t("schema.loading")}
       </div>
     );
   }
@@ -67,14 +70,14 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Schema
+          {t("schema.title")}
         </div>
         <Button
           size="icon"
           variant="ghost"
           onClick={() => refresh(connectionId)}
           disabled={cs.loading}
-          title="Refresh"
+          title={t("schema.refresh")}
         >
           <RefreshCw
             className={`h-3.5 w-3.5 ${cs.loading ? "animate-spin" : ""}`}
@@ -113,7 +116,7 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
                 <div>
                   {/* Tables section */}
                   <TableSection
-                    label="tables"
+                    label={t("schema.sectionTables")}
                     icon={<TableIcon className="h-3 w-3 text-muted-foreground/70" />}
                     items={tables}
                     sectionKey={`${schemaNodeKey}:tables`}
@@ -127,7 +130,7 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
                   {/* Views section */}
                   {views.length > 0 && (
                     <TableSection
-                      label="views"
+                      label={t("schema.sectionViews")}
                       icon={<Eye className="h-3 w-3 text-muted-foreground/70" />}
                       items={views}
                       sectionKey={`${schemaNodeKey}:views`}
@@ -141,6 +144,7 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
 
                   {/* Indexes section header — content is per-table */}
                   <IndexesSectionHeader
+                    label={t("schema.sectionIndexes")}
                     sectionKey={`${schemaNodeKey}:indexes`}
                     connectionId={connectionId}
                     expanded={cs.expanded}
@@ -199,8 +203,11 @@ function TableSection({
   loadColumns,
   openTab,
 }: SectionProps) {
+  // Inner i18n hook — the table loop shadows `t`, so we use the function
+  // directly via `i18n.t` here is overkill; instead alias it.
+  const { t: translate } = useTranslation();
   const isOpen = cs.expanded.has(sectionKey);
-  const metric = useViewPrefs((s) => s.schemaTableMetric);
+  const metric = usePreferences((s) => s.prefs.ui.schemaTableMetric);
 
   return (
     <div>
@@ -294,7 +301,7 @@ function TableSection({
                     ))
                   ) : (
                     <div className="py-0.5 pl-1 text-[11px] italic text-muted-foreground">
-                      loading…
+                      {translate("schema.loadingColumns")}
                     </div>
                   )}
                 </div>
@@ -308,11 +315,13 @@ function TableSection({
 
 /** Collapsible "indexes" section header within a schema node. */
 function IndexesSectionHeader({
+  label,
   sectionKey,
   connectionId,
   expanded,
   toggleNode,
 }: {
+  label: string;
   sectionKey: string;
   connectionId: string;
   expanded: Set<string>;
@@ -330,7 +339,7 @@ function IndexesSectionHeader({
         <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
       )}
       <LayoutList className="h-3 w-3 text-muted-foreground/70" />
-      <span className="text-[11px] text-muted-foreground">indexes</span>
+      <span className="text-[11px] text-muted-foreground">{label}</span>
     </button>
   );
 }

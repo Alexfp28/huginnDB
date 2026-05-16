@@ -8,6 +8,87 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **HeidiSQL-style foreign-key combobox for inserts and cell edits.**
+  When a column carries a single-column `FOREIGN KEY` constraint, the
+  inline draft-row input (and the full-cell editor opened via
+  double-click / `F11`) is replaced by a searchable dropdown of valid
+  referenced values. Each entry is rendered as `<pk> — <label>`, with the
+  label auto-picked server-side as the first non-PK text/varchar/char
+  column on the target table — same affordance HeidiSQL has offered for
+  years, brought to HuginnDB. Up to 200 rows are prefetched and filtered
+  client-side; targets larger than that switch transparently to
+  debounced server-side `ILIKE` search (`LIKE` on MySQL/SQLite) so the
+  combobox stays responsive on tables with hundreds of thousands of
+  rows. Nullable FK columns get a sticky `(NULL)` item at the top of the
+  list; targets that are dropped or inaccessible degrade gracefully to a
+  plain text input rather than blocking the edit. FK metadata is sourced
+  from `pg_constraint` (Postgres), `information_schema.key_column_usage`
+  (MySQL), and `PRAGMA foreign_key_list` (SQLite); composite FKs are
+  ignored in this iteration and continue to render as plain inputs.
+- **SSH host-key verification with TOFU (Trust On First Use)** for tunnelled
+  connections. Each profile picks a policy: `accept-new` (default — trust
+  on first connect, strict afterwards; mirrors `ssh -o StrictHostKeyChecking=accept-new`),
+  `strict` (only accept fingerprints already in the store), or
+  `accept-any` (skip verification — intended for throwaway test setups).
+  Trusted SHA-256 fingerprints live in `known_hosts.json` next to `prefs.json`,
+  keyed by `host:port` (same model as OpenSSH's `~/.ssh/known_hosts`), so
+  multiple profiles pointing at the same SSH server share trust. The
+  connection dialog shows the currently-trusted fingerprint and exposes a
+  "Forget host key" button for the case where a server is legitimately
+  reinstalled. Rejections surface a precise reason (mismatch vs. unknown)
+  instead of `russh`'s generic transport error.
+- **SSH tunnel support for PostgreSQL and MySQL connections**, HeidiSQL-style.
+  The connection dialog gains an "SSH tunnel" tab that lets you enable a
+  tunnel per profile and configure the SSH host, port, username, and either
+  password or private-key authentication (with an optional passphrase and
+  a file picker for the key). The local listener port can be set manually
+  or left at `0` to auto-assign. SSH secrets live in the OS keychain under
+  a namespaced account (`${profile.id}::ssh::${username}`) parallel to the
+  DB password, never on disk. Backend uses `russh` 0.60 with the `ring`
+  crypto backend (no `aws-lc-sys` build dependency); the tunnel is brought
+  up before the `sqlx` pool, which is then pointed at `127.0.0.1:<local>`,
+  and is torn down automatically when the connection is dropped. First-cut
+  host-key verification is permissive; strict `known_hosts` enforcement is
+  tracked as a follow-up.
+- **Internationalisation (English + Spanish)** via `i18next` + `react-i18next`.
+  Translations bundle in `src/lib/i18n/locales/{en,es}.json`. The active
+  language is persisted in `prefs.json` (`ui.language`) so it survives
+  restarts; switch from `Preferences → General → Language`. Migrated UI
+  surfaces: top-bar tooltips and breadcrumb, File menu, View menu, status
+  bar, the entire Preferences dialog, **the connection dialog, the
+  connection sidebar / manage-connections dialog, and the schema explorer**
+  (titles, fields, tooltips, confirm/alert prompts, test/save status
+  messages). Remaining surfaces (table browser, query editor, error
+  toasts) will migrate incrementally.
+- **Central Preferences dialog** (Ctrl/Cmd+,) with sections for General,
+  Editor, Data grid, Appearance, Shortcuts, and About. Replaces the
+  themes-only Settings dialog while preserving its theme picker. Opened
+  from the topbar gear icon, the View menu's "Preferences…" entry, or the
+  keyboard shortcut. Changes apply live; no Save button.
+- **Disk-backed user preferences** persisted to `prefs.json` in the
+  platform config dir (`%APPDATA%\HuginnDB` on Windows, `$XDG_CONFIG_HOME`
+  on Linux, `~/Library/Application Support` on macOS) alongside
+  `profiles.json`. Tunable knobs include editor font/size/wrap/minimap,
+  grid row height / page size / NULL display / zebra / sticky header /
+  schema-tree metric, confirm-destructive prompts, and the query history
+  cap. Loaded via the new `get_preferences` / `update_preferences` Tauri
+  commands; the frontend debounces writes 400 ms to coalesce slider drags
+  into single disk writes. The legacy `huginndb.viewPrefs.v1` localStorage
+  blob is one-shot migrated into the new file on first launch and then
+  cleared.
+- **Per-connection workspace persistence**: open tabs (table + query,
+  including draft SQL up to 64 KB), the active tab, and the schema-tree
+  expansion are saved per profile to `tab_state.json`. Reconnecting a
+  profile restores the workspace exactly as you left it; toggling
+  "Restore tabs when opening a connection" off in General preferences
+  opts out without losing the saved snapshot. Connections are LRU-pruned
+  to the 20 most recent. Deleting a profile clears its workspace entry.
+  Powered by the new `get_tab_state` / `save_tab_state` / `clear_tab_state`
+  commands wired into a debounced subscription on `useTabs` and
+  `useSchema.expanded`.
+- **Window geometry remembered across launches** via
+  `tauri-plugin-window-state` (size, position, maximised state). The
+  plugin owns its own JSON sidecar in the app config dir.
 - **Right-click context menu on data-grid cells**, modelled after HeidiSQL.
   Items: `Copy`, `Copy with column name` (renders as `col = 'value'` in the
   clipboard), `Set NULL` (PK-aware, only when the table is editable),

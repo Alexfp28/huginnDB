@@ -172,3 +172,21 @@
 .dockview-theme-huginndb .dv-tab:active {
   cursor: grabbing;
 }
+
+/* Subtle rounded corners on each panel group. dockview itself doesn't
+   apply --dv-border-radius outside of the nord-spaced theme, so we
+   replicate the relevant rules: round the group container and clip the
+   content + tab strip so child surfaces (grid, Monaco, scrollbars)
+   don't poke through the corners. */
+.dockview-theme-huginndb .dv-groupview {
+  border-radius: var(--dv-border-radius);
+  overflow: hidden;
+}
+.dockview-theme-huginndb .dv-groupview > .dv-tabs-and-actions-container {
+  border-top-left-radius: var(--dv-border-radius);
+  border-top-right-radius: var(--dv-border-radius);
+}
+.dockview-theme-huginndb .dv-groupview > .dv-content-container {
+  border-bottom-left-radius: var(--dv-border-radius);
+  border-bottom-right-radius: var(--dv-border-radius);
+}

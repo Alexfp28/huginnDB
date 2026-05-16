@@ -44,6 +44,7 @@ import type {
 } from "@/types";
 import { CellEditor } from "@/components/CellEditor";
 import { CellPreview } from "@/components/CellPreview";
+import { FkCombobox } from "@/components/ui/fk-combobox";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -56,6 +57,14 @@ import {
 interface Props {
   result: QueryResult;
   editable?: boolean;
+  /**
+   * Connection + table coordinates. When set, draft-row cells whose
+   * column carries a single-column FK constraint render a searchable
+   * combobox of valid referenced values instead of a plain text input.
+   */
+  connectionId?: string;
+  tableSchema?: string;
+  tableName?: string;
   onCellSave?: (
     rowIndex: number,
     columnName: string,
@@ -138,6 +147,9 @@ const FILTER_LABEL: Record<ColumnFilter["op"], string> = {
 export function DataGrid({
   result,
   editable,
+  connectionId,
+  tableSchema,
+  tableName,
   onCellSave,
   onSortChange,
   sortColumn,
@@ -159,7 +171,9 @@ export function DataGrid({
   onDraftCancel,
 }: Props) {
   const draftRowRef = useRef<HTMLTableRowElement | null>(null);
-  const firstDraftInputRef = useRef<HTMLInputElement | null>(null);
+  // Holds either the plain text input or the FkCombobox trigger, so any
+  // editable element type can claim the autofocus slot.
+  const firstDraftInputRef = useRef<HTMLElement | null>(null);
 
   /**
    * Focus the first editable draft cell when a draft is created so the
@@ -184,6 +198,36 @@ export function DataGrid({
     column: ColumnMeta;
     value: string;
   } | null>(null);
+
+  /**
+   * Inline foreign-key editor anchored to a single cell. Activated on
+   * double-click when the column carries a single-column FK constraint;
+   * supersedes the Monaco dialog for that path so the user picks a
+   * value without losing visual context.
+   */
+  const [fkEditCell, setFkEditCell] = useState<{
+    rowIndex: number;
+    column: ColumnMeta;
+  } | null>(null);
+  /** Fast lookup of column metadata by name for FK detection in the cell renderer. */
+  const columnInfoByName = useMemo(() => {
+    const m = new Map<string, ColumnInfo>();
+    for (const c of draftColumns ?? []) m.set(c.name, c);
+    return m;
+  }, [draftColumns]);
+
+  // Escape exits the inline FK editor without committing. Click-outside
+  // dismissal is handled by the combobox itself, but clicks land on the
+  // panel's trigger button before the close listener fires; for that
+  // path the user can press Esc or pick another cell.
+  useEffect(() => {
+    if (!fkEditCell) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setFkEditCell(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fkEditCell]);
 
   /** Compact preview panel state. Cleared when the user clicks away or presses Esc. */
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
@@ -246,6 +290,37 @@ export function DataGrid({
         accessorFn: (row) => row[idx],
         cell: (info) => {
           const v = info.getValue() as CellValue;
+          const rowIndex = info.row.index;
+          const colInfo = columnInfoByName.get(col.name);
+          const editingFk =
+            fkEditCell?.rowIndex === rowIndex &&
+            fkEditCell.column.name === col.name;
+          if (editingFk && connectionId && colInfo?.referenced_table) {
+            // Inline overlay: replace the read-only cell content with a
+            // combobox of valid referenced values. The popover panel
+            // hangs below this anchor so the user keeps the row in view.
+            return (
+              <FkCombobox
+                connectionId={connectionId}
+                refSchema={
+                  colInfo.referenced_schema ?? tableSchema ?? undefined
+                }
+                refTable={colInfo.referenced_table}
+                refColumn={colInfo.referenced_column ?? "id"}
+                value={v === null ? null : formatValue(v)}
+                nullable={colInfo.nullable}
+                onChange={(picked) => {
+                  setFkEditCell(null);
+                  // Skip the round-trip if the user picks the same value
+                  // that was already there (common when they just open
+                  // the dropdown and dismiss).
+                  const current = v === null ? null : formatValue(v);
+                  if (picked === current) return;
+                  onCellSave?.(rowIndex, col.name, picked).catch(() => {});
+                }}
+              />
+            );
+          }
           const display = formatValue(v);
           const isNumeric = numericColNames.has(col.name);
           return (
@@ -267,7 +342,18 @@ export function DataGrid({
       })),
     // numericColNames is derived from result.columns so they change together.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [result.columns, numericColNames, sortColumn, sortDesc, onSortChange],
+    [
+      result.columns,
+      numericColNames,
+      sortColumn,
+      sortDesc,
+      onSortChange,
+      fkEditCell,
+      columnInfoByName,
+      connectionId,
+      tableSchema,
+      onCellSave,
+    ],
   );
 
   const table = useReactTable({
@@ -277,6 +363,14 @@ export function DataGrid({
   });
 
   function openEditor(rowIndex: number, column: ColumnMeta, value: string) {
+    // Single-column FK columns get an inline combobox anchored to the
+    // cell instead of the heavyweight Monaco dialog — picking a valid
+    // referenced value never needs multi-line editing.
+    const info = columnInfoByName.get(column.name);
+    if (editable && onCellSave && connectionId && info?.referenced_table) {
+      setFkEditCell({ rowIndex, column });
+      return;
+    }
     setEditorTarget({ rowIndex, column, value });
     setEditorOpen(true);
   }
@@ -377,6 +471,9 @@ export function DataGrid({
                 columns={result.columns}
                 draftColumns={draftColumns ?? []}
                 draft={draftRow}
+                connectionId={connectionId}
+                tableSchema={tableSchema}
+                tableName={tableName}
                 onChange={onDraftCellChange}
                 onCommit={onDraftCommit}
                 onCancel={onDraftCancel}
@@ -707,10 +804,14 @@ function SearchInput({
  */
 interface DraftRowViewProps {
   rowRef: React.MutableRefObject<HTMLTableRowElement | null>;
-  firstInputRef: React.MutableRefObject<HTMLInputElement | null>;
+  firstInputRef: React.MutableRefObject<HTMLElement | null>;
   columns: ColumnMeta[];
   draftColumns: ColumnInfo[];
   draft: DraftRow;
+  /** Connection + target table — required for FK comboboxes to query options. */
+  connectionId?: string;
+  tableSchema?: string;
+  tableName?: string;
   onChange?: (column: string, cell: DraftCell) => void;
   onCommit?: () => void;
   onCancel?: () => void;
@@ -722,6 +823,9 @@ function DraftRowView({
   columns,
   draftColumns,
   draft,
+  connectionId,
+  tableSchema,
+  tableName: _tableName,
   onChange,
   onCommit,
   onCancel,
@@ -795,10 +899,38 @@ function DraftRowView({
                 >
                   auto
                 </span>
+              ) : info?.referenced_table && connectionId ? (
+                // Single-column FK: pick a valid referenced value instead
+                // of typing one. The combobox owns its own NULL handling
+                // when the column is nullable, so we don't render the
+                // separate "∅" button used for plain inputs.
+                <FkCombobox
+                  ref={
+                    idx === firstEditableIdx
+                      ? (firstInputRef as React.MutableRefObject<HTMLButtonElement | null>)
+                      : undefined
+                  }
+                  connectionId={connectionId}
+                  refSchema={
+                    info.referenced_schema ?? tableSchema ?? undefined
+                  }
+                  refTable={info.referenced_table}
+                  refColumn={info.referenced_column ?? "id"}
+                  value={cell.value}
+                  nullable={info.nullable}
+                  disabled={draft.saving}
+                  onChange={(v) =>
+                    onChange?.(col.name, { value: v, touched: true })
+                  }
+                />
               ) : (
                 <div className="flex items-center gap-1">
                   <input
-                    ref={idx === firstEditableIdx ? firstInputRef : undefined}
+                    ref={
+                      idx === firstEditableIdx
+                        ? (firstInputRef as React.MutableRefObject<HTMLInputElement | null>)
+                        : undefined
+                    }
                     className="h-6 w-full min-w-0 rounded-sm border border-input bg-background px-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                     placeholder={cell.value === null ? "NULL" : ""}
                     value={cell.value ?? ""}

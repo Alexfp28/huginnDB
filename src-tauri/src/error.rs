@@ -43,6 +43,10 @@ pub enum AppError {
     /// The supplied driver name is not one of the supported backends.
     #[error("unsupported driver: {0}")]
     UnsupportedDriver(String),
+
+    /// SSH transport, authentication, or channel failure surfaced by `russh`.
+    #[error("ssh error: {0}")]
+    Ssh(String),
 }
 
 impl Serialize for AppError {

@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { ChevronDown, Eye } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,10 +18,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
-import {
-  useViewPrefs,
-  type SchemaTableMetric,
-} from "@/stores/viewPrefs";
+import { usePreferences } from "@/stores/preferences";
+import type { SchemaTableMetric } from "@/types";
 import {
   PANELS,
   type PanelId,
@@ -29,17 +28,22 @@ import {
   onDockviewApiReady,
   togglePanel,
 } from "@/lib/dockview";
+import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 
-const METRIC_OPTIONS: { value: SchemaTableMetric; label: string }[] = [
-  { value: "none", label: "Hide table metric" },
-  { value: "row-count", label: "Show row count" },
-  { value: "size", label: "Show table size" },
+const METRIC_OPTIONS: { value: SchemaTableMetric; i18nKey: string }[] = [
+  { value: "none", i18nKey: "menu.view.metricHide" },
+  { value: "row-count", i18nKey: "menu.view.metricRowCount" },
+  { value: "size", i18nKey: "menu.view.metricSize" },
 ];
 
 export function ViewMenu() {
-  const metric = useViewPrefs((s) => s.schemaTableMetric);
-  const setMetric = useViewPrefs((s) => s.setSchemaTableMetric);
+  const metric = usePreferences((s) => s.prefs.ui.schemaTableMetric);
+  const updateUi = usePreferences((s) => s.updateUi);
+  const setMetric = (m: SchemaTableMetric) =>
+    updateUi({ schemaTableMetric: m });
+  const openSettings = useSettingsDialog((s) => s.openAt);
   const [, setTick] = useState(0);
+  const { t } = useTranslation();
 
   // Bump local state on every dockview layout change so the panel
   // checkboxes reflect the current state even when the user closes a
@@ -65,13 +69,13 @@ export function ViewMenu() {
           className="h-7 gap-1.5 px-2 text-xs"
         >
           <Eye className="h-3.5 w-3.5" />
-          View
+          {t("menu.view.label")}
           <ChevronDown className="h-3 w-3 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-60">
         <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Panels
+          {t("menu.view.sectionPanels")}
         </div>
         {PANELS.map((p) => (
           <DropdownMenuCheckboxItem
@@ -91,13 +95,13 @@ export function ViewMenu() {
             floatActivePanel();
           }}
         >
-          Float active panel
+          {t("menu.view.floatActivePanel")}
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
         <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Schema tree
+          {t("menu.view.sectionSchemaTree")}
         </div>
         {METRIC_OPTIONS.map((opt) => (
           <DropdownMenuCheckboxItem
@@ -108,14 +112,23 @@ export function ViewMenu() {
               setMetric(opt.value);
             }}
           >
-            {opt.label}
+            {t(opt.i18nKey)}
           </DropdownMenuCheckboxItem>
         ))}
 
         <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            openSettings("grid");
+          }}
+        >
+          {t("menu.view.preferences")}
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
         <div className="px-2 py-1 text-[10px] leading-snug text-muted-foreground/70">
-          Drag panel tabs to rearrange. Drop outside the dock area to
-          float a panel. Counts and sizes are engine estimates.
+          {t("menu.view.help")}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

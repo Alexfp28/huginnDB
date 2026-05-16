@@ -5,6 +5,7 @@
  * the connection management surface.
  */
 
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -26,11 +27,14 @@ export function ManageConnectionsDialog({
   selectedConnectionId,
   onSelect,
 }: Props) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl p-0">
         <DialogHeader className="border-b border-border px-4 py-3">
-          <DialogTitle className="text-sm">Manage connections</DialogTitle>
+          <DialogTitle className="text-sm">
+            {t("connections.manageTitle")}
+          </DialogTitle>
         </DialogHeader>
         <div className="h-[480px] overflow-hidden">
           <ConnectionList

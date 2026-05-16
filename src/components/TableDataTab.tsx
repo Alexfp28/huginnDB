@@ -392,6 +392,9 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
           <DataGrid
             result={result}
             editable={hasPk}
+            connectionId={connectionId}
+            tableSchema={schema}
+            tableName={table}
             onCellSave={onCellSave}
             sortColumn={sortColumn}
             sortDesc={sortDesc}

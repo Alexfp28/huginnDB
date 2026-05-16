@@ -4,6 +4,7 @@
  * total number of queries in the history ring buffer.
  */
 
+import { useTranslation } from "react-i18next";
 import { useConnections } from "@/stores/connections";
 import { useTabs } from "@/stores/tabs";
 import { useQueryHistory } from "@/stores/queryHistory";
@@ -15,6 +16,7 @@ function Sep() {
 }
 
 export function StatusBar() {
+  const { t } = useTranslation();
   // Stable Set — safe to subscribe directly (not derived).
   const active = useConnections((s) => s.active);
   // Stable array reference — only changes on profile add/remove.
@@ -53,22 +55,27 @@ export function StatusBar() {
               active.size > 0 ? "bg-emerald-400" : "bg-muted-foreground/40",
             )}
           />
-          {active.size > 0 ? activeNames : "disconnected"}
+          {active.size > 0 ? activeNames : t("statusBar.disconnected")}
         </span>
 
         {stats && (
           <>
             <Sep />
-            <span>{stats.rows.toLocaleString()} rows</span>
+            <span>
+              {stats.rows.toLocaleString()} {t("statusBar.rows")}
+            </span>
             <Sep />
-            <span>executed in {stats.elapsed_ms} ms</span>
+            <span>
+              {t("statusBar.executedIn")} {stats.elapsed_ms}{" "}
+              {t("statusBar.ms")}
+            </span>
           </>
         )}
       </div>
 
       {/* Right: encoding · server version · history count */}
       <div className="flex items-center gap-2">
-        <span>utf-8</span>
+        <span>{t("statusBar.encoding")}</span>
         {serverVersion && (
           <>
             <span className="text-muted-foreground/30">·</span>
@@ -76,7 +83,9 @@ export function StatusBar() {
           </>
         )}
         <span className="text-muted-foreground/30">·</span>
-        <span>history: {historyCount}</span>
+        <span>
+          {t("statusBar.history")} {historyCount}
+        </span>
       </div>
     </div>
   );

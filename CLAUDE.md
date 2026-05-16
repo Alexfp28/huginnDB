@@ -44,7 +44,9 @@ src-tauri/src/             backend
   commands/                Tauri command handlers (the public API)
   db/                      pool / sql / values helpers (driver-agnostic)
   keychain.rs              centralised keyring access
-  state.rs, store.rs       state + disk persistence
+  state.rs, store.rs       state + disk persistence (profiles)
+  prefs.rs                 user preferences → prefs.json
+  tab_state.rs             per-connection workspace → tab_state.json
   error.rs                 AppError / AppResult
 ```
 
@@ -99,6 +101,17 @@ The Rust toolchain + MSVC Build Tools (Windows) are prerequisites; the user alre
 - The **frontend never talks to a database directly.** All DB I/O lives in Rust commands. The frontend uses the typed wrapper at `src/lib/tauri.ts` — do not call `invoke` from components.
 - **Passwords never hit disk in plaintext.** `keyring` is the only persistence path. Profile metadata (host, port, db, username, SSL toggle, driver) lives in JSON inside the platform config dir; the password is keyed by `${profile.id}::${username}` in the OS keychain.
 - **CSP is `null` on purpose** because Monaco loads its workers as blobs. Workers themselves are bundled (no remote fetch), so the relaxation is narrow. Tightening CSP is on the roadmap.
+
+## On-disk state map (platform config dir)
+
+| File                    | Owner                              | Notes |
+| ----------------------- | ---------------------------------- | ----- |
+| `profiles.json`         | `src-tauri/src/store.rs`           | Connection metadata only. Passwords in OS keychain. |
+| `prefs.json`            | `src-tauri/src/prefs.rs`           | User preferences (editor / grid / ui). Atomic temp-file + rename on write. Bad JSON falls back to `Preferences::default()` — never blocks startup. |
+| `tab_state.json`        | `src-tauri/src/tab_state.rs`       | Per-connection workspace (open tabs, active tab, schema-tree expansion). LRU-pruned to 20 connections; query bodies capped at 64 KB. |
+| `*.window-state.json`   | `tauri-plugin-window-state` v2     | Plugin-owned; do not parse manually. Removes need for a hand-rolled `window.rs`. |
+
+Theme + dockview layout still live in `localStorage` (keys `huginndb.theme.v2` and `huginndb.layout`) — synchronous read pre-mount avoids FOUC. Don't migrate these to disk without a plan for the flash.
 
 ## Current status (post-session 2)
 

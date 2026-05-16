@@ -1,11 +1,33 @@
 /**
- * Settings panel. Currently scoped to theme selection + per-colour
- * editing. Editing a built-in theme automatically forks it into a new
- * custom theme so the presets remain pristine.
+ * Central preferences dialog.
+ *
+ * Two-pane layout: a left navigation rail with the section list and a
+ * right pane that renders the active section. Open/close + active section
+ * live in `useSettingsDialog` so any component can request the dialog
+ * (FileMenu, ThemeMenu, ViewMenu, Ctrl/Cmd+, hotkey, the topbar button)
+ * without prop-drilling through App.
+ *
+ * Controls inside each section read from / write to `usePreferences` (or
+ * `useThemeStore` for Appearance) directly — there is no local form state
+ * and no Save button. Changes apply live; the preferences store debounces
+ * the disk write 400 ms downstream.
+ *
+ * The legacy single-prop signature `(open, onOpenChange)` is preserved for
+ * App.tsx, which still owns its own local boolean while the rest of the
+ * codebase migrates to `useSettingsDialog.openAt(...)`.
  */
 
-import { useMemo, useState } from "react";
-import { Copy, Trash2 } from "lucide-react";
+import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  Cog,
+  FileText,
+  Keyboard,
+  Palette,
+  Sparkles,
+  Table2,
+  Info,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,171 +35,111 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useThemeStore, selectActiveTheme } from "@/stores/theme";
-import { BUILT_IN_THEMES, COLOR_KEYS, type ThemeColors } from "@/lib/themes";
+  useSettingsDialog,
+  type SettingsSection,
+} from "@/components/settings/useSettingsDialog";
+import { GeneralSection } from "@/components/settings/sections/GeneralSection";
+import { EditorSection } from "@/components/settings/sections/EditorSection";
+import { GridSection } from "@/components/settings/sections/GridSection";
+import { AppearanceSection } from "@/components/settings/sections/AppearanceSection";
+import { ShortcutsSection } from "@/components/settings/sections/ShortcutsSection";
+import { AboutSection } from "@/components/settings/sections/AboutSection";
 
 interface Props {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  /** Optional controlled-mode signature kept for backwards compatibility. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
+const SECTIONS: {
+  id: SettingsSection;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { id: "general", icon: Cog },
+  { id: "editor", icon: FileText },
+  { id: "grid", icon: Table2 },
+  { id: "appearance", icon: Palette },
+  { id: "shortcuts", icon: Keyboard },
+  { id: "about", icon: Info },
+];
+
 export function SettingsDialog({ open, onOpenChange }: Props) {
-  const customThemes = useThemeStore((s) => s.customThemes);
-  const active = useThemeStore(selectActiveTheme);
-  const setThemeId = useThemeStore((s) => s.setThemeId);
-  const updateColor = useThemeStore((s) => s.updateActiveColor);
-  const setMode = useThemeStore((s) => s.setActiveMode);
-  const duplicate = useThemeStore((s) => s.duplicateAsCustom);
-  const deleteCustom = useThemeStore((s) => s.deleteCustom);
-  const [newName, setNewName] = useState("");
+  const storeOpen = useSettingsDialog((s) => s.open);
+  const setStoreOpen = useSettingsDialog((s) => s.setOpen);
+  const section = useSettingsDialog((s) => s.section);
+  const setSection = useSettingsDialog((s) => s.setSection);
+  const { t } = useTranslation();
 
-  const themes = useMemo(
-    () => [...BUILT_IN_THEMES, ...customThemes],
-    [customThemes],
-  );
+  // Keep the controlled prop (from App.tsx's existing button) in sync with
+  // the central store so either entry point opens / closes the same UI.
+  useEffect(() => {
+    if (open !== undefined && open !== storeOpen) setStoreOpen(open);
+  }, [open, storeOpen, setStoreOpen]);
 
-  function handleDuplicate() {
-    const name = newName.trim() || `${active.name} copy`;
-    duplicate(active.id, name);
-    setNewName("");
-  }
+  const isOpen = open ?? storeOpen;
+
+  const handleOpenChange = (next: boolean) => {
+    setStoreOpen(next);
+    onOpenChange?.(next);
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[80vh] max-w-3xl flex-col gap-3 overflow-hidden p-0">
-        <DialogHeader className="px-5 pt-5">
-          <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>
-            Themes are stored locally in your browser storage. Built-in themes
-            are read-only; edits auto-fork into a new custom theme.
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent className="flex h-[82vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b border-border px-5 py-3">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Sparkles className="h-4 w-4 text-primary" />
+            {t("settings.title")}
+          </DialogTitle>
+          <DialogDescription className="text-[11px]">
+            {t("settings.description")}{" "}
+            <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">
+              Ctrl/Cmd + ,
+            </kbd>
+            .
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid flex-1 grid-cols-[200px_1fr] overflow-hidden border-t border-border">
-          <aside className="overflow-y-auto border-r border-border bg-card/40">
-            <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-              Themes
-            </div>
-            {themes.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setThemeId(t.id)}
-                className={`flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left text-sm ${
-                  t.id === active.id
-                    ? "border-primary bg-accent/40"
-                    : "border-transparent hover:bg-accent/30"
-                }`}
-              >
-                <span
-                  className="h-3 w-3 rounded-full border border-border"
-                  style={{ background: t.colors.primary }}
-                />
-                <span className="flex-1 truncate">{t.name}</span>
-                <span className="text-[9px] uppercase text-muted-foreground">
-                  {t.builtin ? "built-in" : "custom"}
-                </span>
-              </button>
-            ))}
+        <div className="grid flex-1 grid-cols-[200px_1fr] overflow-hidden">
+          <aside className="overflow-y-auto border-r border-border bg-card/40 py-1">
+            {SECTIONS.map((s) => {
+              const Icon = s.icon;
+              const active = s.id === section;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setSection(s.id)}
+                  className={`flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left ${
+                    active
+                      ? "border-primary bg-accent/40"
+                      : "border-transparent hover:bg-accent/30"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <div className="flex flex-1 flex-col leading-tight">
+                    <span className="text-sm">
+                      {t(`settings.sections.${s.id}.label`)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {t(`settings.sections.${s.id}.desc`)}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </aside>
 
-          <main className="flex flex-col overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-border bg-card/30 px-4 py-2">
-              <div className="flex-1">
-                <div className="text-sm font-medium">{active.name}</div>
-                <div className="text-[11px] text-muted-foreground">
-                  {active.builtin
-                    ? "Built-in theme — edits will fork into a new custom theme."
-                    : "Custom theme — changes apply live."}
-                </div>
-              </div>
-              <Select
-                value={active.mode}
-                onValueChange={(v) => setMode(v as "light" | "dark")}
-              >
-                <SelectTrigger className="w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dark">Dark</SelectItem>
-                  <SelectItem value="light">Light</SelectItem>
-                </SelectContent>
-              </Select>
-              {!active.builtin && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => deleteCustom(active.id)}
-                  title="Delete custom theme"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-
-            <div className="flex items-end gap-2 border-b border-border px-4 py-2">
-              <div className="flex-1">
-                <Label className="mb-1">Duplicate as custom</Label>
-                <Input
-                  placeholder={`${active.name} copy`}
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                />
-              </div>
-              <Button size="sm" variant="outline" onClick={handleDuplicate}>
-                <Copy className="mr-1 h-3 w-3" /> Duplicate
-              </Button>
-            </div>
-
-            <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-2 overflow-y-auto p-4">
-              {COLOR_KEYS.map(({ key, label }) => (
-                <ColorRow
-                  key={key}
-                  label={label}
-                  value={active.colors[key]}
-                  onChange={(v) => updateColor(key as keyof ThemeColors, v)}
-                />
-              ))}
-            </div>
+          <main className="overflow-y-auto px-5 py-4">
+            {section === "general" && <GeneralSection />}
+            {section === "editor" && <EditorSection />}
+            {section === "grid" && <GridSection />}
+            {section === "appearance" && <AppearanceSection />}
+            {section === "shortcuts" && <ShortcutsSection />}
+            {section === "about" && <AboutSection />}
           </main>
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function ColorRow({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <Label className="flex-1 text-xs">{label}</Label>
-      <input
-        type="color"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-9 cursor-pointer rounded border border-input bg-transparent"
-      />
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-24 font-mono text-[11px]"
-      />
-    </div>
   );
 }

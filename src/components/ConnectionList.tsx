@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Plug, PlugZap, Plus, Pencil, Trash2 } from "lucide-react";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
@@ -22,6 +23,7 @@ export function ConnectionList({
   selectedConnectionId: string | null;
   onSelect: (id: string | null) => void;
 }) {
+  const { t } = useTranslation();
   const { profiles, active, refresh, connect, disconnect, remove } =
     useConnections();
   const refreshSchema = useSchema((s) => s.refresh);
@@ -40,7 +42,7 @@ export function ConnectionList({
       await refreshSchema(p.id);
       onSelect(p.id);
     } catch (e) {
-      alert(`Connect failed: ${String(e)}`);
+      alert(t("connections.connectFailed", { message: String(e) }));
     }
   }
 
@@ -52,7 +54,7 @@ export function ConnectionList({
   }
 
   async function handleDelete(p: ConnectionProfile) {
-    if (!confirm(`Delete connection "${p.name}"?`)) return;
+    if (!confirm(t("connections.deleteConfirm", { name: p.name }))) return;
     if (active.has(p.id)) await handleDisconnect(p);
     await remove(p.id);
   }
@@ -61,7 +63,7 @@ export function ConnectionList({
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Connections
+          {t("connections.sidebarTitle")}
         </div>
         <Button
           size="icon"
@@ -70,7 +72,7 @@ export function ConnectionList({
             setEditing(null);
             setDialogOpen(true);
           }}
-          title="New connection"
+          title={t("connections.newTooltip")}
         >
           <Plus className="h-4 w-4" />
         </Button>
@@ -78,7 +80,7 @@ export function ConnectionList({
       <div className="flex-1 overflow-y-auto">
         {profiles.length === 0 && (
           <div className="px-3 py-4 text-xs text-muted-foreground">
-            No connections yet. Click + to add one.
+            {t("connections.empty")}
           </div>
         )}
         {profiles.map((p) => {
@@ -126,7 +128,7 @@ export function ConnectionList({
                       e.stopPropagation();
                       handleDisconnect(p);
                     }}
-                    title="Disconnect"
+                    title={t("connections.disconnectTooltip")}
                   >
                     <PlugZap className="h-3.5 w-3.5 text-emerald-400" />
                   </Button>
@@ -138,7 +140,7 @@ export function ConnectionList({
                       e.stopPropagation();
                       handleConnect(p);
                     }}
-                    title="Connect"
+                    title={t("connections.connectTooltip")}
                   >
                     <Plug className="h-3.5 w-3.5" />
                   </Button>
@@ -151,7 +153,7 @@ export function ConnectionList({
                     setEditing(p);
                     setDialogOpen(true);
                   }}
-                  title="Edit"
+                  title={t("connections.editTooltip")}
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
@@ -162,7 +164,7 @@ export function ConnectionList({
                     e.stopPropagation();
                     handleDelete(p);
                   }}
-                  title="Delete"
+                  title={t("connections.deleteTooltip")}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>

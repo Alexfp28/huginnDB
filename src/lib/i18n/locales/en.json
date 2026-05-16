@@ -1,0 +1,218 @@
+{
+  "common": {
+    "brand": "huginndb",
+    "alpha": "alpha",
+    "cancel": "Cancel",
+    "close": "Close",
+    "delete": "Delete",
+    "duplicate": "Duplicate",
+    "save": "Save",
+    "tooltipToggleTheme": "Toggle light / dark",
+    "tooltipOpenPreferences": "Preferences (Ctrl/Cmd+,)",
+    "emptyConnectDatabase": "Connect to a database from the File menu to browse its schema.",
+    "language": "Language",
+    "languageDescription": "Interface language. Date and number formatting still follow your operating system.",
+    "languageEnglish": "English",
+    "languageSpanish": "Español"
+  },
+  "menu": {
+    "file": {
+      "label": "File",
+      "newConnection": "New connection…",
+      "manageConnections": "Manage connections…",
+      "sectionConnections": "Connections",
+      "noConnections": "No connections yet.",
+      "disconnectAll": "Disconnect all",
+      "resetLayout": "Reset window layout"
+    },
+    "view": {
+      "label": "View",
+      "sectionPanels": "Panels",
+      "floatActivePanel": "Float active panel",
+      "sectionSchemaTree": "Schema tree",
+      "metricHide": "Hide table metric",
+      "metricRowCount": "Show row count",
+      "metricSize": "Show table size",
+      "preferences": "Preferences…",
+      "help": "Drag panel tabs to rearrange. Drop outside the dock area to float a panel. Counts and sizes are engine estimates."
+    }
+  },
+  "connections": {
+    "sidebarTitle": "Connections",
+    "empty": "No connections yet. Click + to add one.",
+    "newTooltip": "New connection",
+    "connectTooltip": "Connect",
+    "disconnectTooltip": "Disconnect",
+    "editTooltip": "Edit",
+    "deleteTooltip": "Delete",
+    "deleteConfirm": "Delete connection \"{{name}}\"?",
+    "connectFailed": "Connect failed: {{message}}",
+    "manageTitle": "Manage connections"
+  },
+  "connectionDialog": {
+    "titleNew": "New connection",
+    "titleEdit": "Edit connection",
+    "description": "Credentials are stored in the OS keychain, never written to disk in plaintext.",
+    "tabs": {
+      "general": "General",
+      "ssh": "SSH tunnel"
+    },
+    "fields": {
+      "name": "Name",
+      "namePlaceholder": "Production DB",
+      "driver": "Driver",
+      "host": "Host",
+      "port": "Port",
+      "database": "Database",
+      "username": "Username",
+      "password": "Password",
+      "passwordKeepHint": "(leave blank to keep current)",
+      "ssl": "SSL",
+      "sqlitePath": "Database file path",
+      "sqlitePathPlaceholder": "C:\\path\\to\\database.db"
+    },
+    "ssh": {
+      "enable": "Connect through SSH tunnel",
+      "host": "SSH host",
+      "port": "SSH port",
+      "username": "SSH username",
+      "authMethod": "Authentication",
+      "authPassword": "Password",
+      "authKey": "Private key",
+      "sshPassword": "SSH password",
+      "privateKeyPath": "Private key file",
+      "privateKeyPathPlaceholder": "C:\\Users\\you\\.ssh\\id_ed25519",
+      "browse": "Browse…",
+      "passphrase": "Key passphrase",
+      "passphraseKeepHint": "(leave blank to keep current)",
+      "localPort": "Local port",
+      "localPortAuto": "Auto",
+      "localPortHint": "Leave at 0 to auto-assign a free port.",
+      "unavailableForSqlite": "SQLite files don't need a tunnel.",
+      "hostKeyPolicy": "SSH host verification",
+      "hostKeyPolicyHint": "How HuginnDB decides whether to trust the server's SSH public key.",
+      "policyStrict": "Strict — only previously trusted keys",
+      "policyAcceptNew": "Trust on first use (recommended)",
+      "policyAcceptAny": "Accept any (no MITM protection)",
+      "trustedFingerprint": "Trusted fingerprint",
+      "noTrustedFingerprint": "No key trusted yet for this host:port.",
+      "forgetHostKey": "Forget host key",
+      "forgetConfirm": "Forget the saved SSH host key for {{hostPort}}?",
+      "forgetDone": "Host key forgotten. The next connection will trust whatever the server presents (when the policy is \"Trust on first use\").",
+      "forgetNone": "No host key was stored for this host."
+    },
+    "test": "Test",
+    "testing": "Testing…",
+    "testOk": "Connection successful",
+    "testFailed": "Failed: {{message}}",
+    "saveFailed": "Save failed: {{message}}",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel"
+  },
+  "schema": {
+    "loading": "Loading schema…",
+    "title": "Schema",
+    "refresh": "Refresh",
+    "loadingColumns": "loading…",
+    "sectionTables": "tables",
+    "sectionViews": "views",
+    "sectionIndexes": "indexes"
+  },
+  "statusBar": {
+    "disconnected": "disconnected",
+    "rows": "rows",
+    "executedIn": "executed in",
+    "ms": "ms",
+    "encoding": "utf-8",
+    "history": "history:"
+  },
+  "settings": {
+    "title": "Preferences",
+    "description": "Changes apply live. The preferences file lives in your platform's config directory; the dialog is also available with",
+    "sections": {
+      "general": { "label": "General", "desc": "App behaviour" },
+      "editor": { "label": "Editor", "desc": "Monaco SQL editor" },
+      "grid": { "label": "Data grid", "desc": "Tables & paging" },
+      "appearance": { "label": "Appearance", "desc": "Themes & colours" },
+      "shortcuts": { "label": "Shortcuts", "desc": "Keyboard bindings" },
+      "about": { "label": "About", "desc": "Version & paths" }
+    },
+    "general": {
+      "confirmDestructive": {
+        "label": "Confirm destructive actions",
+        "desc": "Ask for confirmation before deleting rows, dropping tables, or other irreversible operations."
+      },
+      "restoreTabs": {
+        "label": "Restore tabs when opening a connection",
+        "desc": "Reopen the SQL and data tabs you had open the last time you used this connection."
+      },
+      "queryHistoryLimit": {
+        "label": "Query history size",
+        "desc": "Maximum number of recent queries kept in the history panel."
+      }
+    },
+    "editor": {
+      "fontFamily": "Font family",
+      "fontSize": "Font size (px)",
+      "tabSize": "Tab size",
+      "wordWrap": {
+        "label": "Soft-wrap long lines",
+        "desc": "Wrap lines that exceed the viewport instead of horizontal scrolling."
+      },
+      "minimap": {
+        "label": "Show minimap",
+        "desc": "Tiny overview on the right edge of the editor."
+      },
+      "lineNumbers": "Show line numbers",
+      "formatOnPaste": {
+        "label": "Format on paste",
+        "desc": "Apply Monaco's basic SQL formatter to pasted snippets."
+      }
+    },
+    "grid": {
+      "defaultPageSize": "Default page size",
+      "rowHeight": "Row height (px)",
+      "nullDisplay": {
+        "label": "NULL display",
+        "desc": "String used to render SQL NULL values in the grid."
+      },
+      "zebraStripes": {
+        "label": "Zebra stripes",
+        "desc": "Alternate row background for easier scanning."
+      },
+      "stickyHeader": {
+        "label": "Sticky header",
+        "desc": "Pin column headers while scrolling vertically."
+      },
+      "schemaMetric": {
+        "label": "Schema tree metric",
+        "desc": "Number rendered next to each table name in the schema explorer."
+      }
+    },
+    "appearance": {
+      "themes": "Themes",
+      "builtin": "built-in",
+      "custom": "custom",
+      "builtinInfo": "Built-in theme — edits will fork into a new custom theme.",
+      "customInfo": "Custom theme — changes apply live.",
+      "modeDark": "Dark",
+      "modeLight": "Light",
+      "deleteTooltip": "Delete custom theme",
+      "duplicateLabel": "Duplicate as custom"
+    },
+    "shortcuts": {
+      "roadmap": "Customising shortcuts is on the roadmap. The bindings below are the current built-in defaults.",
+      "openSettings": "Open Settings",
+      "runQuery": "Run query in active editor",
+      "focusSearch": "Focus the table search input",
+      "commitSearch": "Commit search / filter in the data grid",
+      "closeDialog": "Close the active dialog or popover"
+    },
+    "about": {
+      "tagline": "Minimal desktop database manager for PostgreSQL, MySQL and SQLite.",
+      "prefsLocation": "Preferences file location",
+      "tabStateHint": "A sibling {{file}} stores the open tabs and schema-tree expansion for each connection."
+    }
+  }
+}

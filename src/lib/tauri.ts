@@ -17,8 +17,11 @@ import type {
   ColumnFilter,
   ColumnInfo,
   ConnectionProfile,
+  ConnectionTabState,
   DatabaseInfo,
+  FkOptionsPage,
   IndexInfo,
+  Preferences,
   QueryResult,
   RowValue,
   TableInfo,
@@ -31,28 +34,57 @@ export const api = {
   listProfiles: () => invoke<ConnectionProfile[]>("list_profiles"),
 
   /**
-   * Create or update a profile. Pass `password` to update the keychain
-   * entry; omit it to keep the existing one.
+   * Create or update a profile. Pass `password` to update the DB-password
+   * keychain entry; omit it to keep the existing one. Pass `sshSecret`
+   * (SSH password or private-key passphrase) when the profile has a
+   * tunnel and you want to update that secret too.
    */
-  saveProfile: (profile: ConnectionProfile, password?: string) =>
-    invoke<ConnectionProfile>("save_profile", { profile, password }),
+  saveProfile: (
+    profile: ConnectionProfile,
+    password?: string,
+    sshSecret?: string,
+  ) =>
+    invoke<ConnectionProfile>("save_profile", {
+      profile,
+      password,
+      sshSecret,
+    }),
 
-  /** Delete a profile and its keychain entry. */
+  /** Delete a profile and its keychain entries (DB + optional SSH). */
   deleteProfile: (id: string) => invoke<void>("delete_profile", { id }),
 
-  /** Open a throwaway pool, run `SELECT 1`, then close it. */
-  testConnection: (profile: ConnectionProfile, password?: string) =>
-    invoke<string>("test_connection", { profile, password }),
+  /**
+   * Open a throwaway pool, run `SELECT 1`, then close it. `sshSecret` is
+   * resolved from the keychain when omitted, mirroring `password`.
+   */
+  testConnection: (
+    profile: ConnectionProfile,
+    password?: string,
+    sshSecret?: string,
+  ) =>
+    invoke<string>("test_connection", { profile, password, sshSecret }),
 
   /** Open a long-lived pool for the profile and remember it. */
-  connect: (id: string, password?: string) =>
-    invoke<void>("connect", { id, password }),
+  connect: (id: string, password?: string, sshSecret?: string) =>
+    invoke<void>("connect", { id, password, sshSecret }),
 
   /** Drop the pool for `id`, if any. */
   disconnect: (id: string) => invoke<void>("disconnect", { id }),
 
   /** Ids of every connection that is currently open. */
   activeConnections: () => invoke<string[]>("active_connections"),
+
+  /**
+   * Forget the trusted SSH host-key fingerprint for `host:port`. Returns
+   * `true` when an entry was actually removed. Use after a server is
+   * legitimately reinstalled, when the dialog reports a key mismatch.
+   */
+  forgetHostKey: (hostPort: string) =>
+    invoke<boolean>("forget_host_key", { hostPort }),
+
+  /** Read the trusted SSH host-key fingerprint for `host:port`, if any. */
+  getHostKey: (hostPort: string) =>
+    invoke<string | null>("get_host_key", { hostPort }),
 
   // Schema introspection -------------------------------------------------
 
@@ -145,4 +177,46 @@ export const api = {
     pkColumn?: string;
     values: RowValue[];
   }) => invoke<CellValue>("insert_row", args),
+
+  /**
+   * Fetch a page of valid values for a foreign-key column. When
+   * `labelColumn` is omitted the backend picks the first textual non-PK
+   * column from the target table; the resulting `label` is `null` when no
+   * suitable column exists. Pass `search` to switch to server-side
+   * `ILIKE` filtering (used once the prefetched page reports
+   * `has_more=true`).
+   */
+  fetchFkOptions: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    keyColumn: string;
+    labelColumn?: string;
+    search?: string;
+    limit: number;
+  }) => invoke<FkOptionsPage>("fetch_fk_options", args),
+
+  // Preferences ----------------------------------------------------------
+
+  /** Read the user's preferences blob from disk. */
+  getPreferences: () => invoke<Preferences>("get_preferences"),
+
+  /**
+   * Replace the entire preferences blob on disk. The store sends a full
+   * snapshot; partial updates are merged client-side before this call.
+   */
+  updatePreferences: (prefs: Preferences) =>
+    invoke<void>("update_preferences", { prefs }),
+
+  /** Look up the persisted workspace for a connection, if any. */
+  getTabState: (connectionId: string) =>
+    invoke<ConnectionTabState | null>("get_tab_state", { connectionId }),
+
+  /** Replace the persisted workspace for a connection. */
+  saveTabState: (connectionId: string, tabStateValue: ConnectionTabState) =>
+    invoke<void>("save_tab_state", { connectionId, tabStateValue }),
+
+  /** Drop the persisted workspace for a connection. */
+  clearTabState: (connectionId: string) =>
+    invoke<void>("clear_tab_state", { connectionId }),
 };

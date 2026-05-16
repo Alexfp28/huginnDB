@@ -28,12 +28,30 @@ pub fn pg_value(row: &sqlx::postgres::PgRow, idx: usize) -> Value {
     }
 
     match raw.type_info().name() {
-        "BOOL" => row.try_get::<bool, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
-        "INT2" => row.try_get::<i16, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
-        "INT4" => row.try_get::<i32, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
-        "INT8" => row.try_get::<i64, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
-        "FLOAT4" => row.try_get::<f32, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
-        "FLOAT8" => row.try_get::<f64, _>(idx).map(|v| json!(v)).unwrap_or(Value::Null),
+        "BOOL" => row
+            .try_get::<bool, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null),
+        "INT2" => row
+            .try_get::<i16, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null),
+        "INT4" => row
+            .try_get::<i32, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null),
+        "INT8" => row
+            .try_get::<i64, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null),
+        "FLOAT4" => row
+            .try_get::<f32, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null),
+        "FLOAT8" => row
+            .try_get::<f64, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null),
         "JSON" | "JSONB" => row.try_get::<Value, _>(idx).unwrap_or(Value::Null),
         "TIMESTAMP" => row
             .try_get::<chrono::NaiveDateTime, _>(idx)

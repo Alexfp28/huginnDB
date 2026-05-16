@@ -33,6 +33,14 @@ interface TabsState {
   ) => void;
   /** Drop every tab for a connection (called on disconnect). */
   closeForConnection: (connectionId: string) => void;
+  /**
+   * Replace every tab plus the active id in one shot. Used by the
+   * per-connection workspace restore (`persistedTabs.hydrate`) so the
+   * incoming snapshot lands atomically instead of as a stream of `open`
+   * calls — keeps the active-tab pointer correct and avoids the dedup
+   * branch in `open` from collapsing legitimately-distinct tabs.
+   */
+  replaceAll: (tabs: AppTab[], activeId: string | null) => void;
 }
 
 function genId() {
@@ -82,6 +90,7 @@ export const useTabs = create<TabsState>((set, get) => ({
         t.id === id ? { ...t, lastQueryStats: stats } : t,
       ),
     })),
+  replaceAll: (tabs, activeId) => set({ tabs, activeId }),
   closeForConnection: (connectionId) =>
     set((s) => {
       const tabs = s.tabs.filter((t) => t.connectionId !== connectionId);

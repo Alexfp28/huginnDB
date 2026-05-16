@@ -16,6 +16,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   FolderOpen,
@@ -58,6 +59,7 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
 
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
+  const { t } = useTranslation();
 
   /** Connect to a profile (or just select it if it's already active). */
   async function handleSelect(p: ConnectionProfile) {
@@ -98,27 +100,27 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
             className="h-7 gap-1.5 px-2 text-xs"
           >
             <FolderOpen className="h-3.5 w-3.5" />
-            File
+            {t("menu.file.label")}
             <ChevronDown className="h-3 w-3 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
           <DropdownMenuItem onSelect={() => setNewDialogOpen(true)}>
             <Plus className="mr-2 h-3.5 w-3.5" />
-            New connection…
+            {t("menu.file.newConnection")}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setManageOpen(true)}>
             <Settings className="mr-2 h-3.5 w-3.5" />
-            Manage connections…
+            {t("menu.file.manageConnections")}
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
           <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Connections
+            {t("menu.file.sectionConnections")}
           </div>
           {profiles.length === 0 ? (
             <div className="px-2 py-1.5 text-xs text-muted-foreground">
-              No connections yet.
+              {t("menu.file.noConnections")}
             </div>
           ) : (
             profiles.map((p) => {
@@ -157,11 +159,11 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
             className="text-xs"
           >
             <PlugZap className="mr-2 h-3.5 w-3.5" />
-            Disconnect all
+            {t("menu.file.disconnectAll")}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={resetLayout} className="text-xs">
             <LayoutGrid className="mr-2 h-3.5 w-3.5" />
-            Reset window layout
+            {t("menu.file.resetLayout")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
