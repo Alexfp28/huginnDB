@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-17
+
+First public alpha release. Bundles the full design overhaul, SSH tunnelling, disk-backed preferences and per-connection workspace, internationalisation, and the HeidiSQL-style data-grid affordances delivered across sessions 1 and 2.
+
 ### Added
 
 - **HeidiSQL-style foreign-key combobox for inserts and cell edits.**
