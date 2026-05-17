@@ -67,6 +67,12 @@ It's named after [Huginn](https://en.wikipedia.org/wiki/Huginn_and_Muninn), one 
 
 ## Installation
 
+### From a release (Windows)
+
+Download the latest `.msi` installer from the [Releases page](https://github.com/Alexfp28/huginnDB/releases) and run it.
+
+> **Windows SmartScreen warning.** Because HuginnDB binaries are not yet signed with an Authenticode certificate, Windows Defender SmartScreen will show a blue *"Windows protected your PC"* dialog on first launch. This is the default behaviour for any unsigned executable from a publisher SmartScreen has not seen before — it is not a malware detection. To continue, click **More info** (*Más información*) and then **Run anyway** (*Ejecutar de todas formas*). Code signing is on the roadmap; in the meantime, you can verify the SHA-256 of the downloaded `.msi` against the digest published on the Releases page. The full source is in this repository and reproducible builds are encouraged.
+
 ### Prerequisites
 
 | Tool                     | Why                                              | Install                                                                   |
