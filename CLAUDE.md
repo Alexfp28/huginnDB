@@ -4,9 +4,9 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 
 ## Identity
 
-- **Huginn** — desktop database manager, Tauri 2 (Rust backend) + React + TypeScript frontend.
+- **HuginnDB** — desktop database manager, Tauri 2 (Rust backend) + React + TypeScript frontend.
 - Targets PostgreSQL, MySQL, SQLite. Inspired by HeidiSQL but minimal-UI / keyboard-first / Monaco-everywhere.
-- Public repo: <https://github.com/Alexfp28/huggin> (repo slug is `huggin` — typo carried over from the local folder name; the *product* is "Huginn").
+- Public repo: <https://github.com/Alexfp28/huginnDB>.
 - License: MIT. Status: **alpha**, just published.
 
 ## Maintainer / collaboration notes
@@ -44,7 +44,9 @@ src-tauri/src/             backend
   commands/                Tauri command handlers (the public API)
   db/                      pool / sql / values helpers (driver-agnostic)
   keychain.rs              centralised keyring access
-  state.rs, store.rs       state + disk persistence
+  state.rs, store.rs       state + disk persistence (profiles)
+  prefs.rs                 user preferences → prefs.json
+  tab_state.rs             per-connection workspace → tab_state.json
   error.rs                 AppError / AppResult
 ```
 
@@ -72,8 +74,6 @@ These bit us during the first sessions. Don't repeat them.
 
 6. **The MySQL `order_clause` previously had a brittle string-rewriting hack** to convert `"col"` → `` `col` ``. Now `fetch_table_data` computes `pg_or_sqlite` once and passes the right boolean to `quote_ident` from the start. Don't reintroduce the hack.
 
-7. **Repo name vs product name.** GitHub slug is `huggin` (two g's), product is `Huginn`. If we rename the repo on GitHub later, also update the two URLs in `README.md` and `CONTRIBUTING.md`.
-
 ## Workflow
 
 ```powershell
@@ -87,7 +87,7 @@ pnpm tauri:build
 mkdir -p sample-data
 curl -L -o sample-data/chinook.db `
   https://github.com/lerocha/chinook-database/raw/master/ChinookDatabase/DataSources/Chinook_Sqlite.sqlite
-# then in Huginn: + connection → SQLite → path to chinook.db
+# then in HuginnDB: + connection → SQLite → path to chinook.db
 ```
 
 `sample-data/` is gitignored on purpose — don't commit fixtures.
@@ -101,6 +101,17 @@ The Rust toolchain + MSVC Build Tools (Windows) are prerequisites; the user alre
 - The **frontend never talks to a database directly.** All DB I/O lives in Rust commands. The frontend uses the typed wrapper at `src/lib/tauri.ts` — do not call `invoke` from components.
 - **Passwords never hit disk in plaintext.** `keyring` is the only persistence path. Profile metadata (host, port, db, username, SSL toggle, driver) lives in JSON inside the platform config dir; the password is keyed by `${profile.id}::${username}` in the OS keychain.
 - **CSP is `null` on purpose** because Monaco loads its workers as blobs. Workers themselves are bundled (no remote fetch), so the relaxation is narrow. Tightening CSP is on the roadmap.
+
+## On-disk state map (platform config dir)
+
+| File                    | Owner                              | Notes |
+| ----------------------- | ---------------------------------- | ----- |
+| `profiles.json`         | `src-tauri/src/store.rs`           | Connection metadata only. Passwords in OS keychain. |
+| `prefs.json`            | `src-tauri/src/prefs.rs`           | User preferences (editor / grid / ui). Atomic temp-file + rename on write. Bad JSON falls back to `Preferences::default()` — never blocks startup. |
+| `tab_state.json`        | `src-tauri/src/tab_state.rs`       | Per-connection workspace (open tabs, active tab, schema-tree expansion). LRU-pruned to 20 connections; query bodies capped at 64 KB. |
+| `*.window-state.json`   | `tauri-plugin-window-state` v2     | Plugin-owned; do not parse manually. Removes need for a hand-rolled `window.rs`. |
+
+Theme + dockview layout still live in `localStorage` (keys `huginndb.theme.v2` and `huginndb.layout`) — synchronous read pre-mount avoids FOUC. Don't migrate these to disk without a plan for the flash.
 
 ## Current status (post-session 2)
 

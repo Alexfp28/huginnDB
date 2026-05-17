@@ -14,12 +14,12 @@ use keyring::Entry;
 
 /// Service identifier registered with the OS keychain.
 ///
-/// All Huginn credentials share this service so they show up grouped in
+/// All HuginnDB credentials share this service so they show up grouped in
 /// platform credential managers and can be cleanly removed if a user
 /// uninstalls the application.
-pub const SERVICE: &str = "io.huginn.app";
+pub const SERVICE: &str = "io.huginndb.app";
 
-/// Build a keyring `Entry` for `account` under the Huginn service.
+/// Build a keyring `Entry` for `account` under the HuginnDB service.
 fn entry(account: &str) -> AppResult<Entry> {
     Entry::new(SERVICE, account).map_err(AppError::from)
 }

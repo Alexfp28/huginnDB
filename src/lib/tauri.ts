@@ -13,13 +13,18 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CellValue,
+  ColumnFilter,
   ColumnInfo,
   ConnectionProfile,
+  ConnectionTabState,
   DatabaseInfo,
+  FkOptionsPage,
   IndexInfo,
+  Preferences,
   QueryResult,
+  RowValue,
   TableInfo,
-  CellValue,
 } from "@/types";
 
 export const api = {
@@ -29,28 +34,57 @@ export const api = {
   listProfiles: () => invoke<ConnectionProfile[]>("list_profiles"),
 
   /**
-   * Create or update a profile. Pass `password` to update the keychain
-   * entry; omit it to keep the existing one.
+   * Create or update a profile. Pass `password` to update the DB-password
+   * keychain entry; omit it to keep the existing one. Pass `sshSecret`
+   * (SSH password or private-key passphrase) when the profile has a
+   * tunnel and you want to update that secret too.
    */
-  saveProfile: (profile: ConnectionProfile, password?: string) =>
-    invoke<ConnectionProfile>("save_profile", { profile, password }),
+  saveProfile: (
+    profile: ConnectionProfile,
+    password?: string,
+    sshSecret?: string,
+  ) =>
+    invoke<ConnectionProfile>("save_profile", {
+      profile,
+      password,
+      sshSecret,
+    }),
 
-  /** Delete a profile and its keychain entry. */
+  /** Delete a profile and its keychain entries (DB + optional SSH). */
   deleteProfile: (id: string) => invoke<void>("delete_profile", { id }),
 
-  /** Open a throwaway pool, run `SELECT 1`, then close it. */
-  testConnection: (profile: ConnectionProfile, password?: string) =>
-    invoke<string>("test_connection", { profile, password }),
+  /**
+   * Open a throwaway pool, run `SELECT 1`, then close it. `sshSecret` is
+   * resolved from the keychain when omitted, mirroring `password`.
+   */
+  testConnection: (
+    profile: ConnectionProfile,
+    password?: string,
+    sshSecret?: string,
+  ) =>
+    invoke<string>("test_connection", { profile, password, sshSecret }),
 
   /** Open a long-lived pool for the profile and remember it. */
-  connect: (id: string, password?: string) =>
-    invoke<void>("connect", { id, password }),
+  connect: (id: string, password?: string, sshSecret?: string) =>
+    invoke<void>("connect", { id, password, sshSecret }),
 
   /** Drop the pool for `id`, if any. */
   disconnect: (id: string) => invoke<void>("disconnect", { id }),
 
   /** Ids of every connection that is currently open. */
   activeConnections: () => invoke<string[]>("active_connections"),
+
+  /**
+   * Forget the trusted SSH host-key fingerprint for `host:port`. Returns
+   * `true` when an entry was actually removed. Use after a server is
+   * legitimately reinstalled, when the dialog reports a key mismatch.
+   */
+  forgetHostKey: (hostPort: string) =>
+    invoke<boolean>("forget_host_key", { hostPort }),
+
+  /** Read the trusted SSH host-key fingerprint for `host:port`, if any. */
+  getHostKey: (hostPort: string) =>
+    invoke<string | null>("get_host_key", { hostPort }),
 
   // Schema introspection -------------------------------------------------
 
@@ -72,13 +106,28 @@ export const api = {
     table: string,
   ) => invoke<IndexInfo[]>("list_indexes", { connectionId, schema, table }),
 
+  /**
+   * Return a short version string for the connected server, e.g.
+   * `"sqlite 3.45.3"`, `"postgresql 16.2"`, `"mysql 8.0.35"`.
+   */
+  serverVersion: (connectionId: string) =>
+    invoke<string>("server_version", { connectionId }),
+
   // Query execution ------------------------------------------------------
 
   /** Run arbitrary SQL on the connection. */
   executeQuery: (connectionId: string, sql: string) =>
     invoke<QueryResult>("execute_query", { connectionId, sql }),
 
-  /** Paginated SELECT against a known table with optional sort. */
+  /**
+   * Paginated SELECT against a known table.
+   *
+   * - `filters`: structured column predicates (chips), AND-composed.
+   * - `search` + `searchColumns`: free-text needle applied as
+   *   case-insensitive `LIKE` across the supplied columns and
+   *   OR-composed with itself, then AND-composed with `filters`.
+   *   The needle is escaped against LIKE metacharacters server-side.
+   */
   fetchTableData: (args: {
     connectionId: string;
     schema?: string;
@@ -87,6 +136,9 @@ export const api = {
     offset: number;
     orderBy?: string;
     orderDesc?: boolean;
+    filters?: ColumnFilter[];
+    search?: string;
+    searchColumns?: string[];
   }) => invoke<QueryResult>("fetch_table_data", args),
 
   /**
@@ -103,4 +155,68 @@ export const api = {
     column: string;
     value: string | null;
   }) => invoke<number>("update_cell", args),
+
+  /** DELETE one or more rows by primary key. */
+  deleteRows: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    pkColumn: string;
+    pkValues: CellValue[];
+  }) => invoke<number>("delete_rows", args),
+
+  /**
+   * INSERT one row from the supplied column/value pairs. When `pkColumn`
+   * is given on Postgres, the generated PK is returned via `RETURNING`;
+   * MySQL/SQLite return their `last_insert_id`/`last_insert_rowid`.
+   */
+  insertRow: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    pkColumn?: string;
+    values: RowValue[];
+  }) => invoke<CellValue>("insert_row", args),
+
+  /**
+   * Fetch a page of valid values for a foreign-key column. When
+   * `labelColumn` is omitted the backend picks the first textual non-PK
+   * column from the target table; the resulting `label` is `null` when no
+   * suitable column exists. Pass `search` to switch to server-side
+   * `ILIKE` filtering (used once the prefetched page reports
+   * `has_more=true`).
+   */
+  fetchFkOptions: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    keyColumn: string;
+    labelColumn?: string;
+    search?: string;
+    limit: number;
+  }) => invoke<FkOptionsPage>("fetch_fk_options", args),
+
+  // Preferences ----------------------------------------------------------
+
+  /** Read the user's preferences blob from disk. */
+  getPreferences: () => invoke<Preferences>("get_preferences"),
+
+  /**
+   * Replace the entire preferences blob on disk. The store sends a full
+   * snapshot; partial updates are merged client-side before this call.
+   */
+  updatePreferences: (prefs: Preferences) =>
+    invoke<void>("update_preferences", { prefs }),
+
+  /** Look up the persisted workspace for a connection, if any. */
+  getTabState: (connectionId: string) =>
+    invoke<ConnectionTabState | null>("get_tab_state", { connectionId }),
+
+  /** Replace the persisted workspace for a connection. */
+  saveTabState: (connectionId: string, tabStateValue: ConnectionTabState) =>
+    invoke<void>("save_tab_state", { connectionId, tabStateValue }),
+
+  /** Drop the persisted workspace for a connection. */
+  clearTabState: (connectionId: string) =>
+    invoke<void>("clear_tab_state", { connectionId }),
 };

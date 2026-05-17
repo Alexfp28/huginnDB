@@ -9,6 +9,7 @@ import { useTabs } from "@/stores/tabs";
 import { Button } from "@/components/ui/button";
 import { TableDataTab } from "@/components/TableDataTab";
 import { QueryEditorTab } from "@/components/QueryEditorTab";
+import { cn } from "@/lib/utils";
 
 interface Props {
   connectionId: string | null;
@@ -27,7 +28,7 @@ export function TabbedArea({ connectionId }: Props) {
     if (!connectionId) return;
     open({
       kind: "query",
-      title: "Query",
+      title: "query.sql",
       connectionId,
       query: "-- write a SQL query and press Ctrl+Enter\n",
     });
@@ -35,28 +36,35 @@ export function TabbedArea({ connectionId }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-0.5 border-b border-border bg-card/40 px-1">
-        <div className="flex flex-1 items-center overflow-x-auto">
+      {/* Tab strip */}
+      <div className="flex items-stretch border-b border-border bg-card/40">
+        <div className="flex flex-1 items-stretch overflow-x-auto">
           {tabs.map((t) => {
             const isActive = t.id === activeId;
             return (
               <div
                 key={t.id}
-                className={`group flex h-8 items-center gap-2 border-r border-border px-3 text-xs ${
+                className={cn(
+                  "group relative flex h-8 cursor-pointer items-center gap-2 border-r border-border px-3 text-xs transition-colors",
                   isActive
-                    ? "bg-background text-foreground"
-                    : "text-muted-foreground hover:bg-accent/30"
-                }`}
+                    ? "bg-background text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary"
+                    : "text-muted-foreground/70 hover:bg-accent/20 hover:text-muted-foreground",
+                )}
+                onClick={() => setActive(t.id)}
               >
-                <button onClick={() => setActive(t.id)} className="truncate max-w-[180px]">
-                  <span className="opacity-60">
-                    {t.kind === "query" ? "» " : ""}
-                  </span>
-                  {t.title}
-                </button>
+                <span className="truncate max-w-[180px]">{t.title}</span>
                 <button
-                  className="opacity-50 hover:opacity-100"
-                  onClick={() => close(t.id)}
+                  className={cn(
+                    "transition-opacity",
+                    isActive
+                      ? "opacity-60 hover:opacity-100"
+                      : "opacity-0 group-hover:opacity-60 group-hover:hover:opacity-100",
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    close(t.id);
+                  }}
+                  title="Close tab"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -67,17 +75,22 @@ export function TabbedArea({ connectionId }: Props) {
         <Button
           variant="ghost"
           size="icon"
+          className="h-8 w-8 shrink-0 rounded-none border-l border-border text-muted-foreground/60 hover:text-muted-foreground"
           onClick={newQueryTab}
           disabled={!connectionId}
           title="New query (uses current connection)"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
+
+      {/* Active tab body */}
       <div className="flex-1 overflow-hidden">
         {!activeTab && (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-            <div className="text-lg font-semibold text-foreground">Huginn</div>
+            <div className="font-mono text-lg font-semibold text-foreground">
+              huginndb
+            </div>
             <div>
               {connectionId
                 ? "Open a table from the schema explorer, or create a new query tab."
@@ -90,8 +103,15 @@ export function TabbedArea({ connectionId }: Props) {
             )}
           </div>
         )}
+        {/*
+         * `key={activeTab.id}` forces React to mount a fresh component
+         * instance per tab. Without it, switching between two table tabs
+         * reuses the same `TableDataTab` and its `useState` hooks
+         * (filter input, server filters, draft row) leak across tabs.
+         */}
         {activeTab && activeTab.kind === "table" && (
           <TableDataTab
+            key={activeTab.id}
             connectionId={activeTab.connectionId}
             schema={activeTab.schema}
             table={activeTab.table!}
@@ -99,6 +119,7 @@ export function TabbedArea({ connectionId }: Props) {
         )}
         {activeTab && activeTab.kind === "query" && (
           <QueryEditorTab
+            key={activeTab.id}
             tabId={activeTab.id}
             connectionId={activeTab.connectionId}
           />

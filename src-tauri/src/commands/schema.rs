@@ -1,4 +1,4 @@
-//! Schema introspection commands (databases, tables, columns, indexes).
+//! Schema introspection commands (databases, tables, columns, indexes, server info).
 //!
 //! Every command takes a `connection_id` so it can resolve the right pool
 //! from [`crate::state::AppState`]. Queries are written against the
@@ -24,15 +24,45 @@ pub struct TableInfo {
     pub name: String,
     /// "table" or "view".
     pub kind: String,
+    /// Approximate row count sourced from the engine's statistics catalog.
+    ///
+    /// - **Postgres** — `pg_stat_user_tables.n_live_tup` (updated by autovacuum; may be 0
+    ///   for brand-new tables or views).
+    /// - **MySQL** — `information_schema.TABLES.TABLE_ROWS` (engine-maintained estimate;
+    ///   can differ significantly from `COUNT(*)` on InnoDB).
+    /// - **SQLite** — always `None`. Reliable per-table counts require individual
+    ///   `COUNT(*)` queries, which become prohibitively expensive on schemas with
+    ///   many tables. Use `SELECT COUNT(*) FROM table` manually when an exact count
+    ///   is needed.
+    #[serde(rename = "row_count")]
+    pub row_count: Option<u64>,
+    /// Approximate on-disk size in bytes (data + indexes) sourced from the engine.
+    ///
+    /// - **Postgres** — `pg_total_relation_size(...)`, only for ordinary tables
+    ///   (`pg_class.relkind = 'r'`); views and foreign tables yield `None`.
+    /// - **MySQL** — `DATA_LENGTH + INDEX_LENGTH` from `information_schema.TABLES`.
+    ///   `None` for views.
+    /// - **SQLite** — best-effort via the optional `dbstat` virtual table. If the
+    ///   build does not include `dbstat`, the first probe fails and every entry
+    ///   in this list falls back to `None` for the rest of the call.
+    #[serde(rename = "size_bytes")]
+    pub size_bytes: Option<u64>,
 }
 
 /// Column metadata as displayed in the schema explorer.
+///
+/// `referenced_*` fields are populated for **single-column** FOREIGN KEY
+/// constraints only. Composite FKs are intentionally ignored in this
+/// iteration — the UI degrades to a plain text input for them.
 #[derive(Debug, Serialize)]
 pub struct ColumnInfo {
     pub name: String,
     pub data_type: String,
     pub nullable: bool,
     pub is_primary_key: bool,
+    pub referenced_schema: Option<String>,
+    pub referenced_table: Option<String>,
+    pub referenced_column: Option<String>,
 }
 
 /// Index summary including the participating columns.
@@ -82,10 +112,16 @@ pub async fn list_databases(
         // SQLite is single-file; pretend the file is one schema named "main".
         DbPool::Sqlite(_) => vec!["main".to_string()],
     };
-    Ok(names.into_iter().map(|n| DatabaseInfo { name: n }).collect())
+    Ok(names
+        .into_iter()
+        .map(|n| DatabaseInfo { name: n })
+        .collect())
 }
 
-/// List user-visible tables and views.
+/// List user-visible tables and views, with approximate row counts where available.
+///
+/// Row counts are sourced from engine statistics catalogs in a single query to
+/// avoid N+1 round-trips. See [`TableInfo::row_count`] for per-driver details.
 #[tauri::command]
 pub async fn list_tables(
     state: State<'_, AppState>,
@@ -95,11 +131,25 @@ pub async fn list_tables(
     let pool = pool_for(state.inner(), &connection_id)?;
     let tables = match pool {
         DbPool::Postgres(p) => {
+            // LEFT JOIN against pg_stat_user_tables fetches approximate live-row counts
+            // for tables in one round-trip. Views never have stat entries, so their
+            // n_live_tup will be NULL (→ row_count: None).
+            //
+            // pg_total_relation_size only makes sense for ordinary tables; calling it
+            // on a view raises an error, so we gate the call on relkind = 'r' via a
+            // LEFT JOIN against pg_class. Anything else yields NULL.
             let rows = sqlx::query(
-                "SELECT table_schema, table_name, table_type \
-                 FROM information_schema.tables \
-                 WHERE table_schema NOT IN ('pg_catalog', 'information_schema') \
-                 ORDER BY table_schema, table_name",
+                "SELECT t.table_schema, t.table_name, t.table_type, s.n_live_tup, \
+                        CASE WHEN c.relkind = 'r' \
+                             THEN pg_total_relation_size(c.oid) \
+                             ELSE NULL END AS size_bytes \
+                 FROM information_schema.tables t \
+                 LEFT JOIN pg_stat_user_tables s \
+                   ON s.schemaname = t.table_schema AND s.relname = t.table_name \
+                 LEFT JOIN pg_namespace n ON n.nspname = t.table_schema \
+                 LEFT JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = t.table_name \
+                 WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema') \
+                 ORDER BY t.table_schema, t.table_name",
             )
             .fetch_all(&p)
             .await?;
@@ -112,13 +162,22 @@ pub async fn list_tables(
                     } else {
                         "table".into()
                     },
+                    row_count: r
+                        .get::<Option<i64>, _>("n_live_tup")
+                        .map(|v| v.unsigned_abs()),
+                    size_bytes: r
+                        .get::<Option<i64>, _>("size_bytes")
+                        .map(|v| v.unsigned_abs()),
                 })
                 .collect()
         }
         DbPool::Mysql(p) => {
             let db = database.unwrap_or_default();
+            // TABLE_ROWS is an engine-maintained estimate stored in information_schema;
+            // no extra queries needed.
             let rows = sqlx::query(
-                "SELECT table_schema, table_name, table_type \
+                "SELECT table_schema, table_name, table_type, table_rows, \
+                        (IFNULL(data_length, 0) + IFNULL(index_length, 0)) AS size_bytes \
                  FROM information_schema.tables \
                  WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) \
                  ORDER BY table_schema, table_name",
@@ -127,18 +186,28 @@ pub async fn list_tables(
             .fetch_all(&p)
             .await?;
             rows.into_iter()
-                .map(|r| TableInfo {
-                    schema: r.get::<String, _>("table_schema"),
-                    name: r.get::<String, _>("table_name"),
-                    kind: if r
+                .map(|r| {
+                    let is_view = r
                         .get::<String, _>("table_type")
                         .to_uppercase()
-                        .contains("VIEW")
-                    {
-                        "view".into()
-                    } else {
-                        "table".into()
-                    },
+                        .contains("VIEW");
+                    TableInfo {
+                        schema: r.get::<String, _>("table_schema"),
+                        name: r.get::<String, _>("table_name"),
+                        kind: if is_view {
+                            "view".into()
+                        } else {
+                            "table".into()
+                        },
+                        row_count: r.get::<Option<u64>, _>("table_rows"),
+                        // Views report length columns as NULL; the IFNULL coalesces
+                        // them to 0, so suppress that here for clarity.
+                        size_bytes: if is_view {
+                            None
+                        } else {
+                            r.get::<Option<u64>, _>("size_bytes")
+                        },
+                    }
                 })
                 .collect()
         }
@@ -151,13 +220,45 @@ pub async fn list_tables(
             )
             .fetch_all(&p)
             .await?;
-            rows.into_iter()
-                .map(|r| TableInfo {
+            // Per-table size comes from the optional `dbstat` virtual table.
+            // It is a compile-time feature of SQLite and may be absent on some
+            // builds; the first probe failure flips `dbstat_available` to false
+            // so we don't spam errors for every remaining table.
+            let mut dbstat_available = true;
+            let mut out = Vec::with_capacity(rows.len());
+            for r in rows {
+                let name: String = r.get("name");
+                let kind: String = r.get("type");
+                let size_bytes = if dbstat_available && kind == "table" {
+                    match sqlx::query_scalar::<_, Option<i64>>(
+                        "SELECT SUM(pgsize) FROM dbstat WHERE name = ?",
+                    )
+                    .bind(&name)
+                    .fetch_one(&p)
+                    .await
+                    {
+                        Ok(v) => v.map(|n| n.unsigned_abs()),
+                        Err(_) => {
+                            dbstat_available = false;
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+                out.push(TableInfo {
                     schema: "main".into(),
-                    name: r.get::<String, _>("name"),
-                    kind: r.get::<String, _>("type"),
-                })
-                .collect()
+                    name,
+                    kind,
+                    // SQLite has no statistics catalog with per-table row counts.
+                    // sqlite_stat1 only exists after ANALYZE and is unreliable for
+                    // fresh databases. N individual COUNT(*) queries would block the
+                    // UI on large schemas.
+                    row_count: None,
+                    size_bytes,
+                });
+            }
+            out
         }
     };
     Ok(tables)
@@ -168,6 +269,11 @@ pub async fn list_tables(
 /// The `is_primary_key` flag is determined by joining against
 /// `information_schema.table_constraints` (Postgres), `column_key`
 /// (MySQL), or the `pk` field of `PRAGMA table_info` (SQLite).
+///
+/// Single-column foreign-key references are surfaced via
+/// `referenced_schema` / `referenced_table` / `referenced_column`.
+/// Composite FKs are deliberately filtered out to keep the FK-dropdown
+/// UI simple — they fall back to a plain text input.
 #[tauri::command]
 pub async fn list_columns(
     state: State<'_, AppState>,
@@ -175,10 +281,25 @@ pub async fn list_columns(
     schema: Option<String>,
     table: String,
 ) -> AppResult<Vec<ColumnInfo>> {
-    let pool = pool_for(state.inner(), &connection_id)?;
+    list_columns_inner(state.inner(), &connection_id, schema, table).await
+}
+
+/// Borrowed-state variant of [`list_columns`] so other command handlers can
+/// reuse the catalog lookup without re-entering the Tauri State guard.
+pub async fn list_columns_inner(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<Vec<ColumnInfo>> {
+    let pool = pool_for(state, connection_id)?;
     let cols = match pool {
         DbPool::Postgres(p) => {
             let schema = schema.unwrap_or_else(|| "public".into());
+            // The LATERAL subquery walks `pg_constraint` for foreign keys whose
+            // conrelid matches the column's table and whose single-element
+            // conkey points at this column. We restrict to length-1 conkey to
+            // ignore composite FKs.
             let rows = sqlx::query(
                 "SELECT c.column_name, c.data_type, c.is_nullable, \
                         EXISTS ( \
@@ -190,8 +311,27 @@ pub async fn list_columns(
                               AND tc.table_schema = c.table_schema \
                               AND tc.table_name = c.table_name \
                               AND k.column_name = c.column_name \
-                        ) AS is_pk \
+                        ) AS is_pk, \
+                        fk.ref_schema, fk.ref_table, fk.ref_column \
                  FROM information_schema.columns c \
+                 LEFT JOIN LATERAL ( \
+                     SELECT n2.nspname AS ref_schema, \
+                            cl2.relname AS ref_table, \
+                            att2.attname AS ref_column \
+                     FROM pg_constraint con \
+                     JOIN pg_class cl  ON cl.oid  = con.conrelid \
+                     JOIN pg_namespace n  ON n.oid  = cl.relnamespace \
+                     JOIN pg_class cl2 ON cl2.oid = con.confrelid \
+                     JOIN pg_namespace n2 ON n2.oid = cl2.relnamespace \
+                     JOIN pg_attribute att  ON att.attrelid  = cl.oid  AND att.attnum  = con.conkey[1] \
+                     JOIN pg_attribute att2 ON att2.attrelid = cl2.oid AND att2.attnum = con.confkey[1] \
+                     WHERE con.contype = 'f' \
+                       AND array_length(con.conkey, 1) = 1 \
+                       AND n.nspname  = c.table_schema \
+                       AND cl.relname = c.table_name \
+                       AND att.attname = c.column_name \
+                     LIMIT 1 \
+                 ) fk ON TRUE \
                  WHERE c.table_schema = $1 AND c.table_name = $2 \
                  ORDER BY c.ordinal_position",
             )
@@ -205,10 +345,14 @@ pub async fn list_columns(
                     data_type: r.get::<String, _>("data_type"),
                     nullable: r.get::<String, _>("is_nullable") == "YES",
                     is_primary_key: r.get::<bool, _>("is_pk"),
+                    referenced_schema: r.get::<Option<String>, _>("ref_schema"),
+                    referenced_table: r.get::<Option<String>, _>("ref_table"),
+                    referenced_column: r.get::<Option<String>, _>("ref_column"),
                 })
                 .collect()
         }
         DbPool::Mysql(p) => {
+            let schema_arg = schema.unwrap_or_default();
             let rows = sqlx::query(
                 "SELECT column_name, column_type, is_nullable, column_key \
                  FROM information_schema.columns \
@@ -216,16 +360,63 @@ pub async fn list_columns(
                    AND table_name = ? \
                  ORDER BY ordinal_position",
             )
-            .bind(schema.unwrap_or_default())
+            .bind(&schema_arg)
             .bind(&table)
             .fetch_all(&p)
             .await?;
+            // Separate query for FK metadata. Filtered to single-column FKs
+            // via a constraint-name lookup with COUNT(*) = 1.
+            let fk_rows = sqlx::query(
+                "SELECT k.column_name, \
+                        k.referenced_table_schema AS ref_schema, \
+                        k.referenced_table_name   AS ref_table, \
+                        k.referenced_column_name  AS ref_column \
+                 FROM information_schema.key_column_usage k \
+                 WHERE k.table_schema = COALESCE(NULLIF(?, ''), DATABASE()) \
+                   AND k.table_name = ? \
+                   AND k.referenced_table_name IS NOT NULL \
+                   AND k.ordinal_position = 1 \
+                   AND k.constraint_name IN ( \
+                       SELECT constraint_name FROM information_schema.key_column_usage \
+                       WHERE table_schema = k.table_schema \
+                         AND table_name = k.table_name \
+                         AND referenced_table_name IS NOT NULL \
+                       GROUP BY constraint_name HAVING COUNT(*) = 1 \
+                   )",
+            )
+            .bind(&schema_arg)
+            .bind(&table)
+            .fetch_all(&p)
+            .await?;
+            use std::collections::HashMap;
+            let mut fk_map: HashMap<String, (Option<String>, Option<String>, Option<String>)> =
+                HashMap::new();
+            for r in fk_rows {
+                fk_map.insert(
+                    r.get::<String, _>("column_name"),
+                    (
+                        r.get::<Option<String>, _>("ref_schema"),
+                        r.get::<Option<String>, _>("ref_table"),
+                        r.get::<Option<String>, _>("ref_column"),
+                    ),
+                );
+            }
             rows.into_iter()
-                .map(|r| ColumnInfo {
-                    name: r.get::<String, _>("column_name"),
-                    data_type: r.get::<String, _>("column_type"),
-                    nullable: r.get::<String, _>("is_nullable") == "YES",
-                    is_primary_key: r.get::<String, _>("column_key") == "PRI",
+                .map(|r| {
+                    let name: String = r.get("column_name");
+                    let (ref_schema, ref_table, ref_column) = fk_map
+                        .get(&name)
+                        .cloned()
+                        .unwrap_or((None, None, None));
+                    ColumnInfo {
+                        name,
+                        data_type: r.get::<String, _>("column_type"),
+                        nullable: r.get::<String, _>("is_nullable") == "YES",
+                        is_primary_key: r.get::<String, _>("column_key") == "PRI",
+                        referenced_schema: ref_schema,
+                        referenced_table: ref_table,
+                        referenced_column: ref_column,
+                    }
                 })
                 .collect()
         }
@@ -235,12 +426,72 @@ pub async fn list_columns(
             // catalog lookup.
             let q = format!("PRAGMA table_info(\"{}\")", table.replace('"', "\"\""));
             let rows = sqlx::query(&q).fetch_all(&p).await?;
+            // foreign_key_list yields one row per column of each constraint.
+            // Group by `id` to filter composite FKs.
+            let fk_q = format!(
+                "PRAGMA foreign_key_list(\"{}\")",
+                table.replace('"', "\"\"")
+            );
+            let fk_rows = sqlx::query(&fk_q).fetch_all(&p).await?;
+            use std::collections::HashMap;
+            // (id) -> Vec<(from, target_table, target_col_opt)>
+            let mut groups: HashMap<i64, Vec<(String, String, Option<String>)>> = HashMap::new();
+            for r in fk_rows {
+                let id: i64 = r.get("id");
+                let from: String = r.get("from");
+                let target_table: String = r.get("table");
+                let to: Option<String> = r.try_get("to").ok().flatten();
+                groups.entry(id).or_default().push((from, target_table, to));
+            }
+            let mut fk_map: HashMap<String, (String, Option<String>)> = HashMap::new();
+            for parts in groups.into_values() {
+                if parts.len() == 1 {
+                    let (from, target_table, to) = parts.into_iter().next().unwrap();
+                    fk_map.insert(from, (target_table, to));
+                }
+            }
+            // Resolve any FK with NULL `to` (implicit PK) by inspecting the
+            // target table once each.
+            use std::collections::HashSet;
+            let needs_pk_resolution: HashSet<String> = fk_map
+                .values()
+                .filter_map(|(t, to)| to.is_none().then(|| t.clone()))
+                .collect();
+            let mut pk_cache: HashMap<String, Option<String>> = HashMap::new();
+            for target in needs_pk_resolution {
+                let q2 = format!(
+                    "PRAGMA table_info(\"{}\")",
+                    target.replace('"', "\"\"")
+                );
+                let pk = match sqlx::query(&q2).fetch_all(&p).await {
+                    Ok(target_rows) => target_rows
+                        .into_iter()
+                        .find(|r| r.get::<i64, _>("pk") > 0)
+                        .map(|r| r.get::<String, _>("name")),
+                    Err(_) => None,
+                };
+                pk_cache.insert(target, pk);
+            }
             rows.into_iter()
-                .map(|r| ColumnInfo {
-                    name: r.get::<String, _>("name"),
-                    data_type: r.get::<String, _>("type"),
-                    nullable: r.get::<i64, _>("notnull") == 0,
-                    is_primary_key: r.get::<i64, _>("pk") > 0,
+                .map(|r| {
+                    let name: String = r.get("name");
+                    let (ref_table, ref_column) = match fk_map.get(&name) {
+                        Some((t, Some(c))) => (Some(t.clone()), Some(c.clone())),
+                        Some((t, None)) => (
+                            Some(t.clone()),
+                            pk_cache.get(t).cloned().unwrap_or(None),
+                        ),
+                        None => (None, None),
+                    };
+                    ColumnInfo {
+                        name,
+                        data_type: r.get::<String, _>("type"),
+                        nullable: r.get::<i64, _>("notnull") == 0,
+                        is_primary_key: r.get::<i64, _>("pk") > 0,
+                        referenced_schema: None,
+                        referenced_table: ref_table,
+                        referenced_column: ref_column,
+                    }
                 })
                 .collect()
         }
@@ -337,4 +588,47 @@ pub async fn list_indexes(
         }
     };
     Ok(idx)
+}
+
+/// Return a short version string for the connected server.
+///
+/// The string is formatted as `"{engine} {version}"` for easy display in
+/// the status bar (e.g. `"sqlite 3.45.3"`, `"postgresql 16.2"`, `"mysql 8.0.35"`).
+///
+/// Drivers:
+/// - **Postgres** — `SELECT version()`, first two tokens lowercased.
+/// - **MySQL** — `SELECT VERSION()`, stripped to `major.minor.patch` before the
+///   distro suffix.
+/// - **SQLite** — `SELECT sqlite_version()`.
+#[tauri::command]
+pub async fn server_version(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<String> {
+    let pool = pool_for(state.inner(), &connection_id)?;
+    let version = match pool {
+        DbPool::Postgres(p) => {
+            let raw: String = sqlx::query_scalar("SELECT version()").fetch_one(&p).await?;
+            // Full string is like "PostgreSQL 16.2 on x86_64-pc-linux-gnu, ...".
+            // Extract and lowercase the first two whitespace-delimited tokens.
+            raw.splitn(3, ' ')
+                .take(2)
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_lowercase()
+        }
+        DbPool::Mysql(p) => {
+            let raw: String = sqlx::query_scalar("SELECT VERSION()").fetch_one(&p).await?;
+            // Strip the distro/build suffix (everything after the first `-`).
+            let ver = raw.split('-').next().unwrap_or(&raw);
+            format!("mysql {ver}")
+        }
+        DbPool::Sqlite(p) => {
+            let raw: String = sqlx::query_scalar("SELECT sqlite_version()")
+                .fetch_one(&p)
+                .await?;
+            format!("sqlite {raw}")
+        }
+    };
+    Ok(version)
 }

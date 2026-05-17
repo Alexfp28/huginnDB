@@ -1,5 +1,5 @@
 /**
- * Cell editor — Huginn's star feature. A full Monaco editor presented
+ * Cell editor — HuginnDB's star feature. A full Monaco editor presented
  * inside a dialog (or fullscreen via `F11`) with auto-detected JSON /
  * XML / SQL highlighting, format/beautify, and live JSON validation.
  *

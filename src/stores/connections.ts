@@ -2,10 +2,15 @@
  * Connections store — saved profiles + the set of profiles that are
  * currently open. Mirrors the Tauri-managed Rust state, refreshed via
  * `api.listProfiles` / `api.activeConnections`.
+ *
+ * Server version strings are fetched once per connection and cached here
+ * so the status bar and other UI can read them without re-querying.
  */
 
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
+import { useFilterHistory } from "@/stores/filterHistory";
+import { flushTabState, hydrateTabState } from "@/stores/persistedTabs";
 import type { ConnectionProfile } from "@/types";
 
 interface ConnectionsState {
@@ -13,29 +18,38 @@ interface ConnectionsState {
   profiles: ConnectionProfile[];
   /** Ids of profiles that currently have a live pool in the backend. */
   active: Set<string>;
+  /**
+   * Cached server version strings keyed by profile id.
+   * Populated after a successful `connect()` call; never written to disk.
+   */
+  versions: Record<string, string>;
   loading: boolean;
   error: string | null;
   /** Pull `profiles` and `active` from the backend. */
   refresh: () => Promise<void>;
-  /** Create or update a profile; the keychain entry is written when
-   *  `password` is provided. */
+  /** Create or update a profile; the keychain entries are written when
+   *  `password` / `sshSecret` are provided. */
   save: (
     profile: ConnectionProfile,
     password?: string,
+    sshSecret?: string,
   ) => Promise<ConnectionProfile>;
-  /** Delete a profile and its keychain entry. */
+  /** Delete a profile and its keychain entries. */
   remove: (id: string) => Promise<void>;
-  /** Open a pool for `id`. Falls back to the stored password if `password` is omitted. */
-  connect: (id: string, password?: string) => Promise<void>;
+  /** Open a pool for `id`. Falls back to the stored secrets if omitted. */
+  connect: (id: string, password?: string, sshSecret?: string) => Promise<void>;
   /** Close the pool for `id`. */
   disconnect: (id: string) => Promise<void>;
   /** Convenience helper for components. */
   isActive: (id: string) => boolean;
+  /** Return the cached server version for `id`, or undefined if not yet fetched. */
+  getVersion: (id: string) => string | undefined;
 }
 
 export const useConnections = create<ConnectionsState>((set, get) => ({
   profiles: [],
   active: new Set(),
+  versions: {},
   loading: false,
   error: null,
   refresh: async () => {
@@ -50,8 +64,8 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
       set({ error: String(e), loading: false });
     }
   },
-  save: async (profile, password) => {
-    const saved = await api.saveProfile(profile, password);
+  save: async (profile, password, sshSecret) => {
+    const saved = await api.saveProfile(profile, password, sshSecret);
     await get().refresh();
     return saved;
   },
@@ -59,17 +73,47 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     await api.deleteProfile(id);
     await get().refresh();
   },
-  connect: async (id, password) => {
-    await api.connect(id, password);
+  connect: async (id, password, sshSecret) => {
+    await api.connect(id, password, sshSecret);
     const active = new Set(get().active);
     active.add(id);
     set({ active });
+
+    // Rehydrate the persisted workspace (open tabs + schema-tree
+    // expansion) before we kick off the version probe, so the user sees
+    // their previous layout immediately on reconnect. The call honours
+    // the `restoreTabsOnOpen` preference internally.
+    await hydrateTabState(id);
+
+    // Fetch and cache the server version string. This is a best-effort call;
+    // a failure should not prevent the connection from succeeding.
+    try {
+      const version = await api.serverVersion(id);
+      set((s) => ({ versions: { ...s.versions, [id]: version } }));
+    } catch {
+      // Version display is non-critical; swallow the error silently.
+    }
   },
   disconnect: async (id) => {
+    // Flush any pending workspace snapshot to disk and detach the
+    // subscription before the pool is dropped. Doing this BEFORE the
+    // backend disconnect means a save failure can't leave us with no
+    // pool but a still-mounted subscription.
+    await flushTabState(id);
+
     await api.disconnect(id);
     const active = new Set(get().active);
     active.delete(id);
-    set({ active });
+    // Remove the stale version entry so a reconnect always fetches a fresh one.
+    set((s) => {
+      const versions = { ...s.versions };
+      delete versions[id];
+      return { active, versions };
+    });
+    // The user asked for filter history to be tied to the connection
+    // lifetime; wipe it when the pool closes.
+    useFilterHistory.getState().clearForConnection(id);
   },
   isActive: (id) => get().active.has(id),
+  getVersion: (id) => get().versions[id],
 }));

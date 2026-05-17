@@ -78,3 +78,115 @@
     -webkit-app-region: no-drag;
   }
 }
+
+/* -------------------------------------------------------------------------
+ * Dockview theme bridge
+ * -------------------------------------------------------------------------
+ * dockview ships its own `--dv-*` CSS variables and a handful of built-in
+ * themes (abyss, light, …). None of them know about our tokens, so by
+ * default the tab strip and drop overlays look out of place. We point
+ * every dockview variable at the matching shadcn-style token so dockview
+ * inherits the active app theme automatically (light/dark, custom themes
+ * from the Settings dialog, everything).
+ *
+ * The class name below is referenced by `huginnDockviewTheme` in
+ * `src/lib/dockview.ts`.
+ */
+.dockview-theme-huginndb {
+  /* Sizing & shape */
+  --dv-tab-border-radius: 0;
+  --dv-tab-margin: 0;
+  --dv-tab-font-size: 11px;
+  --dv-tabs-and-actions-container-font-size: 11px;
+  --dv-tabs-and-actions-container-height: 28px;
+  --dv-tab-close-icon-size: 12px;
+  --dv-spacing-padding: 0;
+  --dv-border-radius: calc(var(--radius) - 2px);
+  --dv-tab-border-radius: 0;
+  --dv-overlay-z-index: 50;
+  --dv-transition-duration: 0.15s;
+
+  /* Background */
+  --dv-group-view-background-color: hsl(var(--background));
+  --dv-tabs-and-actions-container-background-color: hsl(var(--card) / 0.5);
+
+  /* Tabs — visible / hidden × active-group / inactive-group */
+  --dv-activegroup-visiblepanel-tab-background-color: hsl(var(--background));
+  --dv-activegroup-visiblepanel-tab-color: hsl(var(--foreground));
+  --dv-activegroup-hiddenpanel-tab-background-color: hsl(var(--card));
+  --dv-activegroup-hiddenpanel-tab-color: hsl(var(--muted-foreground));
+  --dv-inactivegroup-visiblepanel-tab-background-color: hsl(var(--background));
+  --dv-inactivegroup-visiblepanel-tab-color: hsl(var(--muted-foreground));
+  --dv-inactivegroup-hiddenpanel-tab-background-color: hsl(var(--card));
+  --dv-inactivegroup-hiddenpanel-tab-color: hsl(var(--muted-foreground) / 0.6);
+  --dv-tab-divider-color: hsl(var(--border));
+
+  /* Separators, sashes & active outline */
+  --dv-separator-border: 1px solid hsl(var(--border));
+  --dv-paneview-header-border-color: hsl(var(--border));
+  --dv-paneview-active-outline-color: hsl(var(--primary));
+  --dv-sash-color: hsl(var(--border));
+  --dv-active-sash-color: hsl(var(--primary));
+  --dv-active-sash-transition-duration: 0.1s;
+  --dv-active-sash-transition-delay: 0s;
+
+  /* Drag-over indicators — primary-tinted so users can clearly see where
+     a dragged panel will land. The previous (abyss) theme used a near-
+     transparent grey which made the drop targets easy to miss. */
+  --dv-drag-over-background-color: hsl(var(--primary) / 0.18);
+  --dv-drag-over-border-color: hsl(var(--primary));
+  --dv-drag-over-border: 2px dashed hsl(var(--primary));
+
+  /* Misc */
+  --dv-icon-hover-background-color: hsl(var(--accent));
+  --dv-scrollbar-background-color: hsl(var(--muted));
+  --dv-context-menu-background-color: hsl(var(--popover));
+  --dv-context-menu-color: hsl(var(--popover-foreground));
+  --dv-floating-box-shadow:
+    0 8px 32px hsl(var(--background) / 0.4),
+    0 2px 8px hsl(var(--background) / 0.25);
+  --dv-floating-border: 1px solid hsl(var(--border));
+  --dv-floating-group-border: 1px solid hsl(var(--border));
+  --dv-floating-group-dragging-opacity: 0.5;
+}
+
+/* Keep sashes below floating UI layers (dropdowns, dialogs, tooltips).
+   dockview may apply z-index via inline styles, so !important is required.
+   Radix portals render in <body> outside dockview's stacking context and
+   sit at z-index 50, so z-index 1 here is sufficient. */
+.dockview-theme-huginndb .dv-sash {
+  z-index: 1 !important;
+}
+
+/* Make the resize sash easier to grab. Default dockview sashes are 4 px;
+   bump the hover state so users have a visible cue. */
+.dockview-theme-huginndb .dv-sash:hover {
+  background-color: hsl(var(--primary) / 0.4);
+}
+
+/* Visible draggable affordance on tabs. The default cursor is `default`
+   even though the tab is the drag handle — easy to miss. */
+.dockview-theme-huginndb .dv-tab {
+  cursor: grab;
+}
+.dockview-theme-huginndb .dv-tab:active {
+  cursor: grabbing;
+}
+
+/* Subtle rounded corners on each panel group. dockview itself doesn't
+   apply --dv-border-radius outside of the nord-spaced theme, so we
+   replicate the relevant rules: round the group container and clip the
+   content + tab strip so child surfaces (grid, Monaco, scrollbars)
+   don't poke through the corners. */
+.dockview-theme-huginndb .dv-groupview {
+  border-radius: var(--dv-border-radius);
+  overflow: hidden;
+}
+.dockview-theme-huginndb .dv-groupview > .dv-tabs-and-actions-container {
+  border-top-left-radius: var(--dv-border-radius);
+  border-top-right-radius: var(--dv-border-radius);
+}
+.dockview-theme-huginndb .dv-groupview > .dv-content-container {
+  border-bottom-left-radius: var(--dv-border-radius);
+  border-bottom-right-radius: var(--dv-border-radius);
+}

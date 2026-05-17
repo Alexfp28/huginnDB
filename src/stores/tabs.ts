@@ -23,8 +23,24 @@ interface TabsState {
   setActive: (id: string) => void;
   /** Update the in-memory SQL of a query tab. */
   updateQuery: (id: string, query: string) => void;
+  /**
+   * Store the row count and elapsed time from the most recent query execution
+   * in `id`. Used by the status bar to display live execution metadata.
+   */
+  updateQueryStats: (
+    id: string,
+    stats: { rows: number; elapsed_ms: number },
+  ) => void;
   /** Drop every tab for a connection (called on disconnect). */
   closeForConnection: (connectionId: string) => void;
+  /**
+   * Replace every tab plus the active id in one shot. Used by the
+   * per-connection workspace restore (`persistedTabs.hydrate`) so the
+   * incoming snapshot lands atomically instead of as a stream of `open`
+   * calls — keeps the active-tab pointer correct and avoids the dedup
+   * branch in `open` from collapsing legitimately-distinct tabs.
+   */
+  replaceAll: (tabs: AppTab[], activeId: string | null) => void;
 }
 
 function genId() {
@@ -68,6 +84,13 @@ export const useTabs = create<TabsState>((set, get) => ({
     set((s) => ({
       tabs: s.tabs.map((t) => (t.id === id ? { ...t, query } : t)),
     })),
+  updateQueryStats: (id, stats) =>
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === id ? { ...t, lastQueryStats: stats } : t,
+      ),
+    })),
+  replaceAll: (tabs, activeId) => set({ tabs, activeId }),
   closeForConnection: (connectionId) =>
     set((s) => {
       const tabs = s.tabs.filter((t) => t.connectionId !== connectionId);

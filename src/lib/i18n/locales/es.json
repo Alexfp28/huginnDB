@@ -1,0 +1,218 @@
+{
+  "common": {
+    "brand": "huginndb",
+    "alpha": "alpha",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "delete": "Eliminar",
+    "duplicate": "Duplicar",
+    "save": "Guardar",
+    "tooltipToggleTheme": "Alternar claro / oscuro",
+    "tooltipOpenPreferences": "Preferencias (Ctrl/Cmd+,)",
+    "emptyConnectDatabase": "Conéctate a una base de datos desde el menú Archivo para explorar su esquema.",
+    "language": "Idioma",
+    "languageDescription": "Idioma de la interfaz. El formato de fechas y números sigue el del sistema operativo.",
+    "languageEnglish": "English",
+    "languageSpanish": "Español"
+  },
+  "menu": {
+    "file": {
+      "label": "Archivo",
+      "newConnection": "Nueva conexión…",
+      "manageConnections": "Gestionar conexiones…",
+      "sectionConnections": "Conexiones",
+      "noConnections": "Aún no hay conexiones.",
+      "disconnectAll": "Desconectar todas",
+      "resetLayout": "Restablecer disposición de ventanas"
+    },
+    "view": {
+      "label": "Vista",
+      "sectionPanels": "Paneles",
+      "floatActivePanel": "Flotar panel activo",
+      "sectionSchemaTree": "Árbol de esquema",
+      "metricHide": "Ocultar métrica de tabla",
+      "metricRowCount": "Mostrar nº de filas",
+      "metricSize": "Mostrar tamaño de tabla",
+      "preferences": "Preferencias…",
+      "help": "Arrastra las pestañas para reorganizar. Suelta fuera del área para flotar un panel. Los recuentos y tamaños son estimaciones del motor."
+    }
+  },
+  "connections": {
+    "sidebarTitle": "Conexiones",
+    "empty": "Aún no hay conexiones. Pulsa + para crear una.",
+    "newTooltip": "Nueva conexión",
+    "connectTooltip": "Conectar",
+    "disconnectTooltip": "Desconectar",
+    "editTooltip": "Editar",
+    "deleteTooltip": "Eliminar",
+    "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",
+    "connectFailed": "Error al conectar: {{message}}",
+    "manageTitle": "Gestionar conexiones"
+  },
+  "connectionDialog": {
+    "titleNew": "Nueva conexión",
+    "titleEdit": "Editar conexión",
+    "description": "Las credenciales se guardan en el llavero del sistema; nunca se escriben en disco en texto plano.",
+    "tabs": {
+      "general": "General",
+      "ssh": "Túnel SSH"
+    },
+    "fields": {
+      "name": "Nombre",
+      "namePlaceholder": "Base de datos de producción",
+      "driver": "Driver",
+      "host": "Host",
+      "port": "Puerto",
+      "database": "Base de datos",
+      "username": "Usuario",
+      "password": "Contraseña",
+      "passwordKeepHint": "(déjalo en blanco para mantener la actual)",
+      "ssl": "SSL",
+      "sqlitePath": "Ruta del fichero de base de datos",
+      "sqlitePathPlaceholder": "C:\\ruta\\al\\fichero.db"
+    },
+    "ssh": {
+      "enable": "Conectar vía túnel SSH",
+      "host": "Host SSH",
+      "port": "Puerto SSH",
+      "username": "Usuario SSH",
+      "authMethod": "Método de autenticación",
+      "authPassword": "Contraseña",
+      "authKey": "Clave privada",
+      "sshPassword": "Contraseña SSH",
+      "privateKeyPath": "Fichero de clave privada",
+      "privateKeyPathPlaceholder": "C:\\Users\\tu-usuario\\.ssh\\id_ed25519",
+      "browse": "Examinar…",
+      "passphrase": "Passphrase de la clave",
+      "passphraseKeepHint": "(en blanco para mantener la actual)",
+      "localPort": "Puerto local",
+      "localPortAuto": "Auto",
+      "localPortHint": "Déjalo en 0 para asignar automáticamente.",
+      "unavailableForSqlite": "Los ficheros SQLite no requieren túnel.",
+      "hostKeyPolicy": "Verificación del host SSH",
+      "hostKeyPolicyHint": "Cómo decide HuginnDB si confía en la clave pública del servidor SSH.",
+      "policyStrict": "Estricta — solo claves ya guardadas",
+      "policyAcceptNew": "Confiar al primer uso (recomendado)",
+      "policyAcceptAny": "Aceptar cualquiera (sin protección)",
+      "trustedFingerprint": "Huella confiada",
+      "noTrustedFingerprint": "Aún no se ha confiado ninguna clave para este host:puerto.",
+      "forgetHostKey": "Olvidar clave del host",
+      "forgetConfirm": "¿Olvidar la clave SSH guardada para {{hostPort}}?",
+      "forgetDone": "Clave olvidada. La próxima conexión confiará en la que presente el servidor (si la política es \"Confiar al primer uso\").",
+      "forgetNone": "No había ninguna clave guardada para este host."
+    },
+    "test": "Probar",
+    "testing": "Probando…",
+    "testOk": "Conexión correcta",
+    "testFailed": "Error: {{message}}",
+    "saveFailed": "Error al guardar: {{message}}",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "cancel": "Cancelar"
+  },
+  "schema": {
+    "loading": "Cargando esquema…",
+    "title": "Esquema",
+    "refresh": "Actualizar",
+    "loadingColumns": "cargando…",
+    "sectionTables": "tablas",
+    "sectionViews": "vistas",
+    "sectionIndexes": "índices"
+  },
+  "statusBar": {
+    "disconnected": "desconectado",
+    "rows": "filas",
+    "executedIn": "ejecutado en",
+    "ms": "ms",
+    "encoding": "utf-8",
+    "history": "historial:"
+  },
+  "settings": {
+    "title": "Preferencias",
+    "description": "Los cambios se aplican al instante. El fichero de preferencias vive en el directorio de configuración de tu sistema; el diálogo también se abre con",
+    "sections": {
+      "general": { "label": "General", "desc": "Comportamiento de la app" },
+      "editor": { "label": "Editor", "desc": "Editor SQL de Monaco" },
+      "grid": { "label": "Tabla de datos", "desc": "Filas y paginación" },
+      "appearance": { "label": "Apariencia", "desc": "Temas y colores" },
+      "shortcuts": { "label": "Atajos", "desc": "Atajos de teclado" },
+      "about": { "label": "Acerca de", "desc": "Versión y rutas" }
+    },
+    "general": {
+      "confirmDestructive": {
+        "label": "Confirmar acciones destructivas",
+        "desc": "Pedir confirmación antes de borrar filas, eliminar tablas u otras operaciones irreversibles."
+      },
+      "restoreTabs": {
+        "label": "Restaurar pestañas al abrir una conexión",
+        "desc": "Reabrir las pestañas SQL y de datos que tenías abiertas la última vez que usaste esta conexión."
+      },
+      "queryHistoryLimit": {
+        "label": "Tamaño del historial de queries",
+        "desc": "Número máximo de queries recientes guardadas en el historial."
+      }
+    },
+    "editor": {
+      "fontFamily": "Familia tipográfica",
+      "fontSize": "Tamaño de fuente (px)",
+      "tabSize": "Tamaño de tabulación",
+      "wordWrap": {
+        "label": "Ajuste automático de línea",
+        "desc": "Ajustar las líneas que superan el ancho del editor en lugar de scroll horizontal."
+      },
+      "minimap": {
+        "label": "Mostrar minimapa",
+        "desc": "Vista miniatura del código en el lateral derecho."
+      },
+      "lineNumbers": "Mostrar números de línea",
+      "formatOnPaste": {
+        "label": "Formatear al pegar",
+        "desc": "Aplicar el formateador SQL de Monaco a los fragmentos pegados."
+      }
+    },
+    "grid": {
+      "defaultPageSize": "Tamaño de página por defecto",
+      "rowHeight": "Altura de fila (px)",
+      "nullDisplay": {
+        "label": "Representación de NULL",
+        "desc": "Texto que se muestra para los valores NULL de SQL."
+      },
+      "zebraStripes": {
+        "label": "Filas alternadas",
+        "desc": "Fondo alterno por fila para facilitar la lectura."
+      },
+      "stickyHeader": {
+        "label": "Cabecera fija",
+        "desc": "Mantener visibles las cabeceras de columna al hacer scroll."
+      },
+      "schemaMetric": {
+        "label": "Métrica del árbol de esquema",
+        "desc": "Número mostrado junto al nombre de cada tabla en el explorador."
+      }
+    },
+    "appearance": {
+      "themes": "Temas",
+      "builtin": "integrado",
+      "custom": "personalizado",
+      "builtinInfo": "Tema integrado — los cambios crean un nuevo tema personalizado.",
+      "customInfo": "Tema personalizado — los cambios se aplican al instante.",
+      "modeDark": "Oscuro",
+      "modeLight": "Claro",
+      "deleteTooltip": "Eliminar tema personalizado",
+      "duplicateLabel": "Duplicar como personalizado"
+    },
+    "shortcuts": {
+      "roadmap": "La personalización de atajos está en la hoja de ruta. Estos son los atajos integrados por defecto.",
+      "openSettings": "Abrir Preferencias",
+      "runQuery": "Ejecutar query en el editor activo",
+      "focusSearch": "Enfocar el buscador de la tabla",
+      "commitSearch": "Aplicar búsqueda / filtro en la tabla",
+      "closeDialog": "Cerrar el diálogo o popover activo"
+    },
+    "about": {
+      "tagline": "Gestor de bases de datos de escritorio minimalista para PostgreSQL, MySQL y SQLite.",
+      "prefsLocation": "Ubicación del fichero de preferencias",
+      "tabStateHint": "Un fichero hermano {{file}} guarda las pestañas abiertas y la expansión del árbol de esquema de cada conexión."
+    }
+  }
+}

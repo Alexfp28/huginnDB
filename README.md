@@ -1,6 +1,6 @@
 <div align="center">
 
-# Huginn
+# HuginnDB
 
 **A fast, keyboard-friendly desktop database manager.**
 
@@ -10,7 +10,7 @@
 [![Made with Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust)](https://www.rust-lang.org)
 [![Frontend: React + TS](https://img.shields.io/badge/React-TypeScript-3178c6?logo=typescript)](https://www.typescriptlang.org)
 
-Huginn is a cross-platform desktop client for **PostgreSQL**, **MySQL**, and **SQLite**. It pairs a minimalist UI with a first-class cell editor and a Monaco-powered SQL workspace — the goal is to make routine database work feel as fluid as your text editor.
+HuginnDB is a cross-platform desktop client for **PostgreSQL**, **MySQL**, and **SQLite**. It pairs a minimalist UI with a first-class cell editor and a Monaco-powered SQL workspace — the goal is to make routine database work feel as fluid as your text editor.
 
 </div>
 
@@ -18,7 +18,7 @@ Huginn is a cross-platform desktop client for **PostgreSQL**, **MySQL**, and **S
 
 ## Table of contents
 
-- [Why Huginn?](#why-huginn)
+- [Why HuginnDB?](#why-huginn)
 - [Features](#features)
 - [Status](#status)
 - [Screenshots](#screenshots)
@@ -35,9 +35,9 @@ Huginn is a cross-platform desktop client for **PostgreSQL**, **MySQL**, and **S
 - [License](#license)
 - [Acknowledgements](#acknowledgements)
 
-## Why Huginn?
+## Why HuginnDB?
 
-Most database GUIs are either heavyweight Java IDEs or web-based dashboards that fight you the moment you need to inspect a 50&nbsp;KB JSON blob inside a column. Huginn picks a narrower scope:
+Most database GUIs are either heavyweight Java IDEs or web-based dashboards that fight you the moment you need to inspect a 50&nbsp;KB JSON blob inside a column. HuginnDB picks a narrower scope:
 
 - **Inspecting and editing data is the primary job.** Every cell can be opened in a full Monaco editor with auto-detected syntax highlighting and validation.
 - **The SQL editor is a real editor.** Same component, same shortcuts, schema-aware autocomplete, query history.
@@ -54,7 +54,7 @@ It's named after [Huginn](https://en.wikipedia.org/wiki/Huginn_and_Muninn), one 
 - **Expanded cell editor.** Pop any cell into a Monaco editor with auto-detected JSON / XML / SQL highlighting, format/beautify, live JSON validation, and an `F11` fullscreen toggle.
 - **SQL workspace.** Monaco-based, self-hosted (no CDN dependency), with schema-aware autocomplete, `Ctrl+Enter` to run, and a per-connection history sidebar that survives restarts.
 - **Saved queries.** A local library with name, description, and tags. Open any entry into a fresh query tab.
-- **Themes.** Five built-in presets (Huginn Dark, Huginn Light, Dim, Solarized Dark, High Contrast) plus a visual colour editor. Editing a preset forks it into a new custom theme so the originals stay pristine.
+- **Themes.** Five built-in presets (HuginnDB Dark, HuginnDB Light, Dim, Solarized Dark, High Contrast) plus a visual colour editor. Editing a preset forks it into a new custom theme so the originals stay pristine.
 - **Resizable layout.** Both horizontal (sidebar) and vertical (editor / results) splits are draggable.
 
 ## Status
@@ -108,8 +108,8 @@ macOS is not a primary target yet but the build should work — please file an i
 ### From source
 
 ```bash
-git clone https://github.com/Alexfp28/huginn.git
-cd huginn
+git clone https://github.com/Alexfp28/huginnDB.git
+cd huginnDB
 pnpm install
 pnpm tauri:dev          # dev mode with HMR
 # or
@@ -127,7 +127,7 @@ Release bundles land under `src-tauri/target/release/bundle/`:
 
 ### Connecting to a sample database
 
-The fastest way to play with Huginn is the [Chinook](https://github.com/lerocha/chinook-database) sample database in SQLite — a single file you can point Huginn at:
+The fastest way to play with HuginnDB is the [Chinook](https://github.com/lerocha/chinook-database) sample database in SQLite — a single file you can point HuginnDB at:
 
 ```bash
 mkdir -p sample-data
@@ -135,7 +135,7 @@ curl -L -o sample-data/chinook.db \
   https://github.com/lerocha/chinook-database/raw/master/ChinookDatabase/DataSources/Chinook_Sqlite.sqlite
 ```
 
-Then in Huginn:
+Then in HuginnDB:
 
 1. Click the **+** in the **Connections** panel.
 2. Pick **SQLite** as the driver.
@@ -167,7 +167,7 @@ LIMIT 10;
 
 ## Architecture
 
-Huginn is split into two cooperating processes:
+HuginnDB is split into two cooperating processes:
 
 ```
 ┌─────────────────────────────┐         ┌──────────────────────────────┐
@@ -198,7 +198,7 @@ For a deeper map of the code layout, read [`CONTRIBUTING.md`](CONTRIBUTING.md#pr
 
 ## Security model
 
-Huginn is a single-user desktop tool. The threat model is primarily a curious local user or a hostile database operator, not a remote attacker reaching the user's machine.
+HuginnDB is a single-user desktop tool. The threat model is primarily a curious local user or a hostile database operator, not a remote attacker reaching the user's machine.
 
 - **Credentials**: stored in the OS keychain (Windows Credential Manager, libsecret on Linux, Keychain on macOS) via the [`keyring`](https://crates.io/crates/keyring) crate. The on-disk profile JSON contains only metadata (host, port, db, username, SSL toggle).
 - **Database I/O isolation**: all `sqlx` access lives in the Rust process. The frontend cannot reach a database directly.
@@ -236,7 +236,7 @@ Newcomer-friendly issues are labelled `good first issue`.
 
 ## Acknowledgements
 
-Huginn stands on the shoulders of giants:
+HuginnDB stands on the shoulders of giants:
 
 - [Tauri](https://v2.tauri.app) for the desktop runtime.
 - [sqlx](https://github.com/launchbadge/sqlx) for the async, type-safe SQL toolkit.
@@ -244,4 +244,4 @@ Huginn stands on the shoulders of giants:
 - [TanStack Table](https://tanstack.com/table) for the data grid.
 - [shadcn/ui](https://ui.shadcn.com) for the design vocabulary and Radix primitive recipes.
 - [HeidiSQL](https://www.heidisql.com) and [DBeaver](https://dbeaver.io) — for showing what a great database client can look like.
-- The [Chinook](https://github.com/lerocha/chinook-database) sample database for making "try Huginn in 60 seconds" possible.
+- The [Chinook](https://github.com/lerocha/chinook-database) sample database for making "try HuginnDB in 60 seconds" possible.

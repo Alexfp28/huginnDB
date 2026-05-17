@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Huginn",
-  "version": "0.1.0",
-  "identifier": "io.huginn.app",
+  "productName": "HuginnDB",
+  "version": "0.2.0",
+  "identifier": "io.huginndb.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Huginn",
+        "title": "HuginnDB",
         "width": 1400,
         "height": 900,
         "minWidth": 900,
@@ -38,6 +38,6 @@
     ],
     "category": "DeveloperTool",
     "shortDescription": "Minimal cross-platform database manager",
-    "longDescription": "Huginn is a fast, keyboard-friendly database manager for PostgreSQL, MySQL, and SQLite."
+    "longDescription": "HuginnDB is a fast, keyboard-friendly database manager for PostgreSQL, MySQL, and SQLite."
   }
 }

@@ -5,12 +5,15 @@
  */
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Plug, PlugZap, Plus, Pencil, Trash2 } from "lucide-react";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { Button } from "@/components/ui/button";
 import { ConnectionDialog } from "@/components/ConnectionDialog";
+import { DriverBadge } from "@/components/DriverBadge";
+import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
 
 export function ConnectionList({
@@ -20,7 +23,9 @@ export function ConnectionList({
   selectedConnectionId: string | null;
   onSelect: (id: string | null) => void;
 }) {
-  const { profiles, active, refresh, connect, disconnect, remove } = useConnections();
+  const { t } = useTranslation();
+  const { profiles, active, refresh, connect, disconnect, remove } =
+    useConnections();
   const refreshSchema = useSchema((s) => s.refresh);
   const dropSchema = useSchema((s) => s.drop);
   const closeTabs = useTabs((s) => s.closeForConnection);
@@ -37,7 +42,7 @@ export function ConnectionList({
       await refreshSchema(p.id);
       onSelect(p.id);
     } catch (e) {
-      alert(`Connect failed: ${String(e)}`);
+      alert(t("connections.connectFailed", { message: String(e) }));
     }
   }
 
@@ -49,7 +54,7 @@ export function ConnectionList({
   }
 
   async function handleDelete(p: ConnectionProfile) {
-    if (!confirm(`Delete connection "${p.name}"?`)) return;
+    if (!confirm(t("connections.deleteConfirm", { name: p.name }))) return;
     if (active.has(p.id)) await handleDisconnect(p);
     await remove(p.id);
   }
@@ -58,7 +63,7 @@ export function ConnectionList({
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Connections
+          {t("connections.sidebarTitle")}
         </div>
         <Button
           size="icon"
@@ -67,7 +72,7 @@ export function ConnectionList({
             setEditing(null);
             setDialogOpen(true);
           }}
-          title="New connection"
+          title={t("connections.newTooltip")}
         >
           <Plus className="h-4 w-4" />
         </Button>
@@ -75,7 +80,7 @@ export function ConnectionList({
       <div className="flex-1 overflow-y-auto">
         {profiles.length === 0 && (
           <div className="px-3 py-4 text-xs text-muted-foreground">
-            No connections yet. Click + to add one.
+            {t("connections.empty")}
           </div>
         )}
         {profiles.map((p) => {
@@ -84,28 +89,36 @@ export function ConnectionList({
           return (
             <div
               key={p.id}
-              className={`group flex items-center gap-2 border-l-2 px-3 py-2 text-sm transition-colors ${
+              className={cn(
+                "group flex items-center gap-2 border-l-2 px-3 py-2 text-sm transition-colors",
                 isSelected
                   ? "border-primary bg-accent/40"
-                  : "border-transparent hover:bg-accent/30"
-              }`}
+                  : "border-transparent hover:bg-accent/30",
+              )}
               onClick={() => isActive && onSelect(p.id)}
             >
-              <div className="flex-1 cursor-default truncate">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      isActive ? "bg-emerald-400" : "bg-muted-foreground/40"
-                    }`}
-                  />
-                  <span className="truncate font-medium">{p.name}</span>
+              {/* Status dot */}
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  isActive ? "bg-emerald-400" : "bg-muted-foreground/40",
+                )}
+              />
+
+              {/* Name + subtitle */}
+              <div className="min-w-0 flex-1 cursor-default">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-medium">{p.name}</span>
+                  <DriverBadge driver={p.driver} />
                 </div>
-                <div className="truncate text-xs text-muted-foreground">
+                <div className="truncate text-[11px] text-muted-foreground">
                   {p.driver === "sqlite"
-                    ? `sqlite · ${p.database}`
-                    : `${p.driver} · ${p.host}:${p.port}/${p.database}`}
+                    ? p.database.split(/[/\\]/).pop() ?? p.database
+                    : `${p.host}:${p.port}/${p.database}`}
                 </div>
               </div>
+
+              {/* Hover actions */}
               <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 {isActive ? (
                   <Button
@@ -115,7 +128,7 @@ export function ConnectionList({
                       e.stopPropagation();
                       handleDisconnect(p);
                     }}
-                    title="Disconnect"
+                    title={t("connections.disconnectTooltip")}
                   >
                     <PlugZap className="h-3.5 w-3.5 text-emerald-400" />
                   </Button>
@@ -127,7 +140,7 @@ export function ConnectionList({
                       e.stopPropagation();
                       handleConnect(p);
                     }}
-                    title="Connect"
+                    title={t("connections.connectTooltip")}
                   >
                     <Plug className="h-3.5 w-3.5" />
                   </Button>
@@ -140,7 +153,7 @@ export function ConnectionList({
                     setEditing(p);
                     setDialogOpen(true);
                   }}
-                  title="Edit"
+                  title={t("connections.editTooltip")}
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
@@ -151,7 +164,7 @@ export function ConnectionList({
                     e.stopPropagation();
                     handleDelete(p);
                   }}
-                  title="Delete"
+                  title={t("connections.deleteTooltip")}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
