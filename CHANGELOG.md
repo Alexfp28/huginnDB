@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-05-18
+
+### Fixed
+
+- **MySQL schema loading broken by two additional bugs.**
+
+  1. *Infinite refresh loop.* The `SchemaExplorer` effect condition
+     `!cs || !cs.initialized` fired on every state update while a fetch was
+     in flight (`loading: true` creates a new object reference each time
+     Zustand updates), launching a new concurrent `list_tables` call on every
+     tick. MySQL's `information_schema.tables` is slow, so the pool was
+     saturated by looping queries that never completed. Fixed by adding
+     `!cs.loading` to the guard so the effect is a no-op while a fetch is
+     already running. `initialized: true` is now also set in the error path so
+     a failed fetch does not trigger the same loop.
+
+  2. *`size_bytes` type mismatch on MySQL.* The expression
+     `IFNULL(data_length, 0) + IFNULL(index_length, 0)` produces a **signed**
+     `BIGINT` in MySQL (the integer literal `0` forces signed promotion even
+     though both source columns are `BIGINT UNSIGNED`). sqlx's MySQL driver
+     checks column type flags and rejects decoding a signed column as `u64`,
+     causing `list_tables` to throw and schema loading to fail with an error.
+     Fixed by decoding as `Option<i64>` then `unsigned_abs()` — same pattern
+     already used on the Postgres path.
+
 ## [0.3.1] — 2026-05-18
 
 ### Fixed

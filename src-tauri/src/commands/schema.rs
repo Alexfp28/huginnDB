@@ -200,12 +200,16 @@ pub async fn list_tables(
                             "table".into()
                         },
                         row_count: r.get::<Option<u64>, _>("table_rows"),
-                        // Views report length columns as NULL; the IFNULL coalesces
-                        // them to 0, so suppress that here for clarity.
+                        // DATA_LENGTH + INDEX_LENGTH are BIGINT UNSIGNED in
+                        // information_schema, but the IFNULL(..., 0) expression
+                        // causes MySQL to report the result column as signed
+                        // BIGINT. Decoding as i64 avoids the sqlx type-flag
+                        // mismatch; sizes are non-negative so unsigned_abs is safe.
                         size_bytes: if is_view {
                             None
                         } else {
-                            r.get::<Option<u64>, _>("size_bytes")
+                            r.get::<Option<i64>, _>("size_bytes")
+                                .map(|v| v.unsigned_abs())
                         },
                     }
                 })

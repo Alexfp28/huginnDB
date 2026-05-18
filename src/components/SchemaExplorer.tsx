@@ -42,11 +42,12 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
   const openTab = useTabs((s) => s.open);
 
   useEffect(() => {
-    // Trigger refresh when there is no state at all, or when the slice was
-    // created by workspace-hydration (replaceExpanded) but the actual table
-    // list has never been fetched. The `initialized` flag distinguishes
-    // "fetched and empty" from "never fetched".
-    if (!cs || !cs.initialized) refresh(connectionId);
+    // Fire refresh only when no successful fetch has happened yet AND no
+    // fetch is currently in flight. Without the `!cs.loading` guard, every
+    // `set({ loading: true })` call inside `refresh` would create a new `cs`
+    // reference, re-trigger this effect, and launch a second concurrent fetch
+    // before the first one finishes — a tight loop on slow drivers (MySQL).
+    if (!cs || (!cs.initialized && !cs.loading)) refresh(connectionId);
   }, [connectionId, cs, refresh]);
 
   if (!cs) {

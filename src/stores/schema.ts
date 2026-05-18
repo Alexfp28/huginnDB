@@ -117,6 +117,10 @@ export const useSchema = create<SchemaState>((set, get) => ({
           [connectionId]: {
             ...(state.byConnection[connectionId] ?? emptyState()),
             loading: false,
+            // Mark as initialized even on failure so the useEffect guard
+            // (`!cs.initialized && !cs.loading`) does not auto-retry and
+            // create a loop. The user can retry manually via the refresh button.
+            initialized: true,
             error: String(e),
           },
         },
