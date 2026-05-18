@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-05-18
+
+### Fixed
+
+- **MySQL schema explorer permanently stuck in loading state.**
+  Root cause: `sqlx`'s `Row::get::<T>()` **panics** (instead of returning
+  `Err`) when the Rust type does not match the column's type flags reported by
+  the MySQL server. A panic inside an async Tauri command causes the IPC
+  promise to hang indefinitely rather than reject, so the frontend never
+  receives a response and `loading` never clears. This manifested on MySQL
+  because `SHOW TABLE STATUS` and `information_schema` columns like `Rows`,
+  `Data_length`, and `Index_length` are reported as signed or unsigned BIGINT
+  depending on the MySQL version and distribution — `r.get::<u64>()` panics
+  when the server reports the column as signed.
+
+  Additionally, `information_schema.TABLES` can block indefinitely when an
+  InnoDB metadata lock is held by a DDL statement or long-running transaction,
+  compounding the hang. SQLite's `sqlite_master` has neither issue (in-memory,
+  no metadata locking, no type-flag mismatch).
+
+  Fix: replaced the `information_schema.TABLES` query with
+  `SHOW TABLE STATUS FROM \`db\``, which is faster, not subject to metadata
+  lock waits, and returns a fixed column set. All numeric columns are now read
+  with `try_get` (returns `Result` instead of panicking) plus a signed/unsigned
+  fallback chain so the schema loads correctly on MySQL 5.7, 8.0, MariaDB, and
+  any fork regardless of how type flags are reported. The current database is
+  resolved via `SELECT DATABASE()` so the implementation no longer depends on
+  `information_schema` at all for MySQL table listing.
+
 ## [0.3.2] — 2026-05-18
 
 ### Fixed

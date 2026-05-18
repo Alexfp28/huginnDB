@@ -126,7 +126,7 @@ pub async fn list_databases(
 pub async fn list_tables(
     state: State<'_, AppState>,
     connection_id: String,
-    database: Option<String>,
+    _database: Option<String>,
 ) -> AppResult<Vec<TableInfo>> {
     let pool = pool_for(state.inner(), &connection_id)?;
     let tables = match pool {
@@ -172,44 +172,83 @@ pub async fn list_tables(
                 .collect()
         }
         DbPool::Mysql(p) => {
-            let db = database.unwrap_or_default();
-            // TABLE_ROWS is an engine-maintained estimate stored in information_schema;
-            // no extra queries needed.
-            let rows = sqlx::query(
-                "SELECT table_schema, table_name, table_type, table_rows, \
-                        (IFNULL(data_length, 0) + IFNULL(index_length, 0)) AS size_bytes \
-                 FROM information_schema.tables \
-                 WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) \
-                 ORDER BY table_schema, table_name",
-            )
-            .bind(&db)
-            .fetch_all(&p)
-            .await?;
+            // Resolve the current database from the connection (set via the
+            // URL when the pool was opened). If the profile has no database
+            // set, DATABASE() is NULL and we return an empty list — the user
+            // needs to specify a database in the connection profile.
+            let db_name: Option<String> = sqlx::query_scalar("SELECT DATABASE()")
+                .fetch_one(&p)
+                .await?;
+
+            let db = match db_name {
+                Some(d) if !d.is_empty() => d,
+                // No default database; nothing to enumerate.
+                _ => return Ok(vec![]),
+            };
+
+            // SHOW TABLE STATUS is significantly faster than querying
+            // information_schema.TABLES and, critically, does not block on
+            // InnoDB metadata locks the way information_schema can. On busy
+            // servers a DDL statement or long-running transaction can cause
+            // information_schema.TABLES to wait indefinitely, leaving the
+            // schema explorer stuck in a loading state forever.
+            //
+            // Engine is NULL for views in SHOW TABLE STATUS output; that is
+            // how we distinguish views from base tables without needing the
+            // table_type column from information_schema.
+            //
+            // The database name is quoted with backtick-escaping. It comes
+            // from DATABASE() (server-side catalog), not user input, so the
+            // quoting is a safety measure rather than a SQL-injection guard.
+            let q = format!(
+                "SHOW TABLE STATUS FROM `{}`",
+                db.replace('`', "``")
+            );
+            let rows = sqlx::query(&q).fetch_all(&p).await?;
+
+            // try_get is used throughout instead of get. sqlx's get() panics
+            // when the Rust type does not match the column's type-flag reported
+            // by the server (e.g. UNSIGNED vs signed BIGINT). Different MySQL
+            // versions and forks disagree on whether SHOW TABLE STATUS columns
+            // carry the UNSIGNED flag. try_get returns Err instead of panicking;
+            // a panic in an async Tauri command causes the IPC promise to hang
+            // rather than reject, which is why the schema explorer appeared
+            // stuck. The fallback chain u64 → i64 → 0 handles all variants.
+            let try_u64 = |r: &sqlx::mysql::MySqlRow, col: &str| -> u64 {
+                r.try_get::<u64, _>(col)
+                    .or_else(|_| r.try_get::<i64, _>(col).map(|v| v.unsigned_abs()))
+                    .unwrap_or(0)
+            };
+
             rows.into_iter()
                 .map(|r| {
+                    let name: String = r.try_get("Name").unwrap_or_default();
+                    // Engine is NULL for views; all base tables have a non-NULL engine.
                     let is_view = r
-                        .get::<String, _>("table_type")
-                        .to_uppercase()
-                        .contains("VIEW");
+                        .try_get::<Option<String>, _>("Engine")
+                        .ok()
+                        .flatten()
+                        .is_none();
+                    let data_len = try_u64(&r, "Data_length");
+                    let idx_len = try_u64(&r, "Index_length");
                     TableInfo {
-                        schema: r.get::<String, _>("table_schema"),
-                        name: r.get::<String, _>("table_name"),
+                        schema: db.clone(),
+                        name,
                         kind: if is_view {
                             "view".into()
                         } else {
                             "table".into()
                         },
-                        row_count: r.get::<Option<u64>, _>("table_rows"),
-                        // DATA_LENGTH + INDEX_LENGTH are BIGINT UNSIGNED in
-                        // information_schema, but the IFNULL(..., 0) expression
-                        // causes MySQL to report the result column as signed
-                        // BIGINT. Decoding as i64 avoids the sqlx type-flag
-                        // mismatch; sizes are non-negative so unsigned_abs is safe.
+                        row_count: r
+                            .try_get::<u64, _>("Rows")
+                            .or_else(|_| {
+                                r.try_get::<i64, _>("Rows").map(|v| v.unsigned_abs())
+                            })
+                            .ok(),
                         size_bytes: if is_view {
                             None
                         } else {
-                            r.get::<Option<i64>, _>("size_bytes")
-                                .map(|v| v.unsigned_abs())
+                            Some(data_len + idx_len)
                         },
                     }
                 })
