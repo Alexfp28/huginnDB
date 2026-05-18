@@ -1,13 +1,18 @@
 /**
- * Static "About" panel — version, repo link, where preferences live on
- * disk. Reveal-in-explorer is intentionally not wired here yet (would
- * need a small Tauri command); the path is shown so the user can find
- * the file manually.
+ * About panel — app version, tagline, repo link, the in-app update
+ * controls, and the prefs-file paths on disk. The version is read at
+ * mount time from the Tauri runtime (`getVersion`) so it always
+ * matches the installed bundle, not a hardcoded string.
+ *
+ * The Updates card is its own component (`UpdatesCard`) — see
+ * `./UpdatesCard.tsx`. This file stays focused on metadata.
  */
 
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-const APP_VERSION = "0.1.0-alpha";
+import { useUpdateStore } from "@/stores/update";
+import { getCurrentVersion } from "@/lib/updater";
+import { UpdatesCard } from "./UpdatesCard";
 
 const PREFS_PATHS: { os: string; path: string }[] = [
   { os: "Windows", path: "%APPDATA%\\HuginnDB\\prefs.json" },
@@ -15,8 +20,38 @@ const PREFS_PATHS: { os: string; path: string }[] = [
   { os: "macOS", path: "~/Library/Application Support/HuginnDB/prefs.json" },
 ];
 
+/**
+ * Resolve the running app version. Prefers whatever the update store
+ * already cached (populated by the on-launch check) and falls back to a
+ * direct `getVersion()` call only if the About panel is opened before
+ * the launch check has resolved.
+ */
+function useResolvedVersion(): string {
+  const storeCurrent = useUpdateStore((s) => s.currentVersion);
+  const [fallback, setFallback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (storeCurrent) return;
+    let cancelled = false;
+    void getCurrentVersion()
+      .then((v) => {
+        if (!cancelled) setFallback(v);
+      })
+      .catch(() => {
+        // Ignored: the About page just shows "—" if the version cannot
+        // be resolved (e.g. when running outside the Tauri shell).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [storeCurrent]);
+
+  return storeCurrent ?? fallback ?? "—";
+}
+
 export function AboutSection() {
   const { t } = useTranslation();
+  const currentVersion = useResolvedVersion();
 
   return (
     <div className="space-y-4 text-sm">
@@ -24,7 +59,7 @@ export function AboutSection() {
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
           HuginnDB
         </div>
-        <div className="mt-1 font-mono text-base">{APP_VERSION}</div>
+        <div className="mt-1 font-mono text-base">{currentVersion}</div>
         <div className="mt-2 text-[12px] text-muted-foreground">
           {t("settings.about.tagline")}
         </div>
@@ -39,6 +74,8 @@ export function AboutSection() {
           </a>
         </div>
       </div>
+
+      <UpdatesCard currentVersion={currentVersion} />
 
       <div>
         <div className="mb-1 text-[11px] uppercase tracking-wider text-muted-foreground">

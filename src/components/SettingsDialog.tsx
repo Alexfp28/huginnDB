@@ -39,6 +39,10 @@ import {
   useSettingsDialog,
   type SettingsSection,
 } from "@/components/settings/useSettingsDialog";
+import {
+  selectUpdateNotificationVisible,
+  useUpdateStore,
+} from "@/stores/update";
 import { GeneralSection } from "@/components/settings/sections/GeneralSection";
 import { EditorSection } from "@/components/settings/sections/EditorSection";
 import { GridSection } from "@/components/settings/sections/GridSection";
@@ -69,6 +73,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
   const setStoreOpen = useSettingsDialog((s) => s.setOpen);
   const section = useSettingsDialog((s) => s.section);
   const setSection = useSettingsDialog((s) => s.setSection);
+  const showUpdateDot = useUpdateStore(selectUpdateNotificationVisible);
   const { t } = useTranslation();
 
   // Keep the controlled prop (from App.tsx's existing button) in sync with
@@ -116,7 +121,15 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
                       : "border-transparent hover:bg-accent/30"
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <div className="relative">
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    {s.id === "about" && showUpdateDot && (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-background"
+                      />
+                    )}
+                  </div>
                   <div className="flex flex-1 flex-col leading-tight">
                     <span className="text-sm">
                       {t(`settings.sections.${s.id}.label`)}

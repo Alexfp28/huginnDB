@@ -221,5 +221,21 @@
       "prefsLocation": "Preferences file location",
       "tabStateHint": "A sibling {{file}} stores the open tabs and schema-tree expansion for each connection."
     }
+  },
+  "update": {
+    "sectionTitle": "Updates",
+    "checkNow": "Check now",
+    "availableLine": "A new version is available: {{current}} → {{next}}.",
+    "upToDate": "You're on the latest version ({{version}}).",
+    "releaseNotes": "Release notes",
+    "installAndRelaunch": "Install and relaunch",
+    "downloading": "Downloading…",
+    "openReleases": "View on GitHub",
+    "errorPrefix": "Check failed:",
+    "toastTitle": "New version available: {{version}}",
+    "toastDescription": "Download and install it from inside the app — it will relaunch automatically when done.",
+    "install": "Install and relaunch",
+    "later": "Later",
+    "tooltipUpdateAvailable": "An update is available ({{version}})"
   }
 }

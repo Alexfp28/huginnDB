@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-05-18
+
+### Added
+
+- **In-app update notifications via `tauri-plugin-updater`.**
+  At launch the app queries `https://github.com/Alexfp28/huginnDB/releases/latest/download/latest.json` and, if a newer signed release exists, shows a non-intrusive toast plus a persistent red dot on the settings gear. The Preferences → About panel exposes a manual "Check now" trigger, the release notes, and an "Install and relaunch" button that downloads the signed installer in-process and restarts the app. Dismissal is per-version: clicking "Later" silences the toast for that release but keeps the badge until the user actually installs. This is the first build that ships with the updater wired in, so users running 0.2.0 / 0.2.1 will need to update once by hand; future releases will be picked up automatically.
+
+- **GitHub Actions release workflow (`.github/workflows/release.yml`).**
+  Pushing a `v*.*.*` tag now compiles the Windows `.msi`, signs the updater artifacts with the keypair held in repo secrets, and publishes a draft GitHub release with the binaries + `latest.json` attached. The maintainer no longer needs to compile locally to ship a release. See `RELEASING.md` for the one-time signing-key setup.
+
+### Fixed
+
+- **`keyring` v3.6 feature rename.**
+  The `linux-secret-service-rt-tokio-crypto-rust` feature was removed in keyring 3.6; replaced with the equivalent `sync-secret-service` + `crypto-rust` combination so `cargo check` (and the release workflow) build cleanly again.
+
 ## [0.2.1] — 2026-05-18
 
 ### Fixed

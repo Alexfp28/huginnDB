@@ -221,5 +221,21 @@
       "prefsLocation": "Ubicación del fichero de preferencias",
       "tabStateHint": "Un fichero hermano {{file}} guarda las pestañas abiertas y la expansión del árbol de esquema de cada conexión."
     }
+  },
+  "update": {
+    "sectionTitle": "Actualizaciones",
+    "checkNow": "Buscar ahora",
+    "availableLine": "Hay una nueva versión disponible: {{current}} → {{next}}.",
+    "upToDate": "Estás en la última versión ({{version}}).",
+    "releaseNotes": "Notas de la versión",
+    "installAndRelaunch": "Instalar y reiniciar",
+    "downloading": "Descargando…",
+    "openReleases": "Ver en GitHub",
+    "errorPrefix": "Error al comprobar:",
+    "toastTitle": "Nueva versión disponible: {{version}}",
+    "toastDescription": "Descárgala e instálala desde dentro de la app — se reiniciará automáticamente al terminar.",
+    "install": "Instalar y reiniciar",
+    "later": "Más tarde",
+    "tooltipUpdateAvailable": "Hay una actualización disponible ({{version}})"
   }
 }

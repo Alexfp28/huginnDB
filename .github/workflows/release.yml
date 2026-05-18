@@ -1,0 +1,120 @@
+name: release
+
+# Trigger: pushing an annotated tag like `v0.2.1`, `v0.3.0-rc1`, etc.
+# The workflow compiles the Tauri app, signs the updater artifacts with
+# the keypair stored in repo secrets, and publishes a *draft* GitHub
+# Release with the binaries + `latest.json` attached. The maintainer
+# reviews and clicks "Publish" manually.
+#
+# Required repository secrets:
+#   TAURI_SIGNING_PRIVATE_KEY           — output of `pnpm tauri signer generate`
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — password used when generating the key
+#
+# See RELEASING.md at the repo root for the one-time setup steps.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  # Manual trigger for first-time signing-key smoke tests, before a real
+  # tag is ever published. Provide a synthetic tag name as input — the
+  # workflow uses it for both the GitHub release and the bundle version
+  # metadata. Re-runs against the same tag will fail (a release with
+  # that name already exists), so pick a throwaway like `v0.0.0-test`.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Synthetic tag name to use for the draft release"
+        required: true
+        default: "v0.0.0-test"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+          # Uncomment to also ship Linux artifacts. Leaving disabled by
+          # default keeps the runtime + signing surface small for now.
+          # - platform: ubuntu-22.04
+          #   args: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Resolve a single source of truth for the tag name. On tag pushes
+      # `github.ref_name` already holds the tag; on manual dispatch we
+      # take the user-supplied input instead.
+      - name: Resolve release tag
+        id: resolve_tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+          # Mark anything with a hyphen (e.g. v0.3.0-rc1, v0.0.0-test) as
+          # a GitHub prerelease so the auto-updater never picks it up via
+          # /releases/latest. Stable tags stay non-prerelease.
+          if [[ "${{ github.event_name }}" = "workflow_dispatch" || "${{ github.ref_name }}" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and publish draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ steps.resolve_tag.outputs.tag }}
+          releaseName: "HuginnDB ${{ steps.resolve_tag.outputs.tag }}"
+          releaseBody: |
+            See [CHANGELOG.md](https://github.com/Alexfp28/huginnDB/blob/main/CHANGELOG.md) for the full list of changes.
+
+            Installed builds with auto-update support will detect this release on next launch and offer to install it from inside the app.
+          releaseDraft: true
+          prerelease: ${{ steps.resolve_tag.outputs.prerelease }}
+          args: ${{ matrix.args }}

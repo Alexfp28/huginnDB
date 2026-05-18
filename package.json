@@ -1,7 +1,7 @@
 {
   "name": "huginndb",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "HuginnDB — a minimal, fast cross-platform desktop database manager.",
   "type": "module",
   "scripts": {
@@ -27,6 +27,8 @@
     "@tanstack/react-table": "^8.20.5",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-dialog": "^2.0.1",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "dockview-react": "^6.2.2",
@@ -37,6 +39,7 @@
     "react-dom": "^18.3.1",
     "react-i18next": "^17.0.8",
     "react-resizable-panels": "^2.1.7",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^2.5.4",
     "zustand": "^5.0.1"
   },

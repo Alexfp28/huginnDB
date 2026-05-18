@@ -18,6 +18,11 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react";
 import { Moon, Settings, Sun } from "lucide-react";
+import { Toaster, toast } from "sonner";
+import {
+  selectUpdateNotificationVisible,
+  useUpdateStore,
+} from "@/stores/update";
 import { useConnections } from "@/stores/connections";
 import { useUi } from "@/stores/ui";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
@@ -97,6 +102,10 @@ export default function App() {
   const hydratePreferences = usePreferences((s) => s.hydrate);
   const language = usePreferences((s) => s.prefs.ui.language);
   const openSettings = useSettingsDialog((s) => s.openAt);
+  const updateNotificationVisible = useUpdateStore(
+    selectUpdateNotificationVisible,
+  );
+  const availableVersion = useUpdateStore((s) => s.availableVersion);
   const { t } = useTranslation();
 
   // Initial profile load — used to live inside ConnectionList, which is
@@ -117,6 +126,42 @@ export default function App() {
   useEffect(() => {
     setLanguage(language);
   }, [language]);
+
+  // One-shot update check on launch. Failures inside the store are
+  // swallowed and surfaced only inside Settings → About; we never block
+  // boot or show an error toast.
+  useEffect(() => {
+    void useUpdateStore.getState().checkOnLaunch();
+  }, []);
+
+  // Toast notification the first time we detect a new version per session.
+  // "Later" persists the dismissal so the toast doesn't reappear next launch,
+  // but the badge on the settings gear stays until the user installs.
+  useEffect(() => {
+    if (!updateNotificationVisible || !availableVersion) return;
+    const toastId = toast(
+      t("update.toastTitle", { version: availableVersion }),
+      {
+        description: t("update.toastDescription"),
+        duration: Infinity,
+        action: {
+          label: t("update.install"),
+          onClick: () => {
+            void useUpdateStore.getState().installAndRelaunch();
+          },
+        },
+        cancel: {
+          label: t("update.later"),
+          onClick: () => {
+            useUpdateStore.getState().dismiss();
+          },
+        },
+      },
+    );
+    return () => {
+      toast.dismiss(toastId);
+    };
+  }, [updateNotificationVisible, availableVersion, t]);
 
   // Global Ctrl/Cmd+, opens the preferences dialog. We attach to `window`
   // so the binding works regardless of focus inside the panel layout.
@@ -214,10 +259,30 @@ export default function App() {
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => openSettings()}
-              title={t("common.tooltipOpenPreferences")}
+              onClick={() =>
+                // Jump straight to the About panel only when there's a
+                // pending update to act on; otherwise restore the default
+                // behaviour (open at whichever section the user last used).
+                updateNotificationVisible
+                  ? openSettings("about")
+                  : openSettings()
+              }
+              title={
+                updateNotificationVisible
+                  ? t("update.tooltipUpdateAvailable", {
+                      version: availableVersion,
+                    })
+                  : t("common.tooltipOpenPreferences")
+              }
+              className="relative"
             >
               <Settings className="h-4 w-4" />
+              {updateNotificationVisible && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-background"
+                />
+              )}
             </Button>
           </div>
         </header>
@@ -231,6 +296,11 @@ export default function App() {
         </div>
         <StatusBar />
       </div>
+      <Toaster
+        position="bottom-right"
+        theme={activeTheme.mode === "dark" ? "dark" : "light"}
+        closeButton
+      />
     </TooltipProvider>
   );
 }

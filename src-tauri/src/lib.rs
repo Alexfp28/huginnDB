@@ -39,6 +39,12 @@ pub fn run() {
         // launches. The plugin writes its own JSON blob alongside our
         // `prefs.json` / `tab_state.json` in the app config dir.
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Auto-update infrastructure. The frontend calls `check()` on
+        // launch (see `src/stores/update.ts`); endpoints and the public
+        // verification key live in `tauri.conf.json`.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        // Lets the frontend relaunch the app after installing an update.
+        .plugin(tauri_plugin_process::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::connection::list_profiles,
