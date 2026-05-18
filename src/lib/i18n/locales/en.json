@@ -110,6 +110,13 @@
     "saving": "Saving…",
     "cancel": "Cancel"
   },
+  "connectPassword": {
+    "title": "Password required",
+    "description": "The stored password for \"{{name}}\" could not be found. Enter it to connect.",
+    "password": "Password",
+    "connect": "Connect",
+    "connecting": "Connecting…"
+  },
   "schema": {
     "loading": "Loading schema…",
     "title": "Schema",
