@@ -110,6 +110,13 @@
     "saving": "Guardando…",
     "cancel": "Cancelar"
   },
+  "connectPassword": {
+    "title": "Contraseña requerida",
+    "description": "No se encontró la contraseña guardada para \"{{name}}\". Introdúcela para conectar.",
+    "password": "Contraseña",
+    "connect": "Conectar",
+    "connecting": "Conectando…"
+  },
   "schema": {
     "loading": "Cargando esquema…",
     "title": "Esquema",

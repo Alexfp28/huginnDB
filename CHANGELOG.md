@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Keychain passwords lost between save and connect on Windows (and Linux/macOS).**
+  `keyring = "3"` without explicit platform features resolves — depending on the minor
+  version that Cargo picks — to a mock credential store where each `Entry` object is an
+  independent in-memory container. `save_profile` writes to one `Entry` instance that is
+  immediately dropped; the `connect` command creates a fresh `Entry` and finds nothing,
+  producing the "no stored password for keychain account" error even though the profile
+  was saved successfully and the dialog showed no error. Fixed by pinning
+  `windows-native`, `apple-native`, and `linux-secret-service-rt-tokio-crypto-rust`
+  features so the native OS credential store is always used regardless of which patch of
+  keyring v3 resolves.
+
+- **Dead-end error alert when keychain lookup fails on connect.**
+  When `connect` failed because no keychain entry existed, the only UX was an `alert()`
+  with no recovery path. A new `ConnectPasswordDialog` component now intercepts this
+  specific error, lets the user enter the password inline, connects immediately with the
+  in-memory credential, and writes it back to the keychain so subsequent connects work
+  without prompting.
+
 ## [0.2.0] — 2026-05-17
 
 First public alpha release. Bundles the full design overhaul, SSH tunnelling, disk-backed preferences and per-connection workspace, internationalisation, and the HeidiSQL-style data-grid affordances delivered across sessions 1 and 2.

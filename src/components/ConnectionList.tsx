@@ -12,8 +12,10 @@ import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { Button } from "@/components/ui/button";
 import { ConnectionDialog } from "@/components/ConnectionDialog";
+import { ConnectPasswordDialog } from "@/components/ConnectPasswordDialog";
 import { DriverBadge } from "@/components/DriverBadge";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/tauri";
 import type { ConnectionProfile } from "@/types";
 
 export function ConnectionList({
@@ -31,6 +33,8 @@ export function ConnectionList({
   const closeTabs = useTabs((s) => s.closeForConnection);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ConnectionProfile | null>(null);
+  const [pwPromptProfile, setPwPromptProfile] =
+    useState<ConnectionProfile | null>(null);
 
   useEffect(() => {
     refresh();
@@ -42,8 +46,26 @@ export function ConnectionList({
       await refreshSchema(p.id);
       onSelect(p.id);
     } catch (e) {
-      alert(t("connections.connectFailed", { message: String(e) }));
+      const msg = String(e);
+      if (msg.includes("no stored password for keychain account")) {
+        setPwPromptProfile(p);
+      } else {
+        alert(t("connections.connectFailed", { message: msg }));
+      }
     }
+  }
+
+  async function handleConnectWithPassword(password: string) {
+    if (!pwPromptProfile) return;
+    await connect(pwPromptProfile.id, password);
+    try {
+      await api.saveProfile(pwPromptProfile, password, undefined);
+    } catch {
+      // keychain write failure does not block an already-open connection
+    }
+    await refreshSchema(pwPromptProfile.id);
+    onSelect(pwPromptProfile.id);
+    setPwPromptProfile(null);
   }
 
   async function handleDisconnect(p: ConnectionProfile) {
@@ -177,6 +199,12 @@ export function ConnectionList({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         initial={editing}
+      />
+      <ConnectPasswordDialog
+        open={pwPromptProfile !== null}
+        profile={pwPromptProfile}
+        onCancel={() => setPwPromptProfile(null)}
+        onConnect={handleConnectWithPassword}
       />
     </div>
   );
