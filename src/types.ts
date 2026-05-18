@@ -273,6 +273,28 @@ export interface PersistedTab {
   title: string | null;
 }
 
+/**
+ * One entry in the in-app Console panel.
+ *
+ * Mirrors the `LogEntry` shape emitted by the Rust `huginndb://log` event
+ * (see `src-tauri/src/log_bus.rs`). Optional fields are populated based
+ * on `kind`: SQL events carry `sql`/`rows_affected`/`duration_ms`,
+ * Connection events carry `message`. Any operation that failed includes
+ * `error`.
+ */
+export interface LogEntry {
+  id: number;
+  timestamp_ms: number;
+  kind: "sql" | "connection";
+  connection_id?: string;
+  driver?: string;
+  sql?: string;
+  message?: string;
+  duration_ms?: number;
+  rows_affected?: number;
+  error?: string;
+}
+
 /** One entry in the persisted query history. */
 export interface QueryHistoryEntry {
   id: string;

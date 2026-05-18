@@ -43,6 +43,7 @@ export const PANELS = [
   { id: "schema", component: "schema", title: "Schema" },
   { id: "saved", component: "saved", title: "Saved" },
   { id: "workspace", component: "workspace", title: "Workspace" },
+  { id: "console", component: "console", title: "Console" },
 ] as const;
 
 export type PanelId = (typeof PANELS)[number]["id"];
@@ -209,6 +210,16 @@ function positionFor(
       }
       if (has("saved")) {
         return { referencePanel: "saved", direction: "right" };
+      }
+      return undefined;
+    case "console":
+      // Re-open the console docked at the bottom, preferably under the
+      // workspace so the schema tree keeps its full height.
+      if (has("workspace")) {
+        return { referencePanel: "workspace", direction: "below" };
+      }
+      if (has("schema")) {
+        return { referencePanel: "schema", direction: "below" };
       }
       return undefined;
   }

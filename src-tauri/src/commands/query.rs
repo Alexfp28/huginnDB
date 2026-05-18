@@ -19,11 +19,71 @@ use crate::db::values::{
     mysql_columns, mysql_value, pg_columns, pg_value, sqlite_columns, sqlite_value,
 };
 use crate::error::{AppError, AppResult};
+use crate::log_bus::{self, LogEntry, LogKind};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Instant;
-use tauri::State;
+use tauri::{AppHandle, State};
+
+/// Driver label used by the Console panel. Kept local so we don't leak
+/// the `DbPool` enum's `Debug` formatting into a user-facing string.
+fn driver_str(pool: &DbPool) -> &'static str {
+    match pool {
+        DbPool::Postgres(_) => "postgres",
+        DbPool::Mysql(_) => "mysql",
+        DbPool::Sqlite(_) => "sqlite",
+    }
+}
+
+/// Emit a SQL log entry after a statement has finished (successfully or
+/// otherwise). Pulled out so every call site stays a single line.
+fn log_sql(
+    app: &AppHandle,
+    connection_id: &str,
+    driver: &str,
+    sql: &str,
+    start: Instant,
+    rows_affected: Option<u64>,
+    error: Option<&str>,
+) {
+    let mut entry = LogEntry::new(LogKind::Sql)
+        .connection_id(connection_id)
+        .driver(driver)
+        .sql(sql)
+        .duration_ms(start.elapsed().as_millis() as u64);
+    if let Some(r) = rows_affected {
+        entry = entry.rows_affected(r);
+    }
+    if let Some(e) = error {
+        entry = entry.error(e);
+    }
+    log_bus::emit(app, entry);
+}
+
+/// Unwrap a `Result<_, sqlx::Error>` produced by a SQL call and, on
+/// failure, emit a SQL log entry plus early-return the error from the
+/// enclosing command — analogous to `?` with an extra side-effect.
+///
+/// We use a macro (rather than an `async fn` helper) for two reasons:
+///
+/// 1. The success branch needs to stay in the caller's control flow so
+///    each driver arm can keep using its own bespoke row-decoding logic
+///    (`pg_value` vs `mysql_value` vs `sqlite_value`).
+/// 2. `return Err(...)` from inside an async closure would not exit the
+///    outer function; a macro expands inline and does.
+macro_rules! try_sql {
+    ($app:expr, $cid:expr, $driver:expr, $sql:expr, $start:expr, $res:expr) => {
+        match $res {
+            Ok(v) => v,
+            Err(e) => {
+                let msg = e.to_string();
+                log_sql($app, $cid, $driver, $sql, $start, None, Some(&msg));
+                return Err(e.into());
+            }
+        }
+    };
+}
 
 /// Comparison operator accepted by [`ColumnFilter`].
 ///
@@ -104,31 +164,53 @@ fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
 /// `connection_id`.
 #[tauri::command]
 pub async fn execute_query(
+    app: AppHandle,
     state: State<'_, AppState>,
     connection_id: String,
     sql: String,
 ) -> AppResult<QueryResult> {
-    execute_with_state(state.inner(), &connection_id, &sql).await
+    execute_with_state(&app, state.inner(), &connection_id, &sql).await
 }
 
 /// Shared implementation used by both [`execute_query`] and
 /// [`fetch_table_data`]. Takes a borrowed `AppState` so it can be called
 /// from other command handlers without re-acquiring the Tauri `State`
 /// guard.
+///
+/// Emits a SQL [`LogEntry`] after every execution path (write, read, and
+/// error) so the Console panel sees the same statement the engine ran.
 async fn execute_with_state(
+    app: &AppHandle,
     state: &AppState,
     connection_id: &str,
     sql: &str,
 ) -> AppResult<QueryResult> {
     let pool = pool_for(state, connection_id)?;
+    let driver = driver_str(&pool);
     let start = Instant::now();
 
     if !is_read_only(sql) {
-        let rows_affected = match &pool {
-            DbPool::Postgres(p) => sqlx::query(sql).execute(p).await?.rows_affected(),
-            DbPool::Mysql(p) => sqlx::query(sql).execute(p).await?.rows_affected(),
-            DbPool::Sqlite(p) => sqlx::query(sql).execute(p).await?.rows_affected(),
-        };
+        let rows_affected = try_sql!(
+            app,
+            connection_id,
+            driver,
+            sql,
+            start,
+            match &pool {
+                DbPool::Postgres(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
+                DbPool::Mysql(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
+                DbPool::Sqlite(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
+            }
+        );
+        log_sql(
+            app,
+            connection_id,
+            driver,
+            sql,
+            start,
+            Some(rows_affected),
+            None,
+        );
         return Ok(QueryResult {
             columns: vec![],
             rows: vec![],
@@ -140,7 +222,14 @@ async fn execute_with_state(
 
     let result = match pool {
         DbPool::Postgres(p) => {
-            let rows = sqlx::query(sql).fetch_all(&p).await?;
+            let rows = try_sql!(
+                app,
+                connection_id,
+                driver,
+                sql,
+                start,
+                sqlx::query(sql).fetch_all(&p).await
+            );
             let columns = rows
                 .first()
                 .map(|r| {
@@ -166,7 +255,14 @@ async fn execute_with_state(
             }
         }
         DbPool::Mysql(p) => {
-            let rows = sqlx::query(sql).fetch_all(&p).await?;
+            let rows = try_sql!(
+                app,
+                connection_id,
+                driver,
+                sql,
+                start,
+                sqlx::query(sql).fetch_all(&p).await
+            );
             let columns = rows
                 .first()
                 .map(|r| {
@@ -192,7 +288,14 @@ async fn execute_with_state(
             }
         }
         DbPool::Sqlite(p) => {
-            let rows = sqlx::query(sql).fetch_all(&p).await?;
+            let rows = try_sql!(
+                app,
+                connection_id,
+                driver,
+                sql,
+                start,
+                sqlx::query(sql).fetch_all(&p).await
+            );
             let columns = rows
                 .first()
                 .map(|r| {
@@ -218,6 +321,15 @@ async fn execute_with_state(
             }
         }
     };
+    log_sql(
+        app,
+        connection_id,
+        driver,
+        sql,
+        start,
+        Some(result.rows_affected),
+        None,
+    );
     Ok(result)
 }
 
@@ -317,6 +429,7 @@ fn build_filter_clause(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn fetch_table_data(
+    app: AppHandle,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -330,6 +443,7 @@ pub async fn fetch_table_data(
     search_columns: Option<Vec<String>>,
 ) -> AppResult<QueryResult> {
     let pool = pool_for(state.inner(), &connection_id)?;
+    let driver = driver_str(&pool);
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let pg = matches!(&pool, DbPool::Postgres(_));
 
@@ -383,7 +497,14 @@ pub async fn fetch_table_data(
             for b in &where_binds {
                 q = q.bind(b);
             }
-            let rows = q.fetch_all(p).await?;
+            let rows = try_sql!(
+                &app,
+                &connection_id,
+                driver,
+                &data_sql,
+                start,
+                q.fetch_all(p).await
+            );
             let columns = rows
                 .first()
                 .map(|r| {
@@ -407,7 +528,14 @@ pub async fn fetch_table_data(
             for b in &where_binds {
                 q = q.bind(b);
             }
-            let rows = q.fetch_all(p).await?;
+            let rows = try_sql!(
+                &app,
+                &connection_id,
+                driver,
+                &data_sql,
+                start,
+                q.fetch_all(p).await
+            );
             let columns = rows
                 .first()
                 .map(|r| {
@@ -431,7 +559,14 @@ pub async fn fetch_table_data(
             for b in &where_binds {
                 q = q.bind(b);
             }
-            let rows = q.fetch_all(p).await?;
+            let rows = try_sql!(
+                &app,
+                &connection_id,
+                driver,
+                &data_sql,
+                start,
+                q.fetch_all(p).await
+            );
             let columns = rows
                 .first()
                 .map(|r| {
@@ -452,30 +587,57 @@ pub async fn fetch_table_data(
         }
     };
     let elapsed_ms = start.elapsed().as_millis() as u64;
+    log_sql(
+        &app,
+        &connection_id,
+        driver,
+        &data_sql,
+        start,
+        Some(data.len() as u64),
+        None,
+    );
 
-    let total: Option<u64> = match &pool {
-        DbPool::Postgres(p) => {
-            let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-            for b in &where_binds {
-                q = q.bind(b);
+    let count_start = Instant::now();
+    let raw_count: Option<i64> = try_sql!(
+        &app,
+        &connection_id,
+        driver,
+        &count_sql,
+        count_start,
+        match &pool {
+            DbPool::Postgres(p) => {
+                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+                for b in &where_binds {
+                    q = q.bind(b);
+                }
+                q.fetch_optional(p).await
             }
-            q.fetch_optional(p).await?.map(|v| v as u64)
-        }
-        DbPool::Mysql(p) => {
-            let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-            for b in &where_binds {
-                q = q.bind(b);
+            DbPool::Mysql(p) => {
+                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+                for b in &where_binds {
+                    q = q.bind(b);
+                }
+                q.fetch_optional(p).await
             }
-            q.fetch_optional(p).await?.map(|v| v as u64)
-        }
-        DbPool::Sqlite(p) => {
-            let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-            for b in &where_binds {
-                q = q.bind(b);
+            DbPool::Sqlite(p) => {
+                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+                for b in &where_binds {
+                    q = q.bind(b);
+                }
+                q.fetch_optional(p).await
             }
-            q.fetch_optional(p).await?.map(|v| v as u64)
         }
-    };
+    );
+    let total: Option<u64> = raw_count.map(|n| n as u64);
+    log_sql(
+        &app,
+        &connection_id,
+        driver,
+        &count_sql,
+        count_start,
+        total,
+        None,
+    );
 
     Ok(QueryResult {
         rows_affected: data.len() as u64,
@@ -494,6 +656,7 @@ pub async fn fetch_table_data(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn update_cell(
+    app: AppHandle,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -504,6 +667,7 @@ pub async fn update_cell(
     value: Option<String>,
 ) -> AppResult<u64> {
     let pool = pool_for(state.inner(), &connection_id)?;
+    let driver = driver_str(&pool);
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
 
     let qt = if let Some(s) = schema {
@@ -519,35 +683,49 @@ pub async fn update_cell(
     let pk_id = quote_ident(pg_or_sqlite, &pk_column);
     let pk_str = json_to_string(&pk_value);
 
-    let affected = match pool {
+    let start = Instant::now();
+    let (sql, res) = match pool {
         DbPool::Postgres(p) => {
             let sql = format!("UPDATE {qt} SET {col_id} = $1 WHERE {pk_id} = $2");
-            sqlx::query(&sql)
+            let res = sqlx::query(&sql)
                 .bind(&value)
                 .bind(&pk_str)
                 .execute(&p)
-                .await?
-                .rows_affected()
+                .await
+                .map(|r| r.rows_affected());
+            (sql, res)
         }
         DbPool::Mysql(p) => {
             let sql = format!("UPDATE {qt} SET {col_id} = ? WHERE {pk_id} = ?");
-            sqlx::query(&sql)
+            let res = sqlx::query(&sql)
                 .bind(&value)
                 .bind(&pk_str)
                 .execute(&p)
-                .await?
-                .rows_affected()
+                .await
+                .map(|r| r.rows_affected());
+            (sql, res)
         }
         DbPool::Sqlite(p) => {
             let sql = format!("UPDATE {qt} SET {col_id} = ?1 WHERE {pk_id} = ?2");
-            sqlx::query(&sql)
+            let res = sqlx::query(&sql)
                 .bind(&value)
                 .bind(&pk_str)
                 .execute(&p)
-                .await?
-                .rows_affected()
+                .await
+                .map(|r| r.rows_affected());
+            (sql, res)
         }
     };
+    let affected = try_sql!(&app, &connection_id, driver, &sql, start, res);
+    log_sql(
+        &app,
+        &connection_id,
+        driver,
+        &sql,
+        start,
+        Some(affected),
+        None,
+    );
     Ok(affected)
 }
 
@@ -569,6 +747,7 @@ fn json_to_string(v: &Value) -> Option<String> {
 /// changing the command signature.
 #[tauri::command]
 pub async fn delete_rows(
+    app: AppHandle,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -580,6 +759,7 @@ pub async fn delete_rows(
         return Ok(0);
     }
     let pool = pool_for(state.inner(), &connection_id)?;
+    let driver = driver_str(&pool);
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let pg = matches!(&pool, DbPool::Postgres(_));
 
@@ -594,29 +774,46 @@ pub async fn delete_rows(
     );
     let binds: Vec<Option<String>> = pk_values.iter().map(json_to_string).collect();
 
-    let affected = match pool {
-        DbPool::Postgres(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
+    let start = Instant::now();
+    let affected = try_sql!(
+        &app,
+        &connection_id,
+        driver,
+        &sql,
+        start,
+        match pool {
+            DbPool::Postgres(p) => {
+                let mut q = sqlx::query(&sql);
+                for b in &binds {
+                    q = q.bind(b);
+                }
+                q.execute(&p).await.map(|r| r.rows_affected())
             }
-            q.execute(&p).await?.rows_affected()
-        }
-        DbPool::Mysql(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
+            DbPool::Mysql(p) => {
+                let mut q = sqlx::query(&sql);
+                for b in &binds {
+                    q = q.bind(b);
+                }
+                q.execute(&p).await.map(|r| r.rows_affected())
             }
-            q.execute(&p).await?.rows_affected()
-        }
-        DbPool::Sqlite(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
+            DbPool::Sqlite(p) => {
+                let mut q = sqlx::query(&sql);
+                for b in &binds {
+                    q = q.bind(b);
+                }
+                q.execute(&p).await.map(|r| r.rows_affected())
             }
-            q.execute(&p).await?.rows_affected()
         }
-    };
+    );
+    log_sql(
+        &app,
+        &connection_id,
+        driver,
+        &sql,
+        start,
+        Some(affected),
+        None,
+    );
     Ok(affected)
 }
 
@@ -632,6 +829,7 @@ pub async fn delete_rows(
 /// neither path applies the response is `null`.
 #[tauri::command]
 pub async fn insert_row(
+    app: AppHandle,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -645,6 +843,7 @@ pub async fn insert_row(
         ));
     }
     let pool = pool_for(state.inner(), &connection_id)?;
+    let driver = driver_str(&pool);
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let pg = matches!(&pool, DbPool::Postgres(_));
 
@@ -664,7 +863,11 @@ pub async fn insert_row(
         placeholders.join(", ")
     );
 
-    match pool {
+    // Each driver arm yields (final SQL string, Result<(rows_affected, returned_pk), _>).
+    // Postgres optionally tacks on RETURNING to recover the generated PK;
+    // MySQL/SQLite use `last_insert_*` instead.
+    let start = Instant::now();
+    let (sql_used, outcome): (String, Result<(Option<u64>, Value), sqlx::Error>) = match pool {
         DbPool::Postgres(p) => {
             let sql = match &pk_column {
                 Some(pk) => format!("{base_sql} RETURNING {}", quote_ident(true, pk)),
@@ -674,38 +877,50 @@ pub async fn insert_row(
             for b in &binds {
                 q = q.bind(b);
             }
-            if pk_column.is_some() {
-                let rows = q.fetch_all(&p).await?;
-                let returned = rows.first().map(|r| pg_value(r, 0)).unwrap_or(Value::Null);
-                Ok(returned)
+            let outcome = if pk_column.is_some() {
+                q.fetch_all(&p).await.map(|rows| {
+                    let returned = rows.first().map(|r| pg_value(r, 0)).unwrap_or(Value::Null);
+                    (Some(rows.len() as u64), returned)
+                })
             } else {
-                q.execute(&p).await?;
-                Ok(Value::Null)
-            }
+                q.execute(&p)
+                    .await
+                    .map(|r| (Some(r.rows_affected()), Value::Null))
+            };
+            (sql, outcome)
         }
         DbPool::Mysql(p) => {
             let mut q = sqlx::query(&base_sql);
             for b in &binds {
                 q = q.bind(b);
             }
-            let r = q.execute(&p).await?;
-            let id = r.last_insert_id();
-            if id == 0 {
-                Ok(Value::Null)
-            } else {
-                Ok(Value::from(id))
-            }
+            let outcome = q.execute(&p).await.map(|r| {
+                let id = r.last_insert_id();
+                let returned = if id == 0 {
+                    Value::Null
+                } else {
+                    Value::from(id)
+                };
+                (Some(r.rows_affected()), returned)
+            });
+            (base_sql, outcome)
         }
         DbPool::Sqlite(p) => {
             let mut q = sqlx::query(&base_sql);
             for b in &binds {
                 q = q.bind(b);
             }
-            let r = q.execute(&p).await?;
-            let id = r.last_insert_rowid();
-            Ok(Value::from(id))
+            let outcome = q
+                .execute(&p)
+                .await
+                .map(|r| (Some(r.rows_affected()), Value::from(r.last_insert_rowid())));
+            (base_sql, outcome)
         }
-    }
+    };
+
+    let (rows, returned) = try_sql!(&app, &connection_id, driver, &sql_used, start, outcome);
+    log_sql(&app, &connection_id, driver, &sql_used, start, rows, None);
+    Ok(returned)
 }
 
 /// One row in an FK dropdown payload.
@@ -814,11 +1029,14 @@ pub async fn fetch_fk_options(
         let cast_to = if pg_or_sqlite { "TEXT" } else { "CHAR" };
         let ph1 = if pg { "$1".to_string() } else { "?".into() };
         let ph2 = if pg { "$2".to_string() } else { "?".into() };
-        let mut parts =
-            vec![format!("CAST({key_id} AS {cast_to}) {like_kw} {ph1} ESCAPE '\\'")];
+        let mut parts = vec![format!(
+            "CAST({key_id} AS {cast_to}) {like_kw} {ph1} ESCAPE '\\'"
+        )];
         binds.push(Some(pattern.clone()));
         if let Some(l) = &label_id {
-            parts.push(format!("CAST({l} AS {cast_to}) {like_kw} {ph2} ESCAPE '\\'"));
+            parts.push(format!(
+                "CAST({l} AS {cast_to}) {like_kw} {ph2} ESCAPE '\\'"
+            ));
             binds.push(Some(pattern));
         }
         format!(" WHERE {}", parts.join(" OR "))
@@ -850,7 +1068,10 @@ pub async fn fetch_fk_options(
                     } else {
                         None
                     };
-                    FkOption { value: v, label: lbl }
+                    FkOption {
+                        value: v,
+                        label: lbl,
+                    }
                 })
                 .collect()
         }
@@ -871,7 +1092,10 @@ pub async fn fetch_fk_options(
                     } else {
                         None
                     };
-                    FkOption { value: v, label: lbl }
+                    FkOption {
+                        value: v,
+                        label: lbl,
+                    }
                 })
                 .collect()
         }
@@ -892,7 +1116,10 @@ pub async fn fetch_fk_options(
                     } else {
                         None
                     };
-                    FkOption { value: v, label: lbl }
+                    FkOption {
+                        value: v,
+                        label: lbl,
+                    }
                 })
                 .collect()
         }

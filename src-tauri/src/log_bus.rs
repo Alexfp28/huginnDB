@@ -1,0 +1,144 @@
+//! Structured log bus.
+//!
+//! Every command that touches the database (query execution, table-data
+//! paging, cell edits, row inserts/deletes, connection lifecycle) emits a
+//! [`LogEntry`] through this module. The frontend listens for the
+//! `huginndb://log` Tauri event and renders the entries in the Console
+//! panel — analogous to HeidiSQL's SQL log.
+//!
+//! Design rules:
+//!
+//! * Emission is fire-and-forget. A failure inside `emit()` must never
+//!   propagate up and break the originating DB operation. We swallow
+//!   the error silently — at worst the user loses an entry from a
+//!   debugging panel.
+//! * Entries are flat (no enums in the wire payload) so the TypeScript
+//!   side can mirror them with a single interface and no discriminator
+//!   parsing.
+
+use serde::Serialize;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter};
+
+/// Tauri event name the frontend subscribes to.
+pub const LOG_EVENT: &str = "huginndb://log";
+
+/// Monotonic id source so each entry is uniquely addressable in the
+/// frontend store even when two events share the same millisecond.
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Coarse-grained kind of operation being logged. Stays as a string on
+/// the wire to keep the TS type trivial.
+#[derive(Debug, Clone, Copy)]
+pub enum LogKind {
+    /// A SQL statement was sent to the engine.
+    Sql,
+    /// A connection lifecycle event (open / close / smoke-test).
+    Connection,
+}
+
+impl LogKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            LogKind::Sql => "sql",
+            LogKind::Connection => "connection",
+        }
+    }
+}
+
+/// One log line shipped to the frontend.
+///
+/// Every field except `id`, `timestamp_ms`, and `kind` is optional —
+/// connection events have no SQL, SQL events have no `message`, errors
+/// populate `error` and leave `rows_affected` empty, etc.
+#[derive(Debug, Serialize, Clone)]
+pub struct LogEntry {
+    pub id: u64,
+    pub timestamp_ms: u64,
+    pub kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub driver: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sql: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rows_affected: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl LogEntry {
+    /// Build an entry with id + timestamp pre-filled. Use the builder-style
+    /// setters below to populate the rest.
+    pub fn new(kind: LogKind) -> Self {
+        Self {
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            timestamp_ms: now_ms(),
+            kind: kind.as_str(),
+            connection_id: None,
+            driver: None,
+            sql: None,
+            message: None,
+            duration_ms: None,
+            rows_affected: None,
+            error: None,
+        }
+    }
+
+    pub fn connection_id(mut self, v: impl Into<String>) -> Self {
+        self.connection_id = Some(v.into());
+        self
+    }
+
+    pub fn driver(mut self, v: impl Into<String>) -> Self {
+        self.driver = Some(v.into());
+        self
+    }
+
+    pub fn sql(mut self, v: impl Into<String>) -> Self {
+        self.sql = Some(v.into());
+        self
+    }
+
+    pub fn message(mut self, v: impl Into<String>) -> Self {
+        self.message = Some(v.into());
+        self
+    }
+
+    pub fn duration_ms(mut self, v: u64) -> Self {
+        self.duration_ms = Some(v);
+        self
+    }
+
+    pub fn rows_affected(mut self, v: u64) -> Self {
+        self.rows_affected = Some(v);
+        self
+    }
+
+    pub fn error(mut self, v: impl Into<String>) -> Self {
+        self.error = Some(v.into());
+        self
+    }
+}
+
+/// Push an entry onto the bus. Errors from the Tauri emitter are
+/// swallowed on purpose — see the module-level note.
+pub fn emit(app: &AppHandle, entry: LogEntry) {
+    let _ = app.emit(LOG_EVENT, entry);
+}
+
+/// Current wall-clock time in milliseconds since the Unix epoch.
+/// Falls back to `0` on the (impossible-in-practice) error path so
+/// callers never have to deal with a `Result` for a logging side-effect.
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}

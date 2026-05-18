@@ -3,11 +3,46 @@
 use crate::db::pool::{open_pool, smoke_test};
 use crate::error::{AppError, AppResult};
 use crate::keychain;
+use crate::log_bus::{self, LogEntry, LogKind};
 use crate::ssh_known_hosts;
 use crate::state::{ActivePool, AppState, ConnectionProfile, Driver};
 use crate::store;
-use tauri::State;
+use std::time::Instant;
+use tauri::{AppHandle, State};
 use uuid::Uuid;
+
+/// Driver label used by the Console panel.
+fn driver_str(driver: Driver) -> &'static str {
+    match driver {
+        Driver::Postgres => "postgres",
+        Driver::Mysql => "mysql",
+        Driver::Sqlite => "sqlite",
+    }
+}
+
+/// Emit a `connection` log entry. Used for `connect`, `disconnect`, and
+/// `test_connection` so the Console panel can show the actual lifecycle
+/// boundary that's currently invisible to the user.
+fn log_connection(
+    app: &AppHandle,
+    connection_id: &str,
+    driver: Driver,
+    message: &str,
+    start: Option<Instant>,
+    error: Option<&str>,
+) {
+    let mut entry = LogEntry::new(LogKind::Connection)
+        .connection_id(connection_id)
+        .driver(driver_str(driver))
+        .message(message);
+    if let Some(s) = start {
+        entry = entry.duration_ms(s.elapsed().as_millis() as u64);
+    }
+    if let Some(e) = error {
+        entry = entry.error(e);
+    }
+    log_bus::emit(app, entry);
+}
 
 /// Look up the password for `profile` from the OS keychain.
 ///
@@ -134,6 +169,7 @@ pub fn delete_profile(state: State<'_, AppState>, id: String) -> AppResult<()> {
 /// round-trip.
 #[tauri::command]
 pub async fn test_connection(
+    app: AppHandle,
     state: State<'_, AppState>,
     profile: ConnectionProfile,
     password: Option<String>,
@@ -148,8 +184,40 @@ pub async fn test_connection(
         None => resolve_ssh_secret(&profile)?,
     };
     let known_hosts = state.known_hosts.clone();
-    smoke_test(&profile, &pw, ssh, known_hosts).await?;
-    Ok("ok".into())
+    let start = Instant::now();
+    log_connection(
+        &app,
+        &profile.id,
+        profile.driver,
+        "test_connection: start",
+        None,
+        None,
+    );
+    match smoke_test(&profile, &pw, ssh, known_hosts).await {
+        Ok(()) => {
+            log_connection(
+                &app,
+                &profile.id,
+                profile.driver,
+                "test_connection: ok",
+                Some(start),
+                None,
+            );
+            Ok("ok".into())
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            log_connection(
+                &app,
+                &profile.id,
+                profile.driver,
+                "test_connection: failed",
+                Some(start),
+                Some(&msg),
+            );
+            Err(e)
+        }
+    }
 }
 
 /// Open a long-lived pool for the profile `id` and add it to
@@ -157,6 +225,7 @@ pub async fn test_connection(
 /// tunnel, the tunnel is brought up first and lives as long as the pool.
 #[tauri::command]
 pub async fn connect(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     password: Option<String>,
@@ -180,21 +249,65 @@ pub async fn connect(
     };
 
     let known_hosts = state.known_hosts.clone();
-    let (pool, ssh_handle) = open_pool(&profile, &pw, ssh, known_hosts).await?;
-    state.connections.write().insert(
-        id,
-        ActivePool {
-            pool,
-            _ssh: ssh_handle,
-        },
+    let start = Instant::now();
+    log_connection(
+        &app,
+        &id,
+        profile.driver,
+        &format!(
+            "connect: opening {} pool to {}:{}/{}",
+            driver_str(profile.driver),
+            profile.host,
+            profile.port,
+            profile.database
+        ),
+        None,
+        None,
     );
-    Ok(())
+    let opened = open_pool(&profile, &pw, ssh, known_hosts).await;
+    match opened {
+        Ok((pool, ssh_handle)) => {
+            state.connections.write().insert(
+                id.clone(),
+                ActivePool {
+                    pool,
+                    _ssh: ssh_handle,
+                },
+            );
+            log_connection(&app, &id, profile.driver, "connect: ok", Some(start), None);
+            Ok(())
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            log_connection(
+                &app,
+                &id,
+                profile.driver,
+                "connect: failed",
+                Some(start),
+                Some(&msg),
+            );
+            Err(e)
+        }
+    }
 }
 
 /// Drop the active pool for `id`, if any.
 #[tauri::command]
-pub fn disconnect(state: State<'_, AppState>, id: String) -> AppResult<()> {
-    state.connections.write().remove(&id);
+pub fn disconnect(app: AppHandle, state: State<'_, AppState>, id: String) -> AppResult<()> {
+    let removed = state.connections.write().remove(&id);
+    if removed.is_some() {
+        // Driver is not tracked separately for active pools; look it up
+        // on the profile (best-effort — the entry is purely informational).
+        let driver = state
+            .profiles
+            .read()
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.driver)
+            .unwrap_or(Driver::Sqlite);
+        log_connection(&app, &id, driver, "disconnect", None, None);
+    }
     Ok(())
 }
 

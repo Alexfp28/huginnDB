@@ -6,6 +6,57 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-18
+
+This is the first release to ship an observability surface for the
+runtime. Everything the app does against your databases — connect,
+disconnect, every SELECT/INSERT/UPDATE/DELETE, the paginated table
+browser, even the test-connection probe — is now visible in real time
+through a new **Console** panel. The motivation was direct: we kept
+hitting "the schema browser is stuck loading…" bugs with no way to tell
+which Tauri command had gone silent. After this release that question
+becomes a one-glance answer.
+
+This is a `0.2.x → 0.3.0` minor bump rather than a patch because it
+adds a brand-new docked panel, a new Rust module (`log_bus`), and a
+permanent runtime event channel (`huginndb://log`). No breaking changes:
+existing profiles, preferences, tab state, and on-disk layout all keep
+working untouched.
+
+### Added
+
+- **Console panel — in-app SQL log, HeidiSQL-style.**
+  Every backend operation that crosses the Tauri bridge now emits a structured
+  `huginndb://log` event picked up by a new `Console` panel: SQL executed via
+  `execute_query`, `fetch_table_data` (data + count statements are logged
+  separately), `update_cell`, `delete_rows`, and `insert_row`, plus connection
+  lifecycle events (`connect: start/ok/failed`, `disconnect`, and
+  `test_connection`). The panel virtualises the list with `react-virtuoso`
+  and renders the currently-selected entry in a Monaco read-only viewer that
+  reuses the existing bundled instance — no new CDN dependency. Failures
+  appear with a red border and the underlying driver error message, which
+  makes "the schema browser is stuck loading…" debuggable: the last entry
+  before silence pinpoints exactly which command never returned.
+
+  The panel is registered with dockview alongside Schema / Saved / Workspace
+  and is hidden by default; users open it from **View → Panels → Console**.
+  Log state is session-only and capped at 2000 entries; the toolbar exposes
+  pause/resume, clear, kind filters (SQL / Connection), and free-text search.
+
+### Internal
+
+- **`src-tauri/src/log_bus.rs`** — new module owning the on-the-wire
+  `LogEntry` shape, a monotonic id source, and a fire-and-forget
+  `emit()` helper. Emission failures are swallowed by design so logging
+  can never break the originating DB call.
+- **`try_sql!` macro in `commands/query.rs`** — collapses the six
+  repeated `match q.await { Ok => …, Err(e) => { log; return Err } }`
+  blocks down to a single line per call site while keeping each
+  driver's bespoke row decoding (`pg_value` / `mysql_value` /
+  `sqlite_value`) in the caller's control flow.
+- **`react-virtuoso` (4.18.x)** added to `dependencies` — the only new
+  package. ~30 KB minified, well-maintained, plain TS.
+
 ## [0.2.2] — 2026-05-18
 
 ### Added

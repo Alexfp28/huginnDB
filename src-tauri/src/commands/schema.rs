@@ -404,10 +404,8 @@ pub async fn list_columns_inner(
             rows.into_iter()
                 .map(|r| {
                     let name: String = r.get("column_name");
-                    let (ref_schema, ref_table, ref_column) = fk_map
-                        .get(&name)
-                        .cloned()
-                        .unwrap_or((None, None, None));
+                    let (ref_schema, ref_table, ref_column) =
+                        fk_map.get(&name).cloned().unwrap_or((None, None, None));
                     ColumnInfo {
                         name,
                         data_type: r.get::<String, _>("column_type"),
@@ -459,10 +457,7 @@ pub async fn list_columns_inner(
                 .collect();
             let mut pk_cache: HashMap<String, Option<String>> = HashMap::new();
             for target in needs_pk_resolution {
-                let q2 = format!(
-                    "PRAGMA table_info(\"{}\")",
-                    target.replace('"', "\"\"")
-                );
+                let q2 = format!("PRAGMA table_info(\"{}\")", target.replace('"', "\"\""));
                 let pk = match sqlx::query(&q2).fetch_all(&p).await {
                     Ok(target_rows) => target_rows
                         .into_iter()
@@ -477,10 +472,9 @@ pub async fn list_columns_inner(
                     let name: String = r.get("name");
                     let (ref_table, ref_column) = match fk_map.get(&name) {
                         Some((t, Some(c))) => (Some(t.clone()), Some(c.clone())),
-                        Some((t, None)) => (
-                            Some(t.clone()),
-                            pk_cache.get(t).cloned().unwrap_or(None),
-                        ),
+                        Some((t, None)) => {
+                            (Some(t.clone()), pk_cache.get(t).cloned().unwrap_or(None))
+                        }
                         None => (None, None),
                     };
                     ColumnInfo {

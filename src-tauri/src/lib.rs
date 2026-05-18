@@ -19,6 +19,7 @@ mod commands;
 mod db;
 mod error;
 mod keychain;
+mod log_bus;
 mod prefs;
 mod ssh_known_hosts;
 mod state;

@@ -37,6 +37,8 @@ import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { SavedQueriesPanel } from "@/components/SavedQueriesPanel";
+import { Console } from "@/components/Console";
+import { startLogBridge } from "@/lib/log-bridge";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -74,6 +76,10 @@ function WorkspacePanel() {
   return <TabbedArea connectionId={id} />;
 }
 
+function ConsolePanel() {
+  return <Console />;
+}
+
 /**
  * Component registry passed to DockviewReact. Defined at module scope
  * so the reference is stable across renders — recreating it inside the
@@ -87,6 +93,7 @@ const COMPONENTS: Record<
   schema: SchemaPanel,
   saved: SavedPanel,
   workspace: WorkspacePanel,
+  console: ConsolePanel,
 };
 
 // ---------------------------------------------------------------------------
@@ -132,6 +139,23 @@ export default function App() {
   // boot or show an error toast.
   useEffect(() => {
     void useUpdateStore.getState().checkOnLaunch();
+  }, []);
+
+  // Subscribe to the Rust `huginndb://log` Tauri event so the Console
+  // panel sees every SQL + connection event. Unlisten on unmount keeps
+  // HMR clean — without it React's StrictMode + Vite's reloads would
+  // attach multiple listeners and duplicate every entry.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    void startLogBridge().then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   // Toast notification the first time we detect a new version per session.
