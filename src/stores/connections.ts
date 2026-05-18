@@ -11,6 +11,7 @@ import { create } from "zustand";
 import { api } from "@/lib/tauri";
 import { useFilterHistory } from "@/stores/filterHistory";
 import { flushTabState, hydrateTabState } from "@/stores/persistedTabs";
+import { useSchema } from "@/stores/schema";
 import type { ConnectionProfile } from "@/types";
 
 interface ConnectionsState {
@@ -113,6 +114,10 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     // The user asked for filter history to be tied to the connection
     // lifetime; wipe it when the pool closes.
     useFilterHistory.getState().clearForConnection(id);
+    // Drop the schema cache so a subsequent reconnect (possibly to a
+    // different database on the same host) always fetches fresh metadata
+    // instead of showing the stale tree from the previous session.
+    useSchema.getState().drop(id);
   },
   isActive: (id) => get().active.has(id),
   getVersion: (id) => get().versions[id],

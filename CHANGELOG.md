@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-05-18
+
+### Fixed
+
+- **Schema explorer blank after MySQL reconnect.**
+  When a user connected to MySQL without a default database (empty `database`
+  field in the profile), the schema fetch completed with zero tables. On
+  subsequent disconnect + reconnect (now with a database specified), the stale
+  empty slice was still in the Zustand store, so `SchemaExplorer`'s
+  `useEffect` guard (`if (!cs)`) never re-triggered `refresh`. Two-part fix:
+  (1) `disconnect()` now calls `schema.drop(id)` to clear the cached slice, so
+  the next connect always starts from a clean state; (2) `ConnectionSchema` has
+  a new `initialized` flag (set by `refresh` on success, never by
+  `replaceExpanded`), and the explorer now triggers refresh when
+  `!cs || !cs.initialized`, which also handles the race where workspace
+  hydration initialises the slice with empty tables before the effect fires.
+
 ## [0.3.0] — 2026-05-18
 
 This is the first release to ship an observability surface for the

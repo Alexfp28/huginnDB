@@ -42,7 +42,11 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
   const openTab = useTabs((s) => s.open);
 
   useEffect(() => {
-    if (!cs) refresh(connectionId);
+    // Trigger refresh when there is no state at all, or when the slice was
+    // created by workspace-hydration (replaceExpanded) but the actual table
+    // list has never been fetched. The `initialized` flag distinguishes
+    // "fetched and empty" from "never fetched".
+    if (!cs || !cs.initialized) refresh(connectionId);
   }, [connectionId, cs, refresh]);
 
   if (!cs) {

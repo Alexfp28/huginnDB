@@ -25,6 +25,13 @@ interface ConnectionSchema {
   expanded: Set<string>;
   loading: boolean;
   error: string | null;
+  /**
+   * True once `refresh` has completed at least once successfully for this
+   * connection. Stays false when the slice is created by `replaceExpanded`
+   * (workspace hydration) so the explorer can distinguish "data loaded and
+   * empty" from "never fetched yet".
+   */
+  initialized: boolean;
 }
 
 interface SchemaState {
@@ -64,6 +71,7 @@ function emptyState(): ConnectionSchema {
     expanded: new Set(),
     loading: false,
     error: null,
+    initialized: false,
   };
 }
 
@@ -98,6 +106,7 @@ export const useSchema = create<SchemaState>((set, get) => ({
             databases,
             tables,
             loading: false,
+            initialized: true,
           },
         },
       }));
