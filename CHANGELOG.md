@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-05-18
+
 ### Fixed
 
 - **Keychain passwords lost between save and connect on Windows (and Linux/macOS).**
