@@ -45,20 +45,42 @@ pub fn build_url(profile: &ConnectionProfile, password: &str, host: &str, port: 
     let pwd = url_encode(password);
 
     match profile.driver {
-        Driver::Postgres => format!(
-            "postgres://{user}:{pwd}@{host}:{port}/{db}{ssl}",
-            db = profile.database,
-            ssl = if profile.ssl { "?sslmode=require" } else { "" },
-        ),
-        Driver::Mysql => format!(
-            "mysql://{user}:{pwd}@{host}:{port}/{db}{ssl}",
-            db = profile.database,
-            ssl = if profile.ssl {
-                "?ssl-mode=REQUIRED"
+        Driver::Postgres => {
+            // A blank `database` is a legitimate user choice: "connect to the
+            // server, then let me pick a database from the schema tree".
+            // Postgres requires SOME database at connect time though, so we
+            // fall back to the always-present `postgres` maintenance DB. The
+            // schema tree later spawns per-DB synthetic pools (see
+            // `open_database_view`) once the user expands a specific
+            // database node.
+            let db = if profile.database.is_empty() {
+                "postgres"
             } else {
-                ""
-            },
-        ),
+                profile.database.as_str()
+            };
+            format!(
+                "postgres://{user}:{pwd}@{host}:{port}/{db}{ssl}",
+                ssl = if profile.ssl { "?sslmode=require" } else { "" },
+            )
+        }
+        Driver::Mysql => {
+            // MySQL accepts a URL with no database path. Leaving it blank
+            // means the session starts without a default `DATABASE()` set;
+            // listing/querying is then driven by per-DB synthetic pools.
+            let path = if profile.database.is_empty() {
+                String::new()
+            } else {
+                format!("/{}", profile.database)
+            };
+            format!(
+                "mysql://{user}:{pwd}@{host}:{port}{path}{ssl}",
+                ssl = if profile.ssl {
+                    "?ssl-mode=REQUIRED"
+                } else {
+                    ""
+                },
+            )
+        }
         Driver::Sqlite => format!("sqlite://{}", profile.database),
     }
 }

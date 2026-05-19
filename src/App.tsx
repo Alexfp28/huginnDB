@@ -18,11 +18,12 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react";
 import { Moon, Settings, Sun } from "lucide-react";
-import { Toaster, toast } from "sonner";
+import { Toaster } from "sonner";
 import {
   selectUpdateNotificationVisible,
   useUpdateStore,
 } from "@/stores/update";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { useConnections } from "@/stores/connections";
 import { useUi } from "@/stores/ui";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
@@ -158,34 +159,12 @@ export default function App() {
     };
   }, []);
 
-  // Toast notification the first time we detect a new version per session.
-  // "Later" persists the dismissal so the toast doesn't reappear next launch,
-  // but the badge on the settings gear stays until the user installs.
-  useEffect(() => {
-    if (!updateNotificationVisible || !availableVersion) return;
-    const toastId = toast(
-      t("update.toastTitle", { version: availableVersion }),
-      {
-        description: t("update.toastDescription"),
-        duration: Infinity,
-        action: {
-          label: t("update.install"),
-          onClick: () => {
-            void useUpdateStore.getState().installAndRelaunch();
-          },
-        },
-        cancel: {
-          label: t("update.later"),
-          onClick: () => {
-            useUpdateStore.getState().dismiss();
-          },
-        },
-      },
-    );
-    return () => {
-      toast.dismiss(toastId);
-    };
-  }, [updateNotificationVisible, availableVersion, t]);
+  // Update notifications now render as a custom `UpdateBanner` at the
+  // top of the window (see the JSX below). The previous implementation
+  // used a corner Sonner toast, but the toast was easy to miss and its
+  // styling didn't match the rest of the app chrome — see CHANGELOG
+  // entry for 0.4.0. Sonner stays available for short-lived toasts
+  // (errors, copy-success confirmations, etc.).
 
   // Global Ctrl/Cmd+, opens the preferences dialog. We attach to `window`
   // so the binding works regardless of focus inside the panel layout.
@@ -325,6 +304,9 @@ export default function App() {
         theme={activeTheme.mode === "dark" ? "dark" : "light"}
         closeButton
       />
+      {updateNotificationVisible && availableVersion && (
+        <UpdateBanner version={availableVersion} />
+      )}
     </TooltipProvider>
   );
 }

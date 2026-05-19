@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Maximize2, Minimize2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,7 @@ export function CellEditor({
   readonly,
   onSave,
 }: Props) {
+  const { t } = useTranslation();
   const theme = useThemeStore(selectActiveTheme);
   const [value, setValue] = useState(initialValue);
   const detected = useMemo(() => detectLanguage(initialValue ?? ""), [initialValue]);
@@ -88,7 +90,7 @@ export function CellEditor({
       await onSave(value);
       onOpenChange(false);
     } catch (e) {
-      alert(`Save failed: ${String(e)}`);
+      alert(t("cellEditor.saveFailed", { message: String(e) }));
     } finally {
       setSaving(false);
     }
@@ -106,16 +108,20 @@ export function CellEditor({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
-            <span>{columnName ?? "Cell editor"}</span>
+            <span>{columnName ?? t("cellEditor.title")}</span>
             <span className="text-xs font-normal text-muted-foreground">
-              {value.length.toLocaleString()} chars
+              {t("cellEditor.chars", { count: value.length })}
             </span>
             <Button
               variant="ghost"
               size="icon"
               className="ml-auto mr-8"
               onClick={() => setFullscreen((v) => !v)}
-              title={fullscreen ? "Exit fullscreen (Esc / F11)" : "Fullscreen (F11)"}
+              title={
+                fullscreen
+                  ? t("cellEditor.exitFullscreen")
+                  : t("cellEditor.fullscreen")
+              }
             >
               {fullscreen ? (
                 <Minimize2 className="h-4 w-4" />
@@ -131,14 +137,14 @@ export function CellEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="plaintext">Plain text</SelectItem>
+              <SelectItem value="plaintext">{t("cellEditor.langPlain")}</SelectItem>
               <SelectItem value="json">JSON</SelectItem>
               <SelectItem value="xml">XML</SelectItem>
               <SelectItem value="sql">SQL</SelectItem>
             </SelectContent>
           </Select>
           <Button size="sm" variant="outline" onClick={handleFormat}>
-            Format
+            {t("cellEditor.format")}
           </Button>
           {language === "json" && (
             <JsonValidationBadge value={value} />
@@ -164,11 +170,11 @@ export function CellEditor({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {readonly ? "Close" : "Discard"}
+            {readonly ? t("common.close") : t("cellEditor.discard")}
           </Button>
           {!readonly && onSave && (
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("cellEditor.saving") : t("common.save")}
             </Button>
           )}
         </DialogFooter>
@@ -178,11 +184,16 @@ export function CellEditor({
 }
 
 function JsonValidationBadge({ value }: { value: string }) {
+  const { t } = useTranslation();
   if (!value.trim()) return null;
   try {
     JSON.parse(value);
-    return <span className="text-xs text-emerald-400">valid JSON</span>;
+    return <span className="text-xs text-emerald-400">{t("cellEditor.jsonValid")}</span>;
   } catch (e) {
-    return <span className="text-xs text-destructive">invalid: {(e as Error).message}</span>;
+    return (
+      <span className="text-xs text-destructive">
+        {t("cellEditor.jsonInvalid", { message: (e as Error).message })}
+      </span>
+    );
   }
 }

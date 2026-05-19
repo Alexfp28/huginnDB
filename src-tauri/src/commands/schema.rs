@@ -5,6 +5,7 @@
 //! standard `information_schema` views where available, with `pg_*` /
 //! `sqlite_master` fallbacks for engine-specific metadata.
 
+use crate::db::sql::quote_ident;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
 use serde::Serialize;
@@ -625,6 +626,122 @@ pub async fn list_indexes(
         }
     };
     Ok(idx)
+}
+
+/// Drop a table. `schema` is optional — when omitted the driver applies
+/// its default (Postgres → `public`; MySQL → current `DATABASE()`; SQLite
+/// has no schema concept).
+///
+/// All identifiers are sourced from the schema explorer, which itself comes
+/// from a catalog query, so the [`quote_ident`] usage matches the rule in
+/// `SECURITY.md` — never applied to free-form user input.
+#[tauri::command]
+pub async fn drop_table(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<()> {
+    let pool = pool_for(state.inner(), &connection_id)?;
+    let qt = match (&pool, schema) {
+        (DbPool::Postgres(_), Some(s)) => format!(
+            "{}.{}",
+            quote_ident(true, &s),
+            quote_ident(true, &table)
+        ),
+        (DbPool::Postgres(_), None) => format!(
+            "{}.{}",
+            quote_ident(true, "public"),
+            quote_ident(true, &table)
+        ),
+        (DbPool::Mysql(_), Some(s)) => format!(
+            "{}.{}",
+            quote_ident(false, &s),
+            quote_ident(false, &table)
+        ),
+        (DbPool::Mysql(_), None) => quote_ident(false, &table),
+        (DbPool::Sqlite(_), _) => quote_ident(true, &table),
+    };
+    let sql = format!("DROP TABLE {qt}");
+    match pool {
+        DbPool::Postgres(p) => {
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Mysql(p) => {
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Sqlite(p) => {
+            sqlx::query(&sql).execute(&p).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Rename a table. Same identifier-source guarantees as [`drop_table`].
+///
+/// MySQL uses `RENAME TABLE old TO new`; Postgres and SQLite both accept
+/// `ALTER TABLE old RENAME TO new`. The new name is sent as a quoted
+/// identifier (never bound) because SQL does not allow binding for DDL
+/// identifiers — but the caller's UI restricts the value to safe characters
+/// before it reaches the command (see `SchemaExplorer` rename dialog).
+#[tauri::command]
+pub async fn rename_table(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+    new_name: String,
+) -> AppResult<()> {
+    if new_name.trim().is_empty() {
+        return Err(AppError::InvalidInput(
+            "rename_table: new_name must not be empty".into(),
+        ));
+    }
+    let pool = pool_for(state.inner(), &connection_id)?;
+    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
+    let new_ident = quote_ident(pg_or_sqlite, new_name.trim());
+    let sql = match &pool {
+        DbPool::Postgres(_) => {
+            let s = schema.unwrap_or_else(|| "public".into());
+            format!(
+                "ALTER TABLE {}.{} RENAME TO {}",
+                quote_ident(true, &s),
+                quote_ident(true, &table),
+                new_ident,
+            )
+        }
+        DbPool::Mysql(_) => match schema {
+            Some(s) => format!(
+                "RENAME TABLE {}.{} TO {}.{}",
+                quote_ident(false, &s),
+                quote_ident(false, &table),
+                quote_ident(false, &s),
+                new_ident,
+            ),
+            None => format!(
+                "RENAME TABLE {} TO {}",
+                quote_ident(false, &table),
+                new_ident,
+            ),
+        },
+        DbPool::Sqlite(_) => format!(
+            "ALTER TABLE {} RENAME TO {}",
+            quote_ident(true, &table),
+            new_ident,
+        ),
+    };
+    match pool {
+        DbPool::Postgres(p) => {
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Mysql(p) => {
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Sqlite(p) => {
+            sqlx::query(&sql).execute(&p).await?;
+        }
+    }
+    Ok(())
 }
 
 /// Return a short version string for the connected server.

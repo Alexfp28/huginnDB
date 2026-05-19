@@ -6,6 +6,87 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-19
+
+A phased release driven by feedback from real-world use of the 0.3 series
+inside a corporate environment. Bundles correctness fixes, multi-database
+browsing, a new schema-tree context menu, an updated notification UI, two
+new built-in themes, draggable tabs, and broader i18n coverage.
+
+### Added
+
+- **Multi-database browsing for connections without a default database.**
+  When a Postgres or MySQL profile is saved with an empty `database` field,
+  the schema explorer now lists every database the user can see on the
+  server as a top-level node. Expanding one lazily spawns a synthetic
+  `<connection_id>::db::<db>` pool (via the new `open_database_view`
+  command) and the nested subtree behaves like a regular schema explorer
+  scoped to that database — tables, views, columns, data tabs and editing
+  all work end-to-end. Previously, leaving the database blank left the
+  tree empty because `list_tables` had no current DB to enumerate.
+  Synthetic child pools are torn down when the parent connection
+  disconnects, and the matching tab / schema-cache slices are purged on
+  the frontend.
+- **Right-click context menu on tables in the schema explorer.** Each
+  table row now exposes Open / Copy name / Copy SELECT / Refresh, plus
+  the destructive **Rename** and **Drop table** actions on base tables.
+  Rename opens a small dialog; Drop requires the user to retype the
+  table's name before the confirm button enables (same UX as GitHub's
+  repository deletion). DDL goes through two new Tauri commands,
+  `rename_table` and `drop_table`, that build the statement with
+  `quote_ident` on catalog-sourced names (per `SECURITY.md`). Views
+  intentionally only show the read-only actions.
+- **Filter input above the schema tree.** Substring match (case
+  insensitive) across all table and view names. When the filter is
+  active, matching schemas/sections auto-expand so results are visible
+  without further clicks.
+- **Drag-to-reorder tabs in the workspace tab strip.** Native HTML5
+  drag-and-drop with a primary-coloured drop indicator on the target.
+  Tab order is reflected in the in-memory store and therefore survives
+  the next persisted-workspace snapshot.
+- **Two new built-in themes: Claude Light and Claude Dark.** Warm paper /
+  sepia palette with a terracotta primary, taken from the Claude product
+  identity. Available under Preferences → Appearance alongside the other
+  built-ins; switching is live and respects the same custom-theme fork
+  flow as the other built-ins.
+
+### Fixed
+
+- **MySQL `DATETIME` / `TIMESTAMP` / `DATE` / `TIME` / `YEAR` columns rendered
+  as NULL in the data grid.** `mysql_value()` in `db/values.rs` only had branches
+  for numerics, JSON and BLOB types; temporal columns fell through to the
+  generic `try_get::<String>` fallback, which fails to decode and returns
+  `Value::Null`. HeidiSQL shows them correctly because its C connector decodes
+  temporals as strings by default. Added explicit branches that decode through
+  `chrono::NaiveDateTime`, `DateTime<Utc>` (for `TIMESTAMP`, since MySQL stores
+  it in UTC and converts on read), `NaiveDate`, `NaiveTime`, and a `u16` for
+  `YEAR`. Postgres already had the equivalent matches.
+
+### Changed
+
+- **Redesigned update-available notification.** The previous Sonner toast
+  in the bottom-right corner was easy to miss and looked stylistically
+  out of place. Replaced with a top-centred `UpdateBanner` that takes
+  full advantage of the available width: icon + version line + short
+  description + clearly-prioritised "Install and relaunch" / "Later"
+  actions, with a soft slide-down on appear and full theme awareness.
+  Sonner remains available for short transient toasts elsewhere in the
+  app.
+- **Tabs now qualify their title with the connection name when 2+ connections
+  are open.** Previously, opening the same table (e.g. `users`) on two
+  connections produced two indistinguishable tabs both labelled `users`. The
+  label now reads `cliente1 · users` / `cliente2 · users` whenever tabs from
+  multiple connections coexist, and every tab carries a tooltip with the full
+  `connection / schema.table` path. Synthetic per-database connections
+  resolve as `<parent name> · <database>` in the tab label and tooltip. A
+  single-connection workspace looks unchanged.
+- **Broader i18n coverage.** Strings that previously remained English even
+  when the Spanish locale was active (cell editor and cell preview chrome,
+  tab-strip labels and tooltips, the new schema-explorer context menu and
+  rename / drop dialogs) are now driven through `i18next`. The Spanish
+  locale was extended to match. Strings inside Monaco itself still follow
+  its own locale system and are out of scope for this release.
+
 ## [0.3.3] — 2026-05-18
 
 ### Fixed

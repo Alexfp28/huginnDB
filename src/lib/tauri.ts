@@ -75,6 +75,31 @@ export const api = {
   activeConnections: () => invoke<string[]>("active_connections"),
 
   /**
+   * Open a secondary pool bound to `database` under the parent connection
+   * `parentId` and return the synthetic connection id (`<parentId>::db::
+   * <database>`) the frontend should use for every subsequent command
+   * targeting that database — `listTables`, `listColumns`,
+   * `fetchTableData`, `updateCell`, etc. Idempotent: returns the existing
+   * id when the child pool is already open.
+   *
+   * Used by the schema explorer when the parent profile has an empty
+   * `database` field, so the user can expand every database on the server
+   * as a top-level node without us having to thread an extra `database`
+   * parameter through every command in the backend.
+   */
+  openDatabaseView: (parentId: string, database: string) =>
+    invoke<string>("open_database_view", { parentId, database }),
+
+  /**
+   * Stable synthetic id for a per-database browse session. Kept in sync
+   * with `connection.rs::database_view_id` so the frontend can compute it
+   * without a round-trip when it only needs to address an already-open
+   * child (e.g. dispatching tab actions).
+   */
+  databaseViewId: (parentId: string, database: string) =>
+    `${parentId}::db::${database}`,
+
+  /**
    * Forget the trusted SSH host-key fingerprint for `host:port`. Returns
    * `true` when an entry was actually removed. Use after a server is
    * legitimately reinstalled, when the dialog reports a key mismatch.
@@ -105,6 +130,19 @@ export const api = {
     schema: string | undefined,
     table: string,
   ) => invoke<IndexInfo[]>("list_indexes", { connectionId, schema, table }),
+
+  /** `DROP TABLE` for a catalog-sourced (schema, table) pair. */
+  dropTable: (connectionId: string, schema: string | undefined, table: string) =>
+    invoke<void>("drop_table", { connectionId, schema, table }),
+
+  /** `ALTER TABLE … RENAME TO` (or `RENAME TABLE` on MySQL) for a
+   *  catalog-sourced (schema, table) pair. */
+  renameTable: (
+    connectionId: string,
+    schema: string | undefined,
+    table: string,
+    newName: string,
+  ) => invoke<void>("rename_table", { connectionId, schema, table, newName }),
 
   /**
    * Return a short version string for the connected server, e.g.

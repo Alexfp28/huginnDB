@@ -12,6 +12,7 @@ import { api } from "@/lib/tauri";
 import { useFilterHistory } from "@/stores/filterHistory";
 import { flushTabState, hydrateTabState } from "@/stores/persistedTabs";
 import { useSchema } from "@/stores/schema";
+import { useTabs } from "@/stores/tabs";
 import type { ConnectionProfile } from "@/types";
 
 interface ConnectionsState {
@@ -118,6 +119,28 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     // different database on the same host) always fetches fresh metadata
     // instead of showing the stale tree from the previous session.
     useSchema.getState().drop(id);
+
+    // Multi-DB sessions register synthetic `<id>::db::<db>` child
+    // connections in the backend (see `open_database_view`); the backend
+    // sweeps them when the parent disconnects, but the frontend stores
+    // also keep per-child schema slices and open tabs. Drop them here so
+    // we don't leave orphaned trees / tabs pointing at dead pools.
+    const prefix = `${id}::db::`;
+    const tabsState = useTabs.getState();
+    const schemaState = useSchema.getState();
+    for (const tab of tabsState.tabs) {
+      if (tab.connectionId.startsWith(prefix)) {
+        tabsState.closeForConnection(tab.connectionId);
+        schemaState.drop(tab.connectionId);
+      }
+    }
+    // Drop any schema slice for a child that was browsed but never had a
+    // tab opened against it.
+    for (const childId of Object.keys(schemaState.byConnection)) {
+      if (childId.startsWith(prefix)) {
+        schemaState.drop(childId);
+      }
+    }
   },
   isActive: (id) => get().active.has(id),
   getVersion: (id) => get().versions[id],

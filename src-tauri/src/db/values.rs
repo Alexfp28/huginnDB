@@ -120,6 +120,44 @@ pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
             .map(|v| json!(hex(&v)))
             .unwrap_or(Value::Null);
     }
+    // Temporal types — sqlx doesn't decode them as `String` by default, so
+    // without an explicit branch the fallback below would return `Value::Null`
+    // and the grid would render the cell empty (HeidiSQL shows the value
+    // correctly because it decodes them as strings via the C connector).
+    // Order matters: check DATETIME / TIMESTAMP / DATE before the generic
+    // TIME branch since they all contain the substring "TIME"/"DATE".
+    if name == "DATETIME" {
+        return row
+            .try_get::<chrono::NaiveDateTime, _>(idx)
+            .map(|v| json!(v.to_string()))
+            .unwrap_or(Value::Null);
+    }
+    if name == "TIMESTAMP" {
+        // MySQL stores TIMESTAMP in UTC and converts to the session time zone
+        // on read. sqlx hands us a `DateTime<Utc>` accordingly.
+        return row
+            .try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
+            .map(|v| json!(v.to_rfc3339()))
+            .unwrap_or(Value::Null);
+    }
+    if name == "DATE" {
+        return row
+            .try_get::<chrono::NaiveDate, _>(idx)
+            .map(|v| json!(v.to_string()))
+            .unwrap_or(Value::Null);
+    }
+    if name == "TIME" {
+        return row
+            .try_get::<chrono::NaiveTime, _>(idx)
+            .map(|v| json!(v.to_string()))
+            .unwrap_or(Value::Null);
+    }
+    if name == "YEAR" {
+        return row
+            .try_get::<u16, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null);
+    }
     row.try_get::<String, _>(idx)
         .map(Value::String)
         .unwrap_or(Value::Null)

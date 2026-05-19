@@ -3,7 +3,7 @@
  * currently selected connection. Columns are lazy-loaded the first time
  * a table node is expanded. Single-click on a table opens it in a data tab.
  *
- * Tree structure:
+ * Tree structure (single-DB profile):
  *   schema
  *   ├─ tables  (expandable section)
  *   │   ├─ table_name  <row_count>
@@ -11,9 +11,20 @@
  *   │   └─ …
  *   ├─ views   (expandable section)
  *   └─ indexes (expandable section — headers only for now)
+ *
+ * Multi-DB mode (profile.database === ""):
+ *   database
+ *   ├─ <schema subtree, same as single-DB mode>
+ *   └─ …
+ *
+ * In multi-DB mode each database expansion opens a synthetic
+ * `<parentId>::db::<db>` connection in the backend (see
+ * `open_database_view`), and every nested node uses that synthetic id so
+ * downstream commands like `list_tables` / `fetch_table_data` keep their
+ * existing single-connection-id signatures.
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -27,19 +38,90 @@ import {
 } from "lucide-react";
 import { useSchema, tableKey } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
+import { useConnections } from "@/stores/connections";
 import { usePreferences } from "@/stores/preferences";
+import { api } from "@/lib/tauri";
 import type { SchemaTableMetric } from "@/types";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatBytes, formatCount } from "@/lib/utils";
 import type { TableInfo } from "@/types";
 
 export function SchemaExplorer({ connectionId }: { connectionId: string }) {
+  const { t } = useTranslation();
+  // Multi-DB mode triggers when the parent profile has no `database` set
+  // (e.g. the user wants to browse every database on the server). SQLite
+  // profiles are inherently single-file, so they never enter this mode.
+  const profile = useConnections((s) =>
+    s.profiles.find((p) => p.id === connectionId),
+  );
+  const isMultiDb =
+    !!profile && profile.driver !== "sqlite" && profile.database === "";
+
+  if (isMultiDb) {
+    return <MultiDbExplorer parentId={connectionId} />;
+  }
+  return <SingleDbExplorer connectionId={connectionId} title={t("schema.title")} />;
+}
+
+// ---------------------------------------------------------------------------
+// Single-database explorer (used directly for profiles with `database` set,
+// and as the inner subtree of each database node in multi-DB mode).
+// ---------------------------------------------------------------------------
+
+function SingleDbExplorer({
+  connectionId,
+  title,
+  headerLevel = "root",
+}: {
+  connectionId: string;
+  title: string;
+  /**
+   * `root` shows the standard "SCHEMA" header + refresh button. `nested`
+   * skips the header chrome entirely — used when this subtree lives under a
+   * database node and the outer multi-DB explorer already owns the chrome.
+   */
+  headerLevel?: "root" | "nested";
+}) {
   const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[connectionId]);
   const refresh = useSchema((s) => s.refresh);
   const toggleNode = useSchema((s) => s.toggleNode);
   const loadColumns = useSchema((s) => s.loadColumns);
   const openTab = useTabs((s) => s.open);
+
+  // Driver lookup: needed by the context menu to compose a driver-correct
+  // "Copy SELECT" snippet. For synthetic multi-DB connection ids the
+  // profile lives under the parent half of the id.
+  const driver = useConnections((s) => {
+    const direct = s.profiles.find((p) => p.id === connectionId);
+    if (direct) return direct.driver;
+    const sep = connectionId.indexOf("::db::");
+    if (sep > 0) {
+      const parent = s.profiles.find((p) => p.id === connectionId.slice(0, sep));
+      if (parent) return parent.driver;
+    }
+    return undefined;
+  });
+
+  const [filter, setFilter] = useState("");
+  const [renameTarget, setRenameTarget] = useState<TableInfo | null>(null);
+  const [dropTarget, setDropTarget] = useState<TableInfo | null>(null);
 
   useEffect(() => {
     // Fire refresh only when no successful fetch has happened yet AND no
@@ -58,44 +140,73 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
     );
   }
 
-  // Group tables by schema, then by kind within each schema.
+  // Group tables by schema, then by kind within each schema. Apply the
+  // filter at this stage so empty schemas drop out of the rendered list
+  // entirely when nothing matches.
+  const needle = filter.trim().toLowerCase();
   const bySchema: Record<string, { tables: TableInfo[]; views: TableInfo[] }> =
     {};
-  for (const t of cs.tables) {
-    bySchema[t.schema] ??= { tables: [], views: [] };
-    if (t.kind === "view") {
-      bySchema[t.schema].views.push(t);
+  for (const tbl of cs.tables) {
+    if (needle && !tbl.name.toLowerCase().includes(needle)) continue;
+    bySchema[tbl.schema] ??= { tables: [], views: [] };
+    if (tbl.kind === "view") {
+      bySchema[tbl.schema].views.push(tbl);
     } else {
-      bySchema[t.schema].tables.push(t);
+      bySchema[tbl.schema].tables.push(tbl);
     }
   }
   const schemas = Object.keys(bySchema).sort();
 
+  const tableActions: TableActions = {
+    openTab,
+    refresh: () => refresh(connectionId),
+    onRename: (tbl) => setRenameTarget(tbl),
+    onDrop: (tbl) => setDropTarget(tbl),
+    driver,
+  };
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-3 py-2">
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("schema.title")}
+      {headerLevel === "root" && (
+        <div className="flex items-center justify-between px-3 py-2">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {title}
+          </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => refresh(connectionId)}
+            disabled={cs.loading}
+            title={t("schema.refresh")}
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${cs.loading ? "animate-spin" : ""}`}
+            />
+          </Button>
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => refresh(connectionId)}
-          disabled={cs.loading}
-          title={t("schema.refresh")}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${cs.loading ? "animate-spin" : ""}`}
-          />
-        </Button>
+      )}
+      <div className="px-3 pb-2">
+        <Input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={t("schema.filterPlaceholder")}
+          className="h-7 text-xs"
+        />
       </div>
       {cs.error && (
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
       <div className="flex-1 overflow-y-auto py-1 text-sm">
+        {needle && schemas.length === 0 && (
+          <div className="px-3 py-2 text-xs italic text-muted-foreground">
+            {t("schema.noMatches")}
+          </div>
+        )}
         {schemas.map((schema) => {
           const schemaNodeKey = `schema:${schema}`;
-          const schemaOpen = cs.expanded.has(schemaNodeKey);
+          // Force-expand a schema when the filter is active so matching
+          // tables under it are visible without the user having to click.
+          const schemaOpen = needle ? true : cs.expanded.has(schemaNodeKey);
           const { tables, views } = bySchema[schema];
 
           return (
@@ -129,7 +240,8 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
                     cs={cs}
                     toggleNode={toggleNode}
                     loadColumns={loadColumns}
-                    openTab={openTab}
+                    actions={tableActions}
+                    forceOpen={!!needle}
                   />
 
                   {/* Views section */}
@@ -143,7 +255,8 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
                       cs={cs}
                       toggleNode={toggleNode}
                       loadColumns={loadColumns}
-                      openTab={openTab}
+                      actions={tableActions}
+                      forceOpen={!!needle}
                     />
                   )}
 
@@ -161,6 +274,157 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
           );
         })}
       </div>
+
+      {renameTarget && (
+        <RenameTableDialog
+          connectionId={connectionId}
+          target={renameTarget}
+          onClose={() => setRenameTarget(null)}
+          onDone={() => {
+            setRenameTarget(null);
+            refresh(connectionId);
+          }}
+        />
+      )}
+      {dropTarget && (
+        <DropTableDialog
+          connectionId={connectionId}
+          target={dropTarget}
+          onClose={() => setDropTarget(null)}
+          onDone={() => {
+            setDropTarget(null);
+            refresh(connectionId);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Multi-DB explorer — for profiles whose `database` is blank. Lists every
+// database the user can see on the server as a top-level node; expanding
+// one lazily opens a synthetic connection (`open_database_view`) and the
+// nested subtree behaves like a regular single-DB explorer pointed at that
+// synthetic id.
+// ---------------------------------------------------------------------------
+
+function MultiDbExplorer({ parentId }: { parentId: string }) {
+  const { t } = useTranslation();
+  const cs = useSchema((s) => s.byConnection[parentId]);
+  const refresh = useSchema((s) => s.refresh);
+  const toggleNode = useSchema((s) => s.toggleNode);
+
+  useEffect(() => {
+    if (!cs || (!cs.initialized && !cs.loading)) refresh(parentId);
+  }, [parentId, cs, refresh]);
+
+  if (!cs) {
+    return (
+      <div className="px-3 py-3 text-xs text-muted-foreground">
+        {t("schema.loading")}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {t("schema.title")}
+        </div>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => refresh(parentId)}
+          disabled={cs.loading}
+          title={t("schema.refresh")}
+        >
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${cs.loading ? "animate-spin" : ""}`}
+          />
+        </Button>
+      </div>
+      {cs.error && (
+        <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
+      )}
+      <div className="flex-1 overflow-y-auto py-1 text-sm">
+        {cs.databases.map((db) => (
+          <DatabaseRoot
+            key={db.name}
+            parentId={parentId}
+            dbName={db.name}
+            expanded={cs.expanded.has(`db:${db.name}`)}
+            onToggle={() => toggleNode(parentId, `db:${db.name}`)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** One database row in the multi-DB explorer. Lazily opens the synthetic
+ *  child pool the first time it is expanded; subsequent expansions reuse
+ *  it. */
+function DatabaseRoot({
+  parentId,
+  dbName,
+  expanded,
+  onToggle,
+}: {
+  parentId: string;
+  dbName: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const [childId, setChildId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
+
+  useEffect(() => {
+    if (!expanded || childId || opening) return;
+    setOpening(true);
+    setError(null);
+    api
+      .openDatabaseView(parentId, dbName)
+      .then((id) => setChildId(id))
+      .catch((e) => setError(String(e)))
+      .finally(() => setOpening(false));
+  }, [expanded, childId, opening, parentId, dbName]);
+
+  return (
+    <div>
+      <button
+        className="flex w-full items-center gap-1 px-2 py-1 hover:bg-accent/40"
+        onClick={onToggle}
+      >
+        {expanded ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+        <Database className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="truncate text-xs">{dbName}</span>
+      </button>
+      {expanded && (
+        <div className="ml-3 border-l border-border/40">
+          {error && (
+            <div className="px-3 py-1 text-[11px] text-destructive">{error}</div>
+          )}
+          {opening && !childId && (
+            <div className="px-3 py-1 text-[11px] italic text-muted-foreground">
+              …
+            </div>
+          )}
+          {childId && (
+            <SingleDbExplorer
+              connectionId={childId}
+              title={dbName}
+              headerLevel="nested"
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -168,6 +432,14 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
 // ---------------------------------------------------------------------------
 // Sub-components (not exported — internal to this module)
 // ---------------------------------------------------------------------------
+
+interface TableActions {
+  openTab: ReturnType<typeof useTabs.getState>["open"];
+  refresh: () => void;
+  onRename: (table: TableInfo) => void;
+  onDrop: (table: TableInfo) => void;
+  driver: "postgres" | "mysql" | "sqlite" | undefined;
+}
 
 interface SectionProps {
   label: string;
@@ -182,7 +454,9 @@ interface SectionProps {
     schema: string | undefined,
     table: string,
   ) => Promise<void>;
-  openTab: ReturnType<typeof useTabs.getState>["open"];
+  actions: TableActions;
+  /** Force every section to render open (used by the filter). */
+  forceOpen?: boolean;
 }
 
 /** Renders the right-aligned per-table metric badge (row count or size). */
@@ -206,12 +480,13 @@ function TableSection({
   cs,
   toggleNode,
   loadColumns,
-  openTab,
+  actions,
+  forceOpen,
 }: SectionProps) {
   // Inner i18n hook — the table loop shadows `t`, so we use the function
   // directly via `i18n.t` here is overkill; instead alias it.
   const { t: translate } = useTranslation();
-  const isOpen = cs.expanded.has(sectionKey);
+  const isOpen = forceOpen ? true : cs.expanded.has(sectionKey);
   const metric = usePreferences((s) => s.prefs.ui.schemaTableMetric);
 
   return (
@@ -233,88 +508,338 @@ function TableSection({
       </button>
 
       {isOpen &&
-        items.map((t) => {
-          const k = tableKey(t.schema, t.name);
-          const tableNodeKey = `table:${k}`;
-          const tableOpen = cs.expanded.has(tableNodeKey);
-          const cols = cs.columns[k];
+        items.map((t) => (
+          <TableRow
+            key={tableKey(t.schema, t.name)}
+            table={t}
+            connectionId={connectionId}
+            cs={cs}
+            toggleNode={toggleNode}
+            loadColumns={loadColumns}
+            actions={actions}
+            metric={metric}
+            loadingLabel={translate("schema.loadingColumns")}
+          />
+        ))}
+    </div>
+  );
+}
 
-          return (
-            <div key={k}>
-              <div className="flex items-center pl-8 pr-2 hover:bg-accent/30">
-                <button
-                  onClick={() => {
-                    toggleNode(connectionId, tableNodeKey);
-                    if (!cols) loadColumns(connectionId, t.schema, t.name);
-                  }}
-                  className="flex flex-1 items-center gap-1 py-0.5"
-                >
-                  {tableOpen ? (
-                    <ChevronDown className="h-3 w-3" />
-                  ) : (
-                    <ChevronRight className="h-3 w-3" />
-                  )}
-                  {t.kind === "view" ? (
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-                  ) : (
-                    <TableIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                  )}
-                  <span
-                    className="truncate text-xs"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openTab({
-                        kind: "table",
-                        title: t.name,
-                        connectionId,
-                        schema: t.schema,
-                        table: t.name,
-                      });
-                    }}
-                  >
-                    {t.name}
+/** One table/view row + its expandable column list, wrapped in a context
+ *  menu with the destructive (DROP) and renaming actions. */
+function TableRow({
+  table,
+  connectionId,
+  cs,
+  toggleNode,
+  loadColumns,
+  actions,
+  metric,
+  loadingLabel,
+}: {
+  table: TableInfo;
+  connectionId: string;
+  cs: ReturnType<typeof useSchema.getState>["byConnection"][string];
+  toggleNode: (connectionId: string, key: string) => void;
+  loadColumns: (
+    connectionId: string,
+    schema: string | undefined,
+    table: string,
+  ) => Promise<void>;
+  actions: TableActions;
+  metric: SchemaTableMetric;
+  loadingLabel: string;
+}) {
+  const { t: ct } = useTranslation();
+  const t = table;
+  const k = tableKey(t.schema, t.name);
+  const tableNodeKey = `table:${k}`;
+  const tableOpen = cs.expanded.has(tableNodeKey);
+  const cols = cs.columns[k];
+  const isView = t.kind === "view";
+
+  const copyName = () => {
+    void navigator.clipboard.writeText(t.name);
+  };
+  const copySelect = () => {
+    const qualified = qualifyForCopy(actions.driver, t.schema, t.name);
+    void navigator.clipboard.writeText(`SELECT * FROM ${qualified};`);
+  };
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div>
+          <div className="flex items-center pl-8 pr-2 hover:bg-accent/30">
+            <button
+              onClick={() => {
+                toggleNode(connectionId, tableNodeKey);
+                if (!cols) loadColumns(connectionId, t.schema, t.name);
+              }}
+              className="flex flex-1 items-center gap-1 py-0.5"
+            >
+              {tableOpen ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              {isView ? (
+                <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+              ) : (
+                <TableIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+              <span
+                className="truncate text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actions.openTab({
+                    kind: "table",
+                    title: t.name,
+                    connectionId,
+                    schema: t.schema,
+                    table: t.name,
+                  });
+                }}
+              >
+                {t.name}
+              </span>
+              {(() => {
+                const badge = tableMetricLabel(t, metric);
+                return badge ? (
+                  <span className="ml-auto shrink-0 pl-2 text-[10px] text-muted-foreground">
+                    {badge}
                   </span>
-                  {/* Engine-estimated metric (row count or size), per
-                      the user's `View` menu preference. */}
-                  {(() => {
-                    const badge = tableMetricLabel(t, metric);
-                    return badge ? (
-                      <span className="ml-auto shrink-0 pl-2 text-[10px] text-muted-foreground">
-                        {badge}
-                      </span>
-                    ) : null;
-                  })()}
-                </button>
-              </div>
+                ) : null;
+              })()}
+            </button>
+          </div>
 
-              {tableOpen && (
-                <div className="ml-10 border-l border-border/50 pl-2 pr-2">
-                  {cols ? (
-                    cols.map((c) => (
-                      <div
-                        key={c.name}
-                        className="flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground"
-                      >
-                        {c.is_primary_key && (
-                          <KeyRound className="h-2.5 w-2.5 shrink-0 text-amber-400" />
-                        )}
-                        <span className="truncate">{c.name}</span>
-                        <span className="ml-auto shrink-0 pl-2 text-[10px] uppercase">
-                          {c.data_type}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-0.5 pl-1 text-[11px] italic text-muted-foreground">
-                      {translate("schema.loadingColumns")}
-                    </div>
-                  )}
+          {tableOpen && (
+            <div className="ml-10 border-l border-border/50 pl-2 pr-2">
+              {cols ? (
+                cols.map((c) => (
+                  <div
+                    key={c.name}
+                    className="flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground"
+                  >
+                    {c.is_primary_key && (
+                      <KeyRound className="h-2.5 w-2.5 shrink-0 text-amber-400" />
+                    )}
+                    <span className="truncate">{c.name}</span>
+                    <span className="ml-auto shrink-0 pl-2 text-[10px] uppercase">
+                      {c.data_type}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="py-0.5 pl-1 text-[11px] italic text-muted-foreground">
+                  {loadingLabel}
                 </div>
               )}
             </div>
-          );
-        })}
-    </div>
+          )}
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
+          onSelect={() =>
+            actions.openTab({
+              kind: "table",
+              title: t.name,
+              connectionId,
+              schema: t.schema,
+              table: t.name,
+            })
+          }
+        >
+          {ct("schema.context.open")}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={copyName}>
+          {ct("schema.context.copyName")}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={copySelect}>
+          {ct("schema.context.copySelect")}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => actions.refresh()}>
+          {ct("schema.context.refresh")}
+        </ContextMenuItem>
+        {/* Views fall through to read-only; we only expose DDL on base tables. */}
+        {!isView && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => actions.onRename(t)}>
+              {ct("schema.context.rename")}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() => actions.onDrop(t)}
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+            >
+              {ct("schema.context.drop")}
+            </ContextMenuItem>
+          </>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+/** Build the table reference used inside the "Copy SELECT" snippet. We
+ *  quote with the driver's conventional identifier delimiters so the
+ *  snippet pastes cleanly into the query editor — even for case-sensitive
+ *  Postgres identifiers or MySQL reserved words. */
+function qualifyForCopy(
+  driver: "postgres" | "mysql" | "sqlite" | undefined,
+  schema: string,
+  table: string,
+): string {
+  if (driver === "mysql") {
+    return schema
+      ? `\`${schema}\`.\`${table}\``
+      : `\`${table}\``;
+  }
+  // postgres / sqlite / unknown — use double quotes.
+  return schema ? `"${schema}"."${table}"` : `"${table}"`;
+}
+
+/** Modal for renaming a table. Validates against empty input and
+ *  surfaces the backend error in-place. */
+function RenameTableDialog({
+  connectionId,
+  target,
+  onClose,
+  onDone,
+}: {
+  connectionId: string;
+  target: TableInfo;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const [newName, setNewName] = useState(target.name);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === target.name) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.renameTable(connectionId, target.schema, target.name, trimmed);
+      onDone();
+    } catch (e) {
+      setError(String(e));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("schema.rename.title")}</DialogTitle>
+          <DialogDescription>
+            {t("schema.rename.description", { name: target.name })}
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          autoFocus
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder={t("schema.rename.newName")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+        />
+        {error && (
+          <div className="text-xs text-destructive">
+            {t("schema.rename.failed", { message: error })}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            onClick={submit}
+            disabled={
+              submitting ||
+              !newName.trim() ||
+              newName.trim() === target.name
+            }
+          >
+            {submitting ? t("schema.rename.renaming") : t("schema.rename.submit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Modal for dropping a table. Requires the user to retype the table
+ *  name verbatim before the destructive button enables — same pattern
+ *  GitHub uses for repository deletion. */
+function DropTableDialog({
+  connectionId,
+  target,
+  onClose,
+  onDone,
+}: {
+  connectionId: string;
+  target: TableInfo;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const [confirm, setConfirm] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (confirm !== target.name) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.dropTable(connectionId, target.schema, target.name);
+      onDone();
+    } catch (e) {
+      setError(String(e));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("schema.drop.title", { name: target.name })}</DialogTitle>
+          <DialogDescription>{t("schema.drop.description")}</DialogDescription>
+        </DialogHeader>
+        <Input
+          autoFocus
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          placeholder={t("schema.drop.confirmInput", { name: target.name })}
+        />
+        {error && (
+          <div className="text-xs text-destructive">
+            {t("schema.drop.failed", { message: error })}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={submit}
+            disabled={submitting || confirm !== target.name}
+          >
+            {submitting ? t("schema.drop.dropping") : t("schema.drop.submit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

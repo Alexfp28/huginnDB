@@ -124,7 +124,65 @@
     "loadingColumns": "loading…",
     "sectionTables": "tables",
     "sectionViews": "views",
-    "sectionIndexes": "indexes"
+    "sectionIndexes": "indexes",
+    "filterPlaceholder": "Filter tables…",
+    "noMatches": "No tables match the filter.",
+    "context": {
+      "open": "Open in tab",
+      "copyName": "Copy name",
+      "copySelect": "Copy SELECT statement",
+      "refresh": "Refresh",
+      "rename": "Rename…",
+      "drop": "Drop table…"
+    },
+    "rename": {
+      "title": "Rename table",
+      "description": "Rename {{name}} to:",
+      "newName": "New name",
+      "submit": "Rename",
+      "renaming": "Renaming…",
+      "failed": "Rename failed: {{message}}"
+    },
+    "drop": {
+      "title": "Drop table {{name}}?",
+      "description": "This permanently removes the table and its data. Type the table name below to confirm.",
+      "confirmInput": "Type {{name}} to confirm",
+      "submit": "Drop table",
+      "dropping": "Dropping…",
+      "failed": "Drop failed: {{message}}"
+    }
+  },
+  "cellEditor": {
+    "title": "Cell editor",
+    "chars": "{{count}} chars",
+    "fullscreen": "Fullscreen (F11)",
+    "exitFullscreen": "Exit fullscreen (Esc / F11)",
+    "langPlain": "Plain text",
+    "format": "Format",
+    "discard": "Discard",
+    "saving": "Saving…",
+    "saveFailed": "Save failed: {{message}}",
+    "jsonValid": "valid JSON",
+    "jsonInvalid": "invalid: {{message}}"
+  },
+  "cellPreview": {
+    "cell": "cell",
+    "closeEsc": "Close (Esc)",
+    "openFullEditor": "Open in full editor",
+    "fullscreenHint": "F11 fullscreen",
+    "saveTitle": "Save cell value",
+    "saveHint": "⌘ S save",
+    "setNullTitle": "Set this cell to NULL",
+    "setNullHint": "⌘⇧ N null",
+    "closeHint": "esc close"
+  },
+  "tabs": {
+    "queryFileName": "query.sql",
+    "closeTab": "Close tab",
+    "newQuery": "New query",
+    "newQueryTooltip": "New query (uses current connection)",
+    "emptyOpenSomething": "Open a table from the schema explorer, or create a new query tab.",
+    "emptyConnectFirst": "Select or create a connection to begin."
   },
   "statusBar": {
     "disconnected": "disconnected",

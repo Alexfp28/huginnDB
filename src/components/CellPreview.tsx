@@ -12,6 +12,7 @@
 
 import { useEffect, useMemo } from "react";
 import { X, Maximize2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { detectLanguage, tryFormat } from "@/lib/detectContentType";
 import { cn } from "@/lib/utils";
 import type { CellValue } from "@/types";
@@ -87,6 +88,7 @@ export function CellPreview({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, onFullscreen, onSave, onSetNull, rawText]);
 
+  const { t } = useTranslation();
   const isNull = value === null || value === undefined;
 
   return (
@@ -100,7 +102,7 @@ export function CellPreview({
       {/* Header: column name + content-type badge + close button */}
       <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">cell</span>
+          <span className="text-muted-foreground">{t("cellPreview.cell")}</span>
           <span className="text-muted-foreground/40">·</span>
           <span className="font-medium">{columnName}</span>
         </div>
@@ -111,7 +113,7 @@ export function CellPreview({
           <button
             onClick={onClose}
             className="text-muted-foreground/60 hover:text-muted-foreground"
-            title="Close (Esc)"
+            title={t("cellPreview.closeEsc")}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -136,34 +138,34 @@ export function CellPreview({
         <button
           className="flex items-center gap-1 hover:text-muted-foreground"
           onClick={onFullscreen}
-          title="Open in full editor"
+          title={t("cellPreview.openFullEditor")}
         >
           <Maximize2 className="h-3 w-3" />
-          <span>F11 fullscreen</span>
+          <span>{t("cellPreview.fullscreenHint")}</span>
         </button>
         {onSave && (
           <button
             className="hover:text-muted-foreground"
             onClick={() => onSave(rawText)}
-            title="Save cell value"
+            title={t("cellPreview.saveTitle")}
           >
-            ⌘ S save
+            {t("cellPreview.saveHint")}
           </button>
         )}
         {onSetNull && (
           <button
             className="hover:text-muted-foreground"
             onClick={() => onSetNull()}
-            title="Set this cell to NULL"
+            title={t("cellPreview.setNullTitle")}
           >
-            ⌘⇧ N null
+            {t("cellPreview.setNullHint")}
           </button>
         )}
         <button
           className="ml-auto hover:text-muted-foreground"
           onClick={onClose}
         >
-          esc close
+          {t("cellPreview.closeHint")}
         </button>
       </div>
     </div>

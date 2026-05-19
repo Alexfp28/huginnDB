@@ -292,11 +292,29 @@ pub async fn connect(
     }
 }
 
-/// Drop the active pool for `id`, if any.
+/// Drop the active pool for `id`, if any. Also drops every synthetic
+/// per-database pool registered as `<id>::db::<db>` so multi-DB browsing
+/// sessions don't leak when the parent connection is closed.
 #[tauri::command]
 pub fn disconnect(app: AppHandle, state: State<'_, AppState>, id: String) -> AppResult<()> {
     let removed = state.connections.write().remove(&id);
-    if removed.is_some() {
+    // Sweep synthetic children. We collect ids first to avoid holding the
+    // write lock while iterating (remove() takes &mut self).
+    let prefix = format!("{id}::db::");
+    let children: Vec<String> = state
+        .connections
+        .read()
+        .ids()
+        .into_iter()
+        .filter(|cid| cid.starts_with(&prefix))
+        .collect();
+    {
+        let mut conns = state.connections.write();
+        for cid in &children {
+            conns.remove(cid);
+        }
+    }
+    if removed.is_some() || !children.is_empty() {
         // Driver is not tracked separately for active pools; look it up
         // on the profile (best-effort — the entry is purely informational).
         let driver = state
@@ -309,6 +327,105 @@ pub fn disconnect(app: AppHandle, state: State<'_, AppState>, id: String) -> App
         log_connection(&app, &id, driver, "disconnect", None, None);
     }
     Ok(())
+}
+
+/// Synthetic connection id for a per-database browse session under
+/// `parent_id`. Format is stable so callers can derive the id without a
+/// round-trip when they only need to address an already-open child.
+pub fn database_view_id(parent_id: &str, database: &str) -> String {
+    format!("{parent_id}::db::{database}")
+}
+
+/// Open a secondary pool for `parent_id` bound to `database`, and register
+/// it under `<parent_id>::db::<database>` so the existing commands can
+/// address it like a regular connection.
+///
+/// Returns the synthetic id, or — if a child pool for that database is
+/// already open — the existing id (idempotent).
+///
+/// Used by the schema explorer when the parent profile has an empty
+/// `database` field: the parent pool connects to a maintenance catalog
+/// (`postgres` on PG, no default DB on MySQL), and each database the user
+/// expands in the tree spawns one of these children. This way every
+/// downstream command (`list_tables`, `fetch_table_data`, `update_cell`,
+/// …) keeps its existing single `connection_id` argument and doesn't need
+/// to learn a `database` parameter.
+#[tauri::command]
+pub async fn open_database_view(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    parent_id: String,
+    database: String,
+) -> AppResult<String> {
+    let child_id = database_view_id(&parent_id, &database);
+    if state.connections.read().get(&child_id).is_some() {
+        return Ok(child_id);
+    }
+
+    let parent = state
+        .profiles
+        .read()
+        .iter()
+        .find(|p| p.id == parent_id)
+        .cloned()
+        .ok_or_else(|| AppError::NotFound(format!("profile {parent_id}")))?;
+
+    if matches!(parent.driver, Driver::Sqlite) {
+        // SQLite has a single file = single database; per-DB browsing is
+        // not meaningful. Treat this as a no-op alias.
+        return Ok(parent_id);
+    }
+
+    // Clone the parent profile and substitute the database. The child uses
+    // the same credentials and (if configured) SSH tunnel as the parent —
+    // resolved from the keychain the same way `connect` does it.
+    let mut child = parent.clone();
+    child.database = database.clone();
+
+    let pw = resolve_password(&parent)?;
+    let ssh = resolve_ssh_secret(&parent)?;
+    let known_hosts = state.known_hosts.clone();
+    let start = Instant::now();
+    log_connection(
+        &app,
+        &child_id,
+        parent.driver,
+        &format!("open_database_view: {database}"),
+        None,
+        None,
+    );
+    match open_pool(&child, &pw, ssh, known_hosts).await {
+        Ok((pool, ssh_handle)) => {
+            state.connections.write().insert(
+                child_id.clone(),
+                ActivePool {
+                    pool,
+                    _ssh: ssh_handle,
+                },
+            );
+            log_connection(
+                &app,
+                &child_id,
+                parent.driver,
+                "open_database_view: ok",
+                Some(start),
+                None,
+            );
+            Ok(child_id)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            log_connection(
+                &app,
+                &child_id,
+                parent.driver,
+                "open_database_view: failed",
+                Some(start),
+                Some(&msg),
+            );
+            Err(e)
+        }
+    }
 }
 
 /// Ids of every currently active connection. Used by the frontend to

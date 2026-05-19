@@ -124,7 +124,65 @@
     "loadingColumns": "cargando…",
     "sectionTables": "tablas",
     "sectionViews": "vistas",
-    "sectionIndexes": "índices"
+    "sectionIndexes": "índices",
+    "filterPlaceholder": "Filtrar tablas…",
+    "noMatches": "Ninguna tabla coincide con el filtro.",
+    "context": {
+      "open": "Abrir en pestaña",
+      "copyName": "Copiar nombre",
+      "copySelect": "Copiar sentencia SELECT",
+      "refresh": "Actualizar",
+      "rename": "Renombrar…",
+      "drop": "Eliminar tabla…"
+    },
+    "rename": {
+      "title": "Renombrar tabla",
+      "description": "Renombrar {{name}} a:",
+      "newName": "Nuevo nombre",
+      "submit": "Renombrar",
+      "renaming": "Renombrando…",
+      "failed": "Error al renombrar: {{message}}"
+    },
+    "drop": {
+      "title": "¿Eliminar tabla {{name}}?",
+      "description": "Esto elimina la tabla y sus datos de forma permanente. Escribe el nombre de la tabla para confirmar.",
+      "confirmInput": "Escribe {{name}} para confirmar",
+      "submit": "Eliminar tabla",
+      "dropping": "Eliminando…",
+      "failed": "Error al eliminar: {{message}}"
+    }
+  },
+  "cellEditor": {
+    "title": "Editor de celda",
+    "chars": "{{count}} caracteres",
+    "fullscreen": "Pantalla completa (F11)",
+    "exitFullscreen": "Salir de pantalla completa (Esc / F11)",
+    "langPlain": "Texto plano",
+    "format": "Formatear",
+    "discard": "Descartar",
+    "saving": "Guardando…",
+    "saveFailed": "Error al guardar: {{message}}",
+    "jsonValid": "JSON válido",
+    "jsonInvalid": "inválido: {{message}}"
+  },
+  "cellPreview": {
+    "cell": "celda",
+    "closeEsc": "Cerrar (Esc)",
+    "openFullEditor": "Abrir en el editor completo",
+    "fullscreenHint": "F11 pantalla completa",
+    "saveTitle": "Guardar valor de la celda",
+    "saveHint": "⌘ S guardar",
+    "setNullTitle": "Poner esta celda a NULL",
+    "setNullHint": "⌘⇧ N null",
+    "closeHint": "esc cerrar"
+  },
+  "tabs": {
+    "queryFileName": "query.sql",
+    "closeTab": "Cerrar pestaña",
+    "newQuery": "Nueva query",
+    "newQueryTooltip": "Nueva query (usa la conexión activa)",
+    "emptyOpenSomething": "Abre una tabla desde el explorador de esquemas o crea una nueva pestaña de query.",
+    "emptyConnectFirst": "Selecciona o crea una conexión para empezar."
   },
   "statusBar": {
     "disconnected": "desconectado",
