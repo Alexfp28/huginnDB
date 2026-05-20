@@ -25,6 +25,7 @@ import type {
   QueryResult,
   RowValue,
   TableInfo,
+  WorkspaceMeta,
 } from "@/types";
 
 export const api = {
@@ -257,4 +258,47 @@ export const api = {
   /** Drop the persisted workspace for a connection. */
   clearTabState: (connectionId: string) =>
     invoke<void>("clear_tab_state", { connectionId }),
+
+  // Workspaces -----------------------------------------------------------
+  //
+  // Workspaces wrap the per-connection tab state into named groups. The
+  // active workspace scopes every `getTabState` / `saveTabState` call,
+  // so switching workspaces transparently swaps the visible tabs
+  // without closing the underlying pool.
+
+  /** Sorted list of workspaces (by `order`). Includes color / icon for
+   *  the switcher chrome. */
+  listWorkspaces: () => invoke<WorkspaceMeta[]>("list_workspaces"),
+
+  /** Id of the workspace currently in focus. `null` before hydration. */
+  getActiveWorkspaceId: () =>
+    invoke<string | null>("get_active_workspace_id"),
+
+  /** Create a workspace and return its meta. New workspaces land at the
+   *  end of the list. */
+  createWorkspace: (name: string, color?: string | null, icon?: string | null) =>
+    invoke<WorkspaceMeta>("create_workspace", { name, color, icon }),
+
+  renameWorkspace: (id: string, name: string) =>
+    invoke<void>("rename_workspace", { id, name }),
+
+  /** Update color and/or icon — pass `null` to clear either field. */
+  updateWorkspaceAppearance: (
+    id: string,
+    color: string | null,
+    icon: string | null,
+  ) =>
+    invoke<void>("update_workspace_appearance", { id, color, icon }),
+
+  /** Delete a workspace. Errors if it is the only one. */
+  deleteWorkspace: (id: string) =>
+    invoke<void>("delete_workspace", { id }),
+
+  /** Apply a new ordering. The first id becomes `order=0`, etc. */
+  reorderWorkspaces: (ids: string[]) =>
+    invoke<void>("reorder_workspaces", { ids }),
+
+  /** Switch the active workspace. Subsequent tab-state calls scope to it. */
+  setActiveWorkspace: (id: string) =>
+    invoke<void>("set_active_workspace", { id }),
 };

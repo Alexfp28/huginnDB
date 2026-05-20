@@ -88,6 +88,7 @@ function SingleDbExplorer({
   connectionId,
   title,
   headerLevel = "root",
+  controlledFilter,
 }: {
   connectionId: string;
   title: string;
@@ -97,6 +98,14 @@ function SingleDbExplorer({
    * database node and the outer multi-DB explorer already owns the chrome.
    */
   headerLevel?: "root" | "nested";
+  /**
+   * When provided, the filter is owned by a parent component (typically
+   * [[MultiDbExplorer]], which renders one filter input shared across all
+   * DBs). The local input is hidden and the local state is bypassed —
+   * propagated by the parent so every nested DB filters by the same
+   * needle, which was the whole point of the multi-DB unification.
+   */
+  controlledFilter?: string;
 }) {
   const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[connectionId]);
@@ -119,7 +128,17 @@ function SingleDbExplorer({
     return undefined;
   });
 
-  const [filter, setFilter] = useState("");
+  // When the filter is owned by the parent we ignore the local state and
+  // hide the local input. We still declare the local state to keep the
+  // hook order stable when toggling between controlled and uncontrolled
+  // (the prop being defined/undefined doesn't change between renders in
+  // practice — a `<DatabaseRoot>` is either inside a multi-DB tree or it
+  // isn't — but defending against future restructures is cheap).
+  const [localFilter, setLocalFilter] = useState("");
+  const isControlled = controlledFilter !== undefined;
+  const filter = isControlled ? controlledFilter : localFilter;
+  const setFilter = isControlled ? () => {} : setLocalFilter;
+
   const [renameTarget, setRenameTarget] = useState<TableInfo | null>(null);
   const [dropTarget, setDropTarget] = useState<TableInfo | null>(null);
 
@@ -185,14 +204,16 @@ function SingleDbExplorer({
           </Button>
         </div>
       )}
-      <div className="px-3 pb-2">
-        <Input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder={t("schema.filterPlaceholder")}
-          className="h-7 text-xs"
-        />
-      </div>
+      {!isControlled && (
+        <div className="px-3 pb-2">
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder={t("schema.filterPlaceholder")}
+            className="h-7 text-xs"
+          />
+        </div>
+      )}
       {cs.error && (
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
@@ -315,6 +336,13 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   const refresh = useSchema((s) => s.refresh);
   const toggleNode = useSchema((s) => s.toggleNode);
 
+  // Connection-level filter, shared across every database in the
+  // explorer. Lifted up here so multi-DB connections have a single
+  // search box instead of one per database — see plan A2. Each nested
+  // SingleDbExplorer receives this value via `controlledFilter` and
+  // hides its own input.
+  const [filter, setFilter] = useState("");
+
   useEffect(() => {
     if (!cs || (!cs.initialized && !cs.loading)) refresh(parentId);
   }, [parentId, cs, refresh]);
@@ -326,6 +354,13 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
       </div>
     );
   }
+
+  // When the user is searching we want any already-opened database
+  // subtree to surface its matches without a manual click. We delegate
+  // that to DatabaseRoot via a flag rather than mutating cs.expanded —
+  // we don't want the toggle state to silently change just because the
+  // user typed something into the filter input.
+  const filterActive = filter.trim().length > 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -345,6 +380,14 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
           />
         </Button>
       </div>
+      <div className="px-3 pb-2">
+        <Input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={t("schema.filterPlaceholder")}
+          className="h-7 text-xs"
+        />
+      </div>
       {cs.error && (
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
@@ -356,6 +399,8 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
             dbName={db.name}
             expanded={cs.expanded.has(`db:${db.name}`)}
             onToggle={() => toggleNode(parentId, `db:${db.name}`)}
+            filter={filter}
+            filterActive={filterActive}
           />
         ))}
       </div>
@@ -371,18 +416,33 @@ function DatabaseRoot({
   dbName,
   expanded,
   onToggle,
+  filter,
+  filterActive,
 }: {
   parentId: string;
   dbName: string;
   expanded: boolean;
   onToggle: () => void;
+  /** Shared connection-level filter, forwarded to the nested explorer. */
+  filter: string;
+  /** True when the parent filter has any content; auto-expands already-opened
+   *  databases so search results surface without an extra click. */
+  filterActive: boolean;
 }) {
   const [childId, setChildId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
 
+  // While the user is searching, force-show the subtree of any database
+  // that's already been opened. We *don't* force-open unopened DBs —
+  // that would silently fan out N concurrent metadata queries against
+  // the server for every keystroke. Users who want results from a
+  // closed DB still expand it manually; once opened, subsequent
+  // searches include it.
+  const effectiveExpanded = expanded || (filterActive && childId !== null);
+
   useEffect(() => {
-    if (!expanded || childId || opening) return;
+    if (!effectiveExpanded || childId || opening) return;
     setOpening(true);
     setError(null);
     api
@@ -390,7 +450,7 @@ function DatabaseRoot({
       .then((id) => setChildId(id))
       .catch((e) => setError(String(e)))
       .finally(() => setOpening(false));
-  }, [expanded, childId, opening, parentId, dbName]);
+  }, [effectiveExpanded, childId, opening, parentId, dbName]);
 
   return (
     <div>
@@ -398,7 +458,7 @@ function DatabaseRoot({
         className="flex w-full items-center gap-1 px-2 py-1 hover:bg-accent/40"
         onClick={onToggle}
       >
-        {expanded ? (
+        {effectiveExpanded ? (
           <ChevronDown className="h-3 w-3" />
         ) : (
           <ChevronRight className="h-3 w-3" />
@@ -406,7 +466,7 @@ function DatabaseRoot({
         <Database className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="truncate text-xs">{dbName}</span>
       </button>
-      {expanded && (
+      {effectiveExpanded && (
         <div className="ml-3 border-l border-border/40">
           {error && (
             <div className="px-3 py-1 text-[11px] text-destructive">{error}</div>
@@ -421,6 +481,7 @@ function DatabaseRoot({
               connectionId={childId}
               title={dbName}
               headerLevel="nested"
+              controlledFilter={filter}
             />
           )}
         </div>

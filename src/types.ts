@@ -255,7 +255,23 @@ export interface UiPrefs {
   language: AppLanguage;
 }
 
-/** Persisted workspace for a single connection. */
+/**
+ * Lightweight workspace summary used by the topbar switcher. The full
+ * `connections` map never crosses the IPC boundary in this shape — tab
+ * data is fetched on demand via `getTabState`, scoped to the active
+ * workspace.
+ */
+export interface WorkspaceMeta {
+  id: string;
+  name: string;
+  /** Optional accent hex color, e.g. `"#7c3aed"`. */
+  color: string | null;
+  /** Optional lucide-react icon name (free-form on the wire). */
+  icon: string | null;
+  order: number;
+}
+
+/** Per-connection slice of an active workspace. */
 export interface ConnectionTabState {
   tabs: PersistedTab[];
   activeTabId: string | null;

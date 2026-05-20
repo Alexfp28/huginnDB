@@ -74,6 +74,10 @@ These bit us during the first sessions. Don't repeat them.
 
 6. **The MySQL `order_clause` previously had a brittle string-rewriting hack** to convert `"col"` → `` `col` ``. Now `fetch_table_data` computes `pg_or_sqlite` once and passes the right boolean to `quote_ident` from the start. Don't reintroduce the hack.
 
+7. **DataGrid cell-mutation callbacks pass `row.original` (the full values array), NOT a row index.** The previous index-based contract corrupted data when the user had `globalFilter` active: TanStack's `row.index` is the *filtered display* index, while parents resolved the PK from `result.rows[index]` (the unfiltered backend page). The two diverge as soon as the client filter is non-trivial. Anything that needs identity (PK lookup, delete, duplicate, FK overlay anchor) reads from the values array passed to the callback. See `DataGrid.tsx` props + `TableDataTab.pkValueFromRow`.
+
+8. **`tab_state.json` is v2 — every command operates on the active workspace's connections, not on a flat top-level map.** A v1 blob (top-level `connections` map) is migrated on load into a single auto-created "Default" workspace; the new shape is what every subsequent save emits. The `prefs::get_tab_state` / `save_tab_state` commands scope to `state.tab_state.active_workspace()`; `clear_tab_state` (and the profile-deletion sweep in `commands::connection::delete_profile`) sweep every workspace because profile removal is global. If you add a new tab-state-aware command, decide explicitly which scope you want and document it — never reintroduce a top-level `connections` field.
+
 ## Workflow
 
 ```powershell
@@ -108,15 +112,15 @@ The Rust toolchain + MSVC Build Tools (Windows) are prerequisites; the user alre
 | ----------------------- | ---------------------------------- | ----- |
 | `profiles.json`         | `src-tauri/src/store.rs`           | Connection metadata only. Passwords in OS keychain. |
 | `prefs.json`            | `src-tauri/src/prefs.rs`           | User preferences (editor / grid / ui). Atomic temp-file + rename on write. Bad JSON falls back to `Preferences::default()` — never blocks startup. |
-| `tab_state.json`        | `src-tauri/src/tab_state.rs`       | Per-connection workspace (open tabs, active tab, schema-tree expansion). LRU-pruned to 20 connections; query bodies capped at 64 KB. |
+| `tab_state.json`        | `src-tauri/src/tab_state.rs`       | **v2 since 0.5.0** — top-level shape is `{ version, workspaces[], activeWorkspaceId }`. Each workspace owns its own `connections` map (LRU-pruned to 20 per workspace; query bodies capped at 64 KB). v1 blobs are auto-migrated into a single "Default" workspace on load. Workspace metadata (name, color, icon, order) lives here too. |
 | `*.window-state.json`   | `tauri-plugin-window-state` v2     | Plugin-owned; do not parse manually. Removes need for a hand-rolled `window.rs`. |
 
 Theme + dockview layout still live in `localStorage` (keys `huginndb.theme.v2` and `huginndb.layout`) — synchronous read pre-mount avoids FOUC. Don't migrate these to disk without a plan for the flash.
 
-## Current status (post-session 2)
+## Current status (post-session 3)
 
-- 10 commits on `main`, pushed to GitHub. All authored as `Alexfp28 <alexlopezdelafuente@gmail.com>` after a one-time `filter-branch` rewrite at publish time.
-- No tests. No CI. No screenshots in the README yet.
+- Released 0.5.0: workspace switcher with reorder/colour/icon, "Copy row as ▸ JSON/INSERT/UPDATE" submenu, connection-level filter in multi-DB explorer, and the fix for the cell-save row-mismatch bug under client filters.
+- Backend has `cargo test` coverage for the v2 tab-state migration, workspace CRUD, prune semantics and oversize-query-body normalisation; no frontend tests or CI yet.
 - macOS is not a primary target; build should work but unverified.
 
 ## Roadmap (priority order from README)

@@ -51,8 +51,17 @@ import {
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  toJson as rowToJson,
+  toSqlInsert as rowToSqlInsert,
+  toSqlUpdate as rowToSqlUpdate,
+} from "@/lib/copyFormats";
+import type { Driver } from "@/types";
 
 interface Props {
   result: QueryResult;
@@ -65,8 +74,32 @@ interface Props {
   connectionId?: string;
   tableSchema?: string;
   tableName?: string;
+  /**
+   * Driver of the underlying connection. Used purely to make the
+   * "Copy as ▸ SQL …" snippets quote identifiers correctly
+   * (MySQL backticks vs PG/SQLite double quotes). Optional because
+   * query-result grids may not know which connection a row came from
+   * — the snippets still render with sensible defaults.
+   */
+  driver?: Driver;
+  /**
+   * Name of the primary key column for this table, when known. The
+   * grid uses it (a) to skip the PK in the "Copy as UPDATE" SET
+   * clause and (b) for the WHERE clause. When absent, UPDATE renders
+   * with `<pk> = <value>` placeholders so the user notices.
+   */
+  pkColumnName?: string;
+  /**
+   * Cell edit callback. Receives the **full row values array** (not a
+   * row index) so the parent can resolve identity (PK value) directly
+   * from the data, immune to client-side filtering reshuffling
+   * positions. The previous index-based contract silently corrupted
+   * data when `globalFilter` was active because the index referred to
+   * the filtered display order while the parent read from the
+   * unfiltered backend page — see plan A1.
+   */
   onCellSave?: (
-    rowIndex: number,
+    rowValues: CellValue[],
     columnName: string,
     value: string | null,
   ) => Promise<void>;
@@ -93,10 +126,14 @@ interface Props {
   onAddFilter?: (f: ColumnFilter) => void;
   onRemoveFilter?: (index: number) => void;
 
-  /** Row-level mutations. Only wired when the table has a PK. */
+  /**
+   * Row-level mutations. Only wired when the table has a PK. Like
+   * `onCellSave`, these receive the row's full values array to resolve
+   * identity safely under client filtering.
+   */
   onInsertRow?: () => void;
-  onDuplicateRow?: (rowIndex: number) => void;
-  onDeleteRow?: (rowIndex: number) => void;
+  onDuplicateRow?: (rowValues: CellValue[]) => void;
+  onDeleteRow?: (rowValues: CellValue[]) => void;
 
   /**
    * Inline draft row state (insert / duplicate). When set, an extra
@@ -131,7 +168,13 @@ function sqlLiteral(v: CellValue): string {
 }
 
 interface SelectedCell {
-  rowIndex: number;
+  /**
+   * Full row values array. We carry the row payload (not its display
+   * index) so saves stay correct when the visible order diverges from
+   * the underlying `result.rows` page — e.g. while `globalFilter` is
+   * active.
+   */
+  rowValues: CellValue[];
   colIndex: number;
   column: ColumnMeta;
   value: CellValue;
@@ -150,6 +193,8 @@ export function DataGrid({
   connectionId,
   tableSchema,
   tableName,
+  driver,
+  pkColumnName,
   onCellSave,
   onSortChange,
   sortColumn,
@@ -194,7 +239,7 @@ export function DataGrid({
   /** Full Monaco editor (opened via CellPreview F11 or double-click). */
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorTarget, setEditorTarget] = useState<{
-    rowIndex: number;
+    rowValues: CellValue[];
     column: ColumnMeta;
     value: string;
   } | null>(null);
@@ -203,10 +248,12 @@ export function DataGrid({
    * Inline foreign-key editor anchored to a single cell. Activated on
    * double-click when the column carries a single-column FK constraint;
    * supersedes the Monaco dialog for that path so the user picks a
-   * value without losing visual context.
+   * value without losing visual context. Tracked by row identity (the
+   * values array) instead of a display index so an FK edit survives
+   * sort/filter changes between activation and commit.
    */
   const [fkEditCell, setFkEditCell] = useState<{
-    rowIndex: number;
+    rowValues: CellValue[];
     column: ColumnMeta;
   } | null>(null);
   /** Fast lookup of column metadata by name for FK detection in the cell renderer. */
@@ -290,10 +337,13 @@ export function DataGrid({
         accessorFn: (row) => row[idx],
         cell: (info) => {
           const v = info.getValue() as CellValue;
-          const rowIndex = info.row.index;
+          const rowValues = info.row.original as CellValue[];
           const colInfo = columnInfoByName.get(col.name);
+          // FK edit identity is the row's value array (referential
+          // identity from TanStack's row.original) — stable across
+          // sort / filter reshuffles between activation and commit.
           const editingFk =
-            fkEditCell?.rowIndex === rowIndex &&
+            fkEditCell?.rowValues === rowValues &&
             fkEditCell.column.name === col.name;
           if (editingFk && connectionId && colInfo?.referenced_table) {
             // Inline overlay: replace the read-only cell content with a
@@ -316,7 +366,7 @@ export function DataGrid({
                   // the dropdown and dismiss).
                   const current = v === null ? null : formatValue(v);
                   if (picked === current) return;
-                  onCellSave?.(rowIndex, col.name, picked).catch(() => {});
+                  onCellSave?.(rowValues, col.name, picked).catch(() => {});
                 }}
               />
             );
@@ -362,16 +412,20 @@ export function DataGrid({
     getCoreRowModel: getCoreRowModel(),
   });
 
-  function openEditor(rowIndex: number, column: ColumnMeta, value: string) {
+  function openEditor(
+    rowValues: CellValue[],
+    column: ColumnMeta,
+    value: string,
+  ) {
     // Single-column FK columns get an inline combobox anchored to the
     // cell instead of the heavyweight Monaco dialog — picking a valid
     // referenced value never needs multi-line editing.
     const info = columnInfoByName.get(column.name);
     if (editable && onCellSave && connectionId && info?.referenced_table) {
-      setFkEditCell({ rowIndex, column });
+      setFkEditCell({ rowValues, column });
       return;
     }
-    setEditorTarget({ rowIndex, column, value });
+    setEditorTarget({ rowValues, column, value });
     setEditorOpen(true);
   }
 
@@ -481,6 +535,12 @@ export function DataGrid({
             )}
             {table.getRowModel().rows.map((row, i) => {
               const isSelected = selectedRowIndex === i;
+              // `rowValues` is the underlying payload (CellValue[]) for
+              // this row. We thread it through every callback so the
+              // parent resolves PK / identity from data — not from `i`,
+              // which is the *filtered display index* and silently
+              // mismatches `result.rows` when `globalFilter` is active.
+              const rowValues = row.original as CellValue[];
               return (
                 <tr
                   key={row.id}
@@ -499,7 +559,7 @@ export function DataGrid({
                   </td>
                   {row.getVisibleCells().map((cell, colIdx) => {
                     const meta = result.columns[colIdx];
-                    const value = row.original[colIdx];
+                    const value = rowValues[colIdx];
                     return (
                       <ContextMenu key={cell.id}>
                         <ContextMenuTrigger asChild>
@@ -509,7 +569,7 @@ export function DataGrid({
                               e.stopPropagation();
                               setSelectedRowIndex(i);
                               setSelectedCell({
-                                rowIndex: i,
+                                rowValues,
                                 colIndex: colIdx,
                                 column: meta,
                                 value,
@@ -518,7 +578,7 @@ export function DataGrid({
                             onContextMenu={() => {
                               setSelectedRowIndex(i);
                               setSelectedCell({
-                                rowIndex: i,
+                                rowValues,
                                 colIndex: colIdx,
                                 column: meta,
                                 value,
@@ -526,7 +586,7 @@ export function DataGrid({
                             }}
                             onDoubleClick={(e) => {
                               e.stopPropagation();
-                              openEditor(i, meta, formatValue(value));
+                              openEditor(rowValues, meta, formatValue(value));
                             }}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -551,11 +611,66 @@ export function DataGrid({
                           >
                             Copy with column name
                           </ContextMenuItem>
+                          {/* Row-level formatters. We keep the per-cell
+                              entries above (single value, single value
+                              with column name) because they're the most
+                              common path; this submenu covers the
+                              less-frequent "I want the whole row" use
+                              cases without bloating the top level. */}
+                          <ContextMenuSub>
+                            <ContextMenuSubTrigger>
+                              Copy row as
+                            </ContextMenuSubTrigger>
+                            <ContextMenuSubContent>
+                              <ContextMenuItem
+                                onSelect={() =>
+                                  copyToClipboard(
+                                    rowToJson(rowValues, result.columns),
+                                  )
+                                }
+                              >
+                                JSON
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onSelect={() =>
+                                  copyToClipboard(
+                                    rowToSqlInsert(
+                                      rowValues,
+                                      result.columns,
+                                      driver,
+                                      tableName,
+                                      tableSchema,
+                                    ),
+                                  )
+                                }
+                              >
+                                SQL INSERT
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onSelect={() =>
+                                  copyToClipboard(
+                                    rowToSqlUpdate(
+                                      rowValues,
+                                      result.columns,
+                                      driver,
+                                      tableName,
+                                      tableSchema,
+                                      pkColumnName,
+                                    ),
+                                  )
+                                }
+                              >
+                                SQL UPDATE
+                              </ContextMenuItem>
+                            </ContextMenuSubContent>
+                          </ContextMenuSub>
                           {editable && onCellSave && (
                             <ContextMenuItem
                               disabled={value === null}
                               onSelect={() =>
-                                onCellSave(i, meta.name, null).catch(() => {})
+                                onCellSave(rowValues, meta.name, null).catch(
+                                  () => {},
+                                )
                               }
                             >
                               Set NULL
@@ -606,7 +721,7 @@ export function DataGrid({
                               )}
                               {onDuplicateRow && (
                                 <ContextMenuItem
-                                  onSelect={() => onDuplicateRow(i)}
+                                  onSelect={() => onDuplicateRow(rowValues)}
                                 >
                                   Duplicate row…
                                 </ContextMenuItem>
@@ -614,7 +729,7 @@ export function DataGrid({
                               {onDeleteRow && (
                                 <ContextMenuItem
                                   className="text-destructive focus:text-destructive"
-                                  onSelect={() => onDeleteRow(i)}
+                                  onSelect={() => onDeleteRow(rowValues)}
                                 >
                                   Delete row
                                 </ContextMenuItem>
@@ -650,7 +765,7 @@ export function DataGrid({
           onClose={() => setSelectedCell(null)}
           onFullscreen={() => {
             openEditor(
-              selectedCell.rowIndex,
+              selectedCell.rowValues,
               selectedCell.column,
               formatValue(selectedCell.value),
             );
@@ -660,7 +775,7 @@ export function DataGrid({
             editable && onCellSave
               ? async (v) => {
                   await onCellSave(
-                    selectedCell.rowIndex,
+                    selectedCell.rowValues,
                     selectedCell.column.name,
                     v,
                   );
@@ -672,7 +787,7 @@ export function DataGrid({
             editable && onCellSave
               ? async () => {
                   await onCellSave(
-                    selectedCell.rowIndex,
+                    selectedCell.rowValues,
                     selectedCell.column.name,
                     null,
                   );
@@ -695,7 +810,7 @@ export function DataGrid({
             editable && onCellSave
               ? async (newValue) => {
                   await onCellSave(
-                    editorTarget.rowIndex,
+                    editorTarget.rowValues,
                     editorTarget.column.name,
                     newValue,
                   );

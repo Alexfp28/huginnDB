@@ -31,25 +31,31 @@ pub fn update_preferences(state: State<'_, AppState>, prefs: Preferences) -> App
     Ok(())
 }
 
-/// Look up the persisted tab state for `connection_id`. Returns `None` when
-/// the connection has never been opened, has been pruned, or its entry was
-/// cleared after the profile was deleted.
+/// Look up the persisted tab state for `connection_id` **inside the
+/// currently active workspace**. Returns `None` when the connection has
+/// never been opened in this workspace, has been pruned, or its entry
+/// was cleared after the profile was deleted.
+///
+/// Scoping by workspace means switching workspaces hides the other
+/// workspace's tabs without closing the underlying pool — exactly what
+/// the user is asking for when they switch.
 #[tauri::command]
 pub fn get_tab_state(
     state: State<'_, AppState>,
     connection_id: String,
 ) -> AppResult<Option<ConnectionTabState>> {
-    Ok(state
-        .tab_state
-        .read()
+    let guard = state.tab_state.read();
+    Ok(guard
+        .active_workspace()
         .connections
         .get(&connection_id)
         .cloned())
 }
 
-/// Replace the persisted tab state for `connection_id` and write the full
-/// blob to disk. The frontend stamps `last_opened` before sending; we run a
-/// final pass to drop oversize query bodies and to LRU-prune.
+/// Replace the persisted tab state for `connection_id` in the active
+/// workspace and write the full blob to disk. The frontend stamps
+/// `last_opened` before sending; we run a final pass to drop oversize
+/// query bodies and to LRU-prune per-workspace.
 #[tauri::command]
 pub fn save_tab_state(
     state: State<'_, AppState>,
@@ -59,7 +65,10 @@ pub fn save_tab_state(
     tab_state::normalise_for_save(&mut tab_state_value);
     let snapshot = {
         let mut guard = state.tab_state.write();
-        guard.connections.insert(connection_id, tab_state_value);
+        guard
+            .active_workspace_mut()
+            .connections
+            .insert(connection_id, tab_state_value);
         guard.prune();
         guard.clone()
     };
@@ -67,13 +76,17 @@ pub fn save_tab_state(
     Ok(())
 }
 
-/// Drop the persisted tab state for `connection_id`. Invoked when a profile
-/// is deleted so we don't keep dangling workspace entries forever.
+/// Drop the persisted tab state for `connection_id` across **every**
+/// workspace. Invoked when a profile is deleted so a removed connection
+/// can't keep dangling tab references in workspaces the user isn't
+/// currently looking at.
 #[tauri::command]
 pub fn clear_tab_state(state: State<'_, AppState>, connection_id: String) -> AppResult<()> {
     let snapshot = {
         let mut guard = state.tab_state.write();
-        guard.connections.remove(&connection_id);
+        for ws in &mut guard.workspaces {
+            ws.connections.remove(&connection_id);
+        }
         guard.clone()
     };
     tab_state::save_tab_state(&snapshot)?;

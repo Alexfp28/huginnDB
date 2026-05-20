@@ -33,6 +33,7 @@ import { useTranslation } from "react-i18next";
 import { setLanguage } from "@/lib/i18n";
 import { FileMenu } from "@/components/FileMenu";
 import { ViewMenu } from "@/components/ViewMenu";
+import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { SchemaExplorer } from "@/components/SchemaExplorer";
 import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
@@ -209,9 +210,10 @@ export default function App() {
     <TooltipProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
         <header className="relative flex h-9 items-center border-b border-border px-2">
-          {/* Left — File + View menus */}
+          {/* Left — File + View menus + workspace switcher */}
           <FileMenu selectedConnectionId={selected} onSelect={setSelected} />
           <ViewMenu />
+          <WorkspaceSwitcher />
 
           {/* Centred breadcrumb — absolutely positioned so it stays in the
               middle of the bar regardless of action button widths. */}

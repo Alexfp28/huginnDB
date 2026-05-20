@@ -153,9 +153,15 @@ pub fn delete_profile(state: State<'_, AppState>, id: String) -> AppResult<()> {
             keychain::delete_password(&ssh_account)?;
         }
     }
+    // Sweep the deleted connection out of every workspace — a profile
+    // removal is global, not scoped to whichever workspace happens to
+    // be active. Without this we'd leave dangling tabs that point at
+    // an id the user can never reach again.
     let tab_state_snapshot = {
         let mut guard = state.tab_state.write();
-        guard.connections.remove(&id);
+        for ws in &mut guard.workspaces {
+            ws.connections.remove(&id);
+        }
         guard.clone()
     };
     crate::tab_state::save_tab_state(&tab_state_snapshot)?;

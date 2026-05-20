@@ -6,6 +6,87 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-20
+
+A second feedback-driven release. After 0.4.0 was shown to colleagues
+inside a corporate setting, four pain points kept coming up: cell edits
+under an active client filter silently writing to the wrong row, one
+filter input per database in multi-DB connections, a missing
+"Copy row as …" affordance in the grid context menu, and the lack of a
+real workspace concept for grouping per-connection tabs by mental
+context (work, personal, projects). This release tackles all four. The
+SQL editor pain points (Ctrl+Enter, per-statement run, richer
+IntelliSense) are deliberately deferred to 0.6.0 so the data-grid and
+session bugs can ship without waiting on the editor rework.
+
+### Added
+
+- **Workspaces.** A workspace bundles a name, an optional accent colour
+  (eight curated swatches), an optional icon (nine lucide picks) and the
+  per-connection tab state for everything the user touched while it was
+  active. A switcher in the topbar (`WorkspaceSwitcher.tsx`) hosts a
+  sortable list (via `@dnd-kit/sortable`), inline rename / colour /
+  icon / delete actions, and a "New workspace" dialog. Switching does
+  **not** close pools; it flushes pending tab-state writes for every
+  open connection, flips the active pointer in `tab_state.json`, and
+  re-hydrates each open connection's tabs from the new workspace.
+  Backend persistence lives in `tab_state.rs v2` (the v1 blob is
+  transparently migrated into a single "Default" workspace on load).
+  New Tauri commands (`list_workspaces`, `get_active_workspace_id`,
+  `create_workspace`, `rename_workspace`, `update_workspace_appearance`,
+  `delete_workspace`, `reorder_workspaces`, `set_active_workspace`)
+  plus a frontend Zustand store (`stores/workspaces.ts`) glue the two
+  together. The existing `get_tab_state` / `save_tab_state` /
+  `clear_tab_state` commands now transparently scope to the active
+  workspace; `clear_tab_state` and the profile-deletion sweep operate
+  across every workspace so a deleted connection cannot leave dangling
+  tabs in workspaces the user is not currently looking at.
+- **"Copy row as …" submenu in the data-grid context menu.** Three
+  destinations: JSON (object keyed by column name, pretty-printed),
+  SQL `INSERT` (qualified table + every column), SQL `UPDATE` (every
+  non-PK column in `SET`, primary key in `WHERE`). Snippets are
+  driver-aware — MySQL uses backticks, Postgres and SQLite use double
+  quotes. The serialisers live in the new `src/lib/copyFormats.ts` so
+  they can be reused later by other surfaces (CellPreview, query
+  history exports). The Radix context-menu wrapper grew matching
+  `Sub`, `SubTrigger`, `SubContent` primitives so the submenu fits the
+  rest of the app's chrome.
+- **Connection-level filter in the multi-database schema explorer.**
+  Multi-DB connections (Postgres / MySQL profiles saved with an empty
+  `database` field) used to render a separate filter input under every
+  expanded database, which forced users to retype the same needle once
+  per database. The filter input is now lifted to the connection
+  header and propagated through every nested `SingleDbExplorer` via a
+  new `controlledFilter` prop. Single-DB connections (SQLite, Postgres
+  / MySQL with a fixed catalog) keep their original behaviour.
+
+### Fixed
+
+- **Data corruption when editing a cell with a client-side filter
+  active.** The `DataGrid` used to pass the TanStack `row.index`
+  (filtered display index) to `onCellSave`, while `TableDataTab`
+  resolved the PK by reading `result.rows[index]` — the unfiltered
+  backend page. Once `globalFilter` reshuffled the displayed rows the
+  two indices diverged silently and the `UPDATE` landed on whichever
+  row happened to sit at the same offset in the backend page. The
+  contract now passes the row's full value array (`row.original`)
+  instead of an index; the parent resolves the PK from the data,
+  immune to client-side reshuffling. `onDeleteRow` and `onDuplicateRow`
+  follow the same shape. Cell selection state (`SelectedCell`,
+  `editorTarget`, `fkEditCell`) was reshaped accordingly so an edit
+  started before a filter change continues to address the correct row
+  after.
+
+### Internal
+
+- New dependencies: `@dnd-kit/core`, `@dnd-kit/sortable`,
+  `@dnd-kit/utilities` — used by the workspace switcher's drag-and-drop
+  reorder. Adds three small (~30 kB total) packages to the bundle but
+  saves a non-trivial amount of bespoke pointer-handling code.
+- `tab_state.rs` grew a `RawState` helper struct used only by
+  `load_tab_state` to deserialise both v1 and v2 blobs in one pass,
+  with the migration centralised inside `RawState::into_state`.
+
 ## [0.4.0] — 2026-05-19
 
 A phased release driven by feedback from real-world use of the 0.3 series

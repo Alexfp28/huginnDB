@@ -26,6 +26,7 @@ import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/schema";
 import { useFilterHistory } from "@/stores/filterHistory";
+import { useConnections } from "@/stores/connections";
 import type {
   CellValue,
   ColumnFilter,
@@ -52,7 +53,6 @@ interface Props {
 }
 
 interface PendingDelete {
-  rowIndex: number;
   pkValue: CellValue;
 }
 
@@ -102,6 +102,21 @@ function duplicateDraft(
 export function TableDataTab({ connectionId, schema, table }: Props) {
   const loadColumns = useSchema((s) => s.loadColumns);
   const columnsBySchema = useSchema((s) => s.byConnection[connectionId]?.columns);
+  // Resolve the driver for this connection — needed by the DataGrid so
+  // its "Copy as SQL …" snippets use the right identifier quoting
+  // (backticks for MySQL, double quotes for PG/SQLite). Multi-DB
+  // synthetic child IDs (`<parent>::db::<name>`) inherit the parent's
+  // driver, matching the lookup already done by SchemaExplorer.
+  const driver = useConnections((s) => {
+    const direct = s.profiles.find((p) => p.id === connectionId);
+    if (direct) return direct.driver;
+    const sep = connectionId.indexOf("::db::");
+    if (sep > 0) {
+      const parent = s.profiles.find((p) => p.id === connectionId.slice(0, sep));
+      if (parent) return parent.driver;
+    }
+    return undefined;
+  });
   const tableKey = `${schema ?? ""}.${table}`;
   const cols = columnsBySchema?.[tableKey];
 
@@ -191,23 +206,43 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
     fetchData();
   }, [fetchData]);
 
-  /** Resolve the PK column value for the given row index, or throw. */
-  function pkValueAtRow(rowIndex: number): CellValue {
-    if (!result || !pkColumn) throw new Error("Table has no primary key");
-    const pkIdx = result.columns.findIndex((c) => c.name === pkColumn.name);
-    if (pkIdx < 0) throw new Error("Primary key column not in result set");
-    return result.rows[rowIndex][pkIdx];
+  /**
+   * Index of the PK column inside `result.columns`, memoised so cell
+   * mutations don't re-scan the array on every keystroke. Negative when
+   * the PK column was excluded from the result set (defensive — the
+   * editable=hasPk gate above already blocks this path, but the
+   * callbacks still guard).
+   */
+  const pkColumnIndex = useMemo(() => {
+    if (!result || !pkColumn) return -1;
+    return result.columns.findIndex((c) => c.name === pkColumn.name);
+  }, [result, pkColumn]);
+
+  /**
+   * Resolve the PK value directly from the row's payload. This is the
+   * fix for the post-0.4.0 bug where edits applied under a client-side
+   * filter wrote to the wrong row: previously the callback received a
+   * filtered-display index and read `result.rows[index]`, but the
+   * filtered display order diverges from `result.rows` whenever the
+   * grid's `globalFilter` is active. Passing the row values instead of
+   * its index makes the mapping unambiguous.
+   */
+  function pkValueFromRow(rowValues: CellValue[]): CellValue {
+    if (!pkColumn) throw new Error("Table has no primary key");
+    if (pkColumnIndex < 0)
+      throw new Error("Primary key column not in result set");
+    return rowValues[pkColumnIndex];
   }
 
   async function onCellSave(
-    rowIndex: number,
+    rowValues: CellValue[],
     columnName: string,
     value: string | null,
   ) {
     if (!pkColumn) {
       throw new Error("Cannot update: table has no primary key");
     }
-    const pkValue = pkValueAtRow(rowIndex);
+    const pkValue = pkValueFromRow(rowValues);
     await api.updateCell({
       connectionId,
       schema,
@@ -240,10 +275,10 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
     setOffset(0);
   }
 
-  function onDeleteRow(rowIndex: number) {
+  function onDeleteRow(rowValues: CellValue[]) {
     try {
-      const pkValue = pkValueAtRow(rowIndex);
-      setPendingDelete({ rowIndex, pkValue });
+      const pkValue = pkValueFromRow(rowValues);
+      setPendingDelete({ pkValue });
     } catch (e) {
       setError(String(e));
     }
@@ -271,12 +306,12 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
     setDraft(emptyDraft(cols.map((c) => c.name)));
   }
 
-  function onDuplicateRow(rowIndex: number) {
+  function onDuplicateRow(rowValues: CellValue[]) {
     if (!result || !cols || draft) return;
     setDraft(
       duplicateDraft(
         result.columns.map((c) => c.name),
-        result.rows[rowIndex],
+        rowValues,
         pkColumn,
       ),
     );
@@ -395,6 +430,8 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
             connectionId={connectionId}
             tableSchema={schema}
             tableName={table}
+            driver={driver}
+            pkColumnName={pkColumn?.name}
             onCellSave={onCellSave}
             sortColumn={sortColumn}
             sortDesc={sortDesc}

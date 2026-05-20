@@ -79,6 +79,14 @@ pub fn run() {
             commands::prefs::get_tab_state,
             commands::prefs::save_tab_state,
             commands::prefs::clear_tab_state,
+            commands::workspaces::list_workspaces,
+            commands::workspaces::get_active_workspace_id,
+            commands::workspaces::create_workspace,
+            commands::workspaces::rename_workspace,
+            commands::workspaces::update_workspace_appearance,
+            commands::workspaces::delete_workspace,
+            commands::workspaces::reorder_workspaces,
+            commands::workspaces::set_active_workspace,
         ])
         .run(tauri::generate_context!())
         .expect("error while running HuginnDB");
