@@ -6,6 +6,57 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-20
+
+Companion release to 0.5.0 that tackles the SQL editor pain points
+deliberately deferred from that one: a broken Ctrl+Enter, no way to
+run a single statement when the editor holds several, and an
+IntelliSense provider that only surfaced raw table / column names.
+
+### Added
+
+- **Per-statement run via CodeLens.** A small "▶ Run" appears on the
+  first line of every `;`-delimited statement; clicking it executes
+  only that fragment without touching selection state or having to
+  highlight the right chunk by hand. Statement boundaries come from a
+  new `src/lib/sqlSplit.ts` parser that understands single-quoted
+  strings, double-quoted identifiers, backticks (MySQL), line and
+  block comments, and Postgres dollar-quoted strings (`$$ … $$`,
+  `$tag$ … $tag$`) so a `;` inside any of those does not split the
+  statement. The gutter refreshes on every buffer edit via a
+  `Monaco.Emitter` wired to the CodeLens provider.
+- **Driver-aware SQL keywords in autocomplete.** The completion popup
+  now blends tables, columns and a curated keyword catalogue
+  (`COMMON` plus a Postgres / MySQL / SQLite overlay — `RETURNING`,
+  `ON DUPLICATE KEY UPDATE`, `PRAGMA`, etc.). Ordering is enforced
+  via `sortText` prefixes: tables first, then columns, then keywords,
+  so a partial match never buries the user's table behind a
+  long-tail keyword. The Monaco wiring moved into pure helpers
+  (`lib/sqlKeywords.ts`, `lib/sqlCompletions.ts`) so it's testable in
+  isolation and easy to evolve. Column names are deduplicated across
+  tables; the `detail` field reports how many tables a shared column
+  appears in.
+
+### Fixed
+
+- **`Ctrl+Enter` in the SQL editor did not run the query.** The
+  previous binding lived on `window.addEventListener("keydown", …)`,
+  but Monaco's own command layer captures `Ctrl+Enter` inside the
+  editor focus area before the window listener gets a chance to fire,
+  so the shortcut only worked when the editor wasn't focused — i.e.
+  never, in normal use. The shortcut is now bound via
+  `editor.addCommand(KeyMod.CtrlCmd | KeyCode.Enter, …)`, registered
+  exactly once during `handleMount` and dispatched through a ref that
+  tracks the live `runQuery` callback (so the closure isn't frozen to
+  the first render's `sql`). Documented as gotcha #9 in CLAUDE.md.
+
+### Internal
+
+- `QueryEditorTab` grew refs for the live `runQuery`, the live
+  completion list and the live CodeLens cache so the
+  register-once-handlers Monaco demands can still see freshest state
+  without re-registering on every render.
+
 ## [0.5.0] — 2026-05-20
 
 A second feedback-driven release. After 0.4.0 was shown to colleagues

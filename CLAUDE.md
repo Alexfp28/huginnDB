@@ -78,6 +78,8 @@ These bit us during the first sessions. Don't repeat them.
 
 8. **`tab_state.json` is v2 — every command operates on the active workspace's connections, not on a flat top-level map.** A v1 blob (top-level `connections` map) is migrated on load into a single auto-created "Default" workspace; the new shape is what every subsequent save emits. The `prefs::get_tab_state` / `save_tab_state` commands scope to `state.tab_state.active_workspace()`; `clear_tab_state` (and the profile-deletion sweep in `commands::connection::delete_profile`) sweep every workspace because profile removal is global. If you add a new tab-state-aware command, decide explicitly which scope you want and document it — never reintroduce a top-level `connections` field.
 
+9. **Monaco swallows `Ctrl+Enter` and friends inside its focus area; a `window` keydown listener never sees them.** That's why `QueryEditorTab` binds Ctrl+Enter via `editor.addCommand(KeyMod.CtrlCmd | KeyCode.Enter, …)` inside `handleMount`, not via `window.addEventListener`. Because `addCommand` keeps its handler closure for the lifetime of the editor, the handler reads `runQueryRef.current()` rather than capturing `runQuery` directly — otherwise it would freeze to the first render's `sql` and `running` values. Same ref pattern applies to the completion provider and the CodeLens provider (both registered once, both reading from live refs).
+
 ## Workflow
 
 ```powershell
@@ -120,6 +122,7 @@ Theme + dockview layout still live in `localStorage` (keys `huginndb.theme.v2` a
 ## Current status (post-session 3)
 
 - Released 0.5.0: workspace switcher with reorder/colour/icon, "Copy row as ▸ JSON/INSERT/UPDATE" submenu, connection-level filter in multi-DB explorer, and the fix for the cell-save row-mismatch bug under client filters.
+- Released 0.6.0 right after: Ctrl+Enter restored, per-statement "▶ Run" CodeLens, driver-aware keywords in the autocomplete (Postgres `RETURNING`, MySQL `ON DUPLICATE KEY UPDATE`, …) with tables-first sort.
 - Backend has `cargo test` coverage for the v2 tab-state migration, workspace CRUD, prune semantics and oversize-query-body normalisation; no frontend tests or CI yet.
 - macOS is not a primary target; build should work but unverified.
 

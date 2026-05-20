@@ -2,7 +2,17 @@
  * Tab body for ad-hoc SQL queries. Hosts a Monaco editor on top and a
  * `DataGrid` of results below, separated by a vertical resize handle.
  *
- * Keyboard shortcut: Ctrl+Enter runs the query.
+ * Editor features:
+ *  - `Ctrl+Enter` runs the entire buffer. Bound through Monaco's command
+ *    system (not a `window` listener) because Monaco swallows the
+ *    keypress inside the editor focus area — see gotcha #9 in CLAUDE.md.
+ *  - A CodeLens "▶ Run" appears on the first line of every `;`-delimited
+ *    statement and runs just that fragment. Useful when the editor
+ *    holds a scratch pad of multiple queries.
+ *  - Autocomplete blends tables, columns and SQL keywords (the latter
+ *    driver-aware: `RETURNING` on Postgres, `ON DUPLICATE KEY` on
+ *    MySQL, etc.). Suggestions are ranked tables → columns → keywords
+ *    via `sortText` prefixes; see `lib/sqlCompletions.ts`.
  *
  * An info bar at the bottom of the editor panel mirrors VS Code's status
  * bar style, showing the keyboard shortcut hint, connected database name,
@@ -23,6 +33,9 @@ import type { QueryResult } from "@/types";
 import { DataGrid } from "@/components/DataGrid";
 import { Button } from "@/components/ui/button";
 import { SaveQueryDialog } from "@/components/SaveQueryDialog";
+import { splitSql } from "@/lib/sqlSplit";
+import { keywordsFor } from "@/lib/sqlKeywords";
+import { buildCompletions } from "@/lib/sqlCompletions";
 
 interface Props {
   tabId: string;
@@ -70,65 +83,127 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     getModel: () => {
       getLineCount: () => number;
       getValueLength: () => number;
+      getValue: () => string;
     } | null;
     onDidChangeModelContent: (fn: () => void) => { dispose: () => void };
+    addCommand: (keybinding: number, handler: () => void) => string | null;
   } | null>(null);
 
   const sql = tab?.query ?? "";
 
+  /** Driver for the active connection — drives the keyword overlay and
+   *  the dollar-quote handling in [[splitSql]]. */
+  const driver = useConnections((s) => {
+    const direct = s.profiles.find((p) => p.id === connectionId);
+    if (direct) return direct.driver;
+    const sep = connectionId.indexOf("::db::");
+    if (sep > 0) {
+      const parent = s.profiles.find((p) => p.id === connectionId.slice(0, sep));
+      if (parent) return parent.driver;
+    }
+    return undefined;
+  });
+
+  /**
+   * Pre-built suggestion list. Recomputes when the schema cache changes
+   * for this connection or when the driver flips (keyword overlay).
+   * Empty schemas still produce keyword suggestions so the autocomplete
+   * is useful before the user expands the explorer.
+   */
   const completionSuggestions = useMemo(() => {
-    if (!schemaState) return [];
-    const tableSet = new Set<string>();
-    schemaState.tables.forEach((t) => tableSet.add(t.name));
-    const colSet = new Set<string>();
-    Object.values(schemaState.columns).forEach((cols) =>
-      cols.forEach((c) => colSet.add(c.name)),
-    );
-    return [
-      ...Array.from(tableSet).map((name) => ({ name, kind: "Class" as const })),
-      ...Array.from(colSet).map((name) => ({ name, kind: "Field" as const })),
-    ];
-  }, [schemaState]);
+    return buildCompletions({
+      tables: schemaState?.tables ?? [],
+      columns: schemaState?.columns ?? {},
+      keywords: keywordsFor(driver),
+    });
+  }, [schemaState, driver]);
 
-  const runQuery = useCallback(async () => {
-    if (!sql.trim() || running) return;
-    setRunning(true);
-    setError(null);
-    try {
-      const r = await api.executeQuery(connectionId, sql);
-      setResult(r);
-      // Propagate stats to the tab store so StatusBar can display them.
-      updateQueryStats(tabId, { rows: r.rows_affected, elapsed_ms: r.elapsed_ms });
-      addHistory({
-        sql,
-        connectionId,
-        elapsedMs: r.elapsed_ms,
-        rowsAffected: r.rows_affected,
-      });
-    } catch (e) {
-      setError(String(e));
-      addHistory({
-        sql,
-        connectionId,
-        elapsedMs: 0,
-        rowsAffected: 0,
-        error: String(e),
-      });
-    } finally {
-      setRunning(false);
-    }
-  }, [sql, connectionId, running, addHistory, updateQueryStats, tabId]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.ctrlKey && e.key === "Enter") {
-        e.preventDefault();
-        runQuery();
+  /**
+   * Run a fragment of SQL. Defaults to the entire editor buffer when no
+   * text is passed in. We support the optional argument so the
+   * per-statement CodeLens can execute just the statement under the
+   * gutter icon without juggling editor selection state.
+   */
+  const runQuery = useCallback(
+    async (override?: string) => {
+      const toRun = (override ?? sql).trim();
+      if (!toRun || running) return;
+      setRunning(true);
+      setError(null);
+      try {
+        const r = await api.executeQuery(connectionId, toRun);
+        setResult(r);
+        // Propagate stats to the tab store so StatusBar can display them.
+        updateQueryStats(tabId, { rows: r.rows_affected, elapsed_ms: r.elapsed_ms });
+        addHistory({
+          sql: toRun,
+          connectionId,
+          elapsedMs: r.elapsed_ms,
+          rowsAffected: r.rows_affected,
+        });
+      } catch (e) {
+        setError(String(e));
+        addHistory({
+          sql: toRun,
+          connectionId,
+          elapsedMs: 0,
+          rowsAffected: 0,
+          error: String(e),
+        });
+      } finally {
+        setRunning(false);
       }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    },
+    [sql, connectionId, running, addHistory, updateQueryStats, tabId],
+  );
+
+  /**
+   * Ref pointing at the latest `runQuery`. Monaco's `addCommand` runs
+   * its handler in a long-lived closure that we register exactly once
+   * inside `handleMount`; capturing the runQuery callback there
+   * directly would freeze the closure to the first render's values
+   * (stale `sql`, stale `running`). Bouncing through this ref lets us
+   * keep one registration while still hitting the live callback.
+   */
+  const runQueryRef = useRef(runQuery);
+  useEffect(() => {
+    runQueryRef.current = runQuery;
   }, [runQuery]);
+
+  /**
+   * Ref to the live completion list for the same reason as `runQueryRef`:
+   * `registerCompletionItemProvider` keeps the handler closure for the
+   * lifetime of the editor and we want it to see the freshest
+   * suggestions every time the user opens the popup.
+   */
+  const completionsRef = useRef(completionSuggestions);
+  useEffect(() => {
+    completionsRef.current = completionSuggestions;
+  }, [completionSuggestions]);
+
+  /**
+   * Ref + emitter that drives the CodeLens provider. We re-parse the SQL
+   * whenever the buffer changes and bump the emitter so Monaco refreshes
+   * the gutter icons. The provider closure reads `lensesRef.current` so
+   * the list is always the freshest one.
+   */
+  const lensesRef = useRef<ReturnType<typeof splitSql>>([]);
+  const lensEmitterRef = useRef<{
+    fire: () => void;
+    onDidChange?: ((listener: () => void) => { dispose: () => void }) | null;
+  } | null>(null);
+
+  function recomputeLenses() {
+    lensesRef.current = splitSql(sql);
+    lensEmitterRef.current?.fire();
+  }
+
+  // Keep the CodeLens cache in sync with the buffer. The provider itself
+  // uses the ref, so we only have to invalidate on each edit.
+  useEffect(() => {
+    recomputeLenses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sql]);
 
   function handleMount(_editor: unknown, monaco: Monaco) {
     const editor = _editor as typeof editorRef.current;
@@ -146,6 +221,20 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       if (m) setEditorStats({ lines: m.getLineCount(), chars: m.getValueLength() });
     });
 
+    // Ctrl/Cmd + Enter → run the full buffer. Bound through Monaco's
+    // command system so the editor's own keybinding layer doesn't
+    // swallow the event (the previous window-level listener was
+    // racing Monaco and the run only fired when the editor was
+    // not focused — i.e. never, when the user actually needed it).
+    editor?.addCommand(
+      // KeyMod.CtrlCmd | KeyCode.Enter — using the Monaco enum
+      // values directly avoids importing them at compile time.
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+      () => {
+        void runQueryRef.current();
+      },
+    );
+
     monaco.languages.registerCompletionItemProvider("sql", {
       provideCompletionItems: (model, position) => {
         const word = model.getWordUntilPosition(position);
@@ -155,18 +244,81 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           startColumn: word.startColumn,
           endColumn: word.endColumn,
         };
+        const kindFor = (k: "table" | "column" | "keyword") => {
+          switch (k) {
+            case "table":
+              return monaco.languages.CompletionItemKind.Class;
+            case "column":
+              return monaco.languages.CompletionItemKind.Field;
+            case "keyword":
+              return monaco.languages.CompletionItemKind.Keyword;
+          }
+        };
         return {
-          suggestions: completionSuggestions.map((s) => ({
-            label: s.name,
-            kind:
-              s.kind === "Class"
-                ? monaco.languages.CompletionItemKind.Class
-                : monaco.languages.CompletionItemKind.Field,
-            insertText: s.name,
+          suggestions: completionsRef.current.map((s) => ({
+            label: s.label,
+            kind: kindFor(s.kind),
+            insertText: s.label,
+            detail: s.detail,
+            sortText: s.sortText,
             range,
           })),
         };
       },
+    });
+
+    // Per-statement run via CodeLens. A small "▶ Run" appears on the
+    // starting line of every parsed statement; clicking it executes
+    // only that fragment. We register a single shared command id
+    // (`huginndb.runStatement`) once, and every CodeLens carries the
+    // statement text in `command.arguments` so the dispatcher just
+    // pipes it back into `runQueryRef.current(...)`.
+    monaco.editor.registerCommand?.(
+      "huginndb.runStatement",
+      (_accessor, ...args) => {
+        const text = args[0];
+        if (typeof text === "string") {
+          void runQueryRef.current(text);
+        }
+      },
+    );
+
+    // Monaco's `CodeLensProvider.onDidChange` is typed as
+    // `IEvent<CodeLensProvider>` — listeners receive the provider as
+    // the event payload. We never read that payload (the gutter just
+    // needs to know "something changed"), so we use a plain emitter
+    // and cast at the registration site to avoid pulling the
+    // CodeLensProvider type alias into this file.
+    const emitter = new monaco.Emitter<unknown>();
+    lensEmitterRef.current = {
+      fire: () => emitter.fire(undefined),
+    };
+
+    monaco.languages.registerCodeLensProvider("sql", {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      onDidChange: emitter.event as any,
+      provideCodeLenses: () => {
+        const lenses = lensesRef.current;
+        return {
+          lenses: lenses.map((stmt, idx) => ({
+            range: {
+              startLineNumber: stmt.startLine,
+              startColumn: 1,
+              endLineNumber: stmt.startLine,
+              endColumn: 1,
+            },
+            id: `run-stmt-${idx}-${stmt.startLine}`,
+            command: {
+              id: "huginndb.runStatement",
+              title: "▶ Run",
+              tooltip: "Run this statement",
+              arguments: [stmt.text],
+            },
+          })),
+          dispose: () => {},
+        };
+      },
+      resolveCodeLens: (_m, lens) => lens,
     });
   }
 
