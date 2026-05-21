@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-05-21
+
+Likely the last release of the alpha line. Closes the cell-edit
+corner case under client-side filtering that bit us across 0.5.0 and
+0.6.0, finishes the SSH-tunnel UX (keychain prompt now fires on Test
+too), turns the multi-DB explorer into a real cross-database search,
+and finally exposes Monaco's themes + font as user preferences with
+One Dark Pro as the new default.
+
 ### Added
 
 - **VS Code-style Monaco themes + font customisation.** Settings →
