@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-05-21
+
+Patch de imagen corporativa. Reemplaza el icono placeholder de la "H"
+verde por el nuevo logotipo oficial de HuginnDB (ojo nórdico sobre fondo
+oscuro, estilo app-icon con rounded corners). Sin cambios funcionales.
+
+### Changed
+
+- **Nuevo logotipo oficial.** Todos los iconos de la aplicación
+  (`src-tauri/icons/`) han sido regenerados desde la nueva fuente
+  `huginn-app-icon-512.png` usando `pnpm tauri icon`. El logo anterior
+  (letra "H" con círculo verde) queda reemplazado en todas las
+  plataformas: Windows (`.ico`, APPX squares, Store Logo), macOS
+  (`.icns`), Linux (PNGs), iOS y Android.
+
+- **Assets de imagen corporativa añadidos.** `public/image/` incluye
+  ahora las variantes oficiales del logotipo: `huginn-app-icon` en
+  1024/512/256/128/64 px, más las variantes SVG del mark
+  (`huginn-mark`, `huginn-mark-black`, `huginn-mark-white`,
+  `huginn-mark-blue`, `huginn-mark-runes`) para uso en web, docs y
+  marketing.
+
 ## [0.7.0] — 2026-05-21
 
 Likely the last release of the alpha line. Closes the cell-edit
