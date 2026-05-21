@@ -189,6 +189,22 @@ pub async fn test_connection(
         Some(s) => Some(s),
         None => resolve_ssh_secret(&profile)?,
     };
+
+    // Persist a freshly-typed SSH secret to the OS keychain *before* the
+    // smoke-test. This is what triggers the OS credential prompt
+    // (Windows Credential Manager, libsecret, macOS Keychain) the first
+    // time the user wires up a tunnel — matching the UX they already get
+    // for the DB password on a regular connection. We guard on a
+    // non-empty `profile.id` so the namespaced account
+    // (`<id>::ssh::<user>`) cannot collide between draft profiles that
+    // haven't been saved yet; the frontend assigns a stable UUID before
+    // calling Test so this branch is reached on new profiles too.
+    if let (Some(account), Some(secret)) = (profile.ssh_keyring_account(), ssh.as_ref()) {
+        if !profile.id.is_empty() {
+            keychain::set_password(&account, secret)?;
+        }
+    }
+
     let known_hosts = state.known_hosts.clone();
     let start = Instant::now();
     log_connection(

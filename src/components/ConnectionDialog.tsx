@@ -99,8 +99,23 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
   const [testStatus, setTestStatus] = useState<TestStatus>({ kind: "idle" });
   const [saving, setSaving] = useState(false);
 
+  /**
+   * Stable id for the profile being edited. For existing profiles this
+   * is just `initial.id`; for new ones we pre-mint a UUID the first
+   * time the dialog opens so that both Test and Save key keychain
+   * entries (DB password + SSH secret) under the same
+   * `${id}::…` account. Without this, persisting the SSH secret during
+   * Test would either land under `::ssh::<user>` (colliding across
+   * draft profiles) or have to skip the keychain entirely on Test.
+   */
+  const [draftId, setDraftId] = useState<string>("");
+
   useEffect(() => {
     if (!open) return;
+    // Mint / reuse the draft id every time the dialog opens. Existing
+    // profiles keep their id; new ones get a fresh UUID so the keychain
+    // accounts are stable across Test → Save.
+    setDraftId(initial?.id ?? crypto.randomUUID());
     if (initial) {
       setName(initial.name);
       setDriver(initial.driver);
@@ -175,7 +190,11 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
 
   function buildProfile(): ConnectionProfile {
     return {
-      id: initial?.id ?? "",
+      // `draftId` is pre-minted on dialog open so Test and Save share
+      // the same id — both keychain writes (DB password + SSH secret)
+      // land under matching `${id}::…` accounts, and `save_profile`'s
+      // own UUID assignment becomes a no-op for our case.
+      id: initial?.id ?? draftId,
       name,
       driver,
       host,
