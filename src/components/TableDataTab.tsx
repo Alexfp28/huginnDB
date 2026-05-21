@@ -439,7 +439,16 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
               setSortColumn(c);
               setSortDesc(d);
             }}
-            globalFilter={filter}
+            // `globalFilter` drives the grid's client-side `visibleRows`
+            // pass and MUST match the filter the backend used to build
+            // `result.rows` — that's `appliedFilter`, not the
+            // uncommitted toolbar draft. Mixing the two caused
+            // cell saves under a typed-but-not-Enter search to look
+            // like they applied to the row above (see gotcha #7 in
+            // CLAUDE.md). The toolbar input still reflects the live
+            // draft via `filterInput`.
+            globalFilter={appliedFilter}
+            filterInput={filter}
             onGlobalFilterChange={setFilter}
             onGlobalFilterSubmit={submitFilter}
             searchHistory={filterHistory ?? []}

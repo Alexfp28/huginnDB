@@ -106,7 +106,26 @@ interface Props {
   onSortChange?: (column: string, desc: boolean) => void;
   sortColumn?: string;
   sortDesc?: boolean;
+  /**
+   * Applied filter — drives the client-side `visibleRows` pass and is
+   * what the grid believes is the *current* search. For tabs that
+   * commit explicitly (table data), pass the committed/applied value
+   * here, NOT the uncommitted toolbar input — otherwise the rows
+   * actually rendered diverge from the backend page that fed
+   * `result.rows`, which silently corrupts cell-save UX (the row the
+   * user perceives as "above" can become a different backend row after
+   * a refetch). Query-result tabs that have no backend filter just
+   * pass the live input value.
+   */
   globalFilter?: string;
+  /**
+   * Optional value shown in the toolbar search box. Use it when the
+   * uncommitted draft (what the user is typing) is intentionally
+   * different from the applied filter — i.e. table-data tabs that
+   * only refetch on Enter. When absent the input mirrors
+   * `globalFilter`.
+   */
+  filterInput?: string;
   onGlobalFilterChange?: (v: string) => void;
   /**
    * Called when the user explicitly commits the current search — by
@@ -200,6 +219,7 @@ export function DataGrid({
   sortColumn,
   sortDesc,
   globalFilter,
+  filterInput,
   onGlobalFilterChange,
   onGlobalFilterSubmit,
   searchHistory,
@@ -308,6 +328,21 @@ export function DataGrid({
       ),
     [result.columns],
   );
+
+  /**
+   * Backend column index keyed by name. The cell render loop walks
+   * `row.getVisibleCells()` whose position index is TanStack's *visible*
+   * order — if a future change ever introduces column reordering /
+   * hiding, that index would silently diverge from `result.columns`.
+   * Resolving by `cell.column.id` (which we set to `col.name`) keeps
+   * cell metadata and underlying row values aligned regardless of
+   * display order.
+   */
+  const columnIndexByName = useMemo(() => {
+    const m = new Map<string, number>();
+    result.columns.forEach((c, i) => m.set(c.name, i));
+    return m;
+  }, [result.columns]);
 
   const columns = useMemo<ColumnDef<CellValue[]>[]>(
     () =>
@@ -443,7 +478,7 @@ export function DataGrid({
       {/* Toolbar: filter chips + text filter + row count + elapsed time + insert */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs">
         <SearchInput
-          value={globalFilter ?? ""}
+          value={filterInput ?? globalFilter ?? ""}
           onChange={onGlobalFilterChange}
           onSubmit={onGlobalFilterSubmit}
           history={searchHistory ?? []}
@@ -557,9 +592,19 @@ export function DataGrid({
                   <td className="border-b border-border/50 px-2 py-1 text-[10px] text-muted-foreground">
                     {i + 1}
                   </td>
-                  {row.getVisibleCells().map((cell, colIdx) => {
-                    const meta = result.columns[colIdx];
-                    const value = rowValues[colIdx];
+                  {row.getVisibleCells().map((cell) => {
+                    // Resolve column meta + value by *name*, not by the
+                    // position of the cell in `getVisibleCells()`. The
+                    // grid currently keeps both orders in sync, but a
+                    // single column hide / reorder would otherwise
+                    // misalign `result.columns[colIdx]` with the actual
+                    // cell — see `columnIndexByName` above.
+                    const colName = cell.column.id;
+                    const backendIdx = columnIndexByName.get(colName) ?? -1;
+                    if (backendIdx < 0) return null;
+                    const meta = result.columns[backendIdx];
+                    const value = rowValues[backendIdx];
+                    const colIdx = backendIdx;
                     return (
                       <ContextMenu key={cell.id}>
                         <ContextMenuTrigger asChild>
