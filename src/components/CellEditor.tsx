@@ -28,7 +28,8 @@ import {
 } from "@/components/ui/select";
 import Editor from "@monaco-editor/react";
 import { detectLanguage, tryFormat, type ContentLanguage } from "@/lib/detectContentType";
-import { useThemeStore, selectActiveTheme } from "@/stores/theme";
+import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
+import { resolveMonacoTheme } from "@/lib/monaco-themes";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -49,7 +50,7 @@ export function CellEditor({
   onSave,
 }: Props) {
   const { t } = useTranslation();
-  const theme = useThemeStore(selectActiveTheme);
+  const editorPrefs = usePreferences(selectEditorPrefs);
   const [value, setValue] = useState(initialValue);
   const detected = useMemo(() => detectLanguage(initialValue ?? ""), [initialValue]);
   const [language, setLanguage] = useState<ContentLanguage>(detected);
@@ -155,13 +156,17 @@ export function CellEditor({
             height="100%"
             value={value}
             language={language}
-            theme={theme.mode === "dark" ? "vs-dark" : "vs-light"}
+            theme={resolveMonacoTheme(editorPrefs.theme)}
             onChange={(v) => setValue(v ?? "")}
             options={{
               readOnly: !!readonly,
-              minimap: { enabled: false },
-              wordWrap: "on",
-              fontSize: 13,
+              minimap: { enabled: editorPrefs.minimap },
+              wordWrap: editorPrefs.wordWrap ? "on" : "off",
+              fontFamily: editorPrefs.fontFamily,
+              fontSize: editorPrefs.fontSize,
+              tabSize: editorPrefs.tabSize,
+              lineNumbers: editorPrefs.lineNumbers ? "on" : "off",
+              formatOnPaste: editorPrefs.formatOnPaste,
               scrollBeyondLastLine: false,
               folding: true,
               automaticLayout: true,

@@ -27,7 +27,8 @@ import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
-import { useThemeStore, selectActiveTheme } from "@/stores/theme";
+import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
+import { resolveMonacoTheme } from "@/lib/monaco-themes";
 import { useQueryHistory } from "@/stores/queryHistory";
 import type { QueryResult } from "@/types";
 import { DataGrid } from "@/components/DataGrid";
@@ -46,7 +47,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const tab = useTabs((s) => s.tabs.find((t) => t.id === tabId));
   const updateQuery = useTabs((s) => s.updateQuery);
   const updateQueryStats = useTabs((s) => s.updateQueryStats);
-  const theme = useThemeStore(selectActiveTheme);
+  const editorPrefs = usePreferences(selectEditorPrefs);
   const schemaState = useSchema((s) => s.byConnection[connectionId]);
   const addHistory = useQueryHistory((s) => s.add);
   const allHistory = useQueryHistory((s) => s.entries);
@@ -369,14 +370,24 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               <Editor
                 height="100%"
                 language="sql"
-                theme={theme.mode === "dark" ? "vs-dark" : "vs-light"}
+                // `theme.mode` (app theme) used to be the only signal;
+                // now Editor prefs own the Monaco theme so users can
+                // pick One Dark Pro / GitHub / Monokai / Solarized
+                // independently of the app chrome. `resolveMonacoTheme`
+                // falls back to one-dark-pro if `prefs.json` carries an
+                // unknown id.
+                theme={resolveMonacoTheme(editorPrefs.theme)}
                 value={sql}
                 onChange={(v) => updateQuery(tabId, v ?? "")}
                 onMount={handleMount}
                 options={{
-                  minimap: { enabled: false },
-                  wordWrap: "on",
-                  fontSize: 13,
+                  minimap: { enabled: editorPrefs.minimap },
+                  wordWrap: editorPrefs.wordWrap ? "on" : "off",
+                  fontFamily: editorPrefs.fontFamily,
+                  fontSize: editorPrefs.fontSize,
+                  tabSize: editorPrefs.tabSize,
+                  lineNumbers: editorPrefs.lineNumbers ? "on" : "off",
+                  formatOnPaste: editorPrefs.formatOnPaste,
                   scrollBeyondLastLine: false,
                   automaticLayout: true,
                 }}

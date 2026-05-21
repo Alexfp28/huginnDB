@@ -229,6 +229,13 @@ export interface EditorPrefs {
   minimap: boolean;
   lineNumbers: boolean;
   formatOnPaste: boolean;
+  /**
+   * Monaco theme id. Defaults to `"one-dark-pro"`. The runtime maps
+   * unknown values back to the default via `resolveMonacoTheme`, so an
+   * older `prefs.json` without this key, or one carrying a theme that's
+   * since been removed, still renders cleanly.
+   */
+  theme: string;
 }
 
 export interface GridPrefs {

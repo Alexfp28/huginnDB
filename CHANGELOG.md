@@ -6,6 +6,82 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **VS Code-style Monaco themes + font customisation.** Settings →
+  Editor now exposes a theme picker with One Dark Pro (the new
+  default), GitHub Dark, GitHub Light, Monokai, Solarized Dark,
+  Solarized Light, and Monaco's built-in `vs-dark` / `vs-light`. The
+  font family and font size inputs already lived in the dialog but
+  were ignored by the editors; they're now wired to the live Monaco
+  instances (both the SQL editor in query tabs and the cell editor
+  dialog). Theme definitions are bundled in
+  `src/lib/monaco-themes.ts` — no `monaco-themes` npm dependency, no
+  CDN fetch (gotcha #2 in `CLAUDE.md`). `prefs.json` learns a new
+  `editor.theme` field; older files default to `one-dark-pro` on
+  load via `serde(default)` on the Rust side and `resolveMonacoTheme`
+  on the frontend.
+
+- **MongoDB-Compass-style filter in the multi-database explorer.**
+  Typing in the connection-level search box now prefetches the table
+  list for every database on the server (debounced 250 ms, fan-out
+  gated on needle length ≥ 2 so a single accidental keystroke doesn't
+  hammer the catalog) and auto-expands every database whose tables
+  match the needle. Databases with no matches drop out of the list
+  while the filter is active; databases that match by *name* are
+  surfaced collapsed so the user can pick them. Clearing the search
+  instantly restores the full list. The previous behaviour only
+  surfaced matches inside DBs the user had already opened by hand —
+  matching across the whole server required opening every DB
+  manually first.
+- **SSH tunnel credentials now go through the OS keychain on Test, not
+  just on Save.** Creating a profile with a tunnel used to skip the
+  credential prompt during the Test round-trip — the SSH secret stayed
+  in memory until the user hit Save, which made it unclear whether the
+  password had actually been persisted. `test_connection` now writes
+  the supplied SSH secret to the keychain under
+  `<profile.id>::ssh::<ssh_user>` *before* `smoke_test`, matching the
+  UX already in place for the DB password. To keep the keychain
+  account stable between Test and Save for brand-new profiles, the
+  connection dialog pre-mints a UUID on open via `crypto.randomUUID()`
+  and threads it through `buildProfile()`; `save_profile` already
+  treated a supplied id as authoritative, so this is a no-op there.
+
+### Fixed
+
+- **Duplicate database node in multi-DB MySQL / SQLite explorers.**
+  Expanding a database in multi-DB mode used to render *the same
+  database name* a second time with a Database icon underneath,
+  with tables and indexes nested one extra level. The culprit was
+  the synthetic child connection's `list_tables` reporting every
+  table's `schema` as the database name itself (MySQL's
+  `DATABASE()`, SQLite's hard-coded `"main"`), which the nested
+  `SingleDbExplorer` then dutifully grouped under a per-schema
+  header. The nested explorer now flattens away that header when
+  there's exactly one schema, so tables / views / indexes sit
+  directly under the database node. Postgres multi-DB with multiple
+  user schemas (`public`, custom namespaces, …) keeps the per-schema
+  header.
+- **Cell save under an uncommitted toolbar filter no longer appears to
+  bleed into the row above.** The grid used to receive the live
+  toolbar draft as `globalFilter` while the backend page was built
+  from the committed value (`appliedFilter`); the two diverged
+  whenever the user was typing without having pressed Enter, so the
+  client-side `visibleRows` pass hid a different subset than the rows
+  the backend had returned. On save + refetch, the viewport
+  reshuffled and a neighbour visually inherited the edited cell's
+  position — same family of bug as gotcha #7 in `CLAUDE.md` (PK
+  lookup vs filtered-display index). `DataGrid` now takes a separate
+  `filterInput` prop for the toolbar value, keeping the applied
+  filter and the displayed input independent.
+- **Cell metadata is resolved by column name, not by visible-cells
+  position.** `row.getVisibleCells()` walks TanStack's display order;
+  the previous render indexed `result.columns[colIdx]` and
+  `rowValues[colIdx]` with that position, which would silently
+  misalign meta and value the first time anyone introduced column
+  hiding or reordering. A memoised `columnIndexByName` map now
+  resolves both off `cell.column.id`.
+
 ## [0.6.0] — 2026-05-20
 
 Companion release to 0.5.0 that tackles the SQL editor pain points

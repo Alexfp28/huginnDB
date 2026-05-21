@@ -218,6 +218,7 @@
       }
     },
     "editor": {
+      "theme": "Tema",
       "fontFamily": "Familia tipográfica",
       "fontSize": "Tamaño de fuente (px)",
       "tabSize": "Tamaño de tabulación",

@@ -41,6 +41,7 @@ const DEFAULT_PREFS: Preferences = {
     minimap: false,
     lineNumbers: true,
     formatOnPaste: false,
+    theme: "one-dark-pro",
   },
   grid: {
     rowHeight: 26,

@@ -43,6 +43,11 @@ pub struct EditorPrefs {
     pub minimap: bool,
     pub line_numbers: bool,
     pub format_on_paste: bool,
+    /// Monaco theme id (e.g. `"one-dark-pro"`, `"github-dark"`,
+    /// `"vs-light"`). Stringly-typed so the frontend's theme catalogue
+    /// stays the single source of truth — the backend just round-trips
+    /// whatever id the user picked.
+    pub theme: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +98,7 @@ impl Default for EditorPrefs {
             minimap: false,
             line_numbers: true,
             format_on_paste: false,
+            theme: "one-dark-pro".into(),
         }
     }
 }
