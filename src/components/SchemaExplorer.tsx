@@ -24,7 +24,7 @@
  * existing single-connection-id signatures.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -223,55 +223,61 @@ function SingleDbExplorer({
             {t("schema.noMatches")}
           </div>
         )}
-        {schemas.map((schema) => {
-          const schemaNodeKey = `schema:${schema}`;
-          // Force-expand a schema when the filter is active so matching
-          // tables under it are visible without the user having to click.
-          const schemaOpen = needle ? true : cs.expanded.has(schemaNodeKey);
-          const { tables, views } = bySchema[schema];
+        {(() => {
+          // In multi-DB mode, MySQL and SQLite synthetic children report
+          // every table under a single "schema" name that coincides with
+          // the database name itself (`SELECT DATABASE()` on MySQL,
+          // hard-coded "main" on SQLite). Re-rendering that as a Database
+          // node under the database we just expanded looks like the
+          // database is nested inside itself. When this nested explorer
+          // sees exactly one schema, drop the redundant header and pin
+          // the sections directly under the parent DB node. Postgres
+          // multi-DB legitimately has multiple user schemas
+          // (`public`, custom namespaces) — there we keep the per-schema
+          // header so they remain distinguishable.
+          const flattenSingleSchema =
+            headerLevel === "nested" && schemas.length === 1;
+          return schemas.map((schema) => {
+            const schemaNodeKey = `schema:${schema}`;
+            // Force-expand a schema when the filter is active so matching
+            // tables under it are visible without the user having to click.
+            const schemaOpen =
+              flattenSingleSchema || needle
+                ? true
+                : cs.expanded.has(schemaNodeKey);
+            const { tables, views } = bySchema[schema];
 
-          return (
-            <div key={schema}>
-              {/* Schema / database header */}
-              <button
-                className="flex w-full items-center gap-1 px-2 py-1 hover:bg-accent/40"
-                onClick={() => toggleNode(connectionId, schemaNodeKey)}
-              >
-                {schemaOpen ? (
-                  <ChevronDown className="h-3 w-3" />
-                ) : (
-                  <ChevronRight className="h-3 w-3" />
+            return (
+              <div key={schema}>
+                {/* Schema / database header — suppressed when we're a
+                    nested explorer with a single schema to avoid a
+                    duplicate database node (see comment above). */}
+                {!flattenSingleSchema && (
+                  <button
+                    className="flex w-full items-center gap-1 px-2 py-1 hover:bg-accent/40"
+                    onClick={() => toggleNode(connectionId, schemaNodeKey)}
+                  >
+                    {schemaOpen ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                    <Database className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="truncate text-xs">{schema}</span>
+                    <span className="ml-auto text-[10px] text-muted-foreground">
+                      {tables.length + views.length}
+                    </span>
+                  </button>
                 )}
-                <Database className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="truncate text-xs">{schema}</span>
-                <span className="ml-auto text-[10px] text-muted-foreground">
-                  {tables.length + views.length}
-                </span>
-              </button>
 
-              {schemaOpen && (
-                <div>
-                  {/* Tables section */}
-                  <TableSection
-                    label={t("schema.sectionTables")}
-                    icon={<TableIcon className="h-3 w-3 text-muted-foreground/70" />}
-                    items={tables}
-                    sectionKey={`${schemaNodeKey}:tables`}
-                    connectionId={connectionId}
-                    cs={cs}
-                    toggleNode={toggleNode}
-                    loadColumns={loadColumns}
-                    actions={tableActions}
-                    forceOpen={!!needle}
-                  />
-
-                  {/* Views section */}
-                  {views.length > 0 && (
+                {schemaOpen && (
+                  <div>
+                    {/* Tables section */}
                     <TableSection
-                      label={t("schema.sectionViews")}
-                      icon={<Eye className="h-3 w-3 text-muted-foreground/70" />}
-                      items={views}
-                      sectionKey={`${schemaNodeKey}:views`}
+                      label={t("schema.sectionTables")}
+                      icon={<TableIcon className="h-3 w-3 text-muted-foreground/70" />}
+                      items={tables}
+                      sectionKey={`${schemaNodeKey}:tables`}
                       connectionId={connectionId}
                       cs={cs}
                       toggleNode={toggleNode}
@@ -279,21 +285,37 @@ function SingleDbExplorer({
                       actions={tableActions}
                       forceOpen={!!needle}
                     />
-                  )}
 
-                  {/* Indexes section header — content is per-table */}
-                  <IndexesSectionHeader
-                    label={t("schema.sectionIndexes")}
-                    sectionKey={`${schemaNodeKey}:indexes`}
-                    connectionId={connectionId}
-                    expanded={cs.expanded}
-                    toggleNode={toggleNode}
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })}
+                    {/* Views section */}
+                    {views.length > 0 && (
+                      <TableSection
+                        label={t("schema.sectionViews")}
+                        icon={<Eye className="h-3 w-3 text-muted-foreground/70" />}
+                        items={views}
+                        sectionKey={`${schemaNodeKey}:views`}
+                        connectionId={connectionId}
+                        cs={cs}
+                        toggleNode={toggleNode}
+                        loadColumns={loadColumns}
+                        actions={tableActions}
+                        forceOpen={!!needle}
+                      />
+                    )}
+
+                    {/* Indexes section header — content is per-table */}
+                    <IndexesSectionHeader
+                      label={t("schema.sectionIndexes")}
+                      sectionKey={`${schemaNodeKey}:indexes`}
+                      connectionId={connectionId}
+                      expanded={cs.expanded}
+                      toggleNode={toggleNode}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          });
+        })()}
       </div>
 
       {renameTarget && (
@@ -335,6 +357,10 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   const cs = useSchema((s) => s.byConnection[parentId]);
   const refresh = useSchema((s) => s.refresh);
   const toggleNode = useSchema((s) => s.toggleNode);
+  // Subscribe to the whole map so `matchingDbs` reactively recomputes
+  // as each prefetch lands. The membership check is cheap (Map lookup
+  // per database) so the broader subscription is fine here.
+  const byConnection = useSchema((s) => s.byConnection);
 
   // Connection-level filter, shared across every database in the
   // explorer. Lifted up here so multi-DB connections have a single
@@ -343,9 +369,56 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   // hides its own input.
   const [filter, setFilter] = useState("");
 
+  // Debounced needle drives the prefetch fan-out and the
+  // matching-database computation. Without the delay, every keystroke
+  // would queue an `openDatabaseView` + `list_tables` against every
+  // database on the server.
+  const [debouncedNeedle, setDebouncedNeedle] = useState("");
+  useEffect(() => {
+    const trimmed = filter.trim().toLowerCase();
+    // Skip debouncing the empty case — clearing the filter should feel
+    // instantaneous so the user immediately gets the full list back.
+    if (trimmed.length === 0) {
+      setDebouncedNeedle("");
+      return;
+    }
+    const id = setTimeout(() => setDebouncedNeedle(trimmed), 250);
+    return () => clearTimeout(id);
+  }, [filter]);
+
   useEffect(() => {
     if (!cs || (!cs.initialized && !cs.loading)) refresh(parentId);
   }, [parentId, cs, refresh]);
+
+  // MongoDB-Compass-style prefetch: while the user is searching, walk
+  // every database we haven't loaded yet, open the synthetic child
+  // connection, and pull its table list into the store. We mark a db
+  // as "in-flight" the moment we start so concurrent renders don't
+  // schedule it twice. Failures are swallowed — the matching
+  // computation just won't include that DB until the user retries.
+  // Limit to needle length >= 2 to avoid a full fan-out on a single
+  // typed character (and on accidental focus changes).
+  const inFlightPrefetch = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (debouncedNeedle.length < 2 || !cs) return;
+    for (const db of cs.databases) {
+      const childId = `${parentId}::db::${db.name}`;
+      const childCs = byConnection[childId];
+      if (childCs?.initialized || childCs?.loading) continue;
+      if (inFlightPrefetch.current.has(childId)) continue;
+      inFlightPrefetch.current.add(childId);
+      api
+        .openDatabaseView(parentId, db.name)
+        .then((resolvedId) => refresh(resolvedId))
+        .catch(() => {
+          // Silent: a failed prefetch is reported via the database's
+          // own subtree the next time the user expands it.
+        })
+        .finally(() => {
+          inFlightPrefetch.current.delete(childId);
+        });
+    }
+  }, [debouncedNeedle, cs, byConnection, parentId, refresh]);
 
   if (!cs) {
     return (
@@ -355,12 +428,38 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
     );
   }
 
-  // When the user is searching we want any already-opened database
-  // subtree to surface its matches without a manual click. We delegate
-  // that to DatabaseRoot via a flag rather than mutating cs.expanded —
-  // we don't want the toggle state to silently change just because the
-  // user typed something into the filter input.
-  const filterActive = filter.trim().length > 0;
+  const filterActive = debouncedNeedle.length > 0;
+
+  // Decide which databases to render. With an active filter we surface
+  // (a) DBs whose own catalog name matches the needle (covers the case
+  // where the user is looking for a database by name), and (b) DBs that
+  // own at least one matching table — those auto-expand so the user
+  // sees the matches without an extra click.
+  const matchingDbs = useMemo(() => {
+    if (!filterActive) return null;
+    const m = new Map<string, { byName: boolean; byTable: boolean }>();
+    for (const db of cs.databases) {
+      const childId = `${parentId}::db::${db.name}`;
+      const tables = byConnection[childId]?.tables ?? [];
+      const byTable = tables.some((t) =>
+        t.name.toLowerCase().includes(debouncedNeedle),
+      );
+      const byName = db.name.toLowerCase().includes(debouncedNeedle);
+      if (byName || byTable) m.set(db.name, { byName, byTable });
+    }
+    return m;
+  }, [filterActive, debouncedNeedle, cs.databases, byConnection, parentId]);
+
+  // While prefetches are in flight we want to tell the user something
+  // is happening — "no matches" would be misleading if the DBs simply
+  // haven't reported yet.
+  const prefetching =
+    filterActive &&
+    cs.databases.some((db) => {
+      const childId = `${parentId}::db::${db.name}`;
+      const c = byConnection[childId];
+      return !c?.initialized;
+    });
 
   return (
     <div className="flex h-full flex-col">
@@ -392,17 +491,33 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
       <div className="flex-1 overflow-y-auto py-1 text-sm">
-        {cs.databases.map((db) => (
-          <DatabaseRoot
-            key={db.name}
-            parentId={parentId}
-            dbName={db.name}
-            expanded={cs.expanded.has(`db:${db.name}`)}
-            onToggle={() => toggleNode(parentId, `db:${db.name}`)}
-            filter={filter}
-            filterActive={filterActive}
-          />
-        ))}
+        {filterActive && matchingDbs && matchingDbs.size === 0 && !prefetching && (
+          <div className="px-3 py-2 text-xs italic text-muted-foreground">
+            {t("schema.noMatches")}
+          </div>
+        )}
+        {cs.databases
+          .filter((db) => !matchingDbs || matchingDbs.has(db.name))
+          .map((db) => {
+            const match = matchingDbs?.get(db.name);
+            // Auto-expand DBs that contain a table match so the result
+            // is visible immediately. A name-only match keeps the DB
+            // collapsed — the user is presumably picking the database,
+            // not browsing inside it.
+            const autoExpand = !!match?.byTable;
+            return (
+              <DatabaseRoot
+                key={db.name}
+                parentId={parentId}
+                dbName={db.name}
+                expanded={cs.expanded.has(`db:${db.name}`)}
+                onToggle={() => toggleNode(parentId, `db:${db.name}`)}
+                filter={filter}
+                filterActive={filterActive}
+                autoExpand={autoExpand}
+              />
+            );
+          })}
       </div>
     </div>
   );
@@ -418,6 +533,7 @@ function DatabaseRoot({
   onToggle,
   filter,
   filterActive,
+  autoExpand,
 }: {
   parentId: string;
   dbName: string;
@@ -428,18 +544,22 @@ function DatabaseRoot({
   /** True when the parent filter has any content; auto-expands already-opened
    *  databases so search results surface without an extra click. */
   filterActive: boolean;
+  /** True when the parent has determined this DB contains a table match
+   *  for the current filter — auto-opens the subtree (Compass-style). */
+  autoExpand?: boolean;
 }) {
   const [childId, setChildId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
 
-  // While the user is searching, force-show the subtree of any database
-  // that's already been opened. We *don't* force-open unopened DBs —
-  // that would silently fan out N concurrent metadata queries against
-  // the server for every keystroke. Users who want results from a
-  // closed DB still expand it manually; once opened, subsequent
-  // searches include it.
-  const effectiveExpanded = expanded || (filterActive && childId !== null);
+  // Three ways the subtree can be open:
+  //   1. The user clicked the chevron (`expanded`).
+  //   2. The user is searching and the DB was already opened earlier
+  //      (`filterActive && childId`).
+  //   3. The Compass-style filter has determined this DB has matching
+  //      tables and asks us to auto-open it (`autoExpand`).
+  const effectiveExpanded =
+    expanded || autoExpand || (filterActive && childId !== null);
 
   useEffect(() => {
     if (!effectiveExpanded || childId || opening) return;
