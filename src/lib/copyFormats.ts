@@ -107,11 +107,14 @@ export function toSqlInsert(
 /**
  * A SQL `UPDATE … SET … WHERE pk = lit;` snippet for the row.
  *
- * The PK column is excluded from the `SET` clause: updating a row's
- * primary key from a copy-paste is almost never the user's intent, and
- * the value would just round-trip to itself anyway. If the row has no
- * known PK column the snippet falls back to `WHERE <pk> = <value>` so
- * the user fixes it before executing.
+ * Every PK column is excluded from the `SET` clause (updating a row's
+ * primary key from a copy-paste is almost never the user's intent) and
+ * AND-joined in the `WHERE` clause so the snippet stays safe on
+ * composite-PK tables — emitting only the first PK column there would
+ * silently fan the UPDATE out across every row sharing that leading
+ * value, exactly the corruption the cell-save path used to suffer. If
+ * the row has no known PK columns the snippet falls back to
+ * `WHERE <pk> = <value>` so the user fixes it before executing.
  */
 export function toSqlUpdate(
   rowValues: CellValue[],
@@ -119,24 +122,30 @@ export function toSqlUpdate(
   driver: Driver | undefined,
   tableName: string | undefined,
   schema: string | undefined,
-  pkColumnName: string | undefined,
+  pkColumnNames: string[] | undefined,
 ): string {
   const tbl = qualifiedTable(driver, schema, tableName);
-  const pkIdx = pkColumnName
-    ? columns.findIndex((c) => c.name === pkColumnName)
-    : -1;
+  const pkSet = new Set(pkColumnNames ?? []);
+  const pkIndices = (pkColumnNames ?? [])
+    .map((name) => columns.findIndex((c) => c.name === name))
+    .filter((i) => i >= 0);
 
   const setPairs = columns
     .map((c, i) => {
-      if (i === pkIdx) return null;
+      if (pkSet.has(c.name)) return null;
       return `${quoteIdent(driver, c.name)} = ${sqlLiteral(rowValues[i])}`;
     })
     .filter((s): s is string => s !== null)
     .join(", ");
 
   let whereClause: string;
-  if (pkIdx >= 0) {
-    whereClause = `${quoteIdent(driver, columns[pkIdx].name)} = ${sqlLiteral(rowValues[pkIdx])}`;
+  if (pkIndices.length > 0) {
+    whereClause = pkIndices
+      .map(
+        (i) =>
+          `${quoteIdent(driver, columns[i].name)} = ${sqlLiteral(rowValues[i])}`,
+      )
+      .join(" AND ");
   } else {
     whereClause = "<pk> = <value>";
   }

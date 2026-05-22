@@ -53,7 +53,8 @@ interface Props {
 }
 
 interface PendingDelete {
-  pkValue: CellValue;
+  /** One value per primary-key column, ordered to match `pkColumns`. */
+  pkValues: CellValue[];
 }
 
 /** Build an empty draft (all cells untouched / NULL). */
@@ -161,7 +162,25 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [draft, setDraft] = useState<DraftRow | null>(null);
 
-  const pkColumn = useMemo(() => cols?.find((c) => c.is_primary_key), [cols]);
+  /**
+   * Every column that participates in the table's PRIMARY KEY, in
+   * catalog order. Composite PKs surface multiple entries here; tables
+   * without a PK yield an empty list (data is read-only in that case).
+   *
+   * Using `find` instead of `filter` here used to silently corrupt data
+   * on composite-PK tables: the cell-save path would send only the
+   * leading column to `update_cell`, and the backend's
+   * `WHERE first_pk_col = ?` predicate would match every row sharing
+   * that leading value. Always operate on the full list.
+   */
+  const pkColumns = useMemo(
+    () => cols?.filter((c) => c.is_primary_key) ?? [],
+    [cols],
+  );
+  /** Convenience: the first PK column, used for snippet generation and
+   *  the (legacy) `RETURNING <pk>` hint on inserts. Do NOT use this for
+   *  any UPDATE/DELETE predicate — that needs the full `pkColumns`. */
+  const pkColumn = pkColumns[0];
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -207,31 +226,31 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
   }, [fetchData]);
 
   /**
-   * Index of the PK column inside `result.columns`, memoised so cell
-   * mutations don't re-scan the array on every keystroke. Negative when
-   * the PK column was excluded from the result set (defensive — the
-   * editable=hasPk gate above already blocks this path, but the
-   * callbacks still guard).
+   * Indices of every PK column inside `result.columns`, memoised so cell
+   * mutations don't re-scan the array on every keystroke. A negative
+   * entry means that PK column was excluded from the result set — the
+   * editable gate below treats the table as read-only in that case so
+   * UPDATE/DELETE never run with an incomplete key.
    */
-  const pkColumnIndex = useMemo(() => {
-    if (!result || !pkColumn) return -1;
-    return result.columns.findIndex((c) => c.name === pkColumn.name);
-  }, [result, pkColumn]);
+  const pkColumnIndices = useMemo(() => {
+    if (!result || pkColumns.length === 0) return [];
+    return pkColumns.map((c) =>
+      result.columns.findIndex((rc) => rc.name === c.name),
+    );
+  }, [result, pkColumns]);
 
   /**
-   * Resolve the PK value directly from the row's payload. This is the
-   * fix for the post-0.4.0 bug where edits applied under a client-side
-   * filter wrote to the wrong row: previously the callback received a
-   * filtered-display index and read `result.rows[index]`, but the
-   * filtered display order diverges from `result.rows` whenever the
-   * grid's `globalFilter` is active. Passing the row values instead of
-   * its index makes the mapping unambiguous.
+   * Resolve the row's full PK tuple directly from its payload. Returning
+   * one value per `pkColumns` entry — composite PKs ship every value to
+   * the backend so the WHERE clause stays unambiguous. Using
+   * `row.original` rather than a row index sidesteps the client-side
+   * filter / sort reshuffle problem documented in CLAUDE.md gotcha #7.
    */
-  function pkValueFromRow(rowValues: CellValue[]): CellValue {
-    if (!pkColumn) throw new Error("Table has no primary key");
-    if (pkColumnIndex < 0)
-      throw new Error("Primary key column not in result set");
-    return rowValues[pkColumnIndex];
+  function pkValuesFromRow(rowValues: CellValue[]): CellValue[] {
+    if (pkColumns.length === 0) throw new Error("Table has no primary key");
+    if (pkColumnIndices.some((i) => i < 0))
+      throw new Error("Primary-key columns missing from the result set");
+    return pkColumnIndices.map((i) => rowValues[i]);
   }
 
   async function onCellSave(
@@ -239,16 +258,16 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
     columnName: string,
     value: string | null,
   ) {
-    if (!pkColumn) {
+    if (pkColumns.length === 0) {
       throw new Error("Cannot update: table has no primary key");
     }
-    const pkValue = pkValueFromRow(rowValues);
+    const pkValues = pkValuesFromRow(rowValues);
     await api.updateCell({
       connectionId,
       schema,
       table,
-      pkColumn: pkColumn.name,
-      pkValue,
+      pkColumns: pkColumns.map((c) => c.name),
+      pkValues,
       column: columnName,
       value,
     });
@@ -277,22 +296,22 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
 
   function onDeleteRow(rowValues: CellValue[]) {
     try {
-      const pkValue = pkValueFromRow(rowValues);
-      setPendingDelete({ pkValue });
+      const pkValues = pkValuesFromRow(rowValues);
+      setPendingDelete({ pkValues });
     } catch (e) {
       setError(String(e));
     }
   }
 
   async function confirmDelete() {
-    if (!pendingDelete || !pkColumn) return;
+    if (!pendingDelete || pkColumns.length === 0) return;
     try {
       await api.deleteRows({
         connectionId,
         schema,
         table,
-        pkColumn: pkColumn.name,
-        pkValues: [pendingDelete.pkValue],
+        pkColumns: pkColumns.map((c) => c.name),
+        pkValueRows: [pendingDelete.pkValues],
       });
       setPendingDelete(null);
       await fetchData();
@@ -361,7 +380,12 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
   const total = result?.total ?? null;
   const canPrev = offset > 0;
   const canNext = total !== null && offset + pageSize < total;
-  const hasPk = !!pkColumn;
+  // Editable iff the table has at least one PK column AND every PK
+  // column is present in the result set (otherwise we couldn't build a
+  // safe WHERE clause).
+  const hasPk =
+    pkColumns.length > 0 &&
+    (result === null || pkColumnIndices.every((i) => i >= 0));
 
   return (
     <div className="flex h-full flex-col">
@@ -431,7 +455,7 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
             tableSchema={schema}
             tableName={table}
             driver={driver}
-            pkColumnName={pkColumn?.name}
+            pkColumnNames={pkColumns.map((c) => c.name)}
             onCellSave={onCellSave}
             sortColumn={sortColumn}
             sortDesc={sortDesc}
@@ -486,7 +510,12 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
             </span>{" "}
             where{" "}
             <span className="font-mono">
-              {pkColumn?.name} = {String(pendingDelete?.pkValue ?? "")}
+              {pkColumns
+                .map(
+                  (c, i) =>
+                    `${c.name} = ${String(pendingDelete?.pkValues[i] ?? "")}`,
+                )
+                .join(" AND ")}
             </span>
             . This cannot be undone.
           </p>

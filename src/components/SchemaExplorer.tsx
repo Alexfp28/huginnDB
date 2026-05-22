@@ -420,14 +420,6 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
     }
   }, [debouncedNeedle, cs, byConnection, parentId, refresh]);
 
-  if (!cs) {
-    return (
-      <div className="px-3 py-3 text-xs text-muted-foreground">
-        {t("schema.loading")}
-      </div>
-    );
-  }
-
   const filterActive = debouncedNeedle.length > 0;
 
   // Decide which databases to render. With an active filter we surface
@@ -435,8 +427,17 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   // where the user is looking for a database by name), and (b) DBs that
   // own at least one matching table — those auto-expand so the user
   // sees the matches without an extra click.
+  //
+  // This memo MUST live above the early return below: React relies on
+  // hooks being called in the same order on every render, so a
+  // conditional `if (!cs) return …` above this useMemo would skip the
+  // hook on the first render and call it on subsequent ones — a Rules
+  // of Hooks violation that blanked the whole multi-DB panel in 0.7.0
+  // / 0.7.1 (no error UI, just an empty tree). See CLAUDE.md for the
+  // broader family of cases (selectors / refs / memos slipping below
+  // an early return).
   const matchingDbs = useMemo(() => {
-    if (!filterActive) return null;
+    if (!filterActive || !cs) return null;
     const m = new Map<string, { byName: boolean; byTable: boolean }>();
     for (const db of cs.databases) {
       const childId = `${parentId}::db::${db.name}`;
@@ -448,7 +449,15 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
       if (byName || byTable) m.set(db.name, { byName, byTable });
     }
     return m;
-  }, [filterActive, debouncedNeedle, cs.databases, byConnection, parentId]);
+  }, [filterActive, debouncedNeedle, cs, byConnection, parentId]);
+
+  if (!cs) {
+    return (
+      <div className="px-3 py-3 text-xs text-muted-foreground">
+        {t("schema.loading")}
+      </div>
+    );
+  }
 
   // While prefetches are in flight we want to tell the user something
   // is happening — "no matches" would be misleading if the DBs simply

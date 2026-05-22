@@ -6,27 +6,85 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-## [0.7.1] — 2026-05-21
+## [0.7.2] — 2026-05-22
 
-Patch de imagen corporativa. Reemplaza el icono placeholder de la "H"
-verde por el nuevo logotipo oficial de HuginnDB (ojo nórdico sobre fondo
-oscuro, estilo app-icon con rounded corners). Sin cambios funcionales.
+Two bugs reported against 0.7.1 demanded an immediate follow-up: the
+multi-database explorer rendered a blank panel as soon as a profile
+listed more than one database, and saving a cell on a table with a
+composite primary key silently overwrote every row sharing the leading
+PK column's value. Both are fixed here. The 0.7.1 changelog entry,
+inadvertently shipped in Spanish, is also translated to English so the
+whole file reads consistently.
+
+### Fixed
+
+- **Multi-database connections rendered a blank panel.** The
+  MongoDB-Compass-style filter added in 0.7.0 placed a `useMemo` below
+  the `if (!cs) return <loading/>` early return inside
+  `MultiDbExplorer` (`src/components/SchemaExplorer.tsx`), which is a
+  Rules of Hooks violation: React called fewer hooks on the first
+  render (before the schema slice existed) than on subsequent renders
+  (after `refresh` populated `cs`), corrupted the hook order, and
+  bailed out with an empty tree. Single-DB profiles never hit the code
+  path so the regression only affected multi-DB ones. The memo now
+  lives above the early return, is defensive against an undefined
+  `cs`, and carries a comment documenting why its position matters —
+  matching the broader gotcha already documented in `CLAUDE.md`.
+
+- **Cell save and row delete corrupted data on tables with composite
+  primary keys.** The schema introspection correctly flags every
+  column participating in the PRIMARY KEY constraint
+  (`information_schema.table_constraints` on Postgres,
+  `column_key='PRI'` on MySQL, `pk > 0` on SQLite), but the frontend
+  in `src/components/TableDataTab.tsx` used
+  `cols.find(c => c.is_primary_key)` and shipped only the *first* PK
+  column to `update_cell` and `delete_rows`. The resulting
+  `WHERE leading_pk_col = ?` predicate matched every row sharing that
+  leading value, so editing a single cell with a filter active rewrote
+  every filtered row, and deleting a row removed its siblings. The
+  Tauri commands now take `pk_columns: Vec<String>` and
+  `pk_values: Vec<Value>` (single-row UPDATE) /
+  `pk_value_rows: Vec<Vec<Value>>` (multi-row DELETE) and build the
+  full `WHERE c1 = ? AND c2 = ? AND …` / `WHERE (c1, c2) IN ((?, ?), …)`
+  predicate. `TableDataTab` reads every `is_primary_key=true` column
+  from `list_columns` and feeds the parallel tuple through
+  `pkValuesFromRow`. As an extra safety net, `update_cell` now wraps
+  the UPDATE in a transaction and rolls back if `rows_affected > 1` —
+  impossible with a correct PRIMARY KEY but a useful assertion against
+  any future regression of this family. `delete_rows` validates the
+  arity of every supplied tuple against `pk_columns.len()` and returns
+  a structured error on mismatch instead of building a malformed
+  query. The "Copy row as ▸ SQL UPDATE" snippet in `copyFormats.ts`
+  was updated to AND-join every PK column too, keeping clipboard
+  snippets paste-safe on composite-PK tables.
 
 ### Changed
 
-- **Nuevo logotipo oficial.** Todos los iconos de la aplicación
-  (`src-tauri/icons/`) han sido regenerados desde la nueva fuente
-  `huginn-app-icon-512.png` usando `pnpm tauri icon`. El logo anterior
-  (letra "H" con círculo verde) queda reemplazado en todas las
-  plataformas: Windows (`.ico`, APPX squares, Store Logo), macOS
-  (`.icns`), Linux (PNGs), iOS y Android.
+- **CHANGELOG 0.7.1 entry translated to English.** The published 0.7.1
+  release notes were shipped in Spanish by mistake. The body is
+  reproduced verbatim below (under the original 0.7.1 heading) but
+  now in English, with no semantic change to the release contents.
 
-- **Assets de imagen corporativa añadidos.** `public/image/` incluye
-  ahora las variantes oficiales del logotipo: `huginn-app-icon` en
-  1024/512/256/128/64 px, más las variantes SVG del mark
-  (`huginn-mark`, `huginn-mark-black`, `huginn-mark-white`,
-  `huginn-mark-blue`, `huginn-mark-runes`) para uso en web, docs y
-  marketing.
+## [0.7.1] — 2026-05-21
+
+Brand-identity patch. Replaces the placeholder green "H" icon with
+HuginnDB's official logo (a Nordic eye on a dark background, app-icon
+style with rounded corners). No functional changes.
+
+### Changed
+
+- **New official logo.** Every application icon in `src-tauri/icons/`
+  was regenerated from the new source `huginn-app-icon-512.png` via
+  `pnpm tauri icon`. The previous logo (a letter "H" inside a green
+  circle) is replaced across every platform: Windows (`.ico`, APPX
+  squares, Store Logo), macOS (`.icns`), Linux (PNGs), iOS and
+  Android.
+
+- **Brand-identity assets added.** `public/image/` now ships the
+  official logo variants: `huginn-app-icon` at 1024/512/256/128/64 px
+  plus the SVG marks (`huginn-mark`, `huginn-mark-black`,
+  `huginn-mark-white`, `huginn-mark-blue`, `huginn-mark-runes`) for
+  use on the web, in the docs, and in marketing material.
 
 ## [0.7.0] — 2026-05-21
 
