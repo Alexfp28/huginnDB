@@ -83,12 +83,14 @@ interface Props {
    */
   driver?: Driver;
   /**
-   * Name of the primary key column for this table, when known. The
-   * grid uses it (a) to skip the PK in the "Copy as UPDATE" SET
-   * clause and (b) for the WHERE clause. When absent, UPDATE renders
-   * with `<pk> = <value>` placeholders so the user notices.
+   * Names of every column that participates in the table's primary key,
+   * in catalog order. The grid uses them (a) to skip PK columns in the
+   * "Copy as UPDATE" SET clause and (b) to AND-join the WHERE predicate
+   * — keeping the snippet safe on composite-PK tables. When absent or
+   * empty, UPDATE renders with `<pk> = <value>` placeholders so the
+   * user notices.
    */
-  pkColumnName?: string;
+  pkColumnNames?: string[];
   /**
    * Cell edit callback. Receives the **full row values array** (not a
    * row index) so the parent can resolve identity (PK value) directly
@@ -213,7 +215,7 @@ export function DataGrid({
   tableSchema,
   tableName,
   driver,
-  pkColumnName,
+  pkColumnNames,
   onCellSave,
   onSortChange,
   sortColumn,
@@ -700,7 +702,7 @@ export function DataGrid({
                                       driver,
                                       tableName,
                                       tableSchema,
-                                      pkColumnName,
+                                      pkColumnNames,
                                     ),
                                   )
                                 }

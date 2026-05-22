@@ -648,11 +648,22 @@ pub async fn fetch_table_data(
     })
 }
 
-/// Update one column of one row in `schema.table`, addressed by primary key.
+/// Update one column of one row in `schema.table`, addressed by the
+/// full primary key.
 ///
 /// The new value is always sent as `Option<String>` because the cell
 /// editor produces text. Drivers cast textual literals to the column type
 /// automatically. NULLs are conveyed by passing `None`.
+///
+/// Composite primary keys are supported: `pk_columns` is the ordered list
+/// of column names that participate in the PK, and `pk_values` is the
+/// parallel list of values for the row being updated. The WHERE clause is
+/// `c1 = ? AND c2 = ? AND …` so the UPDATE can only ever match the single
+/// row identified by the full key. If the resulting `rows_affected` is
+/// greater than 1 the call returns an error: that would mean the supplied
+/// columns are not actually unique together (caller bug) and quietly
+/// touching multiple rows is exactly the corruption this signature was
+/// designed to prevent.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn update_cell(
@@ -661,14 +672,28 @@ pub async fn update_cell(
     connection_id: String,
     schema: Option<String>,
     table: String,
-    pk_column: String,
-    pk_value: Value,
+    pk_columns: Vec<String>,
+    pk_values: Vec<Value>,
     column: String,
     value: Option<String>,
 ) -> AppResult<u64> {
+    if pk_columns.is_empty() {
+        return Err(AppError::InvalidInput(
+            "update_cell: no primary-key columns supplied".into(),
+        ));
+    }
+    if pk_columns.len() != pk_values.len() {
+        return Err(AppError::InvalidInput(format!(
+            "update_cell: pk_columns/pk_values arity mismatch ({} vs {})",
+            pk_columns.len(),
+            pk_values.len()
+        )));
+    }
+
     let pool = pool_for(state.inner(), &connection_id)?;
     let driver = driver_str(&pool);
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
+    let pg = matches!(&pool, DbPool::Postgres(_));
 
     let qt = if let Some(s) = schema {
         format!(
@@ -680,42 +705,89 @@ pub async fn update_cell(
         quote_ident(pg_or_sqlite, &table)
     };
     let col_id = quote_ident(pg_or_sqlite, &column);
-    let pk_id = quote_ident(pg_or_sqlite, &pk_column);
-    let pk_str = json_to_string(&pk_value);
 
+    // SET uses placeholder #1; the PK predicate consumes #2..=#N+1 on PG,
+    // and an unindexed `?` everywhere else.
+    let where_clause = pk_columns
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let id = quote_ident(pg_or_sqlite, c);
+            if pg {
+                format!("{id} = ${}", i + 2)
+            } else {
+                format!("{id} = ?")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    let set_placeholder = if pg { "$1".to_string() } else { "?".into() };
+    let sql = format!("UPDATE {qt} SET {col_id} = {set_placeholder} WHERE {where_clause}");
+    let pk_strs: Vec<Option<String>> = pk_values.iter().map(json_to_string).collect();
+
+    // Wrap the UPDATE in a transaction so a stray multi-row hit can be
+    // rolled back atomically. With a correctly-introspected PRIMARY KEY
+    // constraint `rows_affected > 1` is impossible, but the cell-save
+    // path used to corrupt data silently when only the first PK column
+    // was sent on composite-PK tables — this is the belt-and-braces
+    // assertion that catches any future regression of that family.
     let start = Instant::now();
-    let (sql, res) = match pool {
-        DbPool::Postgres(p) => {
-            let sql = format!("UPDATE {qt} SET {col_id} = $1 WHERE {pk_id} = $2");
-            let res = sqlx::query(&sql)
-                .bind(&value)
-                .bind(&pk_str)
-                .execute(&p)
-                .await
-                .map(|r| r.rows_affected());
-            (sql, res)
+    let res: Result<u64, sqlx::Error> = async {
+        match &pool {
+            DbPool::Postgres(p) => {
+                let mut tx = p.begin().await?;
+                let mut q = sqlx::query(&sql).bind(&value);
+                for s in &pk_strs {
+                    q = q.bind(s);
+                }
+                let affected = q.execute(&mut *tx).await?.rows_affected();
+                if affected > 1 {
+                    tx.rollback().await?;
+                    return Err(sqlx::Error::Protocol(format!(
+                        "update_cell refused: {affected} rows matched the supplied \
+                         primary key (composite PK incomplete?) — transaction rolled back"
+                    )));
+                }
+                tx.commit().await?;
+                Ok(affected)
+            }
+            DbPool::Mysql(p) => {
+                let mut tx = p.begin().await?;
+                let mut q = sqlx::query(&sql).bind(&value);
+                for s in &pk_strs {
+                    q = q.bind(s);
+                }
+                let affected = q.execute(&mut *tx).await?.rows_affected();
+                if affected > 1 {
+                    tx.rollback().await?;
+                    return Err(sqlx::Error::Protocol(format!(
+                        "update_cell refused: {affected} rows matched the supplied \
+                         primary key (composite PK incomplete?) — transaction rolled back"
+                    )));
+                }
+                tx.commit().await?;
+                Ok(affected)
+            }
+            DbPool::Sqlite(p) => {
+                let mut tx = p.begin().await?;
+                let mut q = sqlx::query(&sql).bind(&value);
+                for s in &pk_strs {
+                    q = q.bind(s);
+                }
+                let affected = q.execute(&mut *tx).await?.rows_affected();
+                if affected > 1 {
+                    tx.rollback().await?;
+                    return Err(sqlx::Error::Protocol(format!(
+                        "update_cell refused: {affected} rows matched the supplied \
+                         primary key (composite PK incomplete?) — transaction rolled back"
+                    )));
+                }
+                tx.commit().await?;
+                Ok(affected)
+            }
         }
-        DbPool::Mysql(p) => {
-            let sql = format!("UPDATE {qt} SET {col_id} = ? WHERE {pk_id} = ?");
-            let res = sqlx::query(&sql)
-                .bind(&value)
-                .bind(&pk_str)
-                .execute(&p)
-                .await
-                .map(|r| r.rows_affected());
-            (sql, res)
-        }
-        DbPool::Sqlite(p) => {
-            let sql = format!("UPDATE {qt} SET {col_id} = ?1 WHERE {pk_id} = ?2");
-            let res = sqlx::query(&sql)
-                .bind(&value)
-                .bind(&pk_str)
-                .execute(&p)
-                .await
-                .map(|r| r.rows_affected());
-            (sql, res)
-        }
-    };
+    }
+    .await;
     let affected = try_sql!(&app, &connection_id, driver, &sql, start, res);
     log_sql(
         &app,
@@ -740,39 +812,87 @@ fn json_to_string(v: &Value) -> Option<String> {
     }
 }
 
-/// Delete one or more rows from `schema.table` identified by primary key.
+/// Delete one or more rows from `schema.table` identified by their
+/// (possibly composite) primary key.
 ///
-/// The PK is expected to be a single column. `pk_values` is a JSON array
-/// so multi-row deletion can be wired from the UI in a future PR without
-/// changing the command signature.
+/// `pk_columns` lists the columns that make up the PK in the order the
+/// frontend captured them; `pk_value_rows` carries one tuple of values per
+/// row to delete, parallel to `pk_columns`. The WHERE clause is built as
+/// `(c1, c2, …) IN ((?, ?, …), …)` so the DELETE only ever touches rows
+/// whose *full* key matches a supplied tuple — sending only the leading
+/// PK column used to fan the DELETE out across every row sharing that
+/// value (the same family of bug as the cell-save corruption that
+/// motivated this signature change).
+///
+/// Returns the number of rows actually deleted; that should equal
+/// `pk_value_rows.len()` when every key existed, and less if any did not.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn delete_rows(
     app: AppHandle,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
     table: String,
-    pk_column: String,
-    pk_values: Vec<Value>,
+    pk_columns: Vec<String>,
+    pk_value_rows: Vec<Vec<Value>>,
 ) -> AppResult<u64> {
-    if pk_values.is_empty() {
+    if pk_columns.is_empty() {
+        return Err(AppError::InvalidInput(
+            "delete_rows: no primary-key columns supplied".into(),
+        ));
+    }
+    if pk_value_rows.is_empty() {
         return Ok(0);
     }
+    let arity = pk_columns.len();
+    for (i, row) in pk_value_rows.iter().enumerate() {
+        if row.len() != arity {
+            return Err(AppError::InvalidInput(format!(
+                "delete_rows: row #{i} has {} values, expected {arity}",
+                row.len()
+            )));
+        }
+    }
+
     let pool = pool_for(state.inner(), &connection_id)?;
     let driver = driver_str(&pool);
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let pg = matches!(&pool, DbPool::Postgres(_));
 
     let qt = qualified_table(&pool, schema.as_deref(), &table);
-    let pk_id = quote_ident(pg_or_sqlite, &pk_column);
-    let placeholders: Vec<String> = (1..=pk_values.len())
-        .map(|i| if pg { format!("${i}") } else { "?".into() })
+    let lhs = pk_columns
+        .iter()
+        .map(|c| quote_ident(pg_or_sqlite, c))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut counter = 0usize;
+    let tuples = pk_value_rows
+        .iter()
+        .map(|row| {
+            let placeholders = row
+                .iter()
+                .map(|_| {
+                    if pg {
+                        counter += 1;
+                        format!("${counter}")
+                    } else {
+                        "?".into()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({placeholders})")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    // For arity==1 wrap the LHS in parentheses too — `(c) IN ((?), (?))`
+    // is valid across all three drivers and keeps a single code path.
+    let sql = format!("DELETE FROM {qt} WHERE ({lhs}) IN ({tuples})");
+    let binds: Vec<Option<String>> = pk_value_rows
+        .iter()
+        .flat_map(|row| row.iter().map(json_to_string))
         .collect();
-    let sql = format!(
-        "DELETE FROM {qt} WHERE {pk_id} IN ({})",
-        placeholders.join(", ")
-    );
-    let binds: Vec<Option<String>> = pk_values.iter().map(json_to_string).collect();
 
     let start = Instant::now();
     let affected = try_sql!(

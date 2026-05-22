@@ -181,27 +181,38 @@ export const api = {
   }) => invoke<QueryResult>("fetch_table_data", args),
 
   /**
-   * UPDATE one column of one row addressed by primary key. `value` is
-   * sent as a string (or `null`) because the cell editor always
-   * produces text; drivers coerce it to the target column type.
+   * UPDATE one column of one row addressed by its (possibly composite)
+   * primary key. `pkColumns` carries every column that participates in
+   * the PK, with `pkValues` holding the parallel tuple of values for the
+   * row being edited — sending only the first PK column on a composite
+   * key would fan the UPDATE out across every row sharing that leading
+   * value. `value` is sent as a string (or `null`) because the cell
+   * editor always produces text; drivers coerce it to the target column
+   * type. The backend rolls back and errors out if the resulting
+   * `rows_affected` is greater than one (defence in depth).
    */
   updateCell: (args: {
     connectionId: string;
     schema?: string;
     table: string;
-    pkColumn: string;
-    pkValue: CellValue;
+    pkColumns: string[];
+    pkValues: CellValue[];
     column: string;
     value: string | null;
   }) => invoke<number>("update_cell", args),
 
-  /** DELETE one or more rows by primary key. */
+  /**
+   * DELETE one or more rows by their (possibly composite) primary key.
+   * `pkValueRows` carries one tuple per row, each parallel to
+   * `pkColumns`. The backend builds `WHERE (c1, c2, …) IN ((?, ?, …), …)`
+   * so a composite-PK row can only ever be addressed by its full key.
+   */
   deleteRows: (args: {
     connectionId: string;
     schema?: string;
     table: string;
-    pkColumn: string;
-    pkValues: CellValue[];
+    pkColumns: string[];
+    pkValueRows: CellValue[][];
   }) => invoke<number>("delete_rows", args),
 
   /**
