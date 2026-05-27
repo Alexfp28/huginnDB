@@ -356,6 +356,8 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[parentId]);
   const refresh = useSchema((s) => s.refresh);
+  const warmDatabases = useSchema((s) => s.warmDatabases);
+  const warm = useSchema((s) => s.warm[parentId]);
   const toggleNode = useSchema((s) => s.toggleNode);
   // Subscribe to the whole map so `matchingDbs` reactively recomputes
   // as each prefetch lands. The membership check is cheap (Map lookup
@@ -390,14 +392,26 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
     if (!cs || (!cs.initialized && !cs.loading)) refresh(parentId);
   }, [parentId, cs, refresh]);
 
-  // MongoDB-Compass-style prefetch: while the user is searching, walk
-  // every database we haven't loaded yet, open the synthetic child
-  // connection, and pull its table list into the store. We mark a db
-  // as "in-flight" the moment we start so concurrent renders don't
-  // schedule it twice. Failures are swallowed — the matching
-  // computation just won't include that DB until the user retries.
-  // Limit to needle length >= 2 to avoid a full fan-out on a single
-  // typed character (and on accidental focus changes).
+  // Warm the whole server in the background as soon as the parent's
+  // database list is known. This populates every child's table cache
+  // ahead of time so the filter below reads from memory and matches
+  // instantly, instead of fanning out fetches on the first keystroke.
+  // `warmDatabases` guards against re-entry and skips already-cached
+  // databases, so re-running this effect (cs changes as children land)
+  // is cheap and idempotent.
+  useEffect(() => {
+    if (cs?.initialized && !cs.error) warmDatabases(parentId);
+  }, [parentId, cs?.initialized, cs?.error, warmDatabases]);
+
+  // On-demand prefetch — kept as a fallback for databases the background
+  // warm hasn't reached yet (large servers, or a search fired moments
+  // after connecting). While the user is searching, walk every database
+  // we haven't loaded yet, open the synthetic child connection, and pull
+  // its table list into the store. We mark a db as "in-flight" the
+  // moment we start so concurrent renders don't schedule it twice.
+  // Failures are swallowed — the matching computation just won't include
+  // that DB until the user retries. Limit to needle length >= 2 to avoid
+  // a full fan-out on a single typed character.
   const inFlightPrefetch = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (debouncedNeedle.length < 2 || !cs) return;
@@ -495,6 +509,12 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
           placeholder={t("schema.filterPlaceholder")}
           className="h-7 text-xs"
         />
+        {warm?.active && (
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] italic text-muted-foreground">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            {t("schema.warming", { done: warm.done, total: warm.total })}
+          </div>
+        )}
       </div>
       {cs.error && (
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>

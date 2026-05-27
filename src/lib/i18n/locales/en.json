@@ -127,6 +127,7 @@
     "sectionIndexes": "indexes",
     "filterPlaceholder": "Filter tables…",
     "noMatches": "No tables match the filter.",
+    "warming": "Caching schema… {{done}}/{{total}} databases",
     "context": {
       "open": "Open in tab",
       "copyName": "Copy name",

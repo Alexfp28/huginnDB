@@ -127,6 +127,7 @@
     "sectionIndexes": "índices",
     "filterPlaceholder": "Filtrar tablas…",
     "noMatches": "Ninguna tabla coincide con el filtro.",
+    "warming": "Cacheando esquema… {{done}}/{{total}} bases",
     "context": {
       "open": "Abrir en pestaña",
       "copyName": "Copiar nombre",

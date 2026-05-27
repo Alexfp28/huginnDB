@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **Multi-database filtering is now instant.** The connection-level
+  filter used to fan out `openDatabaseView` + `list_tables` across every
+  database on the *first* keystroke, so the initial search on a server
+  with many databases stalled for seconds. A multi-DB connection now
+  warms its entire table cache in the background as soon as the database
+  list is known (`warmDatabases` in `src/stores/schema.ts`), with bounded
+  concurrency so it never opens every pool at once. The filter reads
+  straight from that cache; a subtle progress line shows how many
+  databases remain. The previous on-demand prefetch is retained as a
+  fallback for databases the warm pass hasn't reached yet.
+
 ### Added
 
 - **MySQL `BIT` columns are now configurable in the grid.** A new
