@@ -18,7 +18,7 @@ import {
   selectGridPrefs,
   selectUiPrefs,
 } from "@/stores/preferences";
-import type { SchemaTableMetric } from "@/types";
+import type { GridPrefs, SchemaTableMetric } from "@/types";
 import { PrefRow } from "./PrefRow";
 
 const METRIC_KEYS: Record<SchemaTableMetric, string> = {
@@ -105,6 +105,30 @@ export function GridSection() {
           checked={grid.stickyHeader}
           onCheckedChange={(v) => updateGrid({ stickyHeader: v })}
         />
+      </PrefRow>
+
+      <PrefRow
+        label={t("settings.grid.bitDisplay.label")}
+        description={t("settings.grid.bitDisplay.desc")}
+      >
+        <Select
+          value={grid.bitDisplay}
+          onValueChange={(v) =>
+            updateGrid({ bitDisplay: v as GridPrefs["bitDisplay"] })
+          }
+        >
+          <SelectTrigger className="h-8 w-44 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="true_false" className="text-xs">
+              {t("settings.grid.bitDisplay.trueFalse")}
+            </SelectItem>
+            <SelectItem value="zero_one" className="text-xs">
+              {t("settings.grid.bitDisplay.zeroOne")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </PrefRow>
 
       <PrefRow

@@ -254,6 +254,12 @@
       "schemaMetric": {
         "label": "Métrica del árbol de esquema",
         "desc": "Número mostrado junto al nombre de cada tabla en el explorador."
+      },
+      "bitDisplay": {
+        "label": "Representación de BIT",
+        "desc": "Cómo se muestran las columnas BIT de MySQL en la cuadrícula.",
+        "trueFalse": "true / false",
+        "zeroOne": "0 / 1"
       }
     },
     "appearance": {

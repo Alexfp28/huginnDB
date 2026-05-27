@@ -60,3 +60,28 @@ export function isNumericType(dataType: string): boolean {
     t === "number"
   );
 }
+
+/**
+ * True for MySQL `BIT` / `BIT(n)` columns. The backend ships BIT values as
+ * numbers (see `mysql_value`), so the grid needs the column type to decide
+ * whether to apply the user's BIT rendering preference.
+ */
+export function isBitType(dataType: string): boolean {
+  return /^bit\b/i.test(dataType.trim());
+}
+
+/**
+ * Render a numeric BIT value per the grid's `bitDisplay` preference.
+ * In `true_false` mode, 0/1 become `false`/`true`; any wider BIT(n) value
+ * falls back to its integer form. `zero_one` always shows the raw number.
+ */
+export function formatBitValue(
+  value: number,
+  mode: "true_false" | "zero_one",
+): string {
+  if (mode === "true_false") {
+    if (value === 0) return "false";
+    if (value === 1) return "true";
+  }
+  return String(value);
+}

@@ -6,6 +6,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **MySQL `BIT` columns are now configurable in the grid.** A new
+  **BIT display** preference (Settings → Grid) renders `BIT` values as
+  either `true`/`false` (default) or `0`/`1`. The backend always ships
+  the value as a number, so toggling the preference re-renders without
+  re-querying.
+
+### Fixed
+
+- **MySQL/MariaDB raised error 1064 when filtering a table.** The
+  cross-column search clause emitted `... LIKE ? ESCAPE '\'` for every
+  driver. On MySQL the backslash inside the string literal escapes the
+  closing quote, leaving it unterminated and triggering a syntax error
+  (the filter still returned rows because the data and `COUNT(*)`
+  queries run separately, but the error banner appeared). The `ESCAPE`
+  clause is now driver-aware: MySQL receives `ESCAPE '\\'` (parsed as a
+  single backslash, matching `escape_like`), while Postgres/SQLite keep
+  the standard-SQL `ESCAPE '\'`. Centralised in a new
+  `like_escape_clause` helper used by both the table filter and the FK
+  options lookup (`src-tauri/src/commands/query.rs`).
+
+- **MySQL `BIT` columns rendered as NULL.** `mysql_value`
+  (`src-tauri/src/db/values.rs`) had no branch for `BIT`, so sqlx's
+  binary value fell through to the `String` fallback, failed to decode,
+  and surfaced as NULL. A dedicated branch now folds the raw bytes into
+  a big-endian unsigned integer and ships it as a number.
+
 ## [0.7.2] — 2026-05-22
 
 Two bugs reported against 0.7.1 demanded an immediate follow-up: the

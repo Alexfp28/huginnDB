@@ -59,6 +59,11 @@ pub struct GridPrefs {
     pub zebra_stripes: bool,
     pub sticky_header: bool,
     pub default_page_size: u32,
+    /// How MySQL `BIT` columns are rendered. One of "true_false" | "zero_one".
+    /// Stringly-typed; the backend always ships BIT as a number and the
+    /// frontend grid maps it to the chosen representation, so toggling this
+    /// re-renders without re-querying.
+    pub bit_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +117,7 @@ impl Default for GridPrefs {
             zebra_stripes: true,
             sticky_header: true,
             default_page_size: 100,
+            bit_display: "true_false".into(),
         }
     }
 }

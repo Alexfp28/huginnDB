@@ -32,7 +32,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
-import { isNumericType } from "@/lib/utils";
+import { formatBitValue, isBitType, isNumericType } from "@/lib/utils";
+import { usePreferences, selectGridPrefs } from "@/stores/preferences";
 import type {
   CellValue,
   ColumnFilter,
@@ -332,6 +333,19 @@ export function DataGrid({
   );
 
   /**
+   * Column names whose type is MySQL `BIT`. Rendered through the user's
+   * `bitDisplay` preference (true/false vs 0/1) instead of the raw number.
+   */
+  const bitColNames = useMemo(
+    () =>
+      new Set(
+        result.columns.filter((c) => isBitType(c.data_type)).map((c) => c.name),
+      ),
+    [result.columns],
+  );
+  const bitDisplay = usePreferences((s) => selectGridPrefs(s).bitDisplay);
+
+  /**
    * Backend column index keyed by name. The cell render loop walks
    * `row.getVisibleCells()` whose position index is TanStack's *visible*
    * order — if a future change ever introduces column reordering /
@@ -408,7 +422,11 @@ export function DataGrid({
               />
             );
           }
-          const display = formatValue(v);
+          const isBit = bitColNames.has(col.name);
+          const display =
+            isBit && typeof v === "number"
+              ? formatBitValue(v, bitDisplay)
+              : formatValue(v);
           const isNumeric = numericColNames.has(col.name);
           return (
             <div className="flex max-w-md items-center gap-1">
@@ -432,6 +450,8 @@ export function DataGrid({
     [
       result.columns,
       numericColNames,
+      bitColNames,
+      bitDisplay,
       sortColumn,
       sortDesc,
       onSortChange,

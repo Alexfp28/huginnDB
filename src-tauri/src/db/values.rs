@@ -158,6 +158,20 @@ pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
             .map(|v| json!(v))
             .unwrap_or(Value::Null);
     }
+    // BIT(n) — sqlx hands these back as raw bytes, never as a `String`, so the
+    // generic fallback below would decode to `Value::Null` and the grid would
+    // render the cell empty. Fold the bytes into a big-endian unsigned integer
+    // (BIT(1) → 0/1, wider BIT(n) → its numeric value). The frontend turns the
+    // number into true/false or 0/1 per the user's grid preference.
+    if name.contains("BIT") {
+        return row
+            .try_get::<Vec<u8>, _>(idx)
+            .map(|bytes| {
+                let n = bytes.iter().fold(0u64, |acc, &b| (acc << 8) | b as u64);
+                json!(n)
+            })
+            .unwrap_or(Value::Null);
+    }
     row.try_get::<String, _>(idx)
         .map(Value::String)
         .unwrap_or(Value::Null)

@@ -254,6 +254,12 @@
       "schemaMetric": {
         "label": "Schema tree metric",
         "desc": "Number rendered next to each table name in the schema explorer."
+      },
+      "bitDisplay": {
+        "label": "BIT display",
+        "desc": "How MySQL BIT columns are rendered in the grid.",
+        "trueFalse": "true / false",
+        "zeroOne": "0 / 1"
       }
     },
     "appearance": {

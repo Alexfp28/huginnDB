@@ -350,6 +350,23 @@ fn escape_like(input: &str) -> String {
     out
 }
 
+/// `ESCAPE` clause that matches the `\` escape character emitted by
+/// [`escape_like`], rendered correctly for the target driver.
+///
+/// MySQL/MariaDB interprets `\` as an escape inside *string literals*, so the
+/// SQL text must carry `ESCAPE '\\'` (two backslashes → one literal backslash);
+/// the single-backslash form `ESCAPE '\'` leaves the literal unterminated and
+/// raises error 1064. Postgres and SQLite use standard-SQL string literals
+/// where `\` is itself, so `ESCAPE '\'` is the right text there. Returned with
+/// a leading space so callers can append it directly after the placeholder.
+fn like_escape_clause(is_mysql: bool) -> &'static str {
+    if is_mysql {
+        " ESCAPE '\\\\'"
+    } else {
+        " ESCAPE '\\'"
+    }
+}
+
 /// Build the `WHERE` fragment + bind list for a set of column filters
 /// plus an optional free-text `search` applied across `search_columns`.
 ///
@@ -393,6 +410,7 @@ fn build_filter_clause(
             let pattern = format!("%{}%", escape_like(q));
             let like_kw = if pg { "ILIKE" } else { "LIKE" };
             let cast_to = if pg_or_sqlite { "TEXT" } else { "CHAR" };
+            let escape = like_escape_clause(!pg_or_sqlite);
             let mut or_parts: Vec<String> = Vec::new();
             for col in search_columns {
                 let qcol = quote_ident(pg_or_sqlite, col);
@@ -403,7 +421,7 @@ fn build_filter_clause(
                 };
                 next_placeholder += 1;
                 or_parts.push(format!(
-                    "CAST({qcol} AS {cast_to}) {like_kw} {ph} ESCAPE '\\'"
+                    "CAST({qcol} AS {cast_to}) {like_kw} {ph}{escape}"
                 ));
                 binds.push(Some(pattern.clone()));
             }
@@ -1147,15 +1165,16 @@ pub async fn fetch_fk_options(
         let pattern = format!("%{}%", escape_like(term));
         let like_kw = if pg { "ILIKE" } else { "LIKE" };
         let cast_to = if pg_or_sqlite { "TEXT" } else { "CHAR" };
+        let escape = like_escape_clause(!pg_or_sqlite);
         let ph1 = if pg { "$1".to_string() } else { "?".into() };
         let ph2 = if pg { "$2".to_string() } else { "?".into() };
         let mut parts = vec![format!(
-            "CAST({key_id} AS {cast_to}) {like_kw} {ph1} ESCAPE '\\'"
+            "CAST({key_id} AS {cast_to}) {like_kw} {ph1}{escape}"
         )];
         binds.push(Some(pattern.clone()));
         if let Some(l) = &label_id {
             parts.push(format!(
-                "CAST({l} AS {cast_to}) {like_kw} {ph2} ESCAPE '\\'"
+                "CAST({l} AS {cast_to}) {like_kw} {ph2}{escape}"
             ));
             binds.push(Some(pattern));
         }

@@ -245,6 +245,10 @@ export interface GridPrefs {
   zebraStripes: boolean;
   stickyHeader: boolean;
   defaultPageSize: number;
+  /** How MySQL BIT columns render. The backend always sends BIT as a number;
+   *  the grid maps it to one of these so toggling re-renders without a
+   *  re-query. */
+  bitDisplay: "true_false" | "zero_one";
 }
 
 /** Schema-tree metric column. Source of truth for the enum is the frontend. */

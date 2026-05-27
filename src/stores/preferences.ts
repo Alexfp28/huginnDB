@@ -50,6 +50,7 @@ const DEFAULT_PREFS: Preferences = {
     zebraStripes: true,
     stickyHeader: true,
     defaultPageSize: 100,
+    bitDisplay: "true_false",
   },
   ui: {
     confirmDestructive: true,
