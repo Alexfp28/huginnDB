@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Editor-style workspace.** The open table and query tabs now live in a
+  nested dockview instance instead of a flat tab strip, so the workspace
+  behaves like a code editor: tabs can be split horizontally or
+  vertically, dragged between groups, and torn out into a floating
+  window. Tabs can also be closed with a middle-mouse (wheel) click in
+  addition to the X button. `useTabs` remains the source of truth — the
+  dockview panels are reconciled against it — so the existing
+  per-connection tab restore keeps working. Split/float geometry is
+  session-only; restored tabs come back in the default tabbed layout.
+
 ### Changed
 
 - **Multi-database filtering is now instant.** The connection-level

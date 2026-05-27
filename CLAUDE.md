@@ -80,6 +80,8 @@ These bit us during the first sessions. Don't repeat them.
 
 9. **Monaco swallows `Ctrl+Enter` and friends inside its focus area; a `window` keydown listener never sees them.** That's why `QueryEditorTab` binds Ctrl+Enter via `editor.addCommand(KeyMod.CtrlCmd | KeyCode.Enter, …)` inside `handleMount`, not via `window.addEventListener`. Because `addCommand` keeps its handler closure for the lifetime of the editor, the handler reads `runQueryRef.current()` rather than capturing `runQuery` directly — otherwise it would freeze to the first render's `sql` and `running` values. Same ref pattern applies to the completion provider and the CodeLens provider (both registered once, both reading from live refs).
 
+10. **The workspace editor is a *nested* dockview synced to `useTabs`, which stays the source of truth.** `TabbedArea.tsx` hosts an inner `DockviewReact` (separate from the outer Schema/Saved/Workspace/Console dockview in `App.tsx`); each open table/query tab is a panel. The reconciler only flows **store → dockview** for add/remove (a `useEffect` on `tabs` adds missing panels, removes stale ones); the custom tab's X button and middle-click call `useTabs.close`, never `panel.api.close()`, so removal can't feed back on itself. Active-panel sync is bidirectional but idempotent (`onDidActivePanelChange` → `setActive`; an effect mirrors `activeId` → `panel.api.setActive()`, a no-op when already active). Don't add a second add/remove path or make the close affordances mutate dockview directly. Persistence (`persistedTabs.ts`) still derives its per-connection snapshot from `useTabs`; split/float geometry is intentionally **not** persisted (restored tabs come back tabbed).
+
 ## Workflow
 
 ```powershell

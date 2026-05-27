@@ -41,13 +41,6 @@ interface TabsState {
    * branch in `open` from collapsing legitimately-distinct tabs.
    */
   replaceAll: (tabs: AppTab[], activeId: string | null) => void;
-  /**
-   * Move tab `id` to position `targetIndex` (clamped to the current
-   * length). Drives drag-and-drop reordering in the tab strip. The
-   * persisted workspace is recomputed from the in-memory list, so a
-   * reorder is picked up by the next snapshot save automatically.
-   */
-  reorder: (id: string, targetIndex: number) => void;
 }
 
 function genId() {
@@ -98,19 +91,6 @@ export const useTabs = create<TabsState>((set, get) => ({
       ),
     })),
   replaceAll: (tabs, activeId) => set({ tabs, activeId }),
-  reorder: (id, targetIndex) =>
-    set((s) => {
-      const from = s.tabs.findIndex((t) => t.id === id);
-      if (from === -1) return s;
-      const next = s.tabs.slice();
-      const [moved] = next.splice(from, 1);
-      const clamped = Math.max(0, Math.min(targetIndex, next.length));
-      next.splice(clamped, 0, moved);
-      // Avoid emitting a new array (and re-rendering subscribers) when
-      // the drop lands the tab back where it started.
-      if (next.every((t, i) => t.id === s.tabs[i].id)) return s;
-      return { tabs: next };
-    }),
   closeForConnection: (connectionId) =>
     set((s) => {
       const tabs = s.tabs.filter((t) => t.connectionId !== connectionId);
