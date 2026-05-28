@@ -19,7 +19,14 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { MoreVertical, Plus, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown";
 import { useTranslation } from "react-i18next";
 import {
   DockviewReact,
@@ -144,6 +151,54 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       }}
     >
       <span className="max-w-[220px] truncate">{label}</span>
+      {/*
+       * Explicit action menu (⋮). Drag-to-split should work natively, but
+       * we surface the actions here as a reliable affordance — discoverable
+       * for new users, and a working fallback if a webview quirk makes the
+       * native drag drop overlay flaky in a nested dockview.
+       */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className={cn(
+              "transition-opacity",
+              props.api.isActive
+                ? "opacity-60 hover:opacity-100"
+                : "opacity-0 group-hover/tab:opacity-60 group-hover/tab:hover:opacity-100",
+            )}
+            onClick={(e) => e.stopPropagation()}
+            // Don't let dockview start a tab drag from the menu trigger.
+            onMouseDown={(e) => e.stopPropagation()}
+            title={t("tabs.actionsTooltip")}
+          >
+            <MoreVertical className="h-3 w-3" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="text-xs">
+          <DropdownMenuItem
+            onClick={() => props.api.moveTo({ position: "right" })}
+          >
+            {t("tabs.splitRight")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => props.api.moveTo({ position: "bottom" })}
+          >
+            {t("tabs.splitDown")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              const panel = props.containerApi.getPanel(id);
+              if (panel) props.containerApi.addFloatingGroup(panel);
+            }}
+          >
+            {t("tabs.floatPanel")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={requestClose}>
+            {t("tabs.closeTab")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <button
         className={cn(
           "transition-opacity",
@@ -155,6 +210,8 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           e.stopPropagation();
           requestClose();
         }}
+        // Same drag-suppression as the menu trigger.
+        onMouseDown={(e) => e.stopPropagation()}
         title={t("tabs.closeTab")}
       >
         <X className="h-3 w-3" />

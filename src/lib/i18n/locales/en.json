@@ -180,6 +180,10 @@
   "tabs": {
     "queryFileName": "query.sql",
     "closeTab": "Close tab",
+    "actionsTooltip": "Tab actions",
+    "splitRight": "Split right",
+    "splitDown": "Split down",
+    "floatPanel": "Float in new window",
     "newQuery": "New query",
     "newQueryTooltip": "New query (uses current connection)",
     "emptyOpenSomething": "Open a table from the schema explorer, or create a new query tab.",

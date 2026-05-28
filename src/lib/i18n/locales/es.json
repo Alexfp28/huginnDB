@@ -180,6 +180,10 @@
   "tabs": {
     "queryFileName": "query.sql",
     "closeTab": "Cerrar pestaña",
+    "actionsTooltip": "Acciones de la pestaña",
+    "splitRight": "Dividir a la derecha",
+    "splitDown": "Dividir abajo",
+    "floatPanel": "Sacar a ventana flotante",
     "newQuery": "Nueva query",
     "newQueryTooltip": "Nueva query (usa la conexión activa)",
     "emptyOpenSomething": "Abre una tabla desde el explorador de esquemas o crea una nueva pestaña de query.",
