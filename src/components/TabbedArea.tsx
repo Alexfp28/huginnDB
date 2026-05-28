@@ -175,13 +175,25 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="text-xs">
+          {/*
+           * Splits require a reference `group` — `panel.api.moveTo` silently
+           * coerces `position` to `'center'` when `group` is undefined
+           * (see dockviewPanelApi.js → DockviewPanelApiImpl.moveTo), which
+           * is why a previous version of these handlers was a no-op.
+           * Passing the panel's own group makes dockview create a new group
+           * adjacent to it at the requested position.
+           */}
           <DropdownMenuItem
-            onClick={() => props.api.moveTo({ position: "right" })}
+            onClick={() =>
+              props.api.moveTo({ group: props.api.group, position: "right" })
+            }
           >
             {t("tabs.splitRight")}
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => props.api.moveTo({ position: "bottom" })}
+            onClick={() =>
+              props.api.moveTo({ group: props.api.group, position: "bottom" })
+            }
           >
             {t("tabs.splitDown")}
           </DropdownMenuItem>
