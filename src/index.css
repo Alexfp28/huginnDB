@@ -132,10 +132,13 @@
 
   /* Drag-over indicators — primary-tinted so users can clearly see where
      a dragged panel will land. The previous (abyss) theme used a near-
-     transparent grey which made the drop targets easy to miss. */
-  --dv-drag-over-background-color: hsl(var(--primary) / 0.18);
+     transparent grey which made the drop targets easy to miss; the 0.18
+     fill that replaced it was still too subtle against the editor surface
+     when the panel underneath was a dark Monaco editor or grid, hence the
+     bump to a clearly visible 0.40 + a 3px dashed border. */
+  --dv-drag-over-background-color: hsl(var(--primary) / 0.40);
   --dv-drag-over-border-color: hsl(var(--primary));
-  --dv-drag-over-border: 2px dashed hsl(var(--primary));
+  --dv-drag-over-border: 3px dashed hsl(var(--primary));
 
   /* Misc */
   --dv-icon-hover-background-color: hsl(var(--accent));
@@ -150,18 +153,24 @@
   --dv-floating-group-dragging-opacity: 0.5;
 }
 
-/* Keep sashes below floating UI layers (dropdowns, dialogs, tooltips).
-   dockview may apply z-index via inline styles, so !important is required.
-   Radix portals render in <body> outside dockview's stacking context and
-   sit at z-index 50, so z-index 1 here is sufficient. */
+/* Keep sashes below floating UI layers (dropdowns, dialogs, tooltips) but
+   above the panel content, so the divider between split groups stays
+   visible. dockview may apply z-index via inline styles, so !important is
+   required. Radix portals render in <body> outside dockview's stacking
+   context and sit at z-index 50, so a value comfortably under that is
+   sufficient. */
 .dockview-theme-huginndb .dv-sash {
-  z-index: 1 !important;
+  z-index: 10 !important;
+  /* A clearly tinted divider rather than the near-invisible border colour —
+     when two groups are stacked (vertical split) or side by side the user
+     should be able to see exactly where one ends and the next begins. */
+  background-color: hsl(var(--border)) !important;
 }
 
 /* Make the resize sash easier to grab. Default dockview sashes are 4 px;
-   bump the hover state so users have a visible cue. */
+   bump the hover/active state so users have a visible cue. */
 .dockview-theme-huginndb .dv-sash:hover {
-  background-color: hsl(var(--primary) / 0.4);
+  background-color: hsl(var(--primary) / 0.5) !important;
 }
 
 /* Visible draggable affordance on tabs. The default cursor is `default`

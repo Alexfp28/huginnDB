@@ -344,7 +344,13 @@ export function TabbedArea(_props: Props) {
   }, [api, activeId]);
 
   return (
-    <div className="h-full">
+    // Explicit positioned, full-size wrapper. The nested DockviewReact root
+    // itself is `height/width: 100%`, but it also creates a shell element
+    // sized via ResizeObserver and absolutely-positioned drag overlays, so
+    // we make sure the box it lives in is unambiguously sized and a
+    // positioned ancestor — otherwise the overlays anchor against an outer
+    // dockview's shell and the vertical layout collapses on the first split.
+    <div className="relative h-full w-full">
       <DockviewReact
         components={INNER_COMPONENTS}
         defaultTabComponent={WorkspaceTab}
