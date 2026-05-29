@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-05-29
+
+First stable release. The alpha cycle (0.x) closes with the workspace
+turning into a code-editor-style surface, the multi-database explorer
+becoming instant on the first keystroke, and two MySQL-specific defects
+fixed. Existing data on disk (`profiles.json`, `tab_state.json`,
+`prefs.json`) is preserved without migration. From here on the project
+follows SemVer.
+
 ### Added
 
 - **Editor-style workspace.** The open table and query tabs now live in a
@@ -13,10 +22,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   behaves like a code editor: tabs can be split horizontally or
   vertically, dragged between groups, and torn out into a floating
   window. Tabs can also be closed with a middle-mouse (wheel) click in
-  addition to the X button. `useTabs` remains the source of truth — the
-  dockview panels are reconciled against it — so the existing
-  per-connection tab restore keeps working. Split/float geometry is
-  session-only; restored tabs come back in the default tabbed layout.
+  addition to the X button. Each tab also exposes an explicit `⋮` menu
+  with *Split right*, *Split down*, *Float in new window*, and *Close*
+  for users who prefer menu actions over drag-and-drop. `useTabs` remains
+  the source of truth — the dockview panels are reconciled against it —
+  so the existing per-connection tab restore keeps working. Split/float
+  geometry is session-only; restored tabs come back in the default tabbed
+  layout.
+
+- **MySQL `BIT` columns are now configurable in the grid.** A new
+  **BIT display** preference (Settings → Grid) renders `BIT` values as
+  either `true`/`false` (default) or `0`/`1`. The backend always ships
+  the value as a number, so toggling the preference re-renders without
+  re-querying.
 
 ### Changed
 
@@ -31,15 +49,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   databases remain. The previous on-demand prefetch is retained as a
   fallback for databases the warm pass hasn't reached yet.
 
-### Added
-
-- **MySQL `BIT` columns are now configurable in the grid.** A new
-  **BIT display** preference (Settings → Grid) renders `BIT` values as
-  either `true`/`false` (default) or `0`/`1`. The backend always ships
-  the value as a number, so toggling the preference re-renders without
-  re-querying.
-
 ### Fixed
+
+- **HTML5 drag-and-drop in the workspace was completely broken on
+  Windows.** Dragging an editor tab produced the "no drop allowed"
+  cursor everywhere on screen — no drop overlay appeared, nothing
+  accepted a release. Tauri 2's `dragDropEnabled` defaults to `true`,
+  which routes drag events through the OS file-drop handler and preempts
+  the HTML5 events dockview's `Droptarget` listeners rely on
+  (`tauri-utils` documents this verbatim: *"Disabling it is required to
+  use HTML5 drag and drop on the frontend on Windows"*). The window
+  config now sets `dragDropEnabled: false`. HuginnDB doesn't accept OS
+  file drops anyway (the SQLite path is chosen via a file dialog), so
+  there's no functional loss.
+
+- **Split divider between dockview groups was nearly invisible.**
+  `.dv-sash` was forced to z-index 1 (so Radix portals always covered
+  it) and tinted with `--border`, which on the dark theme blended into
+  the panel content. A vertical split looked like nothing had happened
+  even when dockview had laid out a new group below. The sash now lives
+  at z-index 10 (still safely under Radix at 50) with an explicit
+  divider tint, and the drag-over fill jumped from 0.18 to 0.40 alpha so
+  the drop quadrants stand out over Monaco / grid surfaces.
+
+- **"Split right" / "Split down" actions in the tab `⋮` menu silently
+  did nothing.** They called `panel.api.moveTo({ position })` without a
+  `group`, but `DockviewPanelApiImpl.moveTo` coerces `position` to
+  `"center"` whenever `options.group` is undefined — moving the panel
+  to the centre of its own group is a no-op. Passing the panel's own
+  group as the reference makes dockview create a new group adjacent at
+  the requested side.
 
 - **MySQL/MariaDB raised error 1064 when filtering a table.** The
   cross-column search clause emitted `... LIKE ? ESCAPE '\'` for every

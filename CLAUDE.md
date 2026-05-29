@@ -7,7 +7,7 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 - **HuginnDB** — desktop database manager, Tauri 2 (Rust backend) + React + TypeScript frontend.
 - Targets PostgreSQL, MySQL, SQLite. Inspired by HeidiSQL but minimal-UI / keyboard-first / Monaco-everywhere.
 - Public repo: <https://github.com/Alexfp28/huginnDB>.
-- License: MIT. Status: **alpha**, just published.
+- License: MIT. Status: **1.0.0** (stable; SemVer applies from here).
 
 ## Maintainer / collaboration notes
 
