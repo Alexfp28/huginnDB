@@ -6,6 +6,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-05-30
+
+First patch release. Fixes the MySQL `BIT` rendering that 1.0.0 shipped
+broken, and reworks data-grid cell editing into an inline-first flow with a
+persisted HeidiSQL-style row zoom. On-disk state is untouched.
+
+### Added
+
+- **Inline cell editing.** Double-clicking a cell in the data grid now edits
+  it in place with the same single-line input used by the insert draft row,
+  instead of always opening the large Monaco dialog. A *expand* button on the
+  inline editor (and the existing F11 in the cell preview) escalates to the
+  full modal for JSON / long / multi-line values. Foreign-key columns keep
+  their inline combobox; read-only query results still open the modal as a
+  viewer. The plain input + `∅` set-NULL control is now a shared `CellInput`
+  component reused by both the draft row and inline editing.
+- **Persisted row zoom.** The data grid honours `gridPrefs.rowHeight` (a
+  HeidiSQL-style zoom): `Ctrl` + mouse-wheel over the grid and `+`/`−` buttons
+  in the table toolbar grow or shrink row height, padding and font-size
+  together. The level is stored in `prefs.json` and survives restarts.
+
+### Fixed
+
+- **MySQL `BIT` columns rendered as `NULL`.** `sqlx` refuses to decode a
+  `Vec<u8>` from a `MYSQL_TYPE_BIT` column (its blob type-compatibility check
+  only accepts BLOB/STRING/VARBINARY), so the value collapsed to `NULL` in the
+  grid even though the row held a real value. `mysql_value` now reads the bytes
+  straight off the `ValueRef`, folding them big-endian into an integer
+  (`BIT(1)` → 0/1, wider `BIT(n)` → its numeric value). Booleans
+  (`BOOL` / `TINYINT(1)`) are also now decoded before the generic `INT` check,
+  which previously shadowed them.
+
 ## [1.0.0] — 2026-05-29
 
 First stable release. The alpha cycle (0.x) closes with the workspace
