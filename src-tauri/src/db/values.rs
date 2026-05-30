@@ -162,22 +162,18 @@ pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
             .map(|v| json!(v))
             .unwrap_or(Value::Null);
     }
-    // BIT(n) — sqlx refuses to decode `Vec<u8>` from a `MYSQL_TYPE_BIT` column:
-    // its blob type-compatibility check only accepts BLOB / STRING / VARBINARY,
-    // so `try_get::<Vec<u8>>` returns `Err` and the cell would collapse to
-    // `Value::Null` (the grid then renders "NULL" even though the row holds a
-    // real value). Read the bytes straight off the `ValueRef` we already hold,
-    // bypassing that check, and fold them big-endian into an unsigned integer
-    // (BIT(1) → 0/1, wider BIT(n) → its numeric value). The frontend turns the
-    // number into true/false or 0/1 per the user's grid preference.
+    // BIT(n) — decode as `u64`, NOT `Vec<u8>`. sqlx refuses to decode a byte
+    // vector from a `MYSQL_TYPE_BIT` column (its blob type-compatibility check
+    // only accepts BLOB / STRING / VARBINARY), so `try_get::<Vec<u8>>` returns
+    // `Err` and the cell would collapse to `Value::Null` — the grid then
+    // renders "NULL" even though the row holds a real value. The `u64` decoder
+    // *does* special-case `ColumnType::Bit` and folds the raw bytes big-endian
+    // for us (BIT(1) → 0/1, wider BIT(n) → its numeric value). The frontend
+    // turns the number into true/false or 0/1 per the user's grid preference.
     if name.contains("BIT") {
-        return raw
-            .as_bytes()
-            .ok()
-            .map(|bytes| {
-                let n = bytes.iter().fold(0u64, |acc, &b| (acc << 8) | b as u64);
-                json!(n)
-            })
+        return row
+            .try_get::<u64, _>(idx)
+            .map(|n| json!(n))
             .unwrap_or(Value::Null);
     }
     row.try_get::<String, _>(idx)
