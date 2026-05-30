@@ -93,6 +93,16 @@ pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
     }
     let name = raw.type_info().name().to_uppercase();
 
+    // Boolean-ish types must be checked *before* the generic `INT` branch:
+    // `"TINYINT(1)"` contains the substring `"INT"`, so ordering this after
+    // the `contains("INT")` check below would shadow it and decode booleans
+    // as plain integers (the bool branch would be dead code).
+    if name == "BOOL" || name == "TINYINT(1)" {
+        return row
+            .try_get::<bool, _>(idx)
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null);
+    }
     if name.contains("INT") {
         return row
             .try_get::<i64, _>(idx)
@@ -102,12 +112,6 @@ pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
     if name.contains("FLOAT") || name.contains("DOUBLE") || name.contains("DECIMAL") {
         return row
             .try_get::<f64, _>(idx)
-            .map(|v| json!(v))
-            .unwrap_or(Value::Null);
-    }
-    if name == "BOOL" || name == "TINYINT(1)" {
-        return row
-            .try_get::<bool, _>(idx)
             .map(|v| json!(v))
             .unwrap_or(Value::Null);
     }
@@ -158,14 +162,18 @@ pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
             .map(|v| json!(v))
             .unwrap_or(Value::Null);
     }
-    // BIT(n) — sqlx hands these back as raw bytes, never as a `String`, so the
-    // generic fallback below would decode to `Value::Null` and the grid would
-    // render the cell empty. Fold the bytes into a big-endian unsigned integer
+    // BIT(n) — sqlx refuses to decode `Vec<u8>` from a `MYSQL_TYPE_BIT` column:
+    // its blob type-compatibility check only accepts BLOB / STRING / VARBINARY,
+    // so `try_get::<Vec<u8>>` returns `Err` and the cell would collapse to
+    // `Value::Null` (the grid then renders "NULL" even though the row holds a
+    // real value). Read the bytes straight off the `ValueRef` we already hold,
+    // bypassing that check, and fold them big-endian into an unsigned integer
     // (BIT(1) → 0/1, wider BIT(n) → its numeric value). The frontend turns the
     // number into true/false or 0/1 per the user's grid preference.
     if name.contains("BIT") {
-        return row
-            .try_get::<Vec<u8>, _>(idx)
+        return raw
+            .as_bytes()
+            .ok()
             .map(|bytes| {
                 let n = bytes.iter().fold(0u64, |acc, &b| (acc << 8) | b as u64);
                 json!(n)
