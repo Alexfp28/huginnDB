@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   flexRender,
   getCoreRowModel,
@@ -44,6 +45,7 @@ import type {
   QueryResult,
 } from "@/types";
 import { CellEditor } from "@/components/CellEditor";
+import { CellInput } from "@/components/CellInput";
 import { CellPreview } from "@/components/CellPreview";
 import { FkCombobox } from "@/components/ui/fk-combobox";
 import {
@@ -238,6 +240,7 @@ export function DataGrid({
   onDraftCommit,
   onDraftCancel,
 }: Props) {
+  const { t } = useTranslation();
   const draftRowRef = useRef<HTMLTableRowElement | null>(null);
   // Holds either the plain text input or the FkCombobox trigger, so any
   // editable element type can claim the autofocus slot.
@@ -278,6 +281,21 @@ export function DataGrid({
   const [fkEditCell, setFkEditCell] = useState<{
     rowValues: CellValue[];
     column: ColumnMeta;
+  } | null>(null);
+  /**
+   * Inline single-cell editor anchored to a cell (double-click on an
+   * editable, non-FK column). Reuses the draft-row `CellInput` so editing an
+   * existing value feels identical to typing a new one. `value` is the live
+   * draft; `original` is the value at activation, used to skip a no-op save on
+   * blur (notably when escalating to the modal via the expand button).
+   * Tracked by row identity (the values array, gotcha #7), not a display
+   * index, so it survives sort/filter reshuffles between open and commit.
+   */
+  const [inlineEdit, setInlineEdit] = useState<{
+    rowValues: CellValue[];
+    column: ColumnMeta;
+    value: string | null;
+    original: string | null;
   } | null>(null);
   /** Fast lookup of column metadata by name for FK detection in the cell renderer. */
   const columnInfoByName = useMemo(() => {
@@ -344,6 +362,56 @@ export function DataGrid({
     [result.columns],
   );
   const bitDisplay = usePreferences((s) => selectGridPrefs(s).bitDisplay);
+
+  /**
+   * Persisted grid "zoom" (HeidiSQL-style). A single px row-height drives
+   * cell height, padding and font-size together. Subscribed as a primitive
+   * so the selector stays reference-stable (see the theme-store banner /
+   * CONTRIBUTING "Zustand selectors" rule).
+   */
+  const rowHeight = usePreferences((s) => selectGridPrefs(s).rowHeight);
+  const updateGrid = usePreferences((s) => s.updateGrid);
+  /**
+   * Inline styles derived from `rowHeight`. Memoised so the object identity
+   * is stable across the per-cell render loop (it feeds hundreds of cells).
+   * Font-size tracks the row height but is clamped to stay legible.
+   */
+  const { cellStyle, headerStyle } = useMemo(() => {
+    const fontSize = Math.min(22, Math.max(10, Math.round(rowHeight * 0.46)));
+    const padY = Math.max(1, Math.round((rowHeight - fontSize) / 2));
+    return {
+      cellStyle: {
+        fontSize,
+        paddingTop: padY,
+        paddingBottom: padY,
+      } as React.CSSProperties,
+      headerStyle: {
+        fontSize: Math.max(9, fontSize - 2),
+      } as React.CSSProperties,
+    };
+  }, [rowHeight]);
+
+  /**
+   * Ctrl + mouse-wheel over the grid zooms the rows in/out, like a code
+   * editor. Bound via a non-passive native listener so `preventDefault`
+   * actually suppresses the browser's page-zoom; a JSX `onWheel` handler is
+   * passive by default and cannot. Persistence is handled by the prefs store
+   * (debounced write), so we only push the clamped row height.
+   */
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    function onWheel(e: WheelEvent) {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const step = e.deltaY < 0 ? 2 : -2;
+      const next = Math.min(40, Math.max(14, rowHeight + step));
+      if (next !== rowHeight) updateGrid({ rowHeight: next });
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [rowHeight, updateGrid]);
 
   /**
    * Backend column index keyed by name. The cell render loop walks
@@ -422,6 +490,44 @@ export function DataGrid({
               />
             );
           }
+          // Inline single-cell editor (double-click on an editable, non-FK
+          // cell). Same identity rule as the FK overlay above.
+          const editingInline =
+            inlineEdit?.rowValues === rowValues &&
+            inlineEdit.column.name === col.name;
+          if (editingInline && inlineEdit) {
+            const commit = () => {
+              const { value, original, rowValues: rv, column } = inlineEdit;
+              setInlineEdit(null);
+              // No-op when unchanged — also makes the blur that fires while
+              // escalating to the modal harmless (expand leaves value as-is).
+              if (value === original) return;
+              onCellSave?.(rv, column.name, value).catch(() => {});
+            };
+            const expand = () => {
+              openModalEditor(
+                inlineEdit.rowValues,
+                inlineEdit.column,
+                inlineEdit.value ?? "",
+              );
+              setInlineEdit(null);
+            };
+            return (
+              <CellInput
+                autoFocus
+                value={inlineEdit.value}
+                nullable={colInfo?.nullable ?? false}
+                nullActive={inlineEdit.value === null}
+                onChange={(nv) =>
+                  setInlineEdit((prev) => (prev ? { ...prev, value: nv } : prev))
+                }
+                onCommit={commit}
+                onCancel={() => setInlineEdit(null)}
+                onExpand={expand}
+                expandTitle={t("dataGrid.expandEditor")}
+              />
+            );
+          }
           const isBit = bitColNames.has(col.name);
           const display =
             isBit && typeof v === "number"
@@ -431,7 +537,7 @@ export function DataGrid({
           return (
             <div className="flex max-w-md items-center gap-1">
               <span
-                className={`truncate font-mono text-xs ${
+                className={`truncate font-mono ${
                   isNumeric ? "text-amber-400" : ""
                 }`}
               >
@@ -456,10 +562,13 @@ export function DataGrid({
       sortDesc,
       onSortChange,
       fkEditCell,
+      inlineEdit,
       columnInfoByName,
+      columnIndexByName,
       connectionId,
       tableSchema,
       onCellSave,
+      t,
     ],
   );
 
@@ -469,21 +578,36 @@ export function DataGrid({
     getCoreRowModel: getCoreRowModel(),
   });
 
-  function openEditor(
+  /** Open the heavyweight Monaco modal directly (read-only view, or the
+   *  "expand" escalation from the inline editor / CellPreview). */
+  function openModalEditor(
     rowValues: CellValue[],
     column: ColumnMeta,
     value: string,
   ) {
-    // Single-column FK columns get an inline combobox anchored to the
-    // cell instead of the heavyweight Monaco dialog — picking a valid
-    // referenced value never needs multi-line editing.
+    setEditorTarget({ rowValues, column, value });
+    setEditorOpen(true);
+  }
+
+  /**
+   * Double-click entry point. Routes to the right editor for the cell:
+   * - single-column FK → inline combobox of valid referenced values;
+   * - editable cell → inline `CellInput` (with an expand-to-modal affordance);
+   * - read-only result grid → the Monaco modal as a viewer.
+   */
+  function openCellEdit(rowValues: CellValue[], column: ColumnMeta) {
     const info = columnInfoByName.get(column.name);
     if (editable && onCellSave && connectionId && info?.referenced_table) {
       setFkEditCell({ rowValues, column });
       return;
     }
-    setEditorTarget({ rowValues, column, value });
-    setEditorOpen(true);
+    const cur = rowValues[columnIndexByName.get(column.name) ?? -1];
+    const fmt = cur === null || cur === undefined ? null : formatValue(cur);
+    if (editable && onCellSave) {
+      setInlineEdit({ rowValues, column, value: fmt, original: fmt });
+      return;
+    }
+    openModalEditor(rowValues, column, fmt ?? "");
   }
 
   async function copyToClipboard(text: string) {
@@ -552,6 +676,7 @@ export function DataGrid({
 
       {/* Scrollable data table */}
       <div
+        ref={scrollRef}
         className="flex-1 overflow-auto"
         // Close the cell preview when clicking outside the table cells.
         onClick={() => setSelectedCell(null)}
@@ -560,13 +685,17 @@ export function DataGrid({
           <thead className="sticky top-0 z-10 bg-card">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                <th className="border-b border-border bg-card px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th
+                  className="border-b border-border bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
+                  style={headerStyle}
+                >
                   #
                 </th>
                 {hg.headers.map((h) => (
                   <th
                     key={h.id}
-                    className="border-b border-border bg-card px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground"
+                    className="border-b border-border bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
+                    style={headerStyle}
                   >
                     {flexRender(h.column.columnDef.header, h.getContext())}
                   </th>
@@ -611,7 +740,10 @@ export function DataGrid({
                     setSelectedRowIndex(i);
                   }}
                 >
-                  <td className="border-b border-border/50 px-2 py-1 text-[10px] text-muted-foreground">
+                  <td
+                    className="border-b border-border/50 px-2 text-muted-foreground"
+                    style={cellStyle}
+                  >
                     {i + 1}
                   </td>
                   {row.getVisibleCells().map((cell) => {
@@ -631,7 +763,8 @@ export function DataGrid({
                       <ContextMenu key={cell.id}>
                         <ContextMenuTrigger asChild>
                           <td
-                            className="cursor-pointer border-b border-border/50 px-2 py-1"
+                            className="cursor-pointer border-b border-border/50 px-2"
+                            style={cellStyle}
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedRowIndex(i);
@@ -653,7 +786,7 @@ export function DataGrid({
                             }}
                             onDoubleClick={(e) => {
                               e.stopPropagation();
-                              openEditor(rowValues, meta, formatValue(value));
+                              openCellEdit(rowValues, meta);
                             }}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -831,7 +964,7 @@ export function DataGrid({
           value={selectedCell.value}
           onClose={() => setSelectedCell(null)}
           onFullscreen={() => {
-            openEditor(
+            openModalEditor(
               selectedCell.rowValues,
               selectedCell.column,
               formatValue(selectedCell.value),
@@ -1106,48 +1239,22 @@ function DraftRowView({
                   }
                 />
               ) : (
-                <div className="flex items-center gap-1">
-                  <input
-                    ref={
-                      idx === firstEditableIdx
-                        ? (firstInputRef as React.MutableRefObject<HTMLInputElement | null>)
-                        : undefined
-                    }
-                    className="h-6 w-full min-w-0 rounded-sm border border-input bg-background px-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                    placeholder={cell.value === null ? "NULL" : ""}
-                    value={cell.value ?? ""}
-                    disabled={draft.saving}
-                    onChange={(e) =>
-                      onChange?.(col.name, {
-                        value: e.target.value,
-                        touched: true,
-                      })
-                    }
-                  />
-                  {info?.nullable && (
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      title="Set NULL"
-                      disabled={draft.saving}
-                      className={`shrink-0 rounded px-1 text-[10px] ${
-                        cell.value === null && cell.touched
-                          ? "bg-primary/20 text-primary"
-                          : "text-muted-foreground/50 hover:text-foreground"
-                      }`}
-                      onMouseDown={(e) => {
-                        // Prevent the input from blurring (which would
-                        // trigger commit) when the user clicks "∅".
-                        e.preventDefault();
-                      }}
-                      onClick={() =>
-                        onChange?.(col.name, { value: null, touched: true })
-                      }
-                    >
-                      ∅
-                    </button>
-                  )}
-                </div>
+                // Row-level onBlur / onKeyDown drive commit & cancel here, so
+                // CellInput is left unwired (no onCommit / onCancel).
+                <CellInput
+                  ref={
+                    idx === firstEditableIdx
+                      ? (firstInputRef as React.MutableRefObject<HTMLInputElement | null>)
+                      : undefined
+                  }
+                  value={cell.value}
+                  nullable={info?.nullable}
+                  nullActive={cell.value === null && cell.touched}
+                  disabled={draft.saving}
+                  onChange={(v) =>
+                    onChange?.(col.name, { value: v, touched: true })
+                  }
+                />
               )}
             </td>
           );

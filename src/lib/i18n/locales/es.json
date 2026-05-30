@@ -177,6 +177,12 @@
     "setNullHint": "⌘⇧ N null",
     "closeHint": "esc cerrar"
   },
+  "dataGrid": {
+    "expandEditor": "Abrir en el editor completo",
+    "zoomIn": "Filas más grandes (Ctrl + +)",
+    "zoomOut": "Filas más pequeñas (Ctrl + −)",
+    "zoomReset": "Restablecer tamaño de fila (Ctrl + 0)"
+  },
   "tabs": {
     "queryFileName": "query.sql",
     "closeTab": "Cerrar pestaña",

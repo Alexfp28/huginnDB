@@ -22,11 +22,19 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/schema";
 import { useFilterHistory } from "@/stores/filterHistory";
 import { useConnections } from "@/stores/connections";
+import { usePreferences, selectGridPrefs } from "@/stores/preferences";
 import type {
   CellValue,
   ColumnFilter,
@@ -137,6 +145,20 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
   const pushHistory = useFilterHistory((s) => s.push);
   const filterHistory = useFilterHistory(
     (s) => s.byConnection[connectionId],
+  );
+
+  const { t } = useTranslation();
+  /**
+   * Persisted grid "zoom". The same `gridPrefs.rowHeight` the DataGrid reads;
+   * the toolbar +/− buttons nudge it (Ctrl+wheel over the grid does the same).
+   * Subscribed as a primitive so the selector stays reference-stable.
+   */
+  const rowHeight = usePreferences((s) => selectGridPrefs(s).rowHeight);
+  const updateGrid = usePreferences((s) => s.updateGrid);
+  const zoomRows = useCallback(
+    (delta: number) =>
+      updateGrid({ rowHeight: Math.min(40, Math.max(14, rowHeight + delta)) }),
+    [rowHeight, updateGrid],
   );
 
   /**
@@ -404,6 +426,26 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
           <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
         </Button>
         <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => zoomRows(-2)}
+              disabled={rowHeight <= 14}
+              title={t("dataGrid.zoomOut")}
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => zoomRows(2)}
+              disabled={rowHeight >= 40}
+              title={t("dataGrid.zoomIn")}
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           <Button
             variant="ghost"
             size="icon"
