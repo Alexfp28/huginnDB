@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **MySQL `TINYINT` (and other non-`i64` integer widths) rendered as `NULL`.**
+  sqlx maps each MySQL integer width to a specific Rust type (`TINYINT` → `i8`,
+  `… UNSIGNED` → `u8`/`u32`/`u64`, …) and refuses a mismatched `try_get` target,
+  so `try_get::<i64>` failed for everything that wasn't signed-64-bit-compatible
+  and the cell collapsed to `NULL` — the same class of bug previously fixed for
+  `BIT`. `mysql_value` now falls back across the signed and unsigned widths
+  before surrendering to `NULL`, so `TINYINT`/`SMALLINT` and unsigned columns
+  show their real value. `TINYINT(1)`/`BOOL` still decode as booleans (that
+  branch stays above the generic `INT` check).
 - **Blank connection panel when clearing a multi-DB filter.** In a multi-database
   connection, typing a filter and then clearing it could blank the entire schema
   panel (the outer File/View/Workspaces toolbar stayed visible). Root cause: a
