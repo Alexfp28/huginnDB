@@ -151,6 +151,39 @@ function SingleDbExplorer({
     if (!cs || (!cs.initialized && !cs.loading)) refresh(connectionId);
   }, [connectionId, cs, refresh]);
 
+  // Group tables by schema, then by kind within each schema. Apply the
+  // filter at this stage so empty schemas drop out of the rendered list
+  // entirely when nothing matches.
+  //
+  // This hook MUST stay above the `if (!cs)` early return below. When a
+  // multi-DB filter is cleared, several nested explorers unmount while
+  // `byConnection` is still settling, and `cs` can flip to `undefined` for
+  // a render before the slice reappears. A `useMemo` placed *after* the
+  // early return would then be skipped on the `undefined` render and called
+  // again on the next one — "rendered fewer hooks than expected", which
+  // crashed the whole connection panel to a blank screen (the exact 1.0.1
+  // multi-DB blank-panel bug). Keeping it here, reading `cs?.tables`, makes
+  // the hook count constant. Memoising also keeps the grouping object
+  // reference-stable so the `TableSection` subtree doesn't thrash on every
+  // render of the surviving explorers (CLAUDE.md gotcha #1).
+  const needle = filter.trim().toLowerCase();
+  const { bySchema, schemas } = useMemo(() => {
+    const grouped: Record<
+      string,
+      { tables: TableInfo[]; views: TableInfo[] }
+    > = {};
+    for (const tbl of cs?.tables ?? []) {
+      if (needle && !tbl.name.toLowerCase().includes(needle)) continue;
+      grouped[tbl.schema] ??= { tables: [], views: [] };
+      if (tbl.kind === "view") {
+        grouped[tbl.schema].views.push(tbl);
+      } else {
+        grouped[tbl.schema].tables.push(tbl);
+      }
+    }
+    return { bySchema: grouped, schemas: Object.keys(grouped).sort() };
+  }, [cs?.tables, needle]);
+
   if (!cs) {
     return (
       <div className="px-3 py-3 text-xs text-muted-foreground">
@@ -158,23 +191,6 @@ function SingleDbExplorer({
       </div>
     );
   }
-
-  // Group tables by schema, then by kind within each schema. Apply the
-  // filter at this stage so empty schemas drop out of the rendered list
-  // entirely when nothing matches.
-  const needle = filter.trim().toLowerCase();
-  const bySchema: Record<string, { tables: TableInfo[]; views: TableInfo[] }> =
-    {};
-  for (const tbl of cs.tables) {
-    if (needle && !tbl.name.toLowerCase().includes(needle)) continue;
-    bySchema[tbl.schema] ??= { tables: [], views: [] };
-    if (tbl.kind === "view") {
-      bySchema[tbl.schema].views.push(tbl);
-    } else {
-      bySchema[tbl.schema].tables.push(tbl);
-    }
-  }
-  const schemas = Object.keys(bySchema).sort();
 
   const tableActions: TableActions = {
     openTab,

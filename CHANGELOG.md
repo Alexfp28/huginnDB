@@ -6,7 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-## [1.0.1] — 2026-05-30
+### Fixed
+
+- **Blank connection panel when clearing a multi-DB filter.** In a multi-database
+  connection, typing a filter and then clearing it could blank the entire schema
+  panel (the outer File/View/Workspaces toolbar stayed visible). Root cause: a
+  `useMemo` in the single-database explorer sat *below* the `if (!cs) return`
+  early return, so when the per-connection schema slice briefly flipped to
+  `undefined` while nested explorers unmounted, React rendered a different number
+  of hooks across renders and threw. The hook now sits above the early return
+  (constant hook count) and the grouping is reference-stable. A new
+  `ConnectionErrorBoundary` wraps the schema and workspace panels so any future
+  render crash degrades to a legible error card with a retry instead of a dead
+  white screen.
 
 First patch release. Fixes the MySQL `BIT` rendering that 1.0.0 shipped
 broken, and reworks data-grid cell editing into an inline-first flow with a

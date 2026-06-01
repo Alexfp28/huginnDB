@@ -38,6 +38,7 @@ import { SchemaExplorer } from "@/components/SchemaExplorer";
 import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { ConnectionErrorBoundary } from "@/components/ConnectionErrorBoundary";
 import { SavedQueriesPanel } from "@/components/SavedQueriesPanel";
 import { Console } from "@/components/Console";
 import { startLogBridge } from "@/lib/log-bridge";
@@ -65,7 +66,11 @@ function SchemaPanel() {
       </div>
     );
   }
-  return <SchemaExplorer connectionId={id} />;
+  return (
+    <ConnectionErrorBoundary resetKey={id}>
+      <SchemaExplorer connectionId={id} />
+    </ConnectionErrorBoundary>
+  );
 }
 
 function SavedPanel() {
@@ -75,7 +80,11 @@ function SavedPanel() {
 
 function WorkspacePanel() {
   const id = useUi((s) => s.selectedConnectionId);
-  return <TabbedArea connectionId={id} />;
+  return (
+    <ConnectionErrorBoundary resetKey={id ?? undefined}>
+      <TabbedArea connectionId={id} />
+    </ConnectionErrorBoundary>
+  );
 }
 
 function ConsolePanel() {
