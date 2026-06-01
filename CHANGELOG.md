@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Multi-row selection with bulk copy and delete.** Pick several rows the way
+  your OS file manager works: `Ctrl`/`Cmd`-click toggles individual rows and
+  `Shift`-click extends a contiguous range. Right-clicking the selection offers
+  *Copy N rows as ▸ JSON / SQL INSERT / SQL UPDATE* (reusing the existing per-row
+  formatters) and *Delete N rows*. Every delete — single or bulk — goes through
+  the same confirmation dialog. Selection is keyed by primary key, so it
+  survives sorting, client-side filtering and refetches (only available on
+  tables with a primary key).
 - **Workspace split/float layout now persists per connection.** A two-pane (or
   floating) arrangement inside a workspace is captured as a dockview `toJSON()`
   blob in `tab_state.json` (`internalLayout`) and restored with `fromJSON` on

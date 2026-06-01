@@ -61,8 +61,12 @@ interface Props {
 }
 
 interface PendingDelete {
-  /** One value per primary-key column, ordered to match `pkColumns`. */
-  pkValues: CellValue[];
+  /**
+   * One tuple per row to delete, each parallel to `pkColumns`. A single-row
+   * delete is just a one-element list, so the confirmation dialog and the
+   * `deleteRows` call handle one and many rows through the same path.
+   */
+  pkValueRows: CellValue[][];
 }
 
 /** Build an empty draft (all cells untouched / NULL). */
@@ -326,7 +330,18 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
   function onDeleteRow(rowValues: CellValue[]) {
     try {
       const pkValues = pkValuesFromRow(rowValues);
-      setPendingDelete({ pkValues });
+      setPendingDelete({ pkValueRows: [pkValues] });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  /** Multi-selection delete — routes the whole selection through the same
+   *  confirmation dialog and bulk `deleteRows` call as a single row. */
+  function onBulkDelete(rows: CellValue[][]) {
+    try {
+      const pkValueRows = rows.map((r) => pkValuesFromRow(r));
+      if (pkValueRows.length > 0) setPendingDelete({ pkValueRows });
     } catch (e) {
       setError(String(e));
     }
@@ -340,7 +355,7 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
         schema,
         table,
         pkColumns: pkColumns.map((c) => c.name),
-        pkValueRows: [pendingDelete.pkValues],
+        pkValueRows: pendingDelete.pkValueRows,
       });
       setPendingDelete(null);
       await fetchData();
@@ -531,6 +546,18 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
             onInsertRow={hasPk ? onInsertRow : undefined}
             onDuplicateRow={hasPk ? onDuplicateRow : undefined}
             onDeleteRow={hasPk ? onDeleteRow : undefined}
+            onBulkDelete={hasPk ? onBulkDelete : undefined}
+            getRowKey={
+              hasPk
+                ? (rowValues) => {
+                    try {
+                      return JSON.stringify(pkValuesFromRow(rowValues));
+                    } catch {
+                      return null;
+                    }
+                  }
+                : undefined
+            }
             draftRow={draft}
             draftColumns={cols}
             onDraftCellChange={onDraftCellChange}
@@ -549,25 +576,46 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete row?</DialogTitle>
+            <DialogTitle>
+              {(pendingDelete?.pkValueRows.length ?? 0) > 1
+                ? `Delete ${pendingDelete?.pkValueRows.length} rows?`
+                : "Delete row?"}
+            </DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground">
-            About to delete from{" "}
-            <span className="font-mono">
-              {schema ? `${schema}.` : ""}
-              {table}
-            </span>{" "}
-            where{" "}
-            <span className="font-mono">
-              {pkColumns
-                .map(
-                  (c, i) =>
-                    `${c.name} = ${String(pendingDelete?.pkValues[i] ?? "")}`,
-                )
-                .join(" AND ")}
-            </span>
-            . This cannot be undone.
-          </p>
+          {(pendingDelete?.pkValueRows.length ?? 0) > 1 ? (
+            <p className="text-xs text-muted-foreground">
+              About to delete{" "}
+              <span className="font-semibold">
+                {pendingDelete?.pkValueRows.length} rows
+              </span>{" "}
+              from{" "}
+              <span className="font-mono">
+                {schema ? `${schema}.` : ""}
+                {table}
+              </span>
+              . This cannot be undone.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              About to delete from{" "}
+              <span className="font-mono">
+                {schema ? `${schema}.` : ""}
+                {table}
+              </span>{" "}
+              where{" "}
+              <span className="font-mono">
+                {pkColumns
+                  .map(
+                    (c, i) =>
+                      `${c.name} = ${String(
+                        pendingDelete?.pkValueRows[0]?.[i] ?? "",
+                      )}`,
+                  )
+                  .join(" AND ")}
+              </span>
+              . This cannot be undone.
+            </p>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPendingDelete(null)}>
               Cancel

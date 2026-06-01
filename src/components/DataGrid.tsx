@@ -158,6 +158,20 @@ interface Props {
   onInsertRow?: () => void;
   onDuplicateRow?: (rowValues: CellValue[]) => void;
   onDeleteRow?: (rowValues: CellValue[]) => void;
+  /**
+   * Delete several rows at once (the multi-selection path). Receives one
+   * values array per selected row. Wired only when the table has a PK; the
+   * parent shows the same confirmation dialog used for single-row delete.
+   */
+  onBulkDelete?: (rows: CellValue[][]) => void;
+  /**
+   * Stable identity key for a row, derived from its primary key by the
+   * parent (`JSON.stringify(pkValues)`). Returns `null` when the row has no
+   * resolvable PK, which disables selection — consistent with the existing
+   * editable/delete gate. Identity is data-derived (not the display index)
+   * so a selection survives refetch / sort / client filtering (gotcha #7).
+   */
+  getRowKey?: (rowValues: CellValue[]) => string | null;
 
   /**
    * Inline draft row state (insert / duplicate). When set, an extra
@@ -234,6 +248,8 @@ export function DataGrid({
   onInsertRow,
   onDuplicateRow,
   onDeleteRow,
+  onBulkDelete,
+  getRowKey,
   draftRow,
   draftColumns,
   onDraftCellChange,
@@ -323,6 +339,18 @@ export function DataGrid({
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
 
   /**
+   * Multi-row selection. Keyed by the parent-supplied stable row key
+   * (PK-derived) rather than display index or array reference, so a selection
+   * survives refetch / sort / client filtering (gotcha #7). Only meaningful
+   * when `getRowKey` is wired (i.e. the table has a PK); otherwise the
+   * checkbox column is hidden and bulk actions never appear.
+   */
+  const selectionEnabled = !!getRowKey;
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  /** Anchor for Shift-click range selection (the last row toggled). */
+  const lastClickedKeyRef = useRef<string | null>(null);
+
+  /**
    * Optional client-side text filter over the rows already in memory.
    * Used by query results (where there is no underlying table to
    * refetch from). `TableDataTab` instead pushes the same `globalFilter`
@@ -335,6 +363,110 @@ export function DataGrid({
       r.some((c) => formatValue(c).toLowerCase().includes(q)),
     );
   }, [result.rows, globalFilter]);
+
+  /**
+   * Visible rows paired with their stable key (or null when unresolvable),
+   * memoised so the per-row render and the range-selection math read a stable
+   * list. `null`-keyed rows simply can't be selected.
+   */
+  const keyedVisibleRows = useMemo(() => {
+    if (!getRowKey) return [] as { key: string | null; row: CellValue[] }[];
+    return visibleRows.map((row) => ({ key: getRowKey(row), row }));
+  }, [visibleRows, getRowKey]);
+
+  /**
+   * The currently-selected rows, as values arrays, in visible order. Drives
+   * the bulk context-menu actions and the selection count. Memoised on the
+   * selection set + the visible rows so its identity is stable across
+   * unrelated renders.
+   */
+  const selectedRows = useMemo(() => {
+    if (selectedKeys.size === 0) return [] as CellValue[][];
+    return keyedVisibleRows
+      .filter((r) => r.key !== null && selectedKeys.has(r.key))
+      .map((r) => r.row);
+  }, [keyedVisibleRows, selectedKeys]);
+
+  /**
+   * Prune selected keys that no longer correspond to a visible row (e.g.
+   * after a refetch that dropped rows, or a filter narrowing). Keeps the
+   * checkbox header's "all selected" state honest and avoids deleting rows
+   * the user can no longer see. Runs only when the visible key set changes.
+   */
+  useEffect(() => {
+    if (selectedKeys.size === 0) return;
+    const live = new Set(
+      keyedVisibleRows.map((r) => r.key).filter((k): k is string => k !== null),
+    );
+    let changed = false;
+    const next = new Set<string>();
+    for (const k of selectedKeys) {
+      if (live.has(k)) next.add(k);
+      else changed = true;
+    }
+    if (changed) setSelectedKeys(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyedVisibleRows]);
+
+  /** Toggle a single row key (Ctrl/Cmd-click, or plain checkbox click). */
+  function toggleRowKey(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    lastClickedKeyRef.current = key;
+  }
+
+  /** Select the contiguous range (in visible order) between the anchor and
+   *  `key`, additively. Falls back to a single toggle when there's no anchor. */
+  function selectRangeTo(key: string) {
+    const anchor = lastClickedKeyRef.current;
+    if (!anchor) {
+      toggleRowKey(key);
+      return;
+    }
+    const keys = keyedVisibleRows
+      .map((r) => r.key)
+      .filter((k): k is string => k !== null);
+    const a = keys.indexOf(anchor);
+    const b = keys.indexOf(key);
+    if (a < 0 || b < 0) {
+      toggleRowKey(key);
+      return;
+    }
+    const [lo, hi] = a <= b ? [a, b] : [b, a];
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      for (let i = lo; i <= hi; i++) next.add(keys[i]);
+      return next;
+    });
+  }
+
+  /**
+   * OS-explorer-style selection from a row/cell click. Ctrl/Cmd-click toggles
+   * a single row; Shift-click extends a contiguous range from the anchor; a
+   * plain click clears any multi-selection (keeping the single-row blue
+   * highlight, handled separately by `setSelectedRowIndex`). No-op for rows
+   * without a resolvable key.
+   */
+  function applyRowSelectionClick(
+    rowKey: string | null,
+    e: React.MouseEvent,
+  ) {
+    if (rowKey === null) return;
+    if (e.ctrlKey || e.metaKey) {
+      toggleRowKey(rowKey);
+    } else if (e.shiftKey) {
+      selectRangeTo(rowKey);
+    } else if (selectedKeys.size > 0) {
+      setSelectedKeys(new Set());
+      lastClickedKeyRef.current = rowKey;
+    } else {
+      lastClickedKeyRef.current = rowKey;
+    }
+  }
 
   /**
    * Pre-computed set of column names that carry numeric data.
@@ -618,6 +750,41 @@ export function DataGrid({
     }
   }
 
+  /** Serialise several rows for the bulk "Copy N rows as ▸" menu, reusing the
+   *  same per-row formatters as the single-row submenu. JSON yields one array;
+   *  INSERT/UPDATE yield newline-joined statements. */
+  function bulkCopy(rows: CellValue[][], fmt: "json" | "insert" | "update") {
+    if (fmt === "json") {
+      const arr = rows.map((r) => {
+        const obj: Record<string, unknown> = {};
+        result.columns.forEach((c, i) => {
+          obj[c.name] = r[i] as unknown;
+        });
+        return obj;
+      });
+      return JSON.stringify(arr, null, 2);
+    }
+    if (fmt === "insert") {
+      return rows
+        .map((r) =>
+          rowToSqlInsert(r, result.columns, driver, tableName, tableSchema),
+        )
+        .join("\n");
+    }
+    return rows
+      .map((r) =>
+        rowToSqlUpdate(
+          r,
+          result.columns,
+          driver,
+          tableName,
+          tableSchema,
+          pkColumnNames,
+        ),
+      )
+      .join("\n");
+  }
+
   return (
     // `relative` allows CellPreview to be positioned absolute within this container.
     <div className="relative flex h-full flex-col">
@@ -727,17 +894,24 @@ export function DataGrid({
               // which is the *filtered display index* and silently
               // mismatches `result.rows` when `globalFilter` is active.
               const rowValues = row.original as CellValue[];
+              const rowKey = selectionEnabled
+                ? (getRowKey?.(rowValues) ?? null)
+                : null;
+              const isMultiSelected = rowKey !== null && selectedKeys.has(rowKey);
               return (
                 <tr
                   key={row.id}
                   className={
-                    isSelected
-                      ? "bg-blue-500/10"
-                      : "hover:bg-accent/30"
+                    isMultiSelected
+                      ? "bg-blue-500/20"
+                      : isSelected
+                        ? "bg-blue-500/10"
+                        : "hover:bg-accent/30"
                   }
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedRowIndex(i);
+                    applyRowSelectionClick(rowKey, e);
                   }}
                 >
                   <td
@@ -768,12 +942,18 @@ export function DataGrid({
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedRowIndex(i);
-                              setSelectedCell({
-                                rowValues,
-                                colIndex: colIdx,
-                                column: meta,
-                                value,
-                              });
+                              // Ctrl/Cmd/Shift-click on a cell drives the
+                              // OS-style multi-selection; a plain click also
+                              // opens the cell preview below.
+                              applyRowSelectionClick(rowKey, e);
+                              if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                                setSelectedCell({
+                                  rowValues,
+                                  colIndex: colIdx,
+                                  column: meta,
+                                  value,
+                                });
+                              }
                             }}
                             onContextMenu={() => {
                               setSelectedRowIndex(i);
@@ -793,6 +973,67 @@ export function DataGrid({
                           </td>
                         </ContextMenuTrigger>
                         <ContextMenuContent>
+                          {/* Bulk variant: shown when more than one row is
+                              selected and the right-clicked row is part of
+                              that selection. Replaces the per-cell/row entries
+                              with selection-wide copy + delete; otherwise the
+                              regular single-row menu below renders. */}
+                          {selectionEnabled &&
+                          selectedRows.length > 1 &&
+                          rowKey !== null &&
+                          selectedKeys.has(rowKey) ? (
+                            <>
+                              <ContextMenuLabel>
+                                {selectedRows.length} rows selected
+                              </ContextMenuLabel>
+                              <ContextMenuSub>
+                                <ContextMenuSubTrigger>
+                                  Copy {selectedRows.length} rows as
+                                </ContextMenuSubTrigger>
+                                <ContextMenuSubContent>
+                                  <ContextMenuItem
+                                    onSelect={() =>
+                                      copyToClipboard(
+                                        bulkCopy(selectedRows, "json"),
+                                      )
+                                    }
+                                  >
+                                    JSON
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    onSelect={() =>
+                                      copyToClipboard(
+                                        bulkCopy(selectedRows, "insert"),
+                                      )
+                                    }
+                                  >
+                                    SQL INSERT
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    onSelect={() =>
+                                      copyToClipboard(
+                                        bulkCopy(selectedRows, "update"),
+                                      )
+                                    }
+                                  >
+                                    SQL UPDATE
+                                  </ContextMenuItem>
+                                </ContextMenuSubContent>
+                              </ContextMenuSub>
+                              {onBulkDelete && (
+                                <>
+                                  <ContextMenuSeparator />
+                                  <ContextMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onSelect={() => onBulkDelete(selectedRows)}
+                                  >
+                                    Delete {selectedRows.length} rows
+                                  </ContextMenuItem>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                          <>
                           <ContextMenuLabel>
                             {meta.name}
                             {value === null ? " · NULL" : ""}
@@ -935,6 +1176,8 @@ export function DataGrid({
                                 </ContextMenuItem>
                               )}
                             </>
+                          )}
+                          </>
                           )}
                         </ContextMenuContent>
                       </ContextMenu>
