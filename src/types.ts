@@ -289,6 +289,13 @@ export interface ConnectionTabState {
   expandedSchemaNodes: string[];
   /** Unix seconds; refreshed each save. Drives LRU pruning. */
   lastOpened: number;
+  /**
+   * Opaque dockview `toJSON()` blob for the workspace's inner split/float
+   * geometry. Restored via `fromJSON` on hydrate so a two-pane (or floating)
+   * layout comes back the way the user left it. `null`/absent means the
+   * default tabbed layout (the common case). The backend stores it verbatim.
+   */
+  internalLayout?: unknown | null;
 }
 
 export interface PersistedTab {

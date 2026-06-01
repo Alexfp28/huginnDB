@@ -90,6 +90,15 @@ pub struct ConnectionTabState {
     pub expanded_schema_nodes: Vec<String>,
     /// Unix timestamp (seconds) of the last save. Drives LRU pruning.
     pub last_opened: i64,
+    /// Opaque dockview `toJSON()` blob describing the workspace's inner
+    /// split/float geometry. The backend never interprets it — it round-trips
+    /// as a raw JSON value so the frontend can restore the exact pane layout.
+    ///
+    /// This MUST be a declared field: `save_tab_state` deserializes the IPC
+    /// payload into this strongly-typed struct, and `#[serde(default)]` with
+    /// no catch-all silently drops any undeclared key, so a "frontend-only"
+    /// field would never reach disk.
+    pub internal_layout: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,6 +163,7 @@ impl Default for ConnectionTabState {
             active_tab_id: None,
             expanded_schema_nodes: Vec::new(),
             last_opened: 0,
+            internal_layout: None,
         }
     }
 }

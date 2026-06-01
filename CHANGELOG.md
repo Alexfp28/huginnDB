@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Workspace split/float layout now persists per connection.** A two-pane (or
+  floating) arrangement inside a workspace is captured as a dockview `toJSON()`
+  blob in `tab_state.json` (`internalLayout`) and restored with `fromJSON` on
+  reopen, instead of always coming back as plain tabbed panels. Only saved when
+  a split actually exists; on any layout drift it falls back to the tabbed
+  default.
+
 ### Fixed
 
 - **Editing a MySQL `BIT` cell wrote garbage.** `update_cell` sends the value

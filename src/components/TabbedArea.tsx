@@ -42,7 +42,12 @@ import { useConnections } from "@/stores/connections";
 import { Button } from "@/components/ui/button";
 import { TableDataTab } from "@/components/TableDataTab";
 import { QueryEditorTab } from "@/components/QueryEditorTab";
-import { huginnDockviewTheme } from "@/lib/dockview";
+import {
+  huginnDockviewTheme,
+  registerInnerDockviewApi,
+  clearInnerDockviewApi,
+  consumePendingInternalLayout,
+} from "@/lib/dockview";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -300,12 +305,40 @@ export function TabbedArea(_props: Props) {
 
   const onReady = (event: DockviewReadyEvent) => {
     setApi(event.api);
+    registerInnerDockviewApi(event.api);
+
+    // If hydration ran before this dockview mounted, it stashed the saved
+    // split/float geometry. Rebuild it now: `fromJSON` recreates the panels
+    // (with the params we stored at addPanel) AND the group/pane geometry, so
+    // it is the authoritative layout restore. The reconciler effect below
+    // then runs as an idempotent verification pass (panels already present →
+    // nothing added; orphans → removed). Guarded like `restoreOrInitLayout`:
+    // on any drift (a dropped oversize tab, schema change) we swallow the
+    // error and let the reconciler build the default tabbed layout instead —
+    // this preserves the old "comes back tabbed" safety behaviour.
+    const pending = consumePendingInternalLayout();
+    if (pending) {
+      try {
+        event.api.fromJSON(pending as Parameters<DockviewApi["fromJSON"]>[0]);
+      } catch (err) {
+        console.warn("Failed to restore inner workspace layout:", err);
+      }
+    }
+
     // User clicking a tab (or dockview activating one after a removal)
     // flows back into the store so the active body and status bar agree.
     event.api.onDidActivePanelChange((panel) => {
       if (panel) useTabs.getState().setActive(panel.id);
     });
   };
+
+  // Clear the inner-dockview singleton on unmount so a stale handle from a
+  // previous workspace can't be captured/restored against.
+  useEffect(() => {
+    return () => {
+      if (api) clearInnerDockviewApi(api);
+    };
+  }, [api]);
 
   // Reconcile the dockview panels with the store: add panels for new tabs,
   // remove panels for closed ones. This is the only place panels are

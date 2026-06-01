@@ -84,6 +84,48 @@ export function onDockviewApiReady(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Inner (workspace) dockview — the nested DockviewReact inside the Workspace
+// panel that hosts open table/query tabs. There is exactly one mounted at a
+// time (the active workspace's), so a module-level singleton mirrors the outer
+// one above. `persistedTabs.ts` reaches it through these helpers to capture
+// (`toJSON`) and restore (`fromJSON`) the per-connection split/float geometry.
+// ---------------------------------------------------------------------------
+
+let innerDockviewApi: DockviewApi | null = null;
+
+/**
+ * Layout blob handed in by `hydrateTabState` before the inner dockview has
+ * mounted. `TabbedArea.onReady` consumes it once the API exists, so hydrate
+ * and mount can happen in either order without a race.
+ */
+let pendingInternalLayout: unknown | null = null;
+
+export function registerInnerDockviewApi(api: DockviewApi) {
+  innerDockviewApi = api;
+}
+
+export function getInnerDockviewApi(): DockviewApi | null {
+  return innerDockviewApi;
+}
+
+/** Drop the singleton when the inner dockview unmounts so a stale handle
+ *  from a previous workspace can't be captured/restored against. */
+export function clearInnerDockviewApi(api: DockviewApi) {
+  if (innerDockviewApi === api) innerDockviewApi = null;
+}
+
+export function setPendingInternalLayout(layout: unknown | null) {
+  pendingInternalLayout = layout;
+}
+
+/** Read and clear the pending layout (single-shot). */
+export function consumePendingInternalLayout(): unknown | null {
+  const v = pendingInternalLayout;
+  pendingInternalLayout = null;
+  return v;
+}
+
 /** Restore the layout from localStorage, or build the default if no
  *  saved layout exists or the saved JSON is unparseable. */
 export function restoreOrInitLayout(api: DockviewApi) {
