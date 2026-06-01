@@ -284,6 +284,12 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
       throw new Error("Cannot update: table has no primary key");
     }
     const pkValues = pkValuesFromRow(rowValues);
+    // Forward the raw column type so the backend can cast textual literals
+    // server-side where a plain string bind would be coerced wrongly (MySQL
+    // BIT — see update_cell). `result.columns` already carries `data_type`.
+    const columnType = result?.columns.find(
+      (c) => c.name === columnName,
+    )?.data_type;
     await api.updateCell({
       connectionId,
       schema,
@@ -292,6 +298,7 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
       pkValues,
       column: columnName,
       value,
+      columnType,
     });
     await fetchData();
   }

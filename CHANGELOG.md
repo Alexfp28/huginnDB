@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Editing a MySQL `BIT` cell wrote garbage.** `update_cell` sends the value
+  as a textual literal and lets the driver coerce it. For `BIT`, MySQL reads the
+  string `"1"` as the ASCII byte `0x31` (the character `'1'`) instead of the
+  integer 1, so saving a BIT cell silently corrupted it — while `VARCHAR`/`TEXT`
+  worked because they accept the string directly. The frontend now forwards the
+  column's raw type to `update_cell`, which wraps the placeholder in
+  `CAST(? AS UNSIGNED)` for MySQL `BIT` columns (NULL-safe), forcing numeric
+  interpretation. PG/SQLite are unchanged.
 - **MySQL `TINYINT` (and other non-`i64` integer widths) rendered as `NULL`.**
   sqlx maps each MySQL integer width to a specific Rust type (`TINYINT` → `i8`,
   `… UNSIGNED` → `u8`/`u32`/`u64`, …) and refuses a mismatched `try_get` target,

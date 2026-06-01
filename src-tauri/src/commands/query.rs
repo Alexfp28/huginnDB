@@ -694,6 +694,7 @@ pub async fn update_cell(
     pk_values: Vec<Value>,
     column: String,
     value: Option<String>,
+    column_type: Option<String>,
 ) -> AppResult<u64> {
     if pk_columns.is_empty() {
         return Err(AppError::InvalidInput(
@@ -739,7 +740,28 @@ pub async fn update_cell(
         })
         .collect::<Vec<_>>()
         .join(" AND ");
-    let set_placeholder = if pg { "$1".to_string() } else { "?".into() };
+    // The cell value travels as a textual literal (gotcha #5) and drivers
+    // coerce it to the column type server-side. That coercion is wrong for
+    // MySQL `BIT`: binding the string "1" makes MySQL store the ASCII byte
+    // 0x31 (the character '1') rather than the integer 1, so editing a BIT
+    // cell silently wrote garbage. Wrapping the placeholder in
+    // `CAST(? AS UNSIGNED)` forces numeric interpretation of the literal,
+    // and `CAST(NULL AS UNSIGNED)` is still NULL so the set-NULL path is
+    // unaffected. Only MySQL needs this; PG/SQLite cast textual literals to
+    // their bit/blob types correctly on their own.
+    let is_mysql = matches!(&pool, DbPool::Mysql(_));
+    let bit_cast = is_mysql
+        && column_type
+            .as_deref()
+            .map(|t| t.trim().to_ascii_uppercase().starts_with("BIT"))
+            .unwrap_or(false);
+    let set_placeholder = if pg {
+        "$1".to_string()
+    } else if bit_cast {
+        "CAST(? AS UNSIGNED)".to_string()
+    } else {
+        "?".into()
+    };
     let sql = format!("UPDATE {qt} SET {col_id} = {set_placeholder} WHERE {where_clause}");
     let pk_strs: Vec<Option<String>> = pk_values.iter().map(json_to_string).collect();
 

@@ -199,6 +199,14 @@ export const api = {
     pkValues: CellValue[];
     column: string;
     value: string | null;
+    /**
+     * Raw column type (e.g. `bit(1)`, `varchar(255)`). Lets the backend pick
+     * a server-side cast for types where a textual literal would be coerced
+     * wrongly — notably MySQL `BIT`, where the literal `"1"` is read as the
+     * ASCII byte `0x31` rather than the integer 1. Optional and ignored for
+     * types that accept a plain string bind.
+     */
+    columnType?: string;
   }) => invoke<number>("update_cell", args),
 
   /**
