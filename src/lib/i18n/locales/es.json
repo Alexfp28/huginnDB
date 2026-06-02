@@ -164,7 +164,13 @@
     "saving": "Guardando…",
     "saveFailed": "Error al guardar: {{message}}",
     "jsonValid": "JSON válido",
-    "jsonInvalid": "inválido: {{message}}"
+    "jsonInvalid": "inválido: {{message}}",
+    "moveToSide": "Mover al panel lateral",
+    "sideEmpty": "Haz clic derecho en una celda y elige \"Abrir en el editor lateral\" para editarla aquí.",
+    "discardChangesTitle": "Cambios sin guardar",
+    "discardChangesConfirm": "Tienes cambios sin guardar en el editor lateral. ¿Descartarlos y cambiar a la celda seleccionada?",
+    "keepEditing": "Seguir editando",
+    "discardAndSwitch": "Descartar y cambiar"
   },
   "cellPreview": {
     "cell": "celda",
@@ -179,6 +185,7 @@
   },
   "dataGrid": {
     "expandEditor": "Abrir en el editor completo",
+    "openInSideEditor": "Abrir en el editor lateral",
     "zoomIn": "Filas más grandes (Ctrl + +)",
     "zoomOut": "Filas más pequeñas (Ctrl + −)",
     "zoomReset": "Restablecer tamaño de fila (Ctrl + 0)"
@@ -226,6 +233,12 @@
       "queryHistoryLimit": {
         "label": "Tamaño del historial de queries",
         "desc": "Número máximo de queries recientes guardadas en el historial."
+      },
+      "cellEditorMode": {
+        "label": "Editor de celdas",
+        "desc": "Dónde se abre un valor de celda grande al expandirlo: un diálogo centrado o un panel acoplado a la derecha.",
+        "modal": "Diálogo",
+        "side": "Panel lateral"
       }
     },
     "editor": {

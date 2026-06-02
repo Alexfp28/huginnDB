@@ -164,7 +164,13 @@
     "saving": "Saving…",
     "saveFailed": "Save failed: {{message}}",
     "jsonValid": "valid JSON",
-    "jsonInvalid": "invalid: {{message}}"
+    "jsonInvalid": "invalid: {{message}}",
+    "moveToSide": "Move to side panel",
+    "sideEmpty": "Right-click a cell and choose \"Open in side editor\" to edit it here.",
+    "discardChangesTitle": "Unsaved changes",
+    "discardChangesConfirm": "You have unsaved changes in the side editor. Discard them and switch to the clicked cell?",
+    "keepEditing": "Keep editing",
+    "discardAndSwitch": "Discard & switch"
   },
   "cellPreview": {
     "cell": "cell",
@@ -179,6 +185,7 @@
   },
   "dataGrid": {
     "expandEditor": "Open in full editor",
+    "openInSideEditor": "Open in side editor",
     "zoomIn": "Larger rows (Ctrl + +)",
     "zoomOut": "Smaller rows (Ctrl + −)",
     "zoomReset": "Reset row size (Ctrl + 0)"
@@ -226,6 +233,12 @@
       "queryHistoryLimit": {
         "label": "Query history size",
         "desc": "Maximum number of recent queries kept in the history panel."
+      },
+      "cellEditorMode": {
+        "label": "Cell editor",
+        "desc": "Where a large cell value opens when you expand it: a centered dialog or a docked right-side panel.",
+        "modal": "Dialog",
+        "side": "Side panel"
       }
     },
     "editor": {

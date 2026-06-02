@@ -264,7 +264,12 @@ export interface UiPrefs {
   restoreTabsOnOpen: boolean;
   schemaTableMetric: SchemaTableMetric;
   language: AppLanguage;
+  /** Default surface for the heavyweight cell editor when escalated from an
+   *  inline edit / preview. */
+  cellEditorMode: CellEditorMode;
 }
+
+export type CellEditorMode = "modal" | "side";
 
 /**
  * Lightweight workspace summary used by the topbar switcher. The full

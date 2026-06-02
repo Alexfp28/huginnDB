@@ -44,6 +44,7 @@ export const PANELS = [
   { id: "saved", component: "saved", title: "Saved" },
   { id: "workspace", component: "workspace", title: "Workspace" },
   { id: "console", component: "console", title: "Console" },
+  { id: "side-editor", component: "side-editor", title: "Cell" },
 ] as const;
 
 export type PanelId = (typeof PANELS)[number]["id"];
@@ -264,7 +265,41 @@ function positionFor(
         return { referencePanel: "schema", direction: "below" };
       }
       return undefined;
+    case "side-editor":
+      // Dock to the right of the workspace so the editor sits beside the
+      // data grid, like JetBrains' value viewer.
+      if (has("workspace")) {
+        return { referencePanel: "workspace", direction: "right" };
+      }
+      return undefined;
   }
+}
+
+/**
+ * Open (or focus) the docked side cell-editor panel. Called after the grid /
+ * modal stashes a target in `useCellEditor`. If the panel already exists we
+ * just activate it; otherwise we add it to the right of the workspace with a
+ * reasonable width.
+ */
+export function isSideEditorOpen(): boolean {
+  return dockviewApi?.getPanel("side-editor") != null;
+}
+
+export function openSideEditor() {
+  const api = dockviewApi;
+  if (!api) return;
+  const existing = api.getPanel("side-editor");
+  if (existing) {
+    existing.api.setActive();
+    return;
+  }
+  api.addPanel({
+    id: "side-editor",
+    component: "side-editor",
+    title: "Cell",
+    position: positionFor("side-editor", api),
+  });
+  api.getPanel("side-editor")?.api.setSize({ width: 420 });
 }
 
 // ---------------------------------------------------------------------------

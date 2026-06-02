@@ -64,6 +64,8 @@ import {
   toSqlInsert as rowToSqlInsert,
   toSqlUpdate as rowToSqlUpdate,
 } from "@/lib/copyFormats";
+import { useCellEditor } from "@/stores/cellEditor";
+import { openSideEditor, isSideEditorOpen } from "@/lib/dockview";
 import type { Driver } from "@/types";
 
 interface Props {
@@ -494,6 +496,9 @@ export function DataGrid({
     [result.columns],
   );
   const bitDisplay = usePreferences((s) => selectGridPrefs(s).bitDisplay);
+  /** Default surface for the heavyweight editor (modal vs docked side panel).
+   *  Subscribed as a primitive so the selector stays reference-stable. */
+  const cellEditorMode = usePreferences((s) => s.prefs.ui.cellEditorMode);
 
   /**
    * Persisted grid "zoom" (HeidiSQL-style). A single px row-height drives
@@ -637,7 +642,7 @@ export function DataGrid({
               onCellSave?.(rv, column.name, value).catch(() => {});
             };
             const expand = () => {
-              openModalEditor(
+              openHeavyEditor(
                 inlineEdit.rowValues,
                 inlineEdit.column,
                 inlineEdit.value ?? "",
@@ -719,6 +724,40 @@ export function DataGrid({
   ) {
     setEditorTarget({ rowValues, column, value });
     setEditorOpen(true);
+  }
+
+  /** Open the cell in the docked right-side editor (JetBrains-style). Shares
+   *  the same commit path as the modal (`onCellSave`), or read-only when the
+   *  grid isn't editable. */
+  function openSidePanelEditor(
+    rowValues: CellValue[],
+    column: ColumnMeta,
+    value: string,
+  ) {
+    const canSave = !!(editable && onCellSave);
+    useCellEditor.getState().open({
+      columnName: column.name,
+      value,
+      readonly: !canSave,
+      onSave: canSave
+        ? (v) => onCellSave!(rowValues, column.name, v)
+        : undefined,
+    });
+    openSideEditor();
+  }
+
+  /** Escalate from inline/preview to the heavyweight editor, honouring the
+   *  user's `cellEditorMode` preference (modal vs docked side panel). */
+  function openHeavyEditor(
+    rowValues: CellValue[],
+    column: ColumnMeta,
+    value: string,
+  ) {
+    if (cellEditorMode === "side") {
+      openSidePanelEditor(rowValues, column, value);
+    } else {
+      openModalEditor(rowValues, column, value);
+    }
   }
 
   /**
@@ -953,6 +992,17 @@ export function DataGrid({
                                   column: meta,
                                   value,
                                 });
+                                // If the docked side editor is open, follow
+                                // the clicked cell (JetBrains value-viewer
+                                // behaviour). The panel guards unsaved edits
+                                // before swapping its buffer.
+                                if (isSideEditorOpen()) {
+                                  openSidePanelEditor(
+                                    rowValues,
+                                    meta,
+                                    formatValue(value),
+                                  );
+                                }
                               }
                             }}
                             onContextMenu={() => {
@@ -1105,6 +1155,17 @@ export function DataGrid({
                               </ContextMenuItem>
                             </ContextMenuSubContent>
                           </ContextMenuSub>
+                          <ContextMenuItem
+                            onSelect={() =>
+                              openSidePanelEditor(
+                                rowValues,
+                                meta,
+                                formatValue(value),
+                              )
+                            }
+                          >
+                            {t("dataGrid.openInSideEditor")}
+                          </ContextMenuItem>
                           {editable && onCellSave && (
                             <ContextMenuItem
                               disabled={value === null}
@@ -1207,7 +1268,7 @@ export function DataGrid({
           value={selectedCell.value}
           onClose={() => setSelectedCell(null)}
           onFullscreen={() => {
-            openModalEditor(
+            openHeavyEditor(
               selectedCell.rowValues,
               selectedCell.column,
               formatValue(selectedCell.value),

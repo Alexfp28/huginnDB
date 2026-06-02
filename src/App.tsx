@@ -39,6 +39,7 @@ import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { ConnectionErrorBoundary } from "@/components/ConnectionErrorBoundary";
+import { SideEditorPanel } from "@/components/SideEditorPanel";
 import { SavedQueriesPanel } from "@/components/SavedQueriesPanel";
 import { Console } from "@/components/Console";
 import { startLogBridge } from "@/lib/log-bridge";
@@ -91,6 +92,10 @@ function ConsolePanel() {
   return <Console />;
 }
 
+function SideEditorPanelWrapper() {
+  return <SideEditorPanel />;
+}
+
 /**
  * Component registry passed to DockviewReact. Defined at module scope
  * so the reference is stable across renders — recreating it inside the
@@ -105,6 +110,7 @@ const COMPONENTS: Record<
   saved: SavedPanel,
   workspace: WorkspacePanel,
   console: ConsolePanel,
+  "side-editor": SideEditorPanelWrapper,
 };
 
 // ---------------------------------------------------------------------------

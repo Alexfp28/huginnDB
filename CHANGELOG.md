@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Side-panel cell editor (JetBrains-style).** Large cell values can now be
+  edited in a docked right-side panel instead of a centered dialog. Reach it via
+  right-click → *Open in side editor*, or the new *Move to side panel* button
+  inside the modal editor (it carries the in-progress buffer across). A new
+  *General → Cell editor* preference (`cellEditorMode`: Dialog / Side panel)
+  chooses where the editor opens when you expand a cell. The panel is a real
+  dockview panel, so it resizes, docks and floats like the others.
 - **Multi-row selection with bulk copy and delete.** Pick several rows the way
   your OS file manager works: `Ctrl`/`Cmd`-click toggles individual rows and
   `Shift`-click extends a contiguous range. Right-clicking the selection offers
