@@ -44,6 +44,7 @@ export const PANELS = [
   { id: "saved", component: "saved", title: "Saved" },
   { id: "workspace", component: "workspace", title: "Workspace" },
   { id: "console", component: "console", title: "Console" },
+  { id: "side-editor", component: "side-editor", title: "Cell" },
 ] as const;
 
 export type PanelId = (typeof PANELS)[number]["id"];
@@ -82,6 +83,48 @@ export function onDockviewApiReady(
   return () => {
     apiReadyListeners.delete(listener);
   };
+}
+
+// ---------------------------------------------------------------------------
+// Inner (workspace) dockview — the nested DockviewReact inside the Workspace
+// panel that hosts open table/query tabs. There is exactly one mounted at a
+// time (the active workspace's), so a module-level singleton mirrors the outer
+// one above. `persistedTabs.ts` reaches it through these helpers to capture
+// (`toJSON`) and restore (`fromJSON`) the per-connection split/float geometry.
+// ---------------------------------------------------------------------------
+
+let innerDockviewApi: DockviewApi | null = null;
+
+/**
+ * Layout blob handed in by `hydrateTabState` before the inner dockview has
+ * mounted. `TabbedArea.onReady` consumes it once the API exists, so hydrate
+ * and mount can happen in either order without a race.
+ */
+let pendingInternalLayout: unknown | null = null;
+
+export function registerInnerDockviewApi(api: DockviewApi) {
+  innerDockviewApi = api;
+}
+
+export function getInnerDockviewApi(): DockviewApi | null {
+  return innerDockviewApi;
+}
+
+/** Drop the singleton when the inner dockview unmounts so a stale handle
+ *  from a previous workspace can't be captured/restored against. */
+export function clearInnerDockviewApi(api: DockviewApi) {
+  if (innerDockviewApi === api) innerDockviewApi = null;
+}
+
+export function setPendingInternalLayout(layout: unknown | null) {
+  pendingInternalLayout = layout;
+}
+
+/** Read and clear the pending layout (single-shot). */
+export function consumePendingInternalLayout(): unknown | null {
+  const v = pendingInternalLayout;
+  pendingInternalLayout = null;
+  return v;
 }
 
 /** Restore the layout from localStorage, or build the default if no
@@ -222,7 +265,41 @@ function positionFor(
         return { referencePanel: "schema", direction: "below" };
       }
       return undefined;
+    case "side-editor":
+      // Dock to the right of the workspace so the editor sits beside the
+      // data grid, like JetBrains' value viewer.
+      if (has("workspace")) {
+        return { referencePanel: "workspace", direction: "right" };
+      }
+      return undefined;
   }
+}
+
+/**
+ * Open (or focus) the docked side cell-editor panel. Called after the grid /
+ * modal stashes a target in `useCellEditor`. If the panel already exists we
+ * just activate it; otherwise we add it to the right of the workspace with a
+ * reasonable width.
+ */
+export function isSideEditorOpen(): boolean {
+  return dockviewApi?.getPanel("side-editor") != null;
+}
+
+export function openSideEditor() {
+  const api = dockviewApi;
+  if (!api) return;
+  const existing = api.getPanel("side-editor");
+  if (existing) {
+    existing.api.setActive();
+    return;
+  }
+  api.addPanel({
+    id: "side-editor",
+    component: "side-editor",
+    title: "Cell",
+    position: positionFor("side-editor", api),
+  });
+  api.getPanel("side-editor")?.api.setSize({ width: 420 });
 }
 
 // ---------------------------------------------------------------------------

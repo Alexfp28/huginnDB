@@ -34,6 +34,10 @@ import { api } from "@/lib/tauri";
 import { useTabs } from "@/stores/tabs";
 import { useSchema } from "@/stores/schema";
 import { usePreferences } from "@/stores/preferences";
+import {
+  getInnerDockviewApi,
+  setPendingInternalLayout,
+} from "@/lib/dockview";
 
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -50,6 +54,10 @@ function snapshotFor(connectionId: string): ConnectionTabState {
   const schemaSlice = useSchema.getState().byConnection[connectionId];
   const tabs: PersistedTab[] = tabsState.tabs
     .filter((t) => t.connectionId === connectionId)
+    // Structure-editor tabs are ephemeral working sessions (a half-built
+    // "new table", or an in-progress edit) — don't persist them across
+    // restarts.
+    .filter((t) => t.kind !== "structure")
     .map((t) => ({
       id: t.id,
       kind: t.kind,
@@ -62,11 +70,25 @@ function snapshotFor(connectionId: string): ConnectionTabState {
   const expandedSchemaNodes = schemaSlice
     ? Array.from(schemaSlice.expanded)
     : [];
+
+  // Capture the inner dockview geometry only when the user has actually
+  // split or floated panels (more than one group). For the common single
+  // tabbed group we leave `internalLayout` undefined so the snapshot stays
+  // lean and the default tabbed restore path is used. The blob is geometry
+  // only (group tree + sizes + panel ids/params), a few KB — no panel
+  // content is duplicated.
+  const innerApi = getInnerDockviewApi();
+  const internalLayout =
+    innerApi && innerApi.groups.length > 1
+      ? (innerApi.toJSON() as unknown)
+      : undefined;
+
   return {
     tabs,
     activeTabId: activeId,
     expandedSchemaNodes,
     lastOpened: Math.floor(Date.now() / 1000),
+    internalLayout,
   };
 }
 
@@ -128,11 +150,40 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
         restored.some((t) => t.id === state.activeTabId)
           ? state.activeTabId
           : (restored[restored.length - 1]?.id ?? tabsStore.activeId);
+      // Hand the saved split/float geometry to the inner dockview. If it is
+      // already mounted (e.g. switching workspace without remounting
+      // TabbedArea), apply it directly after the store update; otherwise
+      // stash it for `TabbedArea.onReady` to consume once it mounts. Either
+      // way `fromJSON` is the authoritative panel+geometry rebuild and the
+      // TabbedArea reconciler converges any divergence (orphans removed,
+      // missing tabs added tabbed).
+      const layout = state.internalLayout ?? null;
+      setPendingInternalLayout(layout);
+
       tabsStore.replaceAll(nextTabs, nextActive);
 
       useSchema
         .getState()
         .replaceExpanded(connectionId, new Set(state.expandedSchemaNodes));
+
+      if (layout) {
+        const innerApi = getInnerDockviewApi();
+        if (innerApi) {
+          // Already mounted — consume the pending blob ourselves so onReady
+          // (which won't fire again) doesn't leave it dangling.
+          setPendingInternalLayout(null);
+          try {
+            innerApi.fromJSON(
+              layout as Parameters<typeof innerApi.fromJSON>[0],
+            );
+          } catch (err) {
+            console.warn(
+              `[persistedTabs] inner layout restore failed for ${connectionId}:`,
+              err,
+            );
+          }
+        }
+      }
     }
   } catch (err) {
     console.error(`[persistedTabs] hydrate failed for ${connectionId}:`, err);

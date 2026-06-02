@@ -13,7 +13,8 @@
     "language": "Language",
     "languageDescription": "Interface language. Date and number formatting still follow your operating system.",
     "languageEnglish": "English",
-    "languageSpanish": "Español"
+    "languageSpanish": "Español",
+    "continue": "Continue"
   },
   "menu": {
     "file": {
@@ -22,6 +23,8 @@
       "manageConnections": "Manage connections…",
       "sectionConnections": "Connections",
       "noConnections": "No connections yet.",
+      "importProfiles": "Import profiles…",
+      "exportProfiles": "Export profiles…",
       "disconnectAll": "Disconnect all",
       "resetLayout": "Reset window layout"
     },
@@ -126,6 +129,8 @@
     "sectionViews": "views",
     "sectionIndexes": "indexes",
     "filterPlaceholder": "Filter tables…",
+    "filterInDb": "Filter in {{db}}…",
+    "filterScopedTo": "Searching in {{db}} only",
     "noMatches": "No tables match the filter.",
     "warming": "Caching schema… {{done}}/{{total}} databases",
     "context": {
@@ -133,6 +138,8 @@
       "copyName": "Copy name",
       "copySelect": "Copy SELECT statement",
       "refresh": "Refresh",
+      "editStructure": "Edit structure…",
+      "newTable": "New table…",
       "rename": "Rename…",
       "drop": "Drop table…"
     },
@@ -164,7 +171,13 @@
     "saving": "Saving…",
     "saveFailed": "Save failed: {{message}}",
     "jsonValid": "valid JSON",
-    "jsonInvalid": "invalid: {{message}}"
+    "jsonInvalid": "invalid: {{message}}",
+    "moveToSide": "Move to side panel",
+    "sideEmpty": "Right-click a cell and choose \"Open in side editor\" to edit it here.",
+    "discardChangesTitle": "Unsaved changes",
+    "discardChangesConfirm": "You have unsaved changes in the side editor. Discard them and switch to the clicked cell?",
+    "keepEditing": "Keep editing",
+    "discardAndSwitch": "Discard & switch"
   },
   "cellPreview": {
     "cell": "cell",
@@ -179,9 +192,48 @@
   },
   "dataGrid": {
     "expandEditor": "Open in full editor",
+    "openInSideEditor": "Open in side editor",
     "zoomIn": "Larger rows (Ctrl + +)",
     "zoomOut": "Smaller rows (Ctrl + −)",
     "zoomReset": "Reset row size (Ctrl + 0)"
+  },
+  "structure": {
+    "loading": "Loading structure…",
+    "tableName": "Table",
+    "tableNamePlaceholder": "table_name",
+    "apply": "Apply",
+    "applying": "Applying…",
+    "ddlPreview": "DDL preview",
+    "rebuildWarning": "rebuilds table",
+    "rebuildTitle": "Rebuild table on SQLite?",
+    "rebuildBody": "SQLite can't alter this in place, so the table will be recreated: a new table is built, the data is copied over, the old table is dropped and the new one renamed. Make sure you have a backup if the data matters.",
+    "rebuildConfirm": "Rebuild & apply",
+    "section": {
+      "columns": "Columns",
+      "indexes": "Indexes",
+      "fks": "Foreign keys"
+    },
+    "col": {
+      "name": "Name",
+      "type": "Type",
+      "nullable": "Null",
+      "pk": "PK",
+      "auto": "Auto",
+      "default": "Default",
+      "add": "Add column",
+      "remove": "Remove column"
+    },
+    "idx": {
+      "namePlaceholder": "index name (optional)",
+      "unique": "Unique",
+      "add": "Add index"
+    },
+    "fk": {
+      "namePlaceholder": "constraint name (optional)",
+      "refTable": "referenced table",
+      "refColumns": "referenced columns",
+      "add": "Add foreign key"
+    }
   },
   "tabs": {
     "queryFileName": "query.sql",
@@ -226,6 +278,12 @@
       "queryHistoryLimit": {
         "label": "Query history size",
         "desc": "Maximum number of recent queries kept in the history panel."
+      },
+      "cellEditorMode": {
+        "label": "Cell editor",
+        "desc": "Where a large cell value opens when you expand it: a centered dialog or a docked right-side panel.",
+        "modal": "Dialog",
+        "side": "Side panel"
       }
     },
     "editor": {
@@ -296,6 +354,48 @@
       "tagline": "Minimal desktop database manager for PostgreSQL, MySQL and SQLite.",
       "prefsLocation": "Preferences file location",
       "tabStateHint": "A sibling {{file}} stores the open tabs and schema-tree expansion for each connection."
+    }
+  },
+  "transfer": {
+    "export": {
+      "title": "Export profiles",
+      "tooltip": "Export profiles…",
+      "profiles": "Profiles to export",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all",
+      "includePasswords": "Include passwords (encrypted)",
+      "securityWarning": "Passwords are encrypted with AES-256-GCM. Keep your passphrase safe — it cannot be recovered.",
+      "passphrase": "Passphrase",
+      "passphrasePlaceholder": "Enter a strong passphrase",
+      "passphraseConfirm": "Confirm passphrase",
+      "passphraseConfirmPlaceholder": "Re-enter passphrase",
+      "passphraseMismatch": "Passphrases do not match",
+      "exportButton": "Export {{count}} profile(s)",
+      "exporting": "Exporting…",
+      "success": "Exported to {{path}}"
+    },
+    "import": {
+      "title": "Import profiles",
+      "tooltip": "Import profiles…",
+      "pickTitle": "Select export file",
+      "pickDescription": "Select a HuginnDB profile export file (.json) to import.",
+      "browse": "Browse…",
+      "passphraseRequired": "This file contains encrypted passwords. Enter the passphrase used when it was exported.",
+      "passphrase": "Passphrase",
+      "passphrasePlaceholder": "Enter the export passphrase",
+      "conflictsDescription": "{{count}} profile(s) share an ID with an existing one. Choose how to handle each:",
+      "existingAs": "(exists as \"{{name}}\")",
+      "action": {
+        "overwrite": "Overwrite",
+        "skip": "Skip",
+        "rename": "Keep both"
+      },
+      "importButton": "Import {{count}} profile(s)",
+      "done": "Import complete",
+      "summaryImported": "{{count}} profile(s) imported.",
+      "summarySkipped": "{{count}} skipped.",
+      "summaryRenamed": "{{count}} renamed to avoid duplicates.",
+      "needsPassword": "{{count}} profile(s) were imported without a password. Open each connection to set a password before connecting."
     }
   },
   "update": {

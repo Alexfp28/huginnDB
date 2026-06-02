@@ -80,6 +80,10 @@ pub struct UiPrefs {
     /// i18next instance owns the list of supported locales; the backend
     /// just round-trips whatever string the user picked.
     pub language: String,
+    /// Where the heavyweight cell editor opens by default when escalated
+    /// from an inline edit / preview. One of "modal" | "side". Stringly-typed;
+    /// the frontend owns the enum.
+    pub cell_editor_mode: String,
 }
 
 impl Default for Preferences {
@@ -130,6 +134,7 @@ impl Default for UiPrefs {
             restore_tabs_on_open: true,
             schema_table_metric: "none".into(),
             language: "en".into(),
+            cell_editor_mode: "modal".into(),
         }
     }
 }

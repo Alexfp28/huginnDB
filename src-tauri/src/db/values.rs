@@ -104,10 +104,43 @@ pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
             .unwrap_or(Value::Null);
     }
     if name.contains("INT") {
-        return row
-            .try_get::<i64, _>(idx)
-            .map(|v| json!(v))
-            .unwrap_or(Value::Null);
+        // Width/sign fallback. sqlx maps each MySQL integer width to a
+        // *specific* Rust type and its `Decode` impl refuses a mismatched
+        // target: a `TINYINT` column decodes as `i8`, `TINYINT UNSIGNED` as
+        // `u8`, `INT UNSIGNED` as `u32`, `BIGINT UNSIGNED` as `u64`, etc.
+        // `try_get::<i64>` therefore returns `Err` for everything that isn't
+        // a signed 64-bit-compatible column, and the value collapsed to
+        // `Value::Null` — which is why bare `TINYINT`/`SMALLINT` rendered as
+        // "NULL" in the grid even though the row held a real number (the same
+        // class of bug we fixed for `BIT`, gotcha #11).
+        //
+        // Try signed widest-first, then unsigned, folding unsigned values
+        // through `u64`. Only after every width fails do we surrender to NULL.
+        if let Ok(v) = row.try_get::<i64, _>(idx) {
+            return json!(v);
+        }
+        if let Ok(v) = row.try_get::<i32, _>(idx) {
+            return json!(v);
+        }
+        if let Ok(v) = row.try_get::<i16, _>(idx) {
+            return json!(v);
+        }
+        if let Ok(v) = row.try_get::<i8, _>(idx) {
+            return json!(v);
+        }
+        if let Ok(v) = row.try_get::<u64, _>(idx) {
+            return json!(v);
+        }
+        if let Ok(v) = row.try_get::<u32, _>(idx) {
+            return json!(v);
+        }
+        if let Ok(v) = row.try_get::<u16, _>(idx) {
+            return json!(v);
+        }
+        if let Ok(v) = row.try_get::<u8, _>(idx) {
+            return json!(v);
+        }
+        return Value::Null;
     }
     if name.contains("FLOAT") || name.contains("DOUBLE") || name.contains("DECIMAL") {
         return row

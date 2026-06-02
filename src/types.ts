@@ -130,6 +130,53 @@ export interface IndexInfo {
   unique: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Table-structure editor — mirror of the Rust DTOs in src-tauri/src/db/ddl.rs.
+// camelCase on the wire.
+// ---------------------------------------------------------------------------
+
+export interface ColumnDef {
+  name: string;
+  /** Original name when editing; absent for a new column (distinguishes a
+   *  rename from a drop+add). */
+  originalName?: string | null;
+  dataType: string;
+  nullable: boolean;
+  default?: string | null;
+  isPrimaryKey: boolean;
+  autoIncrement?: boolean;
+}
+
+export interface StructureIndexDef {
+  name?: string | null;
+  columns: string[];
+  unique: boolean;
+}
+
+export interface ForeignKeyDef {
+  name?: string | null;
+  columns: string[];
+  refSchema?: string | null;
+  refTable: string;
+  refColumns: string[];
+  onDelete?: string | null;
+  onUpdate?: string | null;
+}
+
+export interface TableStructure {
+  schema?: string | null;
+  name: string;
+  columns: ColumnDef[];
+  indexes: StructureIndexDef[];
+  foreignKeys: ForeignKeyDef[];
+}
+
+export interface StructurePreview {
+  statements: string[];
+  /** True when applying on SQLite rebuilds the table (destructive). */
+  rebuild: boolean;
+}
+
 /** Column descriptor in a `QueryResult`. */
 export interface ColumnMeta {
   name: string;
@@ -153,7 +200,10 @@ export interface QueryResult {
 }
 
 /** Tabs in the main workspace can host either table data or a query editor. */
-export type TabKind = "table" | "query";
+export type TabKind = "table" | "query" | "structure";
+
+/** New-table vs edit-existing for a structure tab. */
+export type StructureMode = "new" | "edit";
 
 export interface AppTab {
   id: string;
@@ -164,6 +214,8 @@ export interface AppTab {
   table?: string;
   /** Initial / current SQL for query tabs. */
   query?: string;
+  /** For structure tabs: whether we're creating a new table or editing one. */
+  structureMode?: StructureMode;
   /** Stats from the most recent query execution in this tab. */
   lastQueryStats?: { rows: number; elapsed_ms: number };
 }
@@ -264,7 +316,12 @@ export interface UiPrefs {
   restoreTabsOnOpen: boolean;
   schemaTableMetric: SchemaTableMetric;
   language: AppLanguage;
+  /** Default surface for the heavyweight cell editor when escalated from an
+   *  inline edit / preview. */
+  cellEditorMode: CellEditorMode;
 }
+
+export type CellEditorMode = "modal" | "side";
 
 /**
  * Lightweight workspace summary used by the topbar switcher. The full
@@ -289,6 +346,13 @@ export interface ConnectionTabState {
   expandedSchemaNodes: string[];
   /** Unix seconds; refreshed each save. Drives LRU pruning. */
   lastOpened: number;
+  /**
+   * Opaque dockview `toJSON()` blob for the workspace's inner split/float
+   * geometry. Restored via `fromJSON` on hydrate so a two-pane (or floating)
+   * layout comes back the way the user left it. `null`/absent means the
+   * default tabbed layout (the common case). The backend stores it verbatim.
+   */
+  internalLayout?: unknown | null;
 }
 
 export interface PersistedTab {
@@ -331,4 +395,55 @@ export interface QueryHistoryEntry {
   elapsedMs: number;
   rowsAffected: number;
   error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Import / Export types — mirror of src-tauri/src/transfer.rs
+// ---------------------------------------------------------------------------
+
+/** Summary returned by `analyze_import_file`. */
+export interface ImportAnalysis {
+  total: number;
+  encrypted: boolean;
+  conflicts: ImportConflict[];
+}
+
+/** A profile in the file whose `id` already exists locally. */
+export interface ImportConflict {
+  id: string;
+  existing_name: string;
+  incoming_name: string;
+}
+
+/** Per-conflict resolution action sent to `import_profiles`. */
+export type ConflictAction = "overwrite" | "skip" | "rename";
+
+export interface ConflictResolution {
+  id: string;
+  action: ConflictAction;
+}
+
+/** Result summary returned by `import_profiles`. */
+export interface ImportResult {
+  imported: string[];
+  skipped: string[];
+  /** [original_name, new_name] pairs */
+  renamed: [string, string][];
+  needs_password: string[];
+}
+
+// ---------------------------------------------------------------------------
+// CLI args — mirror of src-tauri/src/state.rs StartupArgs
+// ---------------------------------------------------------------------------
+
+/** Command-line arguments parsed at startup, returned by `get_startup_args`. */
+export interface StartupArgs {
+  connect_profile: string | null;
+  connect_by_id: boolean;
+  adhoc_host: string | null;
+  adhoc_port: number | null;
+  adhoc_database: string | null;
+  adhoc_username: string | null;
+  adhoc_driver: string | null;
+  adhoc_name: string | null;
 }

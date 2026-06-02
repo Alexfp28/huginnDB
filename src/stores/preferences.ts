@@ -58,6 +58,7 @@ const DEFAULT_PREFS: Preferences = {
     restoreTabsOnOpen: true,
     schemaTableMetric: "none",
     language: "en",
+    cellEditorMode: "modal",
   },
 };
 

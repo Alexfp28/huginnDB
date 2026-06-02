@@ -89,6 +89,7 @@ function SingleDbExplorer({
   title,
   headerLevel = "root",
   controlledFilter,
+  onTableOpen,
 }: {
   connectionId: string;
   title: string;
@@ -106,6 +107,12 @@ function SingleDbExplorer({
    * needle, which was the whole point of the multi-DB unification.
    */
   controlledFilter?: string;
+  /**
+   * Optional callback fired when the user opens a table (click or context
+   * menu). Used by the multi-DB parent to activate this database's scope
+   * and collapse the others.
+   */
+  onTableOpen?: () => void;
 }) {
   const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[connectionId]);
@@ -151,6 +158,39 @@ function SingleDbExplorer({
     if (!cs || (!cs.initialized && !cs.loading)) refresh(connectionId);
   }, [connectionId, cs, refresh]);
 
+  // Group tables by schema, then by kind within each schema. Apply the
+  // filter at this stage so empty schemas drop out of the rendered list
+  // entirely when nothing matches.
+  //
+  // This hook MUST stay above the `if (!cs)` early return below. When a
+  // multi-DB filter is cleared, several nested explorers unmount while
+  // `byConnection` is still settling, and `cs` can flip to `undefined` for
+  // a render before the slice reappears. A `useMemo` placed *after* the
+  // early return would then be skipped on the `undefined` render and called
+  // again on the next one — "rendered fewer hooks than expected", which
+  // crashed the whole connection panel to a blank screen (the exact 1.0.1
+  // multi-DB blank-panel bug). Keeping it here, reading `cs?.tables`, makes
+  // the hook count constant. Memoising also keeps the grouping object
+  // reference-stable so the `TableSection` subtree doesn't thrash on every
+  // render of the surviving explorers (CLAUDE.md gotcha #1).
+  const needle = filter.trim().toLowerCase();
+  const { bySchema, schemas } = useMemo(() => {
+    const grouped: Record<
+      string,
+      { tables: TableInfo[]; views: TableInfo[] }
+    > = {};
+    for (const tbl of cs?.tables ?? []) {
+      if (needle && !tbl.name.toLowerCase().includes(needle)) continue;
+      grouped[tbl.schema] ??= { tables: [], views: [] };
+      if (tbl.kind === "view") {
+        grouped[tbl.schema].views.push(tbl);
+      } else {
+        grouped[tbl.schema].tables.push(tbl);
+      }
+    }
+    return { bySchema: grouped, schemas: Object.keys(grouped).sort() };
+  }, [cs?.tables, needle]);
+
   if (!cs) {
     return (
       <div className="px-3 py-3 text-xs text-muted-foreground">
@@ -159,25 +199,12 @@ function SingleDbExplorer({
     );
   }
 
-  // Group tables by schema, then by kind within each schema. Apply the
-  // filter at this stage so empty schemas drop out of the rendered list
-  // entirely when nothing matches.
-  const needle = filter.trim().toLowerCase();
-  const bySchema: Record<string, { tables: TableInfo[]; views: TableInfo[] }> =
-    {};
-  for (const tbl of cs.tables) {
-    if (needle && !tbl.name.toLowerCase().includes(needle)) continue;
-    bySchema[tbl.schema] ??= { tables: [], views: [] };
-    if (tbl.kind === "view") {
-      bySchema[tbl.schema].views.push(tbl);
-    } else {
-      bySchema[tbl.schema].tables.push(tbl);
-    }
-  }
-  const schemas = Object.keys(bySchema).sort();
+  const wrappedOpenTab: typeof openTab = onTableOpen
+    ? (config) => { onTableOpen(); return openTab(config); }
+    : openTab;
 
   const tableActions: TableActions = {
-    openTab,
+    openTab: wrappedOpenTab,
     refresh: () => refresh(connectionId),
     onRename: (tbl) => setRenameTarget(tbl),
     onDrop: (tbl) => setDropTarget(tbl),
@@ -364,6 +391,11 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   // per database) so the broader subscription is fine here.
   const byConnection = useSchema((s) => s.byConnection);
 
+  // The database the user is currently focused on (last expanded or last
+  // table clicked). When set, the filter scopes to this DB only — same
+  // model as HeidiSQL. null → search across all DBs (retrocompat).
+  const [activeDatabaseName, setActiveDatabaseName] = useState<string | null>(null);
+
   // Connection-level filter, shared across every database in the
   // explorer. Lifted up here so multi-DB connections have a single
   // search box instead of one per database — see plan A2. Each nested
@@ -415,7 +447,12 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   const inFlightPrefetch = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (debouncedNeedle.length < 2 || !cs) return;
-    for (const db of cs.databases) {
+    // When a database is active, only prefetch that one — avoids a full
+    // fan-out across every database on large servers during scoped searches.
+    const dbsToWarm = activeDatabaseName
+      ? cs.databases.filter((db) => db.name === activeDatabaseName)
+      : cs.databases;
+    for (const db of dbsToWarm) {
       const childId = `${parentId}::db::${db.name}`;
       const childCs = byConnection[childId];
       if (childCs?.initialized || childCs?.loading) continue;
@@ -432,7 +469,7 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
           inFlightPrefetch.current.delete(childId);
         });
     }
-  }, [debouncedNeedle, cs, byConnection, parentId, refresh]);
+  }, [debouncedNeedle, cs, byConnection, parentId, refresh, activeDatabaseName]);
 
   const filterActive = debouncedNeedle.length > 0;
 
@@ -453,7 +490,11 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   const matchingDbs = useMemo(() => {
     if (!filterActive || !cs) return null;
     const m = new Map<string, { byName: boolean; byTable: boolean }>();
-    for (const db of cs.databases) {
+    // Scope to the active database when one is set; otherwise search all.
+    const dbsToSearch = activeDatabaseName
+      ? cs.databases.filter((db) => db.name === activeDatabaseName)
+      : cs.databases;
+    for (const db of dbsToSearch) {
       const childId = `${parentId}::db::${db.name}`;
       const tables = byConnection[childId]?.tables ?? [];
       const byTable = tables.some((t) =>
@@ -463,7 +504,7 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
       if (byName || byTable) m.set(db.name, { byName, byTable });
     }
     return m;
-  }, [filterActive, debouncedNeedle, cs, byConnection, parentId]);
+  }, [filterActive, debouncedNeedle, cs, byConnection, parentId, activeDatabaseName]);
 
   if (!cs) {
     return (
@@ -472,6 +513,17 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
       </div>
     );
   }
+
+  // Activating a DB from a table click: sets the active scope AND
+  // collapses any other expanded databases so only the target remains open.
+  const activateDb = (dbName: string) => {
+    setActiveDatabaseName(dbName);
+    for (const key of cs.expanded) {
+      if (key.startsWith("db:") && key !== `db:${dbName}`) {
+        toggleNode(parentId, key);
+      }
+    }
+  };
 
   // While prefetches are in flight we want to tell the user something
   // is happening — "no matches" would be misleading if the DBs simply
@@ -506,13 +558,22 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder={t("schema.filterPlaceholder")}
+          placeholder={
+            activeDatabaseName
+              ? t("schema.filterInDb", { db: activeDatabaseName })
+              : t("schema.filterPlaceholder")
+          }
           className="h-7 text-xs"
         />
         {warm?.active && (
           <div className="mt-1 flex items-center gap-1.5 text-[11px] italic text-muted-foreground">
             <RefreshCw className="h-3 w-3 animate-spin" />
             {t("schema.warming", { done: warm.done, total: warm.total })}
+          </div>
+        )}
+        {activeDatabaseName && filterActive && (
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {t("schema.filterScopedTo", { db: activeDatabaseName })}
           </div>
         )}
       </div>
@@ -541,6 +602,8 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
                 dbName={db.name}
                 expanded={cs.expanded.has(`db:${db.name}`)}
                 onToggle={() => toggleNode(parentId, `db:${db.name}`)}
+                onActivate={(name) => setActiveDatabaseName(name)}
+                onTableOpen={() => activateDb(db.name)}
                 filter={filter}
                 filterActive={filterActive}
                 autoExpand={autoExpand}
@@ -560,6 +623,8 @@ function DatabaseRoot({
   dbName,
   expanded,
   onToggle,
+  onActivate,
+  onTableOpen,
   filter,
   filterActive,
   autoExpand,
@@ -568,6 +633,10 @@ function DatabaseRoot({
   dbName: string;
   expanded: boolean;
   onToggle: () => void;
+  /** Called when the user expands/collapses this DB via the chevron. */
+  onActivate: (dbName: string | null) => void;
+  /** Called when the user opens a table inside this DB. */
+  onTableOpen: () => void;
   /** Shared connection-level filter, forwarded to the nested explorer. */
   filter: string;
   /** True when the parent filter has any content; auto-expands already-opened
@@ -605,7 +674,13 @@ function DatabaseRoot({
     <div>
       <button
         className="flex w-full items-center gap-1 px-2 py-1 hover:bg-accent/40"
-        onClick={onToggle}
+        onClick={() => {
+          onToggle();
+          // `expanded` reflects the state *before* this click:
+          // true → user is collapsing → clear active scope.
+          // false → user is expanding → set this DB as active.
+          onActivate(expanded ? null : dbName);
+        }}
       >
         {effectiveExpanded ? (
           <ChevronDown className="h-3 w-3" />
@@ -631,6 +706,7 @@ function DatabaseRoot({
               title={dbName}
               headerLevel="nested"
               controlledFilter={filter}
+              onTableOpen={onTableOpen}
             />
           )}
         </div>
@@ -877,6 +953,20 @@ function TableRow({
         {!isView && (
           <>
             <ContextMenuSeparator />
+            <ContextMenuItem
+              onSelect={() =>
+                actions.openTab({
+                  kind: "structure",
+                  structureMode: "edit",
+                  title: `${t.name} (structure)`,
+                  connectionId,
+                  schema: t.schema,
+                  table: t.name,
+                })
+              }
+            >
+              {ct("schema.context.editStructure")}
+            </ContextMenuItem>
             <ContextMenuItem onSelect={() => actions.onRename(t)}>
               {ct("schema.context.rename")}
             </ContextMenuItem>
@@ -885,6 +975,20 @@ function TableRow({
               className="text-destructive focus:bg-destructive/10 focus:text-destructive"
             >
               {ct("schema.context.drop")}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onSelect={() =>
+                actions.openTab({
+                  kind: "structure",
+                  structureMode: "new",
+                  title: ct("schema.context.newTable"),
+                  connectionId,
+                  schema: t.schema,
+                })
+              }
+            >
+              {ct("schema.context.newTable")}
             </ContextMenuItem>
           </>
         )}

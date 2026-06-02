@@ -186,6 +186,31 @@ impl ActiveConnections {
     }
 }
 
+/// Arguments parsed from the command line at startup.
+///
+/// Passed to [`AppState::new_with_args`] and stored so the frontend can
+/// retrieve them via the `get_startup_args` command after hydration. Fields
+/// are all `Option` / `bool` so the struct is self-describing and the
+/// frontend knows which flags were actually supplied.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct StartupArgs {
+    /// Name or UUID of an existing saved profile to connect to automatically.
+    pub connect_profile: Option<String>,
+    /// When `true`, `connect_profile` is a UUID rather than a display name.
+    pub connect_by_id: bool,
+    // Ad-hoc connection parameters (no saved profile required).
+    // The password is intentionally absent — it will be requested via the
+    // normal `ConnectPasswordDialog` flow once the app is open.
+    pub adhoc_host: Option<String>,
+    pub adhoc_port: Option<u16>,
+    pub adhoc_database: Option<String>,
+    pub adhoc_username: Option<String>,
+    /// One of "postgres", "mysql", "sqlite".
+    pub adhoc_driver: Option<String>,
+    /// Display name for the ad-hoc connection.
+    pub adhoc_name: Option<String>,
+}
+
 /// Top-level state managed by Tauri.
 pub struct AppState {
     /// Pools that have been connected this session.
@@ -199,6 +224,8 @@ pub struct AppState {
     /// Trusted SSH host-key fingerprints loaded from `known_hosts.json`.
     /// Shared with every SSH tunnel opened during the session.
     pub known_hosts: crate::ssh_known_hosts::SharedKnownHosts,
+    /// CLI arguments parsed before the Tauri builder ran.
+    pub startup_args: StartupArgs,
 }
 
 impl AppState {
@@ -206,6 +233,12 @@ impl AppState {
     /// failures degrade silently to defaults so a corrupted file doesn't
     /// prevent the app from launching.
     pub fn new() -> Self {
+        Self::new_with_args(StartupArgs::default())
+    }
+
+    /// Same as [`Self::new`] but attaches pre-parsed CLI arguments so the
+    /// frontend can retrieve them via `get_startup_args`.
+    pub fn new_with_args(startup_args: StartupArgs) -> Self {
         let profiles = crate::store::load_profiles().unwrap_or_default();
         let prefs = crate::prefs::load_preferences();
         let tab_state = crate::tab_state::load_tab_state();
@@ -215,6 +248,7 @@ impl AppState {
             prefs: Arc::new(RwLock::new(prefs)),
             tab_state: Arc::new(RwLock::new(tab_state)),
             known_hosts: crate::ssh_known_hosts::load_shared(),
+            startup_args,
         }
     }
 }

@@ -6,7 +6,102 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-## [1.0.1] — 2026-05-30
+## [1.0.2] — 2026-06-02
+
+### Added
+
+- **Import / Export of connection profiles.** Export all or selected profiles to
+  a portable JSON file (`File → Export profiles…` or the icons in *Manage
+  connections*). Profiles can optionally include credentials: each password and
+  SSH secret is encrypted individually with AES-256-GCM, key-derived via
+  PBKDF2-HMAC-SHA256 at 600 000 iterations, so the file is safe to store or
+  send. Importing detects encryption, walks through a passphrase step when
+  needed, shows a conflict-resolution screen when IDs collide (overwrite / skip /
+  keep both), and always assigns fresh UUIDs to imported profiles to avoid
+  keychain collisions. Profiles imported without passwords are flagged in the
+  result summary.
+- **CLI connection arguments.** HuginnDB can now be launched with connection
+  flags so external tools can open it pre-connected. `--connect-profile <name>`
+  auto-connects to a saved profile by display name; `--connect-profile-id <uuid>`
+  uses the stable ID instead. For ad-hoc connections without a saved profile:
+  `--host`, `--port`, `--database`, `--username`, `--driver`, `--name` — the
+  app opens with the profile pre-populated and asks for the password via the
+  normal dialog (passwords are never accepted on the CLI). Unknown flags are
+  silently ignored for forward compatibility.
+- **Scoped multi-DB filter (HeidiSQL-style).** In multi-database connections,
+  the schema-explorer filter now scopes to the active database instead of
+  searching all databases simultaneously. Expanding a database activates it as
+  the filter scope; the search input placeholder updates to "Filter in
+  `<db>`…" and a hint below the input confirms the scope while typing. Opening
+  a table from cross-DB results automatically activates that database, collapses
+  the others, and fixes the scope. With no database expanded the filter falls
+  back to the previous behaviour (searches all DBs), keeping the single-DB case
+  fully retrocompatible.
+- **Visual table-structure editor (HeidiSQL-style).** Right-click a table →
+  *Edit structure…* (or *New table…*) opens an editor for columns
+  (add/drop/rename, type, nullability, default, primary key, auto-increment),
+  indexes and foreign keys — including composite ones. The column type is an
+  editable combobox pre-filled with the driver's common types so you avoid
+  typos but can still fine-tune (e.g. `varchar(40)`). It follows a
+  preview-and-apply model: the backend generates driver-aware DDL (PostgreSQL /
+  MySQL / SQLite) which is shown in a live read-only preview before you apply it
+  in one go. On SQLite, changes that `ALTER TABLE` can't express (type /
+  nullability / PK / FK edits) fall back to the canonical 12-step table rebuild,
+  gated behind an explicit destructive confirmation. All identifiers are
+  validated before quoting; types and defaults go through a conservative
+  allowlist.
+- **Side-panel cell editor (JetBrains-style).** Large cell values can now be
+  edited in a docked right-side panel instead of a centered dialog. Reach it via
+  right-click → *Open in side editor*, or the new *Move to side panel* button
+  inside the modal editor (it carries the in-progress buffer across). A new
+  *General → Cell editor* preference (`cellEditorMode`: Dialog / Side panel)
+  chooses where the editor opens when you expand a cell. The panel is a real
+  dockview panel, so it resizes, docks and floats like the others.
+- **Multi-row selection with bulk copy and delete.** Pick several rows the way
+  your OS file manager works: `Ctrl`/`Cmd`-click toggles individual rows and
+  `Shift`-click extends a contiguous range. Right-clicking the selection offers
+  *Copy N rows as ▸ JSON / SQL INSERT / SQL UPDATE* (reusing the existing per-row
+  formatters) and *Delete N rows*. Every delete — single or bulk — goes through
+  the same confirmation dialog. Selection is keyed by primary key, so it
+  survives sorting, client-side filtering and refetches (only available on
+  tables with a primary key).
+- **Workspace split/float layout now persists per connection.** A two-pane (or
+  floating) arrangement inside a workspace is captured as a dockview `toJSON()`
+  blob in `tab_state.json` (`internalLayout`) and restored with `fromJSON` on
+  reopen, instead of always coming back as plain tabbed panels. Only saved when
+  a split actually exists; on any layout drift it falls back to the tabbed
+  default.
+
+### Fixed
+
+- **Editing a MySQL `BIT` cell wrote garbage.** `update_cell` sends the value
+  as a textual literal and lets the driver coerce it. For `BIT`, MySQL reads the
+  string `"1"` as the ASCII byte `0x31` (the character `'1'`) instead of the
+  integer 1, so saving a BIT cell silently corrupted it — while `VARCHAR`/`TEXT`
+  worked because they accept the string directly. The frontend now forwards the
+  column's raw type to `update_cell`, which wraps the placeholder in
+  `CAST(? AS UNSIGNED)` for MySQL `BIT` columns (NULL-safe), forcing numeric
+  interpretation. PG/SQLite are unchanged.
+- **MySQL `TINYINT` (and other non-`i64` integer widths) rendered as `NULL`.**
+  sqlx maps each MySQL integer width to a specific Rust type (`TINYINT` → `i8`,
+  `… UNSIGNED` → `u8`/`u32`/`u64`, …) and refuses a mismatched `try_get` target,
+  so `try_get::<i64>` failed for everything that wasn't signed-64-bit-compatible
+  and the cell collapsed to `NULL` — the same class of bug previously fixed for
+  `BIT`. `mysql_value` now falls back across the signed and unsigned widths
+  before surrendering to `NULL`, so `TINYINT`/`SMALLINT` and unsigned columns
+  show their real value. `TINYINT(1)`/`BOOL` still decode as booleans (that
+  branch stays above the generic `INT` check).
+- **Blank connection panel when clearing a multi-DB filter.** In a multi-database
+  connection, typing a filter and then clearing it could blank the entire schema
+  panel (the outer File/View/Workspaces toolbar stayed visible). Root cause: a
+  `useMemo` in the single-database explorer sat *below* the `if (!cs) return`
+  early return, so when the per-connection schema slice briefly flipped to
+  `undefined` while nested explorers unmounted, React rendered a different number
+  of hooks across renders and threw. The hook now sits above the early return
+  (constant hook count) and the grouping is reference-stable. A new
+  `ConnectionErrorBoundary` wraps the schema and workspace panels so any future
+  render crash degrades to a legible error card with a retry instead of a dead
+  white screen.
 
 First patch release. Fixes the MySQL `BIT` rendering that 1.0.0 shipped
 broken, and reworks data-grid cell editing into an inline-first flow with a

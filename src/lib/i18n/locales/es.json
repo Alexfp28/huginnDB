@@ -13,7 +13,8 @@
     "language": "Idioma",
     "languageDescription": "Idioma de la interfaz. El formato de fechas y números sigue el del sistema operativo.",
     "languageEnglish": "English",
-    "languageSpanish": "Español"
+    "languageSpanish": "Español",
+    "continue": "Continuar"
   },
   "menu": {
     "file": {
@@ -22,6 +23,8 @@
       "manageConnections": "Gestionar conexiones…",
       "sectionConnections": "Conexiones",
       "noConnections": "Aún no hay conexiones.",
+      "importProfiles": "Importar perfiles…",
+      "exportProfiles": "Exportar perfiles…",
       "disconnectAll": "Desconectar todas",
       "resetLayout": "Restablecer disposición de ventanas"
     },
@@ -126,6 +129,8 @@
     "sectionViews": "vistas",
     "sectionIndexes": "índices",
     "filterPlaceholder": "Filtrar tablas…",
+    "filterInDb": "Filtrar en {{db}}…",
+    "filterScopedTo": "Buscando solo en {{db}}",
     "noMatches": "Ninguna tabla coincide con el filtro.",
     "warming": "Cacheando esquema… {{done}}/{{total}} bases",
     "context": {
@@ -133,6 +138,8 @@
       "copyName": "Copiar nombre",
       "copySelect": "Copiar sentencia SELECT",
       "refresh": "Actualizar",
+      "editStructure": "Editar estructura…",
+      "newTable": "Nueva tabla…",
       "rename": "Renombrar…",
       "drop": "Eliminar tabla…"
     },
@@ -164,7 +171,13 @@
     "saving": "Guardando…",
     "saveFailed": "Error al guardar: {{message}}",
     "jsonValid": "JSON válido",
-    "jsonInvalid": "inválido: {{message}}"
+    "jsonInvalid": "inválido: {{message}}",
+    "moveToSide": "Mover al panel lateral",
+    "sideEmpty": "Haz clic derecho en una celda y elige \"Abrir en el editor lateral\" para editarla aquí.",
+    "discardChangesTitle": "Cambios sin guardar",
+    "discardChangesConfirm": "Tienes cambios sin guardar en el editor lateral. ¿Descartarlos y cambiar a la celda seleccionada?",
+    "keepEditing": "Seguir editando",
+    "discardAndSwitch": "Descartar y cambiar"
   },
   "cellPreview": {
     "cell": "celda",
@@ -179,9 +192,48 @@
   },
   "dataGrid": {
     "expandEditor": "Abrir en el editor completo",
+    "openInSideEditor": "Abrir en el editor lateral",
     "zoomIn": "Filas más grandes (Ctrl + +)",
     "zoomOut": "Filas más pequeñas (Ctrl + −)",
     "zoomReset": "Restablecer tamaño de fila (Ctrl + 0)"
+  },
+  "structure": {
+    "loading": "Cargando estructura…",
+    "tableName": "Tabla",
+    "tableNamePlaceholder": "nombre_tabla",
+    "apply": "Aplicar",
+    "applying": "Aplicando…",
+    "ddlPreview": "Vista previa DDL",
+    "rebuildWarning": "reconstruye la tabla",
+    "rebuildTitle": "¿Reconstruir la tabla en SQLite?",
+    "rebuildBody": "SQLite no puede alterar esto in situ, así que la tabla se recreará: se crea una tabla nueva, se copian los datos, se elimina la antigua y se renombra la nueva. Asegúrate de tener una copia de seguridad si los datos importan.",
+    "rebuildConfirm": "Reconstruir y aplicar",
+    "section": {
+      "columns": "Columnas",
+      "indexes": "Índices",
+      "fks": "Claves foráneas"
+    },
+    "col": {
+      "name": "Nombre",
+      "type": "Tipo",
+      "nullable": "Null",
+      "pk": "PK",
+      "auto": "Auto",
+      "default": "Por defecto",
+      "add": "Añadir columna",
+      "remove": "Eliminar columna"
+    },
+    "idx": {
+      "namePlaceholder": "nombre del índice (opcional)",
+      "unique": "Único",
+      "add": "Añadir índice"
+    },
+    "fk": {
+      "namePlaceholder": "nombre de la restricción (opcional)",
+      "refTable": "tabla referenciada",
+      "refColumns": "columnas referenciadas",
+      "add": "Añadir clave foránea"
+    }
   },
   "tabs": {
     "queryFileName": "query.sql",
@@ -226,6 +278,12 @@
       "queryHistoryLimit": {
         "label": "Tamaño del historial de queries",
         "desc": "Número máximo de queries recientes guardadas en el historial."
+      },
+      "cellEditorMode": {
+        "label": "Editor de celdas",
+        "desc": "Dónde se abre un valor de celda grande al expandirlo: un diálogo centrado o un panel acoplado a la derecha.",
+        "modal": "Diálogo",
+        "side": "Panel lateral"
       }
     },
     "editor": {
@@ -296,6 +354,48 @@
       "tagline": "Gestor de bases de datos de escritorio minimalista para PostgreSQL, MySQL y SQLite.",
       "prefsLocation": "Ubicación del fichero de preferencias",
       "tabStateHint": "Un fichero hermano {{file}} guarda las pestañas abiertas y la expansión del árbol de esquema de cada conexión."
+    }
+  },
+  "transfer": {
+    "export": {
+      "title": "Exportar perfiles",
+      "tooltip": "Exportar perfiles…",
+      "profiles": "Perfiles a exportar",
+      "selectAll": "Seleccionar todos",
+      "deselectAll": "Deseleccionar todos",
+      "includePasswords": "Incluir contraseñas (cifradas)",
+      "securityWarning": "Las contraseñas se cifran con AES-256-GCM. Guarda la contraseña de exportación en un lugar seguro — no se puede recuperar.",
+      "passphrase": "Contraseña de exportación",
+      "passphrasePlaceholder": "Introduce una contraseña segura",
+      "passphraseConfirm": "Confirmar contraseña",
+      "passphraseConfirmPlaceholder": "Repite la contraseña",
+      "passphraseMismatch": "Las contraseñas no coinciden",
+      "exportButton": "Exportar {{count}} perfil(es)",
+      "exporting": "Exportando…",
+      "success": "Exportado en {{path}}"
+    },
+    "import": {
+      "title": "Importar perfiles",
+      "tooltip": "Importar perfiles…",
+      "pickTitle": "Seleccionar fichero de exportación",
+      "pickDescription": "Selecciona un fichero de exportación de perfiles de HuginnDB (.json) para importar.",
+      "browse": "Examinar…",
+      "passphraseRequired": "Este fichero contiene contraseñas cifradas. Introduce la contraseña con la que se exportó.",
+      "passphrase": "Contraseña de exportación",
+      "passphrasePlaceholder": "Introduce la contraseña de exportación",
+      "conflictsDescription": "{{count}} perfil(es) comparten un ID con uno existente. Elige cómo gestionar cada uno:",
+      "existingAs": "(existe como \"{{name}}\")",
+      "action": {
+        "overwrite": "Sobreescribir",
+        "skip": "Omitir",
+        "rename": "Mantener ambos"
+      },
+      "importButton": "Importar {{count}} perfil(es)",
+      "done": "Importación completada",
+      "summaryImported": "{{count}} perfil(es) importado(s).",
+      "summarySkipped": "{{count}} omitido(s).",
+      "summaryRenamed": "{{count}} renombrado(s) para evitar duplicados.",
+      "needsPassword": "{{count}} perfil(es) se importaron sin contraseña. Abre cada conexión para configurarla antes de conectar."
     }
   },
   "update": {

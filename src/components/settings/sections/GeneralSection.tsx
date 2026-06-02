@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePreferences, selectUiPrefs } from "@/stores/preferences";
-import type { AppLanguage } from "@/types";
+import type { AppLanguage, CellEditorMode } from "@/types";
 import { PrefRow } from "./PrefRow";
 
 export function GeneralSection() {
@@ -68,6 +68,28 @@ export function GeneralSection() {
           checked={ui.restoreTabsOnOpen}
           onCheckedChange={(v) => updateUi({ restoreTabsOnOpen: v })}
         />
+      </PrefRow>
+
+      <PrefRow
+        label={t("settings.general.cellEditorMode.label")}
+        description={t("settings.general.cellEditorMode.desc")}
+      >
+        <Select
+          value={ui.cellEditorMode}
+          onValueChange={(v) => updateUi({ cellEditorMode: v as CellEditorMode })}
+        >
+          <SelectTrigger className="h-8 w-40 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="modal" className="text-xs">
+              {t("settings.general.cellEditorMode.modal")}
+            </SelectItem>
+            <SelectItem value="side" className="text-xs">
+              {t("settings.general.cellEditorMode.side")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </PrefRow>
 
       <PrefRow

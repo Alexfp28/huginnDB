@@ -16,15 +16,21 @@ import type {
   CellValue,
   ColumnFilter,
   ColumnInfo,
+  ConflictResolution,
   ConnectionProfile,
   ConnectionTabState,
   DatabaseInfo,
   FkOptionsPage,
+  ImportAnalysis,
+  ImportResult,
   IndexInfo,
   Preferences,
   QueryResult,
   RowValue,
+  StartupArgs,
+  StructurePreview,
   TableInfo,
+  TableStructure,
   WorkspaceMeta,
 } from "@/types";
 
@@ -132,6 +138,33 @@ export const api = {
     table: string,
   ) => invoke<IndexInfo[]>("list_indexes", { connectionId, schema, table }),
 
+  /** Full editable structure of a table (columns, indexes, FKs, defaults,
+   *  auto-increment) for the visual structure editor. */
+  getTableStructure: (
+    connectionId: string,
+    schema: string | undefined,
+    table: string,
+  ) =>
+    invoke<TableStructure>("get_table_structure", {
+      connectionId,
+      schema,
+      table,
+    }),
+
+  /** Generate (but do not run) the DDL to take `original` → `desired`. */
+  previewStructureChange: (args: {
+    connectionId: string;
+    original: TableStructure | null;
+    desired: TableStructure;
+  }) => invoke<StructurePreview>("preview_structure_change", { args }),
+
+  /** Execute the DDL to take `original` → `desired`. */
+  applyStructureChange: (args: {
+    connectionId: string;
+    original: TableStructure | null;
+    desired: TableStructure;
+  }) => invoke<void>("apply_structure_change", { args }),
+
   /** `DROP TABLE` for a catalog-sourced (schema, table) pair. */
   dropTable: (connectionId: string, schema: string | undefined, table: string) =>
     invoke<void>("drop_table", { connectionId, schema, table }),
@@ -199,6 +232,14 @@ export const api = {
     pkValues: CellValue[];
     column: string;
     value: string | null;
+    /**
+     * Raw column type (e.g. `bit(1)`, `varchar(255)`). Lets the backend pick
+     * a server-side cast for types where a textual literal would be coerced
+     * wrongly — notably MySQL `BIT`, where the literal `"1"` is read as the
+     * ASCII byte `0x31` rather than the integer 1. Optional and ignored for
+     * types that accept a plain string bind.
+     */
+    columnType?: string;
   }) => invoke<number>("update_cell", args),
 
   /**
@@ -312,4 +353,56 @@ export const api = {
   /** Switch the active workspace. Subsequent tab-state calls scope to it. */
   setActiveWorkspace: (id: string) =>
     invoke<void>("set_active_workspace", { id }),
+
+  // Import / Export --------------------------------------------------------
+
+  /**
+   * Parse an export file and return metadata for the conflict-resolution UI.
+   * Does not decrypt anything; safe to call before collecting a passphrase.
+   */
+  analyzeImportFile: (filePath: string) =>
+    invoke<ImportAnalysis>("analyze_import_file", { filePath }),
+
+  /**
+   * Export the given profiles (or all if `profileIds` is null) to a
+   * user-chosen JSON file. When `includePasswords` is true, `passphrase`
+   * must be provided; secrets are encrypted with AES-256-GCM.
+   * Returns the path of the written file.
+   */
+  exportProfiles: (
+    profileIds: string[] | null,
+    includePasswords: boolean,
+    passphrase?: string,
+  ) =>
+    invoke<string>("export_profiles", {
+      profileIds,
+      includePasswords,
+      passphrase,
+    }),
+
+  /**
+   * Import profiles from a previously exported JSON file.
+   * `conflictResolutions` must cover every id returned in `analyze.conflicts`.
+   * Returns a summary of what was imported, skipped, renamed, or left without
+   * a password.
+   */
+  importProfiles: (
+    filePath: string,
+    passphrase?: string,
+    conflictResolutions?: ConflictResolution[],
+  ) =>
+    invoke<ImportResult>("import_profiles", {
+      filePath,
+      passphrase,
+      conflictResolutions: conflictResolutions ?? [],
+    }),
+
+  // CLI args ---------------------------------------------------------------
+
+  /**
+   * Return the command-line arguments that were parsed before the app
+   * started. Called once on boot to auto-connect when the user launched
+   * HuginnDB with `--connect-profile` or ad-hoc connection flags.
+   */
+  getStartupArgs: () => invoke<StartupArgs>("get_startup_args"),
 };
