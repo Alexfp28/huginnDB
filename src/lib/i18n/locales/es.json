@@ -126,6 +126,8 @@
     "sectionViews": "vistas",
     "sectionIndexes": "índices",
     "filterPlaceholder": "Filtrar tablas…",
+    "filterInDb": "Filtrar en {{db}}…",
+    "filterScopedTo": "Buscando solo en {{db}}",
     "noMatches": "Ninguna tabla coincide con el filtro.",
     "warming": "Cacheando esquema… {{done}}/{{total}} bases",
     "context": {
@@ -133,6 +135,8 @@
       "copyName": "Copiar nombre",
       "copySelect": "Copiar sentencia SELECT",
       "refresh": "Actualizar",
+      "editStructure": "Editar estructura…",
+      "newTable": "Nueva tabla…",
       "rename": "Renombrar…",
       "drop": "Eliminar tabla…"
     },
@@ -189,6 +193,44 @@
     "zoomIn": "Filas más grandes (Ctrl + +)",
     "zoomOut": "Filas más pequeñas (Ctrl + −)",
     "zoomReset": "Restablecer tamaño de fila (Ctrl + 0)"
+  },
+  "structure": {
+    "loading": "Cargando estructura…",
+    "tableName": "Tabla",
+    "tableNamePlaceholder": "nombre_tabla",
+    "apply": "Aplicar",
+    "applying": "Aplicando…",
+    "ddlPreview": "Vista previa DDL",
+    "rebuildWarning": "reconstruye la tabla",
+    "rebuildTitle": "¿Reconstruir la tabla en SQLite?",
+    "rebuildBody": "SQLite no puede alterar esto in situ, así que la tabla se recreará: se crea una tabla nueva, se copian los datos, se elimina la antigua y se renombra la nueva. Asegúrate de tener una copia de seguridad si los datos importan.",
+    "rebuildConfirm": "Reconstruir y aplicar",
+    "section": {
+      "columns": "Columnas",
+      "indexes": "Índices",
+      "fks": "Claves foráneas"
+    },
+    "col": {
+      "name": "Nombre",
+      "type": "Tipo",
+      "nullable": "Null",
+      "pk": "PK",
+      "auto": "Auto",
+      "default": "Por defecto",
+      "add": "Añadir columna",
+      "remove": "Eliminar columna"
+    },
+    "idx": {
+      "namePlaceholder": "nombre del índice (opcional)",
+      "unique": "Único",
+      "add": "Añadir índice"
+    },
+    "fk": {
+      "namePlaceholder": "nombre de la restricción (opcional)",
+      "refTable": "tabla referenciada",
+      "refColumns": "columnas referenciadas",
+      "add": "Añadir clave foránea"
+    }
   },
   "tabs": {
     "queryFileName": "query.sql",

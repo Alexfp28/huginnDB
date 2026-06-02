@@ -24,7 +24,9 @@ import type {
   Preferences,
   QueryResult,
   RowValue,
+  StructurePreview,
   TableInfo,
+  TableStructure,
   WorkspaceMeta,
 } from "@/types";
 
@@ -131,6 +133,33 @@ export const api = {
     schema: string | undefined,
     table: string,
   ) => invoke<IndexInfo[]>("list_indexes", { connectionId, schema, table }),
+
+  /** Full editable structure of a table (columns, indexes, FKs, defaults,
+   *  auto-increment) for the visual structure editor. */
+  getTableStructure: (
+    connectionId: string,
+    schema: string | undefined,
+    table: string,
+  ) =>
+    invoke<TableStructure>("get_table_structure", {
+      connectionId,
+      schema,
+      table,
+    }),
+
+  /** Generate (but do not run) the DDL to take `original` → `desired`. */
+  previewStructureChange: (args: {
+    connectionId: string;
+    original: TableStructure | null;
+    desired: TableStructure;
+  }) => invoke<StructurePreview>("preview_structure_change", { args }),
+
+  /** Execute the DDL to take `original` → `desired`. */
+  applyStructureChange: (args: {
+    connectionId: string;
+    original: TableStructure | null;
+    desired: TableStructure;
+  }) => invoke<void>("apply_structure_change", { args }),
 
   /** `DROP TABLE` for a catalog-sourced (schema, table) pair. */
   dropTable: (connectionId: string, schema: string | undefined, table: string) =>

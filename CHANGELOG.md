@@ -17,6 +17,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the others, and fixes the scope. With no database expanded the filter falls
   back to the previous behaviour (searches all DBs), keeping the single-DB case
   fully retrocompatible.
+- **Visual table-structure editor (HeidiSQL-style).** Right-click a table →
+  *Edit structure…* (or *New table…*) opens an editor for columns
+  (add/drop/rename, type, nullability, default, primary key, auto-increment),
+  indexes and foreign keys — including composite ones. The column type is an
+  editable combobox pre-filled with the driver's common types so you avoid
+  typos but can still fine-tune (e.g. `varchar(40)`). It follows a
+  preview-and-apply model: the backend generates driver-aware DDL (PostgreSQL /
+  MySQL / SQLite) which is shown in a live read-only preview before you apply it
+  in one go. On SQLite, changes that `ALTER TABLE` can't express (type /
+  nullability / PK / FK edits) fall back to the canonical 12-step table rebuild,
+  gated behind an explicit destructive confirmation. All identifiers are
+  validated before quoting; types and defaults go through a conservative
+  allowlist.
 - **Side-panel cell editor (JetBrains-style).** Large cell values can now be
   edited in a docked right-side panel instead of a centered dialog. Reach it via
   right-click → *Open in side editor*, or the new *Move to side panel* button

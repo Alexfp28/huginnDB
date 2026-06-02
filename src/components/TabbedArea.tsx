@@ -42,6 +42,7 @@ import { useConnections } from "@/stores/connections";
 import { Button } from "@/components/ui/button";
 import { TableDataTab } from "@/components/TableDataTab";
 import { QueryEditorTab } from "@/components/QueryEditorTab";
+import { StructureEditorTab } from "@/components/StructureEditorTab";
 import {
   huginnDockviewTheme,
   registerInnerDockviewApi,
@@ -64,6 +65,13 @@ interface QueryPanelParams {
   tabId: string;
   connectionId: string;
 }
+interface StructurePanelParams {
+  tabId: string;
+  connectionId: string;
+  schema?: string;
+  table?: string;
+  mode: "new" | "edit";
+}
 
 // ---------------------------------------------------------------------------
 // Panel bodies — read their identity from the panel params and delegate to
@@ -84,9 +92,23 @@ function QueryPanel(props: IDockviewPanelProps<QueryPanelParams>) {
   return <QueryEditorTab tabId={tabId} connectionId={connectionId} />;
 }
 
+function StructurePanel(props: IDockviewPanelProps<StructurePanelParams>) {
+  const { tabId, connectionId, schema, table, mode } = props.params;
+  return (
+    <StructureEditorTab
+      tabId={tabId}
+      connectionId={connectionId}
+      schema={schema}
+      table={table}
+      mode={mode}
+    />
+  );
+}
+
 const INNER_COMPONENTS = {
   table: TablePanel,
   query: QueryPanel,
+  structure: StructurePanel,
 };
 
 // ---------------------------------------------------------------------------
@@ -347,17 +369,27 @@ export function TabbedArea(_props: Props) {
     if (!api) return;
     for (const tab of tabs) {
       if (api.getPanel(tab.id)) continue;
-      const params =
-        tab.kind === "table"
-          ? {
-              connectionId: tab.connectionId,
-              schema: tab.schema,
-              table: tab.table,
-            }
-          : { tabId: tab.id, connectionId: tab.connectionId };
+      let params: Record<string, unknown>;
+      if (tab.kind === "table") {
+        params = {
+          connectionId: tab.connectionId,
+          schema: tab.schema,
+          table: tab.table,
+        };
+      } else if (tab.kind === "structure") {
+        params = {
+          tabId: tab.id,
+          connectionId: tab.connectionId,
+          schema: tab.schema,
+          table: tab.table,
+          mode: tab.structureMode ?? "edit",
+        };
+      } else {
+        params = { tabId: tab.id, connectionId: tab.connectionId };
+      }
       api.addPanel({
         id: tab.id,
-        component: tab.kind === "table" ? "table" : "query",
+        component: tab.kind,
         params,
       });
     }

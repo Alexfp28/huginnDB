@@ -10,6 +10,7 @@
 //! * [`sql`]    — driver-aware SQL helpers (identifier quoting, statement
 //!                classification).
 
+pub mod ddl;
 pub mod pool;
 pub mod sql;
 pub mod ssh;

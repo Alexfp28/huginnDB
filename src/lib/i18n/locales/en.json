@@ -126,6 +126,8 @@
     "sectionViews": "views",
     "sectionIndexes": "indexes",
     "filterPlaceholder": "Filter tables…",
+    "filterInDb": "Filter in {{db}}…",
+    "filterScopedTo": "Searching in {{db}} only",
     "noMatches": "No tables match the filter.",
     "warming": "Caching schema… {{done}}/{{total}} databases",
     "context": {
@@ -133,6 +135,8 @@
       "copyName": "Copy name",
       "copySelect": "Copy SELECT statement",
       "refresh": "Refresh",
+      "editStructure": "Edit structure…",
+      "newTable": "New table…",
       "rename": "Rename…",
       "drop": "Drop table…"
     },
@@ -189,6 +193,44 @@
     "zoomIn": "Larger rows (Ctrl + +)",
     "zoomOut": "Smaller rows (Ctrl + −)",
     "zoomReset": "Reset row size (Ctrl + 0)"
+  },
+  "structure": {
+    "loading": "Loading structure…",
+    "tableName": "Table",
+    "tableNamePlaceholder": "table_name",
+    "apply": "Apply",
+    "applying": "Applying…",
+    "ddlPreview": "DDL preview",
+    "rebuildWarning": "rebuilds table",
+    "rebuildTitle": "Rebuild table on SQLite?",
+    "rebuildBody": "SQLite can't alter this in place, so the table will be recreated: a new table is built, the data is copied over, the old table is dropped and the new one renamed. Make sure you have a backup if the data matters.",
+    "rebuildConfirm": "Rebuild & apply",
+    "section": {
+      "columns": "Columns",
+      "indexes": "Indexes",
+      "fks": "Foreign keys"
+    },
+    "col": {
+      "name": "Name",
+      "type": "Type",
+      "nullable": "Null",
+      "pk": "PK",
+      "auto": "Auto",
+      "default": "Default",
+      "add": "Add column",
+      "remove": "Remove column"
+    },
+    "idx": {
+      "namePlaceholder": "index name (optional)",
+      "unique": "Unique",
+      "add": "Add index"
+    },
+    "fk": {
+      "namePlaceholder": "constraint name (optional)",
+      "refTable": "referenced table",
+      "refColumns": "referenced columns",
+      "add": "Add foreign key"
+    }
   },
   "tabs": {
     "queryFileName": "query.sql",

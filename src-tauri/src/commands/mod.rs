@@ -10,4 +10,5 @@ pub mod credentials;
 pub mod prefs;
 pub mod query;
 pub mod schema;
+pub mod structure;
 pub mod workspaces;

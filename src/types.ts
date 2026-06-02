@@ -130,6 +130,53 @@ export interface IndexInfo {
   unique: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Table-structure editor — mirror of the Rust DTOs in src-tauri/src/db/ddl.rs.
+// camelCase on the wire.
+// ---------------------------------------------------------------------------
+
+export interface ColumnDef {
+  name: string;
+  /** Original name when editing; absent for a new column (distinguishes a
+   *  rename from a drop+add). */
+  originalName?: string | null;
+  dataType: string;
+  nullable: boolean;
+  default?: string | null;
+  isPrimaryKey: boolean;
+  autoIncrement?: boolean;
+}
+
+export interface StructureIndexDef {
+  name?: string | null;
+  columns: string[];
+  unique: boolean;
+}
+
+export interface ForeignKeyDef {
+  name?: string | null;
+  columns: string[];
+  refSchema?: string | null;
+  refTable: string;
+  refColumns: string[];
+  onDelete?: string | null;
+  onUpdate?: string | null;
+}
+
+export interface TableStructure {
+  schema?: string | null;
+  name: string;
+  columns: ColumnDef[];
+  indexes: StructureIndexDef[];
+  foreignKeys: ForeignKeyDef[];
+}
+
+export interface StructurePreview {
+  statements: string[];
+  /** True when applying on SQLite rebuilds the table (destructive). */
+  rebuild: boolean;
+}
+
 /** Column descriptor in a `QueryResult`. */
 export interface ColumnMeta {
   name: string;
@@ -153,7 +200,10 @@ export interface QueryResult {
 }
 
 /** Tabs in the main workspace can host either table data or a query editor. */
-export type TabKind = "table" | "query";
+export type TabKind = "table" | "query" | "structure";
+
+/** New-table vs edit-existing for a structure tab. */
+export type StructureMode = "new" | "edit";
 
 export interface AppTab {
   id: string;
@@ -164,6 +214,8 @@ export interface AppTab {
   table?: string;
   /** Initial / current SQL for query tabs. */
   query?: string;
+  /** For structure tabs: whether we're creating a new table or editing one. */
+  structureMode?: StructureMode;
   /** Stats from the most recent query execution in this tab. */
   lastQueryStats?: { rows: number; elapsed_ms: number };
 }

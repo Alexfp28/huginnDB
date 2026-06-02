@@ -92,6 +92,8 @@ These bit us during the first sessions. Don't repeat them.
 
 15. **MySQL integer/`BIT` decoding is width- and type-specific (`mysql_value` in `src-tauri/src/db/values.rs`).** sqlx maps each MySQL integer width to one Rust type and rejects a mismatched `try_get`: `TINYINT`→`i8`, `… UNSIGNED`→`u8`/`u16`/`u32`/`u64`, etc. The `contains("INT")` branch therefore tries signed widest-first then unsigned, falling back across widths before surrendering to `Value::Null` — without this, bare `TINYINT`/`SMALLINT` and any unsigned column rendered as "NULL". `BIT` is decoded via `try_get::<u64>` (sqlx special-cases `ColumnType::Bit`; `Vec<u8>` is rejected). The `BOOL`/`TINYINT(1)` branch must stay **above** `contains("INT")` (`"TINYINT(1)"` contains `"INT"`). On the *write* side, editing a MySQL `BIT` cell needs `SET col = CAST(? AS UNSIGNED)` — a plain textual literal `"1"` is stored as the ASCII byte `0x31`, not the integer 1; `update_cell` takes an optional `column_type` from the frontend to detect this.
 
+16. **The table-structure editor builds DDL in Rust, never in the component.** `StructureEditorTab.tsx` sends the desired `TableStructure` (+ the original snapshot when editing) to `preview_structure_change` / `apply_structure_change`; the pure builder in `src-tauri/src/db/ddl.rs` (`build_ddl`) diffs them and returns the ordered statements. Preview and apply call the *same* builder so what's shown is what runs. DDL can't use bound parameters for identifiers, so every user-entered name goes through `validate_ident` before quoting, and types/defaults through `validate_type`/`validate_default` (conservative allowlists) — this is the SECURITY.md "user input never reaches `quote_ident`" rule's one sanctioned exception, mediated by validation. A rename-vs-drop+add is told apart by each `ColumnDef.original_name` (the diff matches on it). SQLite changes that `ALTER TABLE` can't express (type/nullability/PK/FK) trigger the 12-step rebuild in `build_sqlite_rebuild`; `preview` flags `rebuild: true` so the UI shows a destructive confirmation. Apply runs PG in one transaction, MySQL statement-by-statement (DDL is non-transactional there), and SQLite verbatim (the rebuild manages its own `PRAGMA foreign_keys` toggles outside any tx). Structure tabs are **not** persisted (filtered out in `persistedTabs.ts`) — they're ephemeral editing sessions.
+
 ## Workflow
 
 ```powershell
@@ -141,10 +143,10 @@ Theme + dockview layout still live in `localStorage` (keys `huginndb.theme.v2` a
 ## Roadmap (priority order from README)
 
 1. **SSH tunnel** — UI fields and `SshTunnel` type already exist; backend wiring is the next major feature. The user explicitly flagged this for the next alpha. Likely approach: spawn `russh` / `russh-tokio` tunnel before opening the `sqlx` pool, point the pool at `127.0.0.1:<local>`.
-2. Bulk row insert / delete in the data browser.
+2. ~~Bulk row insert / delete in the data browser.~~ Bulk delete + multi-select shipped in 1.0.2; bulk insert still open.
 3. Schema diff & export (DDL extraction, side-by-side compare).
 4. More drivers — MSSQL, ClickHouse, DuckDB. Recipe in `CONTRIBUTING.md`.
-5. Table-structure editor (visual `ALTER TABLE`).
+5. ~~Table-structure editor (visual `ALTER TABLE`).~~ Shipped in 1.0.2 — see gotcha #16.
 6. Tighter CSP.
 7. Tests — `testcontainers-rs` for ephemeral Postgres/MySQL, Playwright for the frontend.
 8. macOS bundle with code signing.
