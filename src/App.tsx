@@ -10,7 +10,7 @@
  * wipes it back to the default.
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import "dockview-react/dist/styles/dockview.css";
 import {
   DockviewReact,
@@ -25,6 +25,7 @@ import {
 } from "@/stores/update";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { useConnections } from "@/stores/connections";
+import { useSchema } from "@/stores/schema";
 import { useUi } from "@/stores/ui";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
 import { usePreferences } from "@/stores/preferences";
@@ -43,6 +44,8 @@ import { SideEditorPanel } from "@/components/SideEditorPanel";
 import { SavedQueriesPanel } from "@/components/SavedQueriesPanel";
 import { Console } from "@/components/Console";
 import { startLogBridge } from "@/lib/log-bridge";
+import { api } from "@/lib/tauri";
+import type { ConnectionProfile } from "@/types";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -119,8 +122,11 @@ export default function App() {
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
   const refreshConnections = useConnections((s) => s.refresh);
+  const connectProfile = useConnections((s) => s.connect);
+  const refreshSchema = useSchema((s) => s.refresh);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
+  const cliArgsHandled = useRef(false);
   const activeTheme = useThemeStore(selectActiveTheme);
   const setMode = useThemeStore((s) => s.setActiveMode);
   const hydratePreferences = usePreferences((s) => s.hydrate);
@@ -157,6 +163,53 @@ export default function App() {
   useEffect(() => {
     void useUpdateStore.getState().checkOnLaunch();
   }, []);
+
+  // Handle command-line arguments once profiles have loaded. A ref prevents
+  // a second attempt if `profiles` changes again after the first run.
+  useEffect(() => {
+    if (cliArgsHandled.current || profiles.length === 0) return;
+    cliArgsHandled.current = true;
+
+    async function handleCliArgs() {
+      try {
+        const args = await api.getStartupArgs();
+        if (args.connect_profile) {
+          const target = args.connect_by_id
+            ? profiles.find((p) => p.id === args.connect_profile)
+            : profiles.find((p) => p.name === args.connect_profile);
+          if (target) {
+            await connectProfile(target.id);
+            await refreshSchema(target.id);
+            setSelected(target.id);
+          }
+        } else if (args.adhoc_host) {
+          // Build a temporary in-memory profile. The empty id means the
+          // keychain has no stored password — the existing ConnectPasswordDialog
+          // flow will prompt the user on `connect`. We don't persist this.
+          const adhocProfile: ConnectionProfile = {
+            id: "",
+            name: args.adhoc_name ?? `${args.adhoc_host}/${args.adhoc_database ?? ""}`,
+            driver:
+              (args.adhoc_driver as ConnectionProfile["driver"] | null) ?? "postgres",
+            host: args.adhoc_host,
+            port: args.adhoc_port ?? 5432,
+            database: args.adhoc_database ?? "",
+            username: args.adhoc_username ?? "",
+            ssl: false,
+          };
+          // Save the ad-hoc profile (without a password) so the user can
+          // see it in the list and connect via the normal password dialog.
+          await useConnections.getState().save(adhocProfile);
+          await refreshConnections();
+        }
+      } catch {
+        // Non-fatal: if the CLI arg profile doesn't exist or connect fails,
+        // the app just opens normally without auto-connecting.
+      }
+    }
+    void handleCliArgs();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles]);
 
   // Subscribe to the Rust `huginndb://log` Tauri event so the Console
   // panel sees every SQL + connection event. Unlisten on unmount keeps
@@ -251,11 +304,6 @@ export default function App() {
                     {selectedProfile.driver}
                   </span>
                 </>
-              )}
-              {!selectedProfile && (
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-sans uppercase text-muted-foreground">
-                  {t("common.alpha")}
-                </span>
               )}
             </div>
           </div>

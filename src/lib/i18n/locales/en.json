@@ -13,7 +13,8 @@
     "language": "Language",
     "languageDescription": "Interface language. Date and number formatting still follow your operating system.",
     "languageEnglish": "English",
-    "languageSpanish": "Español"
+    "languageSpanish": "Español",
+    "continue": "Continue"
   },
   "menu": {
     "file": {
@@ -22,6 +23,8 @@
       "manageConnections": "Manage connections…",
       "sectionConnections": "Connections",
       "noConnections": "No connections yet.",
+      "importProfiles": "Import profiles…",
+      "exportProfiles": "Export profiles…",
       "disconnectAll": "Disconnect all",
       "resetLayout": "Reset window layout"
     },
@@ -351,6 +354,48 @@
       "tagline": "Minimal desktop database manager for PostgreSQL, MySQL and SQLite.",
       "prefsLocation": "Preferences file location",
       "tabStateHint": "A sibling {{file}} stores the open tabs and schema-tree expansion for each connection."
+    }
+  },
+  "transfer": {
+    "export": {
+      "title": "Export profiles",
+      "tooltip": "Export profiles…",
+      "profiles": "Profiles to export",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all",
+      "includePasswords": "Include passwords (encrypted)",
+      "securityWarning": "Passwords are encrypted with AES-256-GCM. Keep your passphrase safe — it cannot be recovered.",
+      "passphrase": "Passphrase",
+      "passphrasePlaceholder": "Enter a strong passphrase",
+      "passphraseConfirm": "Confirm passphrase",
+      "passphraseConfirmPlaceholder": "Re-enter passphrase",
+      "passphraseMismatch": "Passphrases do not match",
+      "exportButton": "Export {{count}} profile(s)",
+      "exporting": "Exporting…",
+      "success": "Exported to {{path}}"
+    },
+    "import": {
+      "title": "Import profiles",
+      "tooltip": "Import profiles…",
+      "pickTitle": "Select export file",
+      "pickDescription": "Select a HuginnDB profile export file (.json) to import.",
+      "browse": "Browse…",
+      "passphraseRequired": "This file contains encrypted passwords. Enter the passphrase used when it was exported.",
+      "passphrase": "Passphrase",
+      "passphrasePlaceholder": "Enter the export passphrase",
+      "conflictsDescription": "{{count}} profile(s) share an ID with an existing one. Choose how to handle each:",
+      "existingAs": "(exists as \"{{name}}\")",
+      "action": {
+        "overwrite": "Overwrite",
+        "skip": "Skip",
+        "rename": "Keep both"
+      },
+      "importButton": "Import {{count}} profile(s)",
+      "done": "Import complete",
+      "summaryImported": "{{count}} profile(s) imported.",
+      "summarySkipped": "{{count}} skipped.",
+      "summaryRenamed": "{{count}} renamed to avoid duplicates.",
+      "needsPassword": "{{count}} profile(s) were imported without a password. Open each connection to set a password before connecting."
     }
   },
   "update": {

@@ -1,6 +1,6 @@
 [package]
 name = "huginndb"
-version = "1.0.1"
+version = "1.0.2"
 description = "HuginnDB — minimal desktop database manager"
 authors = ["HuginnDB contributors"]
 edition = "2021"
@@ -52,6 +52,11 @@ russh = { version = "0.60", default-features = false, features = [
     "rsa",
 ] }
 tokio-util = { version = "0.7", features = ["rt"] }
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", features = ["simple"] }
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

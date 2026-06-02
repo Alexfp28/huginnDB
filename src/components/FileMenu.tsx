@@ -19,11 +19,13 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
+  Download,
   FolderOpen,
   LayoutGrid,
   PlugZap,
   Plus,
   Settings,
+  Upload,
 } from "lucide-react";
 import { resetLayout } from "@/lib/dockview";
 import { useConnections } from "@/stores/connections";
@@ -39,6 +41,8 @@ import {
 } from "@/components/ui/dropdown";
 import { ConnectionDialog } from "@/components/ConnectionDialog";
 import { ManageConnectionsDialog } from "@/components/ManageConnectionsDialog";
+import { ExportProfilesDialog } from "@/components/ExportProfilesDialog";
+import { ImportProfilesDialog } from "@/components/ImportProfilesDialog";
 import { DriverBadge } from "@/components/DriverBadge";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
@@ -59,6 +63,8 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
 
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const { t } = useTranslation();
 
   /** Connect to a profile (or just select it if it's already active). */
@@ -112,6 +118,14 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
           <DropdownMenuItem onSelect={() => setManageOpen(true)}>
             <Settings className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.manageConnections")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setImportOpen(true)}>
+            <Upload className="mr-2 h-3.5 w-3.5" />
+            {t("menu.file.importProfiles")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setExportOpen(true)}>
+            <Download className="mr-2 h-3.5 w-3.5" />
+            {t("menu.file.exportProfiles")}
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
@@ -179,6 +193,8 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
         selectedConnectionId={selectedConnectionId}
         onSelect={onSelect}
       />
+      <ExportProfilesDialog open={exportOpen} onOpenChange={setExportOpen} />
+      <ImportProfilesDialog open={importOpen} onOpenChange={setImportOpen} />
     </>
   );
 }

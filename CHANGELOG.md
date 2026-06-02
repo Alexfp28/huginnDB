@@ -6,8 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-06-02
+
 ### Added
 
+- **Import / Export of connection profiles.** Export all or selected profiles to
+  a portable JSON file (`File → Export profiles…` or the icons in *Manage
+  connections*). Profiles can optionally include credentials: each password and
+  SSH secret is encrypted individually with AES-256-GCM, key-derived via
+  PBKDF2-HMAC-SHA256 at 600 000 iterations, so the file is safe to store or
+  send. Importing detects encryption, walks through a passphrase step when
+  needed, shows a conflict-resolution screen when IDs collide (overwrite / skip /
+  keep both), and always assigns fresh UUIDs to imported profiles to avoid
+  keychain collisions. Profiles imported without passwords are flagged in the
+  result summary.
+- **CLI connection arguments.** HuginnDB can now be launched with connection
+  flags so external tools can open it pre-connected. `--connect-profile <name>`
+  auto-connects to a saved profile by display name; `--connect-profile-id <uuid>`
+  uses the stable ID instead. For ad-hoc connections without a saved profile:
+  `--host`, `--port`, `--database`, `--username`, `--driver`, `--name` — the
+  app opens with the profile pre-populated and asks for the password via the
+  normal dialog (passwords are never accepted on the CLI). Unknown flags are
+  silently ignored for forward compatibility.
 - **Scoped multi-DB filter (HeidiSQL-style).** In multi-database connections,
   the schema-explorer filter now scopes to the active database instead of
   searching all databases simultaneously. Expanding a database activates it as

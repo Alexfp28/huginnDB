@@ -16,14 +16,18 @@ import type {
   CellValue,
   ColumnFilter,
   ColumnInfo,
+  ConflictResolution,
   ConnectionProfile,
   ConnectionTabState,
   DatabaseInfo,
   FkOptionsPage,
+  ImportAnalysis,
+  ImportResult,
   IndexInfo,
   Preferences,
   QueryResult,
   RowValue,
+  StartupArgs,
   StructurePreview,
   TableInfo,
   TableStructure,
@@ -349,4 +353,56 @@ export const api = {
   /** Switch the active workspace. Subsequent tab-state calls scope to it. */
   setActiveWorkspace: (id: string) =>
     invoke<void>("set_active_workspace", { id }),
+
+  // Import / Export --------------------------------------------------------
+
+  /**
+   * Parse an export file and return metadata for the conflict-resolution UI.
+   * Does not decrypt anything; safe to call before collecting a passphrase.
+   */
+  analyzeImportFile: (filePath: string) =>
+    invoke<ImportAnalysis>("analyze_import_file", { filePath }),
+
+  /**
+   * Export the given profiles (or all if `profileIds` is null) to a
+   * user-chosen JSON file. When `includePasswords` is true, `passphrase`
+   * must be provided; secrets are encrypted with AES-256-GCM.
+   * Returns the path of the written file.
+   */
+  exportProfiles: (
+    profileIds: string[] | null,
+    includePasswords: boolean,
+    passphrase?: string,
+  ) =>
+    invoke<string>("export_profiles", {
+      profileIds,
+      includePasswords,
+      passphrase,
+    }),
+
+  /**
+   * Import profiles from a previously exported JSON file.
+   * `conflictResolutions` must cover every id returned in `analyze.conflicts`.
+   * Returns a summary of what was imported, skipped, renamed, or left without
+   * a password.
+   */
+  importProfiles: (
+    filePath: string,
+    passphrase?: string,
+    conflictResolutions?: ConflictResolution[],
+  ) =>
+    invoke<ImportResult>("import_profiles", {
+      filePath,
+      passphrase,
+      conflictResolutions: conflictResolutions ?? [],
+    }),
+
+  // CLI args ---------------------------------------------------------------
+
+  /**
+   * Return the command-line arguments that were parsed before the app
+   * started. Called once on boot to auto-connect when the user launched
+   * HuginnDB with `--connect-profile` or ad-hoc connection flags.
+   */
+  getStartupArgs: () => invoke<StartupArgs>("get_startup_args"),
 };

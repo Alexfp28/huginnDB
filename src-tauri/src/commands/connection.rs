@@ -5,8 +5,12 @@ use crate::error::{AppError, AppResult};
 use crate::keychain;
 use crate::log_bus::{self, LogEntry, LogKind};
 use crate::ssh_known_hosts;
-use crate::state::{ActivePool, AppState, ConnectionProfile, Driver};
+use crate::state::{ActivePool, AppState, ConnectionProfile, Driver, StartupArgs};
 use crate::store;
+use crate::transfer::{
+    ConflictAction, ConflictResolution, ExportFile, ExportMetadata, ExportedProfile,
+    ExportedSecret, ImportAnalysis, ImportConflict, ImportResult,
+};
 use std::time::Instant;
 use tauri::{AppHandle, State};
 use uuid::Uuid;
@@ -480,4 +484,285 @@ pub fn forget_host_key(state: State<'_, AppState>, host_port: String) -> AppResu
 #[tauri::command]
 pub fn get_host_key(state: State<'_, AppState>, host_port: String) -> AppResult<Option<String>> {
     Ok(state.known_hosts.read().get(&host_port).cloned())
+}
+
+// ---------------------------------------------------------------------------
+// Import / Export
+// ---------------------------------------------------------------------------
+
+/// Read and parse an export file without decrypting secrets.
+///
+/// Returns metadata the frontend needs to present the conflict-resolution
+/// step before committing to the import: whether it is encrypted, how many
+/// profiles it contains, and which of those conflict with existing ones.
+#[tauri::command]
+pub fn analyze_import_file(
+    state: State<'_, AppState>,
+    file_path: String,
+) -> AppResult<ImportAnalysis> {
+    let data = std::fs::read_to_string(&file_path)?;
+    let export: ExportFile = serde_json::from_str(&data)?;
+
+    if export.meta.version != 1 {
+        return Err(AppError::Transfer(format!(
+            "unsupported export format version {}",
+            export.meta.version
+        )));
+    }
+
+    let profiles = state.profiles.read();
+    let conflicts = export
+        .profiles
+        .iter()
+        .filter_map(|ep| {
+            profiles.iter().find(|p| p.id == ep.profile.id).map(|existing| ImportConflict {
+                id: ep.profile.id.clone(),
+                existing_name: existing.name.clone(),
+                incoming_name: ep.profile.name.clone(),
+            })
+        })
+        .collect();
+
+    Ok(ImportAnalysis {
+        total: export.profiles.len(),
+        encrypted: export.meta.encrypted,
+        conflicts,
+    })
+}
+
+/// Export the selected profiles to a JSON file chosen by the user.
+///
+/// When `include_passwords` is `true`, each profile's DB password and SSH
+/// secret are read from the OS keychain and encrypted with AES-256-GCM using
+/// the supplied `passphrase` before being written to the file. The file
+/// dialog opens for the user to pick the destination.
+#[tauri::command]
+pub async fn export_profiles(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_ids: Option<Vec<String>>,
+    include_passwords: bool,
+    passphrase: Option<String>,
+) -> AppResult<String> {
+    if include_passwords && passphrase.is_none() {
+        return Err(AppError::InvalidInput(
+            "a passphrase is required when include_passwords is true".into(),
+        ));
+    }
+
+    let profiles_snapshot: Vec<ConnectionProfile> = {
+        let guard = state.profiles.read();
+        match &profile_ids {
+            Some(ids) => guard.iter().filter(|p| ids.contains(&p.id)).cloned().collect(),
+            None => guard.clone(),
+        }
+    };
+
+    let mut exported_profiles = Vec::with_capacity(profiles_snapshot.len());
+    for profile in &profiles_snapshot {
+        let secrets = if include_passwords {
+            let pp = passphrase.as_deref().unwrap();
+            let db_password = if matches!(profile.driver, Driver::Sqlite) {
+                None
+            } else {
+                keychain::get_password(&profile.keyring_account())?
+                    .map(|pw| crate::transfer::encrypt_secret(&pw, pp))
+                    .transpose()?
+            };
+            let ssh_secret = profile
+                .ssh_keyring_account()
+                .and_then(|acct| keychain::get_password(&acct).ok().flatten())
+                .map(|s| crate::transfer::encrypt_secret(&s, pp))
+                .transpose()?;
+            Some(ExportedSecret { db_password, ssh_secret })
+        } else {
+            None
+        };
+        exported_profiles.push(ExportedProfile { profile: profile.clone(), secrets });
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let file = ExportFile {
+        meta: ExportMetadata {
+            version: 1,
+            app: "huginndb".into(),
+            exported_at: now.clone(),
+            encrypted: include_passwords,
+        },
+        profiles: exported_profiles,
+    };
+
+    let json = serde_json::to_string_pretty(&file)?;
+
+    // Build a suggested filename like `huginndb-profiles-2025-06-02.json`.
+    let date_part = now.get(..10).unwrap_or("export");
+    let suggested = format!("huginndb-profiles-{date_part}.json");
+
+    use tauri_plugin_dialog::DialogExt;
+    let path = app
+        .dialog()
+        .file()
+        .set_title("Export profiles")
+        .set_file_name(&suggested)
+        .add_filter("JSON", &["json"])
+        .blocking_save_file()
+        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+
+    let dest = path.to_string();
+    std::fs::write(&dest, json)?;
+    Ok(dest)
+}
+
+/// Import profiles from a previously exported JSON file.
+///
+/// Callers should first call [`analyze_import_file`] to detect conflicts and,
+/// if the file is encrypted, collect the passphrase. Then pass
+/// `conflict_resolutions` to express how each conflicting profile should be
+/// handled.
+///
+/// Every imported profile receives a **fresh UUID** regardless of whether it
+/// came with one in the file. This prevents keychain-account collisions with
+/// profiles that were already on this machine.
+#[tauri::command]
+pub fn import_profiles(
+    state: State<'_, AppState>,
+    file_path: String,
+    passphrase: Option<String>,
+    conflict_resolutions: Vec<ConflictResolution>,
+) -> AppResult<ImportResult> {
+    let data = std::fs::read_to_string(&file_path)?;
+    let export: ExportFile = serde_json::from_str(&data)?;
+
+    if export.meta.version != 1 {
+        return Err(AppError::Transfer(format!(
+            "unsupported export format version {}",
+            export.meta.version
+        )));
+    }
+    if export.meta.encrypted && passphrase.is_none() {
+        return Err(AppError::Transfer(
+            "this export file contains encrypted passwords — provide a passphrase".into(),
+        ));
+    }
+
+    let resolution_map: std::collections::HashMap<String, ConflictAction> = conflict_resolutions
+        .into_iter()
+        .map(|r| (r.id, r.action))
+        .collect();
+
+    let mut result = ImportResult {
+        imported: vec![],
+        skipped: vec![],
+        renamed: vec![],
+        needs_password: vec![],
+    };
+
+    let mut profiles = state.profiles.write();
+
+    for ep in export.profiles {
+        // Determine action for profiles that conflict with an existing id.
+        let conflict_action = if profiles.iter().any(|p| p.id == ep.profile.id) {
+            resolution_map
+                .get(&ep.profile.id)
+                .cloned()
+                .unwrap_or(ConflictAction::Rename)
+        } else {
+            ConflictAction::Rename // effectively: just insert as new
+        };
+
+        if matches!(conflict_action, ConflictAction::Skip) {
+            result.skipped.push(ep.profile.id.clone());
+            continue;
+        }
+
+        // If overwriting, drop the existing profile's keychain entries and
+        // remove it from the list.
+        if matches!(conflict_action, ConflictAction::Overwrite) {
+            if let Some(pos) = profiles.iter().position(|p| p.id == ep.profile.id) {
+                let old = profiles.remove(pos);
+                if !matches!(old.driver, Driver::Sqlite) {
+                    let _ = keychain::delete_password(&old.keyring_account());
+                }
+                if let Some(ssh_acct) = old.ssh_keyring_account() {
+                    let _ = keychain::delete_password(&ssh_acct);
+                }
+            }
+        }
+
+        // Always assign a fresh UUID to avoid keychain collisions.
+        let new_id = Uuid::new_v4().to_string();
+        let original_name = ep.profile.name.clone();
+
+        // Ensure the display name is unique; append " (imported)" or " (2)" etc.
+        let final_name = {
+            let base = ep.profile.name.clone();
+            let mut candidate = base.clone();
+            let mut suffix = 2u32;
+            while profiles.iter().any(|p| p.name == candidate) {
+                candidate = if suffix == 2 {
+                    format!("{base} (imported)")
+                } else {
+                    format!("{base} ({suffix})")
+                };
+                suffix += 1;
+            }
+            candidate
+        };
+
+        let renamed = final_name != original_name;
+        if renamed {
+            result.renamed.push((original_name.clone(), final_name.clone()));
+        }
+
+        let mut new_profile = ep.profile.clone();
+        new_profile.id = new_id.clone();
+        new_profile.name = final_name;
+
+        // Decrypt and store secrets if present.
+        let has_secrets = if let Some(secrets) = &ep.secrets {
+            let pp = passphrase.as_deref().unwrap_or("");
+            let mut any = false;
+            if let Some(enc_pw) = &secrets.db_password {
+                if !matches!(new_profile.driver, Driver::Sqlite) {
+                    let pw = crate::transfer::decrypt_secret(enc_pw, pp)?;
+                    keychain::set_password(&new_profile.keyring_account(), &pw)?;
+                    any = true;
+                }
+            }
+            if let Some(enc_ssh) = &secrets.ssh_secret {
+                if let Some(ssh_acct) = new_profile.ssh_keyring_account() {
+                    let secret = crate::transfer::decrypt_secret(enc_ssh, pp)?;
+                    keychain::set_password(&ssh_acct, &secret)?;
+                    any = true;
+                }
+            }
+            any
+        } else {
+            false
+        };
+
+        if !has_secrets && !matches!(new_profile.driver, Driver::Sqlite) {
+            result.needs_password.push(new_id.clone());
+        }
+
+        profiles.push(new_profile);
+        result.imported.push(new_id);
+    }
+
+    store::save_profiles(&profiles)?;
+    Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// CLI args
+// ---------------------------------------------------------------------------
+
+/// Return the command-line arguments that were parsed before the app started.
+///
+/// Called once by the frontend on boot (after profiles are loaded) to
+/// auto-connect when the user launched HuginnDB with `--connect-profile` or
+/// ad-hoc `--host` / `--port` / … flags.
+#[tauri::command]
+pub fn get_startup_args(state: State<'_, AppState>) -> AppResult<StartupArgs> {
+    Ok(state.startup_args.clone())
 }

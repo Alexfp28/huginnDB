@@ -47,6 +47,10 @@ pub enum AppError {
     /// SSH transport, authentication, or channel failure surfaced by `russh`.
     #[error("ssh error: {0}")]
     Ssh(String),
+
+    /// Import/export error (format validation, encryption, decryption).
+    #[error("transfer error: {0}")]
+    Transfer(String),
 }
 
 impl Serialize for AppError {

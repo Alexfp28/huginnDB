@@ -396,3 +396,54 @@ export interface QueryHistoryEntry {
   rowsAffected: number;
   error?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Import / Export types — mirror of src-tauri/src/transfer.rs
+// ---------------------------------------------------------------------------
+
+/** Summary returned by `analyze_import_file`. */
+export interface ImportAnalysis {
+  total: number;
+  encrypted: boolean;
+  conflicts: ImportConflict[];
+}
+
+/** A profile in the file whose `id` already exists locally. */
+export interface ImportConflict {
+  id: string;
+  existing_name: string;
+  incoming_name: string;
+}
+
+/** Per-conflict resolution action sent to `import_profiles`. */
+export type ConflictAction = "overwrite" | "skip" | "rename";
+
+export interface ConflictResolution {
+  id: string;
+  action: ConflictAction;
+}
+
+/** Result summary returned by `import_profiles`. */
+export interface ImportResult {
+  imported: string[];
+  skipped: string[];
+  /** [original_name, new_name] pairs */
+  renamed: [string, string][];
+  needs_password: string[];
+}
+
+// ---------------------------------------------------------------------------
+// CLI args — mirror of src-tauri/src/state.rs StartupArgs
+// ---------------------------------------------------------------------------
+
+/** Command-line arguments parsed at startup, returned by `get_startup_args`. */
+export interface StartupArgs {
+  connect_profile: string | null;
+  connect_by_id: boolean;
+  adhoc_host: string | null;
+  adhoc_port: number | null;
+  adhoc_database: string | null;
+  adhoc_username: string | null;
+  adhoc_driver: string | null;
+  adhoc_name: string | null;
+}
