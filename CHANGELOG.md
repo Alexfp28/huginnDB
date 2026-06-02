@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Scoped multi-DB filter (HeidiSQL-style).** In multi-database connections,
+  the schema-explorer filter now scopes to the active database instead of
+  searching all databases simultaneously. Expanding a database activates it as
+  the filter scope; the search input placeholder updates to "Filter in
+  `<db>`…" and a hint below the input confirms the scope while typing. Opening
+  a table from cross-DB results automatically activates that database, collapses
+  the others, and fixes the scope. With no database expanded the filter falls
+  back to the previous behaviour (searches all DBs), keeping the single-DB case
+  fully retrocompatible.
 - **Side-panel cell editor (JetBrains-style).** Large cell values can now be
   edited in a docked right-side panel instead of a centered dialog. Reach it via
   right-click → *Open in side editor*, or the new *Move to side panel* button
