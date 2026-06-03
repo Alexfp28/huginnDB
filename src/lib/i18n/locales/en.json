@@ -14,7 +14,9 @@
     "languageDescription": "Interface language. Date and number formatting still follow your operating system.",
     "languageEnglish": "English",
     "languageSpanish": "Español",
-    "continue": "Continue"
+    "continue": "Continue",
+    "retry": "Retry",
+    "errorPanelCrashed": "Something went wrong rendering this panel."
   },
   "menu": {
     "file": {
@@ -177,7 +179,8 @@
     "discardChangesTitle": "Unsaved changes",
     "discardChangesConfirm": "You have unsaved changes in the side editor. Discard them and switch to the clicked cell?",
     "keepEditing": "Keep editing",
-    "discardAndSwitch": "Discard & switch"
+    "discardAndSwitch": "Discard & switch",
+    "setNull": "Set NULL"
   },
   "cellPreview": {
     "cell": "cell",
@@ -195,7 +198,37 @@
     "openInSideEditor": "Open in side editor",
     "zoomIn": "Larger rows (Ctrl + +)",
     "zoomOut": "Smaller rows (Ctrl + −)",
-    "zoomReset": "Reset row size (Ctrl + 0)"
+    "zoomReset": "Reset row size (Ctrl + 0)",
+    "ctxCopy": "Copy",
+    "ctxCopyWithColumn": "Copy with column name",
+    "ctxCopyRowAs": "Copy row as",
+    "ctxFilterBy": "Filter by this value",
+    "ctxFilterExcluding": "Filter excluding this value",
+    "ctxInsertRow": "Insert row…",
+    "ctxDuplicateRow": "Duplicate row…",
+    "ctxDeleteRow": "Delete row",
+    "ctxRowsSelected": "{{count}} rows selected",
+    "ctxCopyRowsAs": "Copy {{count}} rows as",
+    "ctxDeleteRows": "Delete {{count}} rows",
+    "filterRows": "Filter rows… (Enter)",
+    "serverSideFilter": "Server-side filter",
+    "removeFilter": "Remove filter",
+    "rows": "rows",
+    "of": "of",
+    "insert": "Insert",
+    "insertNewRow": "Insert new row"
+  },
+  "tableData": {
+    "refresh": "Refresh",
+    "perPage": "{{count}}/page",
+    "loading": "Loading…",
+    "deleteRowTitle": "Delete row?",
+    "deleteRowsTitle": "Delete {{count}} rows?",
+    "deleteRowsBodyLead": "About to delete {{count}} rows from",
+    "deleteRowBodyLead": "About to delete from",
+    "deleteBodyWhere": "where",
+    "deleteBodyTrail": ". This cannot be undone.",
+    "delete": "Delete"
   },
   "structure": {
     "loading": "Loading structure…",
@@ -253,7 +286,42 @@
     "executedIn": "executed in",
     "ms": "ms",
     "encoding": "utf-8",
-    "history": "history:"
+    "history": "history:",
+    "connections": "{{count}} connected",
+    "connectionsActive": "Active connections",
+    "connectionsAvailable": "Connect to…",
+    "noConnections": "No active connections",
+    "jumpTo": "Go to workspace",
+    "disconnect": "Disconnect",
+    "selected": "{{count}} selected",
+    "readOnly": "read-only",
+    "recentQueries": "Recent queries",
+    "noHistory": "No queries yet",
+    "clearHistory": "Clear history",
+    "density": "Row density",
+    "densityCompact": "Compact",
+    "densityCosy": "Cosy",
+    "densityComfortable": "Comfortable",
+    "toggleTheme": "Toggle light / dark",
+    "commandPaletteHint": "Ctrl+K",
+    "commandPaletteTooltip": "Command palette (Ctrl+K)"
+  },
+  "commandPalette": {
+    "title": "Command palette",
+    "placeholder": "Type a command or search…",
+    "noResults": "No results",
+    "groupConnections": "Connections",
+    "groupTables": "Tables",
+    "groupActions": "Actions",
+    "groupAppearance": "Appearance",
+    "switchTo": "Switch to {{name}}",
+    "connect": "Connect to {{name}}",
+    "newQuery": "New query",
+    "openPreferences": "Open preferences",
+    "theme": "Theme: {{name}}",
+    "language": "Language: {{name}}",
+    "language_en": "English",
+    "language_es": "Spanish"
   },
   "settings": {
     "title": "Preferences",
@@ -353,7 +421,13 @@
     "about": {
       "tagline": "Minimal desktop database manager for PostgreSQL, MySQL and SQLite.",
       "prefsLocation": "Preferences file location",
-      "tabStateHint": "A sibling {{file}} stores the open tabs and schema-tree expansion for each connection."
+      "tabStateHint": "A sibling {{file}} stores the open tabs and schema-tree expansion for each connection.",
+      "patchNotes": "What's new",
+      "patchNotesVersion": "Version",
+      "patchNotesUnreleased": "Unreleased",
+      "patchNotesCurrent": "installed",
+      "patchNotesNone": "No notes for this version.",
+      "patchNotesViewOnGitHub": "View full changelog on GitHub"
     }
   },
   "transfer": {
@@ -397,6 +471,51 @@
       "summaryRenamed": "{{count}} renamed to avoid duplicates.",
       "needsPassword": "{{count}} profile(s) were imported without a password. Open each connection to set a password before connecting."
     }
+  },
+  "console": {
+    "resume": "Resume",
+    "pause": "Pause",
+    "clear": "Clear",
+    "kindSql": "SQL",
+    "kindConnection": "Connection",
+    "filterPlaceholder": "Filter SQL, error, driver…",
+    "emptyNoActivity": "No backend activity yet. Run a query or open a connection.",
+    "emptyNoMatch": "No entries match the current filter."
+  },
+  "query": {
+    "saveQuery": "Save query",
+    "history": "Query history",
+    "clearHistory": "Clear history",
+    "historyTitle": "History",
+    "noQueries": "No queries yet.",
+    "running": "running…",
+    "run": "Run",
+    "runStatement": "Run this statement",
+    "noResults": "Run a query to see results."
+  },
+  "saved": {
+    "connectFirst": "Connect to a database first.",
+    "title": "Saved Queries",
+    "filterPlaceholder": "Filter…",
+    "emptyNone": "No saved queries yet. Use the bookmark icon in a query tab to save the current SQL.",
+    "emptyNoMatch": "No matches.",
+    "openInTab": "Open in new query tab",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteConfirm": "Delete \"{{name}}\"?"
+  },
+  "saveQuery": {
+    "titleUpdate": "Update saved query",
+    "titleSave": "Save query",
+    "description": "Saved locally to your machine. Available across all connections.",
+    "name": "Name",
+    "descriptionLabel": "Description (optional)",
+    "descriptionPlaceholder": "What does this query answer?",
+    "tagsLabel": "Tags (comma separated)",
+    "tagsPlaceholder": "reporting, billing",
+    "untitled": "Untitled",
+    "submitUpdate": "Update",
+    "submitSave": "Save"
   },
   "update": {
     "sectionTitle": "Updates",

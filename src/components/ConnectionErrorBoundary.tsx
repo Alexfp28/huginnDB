@@ -15,6 +15,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import i18n from "@/lib/i18n";
 
 interface Props {
   children: ReactNode;
@@ -57,7 +58,7 @@ export class ConnectionErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex h-full flex-col gap-3 overflow-auto p-4 text-xs">
           <div className="font-semibold text-destructive">
-            Something went wrong rendering this panel.
+            {i18n.t("common.errorPanelCrashed")}
           </div>
           <pre className="whitespace-pre-wrap break-words rounded bg-muted/40 p-2 font-mono text-[11px] text-muted-foreground">
             {error.message}
@@ -70,7 +71,7 @@ export class ConnectionErrorBoundary extends Component<Props, State> {
               onClick={() => this.setState({ error: null })}
             >
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              Retry
+              {i18n.t("common.retry")}
             </Button>
           </div>
         </div>

@@ -5,6 +5,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Bookmark, Pencil, Play, Search, Trash2 } from "lucide-react";
 import { useSavedQueries, type SavedQuery } from "@/stores/savedQueries";
 import { useTabs } from "@/stores/tabs";
@@ -17,6 +18,7 @@ export function SavedQueriesPanel({
 }: {
   connectionId: string | null;
 }) {
+  const { t } = useTranslation();
   const items = useSavedQueries((s) => s.items);
   const remove = useSavedQueries((s) => s.remove);
   const openTab = useTabs((s) => s.open);
@@ -38,7 +40,7 @@ export function SavedQueriesPanel({
 
   function runQuery(q: SavedQuery) {
     if (!connectionId) {
-      alert("Connect to a database first.");
+      alert(t("saved.connectFirst"));
       return;
     }
     openTab({
@@ -53,7 +55,7 @@ export function SavedQueriesPanel({
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Saved Queries
+          {t("saved.title")}
         </div>
         <span className="text-[10px] text-muted-foreground">
           {items.length}
@@ -63,7 +65,7 @@ export function SavedQueriesPanel({
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Filter…"
+            placeholder={t("saved.filterPlaceholder")}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="h-7 pl-7 text-xs"
@@ -74,8 +76,8 @@ export function SavedQueriesPanel({
         {filtered.length === 0 && (
           <div className="px-3 py-4 text-xs text-muted-foreground">
             {items.length === 0
-              ? "No saved queries yet. Use the bookmark icon in a query tab to save the current SQL."
-              : "No matches."}
+              ? t("saved.emptyNone")
+              : t("saved.emptyNoMatch")}
           </div>
         )}
         {filtered.map((q) => (
@@ -111,7 +113,7 @@ export function SavedQueriesPanel({
                   variant="ghost"
                   className="h-6 w-6"
                   onClick={() => runQuery(q)}
-                  title="Open in new query tab"
+                  title={t("saved.openInTab")}
                 >
                   <Play className="h-3 w-3" />
                 </Button>
@@ -123,7 +125,7 @@ export function SavedQueriesPanel({
                     setEditing(q);
                     setDialogOpen(true);
                   }}
-                  title="Edit"
+                  title={t("saved.edit")}
                 >
                   <Pencil className="h-3 w-3" />
                 </Button>
@@ -132,9 +134,10 @@ export function SavedQueriesPanel({
                   variant="ghost"
                   className="h-6 w-6"
                   onClick={() => {
-                    if (confirm(`Delete "${q.name}"?`)) remove(q.id);
+                    if (confirm(t("saved.deleteConfirm", { name: q.name })))
+                      remove(q.id);
                   }}
-                  title="Delete"
+                  title={t("saved.delete")}
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>

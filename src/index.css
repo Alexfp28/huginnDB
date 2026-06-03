@@ -18,6 +18,11 @@
     --muted-foreground: 240 4% 46%;
     --accent: 240 5% 94%;
     --accent-foreground: 240 6% 10%;
+    /* Action/state accent. Per-theme via the theme store (themes.ts); this
+       default only applies to custom themes persisted before `brand` existed,
+       which inherit it rather than breaking. #0f83fd. */
+    --brand: 211 98% 52%;
+    --brand-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 6% 90%;
@@ -41,6 +46,8 @@
     --muted-foreground: 240 5% 60%;
     --accent: 240 6% 16%;
     --accent-foreground: 0 0% 96%;
+    --brand: 211 98% 52%;
+    --brand-foreground: 0 0% 100%;
     --destructive: 0 70% 45%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 6% 16%;
@@ -70,6 +77,21 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--accent));
+  }
+
+  /* Honour the OS "reduce motion" setting. The UI leans on small
+     transitions (hover fades, popover/dropdown enter-exit, progress
+     bars); when the user asks for less motion we collapse them to near
+     zero rather than removing the rules everywhere. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -198,4 +220,87 @@
 .dockview-theme-huginndb .dv-groupview > .dv-content-container {
   border-bottom-left-radius: var(--dv-border-radius);
   border-bottom-right-radius: var(--dv-border-radius);
+}
+
+/* "Island view" — outer shell only. The outer dockview carries a `gap`
+   (see `huginnDockviewTheme`) so groups float apart over the `.outer-dock`
+   backdrop; these rules give each floating panel a slightly larger corner
+   radius, a hairline border and a soft shadow so it reads as a raised card.
+   Scoped to `.outer-dock` so the inner tab dockview (shared theme class,
+   gap: 0) stays flush and unstyled — the user asked to keep data tables
+   edge-to-edge. */
+/* The grayish backdrop the islands float over. dockview paints its own
+   root (`.dv-dockview`) with `--dv-group-view-background-color` — the SAME
+   colour as the panels — and that root is what shows through the `gap`
+   between groups, which is why the margins previously looked identical to
+   the panels. We repaint the OUTER dockview root with a distinct backdrop:
+   a solid `--muted` (every theme defines it as a neutral surface) plus a 5%
+   `--foreground` veil. In light themes the dark foreground nudges the
+   backdrop grayer; in dark themes the light foreground nudges it lighter —
+   so the gap always reads as distinct from the panel surface (`--background`)
+   regardless of theme. The inner tab dockview has gap: 0, so its own root is
+   fully covered by its flush panels and stays unaffected. */
+.outer-dock .dv-dockview {
+  background-color: hsl(var(--muted));
+  background-image: linear-gradient(
+    hsl(var(--foreground) / 0.05),
+    hsl(var(--foreground) / 0.05)
+  );
+}
+.outer-dock .dv-groupview {
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  /* Foreground-based so the lift is visible in light themes (a soft dark
+     shadow) without vanishing into a white `--background` shadow, and reads
+     as a faint separating halo in dark themes. */
+  box-shadow:
+    0 1px 2px hsl(var(--foreground) / 0.06),
+    0 2px 6px hsl(var(--foreground) / 0.08);
+}
+.outer-dock .dv-groupview > .dv-tabs-and-actions-container {
+  border-top-left-radius: var(--radius);
+  border-top-right-radius: var(--radius);
+}
+.outer-dock .dv-groupview > .dv-content-container {
+  border-bottom-left-radius: var(--radius);
+  border-bottom-right-radius: var(--radius);
+}
+/* The gap reveals the dock root; hide dockview's own sashes there so the
+   backdrop shows as a clean margin between islands rather than a divider. */
+.outer-dock .dv-sash {
+  background-color: transparent !important;
+}
+.outer-dock .dv-sash:hover {
+  background-color: hsl(var(--primary) / 0.3) !important;
+}
+
+/* -------------------------------------------------------------------------
+ * Inner workspace dockview (open table / query tabs) — `.inner-dock`
+ * -------------------------------------------------------------------------
+ * The shared theme makes the tab strip short and very dark, so the active tab
+ * was barely distinguishable and the chrome felt cramped. These rules, scoped
+ * to TabbedArea's wrapper, give the inner strip a taller, lighter header, a
+ * clear hover state, and — crucially — a brand-tinted accent on the ACTIVE
+ * tab so the active panel reads at a glance (and now tracks correctly, since
+ * the custom tab re-renders on active change). The outer island shell is
+ * untouched. `.dv-dockview` carries the theme className, so setting the size
+ * vars there overrides the shared defaults. */
+.inner-dock .dv-dockview {
+  --dv-tabs-and-actions-container-height: 36px;
+  --dv-tab-font-size: 12px;
+}
+.inner-dock .dv-tabs-and-actions-container {
+  background-color: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
+}
+.inner-dock .dv-tab {
+  border-right: 1px solid hsl(var(--border) / 0.6);
+}
+.inner-dock .dv-tab:not(.dv-active-tab):hover {
+  background-color: hsl(var(--accent));
+}
+/* Active tab merges into the content surface and carries a 2px brand cap. */
+.inner-dock .dv-tab.dv-active-tab {
+  background-color: hsl(var(--background));
+  box-shadow: inset 0 2px 0 0 hsl(var(--brand));
 }

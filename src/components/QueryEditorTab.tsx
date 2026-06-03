@@ -20,6 +20,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import { Bookmark, History, Trash2 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -30,6 +31,7 @@ import { useTabs } from "@/stores/tabs";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco-themes";
 import { useQueryHistory } from "@/stores/queryHistory";
+import { useCommandPalette } from "@/components/CommandPalette";
 import type { QueryResult } from "@/types";
 import { DataGrid } from "@/components/DataGrid";
 import { Button } from "@/components/ui/button";
@@ -37,6 +39,11 @@ import { SaveQueryDialog } from "@/components/SaveQueryDialog";
 import { splitSql } from "@/lib/sqlSplit";
 import { keywordsFor } from "@/lib/sqlKeywords";
 import { buildCompletions } from "@/lib/sqlCompletions";
+import {
+  ensureSqlProviders,
+  registerSqlEditor,
+  fireSqlLensChange,
+} from "@/lib/monacoSql";
 
 interface Props {
   tabId: string;
@@ -44,6 +51,7 @@ interface Props {
 }
 
 export function QueryEditorTab({ tabId, connectionId }: Props) {
+  const { t } = useTranslation();
   const tab = useTabs((s) => s.tabs.find((t) => t.id === tabId));
   const updateQuery = useTabs((s) => s.updateQuery);
   const updateQueryStats = useTabs((s) => s.updateQueryStats);
@@ -85,10 +93,21 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       getLineCount: () => number;
       getValueLength: () => number;
       getValue: () => string;
+      uri: { toString: () => string };
     } | null;
     onDidChangeModelContent: (fn: () => void) => { dispose: () => void };
     addCommand: (keybinding: number, handler: () => void) => string | null;
   } | null>(null);
+
+  /** Disposer returned by `registerSqlEditor`; removes this editor's entry
+   *  from the shared provider registry on unmount. */
+  const sqlEditorDisposeRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    return () => {
+      sqlEditorDisposeRef.current?.();
+      sqlEditorDisposeRef.current = null;
+    };
+  }, []);
 
   const sql = tab?.query ?? "";
 
@@ -183,20 +202,16 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   }, [completionSuggestions]);
 
   /**
-   * Ref + emitter that drives the CodeLens provider. We re-parse the SQL
-   * whenever the buffer changes and bump the emitter so Monaco refreshes
-   * the gutter icons. The provider closure reads `lensesRef.current` so
-   * the list is always the freshest one.
+   * Live CodeLens cache. We re-parse the SQL whenever the buffer changes and
+   * fire the shared lens emitter so Monaco refreshes the gutter. The (single,
+   * app-wide) provider reads this editor's lenses from the registry, so we
+   * only have to keep the cache fresh and ping the emitter.
    */
   const lensesRef = useRef<ReturnType<typeof splitSql>>([]);
-  const lensEmitterRef = useRef<{
-    fire: () => void;
-    onDidChange?: ((listener: () => void) => { dispose: () => void }) | null;
-  } | null>(null);
 
   function recomputeLenses() {
     lensesRef.current = splitSql(sql);
-    lensEmitterRef.current?.fire();
+    fireSqlLensChange();
   }
 
   // Keep the CodeLens cache in sync with the buffer. The provider itself
@@ -236,91 +251,30 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       },
     );
 
-    monaco.languages.registerCompletionItemProvider("sql", {
-      provideCompletionItems: (model, position) => {
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn,
-        };
-        const kindFor = (k: "table" | "column" | "keyword") => {
-          switch (k) {
-            case "table":
-              return monaco.languages.CompletionItemKind.Class;
-            case "column":
-              return monaco.languages.CompletionItemKind.Field;
-            case "keyword":
-              return monaco.languages.CompletionItemKind.Keyword;
-          }
-        };
-        return {
-          suggestions: completionsRef.current.map((s) => ({
-            label: s.label,
-            kind: kindFor(s.kind),
-            insertText: s.label,
-            detail: s.detail,
-            sortText: s.sortText,
-            range,
-          })),
-        };
-      },
+    // Ctrl/Cmd+K toggles the command palette. Monaco swallows the keystroke
+    // inside its focus area, so the window-level listener in App never sees
+    // it — register the editor-scoped command too (gotcha #9). `addCommand`
+    // IS per-editor, so this one is correctly bound here.
+    editor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
+      useCommandPalette.getState().toggle();
     });
 
-    // Per-statement run via CodeLens. A small "▶ Run" appears on the
-    // starting line of every parsed statement; clicking it executes
-    // only that fragment. We register a single shared command id
-    // (`huginndb.runStatement`) once, and every CodeLens carries the
-    // statement text in `command.arguments` so the dispatcher just
-    // pipes it back into `runQueryRef.current(...)`.
-    monaco.editor.registerCommand?.(
-      "huginndb.runStatement",
-      (_accessor, ...args) => {
-        const text = args[0];
-        if (typeof text === "string") {
-          void runQueryRef.current(text);
-        }
-      },
-    );
-
-    // Monaco's `CodeLensProvider.onDidChange` is typed as
-    // `IEvent<CodeLensProvider>` — listeners receive the provider as
-    // the event payload. We never read that payload (the gutter just
-    // needs to know "something changed"), so we use a plain emitter
-    // and cast at the registration site to avoid pulling the
-    // CodeLensProvider type alias into this file.
-    const emitter = new monaco.Emitter<unknown>();
-    lensEmitterRef.current = {
-      fire: () => emitter.fire(undefined),
-    };
-
-    monaco.languages.registerCodeLensProvider("sql", {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      onDidChange: emitter.event as any,
-      provideCodeLenses: () => {
-        const lenses = lensesRef.current;
-        return {
-          lenses: lenses.map((stmt, idx) => ({
-            range: {
-              startLineNumber: stmt.startLine,
-              startColumn: 1,
-              endLineNumber: stmt.startLine,
-              endColumn: 1,
-            },
-            id: `run-stmt-${idx}-${stmt.startLine}`,
-            command: {
-              id: "huginndb.runStatement",
-              title: "▶ Run",
-              tooltip: "Run this statement",
-              arguments: [stmt.text],
-            },
-          })),
-          dispose: () => {},
-        };
-      },
-      resolveCodeLens: (_m, lens) => lens,
-    });
+    // The SQL completion + per-statement "▶ Run" CodeLens providers are
+    // GLOBAL to the language, so they're installed exactly once for the
+    // Monaco instance and dispatch per model. We just register this editor's
+    // live data (read through the existing refs) and keep the disposer for
+    // unmount — registering the providers per editor is what produced the
+    // duplicate "▶ Run" lenses when several query tabs were open.
+    ensureSqlProviders(monaco);
+    const uri = model?.uri.toString();
+    if (uri) {
+      sqlEditorDisposeRef.current?.();
+      sqlEditorDisposeRef.current = registerSqlEditor(uri, {
+        getCompletions: () => completionsRef.current,
+        getLenses: () => lensesRef.current,
+        runStatement: (text) => void runQueryRef.current(text),
+      });
+    }
   }
 
   return (
@@ -335,7 +289,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               variant="ghost"
               onClick={() => setSaveDialogOpen(true)}
               disabled={!sql.trim()}
-              title="Save query"
+              title={t("query.saveQuery")}
             >
               <Bookmark className="h-3.5 w-3.5" />
             </Button>
@@ -343,7 +297,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               size="sm"
               variant="ghost"
               onClick={() => setShowHistory((v) => !v)}
-              title="Query history"
+              title={t("query.history")}
             >
               <History className="h-3.5 w-3.5" />
             </Button>
@@ -352,14 +306,14 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 size="sm"
                 variant="ghost"
                 onClick={clearHistory}
-                title="Clear history"
+                title={t("query.clearHistory")}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             )}
             {running && (
               <span className="ml-2 text-[11px] text-muted-foreground">
-                running…
+                {t("query.running")}
               </span>
             )}
           </div>
@@ -396,12 +350,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             {showHistory && (
               <div className="w-72 border-l border-border bg-card/40">
                 <div className="border-b border-border px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  History
+                  {t("query.historyTitle")}
                 </div>
                 <div className="h-full overflow-y-auto pb-12">
                   {history.length === 0 && (
                     <div className="px-3 py-3 text-xs text-muted-foreground">
-                      No queries yet.
+                      {t("query.noQueries")}
                     </div>
                   )}
                   {history.map((h) => (
@@ -440,7 +394,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               <kbd className="rounded bg-muted px-1 font-mono text-[10px]">
                 Enter
               </kbd>
-              <span className="ml-1 text-muted-foreground/70">Run</span>
+              <span className="ml-1 text-muted-foreground/70">{t("query.run")}</span>
             </span>
             <span className="mx-3 text-muted-foreground/30">|</span>
             <span className="truncate">{dbName}</span>
@@ -473,7 +427,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             />
           ) : (
             <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-              Run a query to see results.
+              {t("query.noResults")}
             </div>
           )}
         </div>

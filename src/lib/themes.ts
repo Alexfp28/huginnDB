@@ -28,6 +28,16 @@ export interface ThemeColors {
   mutedForeground: string;
   accent: string;
   accentForeground: string;
+  /**
+   * Action / state accent ("brand"). Distinct from `accent`, which is a
+   * neutral hover surface. `brand` is the one saturated colour the app is
+   * allowed to use for affordances that mean "do this" or "this is live"
+   * (primary buttons, focus ring, the active-connection dot). Each theme
+   * sets its own so the colour matches the theme's character instead of a
+   * single hard-coded blue clashing with e.g. the Claude / Solarized palettes.
+   */
+  brand: string;
+  brandForeground: string;
   destructive: string;
   destructiveForeground: string;
   border: string;
@@ -48,6 +58,8 @@ export const COLOR_KEYS: { key: keyof ThemeColors; label: string }[] = [
   { key: "mutedForeground", label: "Muted text" },
   { key: "accent", label: "Accent" },
   { key: "accentForeground", label: "Accent text" },
+  { key: "brand", label: "Brand" },
+  { key: "brandForeground", label: "Brand text" },
   { key: "popover", label: "Popover" },
   { key: "popoverForeground", label: "Popover text" },
   { key: "destructive", label: "Destructive" },
@@ -78,11 +90,13 @@ export const BUILT_IN_THEMES: Theme[] = [
       mutedForeground: "#8b8f99",
       accent: "#262a33",
       accentForeground: "#f5f5f7",
+      brand: "#0f83fd",
+      brandForeground: "#ffffff",
       destructive: "#b1342a",
       destructiveForeground: "#fafafa",
       border: "#262a33",
       input: "#262a33",
-      ring: "#4b505b",
+      ring: "#0f83fd",
     },
   },
   {
@@ -105,11 +119,13 @@ export const BUILT_IN_THEMES: Theme[] = [
       mutedForeground: "#71717a",
       accent: "#e4e4e7",
       accentForeground: "#18181b",
+      brand: "#0f83fd",
+      brandForeground: "#ffffff",
       destructive: "#dc2626",
       destructiveForeground: "#fafafa",
       border: "#e4e4e7",
       input: "#e4e4e7",
-      ring: "#a1a1aa",
+      ring: "#0f83fd",
     },
   },
   {
@@ -132,6 +148,8 @@ export const BUILT_IN_THEMES: Theme[] = [
       mutedForeground: "#969ca9",
       accent: "#323844",
       accentForeground: "#d8dce4",
+      brand: "#7dd3fc",
+      brandForeground: "#0c1118",
       destructive: "#ef4444",
       destructiveForeground: "#fef2f2",
       border: "#323844",
@@ -159,6 +177,8 @@ export const BUILT_IN_THEMES: Theme[] = [
       mutedForeground: "#93a1a1",
       accent: "#268bd2",
       accentForeground: "#fdf6e3",
+      brand: "#268bd2",
+      brandForeground: "#fdf6e3",
       destructive: "#dc322f",
       destructiveForeground: "#fdf6e3",
       border: "#0a3a47",
@@ -189,6 +209,8 @@ export const BUILT_IN_THEMES: Theme[] = [
       mutedForeground: "#7a7460",
       accent: "#e4e1d2",
       accentForeground: "#3d3929",
+      brand: "#c96442",
+      brandForeground: "#fbfaf3",
       destructive: "#b1342a",
       destructiveForeground: "#fbfaf3",
       border: "#d9d5c1",
@@ -216,6 +238,8 @@ export const BUILT_IN_THEMES: Theme[] = [
       mutedForeground: "#a39a83",
       accent: "#3a3730",
       accentForeground: "#e8e3d4",
+      brand: "#d97757",
+      brandForeground: "#1f1e1b",
       destructive: "#d4684a",
       destructiveForeground: "#1f1e1b",
       border: "#3a3730",
@@ -243,6 +267,8 @@ export const BUILT_IN_THEMES: Theme[] = [
       mutedForeground: "#cccccc",
       accent: "#2a2a2a",
       accentForeground: "#ffeb3b",
+      brand: "#ffeb3b",
+      brandForeground: "#000000",
       destructive: "#ff5252",
       destructiveForeground: "#000000",
       border: "#ffffff",
@@ -267,6 +293,8 @@ const VAR_NAMES: Record<keyof ThemeColors, string> = {
   mutedForeground: "--muted-foreground",
   accent: "--accent",
   accentForeground: "--accent-foreground",
+  brand: "--brand",
+  brandForeground: "--brand-foreground",
   destructive: "--destructive",
   destructiveForeground: "--destructive-foreground",
   border: "--border",

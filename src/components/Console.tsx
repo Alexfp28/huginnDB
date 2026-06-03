@@ -14,6 +14,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 import Editor from "@monaco-editor/react";
 import { Pause, Play, Trash2, Search } from "lucide-react";
@@ -59,6 +60,7 @@ function Chip({
 }
 
 export function Console() {
+  const { t } = useTranslation();
   const entries = useLogs((s) => s.entries);
   const paused = useLogs((s) => s.paused);
   const query = useLogs((s) => s.query);
@@ -104,7 +106,7 @@ export function Console() {
           variant="ghost"
           className="h-7 w-7"
           onClick={() => setPaused(!paused)}
-          title={paused ? "Resume" : "Pause"}
+          title={paused ? t("console.resume") : t("console.pause")}
         >
           {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
         </Button>
@@ -116,7 +118,7 @@ export function Console() {
             clear();
             setSelectedId(null);
           }}
-          title="Clear"
+          title={t("console.clear")}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
@@ -128,7 +130,7 @@ export function Console() {
             onChange={() => toggleKind("sql")}
             className="h-3 w-3"
           />
-          SQL
+          {t("console.kindSql")}
         </label>
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <input
@@ -137,7 +139,7 @@ export function Console() {
             onChange={() => toggleKind("connection")}
             className="h-3 w-3"
           />
-          Connection
+          {t("console.kindConnection")}
         </label>
         <div className="mx-1 h-5 w-px bg-border" />
         <div className="relative flex-1">
@@ -146,7 +148,7 @@ export function Console() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter SQL, error, driver…"
+            placeholder={t("console.filterPlaceholder")}
             className="h-7 w-full rounded border border-border bg-background pl-6 pr-2 font-mono text-[11px] outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
@@ -160,8 +162,8 @@ export function Console() {
         {filtered.length === 0 ? (
           <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
             {entries.length === 0
-              ? "No backend activity yet. Run a query or open a connection."
-              : "No entries match the current filter."}
+              ? t("console.emptyNoActivity")
+              : t("console.emptyNoMatch")}
           </div>
         ) : (
           <Virtuoso

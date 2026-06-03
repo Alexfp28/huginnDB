@@ -38,6 +38,7 @@ import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { SchemaExplorer } from "@/components/SchemaExplorer";
 import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
+import { CommandPalette, useCommandPalette } from "@/components/CommandPalette";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { ConnectionErrorBoundary } from "@/components/ConnectionErrorBoundary";
 import { SideEditorPanel } from "@/components/SideEditorPanel";
@@ -235,18 +236,24 @@ export default function App() {
   // entry for 0.4.0. Sonner stays available for short-lived toasts
   // (errors, copy-success confirmations, etc.).
 
-  // Global Ctrl/Cmd+, opens the preferences dialog. We attach to `window`
-  // so the binding works regardless of focus inside the panel layout.
+  // Global Ctrl/Cmd+, opens preferences; Ctrl/Cmd+K toggles the command
+  // palette. Attached to `window` so they fire regardless of focus inside the
+  // panel layout — except inside Monaco, which swallows Ctrl+K; the editor
+  // registers its own command for that case (see QueryEditorTab, gotcha #9).
+  const togglePalette = useCommandPalette((s) => s.toggle);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
         e.preventDefault();
         openSettings();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        togglePalette();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openSettings]);
+  }, [openSettings, togglePalette]);
 
   // Stable derived breadcrumb metadata; both inputs are reference-stable
   // store values, so this satisfies the Zustand selector invariant.
@@ -355,7 +362,7 @@ export default function App() {
           </div>
         </header>
         <SettingsDialog />
-        <div className="flex-1 overflow-hidden">
+        <div className="outer-dock flex-1 overflow-hidden">
           <DockviewReact
             components={COMPONENTS}
             onReady={onDockviewReady}
@@ -364,6 +371,7 @@ export default function App() {
         </div>
         <StatusBar />
       </div>
+      <CommandPalette />
       <Toaster
         position="bottom-right"
         theme={activeTheme.mode === "dark" ? "dark" : "light"}

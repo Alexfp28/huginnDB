@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,7 @@ export function SaveQueryDialog({
   connectionId,
   existing,
 }: Props) {
+  const { t } = useTranslation();
   const add = useSavedQueries((s) => s.add);
   const update = useSavedQueries((s) => s.update);
 
@@ -62,7 +64,7 @@ export function SaveQueryDialog({
       update(existing.id, { name, description, tags: tagList, sql });
     } else {
       add({
-        name: name || "Untitled",
+        name: name || t("saveQuery.untitled"),
         description,
         tags: tagList,
         sql,
@@ -77,40 +79,38 @@ export function SaveQueryDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {existing ? "Update saved query" : "Save query"}
+            {existing ? t("saveQuery.titleUpdate") : t("saveQuery.titleSave")}
           </DialogTitle>
-          <DialogDescription>
-            Saved locally to your machine. Available across all connections.
-          </DialogDescription>
+          <DialogDescription>{t("saveQuery.description")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-1">
-            <Label>Name</Label>
+            <Label>{t("saveQuery.name")}</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="grid gap-1">
-            <Label>Description (optional)</Label>
+            <Label>{t("saveQuery.descriptionLabel")}</Label>
             <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What does this query answer?"
+              placeholder={t("saveQuery.descriptionPlaceholder")}
             />
           </div>
           <div className="grid gap-1">
-            <Label>Tags (comma separated)</Label>
+            <Label>{t("saveQuery.tagsLabel")}</Label>
             <Input
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="reporting, billing"
+              placeholder={t("saveQuery.tagsPlaceholder")}
             />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={!name.trim()}>
-            {existing ? "Update" : "Save"}
+            {existing ? t("saveQuery.submitUpdate") : t("saveQuery.submitSave")}
           </Button>
         </DialogFooter>
       </DialogContent>

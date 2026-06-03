@@ -6,6 +6,84 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-06-03
+
+### Added
+
+- **Command palette hint in the status bar.** A small `Ctrl+K` chip now sits
+  in the bottom-right status bar. Clicking it opens the command palette
+  directly; hovering shows the full tooltip ("Command palette (Ctrl+K)"). The
+  label uses a dynamic import so it never blocks the status bar render.
+
+- **Command palette (`Ctrl`/`Cmd`+K).** A keyboard-first launcher for the
+  actions otherwise buried in menus: switch or connect a database, open a table
+  from the active connection's schema, start a query, switch theme or language,
+  and open Preferences. Built on the bundled Radix dialog plus a filtered list —
+  no new dependency. Because Monaco swallows `Ctrl`+K inside the editor, the
+  query editor registers its own editor-scoped command so the palette opens
+  regardless of focus (gotcha #9).
+- **Active-connections dropdown in the status bar.** The comma-joined list of
+  open connections is now a dropdown: live pools at the top (click to jump to
+  that workspace, or disconnect inline), saved-but-idle profiles below for
+  quick-connect. Connect / disconnect mirror the File menu flow exactly.
+- **Richer status bar.** Adds a live multi-row **selection count**, a
+  **read-only** marker for query-result tabs, a clickable **query-history**
+  popover (open a recent query in a fresh tab, or copy it when its connection is
+  offline), and quick **row-density** and **light/dark** toggles.
+- **"What's new" patch notes in Preferences → About.** A per-version reader
+  sourced from the bundled `CHANGELOG.md`, defaulting to the installed version.
+  When the UI language is Spanish it reads a parallel `CHANGELOG.es.md`, falling
+  back to the English body for any version not yet translated.
+- **Active database marker in the multi-DB explorer.** When the schema-explorer
+  filter is scoped to a database (the HeidiSQL-style behaviour shipped in 1.0.2),
+  that database now carries an emerald dot and icon while the other databases are
+  dimmed, so it's obvious at a glance which database the filter will hit — no
+  longer only inferable from the filter input placeholder. With no database
+  active (cross-DB / MongoDB-style search) every database stays at full opacity,
+  since they're all in scope.
+
+### Changed
+
+- **Themeable brand accent.** The previously all-neutral palette gains one
+  saturated accent colour reserved for action / state — primary buttons, focus
+  rings, links, and the live-connection markers. It's a per-theme `brand` token
+  (themes.ts): the neutral Dark / Light presets get a blue (`#0f83fd`) while the
+  themed presets (Claude, Solarized, Dim, High Contrast) keep their own
+  character. Custom themes saved before the token existed inherit a CSS default
+  rather than breaking. A `prefers-reduced-motion` rule collapses the UI's
+  transitions for users who ask for less motion.
+- **"Island view" window layout.** The outer panel shell (Schema / Saved /
+  Workspace / Console) now lays its panels out as spaced, rounded cards over a
+  subtle backdrop instead of edge-to-edge regions, giving each window a small
+  margin and clearer separation. The inner tab area (open tables and queries)
+  stays flush and unchanged.
+
+### Fixed
+
+- **Duplicate "▶ Run" CodeLens (and duplicate autocomplete entries) with
+  multiple query tabs open.** Monaco's `registerCompletionItemProvider` /
+  `registerCodeLensProvider` / `registerCommand` are global to the language,
+  but they were registered inside every query editor's `onMount`, so each open
+  query tab added another provider — N tabs produced N "▶ Run" lenses on every
+  statement and N copies of each suggestion. The providers are now installed
+  once per Monaco instance (`src/lib/monacoSql.ts`) and dispatch per model via a
+  registry each editor registers into on mount and removes on unmount.
+- **Inner workspace tab strip readability + active-tab tracking.** The active
+  query/table tab now carries a brand-tinted accent and tracks the active panel
+  correctly (the custom tab derives its active state from the store rather than
+  a stale `props.api.isActive`), the strip is taller with clearer hover states,
+  and the close / split (⋮) / new-query (+) icons are legible on dark themes.
+- **Incomplete Spanish translation.** Several panels and dialogs still rendered
+  English regardless of the selected language. Migrated the Console panel, the
+  query editor (history sidebar, tooltips, empty states, run hints), the Saved
+  Queries panel, the Save Query dialog, the inline cell input, the connection
+  error boundary, the data-grid right-click context menu (copy, copy-row-as,
+  set NULL, filter by / excluding value, insert / duplicate / delete row, and
+  the multi-row bulk actions), the data-grid toolbar (row filter, row count,
+  insert, server-side filter chips) and the table browser toolbar (refresh,
+  pagination, page size, loading state and the delete-confirmation dialog) to
+  the i18n system. Spanish now covers the whole UI.
+
 ## [1.0.2] — 2026-06-02
 
 ### Added

@@ -176,6 +176,13 @@ interface Props {
   getRowKey?: (rowValues: CellValue[]) => string | null;
 
   /**
+   * Reports the live multi-selection count and the visible-row total
+   * whenever either changes. Used by the status bar (via the parent, which
+   * owns the tab id) to show "N selected". Selection itself stays internal.
+   */
+  onSelectionChange?: (count: number, total: number) => void;
+
+  /**
    * Inline draft row state (insert / duplicate). When set, an extra
    * editable row is rendered at the top of the grid. Schema-level column
    * metadata is needed so the inputs can show PK / NOT NULL hints.
@@ -252,6 +259,7 @@ export function DataGrid({
   onDeleteRow,
   onBulkDelete,
   getRowKey,
+  onSelectionChange,
   draftRow,
   draftColumns,
   onDraftCellChange,
@@ -388,6 +396,15 @@ export function DataGrid({
       .filter((r) => r.key !== null && selectedKeys.has(r.key))
       .map((r) => r.row);
   }, [keyedVisibleRows, selectedKeys]);
+
+  /**
+   * Mirror the selection count + visible-row total up to the parent (which
+   * forwards it to the status bar keyed by tab id). Effect, not a render-time
+   * call, so we never set external state during render.
+   */
+  useEffect(() => {
+    onSelectionChange?.(selectedRows.length, keyedVisibleRows.length);
+  }, [onSelectionChange, selectedRows.length, keyedVisibleRows.length]);
 
   /**
    * Prune selected keys that no longer correspond to a visible row (e.g.
@@ -839,7 +856,7 @@ export function DataGrid({
           <span
             key={`${f.column}-${f.op}-${i}`}
             className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 font-mono text-[11px]"
-            title="Server-side filter"
+            title={t("dataGrid.serverSideFilter")}
           >
             <span className="text-muted-foreground">{f.column}</span>
             <span className="text-muted-foreground/70">{FILTER_LABEL[f.op]}</span>
@@ -853,26 +870,26 @@ export function DataGrid({
             <button
               className="ml-1 text-muted-foreground/60 hover:text-foreground"
               onClick={() => onRemoveFilter?.(i)}
-              title="Remove filter"
+              title={t("dataGrid.removeFilter")}
             >
               <X className="h-3 w-3" />
             </button>
           </span>
         ))}
         <span className="text-muted-foreground">
-          {visibleRows.length.toLocaleString()} rows
+          {visibleRows.length.toLocaleString()} {t("dataGrid.rows")}
           {result.total !== null && result.total !== undefined && (
-            <> of {result.total.toLocaleString()}</>
+            <> {t("dataGrid.of")} {result.total.toLocaleString()}</>
           )}
         </span>
         {onInsertRow && (
           <button
             className="flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
             onClick={onInsertRow}
-            title="Insert new row"
+            title={t("dataGrid.insertNewRow")}
           >
             <Plus className="h-3 w-3" />
-            Insert
+            {t("dataGrid.insert")}
           </button>
         )}
         <span className="ml-auto text-muted-foreground">
@@ -1034,11 +1051,15 @@ export function DataGrid({
                           selectedKeys.has(rowKey) ? (
                             <>
                               <ContextMenuLabel>
-                                {selectedRows.length} rows selected
+                                {t("dataGrid.ctxRowsSelected", {
+                                  count: selectedRows.length,
+                                })}
                               </ContextMenuLabel>
                               <ContextMenuSub>
                                 <ContextMenuSubTrigger>
-                                  Copy {selectedRows.length} rows as
+                                  {t("dataGrid.ctxCopyRowsAs", {
+                                    count: selectedRows.length,
+                                  })}
                                 </ContextMenuSubTrigger>
                                 <ContextMenuSubContent>
                                   <ContextMenuItem
@@ -1077,7 +1098,9 @@ export function DataGrid({
                                     className="text-destructive focus:text-destructive"
                                     onSelect={() => onBulkDelete(selectedRows)}
                                   >
-                                    Delete {selectedRows.length} rows
+                                    {t("dataGrid.ctxDeleteRows", {
+                                      count: selectedRows.length,
+                                    })}
                                   </ContextMenuItem>
                                 </>
                               )}
@@ -1091,7 +1114,7 @@ export function DataGrid({
                           <ContextMenuItem
                             onSelect={() => copyToClipboard(formatValue(value))}
                           >
-                            Copy
+                            {t("dataGrid.ctxCopy")}
                           </ContextMenuItem>
                           <ContextMenuItem
                             onSelect={() =>
@@ -1100,7 +1123,7 @@ export function DataGrid({
                               )
                             }
                           >
-                            Copy with column name
+                            {t("dataGrid.ctxCopyWithColumn")}
                           </ContextMenuItem>
                           {/* Row-level formatters. We keep the per-cell
                               entries above (single value, single value
@@ -1110,7 +1133,7 @@ export function DataGrid({
                               cases without bloating the top level. */}
                           <ContextMenuSub>
                             <ContextMenuSubTrigger>
-                              Copy row as
+                              {t("dataGrid.ctxCopyRowAs")}
                             </ContextMenuSubTrigger>
                             <ContextMenuSubContent>
                               <ContextMenuItem
@@ -1175,7 +1198,7 @@ export function DataGrid({
                                 )
                               }
                             >
-                              Set NULL
+                              {t("cellEditor.setNull")}
                             </ContextMenuItem>
                           )}
                           {onAddFilter && (
@@ -1194,7 +1217,7 @@ export function DataGrid({
                                   )
                                 }
                               >
-                                Filter by this value
+                                {t("dataGrid.ctxFilterBy")}
                               </ContextMenuItem>
                               <ContextMenuItem
                                 onSelect={() =>
@@ -1209,7 +1232,7 @@ export function DataGrid({
                                   )
                                 }
                               >
-                                Filter excluding this value
+                                {t("dataGrid.ctxFilterExcluding")}
                               </ContextMenuItem>
                             </>
                           )}
@@ -1218,14 +1241,14 @@ export function DataGrid({
                               <ContextMenuSeparator />
                               {onInsertRow && (
                                 <ContextMenuItem onSelect={() => onInsertRow()}>
-                                  Insert row…
+                                  {t("dataGrid.ctxInsertRow")}
                                 </ContextMenuItem>
                               )}
                               {onDuplicateRow && (
                                 <ContextMenuItem
                                   onSelect={() => onDuplicateRow(rowValues)}
                                 >
-                                  Duplicate row…
+                                  {t("dataGrid.ctxDuplicateRow")}
                                 </ContextMenuItem>
                               )}
                               {onDeleteRow && (
@@ -1233,7 +1256,7 @@ export function DataGrid({
                                   className="text-destructive focus:text-destructive"
                                   onSelect={() => onDeleteRow(rowValues)}
                                 >
-                                  Delete row
+                                  {t("dataGrid.ctxDeleteRow")}
                                 </ContextMenuItem>
                               )}
                             </>
@@ -1347,13 +1370,14 @@ function SearchInput({
   onSubmit?: (v: string) => void;
   history: string[];
 }) {
+  const { t } = useTranslation();
   const hasHistory = history.length > 0;
   const hasValue = value.length > 0;
   return (
     <div className="flex h-7 items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
       <input
         className="w-56 bg-transparent px-2 text-xs focus:outline-none"
-        placeholder="Filter rows… (Enter)"
+        placeholder={t("dataGrid.filterRows")}
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
         onKeyDown={(e) => {

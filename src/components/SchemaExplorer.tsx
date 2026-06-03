@@ -59,7 +59,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatBytes, formatCount } from "@/lib/utils";
+import { cn, formatBytes, formatCount } from "@/lib/utils";
 import type { TableInfo } from "@/types";
 
 export function SchemaExplorer({ connectionId }: { connectionId: string }) {
@@ -607,6 +607,11 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
                 filter={filter}
                 filterActive={filterActive}
                 autoExpand={autoExpand}
+                active={activeDatabaseName === db.name}
+                // Only dim siblings when a concrete DB is active. With no
+                // active DB the filter spans every database, so they're all
+                // equally "in play" — dimming would be misleading.
+                dimmed={activeDatabaseName != null && activeDatabaseName !== db.name}
               />
             );
           })}
@@ -628,6 +633,8 @@ function DatabaseRoot({
   filter,
   filterActive,
   autoExpand,
+  active,
+  dimmed,
 }: {
   parentId: string;
   dbName: string;
@@ -645,6 +652,10 @@ function DatabaseRoot({
   /** True when the parent has determined this DB contains a table match
    *  for the current filter — auto-opens the subtree (Compass-style). */
   autoExpand?: boolean;
+  /** True when this is the DB the filter is scoped to (emerald marker). */
+  active: boolean;
+  /** True when *another* DB is the active scope — render this one dimmed. */
+  dimmed: boolean;
 }) {
   const [childId, setChildId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -673,7 +684,10 @@ function DatabaseRoot({
   return (
     <div>
       <button
-        className="flex w-full items-center gap-1 px-2 py-1 hover:bg-accent/40"
+        className={cn(
+          "flex w-full items-center gap-1 px-2 py-1 transition-opacity hover:bg-accent/40",
+          dimmed && "opacity-50 hover:opacity-100",
+        )}
         onClick={() => {
           onToggle();
           // `expanded` reflects the state *before* this click:
@@ -683,11 +697,24 @@ function DatabaseRoot({
         }}
       >
         {effectiveExpanded ? (
-          <ChevronDown className="h-3 w-3" />
+          <ChevronDown className="h-3 w-3 shrink-0" />
         ) : (
-          <ChevronRight className="h-3 w-3" />
+          <ChevronRight className="h-3 w-3 shrink-0" />
         )}
-        <Database className="h-3.5 w-3.5 text-muted-foreground" />
+        {/* Always reserve the dot's width so names don't shift when a DB
+            becomes the active scope; only the active one is coloured. */}
+        <span
+          className={cn(
+            "h-1.5 w-1.5 shrink-0 rounded-full",
+            active ? "bg-emerald-400" : "bg-transparent",
+          )}
+        />
+        <Database
+          className={cn(
+            "h-3.5 w-3.5 shrink-0",
+            active ? "text-emerald-500" : "text-muted-foreground",
+          )}
+        />
         <span className="truncate text-xs">{dbName}</span>
       </button>
       {effectiveExpanded && (

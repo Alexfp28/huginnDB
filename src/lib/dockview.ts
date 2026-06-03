@@ -29,6 +29,25 @@ export const huginnDockviewTheme: DockviewTheme = {
   dndTabIndicator: "fill",
   dndOverlayBorder: "2px dashed hsl(var(--primary))",
   tabGroupIndicator: "none",
+  // "Island" spacing for the outer shell: dockview inserts this gap (px)
+  // between groups, and the rounded `.dv-groupview` corners (see index.css)
+  // turn each panel into a floating card. The gap reveals the dock root
+  // backdrop, which `.outer-dock` tints slightly so the panels read as
+  // raised. The inner tab dockview opts out — see `huginnDockviewThemeInner`.
+  gap: 8,
+};
+
+/**
+ * Theme for the *inner* tab dockview (`TabbedArea`). Identical to the outer
+ * theme — same `className`, so it shares every CSS variable — but with no
+ * gap, so open table/query tabs stay flush. The user asked to keep the data
+ * tables edge-to-edge; only the outer window distribution gets the island
+ * treatment. `gap` is applied by dockview at runtime (not via the class),
+ * so sharing the class name is safe.
+ */
+export const huginnDockviewThemeInner: DockviewTheme = {
+  ...huginnDockviewTheme,
+  gap: 0,
 };
 
 /** localStorage key for the persisted dockview layout JSON. */

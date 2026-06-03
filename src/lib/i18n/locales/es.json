@@ -14,7 +14,9 @@
     "languageDescription": "Idioma de la interfaz. El formato de fechas y números sigue el del sistema operativo.",
     "languageEnglish": "English",
     "languageSpanish": "Español",
-    "continue": "Continuar"
+    "continue": "Continuar",
+    "retry": "Reintentar",
+    "errorPanelCrashed": "Algo falló al renderizar este panel."
   },
   "menu": {
     "file": {
@@ -177,7 +179,8 @@
     "discardChangesTitle": "Cambios sin guardar",
     "discardChangesConfirm": "Tienes cambios sin guardar en el editor lateral. ¿Descartarlos y cambiar a la celda seleccionada?",
     "keepEditing": "Seguir editando",
-    "discardAndSwitch": "Descartar y cambiar"
+    "discardAndSwitch": "Descartar y cambiar",
+    "setNull": "Poner a NULL"
   },
   "cellPreview": {
     "cell": "celda",
@@ -191,11 +194,41 @@
     "closeHint": "esc cerrar"
   },
   "dataGrid": {
+    "ctxCopy": "Copiar",
+    "ctxCopyWithColumn": "Copiar con el nombre de columna",
+    "ctxCopyRowAs": "Copiar fila como",
+    "ctxFilterBy": "Filtrar por este valor",
+    "ctxFilterExcluding": "Filtrar excluyendo este valor",
+    "ctxInsertRow": "Insertar fila…",
+    "ctxDuplicateRow": "Duplicar fila…",
+    "ctxDeleteRow": "Eliminar fila",
+    "ctxRowsSelected": "{{count}} filas seleccionadas",
+    "ctxCopyRowsAs": "Copiar {{count}} filas como",
+    "ctxDeleteRows": "Eliminar {{count}} filas",
+    "filterRows": "Filtrar filas… (Enter)",
+    "serverSideFilter": "Filtro del servidor",
+    "removeFilter": "Quitar filtro",
+    "rows": "filas",
+    "of": "de",
+    "insert": "Insertar",
+    "insertNewRow": "Insertar nueva fila",
     "expandEditor": "Abrir en el editor completo",
     "openInSideEditor": "Abrir en el editor lateral",
     "zoomIn": "Filas más grandes (Ctrl + +)",
     "zoomOut": "Filas más pequeñas (Ctrl + −)",
     "zoomReset": "Restablecer tamaño de fila (Ctrl + 0)"
+  },
+  "tableData": {
+    "refresh": "Actualizar",
+    "perPage": "{{count}}/página",
+    "loading": "Cargando…",
+    "deleteRowTitle": "¿Eliminar fila?",
+    "deleteRowsTitle": "¿Eliminar {{count}} filas?",
+    "deleteRowsBodyLead": "Vas a eliminar {{count}} filas de",
+    "deleteRowBodyLead": "Vas a eliminar de",
+    "deleteBodyWhere": "donde",
+    "deleteBodyTrail": ". Esto no se puede deshacer.",
+    "delete": "Eliminar"
   },
   "structure": {
     "loading": "Cargando estructura…",
@@ -253,7 +286,42 @@
     "executedIn": "ejecutado en",
     "ms": "ms",
     "encoding": "utf-8",
-    "history": "historial:"
+    "history": "historial:",
+    "connections": "{{count}} conectada(s)",
+    "connectionsActive": "Conexiones activas",
+    "connectionsAvailable": "Conectar a…",
+    "noConnections": "Sin conexiones activas",
+    "jumpTo": "Ir al espacio de trabajo",
+    "disconnect": "Desconectar",
+    "selected": "{{count}} seleccionada(s)",
+    "readOnly": "solo lectura",
+    "recentQueries": "Consultas recientes",
+    "noHistory": "Aún no hay consultas",
+    "clearHistory": "Limpiar historial",
+    "density": "Densidad de filas",
+    "densityCompact": "Compacta",
+    "densityCosy": "Media",
+    "densityComfortable": "Cómoda",
+    "toggleTheme": "Cambiar claro / oscuro",
+    "commandPaletteHint": "Ctrl+K",
+    "commandPaletteTooltip": "Paleta de comandos (Ctrl+K)"
+  },
+  "commandPalette": {
+    "title": "Paleta de comandos",
+    "placeholder": "Escribe un comando o busca…",
+    "noResults": "Sin resultados",
+    "groupConnections": "Conexiones",
+    "groupTables": "Tablas",
+    "groupActions": "Acciones",
+    "groupAppearance": "Apariencia",
+    "switchTo": "Cambiar a {{name}}",
+    "connect": "Conectar a {{name}}",
+    "newQuery": "Nueva consulta",
+    "openPreferences": "Abrir preferencias",
+    "theme": "Tema: {{name}}",
+    "language": "Idioma: {{name}}",
+    "language_en": "Inglés",
+    "language_es": "Español"
   },
   "settings": {
     "title": "Preferencias",
@@ -353,7 +421,13 @@
     "about": {
       "tagline": "Gestor de bases de datos de escritorio minimalista para PostgreSQL, MySQL y SQLite.",
       "prefsLocation": "Ubicación del fichero de preferencias",
-      "tabStateHint": "Un fichero hermano {{file}} guarda las pestañas abiertas y la expansión del árbol de esquema de cada conexión."
+      "tabStateHint": "Un fichero hermano {{file}} guarda las pestañas abiertas y la expansión del árbol de esquema de cada conexión.",
+      "patchNotes": "Novedades",
+      "patchNotesVersion": "Versión",
+      "patchNotesUnreleased": "Sin publicar",
+      "patchNotesCurrent": "instalada",
+      "patchNotesNone": "No hay notas para esta versión.",
+      "patchNotesViewOnGitHub": "Ver el changelog completo en GitHub"
     }
   },
   "transfer": {
@@ -397,6 +471,51 @@
       "summaryRenamed": "{{count}} renombrado(s) para evitar duplicados.",
       "needsPassword": "{{count}} perfil(es) se importaron sin contraseña. Abre cada conexión para configurarla antes de conectar."
     }
+  },
+  "console": {
+    "resume": "Reanudar",
+    "pause": "Pausar",
+    "clear": "Limpiar",
+    "kindSql": "SQL",
+    "kindConnection": "Conexión",
+    "filterPlaceholder": "Filtrar SQL, error, driver…",
+    "emptyNoActivity": "Aún no hay actividad del backend. Ejecuta una consulta o abre una conexión.",
+    "emptyNoMatch": "Ninguna entrada coincide con el filtro actual."
+  },
+  "query": {
+    "saveQuery": "Guardar consulta",
+    "history": "Historial de consultas",
+    "clearHistory": "Limpiar historial",
+    "historyTitle": "Historial",
+    "noQueries": "Aún no hay consultas.",
+    "running": "ejecutando…",
+    "run": "Ejecutar",
+    "runStatement": "Ejecutar esta sentencia",
+    "noResults": "Ejecuta una consulta para ver los resultados."
+  },
+  "saved": {
+    "connectFirst": "Conéctate primero a una base de datos.",
+    "title": "Consultas guardadas",
+    "filterPlaceholder": "Filtrar…",
+    "emptyNone": "Aún no hay consultas guardadas. Usa el icono de marcador en una pestaña de consulta para guardar el SQL actual.",
+    "emptyNoMatch": "Sin coincidencias.",
+    "openInTab": "Abrir en nueva pestaña de consulta",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "deleteConfirm": "¿Eliminar \"{{name}}\"?"
+  },
+  "saveQuery": {
+    "titleUpdate": "Actualizar consulta guardada",
+    "titleSave": "Guardar consulta",
+    "description": "Se guarda localmente en tu equipo. Disponible en todas las conexiones.",
+    "name": "Nombre",
+    "descriptionLabel": "Descripción (opcional)",
+    "descriptionPlaceholder": "¿Qué responde esta consulta?",
+    "tagsLabel": "Etiquetas (separadas por comas)",
+    "tagsPlaceholder": "informes, facturación",
+    "untitled": "Sin título",
+    "submitUpdate": "Actualizar",
+    "submitSave": "Guardar"
   },
   "update": {
     "sectionTitle": "Actualizaciones",

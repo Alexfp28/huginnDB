@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { useUpdateStore } from "@/stores/update";
 import { getCurrentVersion } from "@/lib/updater";
 import { UpdatesCard } from "./UpdatesCard";
+import { PatchNotesCard } from "./PatchNotesCard";
 
 const PREFS_PATHS: { os: string; path: string }[] = [
   { os: "Windows", path: "%APPDATA%\\HuginnDB\\prefs.json" },
@@ -76,6 +77,8 @@ export function AboutSection() {
       </div>
 
       <UpdatesCard currentVersion={currentVersion} />
+
+      <PatchNotesCard currentVersion={currentVersion} />
 
       <div>
         <div className="mb-1 text-[11px] uppercase tracking-wider text-muted-foreground">

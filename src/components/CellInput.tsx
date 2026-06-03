@@ -17,6 +17,7 @@
  */
 
 import { forwardRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Maximize2 } from "lucide-react";
 
 interface CellInputProps {
@@ -55,6 +56,7 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
     },
     ref,
   ) {
+    const { t } = useTranslation();
     const wired = Boolean(onCommit || onCancel);
     return (
       <div className="flex items-center gap-1">
@@ -100,7 +102,7 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
           <button
             type="button"
             tabIndex={-1}
-            title="Set NULL"
+            title={t("cellEditor.setNull")}
             disabled={disabled}
             className={`shrink-0 rounded px-1 text-[10px] ${
               nullActive

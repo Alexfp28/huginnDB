@@ -44,7 +44,7 @@ import { TableDataTab } from "@/components/TableDataTab";
 import { QueryEditorTab } from "@/components/QueryEditorTab";
 import { StructureEditorTab } from "@/components/StructureEditorTab";
 import {
-  huginnDockviewTheme,
+  huginnDockviewThemeInner,
   registerInnerDockviewApi,
   clearInnerDockviewApi,
   consumePendingInternalLayout,
@@ -82,8 +82,15 @@ interface StructurePanelParams {
 
 function TablePanel(props: IDockviewPanelProps<TablePanelParams>) {
   const { connectionId, schema, table } = props.params;
+  // The dockview panel id is the tab id (see the reconciler's addPanel call),
+  // so we can key the grid-selection report off it without a new param.
   return (
-    <TableDataTab connectionId={connectionId} schema={schema} table={table} />
+    <TableDataTab
+      tabId={props.api.id}
+      connectionId={connectionId}
+      schema={schema}
+      table={table}
+    />
   );
 }
 
@@ -121,6 +128,12 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const { t } = useTranslation();
   const id = props.api.id;
   const tabs = useTabs((s) => s.tabs);
+  // Derive active state from the store (the source of truth), NOT from
+  // `props.api.isActive`: dockview does not re-render this custom tab on an
+  // active-panel change, so reading `isActive` at render time goes stale and
+  // the highlight never moves when you switch tabs. Subscribing to `activeId`
+  // forces the re-render and keeps both tabs' styling in sync.
+  const isActive = useTabs((s) => s.activeId === id);
   const profiles = useConnections((s) => s.profiles);
 
   const { label, tooltip } = useMemo(() => {
@@ -161,7 +174,7 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
     <div
       className={cn(
         "group/tab flex h-full items-center gap-2 px-3 text-xs",
-        props.api.isActive ? "text-foreground" : "text-muted-foreground/70",
+        isActive ? "text-foreground" : "text-muted-foreground/70",
       )}
       title={tooltip}
       // Middle-click (wheel button) closes the tab, matching editor
@@ -188,17 +201,15 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
         <DropdownMenuTrigger asChild>
           <button
             className={cn(
-              "transition-opacity",
-              props.api.isActive
-                ? "opacity-60 hover:opacity-100"
-                : "opacity-0 group-hover/tab:opacity-60 group-hover/tab:hover:opacity-100",
+              "rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              isActive ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100",
             )}
             onClick={(e) => e.stopPropagation()}
             // Don't let dockview start a tab drag from the menu trigger.
             onMouseDown={(e) => e.stopPropagation()}
             title={t("tabs.actionsTooltip")}
           >
-            <MoreVertical className="h-3 w-3" />
+            <MoreVertical className="h-3.5 w-3.5" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="text-xs">
@@ -240,10 +251,8 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       </DropdownMenu>
       <button
         className={cn(
-          "transition-opacity",
-          props.api.isActive
-            ? "opacity-60 hover:opacity-100"
-            : "opacity-0 group-hover/tab:opacity-60 group-hover/tab:hover:opacity-100",
+          "rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive",
+          isActive ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100",
         )}
         onClick={(e) => {
           e.stopPropagation();
@@ -253,7 +262,7 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
         onMouseDown={(e) => e.stopPropagation()}
         title={t("tabs.closeTab")}
       >
-        <X className="h-3 w-3" />
+        <X className="h-3.5 w-3.5" />
       </button>
     </div>
   );
@@ -268,7 +277,7 @@ function NewTabAction(_props: IDockviewHeaderActionsProps) {
     <Button
       variant="ghost"
       size="icon"
-      className="h-7 w-7 text-muted-foreground/60 hover:text-muted-foreground"
+      className="h-7 w-7 text-muted-foreground hover:bg-accent hover:text-brand"
       disabled={!connectionId}
       onClick={() => {
         if (!connectionId) return;
@@ -415,14 +424,14 @@ export function TabbedArea(_props: Props) {
     // we make sure the box it lives in is unambiguously sized and a
     // positioned ancestor — otherwise the overlays anchor against an outer
     // dockview's shell and the vertical layout collapses on the first split.
-    <div className="relative h-full w-full">
+    <div className="inner-dock relative h-full w-full">
       <DockviewReact
         components={INNER_COMPONENTS}
         defaultTabComponent={WorkspaceTab}
         watermarkComponent={EmptyWatermark}
         rightHeaderActionsComponent={NewTabAction}
         onReady={onReady}
-        theme={huginnDockviewTheme}
+        theme={huginnDockviewThemeInner}
       />
     </div>
   );

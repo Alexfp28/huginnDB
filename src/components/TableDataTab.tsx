@@ -34,6 +34,7 @@ import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/schema";
 import { useFilterHistory } from "@/stores/filterHistory";
 import { useConnections } from "@/stores/connections";
+import { useGridSelection } from "@/stores/gridSelection";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences";
 import type {
   CellValue,
@@ -55,6 +56,8 @@ import {
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from "@/lib/constants";
 
 interface Props {
+  /** The owning tab's id — used to scope the grid-selection report. */
+  tabId: string;
   connectionId: string;
   schema?: string;
   table: string;
@@ -112,7 +115,12 @@ function duplicateDraft(
   return { cells, error: null, saving: false };
 }
 
-export function TableDataTab({ connectionId, schema, table }: Props) {
+export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
+  const reportSelection = useGridSelection((s) => s.report);
+  const clearSelection = useGridSelection((s) => s.clear);
+  // Drop this tab's selection entry when the tab unmounts (close /
+  // disconnect) so the status bar never reads a stale count.
+  useEffect(() => () => clearSelection(tabId), [tabId, clearSelection]);
   const loadColumns = useSchema((s) => s.loadColumns);
   const columnsBySchema = useSchema((s) => s.byConnection[connectionId]?.columns);
   // Resolve the driver for this connection — needed by the DataGrid so
@@ -443,7 +451,7 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
           size="sm"
           onClick={fetchData}
           disabled={loading}
-          title="Refresh"
+          title={t("tableData.refresh")}
         >
           <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
         </Button>
@@ -499,7 +507,7 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
           >
             {PAGE_SIZE_OPTIONS.map((n) => (
               <option key={n} value={n}>
-                {n}/page
+                {t("tableData.perPage", { count: n })}
               </option>
             ))}
           </select>
@@ -558,6 +566,9 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
                   }
                 : undefined
             }
+            onSelectionChange={(count, total) =>
+              reportSelection(tabId, count, total)
+            }
             draftRow={draft}
             draftColumns={cols}
             onDraftCellChange={onDraftCellChange}
@@ -565,7 +576,9 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
             onDraftCancel={onDraftCancel}
           />
         ) : (
-          <div className="p-4 text-xs text-muted-foreground">Loading…</div>
+          <div className="p-4 text-xs text-muted-foreground">
+            {t("tableData.loading")}
+          </div>
         )}
       </div>
 
@@ -578,31 +591,31 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
           <DialogHeader>
             <DialogTitle>
               {(pendingDelete?.pkValueRows.length ?? 0) > 1
-                ? `Delete ${pendingDelete?.pkValueRows.length} rows?`
-                : "Delete row?"}
+                ? t("tableData.deleteRowsTitle", {
+                    count: pendingDelete?.pkValueRows.length,
+                  })
+                : t("tableData.deleteRowTitle")}
             </DialogTitle>
           </DialogHeader>
           {(pendingDelete?.pkValueRows.length ?? 0) > 1 ? (
             <p className="text-xs text-muted-foreground">
-              About to delete{" "}
-              <span className="font-semibold">
-                {pendingDelete?.pkValueRows.length} rows
-              </span>{" "}
-              from{" "}
+              {t("tableData.deleteRowsBodyLead", {
+                count: pendingDelete?.pkValueRows.length,
+              })}{" "}
               <span className="font-mono">
                 {schema ? `${schema}.` : ""}
                 {table}
               </span>
-              . This cannot be undone.
+              {t("tableData.deleteBodyTrail")}
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              About to delete from{" "}
+              {t("tableData.deleteRowBodyLead")}{" "}
               <span className="font-mono">
                 {schema ? `${schema}.` : ""}
                 {table}
               </span>{" "}
-              where{" "}
+              {t("tableData.deleteBodyWhere")}{" "}
               <span className="font-mono">
                 {pkColumns
                   .map(
@@ -613,14 +626,14 @@ export function TableDataTab({ connectionId, schema, table }: Props) {
                   )
                   .join(" AND ")}
               </span>
-              . This cannot be undone.
+              {t("tableData.deleteBodyTrail")}
             </p>
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPendingDelete(null)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
-            <Button onClick={confirmDelete}>Delete</Button>
+            <Button onClick={confirmDelete}>{t("tableData.delete")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
