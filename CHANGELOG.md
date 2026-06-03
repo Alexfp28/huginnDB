@@ -72,8 +72,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   a split actually exists; on any layout drift it falls back to the tabbed
   default.
 
-## [1.0.1] — 2026-05-30
-
 ### Fixed
 
 - **Editing a MySQL `BIT` cell wrote garbage.** `update_cell` sends the value
@@ -104,6 +102,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `ConnectionErrorBoundary` wraps the schema and workspace panels so any future
   render crash degrades to a legible error card with a retry instead of a dead
   white screen.
+
+## [1.0.1] — 2026-05-30
 
 First patch release. Fixes the MySQL `BIT` rendering that 1.0.0 shipped
 broken, and reworks data-grid cell editing into an inline-first flow with a
