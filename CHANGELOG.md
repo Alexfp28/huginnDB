@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **MySQL `BIT` column write — `insert_row` path.** `RowValue` now carries an
+  optional `column_type` field. When the frontend builds the draft-row INSERT
+  payload it populates `columnType` from `result.columns`, and the backend
+  builds `CAST(? AS UNSIGNED)` placeholders for every MySQL `BIT` column
+  instead of plain `?`. Previously, binding a string like `"1"` to a `BIT`
+  column stored the ASCII byte `0x31` (49) rather than the integer 1 — for
+  wide `BIT(n)` columns this silently wrote the wrong value every time.
+
+- **MySQL `BIT` column write — `update_cell` path.** Added
+  `normalize_bit_value` preprocessing so that the string handed to
+  `CAST(? AS UNSIGNED)` is always a digit string. Without this, if the cell
+  editor produced `"true"` or `"false"` (e.g. after the user typed those words
+  in the Monaco editor), MySQL would evaluate `CAST('true' AS UNSIGNED)` as 0
+  regardless of the intended bit value.
+
 ## [1.0.3] — 2026-06-03
 
 ### Added

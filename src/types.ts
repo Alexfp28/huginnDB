@@ -238,6 +238,9 @@ export interface ColumnFilter {
 export interface RowValue {
   column: string;
   value: string | null;
+  /** `data_type` from `ColumnMeta` — forwarded so the backend can apply
+   *  driver-specific binding (e.g. `CAST(? AS UNSIGNED)` for MySQL BIT). */
+  columnType?: string;
 }
 
 /**

@@ -404,7 +404,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     if (!draft || draft.saving) return;
     const values: RowValue[] = Object.entries(draft.cells)
       .filter(([, c]) => c.touched)
-      .map(([column, c]) => ({ column, value: c.value }));
+      .map(([column, c]) => ({
+        column,
+        value: c.value,
+        columnType: result?.columns.find((col) => col.name === column)?.data_type,
+      }));
     // Empty draft (user never typed) → silently cancel rather than send
     // an `INSERT () VALUES ()` that the backend would reject.
     if (values.length === 0) {
