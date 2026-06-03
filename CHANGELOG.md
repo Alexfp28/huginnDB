@@ -11,8 +11,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 
 - **Import / Export of connection profiles.** Export all or selected profiles to
-  a portable JSON file (`File → Export profiles…` or the icons in *Manage
-  connections*). Profiles can optionally include credentials: each password and
+  a portable JSON file (`File → Export profiles…` or the icons in _Manage
+  connections_). Profiles can optionally include credentials: each password and
   SSH secret is encrypted individually with AES-256-GCM, key-derived via
   PBKDF2-HMAC-SHA256 at 600 000 iterations, so the file is safe to store or
   send. Importing detects encryption, walks through a passphrase step when
@@ -38,7 +38,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   back to the previous behaviour (searches all DBs), keeping the single-DB case
   fully retrocompatible.
 - **Visual table-structure editor (HeidiSQL-style).** Right-click a table →
-  *Edit structure…* (or *New table…*) opens an editor for columns
+  _Edit structure…_ (or _New table…_) opens an editor for columns
   (add/drop/rename, type, nullability, default, primary key, auto-increment),
   indexes and foreign keys — including composite ones. The column type is an
   editable combobox pre-filled with the driver's common types so you avoid
@@ -52,16 +52,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   allowlist.
 - **Side-panel cell editor (JetBrains-style).** Large cell values can now be
   edited in a docked right-side panel instead of a centered dialog. Reach it via
-  right-click → *Open in side editor*, or the new *Move to side panel* button
+  right-click → _Open in side editor_, or the new _Move to side panel_ button
   inside the modal editor (it carries the in-progress buffer across). A new
-  *General → Cell editor* preference (`cellEditorMode`: Dialog / Side panel)
+  _General → Cell editor_ preference (`cellEditorMode`: Dialog / Side panel)
   chooses where the editor opens when you expand a cell. The panel is a real
   dockview panel, so it resizes, docks and floats like the others.
 - **Multi-row selection with bulk copy and delete.** Pick several rows the way
   your OS file manager works: `Ctrl`/`Cmd`-click toggles individual rows and
   `Shift`-click extends a contiguous range. Right-clicking the selection offers
-  *Copy N rows as ▸ JSON / SQL INSERT / SQL UPDATE* (reusing the existing per-row
-  formatters) and *Delete N rows*. Every delete — single or bulk — goes through
+  _Copy N rows as ▸ JSON / SQL INSERT / SQL UPDATE_ (reusing the existing per-row
+  formatters) and _Delete N rows_. Every delete — single or bulk — goes through
   the same confirmation dialog. Selection is keyed by primary key, so it
   survives sorting, client-side filtering and refetches (only available on
   tables with a primary key).
@@ -71,6 +71,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   reopen, instead of always coming back as plain tabbed panels. Only saved when
   a split actually exists; on any layout drift it falls back to the tabbed
   default.
+
+## [1.0.1] — 2026-05-30
 
 ### Fixed
 
@@ -94,7 +96,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **Blank connection panel when clearing a multi-DB filter.** In a multi-database
   connection, typing a filter and then clearing it could blank the entire schema
   panel (the outer File/View/Workspaces toolbar stayed visible). Root cause: a
-  `useMemo` in the single-database explorer sat *below* the `if (!cs) return`
+  `useMemo` in the single-database explorer sat _below_ the `if (!cs) return`
   early return, so when the per-connection schema slice briefly flipped to
   `undefined` while nested explorers unmounted, React rendered a different number
   of hooks across renders and threw. The hook now sits above the early return
@@ -111,7 +113,7 @@ persisted HeidiSQL-style row zoom. On-disk state is untouched.
 
 - **Inline cell editing.** Double-clicking a cell in the data grid now edits
   it in place with the same single-line input used by the insert draft row,
-  instead of always opening the large Monaco dialog. A *expand* button on the
+  instead of always opening the large Monaco dialog. A _expand_ button on the
   inline editor (and the existing F11 in the cell preview) escalates to the
   full modal for JSON / long / multi-line values. Foreign-key columns keep
   their inline combobox; read-only query results still open the modal as a
@@ -150,7 +152,7 @@ follows SemVer.
   vertically, dragged between groups, and torn out into a floating
   window. Tabs can also be closed with a middle-mouse (wheel) click in
   addition to the X button. Each tab also exposes an explicit `⋮` menu
-  with *Split right*, *Split down*, *Float in new window*, and *Close*
+  with _Split right_, _Split down_, _Float in new window_, and _Close_
   for users who prefer menu actions over drag-and-drop. `useTabs` remains
   the source of truth — the dockview panels are reconciled against it —
   so the existing per-connection tab restore keeps working. Split/float
@@ -167,7 +169,7 @@ follows SemVer.
 
 - **Multi-database filtering is now instant.** The connection-level
   filter used to fan out `openDatabaseView` + `list_tables` across every
-  database on the *first* keystroke, so the initial search on a server
+  database on the _first_ keystroke, so the initial search on a server
   with many databases stalled for seconds. A multi-DB connection now
   warms its entire table cache in the background as soon as the database
   list is known (`warmDatabases` in `src/stores/schema.ts`), with bounded
@@ -184,8 +186,8 @@ follows SemVer.
   accepted a release. Tauri 2's `dragDropEnabled` defaults to `true`,
   which routes drag events through the OS file-drop handler and preempts
   the HTML5 events dockview's `Droptarget` listeners rely on
-  (`tauri-utils` documents this verbatim: *"Disabling it is required to
-  use HTML5 drag and drop on the frontend on Windows"*). The window
+  (`tauri-utils` documents this verbatim: _"Disabling it is required to
+  use HTML5 drag and drop on the frontend on Windows"_). The window
   config now sets `dragDropEnabled: false`. HuginnDB doesn't accept OS
   file drops anyway (the SQLite path is chosen via a file dialog), so
   there's no functional loss.
@@ -256,7 +258,7 @@ whole file reads consistently.
   (`information_schema.table_constraints` on Postgres,
   `column_key='PRI'` on MySQL, `pk > 0` on SQLite), but the frontend
   in `src/components/TableDataTab.tsx` used
-  `cols.find(c => c.is_primary_key)` and shipped only the *first* PK
+  `cols.find(c => c.is_primary_key)` and shipped only the _first_ PK
   column to `update_cell` and `delete_rows`. The resulting
   `WHERE leading_pk_col = ?` predicate matched every row sharing that
   leading value, so editing a single cell with a filter active rewrote
@@ -336,7 +338,7 @@ One Dark Pro as the new default.
   gated on needle length ≥ 2 so a single accidental keystroke doesn't
   hammer the catalog) and auto-expands every database whose tables
   match the needle. Databases with no matches drop out of the list
-  while the filter is active; databases that match by *name* are
+  while the filter is active; databases that match by _name_ are
   surfaced collapsed so the user can pick them. Clearing the search
   instantly restores the full list. The previous behaviour only
   surfaced matches inside DBs the user had already opened by hand —
@@ -348,7 +350,7 @@ One Dark Pro as the new default.
   in memory until the user hit Save, which made it unclear whether the
   password had actually been persisted. `test_connection` now writes
   the supplied SSH secret to the keychain under
-  `<profile.id>::ssh::<ssh_user>` *before* `smoke_test`, matching the
+  `<profile.id>::ssh::<ssh_user>` _before_ `smoke_test`, matching the
   UX already in place for the DB password. To keep the keychain
   account stable between Test and Save for brand-new profiles, the
   connection dialog pre-mints a UUID on open via `crypto.randomUUID()`
@@ -358,8 +360,8 @@ One Dark Pro as the new default.
 ### Fixed
 
 - **Duplicate database node in multi-DB MySQL / SQLite explorers.**
-  Expanding a database in multi-DB mode used to render *the same
-  database name* a second time with a Database icon underneath,
+  Expanding a database in multi-DB mode used to render _the same
+  database name_ a second time with a Database icon underneath,
   with tables and indexes nested one extra level. The culprit was
   the synthetic child connection's `list_tables` reporting every
   table's `schema` as the database name itself (MySQL's
@@ -625,20 +627,18 @@ new built-in themes, draggable tabs, and broader i18n coverage.
 
   Fix: replaced the `information_schema.TABLES` query with
   `SHOW TABLE STATUS FROM \`db\``, which is faster, not subject to metadata
-  lock waits, and returns a fixed column set. All numeric columns are now read
-  with `try_get` (returns `Result` instead of panicking) plus a signed/unsigned
-  fallback chain so the schema loads correctly on MySQL 5.7, 8.0, MariaDB, and
-  any fork regardless of how type flags are reported. The current database is
-  resolved via `SELECT DATABASE()` so the implementation no longer depends on
-  `information_schema` at all for MySQL table listing.
+lock waits, and returns a fixed column set. All numeric columns are now read
+with `try_get`(returns`Result`instead of panicking) plus a signed/unsigned
+fallback chain so the schema loads correctly on MySQL 5.7, 8.0, MariaDB, and
+any fork regardless of how type flags are reported. The current database is
+resolved via`SELECT DATABASE()`so the implementation no longer depends on`information_schema` at all for MySQL table listing.
 
 ## [0.3.2] — 2026-05-18
 
 ### Fixed
 
 - **MySQL schema loading broken by two additional bugs.**
-
-  1. *Infinite refresh loop.* The `SchemaExplorer` effect condition
+  1. _Infinite refresh loop._ The `SchemaExplorer` effect condition
      `!cs || !cs.initialized` fired on every state update while a fetch was
      in flight (`loading: true` creates a new object reference each time
      Zustand updates), launching a new concurrent `list_tables` call on every
@@ -648,7 +648,7 @@ new built-in themes, draggable tabs, and broader i18n coverage.
      already running. `initialized: true` is now also set in the error path so
      a failed fetch does not trigger the same loop.
 
-  2. *`size_bytes` type mismatch on MySQL.* The expression
+  2. _`size_bytes` type mismatch on MySQL._ The expression
      `IFNULL(data_length, 0) + IFNULL(index_length, 0)` produces a **signed**
      `BIGINT` in MySQL (the integer literal `0` forces signed promotion even
      though both source columns are `BIGINT UNSIGNED`). sqlx's MySQL driver
