@@ -6,7 +6,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **CLI `--password`/`--pass` flag and `--user` alias.** The password can now be
+  supplied on the command line for both `--connect-profile` (overriding the
+  stored keychain secret) and ad-hoc launches; when present the app
+  auto-connects without the password dialog. The password is used **in memory
+  only** — it is handed straight to `connect` and never written to the OS
+  keychain. `--user` is accepted as an alias for `--username` to match the
+  spelling used by `psql`/`mysql`.
+
 ### Fixed
+
+- **Main panel titles stayed in English under a Spanish UI.** The outer dockview
+  panels (Schema, Saved, Workspace, Console, Cell) had hard-coded English
+  titles, baked into the persisted layout, so they never followed the selected
+  language. Titles are now sourced from i18n, re-applied after a layout restore,
+  and updated live when the language changes. The View → Panels checkboxes use
+  the same translated labels. Inner workspace tab fallbacks (the `Query`/`Table`
+  default labels and the `(structure)` suffix on structure-editor tabs) are now
+  localized too.
+
+- **MySQL `LONGTEXT`/`TEXT` rendered as a hex blob.** sqlx names a column
+  `LONGBLOB`/`BLOB` (vs `LONGTEXT`/`TEXT`) from the protocol-level `BINARY`
+  column flag, which the server sometimes sets on real text columns depending
+  on charset/collation — so a `LONGTEXT` field could surface as a hex dump
+  (HeidiSQL showed it as text). The decoder now tries a UTF-8 `String` decode
+  first and only falls back to hex for genuinely non-UTF-8 bytes.
+
+- **SSH tunnel broke when the configured local port was already in use.** If
+  another process (e.g. a second tunnel the user opened by hand) held the
+  pinned `local_port`, the bind failed with `AddrInUse` and the connection
+  errored out. The tunnel now falls back to an OS-assigned ephemeral port and
+  keeps working; the pool follows the actually-bound port and the saved profile
+  is left untouched.
+
+- **SSH tunnel form fields overflowed the dialog.** When reconfiguring an
+  existing tunnel, long values (notably the private-key path) pushed inputs and
+  the "Browse" button past the dialog edge. Added `min-w-0`/`flex-1`/`shrink-0`
+  constraints so fields shrink within the dialog instead of overflowing.
 
 - **MySQL `BIT` column write — `insert_row` path.** `RowValue` now carries an
   optional `column_type` field. When the frontend builds the draft-row INSERT

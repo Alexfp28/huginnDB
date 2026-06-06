@@ -199,8 +199,6 @@ pub struct StartupArgs {
     /// When `true`, `connect_profile` is a UUID rather than a display name.
     pub connect_by_id: bool,
     // Ad-hoc connection parameters (no saved profile required).
-    // The password is intentionally absent — it will be requested via the
-    // normal `ConnectPasswordDialog` flow once the app is open.
     pub adhoc_host: Option<String>,
     pub adhoc_port: Option<u16>,
     pub adhoc_database: Option<String>,
@@ -209,6 +207,12 @@ pub struct StartupArgs {
     pub adhoc_driver: Option<String>,
     /// Display name for the ad-hoc connection.
     pub adhoc_name: Option<String>,
+    /// Optional password supplied via `--password`/`--pass`. Opt-in and kept
+    /// only in memory for this launch: it is handed straight to `connect` and
+    /// never persisted to the OS keychain. When absent, the password is
+    /// resolved from the keychain (saved profile) or requested via the
+    /// `ConnectPasswordDialog` flow once the app is open.
+    pub adhoc_password: Option<String>,
 }
 
 /// Top-level state managed by Tauri.

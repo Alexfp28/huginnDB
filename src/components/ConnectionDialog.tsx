@@ -453,7 +453,7 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
                 {sshEnabled && (
                   <>
                     <div className="grid grid-cols-3 gap-2">
-                      <div className="col-span-2">
+                      <div className="col-span-2 min-w-0">
                         <Field label={t("connectionDialog.ssh.host")}>
                           <Input
                             value={sshHost}
@@ -512,8 +512,9 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
                     ) : (
                       <>
                         <Field label={t("connectionDialog.ssh.privateKeyPath")}>
-                          <div className="flex gap-2">
+                          <div className="flex min-w-0 gap-2">
                             <Input
+                              className="min-w-0 flex-1"
                               value={sshKeyPath}
                               onChange={(e) => setSshKeyPath(e.target.value)}
                               placeholder={t(
@@ -523,6 +524,7 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
                             <Button
                               type="button"
                               variant="outline"
+                              className="shrink-0"
                               onClick={onPickKeyFile}
                             >
                               {t("connectionDialog.ssh.browse")}
@@ -638,8 +640,11 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  // `min-w-0` lets the field shrink inside flex/grid parents instead of forcing
+  // its content's intrinsic width and overflowing the dialog (e.g. a long SSH
+  // key path or host pushing the layout past `max-w-md`).
   return (
-    <div className="grid gap-1">
+    <div className="grid min-w-0 gap-1">
       <Label>{label}</Label>
       {children}
     </div>

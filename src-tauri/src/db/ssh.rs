@@ -213,9 +213,27 @@ pub async fn open_tunnel(
 
     // Bind locally. `local_port = 0` requests an ephemeral port from the
     // OS; we read the actual port back via `local_addr()`.
-    let listener = TcpListener::bind(("127.0.0.1", tunnel.local_port))
-        .await
-        .map_err(|e| ssh_err("bind-local", e))?;
+    //
+    // If the user pinned a fixed `local_port` and something else already holds
+    // it (e.g. another SSH tunnel the user opened by hand on the same port),
+    // the bind fails with `AddrInUse` and the whole connection would break.
+    // Rather than surface a raw OS error, fall back to an ephemeral port: the
+    // pool is pointed at the *bound* port we return on the handle, so swapping
+    // the local port at runtime is transparent. The saved profile is left
+    // untouched — the override only lasts for this tunnel's lifetime.
+    let listener = match TcpListener::bind(("127.0.0.1", tunnel.local_port)).await {
+        Ok(l) => l,
+        Err(e) if tunnel.local_port != 0 && e.kind() == std::io::ErrorKind::AddrInUse => {
+            eprintln!(
+                "[ssh] local port {} is already in use, falling back to an ephemeral port",
+                tunnel.local_port
+            );
+            TcpListener::bind(("127.0.0.1", 0))
+                .await
+                .map_err(|e| ssh_err("bind-local-fallback", e))?
+        }
+        Err(e) => return Err(ssh_err("bind-local", e)),
+    };
     let bound_port = listener
         .local_addr()
         .map_err(|e| ssh_err("local-addr", e))?

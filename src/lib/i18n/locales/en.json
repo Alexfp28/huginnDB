@@ -18,6 +18,13 @@
     "retry": "Retry",
     "errorPanelCrashed": "Something went wrong rendering this panel."
   },
+  "panels": {
+    "schema": "Schema",
+    "saved": "Saved",
+    "workspace": "Workspace",
+    "console": "Console",
+    "cell": "Cell"
+  },
   "menu": {
     "file": {
       "label": "File",
@@ -270,6 +277,8 @@
   },
   "tabs": {
     "queryFileName": "query.sql",
+    "tableFallback": "Table",
+    "structureSuffix": "structure",
     "closeTab": "Close tab",
     "actionsTooltip": "Tab actions",
     "splitRight": "Split right",

@@ -8,6 +8,7 @@
  */
 
 import type { AddPanelOptions, DockviewApi, DockviewTheme } from "dockview-react";
+import i18n from "@/lib/i18n";
 
 /**
  * Custom dockview theme that defers all colours to the app's existing
@@ -58,15 +59,43 @@ export const LAYOUT_STORAGE_KEY = "huginndb.layout";
  * iterate over "all known panels" (View → Panels checkboxes, default
  * layout, reset) reads from here so there's a single source of truth.
  */
+// `title` is the English fallback; `i18nKey` is the source of truth for the
+// displayed label. Panel titles are localized at creation and re-applied on
+// language change via `localizePanelTitles` — see that function for why a
+// static title alone isn't enough (persisted layouts restore stale titles).
 export const PANELS = [
-  { id: "schema", component: "schema", title: "Schema" },
-  { id: "saved", component: "saved", title: "Saved" },
-  { id: "workspace", component: "workspace", title: "Workspace" },
-  { id: "console", component: "console", title: "Console" },
-  { id: "side-editor", component: "side-editor", title: "Cell" },
+  { id: "schema", component: "schema", title: "Schema", i18nKey: "panels.schema" },
+  { id: "saved", component: "saved", title: "Saved", i18nKey: "panels.saved" },
+  { id: "workspace", component: "workspace", title: "Workspace", i18nKey: "panels.workspace" },
+  { id: "console", component: "console", title: "Console", i18nKey: "panels.console" },
+  { id: "side-editor", component: "side-editor", title: "Cell", i18nKey: "panels.cell" },
 ] as const;
 
 export type PanelId = (typeof PANELS)[number]["id"];
+
+/** Translated title for a panel id, falling back to its English `title`. */
+function panelTitle(id: PanelId): string {
+  const meta = PANELS.find((p) => p.id === id);
+  if (!meta) return id;
+  return i18n.t(meta.i18nKey);
+}
+
+/**
+ * Re-apply localized titles to every panel currently in the layout.
+ *
+ * Dockview's default tab renders `panel.title`, a plain string baked into the
+ * layout — and `api.toJSON()` persists it, so a layout saved while the UI was
+ * in English restores English titles via `fromJSON` regardless of the active
+ * language. Setting the title at creation time isn't enough for two cases:
+ * a restored layout, and a language switch while the app is open. This walks
+ * the live panels and rewrites each known panel's title from i18n.
+ */
+export function localizePanelTitles(api: DockviewApi) {
+  for (const panel of api.panels) {
+    const meta = PANELS.find((p) => p.id === panel.id);
+    if (meta) panel.setTitle(i18n.t(meta.i18nKey));
+  }
+}
 
 /**
  * Single dockview API handle for the running window. There is only ever
@@ -84,6 +113,11 @@ const apiReadyListeners = new Set<(api: DockviewApi) => void>();
 export function registerDockviewApi(api: DockviewApi) {
   dockviewApi = api;
   for (const listener of apiReadyListeners) listener(api);
+  // Keep the outer panel titles in sync when the user switches language while
+  // the app is open. Registered once per API (one per window lifetime).
+  i18n.on("languageChanged", () => {
+    if (dockviewApi === api) localizePanelTitles(api);
+  });
 }
 
 /** Read-only accessor for surfaces that want to subscribe to layout
@@ -153,6 +187,9 @@ export function restoreOrInitLayout(api: DockviewApi) {
   if (saved) {
     try {
       api.fromJSON(JSON.parse(saved));
+      // The blob carries whatever titles were active when it was saved
+      // (often English); re-localize to the current language.
+      localizePanelTitles(api);
       return;
     } catch (err) {
       // Persisted layout is unusable (schema drift, manual edit, …).
@@ -166,17 +203,17 @@ export function restoreOrInitLayout(api: DockviewApi) {
 /** Default arrangement: Schema + Saved tabbed on the left (≈320 px),
  *  Workspace taking the rest on the right. */
 export function initDefaultLayout(api: DockviewApi) {
-  api.addPanel({ id: "schema", component: "schema", title: "Schema" });
+  api.addPanel({ id: "schema", component: "schema", title: panelTitle("schema") });
   api.addPanel({
     id: "saved",
     component: "saved",
-    title: "Saved",
+    title: panelTitle("saved"),
     position: { referencePanel: "schema" },
   });
   api.addPanel({
     id: "workspace",
     component: "workspace",
-    title: "Workspace",
+    title: panelTitle("workspace"),
     position: { referencePanel: "schema", direction: "right" },
   });
   api.getPanel("schema")?.api.setSize({ width: 320 });
@@ -231,7 +268,7 @@ export function togglePanel(id: PanelId) {
   const options: AddPanelOptions = {
     id: meta.id,
     component: meta.component,
-    title: meta.title,
+    title: i18n.t(meta.i18nKey),
     position: positionFor(id, api),
   };
   api.addPanel(options);
@@ -315,7 +352,7 @@ export function openSideEditor() {
   api.addPanel({
     id: "side-editor",
     component: "side-editor",
-    title: "Cell",
+    title: panelTitle("side-editor"),
     position: positionFor("side-editor", api),
   });
   api.getPanel("side-editor")?.api.setSize({ width: 420 });

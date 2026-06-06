@@ -152,6 +152,18 @@ pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
         return row.try_get::<Value, _>(idx).unwrap_or(Value::Null);
     }
     if name.contains("BLOB") || name.contains("BINARY") {
+        // sqlx labels a column `LONGBLOB`/`BLOB` (vs `LONGTEXT`/`TEXT`) purely
+        // from the protocol-level `BINARY` column flag, which the MySQL server
+        // *sometimes* sets on genuine text columns (depending on charset /
+        // collation), so a real `LONGTEXT` lands here and used to render as a
+        // hex dump. The flag isn't reachable through sqlx's public API, so we
+        // disambiguate by content: if the bytes are valid UTF-8 we treat the
+        // value as text (matching HeidiSQL); otherwise we emit hex. A real
+        // binary blob fails `String::decode`'s UTF-8 validation and falls
+        // through to the hex branch. See gotcha #17.
+        if let Ok(s) = row.try_get::<String, _>(idx) {
+            return Value::String(s);
+        }
         return row
             .try_get::<Vec<u8>, _>(idx)
             .map(|v| json!(hex(&v)))

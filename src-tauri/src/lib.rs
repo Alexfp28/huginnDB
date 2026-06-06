@@ -56,8 +56,17 @@ fn parse_startup_args() -> StartupArgs {
             "--database" => {
                 result.adhoc_database = iter.next().cloned();
             }
-            "--username" => {
+            // `--user` is an alias for `--username` — most CLI database tools
+            // (psql, mysql) spell it `--user`/`-u`, so we accept both.
+            "--username" | "--user" => {
                 result.adhoc_username = iter.next().cloned();
+            }
+            // The password is opt-in via the CLI and lives only in memory for
+            // this launch — it is passed straight to `connect` and never
+            // written to the OS keychain. Works for both `--connect-profile`
+            // (overrides the stored password) and ad-hoc connections.
+            "--password" | "--pass" => {
+                result.adhoc_password = iter.next().cloned();
             }
             "--driver" => {
                 result.adhoc_driver = iter.next().cloned();

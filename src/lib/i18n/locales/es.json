@@ -18,6 +18,13 @@
     "retry": "Reintentar",
     "errorPanelCrashed": "Algo falló al renderizar este panel."
   },
+  "panels": {
+    "schema": "Esquema",
+    "saved": "Guardadas",
+    "workspace": "Espacio de trabajo",
+    "console": "Consola",
+    "cell": "Celda"
+  },
   "menu": {
     "file": {
       "label": "Archivo",
@@ -270,6 +277,8 @@
   },
   "tabs": {
     "queryFileName": "query.sql",
+    "tableFallback": "Tabla",
+    "structureSuffix": "estructura",
     "closeTab": "Cerrar pestaña",
     "actionsTooltip": "Acciones de la pestaña",
     "splitRight": "Dividir a la derecha",

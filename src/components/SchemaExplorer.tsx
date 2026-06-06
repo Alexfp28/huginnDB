@@ -985,7 +985,7 @@ function TableRow({
                 actions.openTab({
                   kind: "structure",
                   structureMode: "edit",
-                  title: `${t.name} (structure)`,
+                  title: `${t.name} (${ct("tabs.structureSuffix")})`,
                   connectionId,
                   schema: t.schema,
                   table: t.name,

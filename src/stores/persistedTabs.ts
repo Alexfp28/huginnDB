@@ -31,6 +31,7 @@
 
 import type { ConnectionTabState, PersistedTab, AppTab } from "@/types";
 import { api } from "@/lib/tauri";
+import i18n from "@/lib/i18n";
 import { useTabs } from "@/stores/tabs";
 import { useSchema } from "@/stores/schema";
 import { usePreferences } from "@/stores/preferences";
@@ -131,7 +132,12 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
         // Persisted state never carries a generated title for table tabs
         // (it can be derived from the table name on demand); we fall back
         // to the table name or "Query" so the tab bar always has a label.
-        title: p.title ?? p.table ?? (p.kind === "query" ? "Query" : "Table"),
+        title:
+          p.title ??
+          p.table ??
+          (p.kind === "query"
+            ? i18n.t("tabs.queryFileName")
+            : i18n.t("tabs.tableFallback")),
         schema: p.schema ?? undefined,
         table: p.table ?? undefined,
         query: p.query ?? undefined,

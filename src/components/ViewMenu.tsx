@@ -86,7 +86,7 @@ export function ViewMenu() {
               togglePanel(p.id as PanelId);
             }}
           >
-            {p.title}
+            {t(p.i18nKey)}
           </DropdownMenuCheckboxItem>
         ))}
         <DropdownMenuItem
