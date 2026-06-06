@@ -1,6 +1,6 @@
 [package]
 name = "huginndb"
-version = "1.0.3"
+version = "1.0.4"
 description = "HuginnDB — minimal desktop database manager"
 authors = ["HuginnDB contributors"]
 edition = "2021"
