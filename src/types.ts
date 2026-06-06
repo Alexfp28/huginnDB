@@ -449,4 +449,6 @@ export interface StartupArgs {
   adhoc_username: string | null;
   adhoc_driver: string | null;
   adhoc_name: string | null;
+  /** Password from `--password`/`--pass`. In-memory only, never persisted. */
+  adhoc_password: string | null;
 }

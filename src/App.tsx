@@ -174,19 +174,23 @@ export default function App() {
     async function handleCliArgs() {
       try {
         const args = await api.getStartupArgs();
+        // A `--password` on the CLI is used in-memory only: passed straight to
+        // `connect`, never written to the keychain. `undefined` keeps the
+        // normal keychain / password-dialog flow.
+        const cliPassword = args.adhoc_password ?? undefined;
         if (args.connect_profile) {
           const target = args.connect_by_id
             ? profiles.find((p) => p.id === args.connect_profile)
             : profiles.find((p) => p.name === args.connect_profile);
           if (target) {
-            await connectProfile(target.id);
+            await connectProfile(target.id, cliPassword);
             await refreshSchema(target.id);
             setSelected(target.id);
           }
         } else if (args.adhoc_host) {
-          // Build a temporary in-memory profile. The empty id means the
-          // keychain has no stored password — the existing ConnectPasswordDialog
-          // flow will prompt the user on `connect`. We don't persist this.
+          // Build a temporary profile. Without a `--password` the keychain has
+          // no stored secret, so the existing ConnectPasswordDialog flow will
+          // prompt the user on `connect`.
           const adhocProfile: ConnectionProfile = {
             id: "",
             name: args.adhoc_name ?? `${args.adhoc_host}/${args.adhoc_database ?? ""}`,
@@ -198,10 +202,17 @@ export default function App() {
             username: args.adhoc_username ?? "",
             ssl: false,
           };
-          // Save the ad-hoc profile (without a password) so the user can
-          // see it in the list and connect via the normal password dialog.
-          await useConnections.getState().save(adhocProfile);
+          // Persist the ad-hoc profile (without a password) so it shows up in
+          // the list, then connect with the real id `save` returns.
+          const saved = await useConnections.getState().save(adhocProfile);
           await refreshConnections();
+          if (cliPassword) {
+            // With a CLI password we can auto-connect immediately; the password
+            // bypasses the keychain and is not persisted.
+            await connectProfile(saved.id, cliPassword);
+            await refreshSchema(saved.id);
+            setSelected(saved.id);
+          }
         }
       } catch {
         // Non-fatal: if the CLI arg profile doesn't exist or connect fails,
