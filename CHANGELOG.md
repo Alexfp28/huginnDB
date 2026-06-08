@@ -6,6 +6,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.8] — 2026-06-09
+
+### Added
+
+- **Configurable default database driver** (Settings → General). Used when a
+  connection is created without an explicit driver: a CLI launch without
+  `--driver`, and the initial driver of the "New connection" form. It defaults
+  to **"Ask each time"** — so a CLI ad-hoc launch (`--host …`) with no `--driver`
+  and no configured default now pops a driver picker (and nudges you to set a
+  default) instead of silently assuming PostgreSQL and mismatching a MySQL
+  server.
+
+### Changed
+
+- **`--driver` now accepts aliases and is case-insensitive** (`MySQL`, `MYSQL`,
+  `mariadb` → mysql; `postgresql`, `pg`, `psql` → postgres; `sqlite3` → sqlite).
+  An unrecognized value no longer silently falls back to PostgreSQL — it routes
+  to the driver picker.
+- **Connection failures caused by a mismatched driver now explain themselves.**
+  When a wire-protocol error indicates the wrong backend (e.g. the Postgres
+  driver reading a MySQL handshake — "Postgres protocol error … unknown
+  transaction status"), the error message now suggests switching the driver,
+  in the Console and in the connect dialogs.
+
 ## [1.0.7] — 2026-06-08
 
 ### Fixed
