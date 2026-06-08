@@ -6,6 +6,89 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.5] — 2026-06-08
+
+### Changed
+
+- **The connection dialog is now a master/detail manager** (same layout as the
+  preferences dialog): a left rail lists every saved connection with a live
+  "connected" dot and a "New connection" entry, and the right pane edits the
+  selected profile via the General / SSH-tunnel tabs. The footer carries Test,
+  Connect (save + open the pool), Delete (honoring `confirmDestructive`) and
+  Save. Opening from the sidebar's `+`/edit still works; connecting from the
+  manager focuses the connection in the main view. Import/export profiles live
+  in the manager header, and File → "Manage connections" now opens this manager
+  (focused on the current connection) instead of the old list-wrapper modal,
+  which has been removed.
+
+### Added
+
+- **Official database logos replace the driver initials.** Connection lists,
+  the file menu, the status-bar dropdown and the connection manager now show the
+  PostgreSQL / MySQL / SQLite brand marks (bundled locally, no CDN) on a light
+  tile so the darker logos stay legible on both themes.
+- **The app logo now tops the empty-workspace welcome screen**, above the
+  "huginndb — select or create a connection" hint.
+- **The active connection is now visible at a glance.** The status-bar
+  connections control shows the current connection's name and logo (instead of a
+  bare count), and both that dropdown and the File menu mark the connection in
+  focus with a check.
+- **Cell preview panel can be turned off.** A new `grid.cellPreview` preference
+  (Settings → Data grid) controls whether the floating value-preview panel
+  appears when a cell is selected. With it off, single-click stays pure
+  navigation; the heavyweight editor remains reachable via double-click and the
+  context menu. Defaults to on (the historical behaviour).
+- **`grid.truncateLongTextAt` is now exposed in Settings** and actually applied:
+  the grid caps a cell's rendered text at the configured number of characters
+  (0 disables) so a multi-MB value can't bloat the DOM. The full value is still
+  available in the preview/editor.
+
+### Fixed
+
+- **Several preferences were silent no-ops.** Audited every toggle and wired up
+  the ones that weren't being honored:
+  - `grid.nullDisplay` — the configured NULL string now renders in both the data
+    grid and the cell-preview panel (previously hard-coded `NULL`).
+  - `grid.zebraStripes` — alternating row backgrounds are applied (was ignored).
+  - `grid.stickyHeader` — the column header only pins when enabled (was always
+    sticky).
+  - `grid.defaultPageSize` — new table tabs open at the configured page size
+    (was hard-coded to 100); the page-size dropdown includes custom values.
+  - `ui.queryHistoryLimit` — the query-history ring buffer honors the configured
+    size (was hard-coded to 50).
+  - `ui.confirmDestructive` — turning it off now actually skips the delete
+    confirmations (delete connection, delete saved query, delete rows); the
+    type-the-name `DROP TABLE` guard intentionally stays regardless.
+- **Ctrl+S in the docked side editor didn't clear the unsaved-changes guard.**
+  When a cell was selected with the side panel open, the floating cell-preview
+  panel was the one catching Ctrl+S and persisting *its* stale (pre-edit) value,
+  so the side panel's edits weren't saved and its dirty baseline never reset —
+  moving to another cell then popped the discard-changes dialog. The side panel
+  now owns Ctrl+S (capture phase, taking precedence over the preview): it saves
+  its own buffer in place, resets the baseline, and keeps the panel open so you
+  can move on without the prompt.
+- **The Console detail editor ignored the editor preferences.** It now follows
+  the configured Monaco theme, font family and font size instead of the app
+  light/dark mode and a fixed font.
+- **CLI auto-connect did nothing for ad-hoc launches and failed silently.** The
+  startup-arg handler was gated on having at least one saved profile, so
+  `--host/--port/--database/--driver/--user/--password` launches were skipped
+  entirely on a profile-less machine; it also swallowed every error, so a
+  mistyped profile name or a failed connect produced no feedback. The handler
+  now runs once on boot regardless of the profile list, awaits a profile
+  refresh before matching `--connect-profile` by name/id, and reports failures
+  (profile not found, connect error, ad-hoc setup) in the Console panel. The
+  backend additionally echoes the parsed flags to stderr on launch (password
+  redacted) so a terminal launch can confirm the args arrived.
+- **SSH tunnel didn't fall back when the pinned local port was held with
+  exclusive access.** The bind-collision fallback only recognised `AddrInUse`;
+  on Windows a port held by another tunnel/socket opened for exclusive use — or
+  inside a reserved range (Hyper-V/WSL `netsh` reservations) — surfaces as
+  `WSAEACCES` (`PermissionDenied`), which slipped through and broke the
+  connection. The fallback now also covers `PermissionDenied` and
+  `AddrNotAvailable`, retrying on an OS-assigned port. The reassignment is
+  logged to the Console (not just stderr) so it isn't invisible.
+
 ## [1.0.4] — 2026-06-06
 
 ### Added
