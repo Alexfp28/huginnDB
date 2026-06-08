@@ -58,9 +58,20 @@ pub fn build_url(profile: &ConnectionProfile, password: &str, host: &str, port: 
             } else {
                 profile.database.as_str()
             };
+            // Make the SSL toggle explicit. With no `sslmode`, sqlx defaults
+            // to `prefer`, which still sends a Postgres SSLRequest and
+            // negotiates TLS — and that negotiation blows up against servers
+            // (or poolers) that don't speak it ("unexpected response from
+            // SSLRequest"). `disable` skips the SSLRequest entirely and goes
+            // straight to a plaintext startup, which is what an unchecked SSL
+            // box should mean.
             format!(
                 "postgres://{user}:{pwd}@{host}:{port}/{db}{ssl}",
-                ssl = if profile.ssl { "?sslmode=require" } else { "" },
+                ssl = if profile.ssl {
+                    "?sslmode=require"
+                } else {
+                    "?sslmode=disable"
+                },
             )
         }
         Driver::Mysql => {
@@ -72,12 +83,15 @@ pub fn build_url(profile: &ConnectionProfile, password: &str, host: &str, port: 
             } else {
                 format!("/{}", profile.database)
             };
+            // Same rationale as Postgres above: be explicit so an unchecked
+            // SSL box means "no TLS" instead of sqlx's `PREFERRED` default
+            // (which negotiates TLS and can trip the same way).
             format!(
                 "mysql://{user}:{pwd}@{host}:{port}{path}{ssl}",
                 ssl = if profile.ssl {
                     "?ssl-mode=REQUIRED"
                 } else {
-                    ""
+                    "?ssl-mode=DISABLED"
                 },
             )
         }

@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Connections with SSL off failed during the TLS negotiation** ("unexpected
+  response from SSLRequest"). With the SSL box unchecked the connection URL
+  carried no `sslmode`, so sqlx fell back to its `prefer`/`PREFERRED` default —
+  which still sends a Postgres `SSLRequest` (or negotiates MySQL TLS) and chokes
+  against servers or poolers that don't speak it. The SSL toggle is now
+  explicit: off → `sslmode=disable` / `ssl-mode=DISABLED` (straight to a
+  plaintext startup, no negotiation), on → `require` / `REQUIRED`. A server that
+  genuinely requires TLS now fails with a clear "enable SSL" error instead of a
+  cryptic handshake byte.
+
 ## [1.0.6] — 2026-06-08
 
 ### Fixed
