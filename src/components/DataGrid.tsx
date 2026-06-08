@@ -516,6 +516,14 @@ export function DataGrid({
   /** Default surface for the heavyweight editor (modal vs docked side panel).
    *  Subscribed as a primitive so the selector stays reference-stable. */
   const cellEditorMode = usePreferences((s) => s.prefs.ui.cellEditorMode);
+  // Grid display prefs, each subscribed as a primitive (gotcha #1).
+  const nullDisplay = usePreferences((s) => selectGridPrefs(s).nullDisplay);
+  const truncateLongTextAt = usePreferences(
+    (s) => selectGridPrefs(s).truncateLongTextAt,
+  );
+  const zebraStripes = usePreferences((s) => selectGridPrefs(s).zebraStripes);
+  const stickyHeader = usePreferences((s) => selectGridPrefs(s).stickyHeader);
+  const cellPreview = usePreferences((s) => selectGridPrefs(s).cellPreview);
 
   /**
    * Persisted grid "zoom" (HeidiSQL-style). A single px row-height drives
@@ -683,10 +691,17 @@ export function DataGrid({
             );
           }
           const isBit = bitColNames.has(col.name);
-          const display =
+          const rawDisplay =
             isBit && typeof v === "number"
               ? formatBitValue(v, bitDisplay)
               : formatValue(v);
+          // Cap the rendered string so a multi-MB cell can't bloat the DOM;
+          // the full value is still reachable via the cell preview / editor.
+          // `truncateLongTextAt <= 0` disables the cap.
+          const display =
+            truncateLongTextAt > 0 && rawDisplay.length > truncateLongTextAt
+              ? `${rawDisplay.slice(0, truncateLongTextAt)}…`
+              : rawDisplay;
           const isNumeric = numericColNames.has(col.name);
           return (
             <div className="flex max-w-md items-center gap-1">
@@ -696,7 +711,9 @@ export function DataGrid({
                 }`}
               >
                 {v === null ? (
-                  <span className="italic text-muted-foreground">NULL</span>
+                  <span className="italic text-muted-foreground">
+                    {nullDisplay}
+                  </span>
                 ) : (
                   display
                 )}
@@ -712,6 +729,8 @@ export function DataGrid({
       numericColNames,
       bitColNames,
       bitDisplay,
+      nullDisplay,
+      truncateLongTextAt,
       sortColumn,
       sortDesc,
       onSortChange,
@@ -905,7 +924,11 @@ export function DataGrid({
         onClick={() => setSelectedCell(null)}
       >
         <table className="w-full border-separate border-spacing-0 text-left">
-          <thead className="sticky top-0 z-10 bg-card">
+          <thead
+            className={
+              stickyHeader ? "sticky top-0 z-10 bg-card" : "bg-card"
+            }
+          >
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 <th
@@ -962,7 +985,9 @@ export function DataGrid({
                       ? "bg-blue-500/20"
                       : isSelected
                         ? "bg-blue-500/10"
-                        : "hover:bg-accent/30"
+                        : zebraStripes && i % 2 === 1
+                          ? "bg-muted/30 hover:bg-accent/30"
+                          : "hover:bg-accent/30"
                   }
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1284,8 +1309,10 @@ export function DataGrid({
         </table>
       </div>
 
-      {/* Compact cell preview panel */}
-      {selectedCell && (
+      {/* Compact cell preview panel — gated by the `cellPreview` grid pref.
+          When disabled, selecting a cell stays pure navigation (the heavy
+          editor is still reachable via double-click / context menu). */}
+      {cellPreview && selectedCell && (
         <CellPreview
           columnName={selectedCell.column.name}
           value={selectedCell.value}

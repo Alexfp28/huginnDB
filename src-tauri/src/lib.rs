@@ -77,6 +77,29 @@ fn parse_startup_args() -> StartupArgs {
             _ => {}
         }
     }
+    // Echo what we parsed to stderr when any flag was supplied. The user
+    // typically launches from a terminal, so this is the quickest way to
+    // confirm the args actually reached the app (and were spelled right)
+    // without opening devtools. The password is intentionally not logged.
+    let has_any = result.connect_profile.is_some()
+        || result.adhoc_host.is_some()
+        || result.adhoc_database.is_some()
+        || result.adhoc_username.is_some()
+        || result.adhoc_driver.is_some();
+    if has_any {
+        eprintln!(
+            "[cli] startup args: connect_profile={:?} by_id={} host={:?} port={:?} db={:?} user={:?} driver={:?} name={:?} password={}",
+            result.connect_profile,
+            result.connect_by_id,
+            result.adhoc_host,
+            result.adhoc_port,
+            result.adhoc_database,
+            result.adhoc_username,
+            result.adhoc_driver,
+            result.adhoc_name,
+            if result.adhoc_password.is_some() { "<provided>" } else { "<none>" },
+        );
+    }
     result
 }
 

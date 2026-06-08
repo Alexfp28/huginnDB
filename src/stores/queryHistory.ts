@@ -1,12 +1,13 @@
 /**
  * Persisted ring-buffer of the queries the user has run, ordered
- * newest-first. Capped at `QUERY_HISTORY_LIMIT` to keep localStorage
- * size bounded.
+ * newest-first. Capped at the user's `ui.queryHistoryLimit` preference
+ * (falling back to `QUERY_HISTORY_LIMIT`) to keep localStorage bounded.
  */
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { QUERY_HISTORY_LIMIT, STORAGE_KEYS } from "@/lib/constants";
+import { usePreferences } from "@/stores/preferences";
 import type { QueryHistoryEntry } from "@/types";
 
 interface HistoryState {
@@ -36,8 +37,11 @@ export const useQueryHistory = create<HistoryState>()(
             rowsAffected: entry.rowsAffected,
             error: entry.error,
           };
+          const limit =
+            usePreferences.getState().prefs.ui.queryHistoryLimit ||
+            QUERY_HISTORY_LIMIT;
           return {
-            entries: [e, ...s.entries].slice(0, QUERY_HISTORY_LIMIT),
+            entries: [e, ...s.entries].slice(0, limit),
           };
         }),
       clear: () => set({ entries: [] }),

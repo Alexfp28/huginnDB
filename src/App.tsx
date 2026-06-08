@@ -46,7 +46,8 @@ import { SavedQueriesPanel } from "@/components/SavedQueriesPanel";
 import { Console } from "@/components/Console";
 import { startLogBridge } from "@/lib/log-bridge";
 import { api } from "@/lib/tauri";
-import type { ConnectionProfile } from "@/types";
+import { useLogs } from "@/stores/logs";
+import type { ConnectionProfile, StartupArgs } from "@/types";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -165,63 +166,106 @@ export default function App() {
     void useUpdateStore.getState().checkOnLaunch();
   }, []);
 
-  // Handle command-line arguments once profiles have loaded. A ref prevents
-  // a second attempt if `profiles` changes again after the first run.
+  // Handle command-line arguments exactly once, on mount. Crucially this is
+  // NOT gated on `profiles` being non-empty: ad-hoc launches (`--host …`) must
+  // work on a machine with zero saved profiles, and the old guard silently
+  // skipped them. For the profile-by-name/id path we await a fresh
+  // `refreshConnections()` so the lookup sees the loaded list regardless of
+  // boot timing. Failures are surfaced in the Console panel instead of being
+  // swallowed — "nothing happened with no feedback" was the original bug.
   useEffect(() => {
-    if (cliArgsHandled.current || profiles.length === 0) return;
+    if (cliArgsHandled.current) return;
     cliArgsHandled.current = true;
 
+    /** Emit a visible Console entry for CLI diagnostics. */
+    const cliLog = (message: string, error?: string) =>
+      useLogs.getState().push({
+        id: -Date.now(),
+        timestamp_ms: Date.now(),
+        kind: "connection",
+        message: `[cli] ${message}`,
+        error,
+      });
+
     async function handleCliArgs() {
+      let args: StartupArgs;
       try {
-        const args = await api.getStartupArgs();
-        // A `--password` on the CLI is used in-memory only: passed straight to
-        // `connect`, never written to the keychain. `undefined` keeps the
-        // normal keychain / password-dialog flow.
-        const cliPassword = args.adhoc_password ?? undefined;
-        if (args.connect_profile) {
-          const target = args.connect_by_id
-            ? profiles.find((p) => p.id === args.connect_profile)
-            : profiles.find((p) => p.name === args.connect_profile);
-          if (target) {
-            await connectProfile(target.id, cliPassword);
-            await refreshSchema(target.id);
-            setSelected(target.id);
-          }
-        } else if (args.adhoc_host) {
-          // Build a temporary profile. Without a `--password` the keychain has
-          // no stored secret, so the existing ConnectPasswordDialog flow will
-          // prompt the user on `connect`.
-          const adhocProfile: ConnectionProfile = {
-            id: "",
-            name: args.adhoc_name ?? `${args.adhoc_host}/${args.adhoc_database ?? ""}`,
-            driver:
-              (args.adhoc_driver as ConnectionProfile["driver"] | null) ?? "postgres",
-            host: args.adhoc_host,
-            port: args.adhoc_port ?? 5432,
-            database: args.adhoc_database ?? "",
-            username: args.adhoc_username ?? "",
-            ssl: false,
-          };
-          // Persist the ad-hoc profile (without a password) so it shows up in
-          // the list, then connect with the real id `save` returns.
+        args = await api.getStartupArgs();
+      } catch (e) {
+        console.error("[cli] failed to read startup args", e);
+        return;
+      }
+      // A `--password` on the CLI is used in-memory only: passed straight to
+      // `connect`, never written to the keychain. `undefined` keeps the
+      // normal keychain / password-dialog flow.
+      const cliPassword = args.adhoc_password ?? undefined;
+
+      if (args.connect_profile) {
+        // Ensure the profile list is loaded before matching; the boot-time
+        // refresh may not have resolved yet on a cold start.
+        await refreshConnections();
+        const loaded = useConnections.getState().profiles;
+        const target = args.connect_by_id
+          ? loaded.find((p) => p.id === args.connect_profile)
+          : loaded.find((p) => p.name === args.connect_profile);
+        if (!target) {
+          cliLog(
+            `no profile matched ${
+              args.connect_by_id ? "id" : "name"
+            } "${args.connect_profile}"`,
+            "profile not found",
+          );
+          return;
+        }
+        try {
+          await connectProfile(target.id, cliPassword);
+          await refreshSchema(target.id);
+          setSelected(target.id);
+        } catch (e) {
+          cliLog(`failed to connect profile "${target.name}"`, String(e));
+        }
+        return;
+      }
+
+      if (args.adhoc_host) {
+        // Build a temporary profile. Without a `--password` the keychain has
+        // no stored secret, so the user finishes via the normal connect flow.
+        const adhocProfile: ConnectionProfile = {
+          id: "",
+          name: args.adhoc_name ?? `${args.adhoc_host}/${args.adhoc_database ?? ""}`,
+          driver:
+            (args.adhoc_driver as ConnectionProfile["driver"] | null) ?? "postgres",
+          host: args.adhoc_host,
+          port: args.adhoc_port ?? 5432,
+          database: args.adhoc_database ?? "",
+          username: args.adhoc_username ?? "",
+          ssl: false,
+        };
+        try {
           const saved = await useConnections.getState().save(adhocProfile);
           await refreshConnections();
+          // Select it either way so it's front-and-centre in the sidebar.
+          setSelected(saved.id);
           if (cliPassword) {
             // With a CLI password we can auto-connect immediately; the password
             // bypasses the keychain and is not persisted.
             await connectProfile(saved.id, cliPassword);
             await refreshSchema(saved.id);
-            setSelected(saved.id);
+          } else {
+            cliLog(
+              `ad-hoc profile "${saved.name}" created; no --password given, connect manually`,
+            );
           }
+        } catch (e) {
+          cliLog("failed to set up ad-hoc connection", String(e));
         }
-      } catch {
-        // Non-fatal: if the CLI arg profile doesn't exist or connect fails,
-        // the app just opens normally without auto-connecting.
+        return;
       }
     }
+
     void handleCliArgs();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles]);
+  }, []);
 
   // Subscribe to the Rust `huginndb://log` Tauri event so the Console
   // panel sees every SQL + connection event. Unlisten on unmount keeps

@@ -293,6 +293,25 @@ pub async fn connect(
     let opened = open_pool(&profile, &pw, ssh, known_hosts).await;
     match opened {
         Ok((pool, ssh_handle)) => {
+            // Surface the SSH tunnel's local-port fallback (see
+            // `db::ssh::open_tunnel`): if the user pinned a port that was
+            // unavailable, the tunnel transparently bound an OS-assigned one.
+            // Log it so the reassignment isn't invisible inside the GUI.
+            if let (Some(handle), Some(tunnel)) = (&ssh_handle, &profile.ssh_tunnel) {
+                if tunnel.local_port != 0 && handle.local_port != tunnel.local_port {
+                    log_connection(
+                        &app,
+                        &id,
+                        profile.driver,
+                        &format!(
+                            "connect: local port {} was unavailable; tunnel bound {} instead",
+                            tunnel.local_port, handle.local_port
+                        ),
+                        None,
+                        None,
+                    );
+                }
+            }
             state.connections.write().insert(
                 id.clone(),
                 ActivePool {
@@ -515,11 +534,14 @@ pub fn analyze_import_file(
         .profiles
         .iter()
         .filter_map(|ep| {
-            profiles.iter().find(|p| p.id == ep.profile.id).map(|existing| ImportConflict {
-                id: ep.profile.id.clone(),
-                existing_name: existing.name.clone(),
-                incoming_name: ep.profile.name.clone(),
-            })
+            profiles
+                .iter()
+                .find(|p| p.id == ep.profile.id)
+                .map(|existing| ImportConflict {
+                    id: ep.profile.id.clone(),
+                    existing_name: existing.name.clone(),
+                    incoming_name: ep.profile.name.clone(),
+                })
         })
         .collect();
 
@@ -553,7 +575,11 @@ pub async fn export_profiles(
     let profiles_snapshot: Vec<ConnectionProfile> = {
         let guard = state.profiles.read();
         match &profile_ids {
-            Some(ids) => guard.iter().filter(|p| ids.contains(&p.id)).cloned().collect(),
+            Some(ids) => guard
+                .iter()
+                .filter(|p| ids.contains(&p.id))
+                .cloned()
+                .collect(),
             None => guard.clone(),
         }
     };
@@ -574,11 +600,17 @@ pub async fn export_profiles(
                 .and_then(|acct| keychain::get_password(&acct).ok().flatten())
                 .map(|s| crate::transfer::encrypt_secret(&s, pp))
                 .transpose()?;
-            Some(ExportedSecret { db_password, ssh_secret })
+            Some(ExportedSecret {
+                db_password,
+                ssh_secret,
+            })
         } else {
             None
         };
-        exported_profiles.push(ExportedProfile { profile: profile.clone(), secrets });
+        exported_profiles.push(ExportedProfile {
+            profile: profile.clone(),
+            secrets,
+        });
     }
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -711,7 +743,9 @@ pub fn import_profiles(
 
         let renamed = final_name != original_name;
         if renamed {
-            result.renamed.push((original_name.clone(), final_name.clone()));
+            result
+                .renamed
+                .push((original_name.clone(), final_name.clone()));
         }
 
         let mut new_profile = ep.profile.clone();
