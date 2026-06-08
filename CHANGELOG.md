@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.6] — 2026-06-08
+
 ### Fixed
 
 - **CLI `--flag=value` syntax was ignored.** The startup-arg parser only
