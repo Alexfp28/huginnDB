@@ -290,9 +290,23 @@ pub async fn connect(
         None,
         None,
     );
+    // Clone the secrets before `open_pool` consumes `ssh`, so we can stash
+    // them for child pools (open_database_view) on success.
+    let ssh_for_cache = ssh.clone();
     let opened = open_pool(&profile, &pw, ssh, known_hosts).await;
     match opened {
         Ok((pool, ssh_handle)) => {
+            // Cache the secrets used for this profile, session-only, so a
+            // child pool opened for a specific database doesn't re-resolve
+            // from the keychain — which fails for a password supplied via the
+            // CLI / connect dialog and never persisted there.
+            state.session_secrets.write().insert(
+                id.clone(),
+                crate::state::SessionSecret {
+                    password: Some(pw.clone()),
+                    ssh_secret: ssh_for_cache,
+                },
+            );
             // Surface the SSH tunnel's local-port fallback (see
             // `db::ssh::open_tunnel`): if the user pinned a port that was
             // unavailable, the tunnel transparently bound an OS-assigned one.
@@ -342,6 +356,9 @@ pub async fn connect(
 /// sessions don't leak when the parent connection is closed.
 #[tauri::command]
 pub fn disconnect(app: AppHandle, state: State<'_, AppState>, id: String) -> AppResult<()> {
+    // Drop the session-cached secret for this profile (children reuse the
+    // parent's entry, so a single remove covers them).
+    state.session_secrets.write().remove(&id);
     let removed = state.connections.write().remove(&id);
     // Sweep synthetic children. We collect ids first to avoid holding the
     // write lock while iterating (remove() takes &mut self).
@@ -427,8 +444,18 @@ pub async fn open_database_view(
     let mut child = parent.clone();
     child.database = database.clone();
 
-    let pw = resolve_password(&parent)?;
-    let ssh = resolve_ssh_secret(&parent)?;
+    // Prefer the session-cached secrets from the parent's `connect` (they may
+    // have come from the CLI / dialog and never touched the keychain); only
+    // fall back to the keychain when nothing was cached.
+    let cached = state.session_secrets.read().get(&parent_id).cloned();
+    let pw = match cached.as_ref().and_then(|s| s.password.clone()) {
+        Some(p) => p,
+        None => resolve_password(&parent)?,
+    };
+    let ssh = match cached.as_ref().and_then(|s| s.ssh_secret.clone()) {
+        Some(s) => Some(s),
+        None => resolve_ssh_secret(&parent)?,
+    };
     let known_hosts = state.known_hosts.clone();
     let start = Instant::now();
     log_connection(

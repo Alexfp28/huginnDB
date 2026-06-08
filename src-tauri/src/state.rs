@@ -215,10 +215,22 @@ pub struct StartupArgs {
     pub adhoc_password: Option<String>,
 }
 
+/// In-memory, session-only secrets captured when a connection is opened,
+/// keyed by profile id. Lets child pools (`open_database_view`) reuse a
+/// password / SSH secret that was supplied via the CLI or the connect dialog
+/// and deliberately never written to the OS keychain. Cleared on disconnect.
+#[derive(Clone, Default)]
+pub struct SessionSecret {
+    pub password: Option<String>,
+    pub ssh_secret: Option<String>,
+}
+
 /// Top-level state managed by Tauri.
 pub struct AppState {
     /// Pools that have been connected this session.
     pub connections: Arc<RwLock<ActiveConnections>>,
+    /// Session-only secrets keyed by profile id (see [`SessionSecret`]).
+    pub session_secrets: Arc<RwLock<HashMap<String, SessionSecret>>>,
     /// Persisted profiles loaded from disk.
     pub profiles: Arc<RwLock<Vec<ConnectionProfile>>>,
     /// User-tunable preferences loaded from `prefs.json`.
@@ -248,6 +260,7 @@ impl AppState {
         let tab_state = crate::tab_state::load_tab_state();
         Self {
             connections: Arc::new(RwLock::new(ActiveConnections::default())),
+            session_secrets: Arc::new(RwLock::new(HashMap::new())),
             profiles: Arc::new(RwLock::new(profiles)),
             prefs: Arc::new(RwLock::new(prefs)),
             tab_state: Arc::new(RwLock::new(tab_state)),
