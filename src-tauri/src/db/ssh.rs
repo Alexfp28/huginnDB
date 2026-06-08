@@ -49,6 +49,15 @@ fn ssh_err(label: &str, e: impl std::fmt::Display) -> AppError {
     AppError::Ssh(format!("{label}: {e}"))
 }
 
+/// Whether a `TcpListener::bind` error on a *pinned* local port means the
+/// port simply can't be used (so we should fall back to an ephemeral one)
+/// rather than a fatal problem. See the call site for the per-platform
+/// `ErrorKind` rationale.
+fn is_port_unavailable(kind: std::io::ErrorKind) -> bool {
+    use std::io::ErrorKind::*;
+    matches!(kind, AddrInUse | PermissionDenied | AddrNotAvailable)
+}
+
 /// Active SSH tunnel. Drop the handle to tear the tunnel down.
 pub struct SshTunnelHandle {
     /// Local TCP port the tunnel is listening on. When the caller asked
@@ -215,18 +224,29 @@ pub async fn open_tunnel(
     // OS; we read the actual port back via `local_addr()`.
     //
     // If the user pinned a fixed `local_port` and something else already holds
-    // it (e.g. another SSH tunnel the user opened by hand on the same port),
-    // the bind fails with `AddrInUse` and the whole connection would break.
-    // Rather than surface a raw OS error, fall back to an ephemeral port: the
-    // pool is pointed at the *bound* port we return on the handle, so swapping
-    // the local port at runtime is transparent. The saved profile is left
-    // untouched — the override only lasts for this tunnel's lifetime.
+    // it (e.g. another SSH tunnel the user opened by hand, or an unrelated
+    // service on the same port), the bind fails and the whole connection would
+    // break. Rather than surface a raw OS error, fall back to an ephemeral
+    // port: the pool is pointed at the *bound* port we return on the handle,
+    // so swapping the local port at runtime is transparent. The saved profile
+    // is left untouched — the override only lasts for this tunnel's lifetime.
+    //
+    // The conflict surfaces as different `ErrorKind`s across platforms:
+    //   * `AddrInUse`        — the common case (POSIX `EADDRINUSE`, and a
+    //     plain Windows `WSAEADDRINUSE`).
+    //   * `PermissionDenied` — Windows returns `WSAEACCES` when the port is
+    //     held by a socket opened with exclusive access, or sits inside a
+    //     reserved/excluded range (e.g. Hyper-V / WSL `netsh` reservations).
+    //   * `AddrNotAvailable` — occasionally seen for excluded ranges too.
+    // All three mean "this specific port won't work"; for a pinned port that
+    // is exactly when we want to retry on an OS-assigned one.
     let listener = match TcpListener::bind(("127.0.0.1", tunnel.local_port)).await {
         Ok(l) => l,
-        Err(e) if tunnel.local_port != 0 && e.kind() == std::io::ErrorKind::AddrInUse => {
+        Err(e) if tunnel.local_port != 0 && is_port_unavailable(e.kind()) => {
             eprintln!(
-                "[ssh] local port {} is already in use, falling back to an ephemeral port",
-                tunnel.local_port
+                "[ssh] local port {} unavailable ({:?}); falling back to an ephemeral port",
+                tunnel.local_port,
+                e.kind()
             );
             TcpListener::bind(("127.0.0.1", 0))
                 .await
