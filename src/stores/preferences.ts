@@ -60,6 +60,7 @@ const DEFAULT_PREFS: Preferences = {
     schemaTableMetric: "none",
     language: "en",
     cellEditorMode: "modal",
+    defaultDriver: null,
   },
 };
 

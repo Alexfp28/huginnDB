@@ -138,6 +138,11 @@
     "connect": "Connect",
     "connecting": "Connecting…"
   },
+  "adhocDriver": {
+    "title": "Which database driver?",
+    "description": "\"{{name}}\" was launched without --driver and no default driver is set. Pick the backend to connect with.",
+    "note": "Tip: set a default driver in Settings → General to skip this next time."
+  },
   "schema": {
     "loading": "Loading schema…",
     "title": "Schema",
@@ -353,6 +358,11 @@
       "about": { "label": "About", "desc": "Version & paths" }
     },
     "general": {
+      "defaultDriver": {
+        "label": "Default database driver",
+        "desc": "Driver used when a connection is created without picking one — CLI launches without --driver, and the New connection form. \"Ask each time\" prompts on CLI launches instead of guessing.",
+        "ask": "Ask each time"
+      },
       "confirmDestructive": {
         "label": "Confirm destructive actions",
         "desc": "Ask for confirmation before deleting rows, dropping tables, or other irreversible operations."

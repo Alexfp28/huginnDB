@@ -88,6 +88,11 @@ pub struct UiPrefs {
     /// from an inline edit / preview. One of "modal" | "side". Stringly-typed;
     /// the frontend owns the enum.
     pub cell_editor_mode: String,
+    /// Driver used when a connection is created without an explicit choice.
+    /// One of "postgres" | "mysql" | "sqlite", or `None` (not configured) —
+    /// in which case the CLI prompts for the driver instead of guessing.
+    /// Stringly-typed; the frontend owns the enum.
+    pub default_driver: Option<String>,
 }
 
 impl Default for Preferences {
@@ -140,6 +145,7 @@ impl Default for UiPrefs {
             schema_table_metric: "none".into(),
             language: "en".into(),
             cell_editor_mode: "modal".into(),
+            default_driver: None,
         }
     }
 }

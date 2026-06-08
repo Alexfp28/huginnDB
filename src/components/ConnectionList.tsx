@@ -17,6 +17,7 @@ import { DriverBadge } from "@/components/DriverBadge";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/tauri";
 import { confirmDestructive } from "@/lib/confirmDestructive";
+import { driverMismatchHint } from "@/lib/driver";
 import type { ConnectionProfile } from "@/types";
 
 export function ConnectionList({
@@ -51,7 +52,12 @@ export function ConnectionList({
       if (msg.includes("no stored password for keychain account")) {
         setPwPromptProfile(p);
       } else {
-        alert(t("connections.connectFailed", { message: msg }));
+        const hint = driverMismatchHint(msg);
+        alert(
+          t("connections.connectFailed", {
+            message: hint ? `${msg} — ${hint}` : msg,
+          }),
+        );
       }
     }
   }

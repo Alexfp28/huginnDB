@@ -18,8 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePreferences, selectUiPrefs } from "@/stores/preferences";
-import type { AppLanguage, CellEditorMode } from "@/types";
+import type { AppLanguage, CellEditorMode, Driver } from "@/types";
 import { PrefRow } from "./PrefRow";
+
+/** Sentinel for the "not configured / ask each time" default-driver option,
+ *  since a Radix Select item can't carry a `null` value. */
+const DRIVER_ASK = "ask";
 
 export function GeneralSection() {
   const ui = usePreferences(selectUiPrefs);
@@ -45,6 +49,38 @@ export function GeneralSection() {
             </SelectItem>
             <SelectItem value="es" className="text-xs">
               {t("common.languageSpanish")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </PrefRow>
+
+      <PrefRow
+        label={t("settings.general.defaultDriver.label")}
+        description={t("settings.general.defaultDriver.desc")}
+      >
+        <Select
+          value={ui.defaultDriver ?? DRIVER_ASK}
+          onValueChange={(v) =>
+            updateUi({
+              defaultDriver: v === DRIVER_ASK ? null : (v as Driver),
+            })
+          }
+        >
+          <SelectTrigger className="h-8 w-40 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={DRIVER_ASK} className="text-xs">
+              {t("settings.general.defaultDriver.ask")}
+            </SelectItem>
+            <SelectItem value="postgres" className="text-xs">
+              PostgreSQL
+            </SelectItem>
+            <SelectItem value="mysql" className="text-xs">
+              MySQL
+            </SelectItem>
+            <SelectItem value="sqlite" className="text-xs">
+              SQLite
             </SelectItem>
           </SelectContent>
         </Select>

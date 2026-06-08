@@ -138,6 +138,11 @@
     "connect": "Conectar",
     "connecting": "Conectando…"
   },
+  "adhocDriver": {
+    "title": "¿Qué driver de base de datos?",
+    "description": "\"{{name}}\" se lanzó sin --driver y no hay un driver por defecto configurado. Elige el motor con el que conectar.",
+    "note": "Consejo: configura un driver por defecto en Ajustes → General para saltarte esto la próxima vez."
+  },
   "schema": {
     "loading": "Cargando esquema…",
     "title": "Esquema",
@@ -353,6 +358,11 @@
       "about": { "label": "Acerca de", "desc": "Versión y rutas" }
     },
     "general": {
+      "defaultDriver": {
+        "label": "Driver de base de datos por defecto",
+        "desc": "Driver usado al crear una conexión sin elegir uno — lanzamientos por CLI sin --driver y el formulario de Nueva conexión. \"Preguntar cada vez\" pide el driver en los lanzamientos por CLI en vez de adivinarlo.",
+        "ask": "Preguntar cada vez"
+      },
       "confirmDestructive": {
         "label": "Confirmar acciones destructivas",
         "desc": "Pedir confirmación antes de borrar filas, eliminar tablas u otras operaciones irreversibles."

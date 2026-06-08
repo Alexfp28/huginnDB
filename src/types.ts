@@ -325,6 +325,13 @@ export interface UiPrefs {
   /** Default surface for the heavyweight cell editor when escalated from an
    *  inline edit / preview. */
   cellEditorMode: CellEditorMode;
+  /**
+   * Driver used when a connection is created without an explicit choice —
+   * the CLI ad-hoc path when `--driver` is omitted, and the initial driver
+   * of the "New connection" form. `null` means "not configured": the CLI
+   * then prompts for the driver instead of guessing.
+   */
+  defaultDriver: Driver | null;
 }
 
 export type CellEditorMode = "modal" | "side";

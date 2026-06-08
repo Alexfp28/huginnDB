@@ -10,7 +10,7 @@
  * wipes it back to the default.
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "dockview-react/dist/styles/dockview.css";
 import {
   DockviewReact,
@@ -47,7 +47,10 @@ import { Console } from "@/components/Console";
 import { startLogBridge } from "@/lib/log-bridge";
 import { api } from "@/lib/tauri";
 import { useLogs } from "@/stores/logs";
-import type { ConnectionProfile, StartupArgs } from "@/types";
+import { normalizeDriver, driverMismatchHint } from "@/lib/driver";
+import { DEFAULT_PORTS } from "@/lib/constants";
+import { AdHocDriverDialog } from "@/components/AdHocDriverDialog";
+import type { ConnectionProfile, Driver, StartupArgs } from "@/types";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -120,6 +123,18 @@ const COMPONENTS: Record<
 
 // ---------------------------------------------------------------------------
 
+/** Ad-hoc connection params staged while we prompt the user for a driver
+ *  (CLI launch without `--driver` and no configured default). */
+interface PendingAdhoc {
+  name: string;
+  host: string;
+  port?: number;
+  database: string;
+  username: string;
+  ssl: boolean;
+  password?: string;
+}
+
 export default function App() {
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
@@ -129,6 +144,58 @@ export default function App() {
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
   const cliArgsHandled = useRef(false);
+  /** Set when a CLI ad-hoc launch has no `--driver` and no configured default
+   *  — opens the driver picker; the params resume once the user chooses. */
+  const [driverPrompt, setDriverPrompt] = useState<PendingAdhoc | null>(null);
+
+  /** Emit a visible Console entry for CLI diagnostics. */
+  const cliLog = useCallback((message: string, error?: string) => {
+    useLogs.getState().push({
+      id: -Date.now(),
+      timestamp_ms: Date.now(),
+      kind: "connection",
+      message: `[cli] ${message}`,
+      error,
+    });
+  }, []);
+
+  /** Create the ad-hoc profile with a now-known driver, then connect when a
+   *  password was supplied. Shared by the CLI path and the driver picker. */
+  const createAndConnectAdhoc = useCallback(
+    async (p: PendingAdhoc, driver: Driver) => {
+      const profile: ConnectionProfile = {
+        id: "",
+        name: p.name,
+        driver,
+        host: p.host,
+        port: p.port ?? DEFAULT_PORTS[driver],
+        database: p.database,
+        username: p.username,
+        ssl: p.ssl,
+      };
+      try {
+        const saved = await useConnections.getState().save(profile);
+        await refreshConnections();
+        setSelected(saved.id);
+        if (p.password) {
+          await connectProfile(saved.id, p.password);
+          await refreshSchema(saved.id);
+        } else {
+          cliLog(
+            `ad-hoc profile "${saved.name}" created; no --password given, connect manually`,
+          );
+        }
+      } catch (e) {
+        const err = String(e);
+        const hint = driverMismatchHint(err);
+        cliLog(
+          `failed to set up ad-hoc connection${hint ? ` — ${hint}` : ""}`,
+          err,
+        );
+      }
+    },
+    [cliLog, connectProfile, refreshConnections, refreshSchema, setSelected],
+  );
   const activeTheme = useThemeStore(selectActiveTheme);
   const setMode = useThemeStore((s) => s.setActiveMode);
   const hydratePreferences = usePreferences((s) => s.hydrate);
@@ -177,16 +244,6 @@ export default function App() {
     if (cliArgsHandled.current) return;
     cliArgsHandled.current = true;
 
-    /** Emit a visible Console entry for CLI diagnostics. */
-    const cliLog = (message: string, error?: string) =>
-      useLogs.getState().push({
-        id: -Date.now(),
-        timestamp_ms: Date.now(),
-        kind: "connection",
-        message: `[cli] ${message}`,
-        error,
-      });
-
     async function handleCliArgs() {
       let args: StartupArgs;
       try {
@@ -222,42 +279,43 @@ export default function App() {
           await refreshSchema(target.id);
           setSelected(target.id);
         } catch (e) {
-          cliLog(`failed to connect profile "${target.name}"`, String(e));
+          const err = String(e);
+          const hint = driverMismatchHint(err);
+          cliLog(
+            `failed to connect profile "${target.name}"${
+              hint ? ` — ${hint}` : ""
+            }`,
+            err,
+          );
         }
         return;
       }
 
       if (args.adhoc_host) {
-        // Build a temporary profile. Without a `--password` the keychain has
-        // no stored secret, so the user finishes via the normal connect flow.
-        const adhocProfile: ConnectionProfile = {
-          id: "",
+        const pending: PendingAdhoc = {
           name: args.adhoc_name ?? `${args.adhoc_host}/${args.adhoc_database ?? ""}`,
-          driver:
-            (args.adhoc_driver as ConnectionProfile["driver"] | null) ?? "postgres",
           host: args.adhoc_host,
-          port: args.adhoc_port ?? 5432,
+          port: args.adhoc_port ?? undefined,
           database: args.adhoc_database ?? "",
           username: args.adhoc_username ?? "",
           ssl: false,
+          password: cliPassword,
         };
-        try {
-          const saved = await useConnections.getState().save(adhocProfile);
-          await refreshConnections();
-          // Select it either way so it's front-and-centre in the sidebar.
-          setSelected(saved.id);
-          if (cliPassword) {
-            // With a CLI password we can auto-connect immediately; the password
-            // bypasses the keychain and is not persisted.
-            await connectProfile(saved.id, cliPassword);
-            await refreshSchema(saved.id);
-          } else {
-            cliLog(
-              `ad-hoc profile "${saved.name}" created; no --password given, connect manually`,
-            );
-          }
-        } catch (e) {
-          cliLog("failed to set up ad-hoc connection", String(e));
+        // Resolve the driver: an explicit `--driver` wins, then the configured
+        // default; if neither, prompt the user (and nudge them to set a default
+        // in Preferences) rather than silently guessing Postgres.
+        const explicit = normalizeDriver(args.adhoc_driver);
+        if (args.adhoc_driver && !explicit) {
+          cliLog(
+            `unrecognized --driver "${args.adhoc_driver}"; asking which to use`,
+          );
+        }
+        const configured = usePreferences.getState().prefs.ui.defaultDriver;
+        const driver = explicit ?? configured ?? null;
+        if (driver) {
+          await createAndConnectAdhoc(pending, driver);
+        } else {
+          setDriverPrompt(pending);
         }
         return;
       }
@@ -427,6 +485,16 @@ export default function App() {
         <StatusBar />
       </div>
       <CommandPalette />
+      <AdHocDriverDialog
+        open={driverPrompt !== null}
+        connectionName={driverPrompt?.name ?? ""}
+        onPick={(driver) => {
+          const pending = driverPrompt;
+          setDriverPrompt(null);
+          if (pending) void createAndConnectAdhoc(pending, driver);
+        }}
+        onCancel={() => setDriverPrompt(null)}
+      />
       <Toaster
         position="bottom-right"
         theme={activeTheme.mode === "dark" ? "dark" : "light"}

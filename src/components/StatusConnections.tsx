@@ -24,6 +24,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
 import { DriverBadge } from "@/components/DriverBadge";
+import { driverMismatchHint } from "@/lib/driver";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
 
@@ -72,7 +73,9 @@ export function StatusConnections() {
       // Same behaviour as the FileMenu: a profile that needs an
       // interactively-typed password surfaces the failure rather than
       // silently doing nothing.
-      alert(`Connect failed: ${String(e)}`);
+      const msg = String(e);
+      const hint = driverMismatchHint(msg);
+      alert(`Connect failed: ${hint ? `${msg} — ${hint}` : msg}`);
     }
   }
 

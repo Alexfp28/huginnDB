@@ -44,6 +44,7 @@ import { ConnectionDialog } from "@/components/ConnectionDialog";
 import { ExportProfilesDialog } from "@/components/ExportProfilesDialog";
 import { ImportProfilesDialog } from "@/components/ImportProfilesDialog";
 import { DriverBadge } from "@/components/DriverBadge";
+import { driverMismatchHint } from "@/lib/driver";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
 
@@ -82,7 +83,9 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
       await refreshSchema(p.id);
       onSelect(p.id);
     } catch (e) {
-      alert(`Connect failed: ${String(e)}`);
+      const msg = String(e);
+      const hint = driverMismatchHint(msg);
+      alert(`Connect failed: ${hint ? `${msg} — ${hint}` : msg}`);
     }
   }
 

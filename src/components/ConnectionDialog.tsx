@@ -60,6 +60,8 @@ import type {
 } from "@/types";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
+import { usePreferences } from "@/stores/preferences";
+import { driverMismatchHint } from "@/lib/driver";
 
 interface Props {
   open: boolean;
@@ -178,10 +180,13 @@ export function ConnectionDialog({
       setSshSecret("");
       setTrustedFingerprint(null);
     } else {
+      // New draft: start from the configured default driver (if any) so a
+      // shop that's MySQL-first doesn't have to switch the dropdown every time.
+      const def = usePreferences.getState().prefs.ui.defaultDriver ?? "postgres";
       setName("");
-      setDriver("postgres");
+      setDriver(def);
       setHost("localhost");
-      setPort(DEFAULT_PORTS.postgres);
+      setPort(DEFAULT_PORTS[def]);
       setDatabase("");
       setUsername("");
       setPassword("");
@@ -301,7 +306,12 @@ export function ConnectionDialog({
       onConnected?.(saved.id);
       onOpenChange(false);
     } catch (e) {
-      setTestStatus({ kind: "error", message: String(e) });
+      const err = String(e);
+      const hint = driverMismatchHint(err);
+      setTestStatus({
+        kind: "error",
+        message: hint ? `${err} — ${hint}` : err,
+      });
     } finally {
       setConnecting(false);
     }
