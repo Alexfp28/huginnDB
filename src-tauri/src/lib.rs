@@ -36,47 +36,7 @@ use state::{AppState, StartupArgs};
 /// extra metadata without breaking the app.
 fn parse_startup_args() -> StartupArgs {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let mut result = StartupArgs::default();
-    let mut iter = args.iter().peekable();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--connect-profile" => {
-                result.connect_profile = iter.next().cloned();
-            }
-            "--connect-profile-id" => {
-                result.connect_profile = iter.next().cloned();
-                result.connect_by_id = true;
-            }
-            "--host" => {
-                result.adhoc_host = iter.next().cloned();
-            }
-            "--port" => {
-                result.adhoc_port = iter.next().and_then(|v| v.parse().ok());
-            }
-            "--database" => {
-                result.adhoc_database = iter.next().cloned();
-            }
-            // `--user` is an alias for `--username` — most CLI database tools
-            // (psql, mysql) spell it `--user`/`-u`, so we accept both.
-            "--username" | "--user" => {
-                result.adhoc_username = iter.next().cloned();
-            }
-            // The password is opt-in via the CLI and lives only in memory for
-            // this launch — it is passed straight to `connect` and never
-            // written to the OS keychain. Works for both `--connect-profile`
-            // (overrides the stored password) and ad-hoc connections.
-            "--password" | "--pass" => {
-                result.adhoc_password = iter.next().cloned();
-            }
-            "--driver" => {
-                result.adhoc_driver = iter.next().cloned();
-            }
-            "--name" => {
-                result.adhoc_name = iter.next().cloned();
-            }
-            _ => {}
-        }
-    }
+    let result = parse_args(&args);
     // Echo what we parsed to stderr when any flag was supplied. The user
     // typically launches from a terminal, so this is the quickest way to
     // confirm the args actually reached the app (and were spelled right)
@@ -101,6 +61,123 @@ fn parse_startup_args() -> StartupArgs {
         );
     }
     result
+}
+
+/// Pure arg-parser over an explicit slice (so it's unit-testable without
+/// touching the process environment).
+fn parse_args(args: &[String]) -> StartupArgs {
+    let mut result = StartupArgs::default();
+    let mut iter = args.iter().peekable();
+    while let Some(raw) = iter.next() {
+        // Accept both `--flag value` and `--flag=value`. We split on the FIRST
+        // `=` so a value that itself contains `=` (e.g. a password) survives;
+        // when there's no inline value we fall back to the next token. Without
+        // this, `--password=secret` never matched `"--password"` and the
+        // password was silently dropped.
+        let (flag, inline) = match raw.split_once('=') {
+            Some((f, v)) => (f, Some(v.to_string())),
+            None => (raw.as_str(), None),
+        };
+        // Resolve a value: prefer the inline `=value`, else consume the next
+        // token. Each arm calls this at most once, so moving `inline` is fine.
+        let value = move |iter: &mut std::iter::Peekable<std::slice::Iter<'_, String>>| {
+            inline.or_else(|| iter.next().cloned())
+        };
+        match flag {
+            "--connect-profile" => {
+                result.connect_profile = value(&mut iter);
+            }
+            "--connect-profile-id" => {
+                result.connect_profile = value(&mut iter);
+                result.connect_by_id = true;
+            }
+            "--host" => {
+                result.adhoc_host = value(&mut iter);
+            }
+            "--port" => {
+                result.adhoc_port = value(&mut iter).and_then(|v| v.parse().ok());
+            }
+            "--database" => {
+                result.adhoc_database = value(&mut iter);
+            }
+            // `--user` is an alias for `--username` — most CLI database tools
+            // (psql, mysql) spell it `--user`/`-u`, so we accept both.
+            "--username" | "--user" => {
+                result.adhoc_username = value(&mut iter);
+            }
+            // The password is opt-in via the CLI and lives only in memory for
+            // this launch — it is passed straight to `connect` and never
+            // written to the OS keychain. Works for both `--connect-profile`
+            // (overrides the stored password) and ad-hoc connections.
+            "--password" | "--pass" => {
+                result.adhoc_password = value(&mut iter);
+            }
+            "--driver" => {
+                result.adhoc_driver = value(&mut iter);
+            }
+            "--name" => {
+                result.adhoc_name = value(&mut iter);
+            }
+            _ => {}
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::parse_args;
+
+    fn v(args: &[&str]) -> Vec<String> {
+        args.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn equals_form_is_accepted() {
+        // The original bug: `--password=secret` (and friends) never matched
+        // and the value was silently dropped.
+        let a = parse_args(&v(&[
+            "--host=db.example.com",
+            "--port=46005",
+            "--database=iMesPyme",
+            "--username=ITB_industria",
+            "--password=ITBCastellon",
+        ]));
+        assert_eq!(a.adhoc_host.as_deref(), Some("db.example.com"));
+        assert_eq!(a.adhoc_port, Some(46005));
+        assert_eq!(a.adhoc_database.as_deref(), Some("iMesPyme"));
+        assert_eq!(a.adhoc_username.as_deref(), Some("ITB_industria"));
+        assert_eq!(a.adhoc_password.as_deref(), Some("ITBCastellon"));
+    }
+
+    #[test]
+    fn space_form_still_works_and_user_alias() {
+        let a = parse_args(&v(&[
+            "--host",
+            "localhost",
+            "--user",
+            "root",
+            "--pass",
+            "hunter2",
+        ]));
+        assert_eq!(a.adhoc_host.as_deref(), Some("localhost"));
+        assert_eq!(a.adhoc_username.as_deref(), Some("root"));
+        assert_eq!(a.adhoc_password.as_deref(), Some("hunter2"));
+    }
+
+    #[test]
+    fn password_may_contain_equals() {
+        // split_once('=') must only split on the first '='.
+        let a = parse_args(&v(&["--password=a=b=c"]));
+        assert_eq!(a.adhoc_password.as_deref(), Some("a=b=c"));
+    }
+
+    #[test]
+    fn connect_profile_id_sets_flag() {
+        let a = parse_args(&v(&["--connect-profile-id=abc-123"]));
+        assert_eq!(a.connect_profile.as_deref(), Some("abc-123"));
+        assert!(a.connect_by_id);
+    }
 }
 
 /// Entry point invoked from `main.rs`.

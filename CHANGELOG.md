@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **CLI `--flag=value` syntax was ignored.** The startup-arg parser only
+  accepted the space-separated form (`--password secret`); the equals form
+  (`--password=secret`) didn't match the flag and the value was silently
+  dropped — so an ad-hoc launch like
+  `huginndb.exe --host … --password=…` created the profile but reported "no
+  --password given". The parser now accepts both forms for every flag
+  (splitting on the first `=` so values containing `=` survive), with unit
+  tests covering both spellings.
+
 ## [1.0.5] — 2026-06-08
 
 ### Changed
