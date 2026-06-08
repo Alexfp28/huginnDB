@@ -14,6 +14,7 @@ import { useEffect, useMemo } from "react";
 import { X, Maximize2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { detectLanguage, tryFormat } from "@/lib/detectContentType";
+import { usePreferences, selectGridPrefs } from "@/stores/preferences";
 import { cn } from "@/lib/utils";
 import type { CellValue } from "@/types";
 
@@ -89,6 +90,7 @@ export function CellPreview({
   }, [onClose, onFullscreen, onSave, onSetNull, rawText]);
 
   const { t } = useTranslation();
+  const nullDisplay = usePreferences((s) => selectGridPrefs(s).nullDisplay);
   const isNull = value === null || value === undefined;
 
   return (
@@ -124,7 +126,7 @@ export function CellPreview({
       <div className="max-h-48 overflow-auto p-3">
         {isNull ? (
           <span className="font-mono text-xs italic text-muted-foreground">
-            NULL
+            {nullDisplay}
           </span>
         ) : (
           <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">

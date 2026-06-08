@@ -59,6 +59,10 @@ pub struct GridPrefs {
     pub zebra_stripes: bool,
     pub sticky_header: bool,
     pub default_page_size: u32,
+    /// Whether the floating cell-value preview panel appears when a cell is
+    /// selected in the data grid. Defaults to `true` (the historical
+    /// behaviour); turning it off keeps single-click as pure navigation.
+    pub cell_preview: bool,
     /// How MySQL `BIT` columns are rendered. One of "true_false" | "zero_one".
     /// Stringly-typed; the backend always ships BIT as a number and the
     /// frontend grid maps it to the chosen representation, so toggling this
@@ -121,6 +125,7 @@ impl Default for GridPrefs {
             zebra_stripes: true,
             sticky_header: true,
             default_page_size: 100,
+            cell_preview: true,
             bit_display: "true_false".into(),
         }
     }

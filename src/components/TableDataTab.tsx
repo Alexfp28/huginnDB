@@ -53,7 +53,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from "@/lib/constants";
+import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
 
 interface Props {
   /** The owning tab's id — used to scope the grid-selection report. */
@@ -145,7 +145,22 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  // Seed the page size from the user's `defaultPageSize` preference. Lazy
+  // initialiser: prefs are hydrated before the UI mounts, and the value is a
+  // per-tab starting point the dropdown can override — so we deliberately do
+  // not subscribe to live changes here.
+  const [pageSize, setPageSize] = useState<number>(
+    () => usePreferences.getState().prefs.grid.defaultPageSize,
+  );
+  // Merge the current page size into the dropdown choices so a custom
+  // `defaultPageSize` (e.g. 300) still renders a selected option.
+  const pageSizeOptions = useMemo(
+    () =>
+      Array.from(new Set<number>([...PAGE_SIZE_OPTIONS, pageSize])).sort(
+        (a, b) => a - b,
+      ),
+    [pageSize],
+  );
   const [sortColumn, setSortColumn] = useState<string | undefined>();
   const [sortDesc, setSortDesc] = useState(false);
   /** Free-text search bound to the toolbar input (uncommitted draft). */
@@ -335,41 +350,57 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     setOffset(0);
   }
 
+  /** Stage rows for deletion. With `ui.confirmDestructive` on (default) this
+   *  opens the confirmation dialog; with it off the rows are deleted straight
+   *  away (the toggle's whole purpose is to skip the prompt). */
+  function requestDelete(pkValueRows: CellValue[][]) {
+    if (pkValueRows.length === 0) return;
+    if (usePreferences.getState().prefs.ui.confirmDestructive) {
+      setPendingDelete({ pkValueRows });
+    } else {
+      void runDelete(pkValueRows);
+    }
+  }
+
   function onDeleteRow(rowValues: CellValue[]) {
     try {
-      const pkValues = pkValuesFromRow(rowValues);
-      setPendingDelete({ pkValueRows: [pkValues] });
+      requestDelete([pkValuesFromRow(rowValues)]);
     } catch (e) {
       setError(String(e));
     }
   }
 
   /** Multi-selection delete — routes the whole selection through the same
-   *  confirmation dialog and bulk `deleteRows` call as a single row. */
+   *  confirmation + bulk `deleteRows` call as a single row. */
   function onBulkDelete(rows: CellValue[][]) {
     try {
-      const pkValueRows = rows.map((r) => pkValuesFromRow(r));
-      if (pkValueRows.length > 0) setPendingDelete({ pkValueRows });
+      requestDelete(rows.map((r) => pkValuesFromRow(r)));
     } catch (e) {
       setError(String(e));
     }
   }
 
-  async function confirmDelete() {
-    if (!pendingDelete || pkColumns.length === 0) return;
+  /** Actually perform the bulk delete and refresh the page. */
+  async function runDelete(pkValueRows: CellValue[][]) {
+    if (pkColumns.length === 0) return;
     try {
       await api.deleteRows({
         connectionId,
         schema,
         table,
         pkColumns: pkColumns.map((c) => c.name),
-        pkValueRows: pendingDelete.pkValueRows,
+        pkValueRows,
       });
       setPendingDelete(null);
       await fetchData();
     } catch (e) {
       setError(String(e));
     }
+  }
+
+  function confirmDelete() {
+    if (!pendingDelete) return;
+    void runDelete(pendingDelete.pkValueRows);
   }
 
   function onInsertRow() {
@@ -509,7 +540,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             }}
             className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
           >
-            {PAGE_SIZE_OPTIONS.map((n) => (
+            {pageSizeOptions.map((n) => (
               <option key={n} value={n}>
                 {t("tableData.perPage", { count: n })}
               </option>

@@ -300,6 +300,9 @@ export interface GridPrefs {
   zebraStripes: boolean;
   stickyHeader: boolean;
   defaultPageSize: number;
+  /** Whether the floating cell-value preview panel appears when a cell is
+   *  selected in the data grid. `false` keeps single-click as pure navigation. */
+  cellPreview: boolean;
   /** How MySQL BIT columns render. The backend always sends BIT as a number;
    *  the grid maps it to one of these so toggling re-renders without a
    *  re-query. */

@@ -118,9 +118,18 @@
     "testOk": "Conexión correcta",
     "testFailed": "Error: {{message}}",
     "saveFailed": "Error al guardar: {{message}}",
+    "saved": "Guardado",
     "save": "Guardar",
     "saving": "Guardando…",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "managerTitle": "Conexiones",
+    "managerDescription": "Elige una conexión a la izquierda para editarla, o crea una nueva.",
+    "newConnection": "Nueva conexión",
+    "connect": "Conectar",
+    "connecting": "Conectando…",
+    "delete": "Eliminar",
+    "listTitle": "Conexiones guardadas",
+    "emptyList": "Aún no hay conexiones guardadas."
   },
   "connectPassword": {
     "title": "Contraseña requerida",
@@ -389,6 +398,10 @@
         "label": "Representación de NULL",
         "desc": "Texto que se muestra para los valores NULL de SQL."
       },
+      "truncateLongTextAt": {
+        "label": "Truncar texto a (caracteres)",
+        "desc": "Limita cuántos caracteres muestra una celda en la cuadrícula; el valor completo sigue disponible en la vista previa/editor. 0 lo desactiva."
+      },
       "zebraStripes": {
         "label": "Filas alternadas",
         "desc": "Fondo alterno por fila para facilitar la lectura."
@@ -396,6 +409,10 @@
       "stickyHeader": {
         "label": "Cabecera fija",
         "desc": "Mantener visibles las cabeceras de columna al hacer scroll."
+      },
+      "cellPreview": {
+        "label": "Panel de vista previa de celda",
+        "desc": "Muestra la vista previa flotante al seleccionar una celda. Si está desactivado, el clic simple solo navega."
       },
       "schemaMetric": {
         "label": "Métrica del árbol de esquema",

@@ -21,7 +21,8 @@ import { Pause, Play, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLogs, type LogKindFilter } from "@/stores/logs";
-import { useThemeStore, selectActiveTheme } from "@/stores/theme";
+import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
+import { resolveMonacoTheme } from "@/lib/monaco-themes";
 import type { LogEntry } from "@/types";
 
 /** `HH:MM:SS.mmm` — fixed-width clock used by every console row so the
@@ -69,7 +70,7 @@ export function Console() {
   const setPaused = useLogs((s) => s.setPaused);
   const setQuery = useLogs((s) => s.setQuery);
   const toggleKind = useLogs((s) => s.toggleKind);
-  const theme = useThemeStore(selectActiveTheme);
+  const editorPrefs = usePreferences(selectEditorPrefs);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const filtered = useMemo(() => {
@@ -212,14 +213,15 @@ export function Console() {
             <Editor
               height="100%"
               language={selected.kind === "sql" ? "sql" : "plaintext"}
-              theme={theme.mode === "dark" ? "vs-dark" : "vs-light"}
+              theme={resolveMonacoTheme(editorPrefs.theme)}
               value={selectedDetailValue}
               options={{
                 readOnly: true,
                 domReadOnly: true,
                 minimap: { enabled: false },
-                wordWrap: "on",
-                fontSize: 12,
+                wordWrap: editorPrefs.wordWrap ? "on" : "off",
+                fontFamily: editorPrefs.fontFamily,
+                fontSize: editorPrefs.fontSize,
                 lineNumbers: "off",
                 scrollBeyondLastLine: false,
                 automaticLayout: true,

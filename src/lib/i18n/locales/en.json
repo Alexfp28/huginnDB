@@ -118,9 +118,18 @@
     "testOk": "Connection successful",
     "testFailed": "Failed: {{message}}",
     "saveFailed": "Save failed: {{message}}",
+    "saved": "Saved",
     "save": "Save",
     "saving": "Saving…",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "managerTitle": "Connections",
+    "managerDescription": "Pick a connection on the left to edit it, or create a new one.",
+    "newConnection": "New connection",
+    "connect": "Connect",
+    "connecting": "Connecting…",
+    "delete": "Delete",
+    "listTitle": "Saved connections",
+    "emptyList": "No saved connections yet."
   },
   "connectPassword": {
     "title": "Password required",
@@ -389,6 +398,10 @@
         "label": "NULL display",
         "desc": "String used to render SQL NULL values in the grid."
       },
+      "truncateLongTextAt": {
+        "label": "Truncate text at (chars)",
+        "desc": "Cap how many characters a cell renders in the grid; the full value stays available in the preview/editor. 0 disables."
+      },
       "zebraStripes": {
         "label": "Zebra stripes",
         "desc": "Alternate row background for easier scanning."
@@ -396,6 +409,10 @@
       "stickyHeader": {
         "label": "Sticky header",
         "desc": "Pin column headers while scrolling vertically."
+      },
+      "cellPreview": {
+        "label": "Cell preview panel",
+        "desc": "Show the floating value preview when a cell is selected. Off keeps single-click as pure navigation."
       },
       "schemaMetric": {
         "label": "Schema tree metric",

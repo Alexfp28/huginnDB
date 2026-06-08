@@ -12,6 +12,7 @@ import { useTabs } from "@/stores/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SaveQueryDialog } from "@/components/SaveQueryDialog";
+import { confirmDestructive } from "@/lib/confirmDestructive";
 
 export function SavedQueriesPanel({
   connectionId,
@@ -134,7 +135,11 @@ export function SavedQueriesPanel({
                   variant="ghost"
                   className="h-6 w-6"
                   onClick={() => {
-                    if (confirm(t("saved.deleteConfirm", { name: q.name })))
+                    if (
+                      confirmDestructive(
+                        t("saved.deleteConfirm", { name: q.name }),
+                      )
+                    )
                       remove(q.id);
                   }}
                   title={t("saved.delete")}

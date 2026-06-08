@@ -88,6 +88,27 @@ export function GridSection() {
       </PrefRow>
 
       <PrefRow
+        label={t("settings.grid.truncateLongTextAt.label")}
+        description={t("settings.grid.truncateLongTextAt.desc")}
+        htmlFor="prefs-grid-truncate"
+      >
+        <Input
+          id="prefs-grid-truncate"
+          type="number"
+          min={0}
+          max={100000}
+          value={grid.truncateLongTextAt}
+          onChange={(e) => {
+            const n = Number.parseInt(e.target.value, 10);
+            if (Number.isFinite(n) && n >= 0) {
+              updateGrid({ truncateLongTextAt: n });
+            }
+          }}
+          className="h-8 w-24 text-right font-mono text-xs"
+        />
+      </PrefRow>
+
+      <PrefRow
         label={t("settings.grid.zebraStripes.label")}
         description={t("settings.grid.zebraStripes.desc")}
       >
@@ -104,6 +125,16 @@ export function GridSection() {
         <Switch
           checked={grid.stickyHeader}
           onCheckedChange={(v) => updateGrid({ stickyHeader: v })}
+        />
+      </PrefRow>
+
+      <PrefRow
+        label={t("settings.grid.cellPreview.label")}
+        description={t("settings.grid.cellPreview.desc")}
+      >
+        <Switch
+          checked={grid.cellPreview}
+          onCheckedChange={(v) => updateGrid({ cellPreview: v })}
         />
       </PrefRow>
 
