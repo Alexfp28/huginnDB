@@ -36,6 +36,9 @@ export function SideEditorPanel() {
   const [value, setValue] = useState("");
   const [language, setLanguage] = useState<ContentLanguage>("plaintext");
   const [saving, setSaving] = useState(false);
+  /** Re-entrancy guard for the Ctrl+S handler — `setSaving` is async so we
+   *  can't rely on the `saving` state inside the keydown listener. */
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   /** A target the user clicked while the buffer had unsaved edits; drives the
    *  discard-confirmation dialog. */
@@ -65,6 +68,39 @@ export function SideEditorPanel() {
     setValue(next.value);
     setLanguage(detectLanguage(next.value ?? ""));
   }
+
+  // Ctrl/Cmd+S saves the buffer *in place*: persist the edits, reset the
+  // dirty baseline, and keep the panel open so the user can move to another
+  // cell without the discard guard firing. Registered in the capture phase
+  // with `stopImmediatePropagation` so it wins over the floating CellPreview's
+  // own window-level Ctrl+S — which otherwise persists its stale, pre-edit
+  // value and leaves this panel dirty. Bails (letting other handlers run) when
+  // no editable cell is loaded here.
+  useEffect(() => {
+    async function onKey(e: KeyboardEvent) {
+      if (!((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s")) return;
+      const tgt = loadedTargetRef.current;
+      if (!tgt || tgt.readonly || !tgt.onSave) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (savingRef.current) return;
+      savingRef.current = true;
+      setSaving(true);
+      setSaveError(null);
+      try {
+        const v = valueRef.current;
+        await tgt.onSave(v);
+        baselineRef.current = v;
+      } catch (err) {
+        setSaveError(t("cellEditor.saveFailed", { message: String(err) }));
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
+      }
+    }
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [t]);
 
   // Follow the selected cell. When the store points at a new target, load it —
   // but if the current buffer has unsaved edits, stash the new target and open
