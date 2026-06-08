@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.7] — 2026-06-08
+
 ### Fixed
 
 - **Connections with SSL off failed during the TLS negotiation** ("unexpected
