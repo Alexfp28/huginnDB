@@ -16,6 +16,7 @@ import { ConnectPasswordDialog } from "@/components/ConnectPasswordDialog";
 import { DriverBadge } from "@/components/DriverBadge";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/tauri";
+import { confirmDestructive } from "@/lib/confirmDestructive";
 import type { ConnectionProfile } from "@/types";
 
 export function ConnectionList({
@@ -76,7 +77,8 @@ export function ConnectionList({
   }
 
   async function handleDelete(p: ConnectionProfile) {
-    if (!confirm(t("connections.deleteConfirm", { name: p.name }))) return;
+    if (!confirmDestructive(t("connections.deleteConfirm", { name: p.name })))
+      return;
     if (active.has(p.id)) await handleDisconnect(p);
     await remove(p.id);
   }
@@ -199,6 +201,7 @@ export function ConnectionList({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         initial={editing}
+        onConnected={(id) => onSelect(id)}
       />
       <ConnectPasswordDialog
         open={pwPromptProfile !== null}

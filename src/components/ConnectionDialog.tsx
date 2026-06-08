@@ -1,25 +1,29 @@
 /**
- * Create / edit a connection profile.
+ * Connections manager — master/detail.
  *
- * The dialog re-shapes itself based on the selected driver: SQLite hides
- * the network fields and asks only for a database file path. Passwords
- * are submitted to the backend separately from profile metadata so
- * `api.saveProfile(profile, password, sshSecret)` can route them to the
+ * Mirrors the preferences dialog layout: a left rail lists every saved
+ * connection (with a live "connected" dot) plus a "New connection" entry;
+ * the right pane edits the selected profile via the General / SSH-tunnel
+ * tabs. The form reshapes itself per driver: SQLite hides the network
+ * fields and asks only for a database file path.
+ *
+ * Passwords are submitted to the backend separately from profile metadata
+ * so `api.saveProfile(profile, password, sshSecret)` can route them to the
  * OS keychain — DB password under one account, SSH secret under another.
  *
- * The "SSH tunnel" tab is HeidiSQL-style: a switch enables the section,
- * then host/port/username plus a password or private-key auth method.
- * The tunnel is hidden for SQLite (local file, no tunnel needed).
+ * Actions live in the right-pane footer: Test, Connect (save + open the
+ * pool), Delete, and Save. `onConnected` lets the caller (the sidebar)
+ * focus the connection in the main view once it opens.
  */
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { Database, Download, Plug, Plus, Trash2, Upload } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -28,6 +32,13 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { ExportProfilesDialog } from "@/components/ExportProfilesDialog";
+import { ImportProfilesDialog } from "@/components/ImportProfilesDialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -35,8 +46,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DriverBadge } from "@/components/DriverBadge";
 import { api } from "@/lib/tauri";
 import { DEFAULT_PORTS } from "@/lib/constants";
+import { confirmDestructive } from "@/lib/confirmDestructive";
+import { cn } from "@/lib/utils";
 import type {
   ConnectionProfile,
   Driver,
@@ -45,17 +59,21 @@ import type {
   SshTunnel,
 } from "@/types";
 import { useConnections } from "@/stores/connections";
+import { useSchema } from "@/stores/schema";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Profile to pre-select on open. `null`/absent opens a fresh draft. */
   initial?: ConnectionProfile | null;
+  /** Called after a successful Connect so the caller can focus the pool. */
+  onConnected?: (id: string) => void;
 }
 
 type SshAuthMethod = "password" | "key";
 
 /**
- * Structured status for the Test button. Keeping the kind discrete avoids
+ * Structured status for the action footer. Keeping the kind discrete avoids
  * fragile `.startsWith()` checks against localised strings when picking the
  * status colour.
  */
@@ -63,12 +81,28 @@ type TestStatus =
   | { kind: "idle" }
   | { kind: "testing" }
   | { kind: "ok" }
+  | { kind: "saved" }
   | { kind: "error"; message: string }
   | { kind: "saveError"; message: string };
 
-export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
+export function ConnectionDialog({
+  open,
+  onOpenChange,
+  initial,
+  onConnected,
+}: Props) {
   const { t } = useTranslation();
   const save = useConnections((s) => s.save);
+  const remove = useConnections((s) => s.remove);
+  const connect = useConnections((s) => s.connect);
+  const profiles = useConnections((s) => s.profiles);
+  const active = useConnections((s) => s.active);
+  const refreshSchema = useSchema((s) => s.refresh);
+
+  /** Which profile is open in the editor; `null` means a new draft. */
+  const [editingId, setEditingId] = useState<string | null>(
+    initial?.id ?? null,
+  );
 
   // General fields ---------------------------------------------------------
   const [name, setName] = useState("");
@@ -89,44 +123,39 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
   const [sshKeyPath, setSshKeyPath] = useState("");
   const [sshSecret, setSshSecret] = useState("");
   const [sshLocalPort, setSshLocalPort] = useState(0);
-  const [sshHostKeyPolicy, setSshHostKeyPolicy] = useState<HostKeyPolicy>(
-    "accept-new",
-  );
+  const [sshHostKeyPolicy, setSshHostKeyPolicy] =
+    useState<HostKeyPolicy>("accept-new");
   const [trustedFingerprint, setTrustedFingerprint] = useState<string | null>(
     null,
   );
 
   const [testStatus, setTestStatus] = useState<TestStatus>({ kind: "idle" });
   const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   /**
-   * Stable id for the profile being edited. For existing profiles this
-   * is just `initial.id`; for new ones we pre-mint a UUID the first
-   * time the dialog opens so that both Test and Save key keychain
-   * entries (DB password + SSH secret) under the same
-   * `${id}::…` account. Without this, persisting the SSH secret during
-   * Test would either land under `::ssh::<user>` (colliding across
-   * draft profiles) or have to skip the keychain entirely on Test.
+   * Stable id for the profile being edited. For existing profiles this is
+   * just the profile id; for new ones we pre-mint a UUID so that both Test
+   * and Save key keychain entries (DB password + SSH secret) under the same
+   * `${id}::…` account.
    */
   const [draftId, setDraftId] = useState<string>("");
 
-  useEffect(() => {
-    if (!open) return;
-    // Mint / reuse the draft id every time the dialog opens. Existing
-    // profiles keep their id; new ones get a fresh UUID so the keychain
-    // accounts are stable across Test → Save.
-    setDraftId(initial?.id ?? crypto.randomUUID());
-    if (initial) {
-      setName(initial.name);
-      setDriver(initial.driver);
-      setHost(initial.host);
-      setPort(initial.port);
-      setDatabase(initial.database);
-      setUsername(initial.username);
-      setSsl(initial.ssl);
+  /** Load the form fields from `p`, or reset to defaults for a new draft. */
+  function loadFields(p: ConnectionProfile | null) {
+    if (p) {
+      setName(p.name);
+      setDriver(p.driver);
+      setHost(p.host);
+      setPort(p.port);
+      setDatabase(p.database);
+      setUsername(p.username);
+      setSsl(p.ssl);
       setPassword("");
 
-      const tunnel = initial.ssh_tunnel;
+      const tunnel = p.ssh_tunnel;
       if (tunnel) {
         setSshEnabled(true);
         setSshHost(tunnel.host);
@@ -169,8 +198,27 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
       setSshHostKeyPolicy("accept-new");
       setTrustedFingerprint(null);
     }
-    setTestStatus({ kind: "idle" });
+  }
+
+  // When the dialog opens, select whatever the caller asked for.
+  useEffect(() => {
+    if (!open) return;
+    setEditingId(initial?.id ?? null);
   }, [open, initial]);
+
+  // Load the editor whenever the selection changes. We read the profile list
+  // imperatively (rather than depending on `profiles`) so that a save/delete
+  // that mutates the list does NOT wipe in-progress edits — the form only
+  // reloads when the *selection* changes.
+  useEffect(() => {
+    if (!open) return;
+    const list = useConnections.getState().profiles;
+    const p = editingId ? list.find((x) => x.id === editingId) ?? null : null;
+    setDraftId(p?.id ?? crypto.randomUUID());
+    loadFields(p);
+    setTestStatus({ kind: "idle" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editingId]);
 
   function buildSshTunnel(): SshTunnel | null {
     if (!sshEnabled || driver === "sqlite") return null;
@@ -190,11 +238,7 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
 
   function buildProfile(): ConnectionProfile {
     return {
-      // `draftId` is pre-minted on dialog open so Test and Save share
-      // the same id — both keychain writes (DB password + SSH secret)
-      // land under matching `${id}::…` accounts, and `save_profile`'s
-      // own UUID assignment becomes a no-op for our case.
-      id: initial?.id ?? draftId,
+      id: editingId ?? draftId,
       name,
       driver,
       host,
@@ -223,12 +267,61 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
   async function onSave() {
     setSaving(true);
     try {
-      await save(buildProfile(), password || undefined, sshSecret || undefined);
-      onOpenChange(false);
+      const saved = await save(
+        buildProfile(),
+        password || undefined,
+        sshSecret || undefined,
+      );
+      // Stay on the saved profile (clears the secret fields via reload when
+      // this was a new draft); keep the dialog open so the user can manage
+      // other connections.
+      setEditingId(saved.id);
+      setTestStatus({ kind: "saved" });
     } catch (e) {
       setTestStatus({ kind: "saveError", message: String(e) });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onConnect() {
+    setConnecting(true);
+    setTestStatus({ kind: "idle" });
+    try {
+      // Persist any edits + credentials first so the pool opens against the
+      // saved profile and the keychain has the secret it needs.
+      const saved = await save(
+        buildProfile(),
+        password || undefined,
+        sshSecret || undefined,
+      );
+      await connect(saved.id, password || undefined);
+      await refreshSchema(saved.id);
+      setEditingId(saved.id);
+      onConnected?.(saved.id);
+      onOpenChange(false);
+    } catch (e) {
+      setTestStatus({ kind: "error", message: String(e) });
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function onDelete() {
+    if (!editingId) return;
+    const target = profiles.find((p) => p.id === editingId);
+    if (
+      !confirmDestructive(
+        t("connections.deleteConfirm", { name: target?.name ?? name }),
+      )
+    )
+      return;
+    try {
+      await remove(editingId);
+      // Fall back to a fresh draft; the load effect repopulates the form.
+      setEditingId(null);
+    } catch (e) {
+      setTestStatus({ kind: "saveError", message: String(e) });
     }
   }
 
@@ -296,6 +389,8 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
         return t("connectionDialog.testing");
       case "ok":
         return t("connectionDialog.testOk");
+      case "saved":
+        return t("connectionDialog.saved");
       case "error":
         return t("connectionDialog.testFailed", { message: testStatus.message });
       case "saveError":
@@ -308,6 +403,7 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
   const statusClass = (() => {
     switch (testStatus.kind) {
       case "ok":
+      case "saved":
         return "text-emerald-400";
       case "testing":
         return "text-muted-foreground";
@@ -320,329 +416,486 @@ export function ConnectionDialog({ open, onOpenChange, initial }: Props) {
   })();
 
   const tunnelTabDisabled = driver === "sqlite";
+  const busy = saving || connecting;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {initial
-              ? t("connectionDialog.titleEdit")
-              : t("connectionDialog.titleNew")}
-          </DialogTitle>
-          <DialogDescription>
-            {t("connectionDialog.description")}
+      <DialogContent className="flex h-[82vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b border-border px-5 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Database className="h-4 w-4 text-primary" />
+              {t("connectionDialog.managerTitle")}
+            </DialogTitle>
+            {/* `mr-8` clears the dialog's absolute close button (right-4 top-4)
+                so the import/export actions don't sit under the X. */}
+            <div className="mr-8 flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setImportOpen(true)}
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {t("transfer.import.tooltip")}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setExportOpen(true)}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {t("transfer.export.tooltip")}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+          <DialogDescription className="text-[11px]">
+            {t("connectionDialog.managerDescription")}
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="general" className="w-full">
-          <TabsList className="w-full">
-            <TabsTrigger value="general" className="flex-1">
-              {t("connectionDialog.tabs.general")}
-            </TabsTrigger>
-            <TabsTrigger
-              value="ssh"
-              className="flex-1"
-              disabled={tunnelTabDisabled}
-            >
-              {t("connectionDialog.tabs.ssh")}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="general" className="pt-3">
-            <div className="grid gap-3">
-              <Field label={t("connectionDialog.fields.name")}>
-                <Input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={t("connectionDialog.fields.namePlaceholder")}
-                />
-              </Field>
-              <Field label={t("connectionDialog.fields.driver")}>
-                <Select
-                  value={driver}
-                  onValueChange={(v) => onDriverChange(v as Driver)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="postgres">PostgreSQL</SelectItem>
-                    <SelectItem value="mysql">MySQL</SelectItem>
-                    <SelectItem value="sqlite">SQLite</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              {driver !== "sqlite" ? (
-                <>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
-                      <Field label={t("connectionDialog.fields.host")}>
-                        <Input
-                          value={host}
-                          onChange={(e) => setHost(e.target.value)}
-                        />
-                      </Field>
-                    </div>
-                    <Field label={t("connectionDialog.fields.port")}>
-                      <Input
-                        type="number"
-                        value={port}
-                        onChange={(e) => setPort(Number(e.target.value))}
-                      />
-                    </Field>
-                  </div>
-                  <Field label={t("connectionDialog.fields.database")}>
-                    <Input
-                      value={database}
-                      onChange={(e) => setDatabase(e.target.value)}
-                    />
-                  </Field>
-                  <Field label={t("connectionDialog.fields.username")}>
-                    <Input
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                    />
-                  </Field>
-                  <Field label={t("connectionDialog.fields.password")}>
-                    <Input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder={
-                        initial
-                          ? t("connectionDialog.fields.passwordKeepHint")
-                          : ""
+        <div className="grid flex-1 grid-cols-[240px_1fr] overflow-hidden">
+          {/* Left rail — saved connections + new */}
+          <aside className="flex min-h-0 flex-col border-r border-border bg-card/40">
+            <div className="px-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-start gap-2"
+                onClick={() => setEditingId(null)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t("connectionDialog.newConnection")}
+              </Button>
+            </div>
+            <div className="mt-1 px-3 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+              {t("connectionDialog.listTitle")}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+              {profiles.length === 0 && (
+                <div className="px-3 py-3 text-[11px] text-muted-foreground">
+                  {t("connectionDialog.emptyList")}
+                </div>
+              )}
+              {profiles.map((p) => {
+                const isActive = active.has(p.id);
+                const selected = editingId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setEditingId(p.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors",
+                      selected
+                        ? "border-primary bg-accent/40"
+                        : "border-transparent hover:bg-accent/30",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 shrink-0 rounded-full",
+                        isActive
+                          ? "bg-emerald-400"
+                          : "bg-muted-foreground/40",
+                      )}
+                      title={
+                        isActive
+                          ? t("connections.disconnectTooltip")
+                          : undefined
                       }
                     />
-                  </Field>
-                  <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                    <Label className="text-sm">
-                      {t("connectionDialog.fields.ssl")}
-                    </Label>
-                    <Switch checked={ssl} onCheckedChange={setSsl} />
-                  </div>
-                </>
-              ) : (
-                <Field label={t("connectionDialog.fields.sqlitePath")}>
-                  <Input
-                    value={database}
-                    onChange={(e) => setDatabase(e.target.value)}
-                    placeholder={t(
-                      "connectionDialog.fields.sqlitePathPlaceholder",
-                    )}
-                  />
-                </Field>
-              )}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="ssh" className="pt-3">
-            {tunnelTabDisabled ? (
-              <div className="px-1 py-3 text-xs text-muted-foreground">
-                {t("connectionDialog.ssh.unavailableForSqlite")}
-              </div>
-            ) : (
-              <div className="grid gap-3">
-                <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                  <Label className="text-sm">
-                    {t("connectionDialog.ssh.enable")}
-                  </Label>
-                  <Switch checked={sshEnabled} onCheckedChange={setSshEnabled} />
-                </div>
-                {sshEnabled && (
-                  <>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="col-span-2 min-w-0">
-                        <Field label={t("connectionDialog.ssh.host")}>
-                          <Input
-                            value={sshHost}
-                            onChange={(e) => setSshHost(e.target.value)}
-                          />
-                        </Field>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-medium">
+                          {p.name}
+                        </span>
+                        <DriverBadge driver={p.driver} />
                       </div>
-                      <Field label={t("connectionDialog.ssh.port")}>
-                        <Input
-                          type="number"
-                          value={sshPort}
-                          onChange={(e) => setSshPort(Number(e.target.value))}
-                        />
-                      </Field>
+                      <div className="truncate text-[11px] text-muted-foreground">
+                        {p.driver === "sqlite"
+                          ? p.database.split(/[/\\]/).pop() ?? p.database
+                          : `${p.host}:${p.port}/${p.database}`}
+                      </div>
                     </div>
-                    <Field label={t("connectionDialog.ssh.username")}>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          {/* Right pane — editor */}
+          <main className="flex min-h-0 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <Tabs defaultValue="general" className="w-full">
+                <TabsList className="w-full">
+                  <TabsTrigger value="general" className="flex-1">
+                    {t("connectionDialog.tabs.general")}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="ssh"
+                    className="flex-1"
+                    disabled={tunnelTabDisabled}
+                  >
+                    {t("connectionDialog.tabs.ssh")}
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="general" className="pt-3">
+                  <div className="grid gap-3">
+                    <Field label={t("connectionDialog.fields.name")}>
                       <Input
-                        value={sshUsername}
-                        onChange={(e) => setSshUsername(e.target.value)}
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder={t("connectionDialog.fields.namePlaceholder")}
                       />
                     </Field>
-                    <Field label={t("connectionDialog.ssh.authMethod")}>
+                    <Field label={t("connectionDialog.fields.driver")}>
                       <Select
-                        value={sshAuthMethod}
-                        onValueChange={(v) =>
-                          setSshAuthMethod(v as SshAuthMethod)
-                        }
+                        value={driver}
+                        onValueChange={(v) => onDriverChange(v as Driver)}
                       >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="password">
-                            {t("connectionDialog.ssh.authPassword")}
-                          </SelectItem>
-                          <SelectItem value="key">
-                            {t("connectionDialog.ssh.authKey")}
-                          </SelectItem>
+                          <SelectItem value="postgres">PostgreSQL</SelectItem>
+                          <SelectItem value="mysql">MySQL</SelectItem>
+                          <SelectItem value="sqlite">SQLite</SelectItem>
                         </SelectContent>
                       </Select>
                     </Field>
-
-                    {sshAuthMethod === "password" ? (
-                      <Field label={t("connectionDialog.ssh.sshPassword")}>
-                        <Input
-                          type="password"
-                          value={sshSecret}
-                          onChange={(e) => setSshSecret(e.target.value)}
-                          placeholder={
-                            initial
-                              ? t("connectionDialog.ssh.passphraseKeepHint")
-                              : ""
-                          }
-                        />
-                      </Field>
-                    ) : (
+                    {driver !== "sqlite" ? (
                       <>
-                        <Field label={t("connectionDialog.ssh.privateKeyPath")}>
-                          <div className="flex min-w-0 gap-2">
-                            <Input
-                              className="min-w-0 flex-1"
-                              value={sshKeyPath}
-                              onChange={(e) => setSshKeyPath(e.target.value)}
-                              placeholder={t(
-                                "connectionDialog.ssh.privateKeyPathPlaceholder",
-                              )}
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="shrink-0"
-                              onClick={onPickKeyFile}
-                            >
-                              {t("connectionDialog.ssh.browse")}
-                            </Button>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2">
+                            <Field label={t("connectionDialog.fields.host")}>
+                              <Input
+                                value={host}
+                                onChange={(e) => setHost(e.target.value)}
+                              />
+                            </Field>
                           </div>
+                          <Field label={t("connectionDialog.fields.port")}>
+                            <Input
+                              type="number"
+                              value={port}
+                              onChange={(e) => setPort(Number(e.target.value))}
+                            />
+                          </Field>
+                        </div>
+                        <Field label={t("connectionDialog.fields.database")}>
+                          <Input
+                            value={database}
+                            onChange={(e) => setDatabase(e.target.value)}
+                          />
                         </Field>
-                        <Field label={t("connectionDialog.ssh.passphrase")}>
+                        <Field label={t("connectionDialog.fields.username")}>
+                          <Input
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                          />
+                        </Field>
+                        <Field label={t("connectionDialog.fields.password")}>
                           <Input
                             type="password"
-                            value={sshSecret}
-                            onChange={(e) => setSshSecret(e.target.value)}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
                             placeholder={
-                              initial
-                                ? t("connectionDialog.ssh.passphraseKeepHint")
+                              editingId
+                                ? t("connectionDialog.fields.passwordKeepHint")
                                 : ""
                             }
                           />
                         </Field>
-                      </>
-                    )}
-
-                    <Field label={t("connectionDialog.ssh.localPort")}>
-                      <Input
-                        type="number"
-                        value={sshLocalPort}
-                        onChange={(e) =>
-                          setSshLocalPort(Number(e.target.value))
-                        }
-                        placeholder={t("connectionDialog.ssh.localPortAuto")}
-                      />
-                    </Field>
-                    <p className="-mt-1 text-[11px] text-muted-foreground">
-                      {t("connectionDialog.ssh.localPortHint")}
-                    </p>
-
-                    <Field label={t("connectionDialog.ssh.hostKeyPolicy")}>
-                      <Select
-                        value={sshHostKeyPolicy}
-                        onValueChange={(v) =>
-                          setSshHostKeyPolicy(v as HostKeyPolicy)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="accept-new">
-                            {t("connectionDialog.ssh.policyAcceptNew")}
-                          </SelectItem>
-                          <SelectItem value="strict">
-                            {t("connectionDialog.ssh.policyStrict")}
-                          </SelectItem>
-                          <SelectItem value="accept-any">
-                            {t("connectionDialog.ssh.policyAcceptAny")}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <p className="-mt-1 text-[11px] text-muted-foreground">
-                      {t("connectionDialog.ssh.hostKeyPolicyHint")}
-                    </p>
-
-                    {sshHost && (
-                      <div className="rounded-md border border-border px-3 py-2 text-[11px]">
-                        <div className="mb-1 font-medium text-muted-foreground">
-                          {t("connectionDialog.ssh.trustedFingerprint")}
+                        <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                          <Label className="text-sm">
+                            {t("connectionDialog.fields.ssl")}
+                          </Label>
+                          <Switch checked={ssl} onCheckedChange={setSsl} />
                         </div>
-                        {trustedFingerprint ? (
-                          <div className="flex items-center gap-2">
-                            <code className="flex-1 truncate font-mono text-[10px]">
-                              {trustedFingerprint}
-                            </code>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={onForgetHostKey}
-                            >
-                              {t("connectionDialog.ssh.forgetHostKey")}
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="text-muted-foreground">
-                            {t("connectionDialog.ssh.noTrustedFingerprint")}
-                          </div>
-                        )}
-                      </div>
+                      </>
+                    ) : (
+                      <Field label={t("connectionDialog.fields.sqlitePath")}>
+                        <Input
+                          value={database}
+                          onChange={(e) => setDatabase(e.target.value)}
+                          placeholder={t(
+                            "connectionDialog.fields.sqlitePathPlaceholder",
+                          )}
+                        />
+                      </Field>
                     )}
-                  </>
-                )}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+                  </div>
+                </TabsContent>
 
-        {statusText && (
-          <div className={`text-xs ${statusClass}`}>{statusText}</div>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onTest}>
-            {t("connectionDialog.test")}
-          </Button>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t("connectionDialog.cancel")}
-          </Button>
-          <Button onClick={onSave} disabled={saving || !name}>
-            {saving ? t("connectionDialog.saving") : t("connectionDialog.save")}
-          </Button>
-        </DialogFooter>
+                <TabsContent value="ssh" className="pt-3">
+                  {tunnelTabDisabled ? (
+                    <div className="px-1 py-3 text-xs text-muted-foreground">
+                      {t("connectionDialog.ssh.unavailableForSqlite")}
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                        <Label className="text-sm">
+                          {t("connectionDialog.ssh.enable")}
+                        </Label>
+                        <Switch
+                          checked={sshEnabled}
+                          onCheckedChange={setSshEnabled}
+                        />
+                      </div>
+                      {sshEnabled && (
+                        <>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="col-span-2 min-w-0">
+                              <Field label={t("connectionDialog.ssh.host")}>
+                                <Input
+                                  value={sshHost}
+                                  onChange={(e) => setSshHost(e.target.value)}
+                                />
+                              </Field>
+                            </div>
+                            <Field label={t("connectionDialog.ssh.port")}>
+                              <Input
+                                type="number"
+                                value={sshPort}
+                                onChange={(e) =>
+                                  setSshPort(Number(e.target.value))
+                                }
+                              />
+                            </Field>
+                          </div>
+                          <Field label={t("connectionDialog.ssh.username")}>
+                            <Input
+                              value={sshUsername}
+                              onChange={(e) => setSshUsername(e.target.value)}
+                            />
+                          </Field>
+                          <Field label={t("connectionDialog.ssh.authMethod")}>
+                            <Select
+                              value={sshAuthMethod}
+                              onValueChange={(v) =>
+                                setSshAuthMethod(v as SshAuthMethod)
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="password">
+                                  {t("connectionDialog.ssh.authPassword")}
+                                </SelectItem>
+                                <SelectItem value="key">
+                                  {t("connectionDialog.ssh.authKey")}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </Field>
+
+                          {sshAuthMethod === "password" ? (
+                            <Field label={t("connectionDialog.ssh.sshPassword")}>
+                              <Input
+                                type="password"
+                                value={sshSecret}
+                                onChange={(e) => setSshSecret(e.target.value)}
+                                placeholder={
+                                  editingId
+                                    ? t("connectionDialog.ssh.passphraseKeepHint")
+                                    : ""
+                                }
+                              />
+                            </Field>
+                          ) : (
+                            <>
+                              <Field
+                                label={t("connectionDialog.ssh.privateKeyPath")}
+                              >
+                                <div className="flex min-w-0 gap-2">
+                                  <Input
+                                    className="min-w-0 flex-1"
+                                    value={sshKeyPath}
+                                    onChange={(e) =>
+                                      setSshKeyPath(e.target.value)
+                                    }
+                                    placeholder={t(
+                                      "connectionDialog.ssh.privateKeyPathPlaceholder",
+                                    )}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="shrink-0"
+                                    onClick={onPickKeyFile}
+                                  >
+                                    {t("connectionDialog.ssh.browse")}
+                                  </Button>
+                                </div>
+                              </Field>
+                              <Field label={t("connectionDialog.ssh.passphrase")}>
+                                <Input
+                                  type="password"
+                                  value={sshSecret}
+                                  onChange={(e) => setSshSecret(e.target.value)}
+                                  placeholder={
+                                    editingId
+                                      ? t("connectionDialog.ssh.passphraseKeepHint")
+                                      : ""
+                                  }
+                                />
+                              </Field>
+                            </>
+                          )}
+
+                          <Field label={t("connectionDialog.ssh.localPort")}>
+                            <Input
+                              type="number"
+                              value={sshLocalPort}
+                              onChange={(e) =>
+                                setSshLocalPort(Number(e.target.value))
+                              }
+                              placeholder={t("connectionDialog.ssh.localPortAuto")}
+                            />
+                          </Field>
+                          <p className="-mt-1 text-[11px] text-muted-foreground">
+                            {t("connectionDialog.ssh.localPortHint")}
+                          </p>
+
+                          <Field label={t("connectionDialog.ssh.hostKeyPolicy")}>
+                            <Select
+                              value={sshHostKeyPolicy}
+                              onValueChange={(v) =>
+                                setSshHostKeyPolicy(v as HostKeyPolicy)
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="accept-new">
+                                  {t("connectionDialog.ssh.policyAcceptNew")}
+                                </SelectItem>
+                                <SelectItem value="strict">
+                                  {t("connectionDialog.ssh.policyStrict")}
+                                </SelectItem>
+                                <SelectItem value="accept-any">
+                                  {t("connectionDialog.ssh.policyAcceptAny")}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </Field>
+                          <p className="-mt-1 text-[11px] text-muted-foreground">
+                            {t("connectionDialog.ssh.hostKeyPolicyHint")}
+                          </p>
+
+                          {sshHost && (
+                            <div className="rounded-md border border-border px-3 py-2 text-[11px]">
+                              <div className="mb-1 font-medium text-muted-foreground">
+                                {t("connectionDialog.ssh.trustedFingerprint")}
+                              </div>
+                              {trustedFingerprint ? (
+                                <div className="flex items-center gap-2">
+                                  <code className="flex-1 truncate font-mono text-[10px]">
+                                    {trustedFingerprint}
+                                  </code>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={onForgetHostKey}
+                                  >
+                                    {t("connectionDialog.ssh.forgetHostKey")}
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="text-muted-foreground">
+                                  {t("connectionDialog.ssh.noTrustedFingerprint")}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            {/* Action footer */}
+            <div className="border-t border-border px-5 py-3">
+              {statusText && (
+                <div className={`mb-2 truncate text-xs ${statusClass}`}>
+                  {statusText}
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" onClick={onTest} disabled={busy || !name}>
+                  {t("connectionDialog.test")}
+                </Button>
+                {editingId && (
+                  <Button
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    onClick={onDelete}
+                    disabled={busy}
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    {t("connectionDialog.delete")}
+                  </Button>
+                )}
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={onConnect}
+                    disabled={busy || !name}
+                  >
+                    <Plug className="mr-1 h-3.5 w-3.5" />
+                    {connecting
+                      ? t("connectionDialog.connecting")
+                      : t("connectionDialog.connect")}
+                  </Button>
+                  <Button onClick={onSave} disabled={busy || !name}>
+                    {saving
+                      ? t("connectionDialog.saving")
+                      : t("connectionDialog.save")}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
       </DialogContent>
     </Dialog>
+
+      <ExportProfilesDialog open={exportOpen} onOpenChange={setExportOpen} />
+      <ImportProfilesDialog open={importOpen} onOpenChange={setImportOpen} />
+    </>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   // `min-w-0` lets the field shrink inside flex/grid parents instead of forcing
-  // its content's intrinsic width and overflowing the dialog (e.g. a long SSH
-  // key path or host pushing the layout past `max-w-md`).
+  // its content's intrinsic width and overflowing (e.g. a long SSH key path).
   return (
     <div className="grid min-w-0 gap-1">
       <Label>{label}</Label>
