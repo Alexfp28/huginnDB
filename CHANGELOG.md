@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.9] — 2026-06-09
+
+### Fixed
+
+- **Opening a specific database failed with "no stored password for keychain
+  account" when the password came from the CLI.** Expanding a database in the
+  tree spins up a child pool (`open_database_view`) that re-resolved the
+  credentials from the OS keychain — but a password passed via `--password`
+  (or the connect dialog) lives only in memory and was never stored there. The
+  backend now keeps a session-only, in-memory cache of the secret used at
+  connect time (keyed by profile, cleared on disconnect); child pools reuse it
+  and only fall back to the keychain when nothing was cached.
+
 ## [1.0.8] — 2026-06-09
 
 ### Added
