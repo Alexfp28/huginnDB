@@ -301,6 +301,12 @@ function EmptyWatermark() {
   const connectionId = useUi((s) => s.selectedConnectionId);
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+      <img
+        src="/image/huginn-app-icon.svg"
+        alt="HuginnDB"
+        className="mb-1 h-16 w-16 opacity-90"
+        draggable={false}
+      />
       <div className="font-mono text-lg font-semibold text-foreground">
         huginndb
       </div>

@@ -11,7 +11,7 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronUp, Plug, X } from "lucide-react";
+import { Check, ChevronUp, Plug, X } from "lucide-react";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
@@ -48,6 +48,16 @@ export function StatusConnections() {
     for (const p of profiles) (active.has(p.id) ? a : idle).push(p);
     return { activeProfiles: a, idleProfiles: idle };
   }, [profiles, active]);
+
+  // The connection currently in focus (a live pool the workspace points at).
+  // Drives the trigger label so the active connection is visible at a glance.
+  const current = useMemo(
+    () =>
+      selected
+        ? profiles.find((p) => p.id === selected && active.has(p.id)) ?? null
+        : null,
+    [selected, profiles, active],
+  );
 
   async function handleConnect(p: ConnectionProfile) {
     if (active.has(p.id)) {
@@ -90,15 +100,23 @@ export function StatusConnections() {
           )}
           title={t("statusBar.connectionsActive")}
         >
-          <span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full",
-              count > 0 ? "bg-brand" : "bg-muted-foreground/40",
-            )}
-          />
-          {count > 0
-            ? t("statusBar.connections", { count })
-            : t("statusBar.disconnected")}
+          {current ? (
+            <DriverBadge driver={current.driver} />
+          ) : (
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                count > 0 ? "bg-brand" : "bg-muted-foreground/40",
+              )}
+            />
+          )}
+          <span className="max-w-[12rem] truncate">
+            {current
+              ? current.name
+              : count > 0
+                ? t("statusBar.connections", { count })
+                : t("statusBar.disconnected")}
+          </span>
           <ChevronUp className="h-3 w-3 opacity-60" />
         </button>
       </DropdownMenuTrigger>
@@ -121,7 +139,11 @@ export function StatusConnections() {
               onSelect={() => setSelected(p.id)}
               className="gap-2"
             >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+              {selected === p.id ? (
+                <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
+              ) : (
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+              )}
               <span
                 className={cn(
                   "flex-1 truncate text-xs",
