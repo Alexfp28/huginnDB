@@ -44,6 +44,7 @@ import type {
   DraftRow,
   QueryResult,
 } from "@/types";
+import { BitInput } from "@/components/BitInput";
 import { CellEditor } from "@/components/CellEditor";
 import { CellInput } from "@/components/CellInput";
 import { CellPreview } from "@/components/CellPreview";
@@ -674,6 +675,26 @@ export function DataGrid({
               );
               setInlineEdit(null);
             };
+            // BIT columns get a dedicated 0/1 control. A `<select>` commits on
+            // pick, so we save straight from `onSelect` with the chosen value
+            // (no stale-state hop through `inlineEdit.value`).
+            if (bitColNames.has(col.name)) {
+              return (
+                <BitInput
+                  autoFocus
+                  value={inlineEdit.value}
+                  bitDisplay={bitDisplay}
+                  nullable={colInfo?.nullable ?? false}
+                  onSelect={(nv) => {
+                    const { original, rowValues: rv, column } = inlineEdit;
+                    setInlineEdit(null);
+                    if (nv === original) return;
+                    onCellSave?.(rv, column.name, nv).catch(() => {});
+                  }}
+                  onCancel={() => setInlineEdit(null)}
+                />
+              );
+            }
             return (
               <CellInput
                 autoFocus
@@ -960,6 +981,7 @@ export function DataGrid({
                 connectionId={connectionId}
                 tableSchema={tableSchema}
                 tableName={tableName}
+                bitDisplay={bitDisplay}
                 onChange={onDraftCellChange}
                 onCommit={onDraftCommit}
                 onCancel={onDraftCancel}
@@ -1482,6 +1504,8 @@ interface DraftRowViewProps {
   connectionId?: string;
   tableSchema?: string;
   tableName?: string;
+  /** Grid preference for BIT option labels in the dedicated control. */
+  bitDisplay: "true_false" | "zero_one";
   onChange?: (column: string, cell: DraftCell) => void;
   onCommit?: () => void;
   onCancel?: () => void;
@@ -1496,6 +1520,7 @@ function DraftRowView({
   connectionId,
   tableSchema,
   tableName: _tableName,
+  bitDisplay,
   onChange,
   onCommit,
   onCancel,
@@ -1590,6 +1615,22 @@ function DraftRowView({
                   nullable={info.nullable}
                   disabled={draft.saving}
                   onChange={(v) =>
+                    onChange?.(col.name, { value: v, touched: true })
+                  }
+                />
+              ) : info && isBitType(info.data_type) ? (
+                // BIT column: dedicated 0/1 control instead of a text field.
+                // Emits the numeric string the backend's CAST expects and
+                // seeds a non-null column to 0 (gotcha #15). Row-level
+                // onBlur / onKeyDown still drive commit & cancel.
+                <BitInput
+                  autoFocus={idx === firstEditableIdx}
+                  value={cell.value}
+                  bitDisplay={bitDisplay}
+                  nullable={info.nullable}
+                  disabled={draft.saving}
+                  seedDefault={!info.nullable}
+                  onSelect={(v) =>
                     onChange?.(col.name, { value: v, touched: true })
                   }
                 />
