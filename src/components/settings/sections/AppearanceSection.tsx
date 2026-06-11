@@ -130,17 +130,110 @@ export function AppearanceSection() {
           </Button>
         </div>
 
-        <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-2 overflow-y-auto p-4">
-          {COLOR_KEYS.map(({ key, label }) => (
-            <ColorRow
-              key={key}
-              label={label}
-              value={active.colors[key]}
-              onChange={(v) => updateColor(key as keyof ThemeColors, v)}
-            />
-          ))}
+        <div className="flex-1 overflow-y-auto p-4">
+          <ThemePreview colors={active.colors} />
+          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2">
+            {COLOR_KEYS.map(({ key, label }) => (
+              <ColorRow
+                key={key}
+                label={label}
+                value={active.colors[key]}
+                onChange={(v) => updateColor(key as keyof ThemeColors, v)}
+              />
+            ))}
+          </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+/**
+ * A small mock of the app chrome painted with the theme's own colours, so the
+ * user can read a theme at a glance before committing to it. Colours are
+ * arbitrary hex from the theme, so they're applied via inline `style` rather
+ * than Tailwind tokens (which would only reflect the *active* theme's CSS
+ * variables). Deliberately a static still-life — not a live editor.
+ */
+function ThemePreview({ colors }: { colors: ThemeColors }) {
+  const { t } = useTranslation();
+  const swatches: { key: keyof ThemeColors; label: string }[] = [
+    { key: "background", label: "bg" },
+    { key: "card", label: "card" },
+    { key: "primary", label: "primary" },
+    { key: "accent", label: "accent" },
+    { key: "border", label: "border" },
+    { key: "destructive", label: "error" },
+  ];
+  return (
+    <div>
+      <div className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+        {t("settings.appearance.preview")}
+      </div>
+      <div
+        className="overflow-hidden rounded-md border"
+        style={{ background: colors.background, borderColor: colors.border }}
+      >
+        {/* Toolbar */}
+        <div
+          className="flex items-center gap-2 border-b px-3 py-1.5"
+          style={{ background: colors.card, borderColor: colors.border }}
+        >
+          <span
+            className="text-xs font-medium"
+            style={{ color: colors.cardForeground }}
+          >
+            HuginnDB
+          </span>
+          <span
+            className="rounded px-1.5 py-0.5 text-[10px]"
+            style={{ background: colors.accent, color: colors.accentForeground }}
+          >
+            public
+          </span>
+          <button
+            className="ml-auto rounded px-2 py-0.5 text-[10px] font-medium"
+            style={{ background: colors.primary, color: colors.primaryForeground }}
+          >
+            Run
+          </button>
+        </div>
+        {/* Body */}
+        <div className="flex gap-3 px-3 py-2">
+          <div className="flex-1">
+            <div className="text-xs" style={{ color: colors.foreground }}>
+              SELECT * FROM users;
+            </div>
+            <div
+              className="mt-0.5 text-[11px]"
+              style={{ color: colors.mutedForeground }}
+            >
+              42 rows · 8 ms
+            </div>
+          </div>
+          <span
+            className="self-start rounded px-1.5 py-0.5 text-[10px]"
+            style={{
+              background: colors.destructive,
+              color: colors.destructiveForeground,
+            }}
+          >
+            error
+          </span>
+        </div>
+      </div>
+      {/* Swatch strip */}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {swatches.map((s) => (
+          <div key={s.key} className="flex items-center gap-1">
+            <span
+              className="h-4 w-4 rounded border"
+              style={{ background: colors[s.key], borderColor: colors.border }}
+            />
+            <span className="text-[10px] text-muted-foreground">{s.label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

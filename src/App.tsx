@@ -172,6 +172,10 @@ export default function App() {
         database: p.database,
         username: p.username,
         ssl: p.ssl,
+        // Connections opened from the CLI are temporary by design: the backend
+        // keeps them in memory for the session but never writes them to
+        // profiles.json (see ConnectionProfile.ephemeral / store::save_profiles).
+        ephemeral: true,
       };
       try {
         const saved = await useConnections.getState().save(profile);

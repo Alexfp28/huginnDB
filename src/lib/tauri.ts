@@ -17,6 +17,7 @@ import type {
   ColumnFilter,
   ColumnInfo,
   ConflictResolution,
+  BatchResult,
   ConnectionProfile,
   ConnectionTabState,
   DatabaseInfo,
@@ -190,6 +191,16 @@ export const api = {
   /** Run arbitrary SQL on the connection. */
   executeQuery: (connectionId: string, sql: string) =>
     invoke<QueryResult>("execute_query", { connectionId, sql }),
+
+  /**
+   * Run a list of statements sequentially on a single pooled connection and
+   * return a per-statement summary plus the last SELECT's result set. This
+   * is the multi-statement path: a single `executeQuery` over a `;`-joined
+   * buffer goes through the prepared protocol, which rejects multiple
+   * commands. Statements are split client-side via `splitSql`.
+   */
+  executeBatch: (connectionId: string, statements: string[]) =>
+    invoke<BatchResult>("execute_batch", { connectionId, statements }),
 
   /**
    * Paginated SELECT against a known table.

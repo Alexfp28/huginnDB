@@ -239,3 +239,62 @@ export function resolveMonacoTheme(id: string | undefined): MonacoThemeId {
   const known = MONACO_THEME_OPTIONS.find((o) => o.id === id);
   return known ? (known.id as MonacoThemeId) : "one-dark-pro";
 }
+
+/** Flat colour set the Preferences preview needs to render a static SQL
+ *  sample for a theme without spinning up a real Monaco instance. */
+export interface MonacoPreviewColors {
+  background: string;
+  foreground: string;
+  comment: string;
+  keyword: string;
+  string: string;
+  number: string;
+  lineNumber: string;
+}
+
+/** The two built-in Monaco themes have no definition blob, so we mirror their
+ *  well-known palettes here for the preview. */
+const BUILTIN_PREVIEW: Record<"vs-dark" | "vs-light", MonacoPreviewColors> = {
+  "vs-dark": {
+    background: "#1e1e1e",
+    foreground: "#d4d4d4",
+    comment: "#6a9955",
+    keyword: "#569cd6",
+    string: "#ce9178",
+    number: "#b5cea8",
+    lineNumber: "#858585",
+  },
+  "vs-light": {
+    background: "#ffffff",
+    foreground: "#000000",
+    comment: "#008000",
+    keyword: "#0000ff",
+    string: "#a31515",
+    number: "#098658",
+    lineNumber: "#237893",
+  },
+};
+
+/** Pull the colours the static editor preview needs from a theme id. Reads the
+ *  token `rules` + `colors` of the custom definitions, falling back to the
+ *  built-in palettes (and finally one-dark-pro) so it never returns blanks. */
+export function getMonacoPreviewColors(id: string | undefined): MonacoPreviewColors {
+  const resolved = resolveMonacoTheme(id);
+  if (resolved === "vs-dark" || resolved === "vs-light") {
+    return BUILTIN_PREVIEW[resolved];
+  }
+  const def = MONACO_THEME_DEFINITIONS[resolved];
+  const rule = (token: string) =>
+    def.rules.find((r) => r.token === token)?.foreground;
+  const hex = (v: string | undefined, fallback: string) =>
+    v ? (v.startsWith("#") ? v : `#${v}`) : fallback;
+  return {
+    background: def.colors["editor.background"] ?? "#282c34",
+    foreground: hex(rule(""), "#abb2bf"),
+    comment: hex(rule("comment"), "#5c6370"),
+    keyword: hex(rule("keyword"), "#c678dd"),
+    string: hex(rule("string"), "#98c379"),
+    number: hex(rule("number"), "#d19a66"),
+    lineNumber: def.colors["editorLineNumber.foreground"] ?? "#4b5263",
+  };
+}

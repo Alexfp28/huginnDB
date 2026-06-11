@@ -15,6 +15,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Maximize2, Minimize2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,6 +38,11 @@ export function SideEditorPanel() {
   const [value, setValue] = useState("");
   const [language, setLanguage] = useState<ContentLanguage>("plaintext");
   const [saving, setSaving] = useState(false);
+  /** When true the panel content escapes the dock and covers the whole window.
+   *  The panel is a dockview pane (it can't grow past its group), so fullscreen
+   *  is a fixed overlay rather than a dock resize — mirrors the modal editor's
+   *  F11 toggle so the affordance is consistent. */
+  const [fullscreen, setFullscreen] = useState(false);
   /** Re-entrancy guard for the Ctrl+S handler — `setSaving` is async so we
    *  can't rely on the `saving` state inside the keydown listener. */
   const savingRef = useRef(false);
@@ -102,6 +109,23 @@ export function SideEditorPanel() {
     return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, [t]);
 
+  // F11 toggles fullscreen; Esc leaves it. Only active while a cell is loaded
+  // (no target → the panel shows the empty hint and there's nothing to expand).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!loadedTargetRef.current) return;
+      if (e.key === "F11") {
+        e.preventDefault();
+        setFullscreen((v) => !v);
+      } else if (e.key === "Escape" && fullscreen) {
+        e.preventDefault();
+        setFullscreen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen]);
+
   // Follow the selected cell. When the store points at a new target, load it —
   // but if the current buffer has unsaved edits, stash the new target and open
   // the discard-confirmation dialog instead of swapping immediately.
@@ -151,7 +175,12 @@ export function SideEditorPanel() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 p-2">
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col gap-2 p-2",
+        fullscreen && "fixed inset-0 z-50 bg-background",
+      )}
+    >
       <div className="flex items-center gap-2 px-1">
         <span className="truncate text-xs font-semibold">
           {target.columnName || t("cellEditor.title")}
@@ -159,6 +188,23 @@ export function SideEditorPanel() {
         <span className="text-[11px] text-muted-foreground">
           {t("cellEditor.chars", { count: value.length })}
         </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ml-auto h-6 w-6"
+          onClick={() => setFullscreen((v) => !v)}
+          title={
+            fullscreen
+              ? t("cellEditor.exitFullscreen")
+              : t("cellEditor.fullscreen")
+          }
+        >
+          {fullscreen ? (
+            <Minimize2 className="h-3.5 w-3.5" />
+          ) : (
+            <Maximize2 className="h-3.5 w-3.5" />
+          )}
+        </Button>
       </div>
       <CellEditorBody
         value={value}

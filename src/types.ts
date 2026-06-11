@@ -63,6 +63,9 @@ export interface ConnectionProfile {
   username: string;
   ssl: boolean;
   ssh_tunnel?: SshTunnel | null;
+  /** Session-only profile (e.g. a CLI ad-hoc connection) that the backend
+   *  keeps in memory but never writes to `profiles.json`. */
+  ephemeral?: boolean;
 }
 
 /** Database / schema row in the schema explorer. */
@@ -197,6 +200,25 @@ export interface QueryResult {
   elapsed_ms: number;
   /** Only populated by `fetch_table_data`. */
   total: number | null;
+}
+
+/** Outcome of one statement inside a {@link BatchResult}. */
+export interface StmtOutcome {
+  index: number;
+  /** Single-line, length-capped echo of the statement for the summary. */
+  preview: string;
+  rows_affected: number;
+  is_select: boolean;
+  /** Driver error message; when set, the batch stopped at this statement. */
+  error: string | null;
+}
+
+/** Result of running a batch of statements via `execute_batch`. */
+export interface BatchResult {
+  statements: StmtOutcome[];
+  /** Full result set of the last SELECT in the batch, for the grid. */
+  last_result: QueryResult | null;
+  total_affected: number;
 }
 
 /** Tabs in the main workspace can host either table data or a query editor. */

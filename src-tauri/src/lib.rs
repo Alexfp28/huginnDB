@@ -225,6 +225,7 @@ pub fn run() {
             commands::structure::preview_structure_change,
             commands::structure::apply_structure_change,
             commands::query::execute_query,
+            commands::query::execute_batch,
             commands::query::fetch_table_data,
             commands::query::update_cell,
             commands::query::delete_rows,

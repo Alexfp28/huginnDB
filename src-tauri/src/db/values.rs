@@ -158,16 +158,23 @@ pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
         // collation), so a real `LONGTEXT` lands here and used to render as a
         // hex dump. The flag isn't reachable through sqlx's public API, so we
         // disambiguate by content: if the bytes are valid UTF-8 we treat the
-        // value as text (matching HeidiSQL); otherwise we emit hex. A real
-        // binary blob fails `String::decode`'s UTF-8 validation and falls
-        // through to the hex branch. See gotcha #17.
-        if let Ok(s) = row.try_get::<String, _>(idx) {
-            return Value::String(s);
+        // value as text (matching HeidiSQL); otherwise we emit hex. See gotcha #17.
+        //
+        // We MUST read the bytes via `try_get::<Vec<u8>>` and validate UTF-8
+        // ourselves rather than `try_get::<String>`. `try_get::<String>` runs
+        // sqlx's *type-compatibility* gate first, and `String` is incompatible
+        // with a `BINARY`-flagged column — so it returns `Err` *before* ever
+        // looking at the bytes, and even a pristine UTF-8 `LONGTEXT` (e.g. a
+        // large JSON document) collapsed to a hex dump. `Vec<u8>` is compatible
+        // with BLOB, so `String::from_utf8` here decides text-vs-binary by the
+        // actual content, which is the behaviour we want.
+        if let Ok(bytes) = row.try_get::<Vec<u8>, _>(idx) {
+            return match String::from_utf8(bytes) {
+                Ok(s) => Value::String(s),
+                Err(e) => json!(hex(e.as_bytes())),
+            };
         }
-        return row
-            .try_get::<Vec<u8>, _>(idx)
-            .map(|v| json!(hex(&v)))
-            .unwrap_or(Value::Null);
+        return Value::Null;
     }
     // Temporal types — sqlx doesn't decode them as `String` by default, so
     // without an explicit branch the fallback below would return `Value::Null`
