@@ -157,6 +157,34 @@ pub struct ColumnMeta {
     pub data_type: String,
 }
 
+/// Per-statement outcome inside a [`BatchResult`].
+///
+/// `preview` is a single-line, length-capped echo of the statement (so the
+/// UI can label each row of the summary without re-sending the SQL). On a
+/// failing statement `error` carries the driver message and the batch stops
+/// there — later statements never run, mirroring how a paste of `;`-delimited
+/// queries would abort at the first failure in a `psql`/`mysql` session.
+#[derive(Debug, Serialize)]
+pub struct StmtOutcome {
+    pub index: usize,
+    pub preview: String,
+    pub rows_affected: u64,
+    pub is_select: bool,
+    pub error: Option<String>,
+}
+
+/// Result of running a batch of statements via [`execute_batch`].
+///
+/// `last_result` holds the full result set of the *last* SELECT in the batch
+/// (the grid shows it); write statements only contribute their affected-row
+/// count to `total_affected` and an entry in `statements`.
+#[derive(Debug, Serialize)]
+pub struct BatchResult {
+    pub statements: Vec<StmtOutcome>,
+    pub last_result: Option<QueryResult>,
+    pub total_affected: u64,
+}
+
 /// Resolve the active pool for `id`, or fail with [`AppError::NotConnected`].
 fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
     state
@@ -164,6 +192,76 @@ fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
         .read()
         .get(id)
         .ok_or_else(|| AppError::NotConnected(id.to_string()))
+}
+
+/// One-line, length-capped echo of a statement for the batch summary.
+fn stmt_preview(sql: &str) -> String {
+    let one_line = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one_line.chars().count() > 120 {
+        let head: String = one_line.chars().take(117).collect();
+        format!("{head}…")
+    } else {
+        one_line
+    }
+}
+
+/// Decode a Postgres result set into `(columns, rows)`. Shared by
+/// [`execute_with_state`] and [`execute_batch`] so the two paths can never
+/// drift in how they map driver rows to JSON values.
+fn pg_result(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
+    use sqlx::Row;
+    let columns = rows
+        .first()
+        .map(|r| {
+            pg_columns(r)
+                .into_iter()
+                .map(|(name, data_type)| ColumnMeta { name, data_type })
+                .collect()
+        })
+        .unwrap_or_default();
+    let data = rows
+        .iter()
+        .map(|r| (0..r.columns().len()).map(|i| pg_value(r, i)).collect())
+        .collect();
+    (columns, data)
+}
+
+/// Decode a MySQL result set into `(columns, rows)`. See [`pg_result`].
+fn mysql_result(rows: &[sqlx::mysql::MySqlRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
+    use sqlx::Row;
+    let columns = rows
+        .first()
+        .map(|r| {
+            mysql_columns(r)
+                .into_iter()
+                .map(|(name, data_type)| ColumnMeta { name, data_type })
+                .collect()
+        })
+        .unwrap_or_default();
+    let data = rows
+        .iter()
+        .map(|r| (0..r.columns().len()).map(|i| mysql_value(r, i)).collect())
+        .collect();
+    (columns, data)
+}
+
+/// Decode a SQLite result set into `(columns, rows)`. See [`pg_result`].
+fn sqlite_result(rows: &[sqlx::sqlite::SqliteRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
+    use sqlx::Row;
+    let columns = rows
+        .first()
+        .map(|r| {
+            sqlite_columns(r)
+                .into_iter()
+                .map(|(name, data_type)| ColumnMeta { name, data_type })
+                .collect()
+        })
+        .unwrap_or_default();
+    let data = rows
+        .iter()
+        .map(|r| (0..r.columns().len()).map(|i| sqlite_value(r, i)).collect())
+        .collect();
+    (columns, data)
 }
 
 /// Execute an arbitrary SQL statement on the connection identified by
@@ -226,7 +324,7 @@ async fn execute_with_state(
         });
     }
 
-    let result = match pool {
+    let (columns, data) = match pool {
         DbPool::Postgres(p) => {
             let rows = try_sql!(
                 app,
@@ -236,29 +334,7 @@ async fn execute_with_state(
                 start,
                 sqlx::query(sql).fetch_all(&p).await
             );
-            let columns = rows
-                .first()
-                .map(|r| {
-                    pg_columns(r)
-                        .into_iter()
-                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                        .collect()
-                })
-                .unwrap_or_default();
-            let data: Vec<Vec<Value>> = rows
-                .iter()
-                .map(|r| {
-                    use sqlx::Row;
-                    (0..r.columns().len()).map(|i| pg_value(r, i)).collect()
-                })
-                .collect();
-            QueryResult {
-                rows_affected: data.len() as u64,
-                rows: data,
-                columns,
-                elapsed_ms: start.elapsed().as_millis() as u64,
-                total: None,
-            }
+            pg_result(&rows)
         }
         DbPool::Mysql(p) => {
             let rows = try_sql!(
@@ -269,29 +345,7 @@ async fn execute_with_state(
                 start,
                 sqlx::query(sql).fetch_all(&p).await
             );
-            let columns = rows
-                .first()
-                .map(|r| {
-                    mysql_columns(r)
-                        .into_iter()
-                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                        .collect()
-                })
-                .unwrap_or_default();
-            let data: Vec<Vec<Value>> = rows
-                .iter()
-                .map(|r| {
-                    use sqlx::Row;
-                    (0..r.columns().len()).map(|i| mysql_value(r, i)).collect()
-                })
-                .collect();
-            QueryResult {
-                rows_affected: data.len() as u64,
-                rows: data,
-                columns,
-                elapsed_ms: start.elapsed().as_millis() as u64,
-                total: None,
-            }
+            mysql_result(&rows)
         }
         DbPool::Sqlite(p) => {
             let rows = try_sql!(
@@ -302,30 +356,15 @@ async fn execute_with_state(
                 start,
                 sqlx::query(sql).fetch_all(&p).await
             );
-            let columns = rows
-                .first()
-                .map(|r| {
-                    sqlite_columns(r)
-                        .into_iter()
-                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                        .collect()
-                })
-                .unwrap_or_default();
-            let data: Vec<Vec<Value>> = rows
-                .iter()
-                .map(|r| {
-                    use sqlx::Row;
-                    (0..r.columns().len()).map(|i| sqlite_value(r, i)).collect()
-                })
-                .collect();
-            QueryResult {
-                rows_affected: data.len() as u64,
-                rows: data,
-                columns,
-                elapsed_ms: start.elapsed().as_millis() as u64,
-                total: None,
-            }
+            sqlite_result(&rows)
         }
+    };
+    let result = QueryResult {
+        rows_affected: data.len() as u64,
+        rows: data,
+        columns,
+        elapsed_ms: start.elapsed().as_millis() as u64,
+        total: None,
     };
     log_sql(
         app,
@@ -337,6 +376,163 @@ async fn execute_with_state(
         None,
     );
     Ok(result)
+}
+
+/// Run a batch of statements sequentially on a single pooled connection.
+///
+/// The frontend splits the editor buffer into individual statements (reusing
+/// its `splitSql` lexer) and sends them here as a list. We run them **on one
+/// acquired connection**, in order, so that session-scoped state carries
+/// across the batch: an explicit `BEGIN`/`COMMIT`, a MySQL `USE db`, temp
+/// tables, `SET`s, etc. Acquiring a fresh connection per statement (what
+/// `execute_query` does) would scatter them across the pool and silently break
+/// the user's own transaction control.
+///
+/// We deliberately do **not** open an implicit transaction around the batch:
+/// atomicity stays in the user's hands (and now works, because it's one
+/// connection). Execution stops at the first failing statement — its error is
+/// recorded in the corresponding [`StmtOutcome`] and later statements are
+/// skipped, matching how a `;`-delimited paste aborts in a CLI client. The
+/// last SELECT's full result set is returned in `last_result` for the grid.
+///
+/// This is also the path that fixes multi-statement Ctrl+Enter: a single
+/// `sqlx::query` over a `;`-joined buffer goes through the *prepared* protocol,
+/// which rejects multiple commands; running them one at a time does not.
+#[tauri::command]
+pub async fn execute_batch(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    connection_id: String,
+    statements: Vec<String>,
+) -> AppResult<BatchResult> {
+    let pool = pool_for(state.inner(), &connection_id)?;
+    let driver = driver_str(&pool);
+
+    let mut outcomes: Vec<StmtOutcome> = Vec::with_capacity(statements.len());
+    let mut last_result: Option<QueryResult> = None;
+    let mut total_affected: u64 = 0;
+
+    // Drive every statement over a single borrowed connection `$conn`,
+    // decoding SELECT result sets with the driver-specific `$decode`. Pushes
+    // one `StmtOutcome` per statement and breaks on the first error.
+    macro_rules! drive {
+        ($conn:expr, $decode:path) => {{
+            for (index, raw) in statements.iter().enumerate() {
+                let sql = raw.trim();
+                if sql.is_empty() {
+                    continue;
+                }
+                let is_select = is_read_only(sql);
+                let start = Instant::now();
+                if is_select {
+                    match sqlx::query(sql).fetch_all(&mut *$conn).await {
+                        Ok(rows) => {
+                            let (columns, data) = $decode(&rows);
+                            let ra = data.len() as u64;
+                            total_affected += ra;
+                            log_sql(&app, &connection_id, driver, sql, start, Some(ra), None);
+                            last_result = Some(QueryResult {
+                                columns,
+                                rows: data,
+                                rows_affected: ra,
+                                elapsed_ms: start.elapsed().as_millis() as u64,
+                                total: None,
+                            });
+                            outcomes.push(StmtOutcome {
+                                index,
+                                preview: stmt_preview(sql),
+                                rows_affected: ra,
+                                is_select: true,
+                                error: None,
+                            });
+                        }
+                        Err(e) => {
+                            let msg = e.to_string();
+                            log_sql(&app, &connection_id, driver, sql, start, None, Some(&msg));
+                            outcomes.push(StmtOutcome {
+                                index,
+                                preview: stmt_preview(sql),
+                                rows_affected: 0,
+                                is_select: true,
+                                error: Some(msg),
+                            });
+                            break;
+                        }
+                    }
+                } else {
+                    match sqlx::query(sql).execute(&mut *$conn).await {
+                        Ok(r) => {
+                            let ra = r.rows_affected();
+                            total_affected += ra;
+                            log_sql(&app, &connection_id, driver, sql, start, Some(ra), None);
+                            outcomes.push(StmtOutcome {
+                                index,
+                                preview: stmt_preview(sql),
+                                rows_affected: ra,
+                                is_select: false,
+                                error: None,
+                            });
+                        }
+                        Err(e) => {
+                            let msg = e.to_string();
+                            log_sql(&app, &connection_id, driver, sql, start, None, Some(&msg));
+                            outcomes.push(StmtOutcome {
+                                index,
+                                preview: stmt_preview(sql),
+                                rows_affected: 0,
+                                is_select: false,
+                                error: Some(msg),
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        }};
+    }
+
+    let acquire_start = Instant::now();
+    match &pool {
+        DbPool::Postgres(p) => {
+            let mut conn = try_sql!(
+                &app,
+                &connection_id,
+                driver,
+                "(batch)",
+                acquire_start,
+                p.acquire().await
+            );
+            drive!(conn, pg_result);
+        }
+        DbPool::Mysql(p) => {
+            let mut conn = try_sql!(
+                &app,
+                &connection_id,
+                driver,
+                "(batch)",
+                acquire_start,
+                p.acquire().await
+            );
+            drive!(conn, mysql_result);
+        }
+        DbPool::Sqlite(p) => {
+            let mut conn = try_sql!(
+                &app,
+                &connection_id,
+                driver,
+                "(batch)",
+                acquire_start,
+                p.acquire().await
+            );
+            drive!(conn, sqlite_result);
+        }
+    }
+
+    Ok(BatchResult {
+        statements: outcomes,
+        last_result,
+        total_affected,
+    })
 }
 
 /// Escape a user-supplied LIKE pattern so `%` and `_` lose their special
@@ -426,9 +622,7 @@ fn build_filter_clause(
                     "?".to_string()
                 };
                 next_placeholder += 1;
-                or_parts.push(format!(
-                    "CAST({qcol} AS {cast_to}) {like_kw} {ph}{escape}"
-                ));
+                or_parts.push(format!("CAST({qcol} AS {cast_to}) {like_kw} {ph}{escape}"));
                 binds.push(Some(pattern.clone()));
             }
             if !or_parts.is_empty() {
@@ -1256,9 +1450,7 @@ pub async fn fetch_fk_options(
         )];
         binds.push(Some(pattern.clone()));
         if let Some(l) = &label_id {
-            parts.push(format!(
-                "CAST({l} AS {cast_to}) {like_kw} {ph2}{escape}"
-            ));
+            parts.push(format!("CAST({l} AS {cast_to}) {like_kw} {ph2}{escape}"));
             binds.push(Some(pattern));
         }
         format!(" WHERE {}", parts.join(" OR "))

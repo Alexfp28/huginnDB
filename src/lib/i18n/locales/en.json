@@ -530,8 +530,14 @@
     "noQueries": "No queries yet.",
     "running": "running…",
     "run": "Run",
+    "runAll": "Run all ({{count}})",
+    "runAllTitle": "Run every statement in order on one connection",
     "runStatement": "Run this statement",
-    "noResults": "Run a query to see results."
+    "noResults": "Run a query to see results.",
+    "database": "Database",
+    "defaultDatabase": "(default)",
+    "batchOk": "{{count}} statements · {{rows}} rows affected",
+    "batchFailed": "Stopped at statement {{index}} of {{total}}"
   },
   "saved": {
     "connectFirst": "Connect to a database first.",

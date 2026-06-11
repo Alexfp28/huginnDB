@@ -6,6 +6,53 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Run a whole buffer of statements at once.** Pressing `Ctrl+Enter` (or the
+  new "Run all (N)" button) on an editor holding several `;`-delimited
+  statements — e.g. a batch of INSERTs copied from the grid — now runs them in
+  order on a single connection and shows a per-statement summary, with the last
+  SELECT's rows in the grid. Previously the whole buffer was sent as one
+  prepared statement, which the driver rejected ("cannot insert multiple
+  commands into a prepared statement"). Running them on one connection also
+  means an explicit `BEGIN`/`COMMIT` (or MySQL `USE`) now carries across the
+  batch. The per-statement "▶ Run" CodeLens still runs a single statement.
+- **Database selector in the query editor.** On a multi-database server
+  (Postgres / MySQL) the query tab now has a database dropdown: pick a database
+  and the query runs against it — and the autocomplete switches to its tables —
+  without typing `USE`/a schema prefix into the SQL. Backed by the existing
+  per-database child pools. SQLite (single file) shows no selector.
+- **Theme and editor previews in Preferences.** Appearance shows a small mock of
+  the app chrome plus colour swatches painted with the selected theme; Editor
+  shows a sample SQL snippet rendered with the chosen font, size, wrap and
+  Monaco theme colours.
+- **Fullscreen toggle in the side cell editor**, matching the modal editor
+  (`F11` / `Esc`, or the header button).
+- **Dedicated 0/1 control for `BIT` columns** in the insert draft row and inline
+  cell editing (MySQL). It emits the numeric value the column expects and labels
+  the options per the grid's BIT-display preference, instead of a text field
+  that looked like it wanted a boolean.
+
+### Changed
+
+- **Connections opened from the CLI are now temporary.** An ad-hoc connection
+  launched with `--host …` is kept in memory for the session (so the explorer
+  and tabs work normally, marked "temp") but is no longer written to
+  `profiles.json`, so it doesn't pile up across launches. Profiles created in
+  the app still persist as before.
+- **Driver badge tiles are theme-aware** — the brand logos keep their colours
+  but the tile/ring now track the active theme instead of a hardcoded white
+  square that clashed with dark themes.
+
+### Fixed
+
+- **A large `LONGTEXT` (e.g. a big JSON document) in MySQL rendered as a hex
+  dump.** When the server flags a text column as binary (charset/collation
+  dependent), sqlx reports it as `LONGBLOB` and `try_get::<String>` rejected it
+  on a type-compatibility check *before* looking at the bytes, so the value fell
+  through to hex regardless of content. We now read the raw bytes and validate
+  UTF-8 ourselves, so valid-UTF-8 text decodes as text.
+
 ## [1.0.9] — 2026-06-09
 
 ### Fixed

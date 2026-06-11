@@ -530,8 +530,14 @@
     "noQueries": "Aún no hay consultas.",
     "running": "ejecutando…",
     "run": "Ejecutar",
+    "runAll": "Ejecutar todo ({{count}})",
+    "runAllTitle": "Ejecuta todas las sentencias en orden sobre una conexión",
     "runStatement": "Ejecutar esta sentencia",
-    "noResults": "Ejecuta una consulta para ver los resultados."
+    "noResults": "Ejecuta una consulta para ver los resultados.",
+    "database": "Base de datos",
+    "defaultDatabase": "(por defecto)",
+    "batchOk": "{{count}} sentencias · {{rows}} filas afectadas",
+    "batchFailed": "Detenido en la sentencia {{index}} de {{total}}"
   },
   "saved": {
     "connectFirst": "Conéctate primero a una base de datos.",
