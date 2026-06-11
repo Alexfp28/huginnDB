@@ -385,6 +385,7 @@
       }
     },
     "editor": {
+      "preview": "Vista previa",
       "theme": "Tema",
       "fontFamily": "Familia tipográfica",
       "fontSize": "Tamaño de fuente (px)",
@@ -439,6 +440,7 @@
     },
     "appearance": {
       "themes": "Temas",
+      "preview": "Vista previa",
       "builtin": "integrado",
       "custom": "personalizado",
       "builtinInfo": "Tema integrado — los cambios crean un nuevo tema personalizado.",

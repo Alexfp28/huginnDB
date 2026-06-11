@@ -385,6 +385,7 @@
       }
     },
     "editor": {
+      "preview": "Preview",
       "theme": "Theme",
       "fontFamily": "Font family",
       "fontSize": "Font size (px)",
@@ -439,6 +440,7 @@
     },
     "appearance": {
       "themes": "Themes",
+      "preview": "Preview",
       "builtin": "built-in",
       "custom": "custom",
       "builtinInfo": "Built-in theme — edits will fork into a new custom theme.",
