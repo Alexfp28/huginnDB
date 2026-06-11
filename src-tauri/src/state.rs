@@ -53,6 +53,15 @@ pub struct ConnectionProfile {
     /// the next alpha release.
     #[serde(default)]
     pub ssh_tunnel: Option<SshTunnel>,
+    /// Session-only profile that must never be persisted to `profiles.json`.
+    /// Set for ad-hoc connections opened from the CLI (`--host …`): they live
+    /// in `state.profiles` in memory so the explorer / tabs / `pool_for` treat
+    /// them like any other connection, but [`crate::store::save_profiles`]
+    /// filters them out, so they vanish on the next launch. The matching
+    /// password is already in-memory only (handed straight to `connect`), so
+    /// nothing about an ephemeral profile ever touches disk or the keychain.
+    #[serde(default)]
+    pub ephemeral: bool,
 }
 
 /// How the client decides whether to trust the SSH server's host key.

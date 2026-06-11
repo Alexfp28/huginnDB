@@ -140,6 +140,14 @@ export function ConnectionList({
                 <div className="flex items-center gap-1.5">
                   <span className="truncate text-sm font-medium">{p.name}</span>
                   <DriverBadge driver={p.driver} />
+                  {p.ephemeral && (
+                    <span
+                      className="shrink-0 rounded-sm bg-muted px-1 text-[9px] uppercase tracking-wide text-muted-foreground"
+                      title={t("connections.temporary")}
+                    >
+                      {t("connections.temporaryShort")}
+                    </span>
+                  )}
                 </div>
                 <div className="truncate text-[11px] text-muted-foreground">
                   {p.driver === "sqlite"

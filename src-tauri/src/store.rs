@@ -41,10 +41,56 @@ pub fn load_profiles() -> AppResult<Vec<ConnectionProfile>> {
     Ok(serde_json::from_slice(&bytes)?)
 }
 
+/// Profiles that should reach disk — everything except ephemeral (session-only)
+/// ones. Pulled out of [`save_profiles`] so the filtering rule is unit-testable
+/// without touching the filesystem.
+fn persistable(profiles: &[ConnectionProfile]) -> Vec<&ConnectionProfile> {
+    profiles.iter().filter(|p| !p.ephemeral).collect()
+}
+
 /// Write the profile list to disk, pretty-printed for human review.
+///
+/// Ephemeral profiles (CLI ad-hoc connections — see
+/// [`ConnectionProfile::ephemeral`]) are filtered out: they exist only in
+/// memory for the lifetime of the session and must never reach disk.
 pub fn save_profiles(profiles: &[ConnectionProfile]) -> AppResult<()> {
     let path = profiles_path()?;
-    let bytes = serde_json::to_vec_pretty(profiles)?;
+    let bytes = serde_json::to_vec_pretty(&persistable(profiles))?;
     std::fs::write(&path, bytes)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::Driver;
+
+    fn profile(id: &str, ephemeral: bool) -> ConnectionProfile {
+        ConnectionProfile {
+            id: id.into(),
+            name: id.into(),
+            driver: Driver::Postgres,
+            host: "localhost".into(),
+            port: 5432,
+            database: String::new(),
+            username: "u".into(),
+            ssl: false,
+            ssh_tunnel: None,
+            ephemeral,
+        }
+    }
+
+    #[test]
+    fn persistable_drops_ephemeral_profiles() {
+        let profiles = vec![
+            profile("saved-1", false),
+            profile("cli-temp", true),
+            profile("saved-2", false),
+        ];
+        let kept: Vec<&str> = persistable(&profiles)
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect();
+        assert_eq!(kept, ["saved-1", "saved-2"]);
+    }
 }

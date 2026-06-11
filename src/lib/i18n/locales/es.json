@@ -55,6 +55,8 @@
     "newTooltip": "Nueva conexión",
     "connectTooltip": "Conectar",
     "disconnectTooltip": "Desconectar",
+    "temporary": "Conexión temporal — no se guarda en disco",
+    "temporaryShort": "temp",
     "editTooltip": "Editar",
     "deleteTooltip": "Eliminar",
     "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",

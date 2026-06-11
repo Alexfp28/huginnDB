@@ -63,6 +63,9 @@ export interface ConnectionProfile {
   username: string;
   ssl: boolean;
   ssh_tunnel?: SshTunnel | null;
+  /** Session-only profile (e.g. a CLI ad-hoc connection) that the backend
+   *  keeps in memory but never writes to `profiles.json`. */
+  ephemeral?: boolean;
 }
 
 /** Database / schema row in the schema explorer. */
