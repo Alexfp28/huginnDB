@@ -12,8 +12,11 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Format a byte count as `1.2 KB`, `345.6 MB`, etc. */
+/** Format a byte count as `1.2 KB`, `345.6 MB`, etc. Returns `""` for a
+ *  missing/non-finite input (e.g. a `null` stat that slipped through) so the
+ *  caller renders no badge instead of crashing on `null.toFixed`. */
 export function formatBytes(n: number) {
+  if (!Number.isFinite(n)) return "";
   const units = ["B", "KB", "MB", "GB"];
   let i = 0;
   while (n > 1024 && i < units.length - 1) {
@@ -31,6 +34,7 @@ export function formatBytes(n: number) {
  *   `1.2M` above that.
  */
 export function formatCount(n: number): string {
+  if (!Number.isFinite(n)) return "";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);

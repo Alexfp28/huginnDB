@@ -35,7 +35,10 @@ pub struct TableInfo {
     ///   `COUNT(*)` queries, which become prohibitively expensive on schemas with
     ///   many tables. Use `SELECT COUNT(*) FROM table` manually when an exact count
     ///   is needed.
-    #[serde(rename = "row_count")]
+    // Omit when absent (`None`) rather than emitting JSON `null`. The frontend
+    // types this as `row_count?: number` and guards on `undefined`; serializing
+    // `null` slipped past that guard and crashed `formatCount`/`formatBytes`.
+    #[serde(rename = "row_count", skip_serializing_if = "Option::is_none")]
     pub row_count: Option<u64>,
     /// Approximate on-disk size in bytes (data + indexes) sourced from the engine.
     ///
@@ -46,7 +49,7 @@ pub struct TableInfo {
     /// - **SQLite** — best-effort via the optional `dbstat` virtual table. If the
     ///   build does not include `dbstat`, the first probe fails and every entry
     ///   in this list falls back to `None` for the rest of the call.
-    #[serde(rename = "size_bytes")]
+    #[serde(rename = "size_bytes", skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
 }
 
@@ -201,10 +204,7 @@ pub async fn list_tables(
             // The database name is quoted with backtick-escaping. It comes
             // from DATABASE() (server-side catalog), not user input, so the
             // quoting is a safety measure rather than a SQL-injection guard.
-            let q = format!(
-                "SHOW TABLE STATUS FROM `{}`",
-                db.replace('`', "``")
-            );
+            let q = format!("SHOW TABLE STATUS FROM `{}`", db.replace('`', "``"));
             let rows = sqlx::query(&q).fetch_all(&p).await?;
 
             // try_get is used throughout instead of get. sqlx's get() panics
@@ -242,9 +242,7 @@ pub async fn list_tables(
                         },
                         row_count: r
                             .try_get::<u64, _>("Rows")
-                            .or_else(|_| {
-                                r.try_get::<i64, _>("Rows").map(|v| v.unsigned_abs())
-                            })
+                            .or_else(|_| r.try_get::<i64, _>("Rows").map(|v| v.unsigned_abs()))
                             .ok(),
                         size_bytes: if is_view {
                             None
@@ -644,21 +642,17 @@ pub async fn drop_table(
 ) -> AppResult<()> {
     let pool = pool_for(state.inner(), &connection_id)?;
     let qt = match (&pool, schema) {
-        (DbPool::Postgres(_), Some(s)) => format!(
-            "{}.{}",
-            quote_ident(true, &s),
-            quote_ident(true, &table)
-        ),
+        (DbPool::Postgres(_), Some(s)) => {
+            format!("{}.{}", quote_ident(true, &s), quote_ident(true, &table))
+        }
         (DbPool::Postgres(_), None) => format!(
             "{}.{}",
             quote_ident(true, "public"),
             quote_ident(true, &table)
         ),
-        (DbPool::Mysql(_), Some(s)) => format!(
-            "{}.{}",
-            quote_ident(false, &s),
-            quote_ident(false, &table)
-        ),
+        (DbPool::Mysql(_), Some(s)) => {
+            format!("{}.{}", quote_ident(false, &s), quote_ident(false, &table))
+        }
         (DbPool::Mysql(_), None) => quote_ident(false, &table),
         (DbPool::Sqlite(_), _) => quote_ident(true, &table),
     };
