@@ -6,6 +6,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Bulk-close tabs from the tab menu.** Right-clicking a workspace tab (or the
+  tab's `⋮` menu) now offers **Close other tabs** and **Close all tabs** in
+  addition to **Close tab**, so a workspace full of open tables/queries can be
+  cleared in one action instead of closing each tab individually.
+
+### Fixed
+
+- **Filtering the schema explorer no longer crashes on connections without table
+  stats.** `list_tables` serialized absent row-count / size statistics as JSON
+  `null`; the explorer's metric badge guarded only against `undefined`, so a
+  `null` reached `formatBytes` and threw *"Cannot read properties of null
+  (reading 'toFixed')"* — taking down the whole panel. This bit CLI/ad-hoc
+  connections and SQLite builds without `dbstat`, and surfaced on filter because
+  the filter force-expands every section (rendering badges that were previously
+  collapsed). The backend now omits absent stats (matching the `?: number`
+  frontend contract) and the badge guards `!= null`; `formatBytes`/`formatCount`
+  additionally bail on non-finite input.
+- **Opening or closing the side cell-editor no longer resets the Schema /
+  Workspace split.** The side-editor docks as a sibling in the
+  `[Schema | Workspace | Cell]` row, and dockview redistributes freed/taken
+  space proportionally across *all* siblings when a child is added or removed —
+  silently resizing the Schema panel each time. The Schema width is now
+  remembered while the side-editor is absent and re-asserted on every
+  open/close, so only the Workspace panel absorbs the change.
+- **Duplicating a MySQL row with a `BIT` column then saving could fail with
+  "Data too long for column".** The 0/1 control showed the normalized value but
+  left the draft cell holding the raw duplicated value; if that value wasn't
+  already exactly `"0"`/`"1"` (e.g. a duplicated `"true"`, or a legacy `BIT(1)`
+  cell carrying a wider/garbage integer), the raw value was what got committed,
+  and `CAST(? AS UNSIGNED)` into `BIT(1)` then overflowed. The control now syncs
+  the committed cell to the displayed `0`/`1` on mount.
+
 ## [1.0.10] — 2026-06-11
 
 ### Added

@@ -56,10 +56,24 @@ export function BitInput({
 }: BitInputProps) {
   const cur = normalize(value);
 
-  // Draft row: a fresh, required BIT column should default to 0 rather than
-  // sit at NULL (which the INSERT would reject). Runs once on mount.
+  // Reconcile the underlying draft cell with what this control displays, once
+  // on mount. Two cases:
+  //   • Fresh, required BIT column at NULL → seed it to "0" (the INSERT would
+  //     otherwise reject a missing required value).
+  //   • A non-null value the <select> can only show as "0"/"1" but that isn't
+  //     already exactly "0"/"1" (e.g. a duplicated row carrying "true", or a
+  //     legacy BIT(1) cell holding a wider/garbage integer). The select renders
+  //     the normalized option, but the draft cell still holds the raw string;
+  //     without this sync that raw value is what gets committed, and a value
+  //     like "49" fails MySQL's `CAST(? AS UNSIGNED)` into BIT(1) with
+  //     "Data too long for column". Emitting the normalized value keeps the
+  //     committed cell in step with the displayed option. (Gotcha #15.)
   useEffect(() => {
-    if (seedDefault && value == null) onSelect("0");
+    if (value == null) {
+      if (seedDefault) onSelect("0");
+      return;
+    }
+    if (cur !== "" && cur !== value) onSelect(cur);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
