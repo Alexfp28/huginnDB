@@ -20,6 +20,10 @@ interface TabsState {
   open: (tab: Omit<AppTab, "id"> & { id?: string }) => string;
   /** Remove a tab. If it was active, the previous tab becomes active. */
   close: (id: string) => void;
+  /** Close every tab in the current workspace. */
+  closeAll: () => void;
+  /** Close every tab except `id`, which stays open and active. */
+  closeOthers: (id: string) => void;
   setActive: (id: string) => void;
   /** Update the in-memory SQL of a query tab. */
   updateQuery: (id: string, query: string) => void;
@@ -79,6 +83,16 @@ export const useTabs = create<TabsState>((set, get) => ({
       return { tabs, activeId };
     });
   },
+  closeAll: () => set({ tabs: [], activeId: null }),
+  closeOthers: (id) =>
+    set((s) => {
+      const kept = s.tabs.filter((t) => t.id === id);
+      // If the target somehow no longer exists, fall back to clearing all
+      // rather than leaving orphaned tabs the reconciler can't account for.
+      return kept.length
+        ? { tabs: kept, activeId: id }
+        : { tabs: [], activeId: null };
+    }),
   setActive: (id) => set({ activeId: id }),
   updateQuery: (id, query) =>
     set((s) => ({

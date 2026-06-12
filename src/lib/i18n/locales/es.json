@@ -296,6 +296,8 @@
     "tableFallback": "Tabla",
     "structureSuffix": "estructura",
     "closeTab": "Cerrar pestaña",
+    "closeOthers": "Cerrar las demás",
+    "closeAll": "Cerrar todas",
     "actionsTooltip": "Acciones de la pestaña",
     "splitRight": "Dividir a la derecha",
     "splitDown": "Dividir abajo",
