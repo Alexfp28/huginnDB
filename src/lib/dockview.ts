@@ -219,6 +219,46 @@ export function initDefaultLayout(api: DockviewApi) {
   api.getPanel("schema")?.api.setSize({ width: 320 });
 }
 
+// ---------------------------------------------------------------------------
+// Schema-width preservation around the side-editor toggle.
+//
+// The side-editor docks as a sibling group in the horizontal row
+// `[schema | workspace | side-editor]` (see `openSideEditor`). Adding or
+// removing a child of that SplitView makes dockview redistribute the freed /
+// taken space *proportionally across every sibling*, which silently shrinks or
+// grows the Schema panel — so the Schema↔Workspace split the user set gets lost
+// every time the cell editor opens or closes. We remember the Schema width
+// while the side-editor is absent (the "stable" state) and re-assert it on each
+// open/close transition, so only the Workspace panel absorbs the delta.
+// ---------------------------------------------------------------------------
+
+/** Last Schema width observed while the side-editor was NOT present. */
+let lastStableSchemaWidth: number | null = null;
+/** Side-editor presence at the previous layout-change, to detect transitions. */
+let sideEditorWasOpen = false;
+
+/**
+ * Subscribe to the outer dockview layout stream to keep the Schema width stable
+ * across side-editor open/close. Call once from `onDockviewReady`.
+ */
+export function trackSchemaWidthAroundSideEditor(api: DockviewApi) {
+  api.onDidLayoutChange(() => {
+    const sideOpen = api.getPanel("side-editor") != null;
+    const schema = api.getPanel("schema");
+    const transition = sideOpen !== sideEditorWasOpen;
+    if (transition && schema && lastStableSchemaWidth != null) {
+      // Open or close just happened: undo dockview's proportional reflow of the
+      // Schema panel. The re-assert fires another layout change, but it's no
+      // longer a transition, so it can't recurse.
+      schema.api.setSize({ width: lastStableSchemaWidth });
+    } else if (!sideOpen && schema && schema.api.width > 0) {
+      // Stable state (no side-editor): this is the width to restore later.
+      lastStableSchemaWidth = schema.api.width;
+    }
+    sideEditorWasOpen = sideOpen;
+  });
+}
+
 /** Persist the current layout. Called from the `onDidLayoutChange`
  *  callback wired up in App.tsx. */
 export function persistLayout(api: DockviewApi) {
