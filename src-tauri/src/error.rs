@@ -16,6 +16,10 @@ pub enum AppError {
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
 
+    /// MongoDB driver, command, or BSON failure surfaced by the `mongodb` crate.
+    #[error("mongodb error: {0}")]
+    Mongo(#[from] mongodb::error::Error),
+
     /// OS keychain failure (Credential Manager / libsecret / Keychain).
     #[error("keyring error: {0}")]
     Keyring(#[from] keyring::Error),

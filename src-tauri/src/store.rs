@@ -76,6 +76,7 @@ mod tests {
             username: "u".into(),
             ssl: false,
             ssh_tunnel: None,
+            connection_string: None,
             ephemeral,
         }
     }

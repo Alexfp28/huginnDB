@@ -90,6 +90,9 @@ pub async fn list_databases(
     connection_id: String,
 ) -> AppResult<Vec<DatabaseInfo>> {
     let pool = pool_for(state.inner(), &connection_id)?;
+    if let DbPool::Mongo(conn) = &pool {
+        return crate::db::mongo::schema::list_databases(conn).await;
+    }
     let names: Vec<String> = match pool {
         DbPool::Postgres(p) => {
             sqlx::query_scalar(
@@ -112,6 +115,7 @@ pub async fn list_databases(
         }
         // SQLite is single-file; pretend the file is one schema named "main".
         DbPool::Sqlite(_) => vec!["main".to_string()],
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
     Ok(names
         .into_iter()
@@ -130,6 +134,9 @@ pub async fn list_tables(
     _database: Option<String>,
 ) -> AppResult<Vec<TableInfo>> {
     let pool = pool_for(state.inner(), &connection_id)?;
+    if let DbPool::Mongo(conn) = &pool {
+        return crate::db::mongo::schema::list_collections(conn).await;
+    }
     let tables = match pool {
         DbPool::Postgres(p) => {
             // LEFT JOIN against pg_stat_user_tables fetches approximate live-row counts
@@ -201,10 +208,7 @@ pub async fn list_tables(
             // The database name is quoted with backtick-escaping. It comes
             // from DATABASE() (server-side catalog), not user input, so the
             // quoting is a safety measure rather than a SQL-injection guard.
-            let q = format!(
-                "SHOW TABLE STATUS FROM `{}`",
-                db.replace('`', "``")
-            );
+            let q = format!("SHOW TABLE STATUS FROM `{}`", db.replace('`', "``"));
             let rows = sqlx::query(&q).fetch_all(&p).await?;
 
             // try_get is used throughout instead of get. sqlx's get() panics
@@ -242,9 +246,7 @@ pub async fn list_tables(
                         },
                         row_count: r
                             .try_get::<u64, _>("Rows")
-                            .or_else(|_| {
-                                r.try_get::<i64, _>("Rows").map(|v| v.unsigned_abs())
-                            })
+                            .or_else(|_| r.try_get::<i64, _>("Rows").map(|v| v.unsigned_abs()))
                             .ok(),
                         size_bytes: if is_view {
                             None
@@ -304,6 +306,7 @@ pub async fn list_tables(
             }
             out
         }
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
     Ok(tables)
 }
@@ -337,6 +340,9 @@ pub async fn list_columns_inner(
     table: String,
 ) -> AppResult<Vec<ColumnInfo>> {
     let pool = pool_for(state, connection_id)?;
+    if let DbPool::Mongo(conn) = &pool {
+        return crate::db::mongo::schema::infer_columns(conn, &table).await;
+    }
     let cols = match pool {
         DbPool::Postgres(p) => {
             let schema = schema.unwrap_or_else(|| "public".into());
@@ -533,6 +539,7 @@ pub async fn list_columns_inner(
                 })
                 .collect()
         }
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
     Ok(cols)
 }
@@ -546,6 +553,9 @@ pub async fn list_indexes(
     table: String,
 ) -> AppResult<Vec<IndexInfo>> {
     let pool = pool_for(state.inner(), &connection_id)?;
+    if let DbPool::Mongo(conn) = &pool {
+        return crate::db::mongo::schema::list_indexes(conn, &table).await;
+    }
     let idx = match pool {
         DbPool::Postgres(p) => {
             let schema = schema.unwrap_or_else(|| "public".into());
@@ -624,6 +634,7 @@ pub async fn list_indexes(
             }
             out
         }
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
     Ok(idx)
 }
@@ -643,24 +654,28 @@ pub async fn drop_table(
     table: String,
 ) -> AppResult<()> {
     let pool = pool_for(state.inner(), &connection_id)?;
+    if let DbPool::Mongo(conn) = &pool {
+        let db = crate::db::mongo::schema::resolve_db(conn)?;
+        db.collection::<mongodb::bson::Document>(&table)
+            .drop()
+            .await?;
+        return Ok(());
+    }
     let qt = match (&pool, schema) {
-        (DbPool::Postgres(_), Some(s)) => format!(
-            "{}.{}",
-            quote_ident(true, &s),
-            quote_ident(true, &table)
-        ),
+        (DbPool::Postgres(_), Some(s)) => {
+            format!("{}.{}", quote_ident(true, &s), quote_ident(true, &table))
+        }
         (DbPool::Postgres(_), None) => format!(
             "{}.{}",
             quote_ident(true, "public"),
             quote_ident(true, &table)
         ),
-        (DbPool::Mysql(_), Some(s)) => format!(
-            "{}.{}",
-            quote_ident(false, &s),
-            quote_ident(false, &table)
-        ),
+        (DbPool::Mysql(_), Some(s)) => {
+            format!("{}.{}", quote_ident(false, &s), quote_ident(false, &table))
+        }
         (DbPool::Mysql(_), None) => quote_ident(false, &table),
         (DbPool::Sqlite(_), _) => quote_ident(true, &table),
+        (DbPool::Mongo(_), _) => unreachable!("mongo dispatched above"),
     };
     let sql = format!("DROP TABLE {qt}");
     match pool {
@@ -673,6 +688,7 @@ pub async fn drop_table(
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(&p).await?;
         }
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     }
     Ok(())
 }
@@ -698,6 +714,11 @@ pub async fn rename_table(
         ));
     }
     let pool = pool_for(state.inner(), &connection_id)?;
+    if matches!(&pool, DbPool::Mongo(_)) {
+        return Err(AppError::InvalidInput(
+            "renaming collections is not supported in this version".into(),
+        ));
+    }
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let new_ident = quote_ident(pg_or_sqlite, new_name.trim());
     let sql = match &pool {
@@ -729,6 +750,7 @@ pub async fn rename_table(
             quote_ident(true, &table),
             new_ident,
         ),
+        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
     };
     match pool {
         DbPool::Postgres(p) => {
@@ -740,6 +762,7 @@ pub async fn rename_table(
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(&p).await?;
         }
+        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
     }
     Ok(())
 }
@@ -760,6 +783,15 @@ pub async fn server_version(
     connection_id: String,
 ) -> AppResult<String> {
     let pool = pool_for(state.inner(), &connection_id)?;
+    if let DbPool::Mongo(conn) = &pool {
+        let info = conn
+            .client
+            .database("admin")
+            .run_command(mongodb::bson::doc! {"buildInfo": 1})
+            .await?;
+        let ver = info.get_str("version").unwrap_or("?");
+        return Ok(format!("mongodb {ver}"));
+    }
     let version = match pool {
         DbPool::Postgres(p) => {
             let raw: String = sqlx::query_scalar("SELECT version()").fetch_one(&p).await?;
@@ -783,6 +815,7 @@ pub async fn server_version(
                 .await?;
             format!("sqlite {raw}")
         }
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
     Ok(version)
 }

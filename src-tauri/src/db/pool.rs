@@ -96,6 +96,11 @@ pub fn build_url(profile: &ConnectionProfile, password: &str, host: &str, port: 
             )
         }
         Driver::Sqlite => format!("sqlite://{}", profile.database),
+        // MongoDB does not use this SQL-URL builder; its client is constructed
+        // in `crate::db::mongo::open_pool`, which `open_pool` delegates to before
+        // ever reaching here. Returning the raw connection string keeps the
+        // match total without inventing a meaningless SQL URL.
+        Driver::Mongo => profile.connection_string.clone().unwrap_or_default(),
     }
 }
 
@@ -115,6 +120,12 @@ pub async fn open_pool(
     ssh_secret: Option<String>,
     known_hosts: SharedKnownHosts,
 ) -> AppResult<(DbPool, Option<SshTunnelHandle>)> {
+    // MongoDB has its own connection model (URI / SRV / tunnel rules) and is
+    // built entirely in the mongo module.
+    if matches!(profile.driver, Driver::Mongo) {
+        return crate::db::mongo::open_pool(profile, password, ssh_secret, known_hosts).await;
+    }
+
     // SQLite is a local file; tunnels don't apply. For network drivers,
     // bring the tunnel up first so we know which local port to target.
     let (host, port, handle): (String, u16, Option<SshTunnelHandle>) =
@@ -143,6 +154,8 @@ pub async fn open_pool(
                 .connect(&url)
                 .await?,
         ),
+        // MongoDB is handled by the early return at the top of this function.
+        Driver::Mongo => unreachable!("mongo handled by db::mongo::open_pool"),
         Driver::Sqlite => DbPool::Sqlite(
             SqlitePoolOptions::new()
                 .max_connections(MAX_CONNECTIONS_SQLITE)
@@ -168,6 +181,7 @@ pub async fn smoke_test(
         DbPool::Postgres(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
         DbPool::Mysql(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
         DbPool::Sqlite(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
+        DbPool::Mongo(conn) => crate::db::mongo::schema::ping(conn).await?,
     };
     Ok(())
 }

@@ -11,6 +11,7 @@
 //! Passwords are **not** part of this state. They are read on-demand from
 //! the OS keychain via [`crate::keychain`].
 
+use mongodb::Client as MongoClient;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use sqlx::{MySqlPool, PgPool, SqlitePool};
@@ -24,6 +25,13 @@ pub enum Driver {
     Postgres,
     Mysql,
     Sqlite,
+    /// MongoDB. The document model diverges sharply from the SQL drivers
+    /// above: all of its logic is concentrated in [`crate::db::mongo`] and
+    /// dispatched through thin `DbPool::Mongo` arms in the command layer.
+    /// Serialised as `"mongodb"` (not `"mongo"`) to match the frontend
+    /// `Driver` union and the conventional driver name.
+    #[serde(rename = "mongodb")]
+    Mongo,
 }
 
 /// User-defined connection profile stored on disk.
@@ -53,6 +61,14 @@ pub struct ConnectionProfile {
     /// the next alpha release.
     #[serde(default)]
     pub ssh_tunnel: Option<SshTunnel>,
+    /// Raw connection URI, used by MongoDB as the primary connection input.
+    /// When set (`mongodb://…` / `mongodb+srv://…`) it is passed verbatim to
+    /// the driver and takes precedence over the discrete host/port/database
+    /// fields, which Mongo only keeps as best-effort parsed conveniences.
+    /// `None` for the SQL drivers, which assemble their URL from the discrete
+    /// fields in [`crate::db::pool::build_url`].
+    #[serde(default)]
+    pub connection_string: Option<String>,
     /// Session-only profile that must never be persisted to `profiles.json`.
     /// Set for ad-hoc connections opened from the CLI (`--host …`): they live
     /// in `state.profiles` in memory so the explorer / tabs / `pool_for` treat
@@ -149,6 +165,24 @@ pub enum DbPool {
     Postgres(PgPool),
     Mysql(MySqlPool),
     Sqlite(SqlitePool),
+    /// A MongoDB client bound to a target database. Unlike the `sqlx` pools
+    /// this is not a SQL connection pool — the driver manages its own internal
+    /// connection pooling — but it is `Clone` (cheap, `Arc`-backed) so it slots
+    /// into the same [`ActiveConnections`] map and `pool_for` lookup pattern.
+    Mongo(MongoConn),
+}
+
+/// A live MongoDB client plus the database a given connection handle targets.
+///
+/// A single [`mongodb::Client`] can reach every database in the cluster, so
+/// the per-database "views" the explorer opens (mirroring the SQL
+/// `<id>::db::<name>` synthetic connections) reuse the parent's client and
+/// only re-tag `database`. The parent connection's `database` is the URI's
+/// default database (often `None` → "let me pick a database from the tree").
+#[derive(Clone)]
+pub struct MongoConn {
+    pub client: MongoClient,
+    pub database: Option<String>,
 }
 
 /// A live database pool plus, optionally, the SSH tunnel that fronts it.
