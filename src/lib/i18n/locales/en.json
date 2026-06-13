@@ -296,6 +296,8 @@
     "tableFallback": "Table",
     "structureSuffix": "structure",
     "closeTab": "Close tab",
+    "closeOthers": "Close other tabs",
+    "closeAll": "Close all tabs",
     "actionsTooltip": "Tab actions",
     "splitRight": "Split right",
     "splitDown": "Split down",

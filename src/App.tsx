@@ -58,6 +58,7 @@ import {
   persistLayout,
   registerDockviewApi,
   restoreOrInitLayout,
+  trackSchemaWidthAroundSideEditor,
 } from "@/lib/dockview";
 
 // ---------------------------------------------------------------------------
@@ -395,6 +396,7 @@ export default function App() {
   const onDockviewReady = (event: DockviewReadyEvent) => {
     registerDockviewApi(event.api);
     restoreOrInitLayout(event.api);
+    trackSchemaWidthAroundSideEditor(event.api);
     event.api.onDidLayoutChange(() => persistLayout(event.api));
   };
 

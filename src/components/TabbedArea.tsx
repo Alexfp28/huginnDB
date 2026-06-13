@@ -27,6 +27,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { useTranslation } from "react-i18next";
 import {
   DockviewReact,
@@ -169,8 +176,13 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   // Route closing through the store so the reconciler does the actual panel
   // removal — keeps add/remove strictly store → dockview.
   const requestClose = () => useTabs.getState().close(id);
+  const closeOthers = () => useTabs.getState().closeOthers(id);
+  const closeAll = () => useTabs.getState().closeAll();
+  const hasOthers = tabs.length > 1;
 
   return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
     <div
       className={cn(
         "group/tab flex h-full items-center gap-2 px-3 text-xs",
@@ -247,6 +259,12 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           <DropdownMenuItem onClick={requestClose}>
             {t("tabs.closeTab")}
           </DropdownMenuItem>
+          <DropdownMenuItem disabled={!hasOthers} onClick={closeOthers}>
+            {t("tabs.closeOthers")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={closeAll}>
+            {t("tabs.closeAll")}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <button
@@ -265,6 +283,20 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
         <X className="h-3.5 w-3.5" />
       </button>
     </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="text-xs">
+        <ContextMenuItem onSelect={requestClose}>
+          {t("tabs.closeTab")}
+        </ContextMenuItem>
+        <ContextMenuItem disabled={!hasOthers} onSelect={closeOthers}>
+          {t("tabs.closeOthers")}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={closeAll}>
+          {t("tabs.closeAll")}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
