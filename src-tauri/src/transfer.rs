@@ -214,7 +214,8 @@ pub fn decrypt_secret(encoded: &str, passphrase: &str) -> AppResult<String> {
         .decrypt(nonce, ciphertext)
         .map_err(|_| AppError::Transfer("decryption failed — wrong passphrase?".into()))?;
 
-    String::from_utf8(plaintext).map_err(|_| AppError::Transfer("decrypted value is not UTF-8".into()))
+    String::from_utf8(plaintext)
+        .map_err(|_| AppError::Transfer("decrypted value is not UTF-8".into()))
 }
 
 fn derive_key(passphrase: &str, salt: &[u8]) -> [u8; KEY_LEN] {

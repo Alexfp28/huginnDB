@@ -520,9 +520,7 @@ impl PersistedTabState {
     /// workspace.
     pub fn set_active_workspace(&mut self, id: &str) -> AppResult<()> {
         if !self.workspaces.iter().any(|w| w.id == id) {
-            return Err(AppError::InvalidInput(format!(
-                "workspace {id} not found"
-            )));
+            return Err(AppError::InvalidInput(format!("workspace {id} not found")));
         }
         self.active_workspace_id = Some(id.to_string());
         Ok(())
@@ -586,7 +584,10 @@ mod tests {
         assert_eq!(state.workspaces.len(), 1);
         assert_eq!(state.workspaces[0].name, "Default");
         assert!(state.workspaces[0].connections.contains_key("abc"));
-        assert_eq!(state.active_workspace_id, Some(state.workspaces[0].id.clone()));
+        assert_eq!(
+            state.active_workspace_id,
+            Some(state.workspaces[0].id.clone())
+        );
     }
 
     #[test]
@@ -605,7 +606,12 @@ mod tests {
         assert_eq!(state.workspaces.len(), 2);
         state.rename_workspace(&new.id, "Curro".into()).unwrap();
         assert_eq!(
-            state.workspaces.iter().find(|w| w.id == new.id).unwrap().name,
+            state
+                .workspaces
+                .iter()
+                .find(|w| w.id == new.id)
+                .unwrap()
+                .name,
             "Curro"
         );
         state.delete_workspace(&new.id).unwrap();
@@ -639,7 +645,10 @@ mod tests {
         let new = state.create_workspace("Other".into(), None, None);
         state.set_active_workspace(&new.id).unwrap();
         state.delete_workspace(&new.id).unwrap();
-        assert_eq!(state.active_workspace_id, Some(state.workspaces[0].id.clone()));
+        assert_eq!(
+            state.active_workspace_id,
+            Some(state.workspaces[0].id.clone())
+        );
     }
 }
 

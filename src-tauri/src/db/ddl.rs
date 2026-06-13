@@ -143,12 +143,7 @@ pub fn validate_type(ty: &str) -> AppResult<()> {
         return Err(AppError::InvalidInput("column type is too long".into()));
     }
     let ok = t.chars().all(|c| {
-        c.is_ascii_alphanumeric()
-            || c == '_'
-            || c == '('
-            || c == ')'
-            || c == ','
-            || c == ' '
+        c.is_ascii_alphanumeric() || c == '_' || c == '(' || c == ')' || c == ',' || c == ' '
     });
     if !ok {
         return Err(AppError::InvalidInput(format!(
@@ -391,7 +386,10 @@ fn build_create(driver: Driver, s: &TableStructure) -> AppResult<Vec<String>> {
     // PG/MySQL: FKs as separate ALTER TABLE ADD CONSTRAINT statements.
     if driver != Driver::Sqlite {
         for fk in &s.foreign_keys {
-            out.push(format!("ALTER TABLE {qt} ADD {}", fk_clause(driver, fk, false)));
+            out.push(format!(
+                "ALTER TABLE {qt} ADD {}",
+                fk_clause(driver, fk, false)
+            ));
         }
     }
 
@@ -434,12 +432,7 @@ fn fk_clause(driver: Driver, fk: &ForeignKeyDef, _inline: bool) -> String {
     s
 }
 
-fn create_index_stmt(
-    driver: Driver,
-    s: &TableStructure,
-    idx: &IndexDef,
-    ordinal: usize,
-) -> String {
+fn create_index_stmt(driver: Driver, s: &TableStructure, idx: &IndexDef, ordinal: usize) -> String {
     let qt = qualified(driver, s.schema.as_deref(), &s.name);
     let unique = if idx.unique { "UNIQUE " } else { "" };
     let cols = idx
@@ -545,8 +538,7 @@ fn build_alter_pg_mysql(
 fn column_changed(a: &ColumnDef, b: &ColumnDef) -> bool {
     a.data_type.trim() != b.data_type.trim()
         || a.nullable != b.nullable
-        || a.default.as_deref().map(str::trim)
-            != b.default.as_deref().map(str::trim)
+        || a.default.as_deref().map(str::trim) != b.default.as_deref().map(str::trim)
         || a.is_primary_key != b.is_primary_key
         || a.auto_increment != b.auto_increment
 }
@@ -669,7 +661,10 @@ fn diff_foreign_keys(
             None => true,
         };
         if is_new {
-            out.push(format!("ALTER TABLE {qt} ADD {}", fk_clause(driver, fk, false)));
+            out.push(format!(
+                "ALTER TABLE {qt} ADD {}",
+                fk_clause(driver, fk, false)
+            ));
         }
     }
 }
@@ -706,16 +701,19 @@ fn fk_signature(s: &TableStructure) -> Vec<(Vec<String>, String, Vec<String>)> {
     let mut v: Vec<_> = s
         .foreign_keys
         .iter()
-        .map(|f| (f.columns.clone(), f.ref_table.clone(), f.ref_columns.clone()))
+        .map(|f| {
+            (
+                f.columns.clone(),
+                f.ref_table.clone(),
+                f.ref_columns.clone(),
+            )
+        })
         .collect();
     v.sort();
     v
 }
 
-fn build_alter_sqlite(
-    orig: &TableStructure,
-    desired: &TableStructure,
-) -> AppResult<Vec<String>> {
+fn build_alter_sqlite(orig: &TableStructure, desired: &TableStructure) -> AppResult<Vec<String>> {
     let driver = Driver::Sqlite;
     if sqlite_needs_rebuild(orig, desired) {
         return build_sqlite_rebuild(orig, desired);
@@ -766,10 +764,7 @@ fn build_alter_sqlite(
 /// because it drops and recreates the table. The PRAGMA toggles sit outside
 /// the transaction (SQLite requires `foreign_keys` to be changed outside a
 /// transaction); the executor runs the list verbatim.
-fn build_sqlite_rebuild(
-    orig: &TableStructure,
-    desired: &TableStructure,
-) -> AppResult<Vec<String>> {
+fn build_sqlite_rebuild(orig: &TableStructure, desired: &TableStructure) -> AppResult<Vec<String>> {
     let driver = Driver::Sqlite;
     let table = &desired.name;
     let tmp = format!("{table}__huginn_new");
@@ -922,7 +917,9 @@ mod tests {
         let desired = table("t", vec![existing("keep", "int"), col("fresh", "text")]);
         let stmts = build_ddl(Driver::Postgres, Some(&orig), &desired).unwrap();
         assert!(stmts.iter().any(|s| s.contains("DROP COLUMN \"gone\"")));
-        assert!(stmts.iter().any(|s| s.contains("ADD COLUMN \"fresh\" text")));
+        assert!(stmts
+            .iter()
+            .any(|s| s.contains("ADD COLUMN \"fresh\" text")));
     }
 
     #[test]
@@ -932,7 +929,9 @@ mod tests {
         renamed.name = "b".into();
         let desired = table("t", vec![renamed, col("c", "TEXT")]);
         let stmts = build_ddl(Driver::Sqlite, Some(&orig), &desired).unwrap();
-        assert!(stmts.iter().any(|s| s.contains("RENAME COLUMN \"a\" TO \"b\"")));
+        assert!(stmts
+            .iter()
+            .any(|s| s.contains("RENAME COLUMN \"a\" TO \"b\"")));
         assert!(stmts.iter().any(|s| s.contains("ADD COLUMN \"c\" TEXT")));
         assert!(!stmts.iter().any(|s| s.contains("__huginn_new")));
     }
@@ -945,24 +944,30 @@ mod tests {
         let stmts = build_ddl(Driver::Sqlite, Some(&orig), &desired).unwrap();
         assert_eq!(stmts.first().unwrap(), "PRAGMA foreign_keys=OFF");
         assert_eq!(stmts.last().unwrap(), "PRAGMA foreign_keys=ON");
-        assert!(stmts.iter().any(|s| s.contains("CREATE TABLE \"t__huginn_new\"")));
+        assert!(stmts
+            .iter()
+            .any(|s| s.contains("CREATE TABLE \"t__huginn_new\"")));
         assert!(stmts
             .iter()
             .any(|s| s.contains("INSERT INTO \"t__huginn_new\"")));
         assert!(stmts.iter().any(|s| s == "DROP TABLE \"t\""));
-        assert!(stmts
-            .iter()
-            .any(|s| s.contains("RENAME TO \"t\"")));
+        assert!(stmts.iter().any(|s| s.contains("RENAME TO \"t\"")));
     }
 
     #[test]
     fn create_index_and_fk_statements() {
-        let mut s = table("orders", vec![{
-            let mut c = col("id", "int");
-            c.is_primary_key = true;
-            c.nullable = false;
-            c
-        }, col("user_id", "int")]);
+        let mut s = table(
+            "orders",
+            vec![
+                {
+                    let mut c = col("id", "int");
+                    c.is_primary_key = true;
+                    c.nullable = false;
+                    c
+                },
+                col("user_id", "int"),
+            ],
+        );
         s.indexes.push(IndexDef {
             name: Some("idx_user".into()),
             columns: vec!["user_id".into()],
@@ -978,7 +983,9 @@ mod tests {
             on_update: None,
         });
         let stmts = build_ddl(Driver::Postgres, None, &s).unwrap();
-        assert!(stmts.iter().any(|s| s.contains("CREATE INDEX \"idx_user\" ON \"orders\" (\"user_id\")")));
+        assert!(stmts
+            .iter()
+            .any(|s| s.contains("CREATE INDEX \"idx_user\" ON \"orders\" (\"user_id\")")));
         assert!(stmts.iter().any(|s| s.contains(
             "ADD CONSTRAINT \"fk_user\" FOREIGN KEY (\"user_id\") REFERENCES \"users\" (\"id\") ON DELETE CASCADE"
         )));
