@@ -18,6 +18,7 @@ const DRIVER_LOGO: Record<Driver, { src: string; label: string }> = {
   postgres: { src: "/image/db/postgresql.svg", label: "PostgreSQL" },
   mysql: { src: "/image/db/mysql.svg", label: "MySQL" },
   sqlite: { src: "/image/db/sqlite.svg", label: "SQLite" },
+  mongodb: { src: "/image/db/mongodb.svg", label: "MongoDB" },
 };
 
 export function DriverBadge({ driver }: { driver: Driver }) {

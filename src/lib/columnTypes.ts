@@ -68,6 +68,23 @@ const SQLITE: string[] = [
   "DATETIME",
 ];
 
+/** BSON types for MongoDB (used as field-type labels; structure editing is
+ *  read-only for Mongo in this version). */
+const MONGODB: string[] = [
+  "objectId",
+  "string",
+  "int",
+  "long",
+  "double",
+  "decimal128",
+  "bool",
+  "date",
+  "document",
+  "array",
+  "binary",
+  "null",
+];
+
 /** Suggested types for a driver. Falls back to a generic set when unknown. */
 export function columnTypesFor(driver: Driver | undefined): string[] {
   switch (driver) {
@@ -77,6 +94,8 @@ export function columnTypesFor(driver: Driver | undefined): string[] {
       return MYSQL;
     case "sqlite":
       return SQLITE;
+    case "mongodb":
+      return MONGODB;
     default:
       return [...POSTGRES];
   }

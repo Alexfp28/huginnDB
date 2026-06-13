@@ -83,7 +83,10 @@
       "passwordKeepHint": "(déjalo en blanco para mantener la actual)",
       "ssl": "SSL",
       "sqlitePath": "Ruta del fichero de base de datos",
-      "sqlitePathPlaceholder": "C:\\ruta\\al\\fichero.db"
+      "sqlitePathPlaceholder": "C:\\ruta\\al\\fichero.db",
+      "connectionString": "Cadena de conexión",
+      "connectionStringPlaceholder": "mongodb://localhost:27017  o  mongodb+srv://user:pass@cluster.mongodb.net/db",
+      "connectionStringHint": "Entrada principal para MongoDB. Cubre Atlas (mongodb+srv://), replica sets, authSource y opciones de la URI. Los campos host/puerto/base de datos se ignoran cuando hay cadena de conexión."
     },
     "ssh": {
       "enable": "Conectar vía túnel SSH",
@@ -113,7 +116,8 @@
       "forgetHostKey": "Olvidar clave del host",
       "forgetConfirm": "¿Olvidar la clave SSH guardada para {{hostPort}}?",
       "forgetDone": "Clave olvidada. La próxima conexión confiará en la que presente el servidor (si la política es \"Confiar al primer uso\").",
-      "forgetNone": "No había ninguna clave guardada para este host."
+      "forgetNone": "No había ninguna clave guardada para este host.",
+      "unavailableForSrv": "El túnel SSH no está disponible para conexiones mongodb+srv:// (SRV resuelve a varios hosts). Usa una URI directa mongodb://host:puerto para túnel."
     },
     "test": "Probar",
     "testing": "Probando…",
@@ -289,7 +293,8 @@
       "refTable": "tabla referenciada",
       "refColumns": "columnas referenciadas",
       "add": "Añadir clave foránea"
-    }
+    },
+    "readOnlyMongo": "Solo lectura (MongoDB)"
   },
   "tabs": {
     "queryFileName": "query.sql",
@@ -352,12 +357,30 @@
     "title": "Preferencias",
     "description": "Los cambios se aplican al instante. El fichero de preferencias vive en el directorio de configuración de tu sistema; el diálogo también se abre con",
     "sections": {
-      "general": { "label": "General", "desc": "Comportamiento de la app" },
-      "editor": { "label": "Editor", "desc": "Editor SQL de Monaco" },
-      "grid": { "label": "Tabla de datos", "desc": "Filas y paginación" },
-      "appearance": { "label": "Apariencia", "desc": "Temas y colores" },
-      "shortcuts": { "label": "Atajos", "desc": "Atajos de teclado" },
-      "about": { "label": "Acerca de", "desc": "Versión y rutas" }
+      "general": {
+        "label": "General",
+        "desc": "Comportamiento de la app"
+      },
+      "editor": {
+        "label": "Editor",
+        "desc": "Editor SQL de Monaco"
+      },
+      "grid": {
+        "label": "Tabla de datos",
+        "desc": "Filas y paginación"
+      },
+      "appearance": {
+        "label": "Apariencia",
+        "desc": "Temas y colores"
+      },
+      "shortcuts": {
+        "label": "Atajos",
+        "desc": "Atajos de teclado"
+      },
+      "about": {
+        "label": "Acerca de",
+        "desc": "Versión y rutas"
+      }
     },
     "general": {
       "defaultDriver": {

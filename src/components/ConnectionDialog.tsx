@@ -115,6 +115,8 @@ export function ConnectionDialog({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [ssl, setSsl] = useState(false);
+  /** MongoDB connection URI (primary input for the Mongo driver). */
+  const [connectionString, setConnectionString] = useState("");
 
   // SSH tunnel fields ------------------------------------------------------
   const [sshEnabled, setSshEnabled] = useState(false);
@@ -155,6 +157,7 @@ export function ConnectionDialog({
       setDatabase(p.database);
       setUsername(p.username);
       setSsl(p.ssl);
+      setConnectionString(p.connection_string ?? "");
       setPassword("");
 
       const tunnel = p.ssh_tunnel;
@@ -191,6 +194,7 @@ export function ConnectionDialog({
       setUsername("");
       setPassword("");
       setSsl(false);
+      setConnectionString("");
 
       setSshEnabled(false);
       setSshHost("");
@@ -225,8 +229,14 @@ export function ConnectionDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingId]);
 
+  /** A MongoDB SRV URI resolves to multiple hosts — incompatible with the
+   *  single-port SSH tunnel, so tunnelling is disabled for it. */
+  const isMongoSrv =
+    driver === "mongodb" &&
+    connectionString.trim().startsWith("mongodb+srv://");
+
   function buildSshTunnel(): SshTunnel | null {
-    if (!sshEnabled || driver === "sqlite") return null;
+    if (!sshEnabled || driver === "sqlite" || isMongoSrv) return null;
     const auth: SshAuth =
       sshAuthMethod === "key"
         ? { kind: "key", path: sshKeyPath }
@@ -252,6 +262,8 @@ export function ConnectionDialog({
       username,
       ssl,
       ssh_tunnel: buildSshTunnel(),
+      connection_string:
+        driver === "mongodb" ? connectionString.trim() || null : null,
     };
   }
 
@@ -425,7 +437,7 @@ export function ConnectionDialog({
     }
   })();
 
-  const tunnelTabDisabled = driver === "sqlite";
+  const tunnelTabDisabled = driver === "sqlite" || isMongoSrv;
   const busy = saving || connecting;
 
   return (
@@ -538,7 +550,9 @@ export function ConnectionDialog({
                       <div className="truncate text-[11px] text-muted-foreground">
                         {p.driver === "sqlite"
                           ? p.database.split(/[/\\]/).pop() ?? p.database
-                          : `${p.host}:${p.port}/${p.database}`}
+                          : p.driver === "mongodb"
+                            ? p.connection_string || `${p.host}:${p.port}`
+                            : `${p.host}:${p.port}/${p.database}`}
                       </div>
                     </div>
                   </button>
@@ -585,10 +599,48 @@ export function ConnectionDialog({
                           <SelectItem value="postgres">PostgreSQL</SelectItem>
                           <SelectItem value="mysql">MySQL</SelectItem>
                           <SelectItem value="sqlite">SQLite</SelectItem>
+                          <SelectItem value="mongodb">MongoDB</SelectItem>
                         </SelectContent>
                       </Select>
                     </Field>
-                    {driver !== "sqlite" ? (
+                    {driver === "mongodb" ? (
+                      <>
+                        <Field
+                          label={t("connectionDialog.fields.connectionString")}
+                        >
+                          <Input
+                            value={connectionString}
+                            onChange={(e) =>
+                              setConnectionString(e.target.value)
+                            }
+                            placeholder={t(
+                              "connectionDialog.fields.connectionStringPlaceholder",
+                            )}
+                          />
+                        </Field>
+                        <p className="-mt-1 text-[11px] text-muted-foreground">
+                          {t("connectionDialog.fields.connectionStringHint")}
+                        </p>
+                        <Field label={t("connectionDialog.fields.username")}>
+                          <Input
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                          />
+                        </Field>
+                        <Field label={t("connectionDialog.fields.password")}>
+                          <Input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder={
+                              editingId
+                                ? t("connectionDialog.fields.passwordKeepHint")
+                                : ""
+                            }
+                          />
+                        </Field>
+                      </>
+                    ) : driver !== "sqlite" ? (
                       <>
                         <div className="grid grid-cols-3 gap-2">
                           <div className="col-span-2">
@@ -655,7 +707,9 @@ export function ConnectionDialog({
                 <TabsContent value="ssh" className="pt-3">
                   {tunnelTabDisabled ? (
                     <div className="px-1 py-3 text-xs text-muted-foreground">
-                      {t("connectionDialog.ssh.unavailableForSqlite")}
+                      {isMongoSrv
+                        ? t("connectionDialog.ssh.unavailableForSrv")
+                        : t("connectionDialog.ssh.unavailableForSqlite")}
                     </div>
                   ) : (
                     <div className="grid gap-3">

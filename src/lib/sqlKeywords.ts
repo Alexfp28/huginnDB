@@ -95,6 +95,71 @@ const SQLITE_EXTRA: ReadonlyArray<string> = [
 ];
 
 /**
+ * MongoDB is not SQL: its editor completions are the shell methods and the
+ * common MQL/aggregation operators, not the SQL keyword set. Collection and
+ * field names are layered on top from the live schema by the completion
+ * builder, same as the SQL drivers.
+ */
+const MONGODB_KEYWORDS: ReadonlyArray<string> = [
+  // Collection methods
+  "find",
+  "findOne",
+  "aggregate",
+  "countDocuments",
+  "distinct",
+  "insertOne",
+  "insertMany",
+  "updateOne",
+  "updateMany",
+  "replaceOne",
+  "deleteOne",
+  "deleteMany",
+  "sort",
+  "limit",
+  "skip",
+  "projection",
+  // Query operators
+  "$eq",
+  "$ne",
+  "$gt",
+  "$gte",
+  "$lt",
+  "$lte",
+  "$in",
+  "$nin",
+  "$and",
+  "$or",
+  "$not",
+  "$exists",
+  "$regex",
+  "$type",
+  // Update operators
+  "$set",
+  "$unset",
+  "$inc",
+  "$push",
+  "$pull",
+  "$addToSet",
+  // Aggregation stages
+  "$match",
+  "$group",
+  "$project",
+  "$sort",
+  "$limit",
+  "$skip",
+  "$lookup",
+  "$unwind",
+  "$count",
+  "$sum",
+  "$avg",
+  // Constructors
+  "ObjectId",
+  "ISODate",
+  "NumberLong",
+  "NumberDecimal",
+];
+
+/**
  * Compose the full keyword list for a driver, falling back to the
  * shared set when the driver is unknown (e.g. when the editor is open
  * but the connection is gone). Returns a fresh array so callers can
@@ -108,6 +173,9 @@ export function keywordsFor(driver: Driver | undefined): string[] {
       return [...COMMON_KEYWORDS, ...MYSQL_EXTRA];
     case "sqlite":
       return [...COMMON_KEYWORDS, ...SQLITE_EXTRA];
+    case "mongodb":
+      // Mongo is not SQL — return only the shell/MQL vocabulary.
+      return [...MONGODB_KEYWORDS];
     default:
       return [...COMMON_KEYWORDS];
   }

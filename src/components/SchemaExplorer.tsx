@@ -60,7 +60,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
-import type { TableInfo } from "@/types";
+import type { Driver, TableInfo } from "@/types";
 
 export function SchemaExplorer({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
@@ -751,7 +751,7 @@ interface TableActions {
   refresh: () => void;
   onRename: (table: TableInfo) => void;
   onDrop: (table: TableInfo) => void;
-  driver: "postgres" | "mysql" | "sqlite" | undefined;
+  driver: Driver | undefined;
 }
 
 interface SectionProps {
@@ -875,6 +875,11 @@ function TableRow({
     void navigator.clipboard.writeText(t.name);
   };
   const copySelect = () => {
+    if (actions.driver === "mongodb") {
+      // MongoDB has no SQL; produce a mongosh find() snippet instead.
+      void navigator.clipboard.writeText(`db.${t.name}.find({}).limit(100)`);
+      return;
+    }
     const qualified = qualifyForCopy(actions.driver, t.schema, t.name);
     void navigator.clipboard.writeText(`SELECT * FROM ${qualified};`);
   };
@@ -1029,7 +1034,7 @@ function TableRow({
  *  snippet pastes cleanly into the query editor — even for case-sensitive
  *  Postgres identifiers or MySQL reserved words. */
 function qualifyForCopy(
-  driver: "postgres" | "mysql" | "sqlite" | undefined,
+  driver: Driver | undefined,
   schema: string,
   table: string,
 ): string {
