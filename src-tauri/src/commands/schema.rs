@@ -35,7 +35,10 @@ pub struct TableInfo {
     ///   `COUNT(*)` queries, which become prohibitively expensive on schemas with
     ///   many tables. Use `SELECT COUNT(*) FROM table` manually when an exact count
     ///   is needed.
-    #[serde(rename = "row_count")]
+    // Omit when absent (`None`) rather than emitting JSON `null`. The frontend
+    // types this as `row_count?: number` and guards on `undefined`; serializing
+    // `null` slipped past that guard and crashed `formatCount`/`formatBytes`.
+    #[serde(rename = "row_count", skip_serializing_if = "Option::is_none")]
     pub row_count: Option<u64>,
     /// Approximate on-disk size in bytes (data + indexes) sourced from the engine.
     ///
@@ -46,7 +49,7 @@ pub struct TableInfo {
     /// - **SQLite** — best-effort via the optional `dbstat` virtual table. If the
     ///   build does not include `dbstat`, the first probe fails and every entry
     ///   in this list falls back to `None` for the rest of the call.
-    #[serde(rename = "size_bytes")]
+    #[serde(rename = "size_bytes", skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
 }
 

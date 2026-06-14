@@ -774,10 +774,13 @@ interface SectionProps {
 
 /** Renders the right-aligned per-table metric badge (row count or size). */
 function tableMetricLabel(t: TableInfo, metric: SchemaTableMetric): string | null {
-  if (metric === "row-count" && t.row_count !== undefined) {
+  // `!= null` covers both `undefined` (field omitted) and `null` (older
+  // payloads / drivers that serialized a null stat). `formatCount`/`formatBytes`
+  // additionally guard non-finite input, so a stray null can never crash here.
+  if (metric === "row-count" && t.row_count != null) {
     return formatCount(t.row_count);
   }
-  if (metric === "size" && t.size_bytes !== undefined) {
+  if (metric === "size" && t.size_bytes != null) {
     return formatBytes(t.size_bytes);
   }
   return null;
