@@ -34,6 +34,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   - **SSH tunnelling** is available for single-host `mongodb://` connections;
     it is disabled for `mongodb+srv://` (an SRV record resolves to several
     hosts, which the single-port tunnel can't represent).
+  - **CLI:** `--driver mongodb` works with the discrete `--host`/`--port`
+    flags, and a new `--uri` / `--connection-string` flag accepts a full
+    `mongodb://` or `mongodb+srv://` URI (the only way to reach Atlas from the
+    CLI). A connection string implies the MongoDB driver when `--driver` is
+    omitted, and MongoDB is now offered in the ad-hoc driver picker.
 
 ## [1.0.10] — 2026-06-11
 

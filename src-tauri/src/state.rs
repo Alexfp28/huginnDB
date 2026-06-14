@@ -246,8 +246,14 @@ pub struct StartupArgs {
     pub adhoc_port: Option<u16>,
     pub adhoc_database: Option<String>,
     pub adhoc_username: Option<String>,
-    /// One of "postgres", "mysql", "sqlite".
+    /// One of "postgres", "mysql", "sqlite", "mongodb".
     pub adhoc_driver: Option<String>,
+    /// Raw connection URI for an ad-hoc connection (`--uri` /
+    /// `--connection-string`). The primary way to reach MongoDB — especially
+    /// Atlas `mongodb+srv://` — from the CLI, where the discrete host/port
+    /// fields can't express an SRV seed list or URI options. When present and
+    /// no `--driver` is given, the driver defaults to `mongodb`.
+    pub adhoc_connection_string: Option<String>,
     /// Display name for the ad-hoc connection.
     pub adhoc_name: Option<String>,
     /// Optional password supplied via `--password`/`--pass`. Opt-in and kept
