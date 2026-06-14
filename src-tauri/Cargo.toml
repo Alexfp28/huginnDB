@@ -1,6 +1,6 @@
 [package]
 name = "huginndb"
-version = "1.0.10"
+version = "1.1.0"
 description = "HuginnDB — minimal desktop database manager"
 authors = ["HuginnDB contributors"]
 edition = "2021"
@@ -32,6 +32,12 @@ sqlx = { version = "0.8", features = [
     "uuid",
     "rust_decimal",
     "bigdecimal",
+] }
+mongodb = { version = "3", default-features = false, features = [
+    "rustls-tls",
+    "dns-resolver",
+    "bson-3",
+    "compat-3-3-0",
 ] }
 keyring = { version = "3", features = [
     "windows-native",

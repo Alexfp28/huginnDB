@@ -6,9 +6,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.1.0]
+
 ### Added
 
-- **Bulk-close tabs from the tab menu.** Right-clicking a workspace tab (or the
+- **MongoDB driver (MVP).** HuginnDB now connects to MongoDB alongside the SQL
+  engines. Connect with a connection string (`mongodb://…` or Atlas
+  `mongodb+srv://…`, the primary input — it covers replica sets, `authSource`
+  and URI options), browse databases → collections in the explorer, and inspect
+  documents in the data grid (top-level fields become columns, `_id` first;
+  nested documents/arrays render as JSON and expand in the cell preview).
+  - **`mongosh`-style query editor.** Run `db.coll.find({…})`,
+    `.aggregate([…])`, `.countDocuments(…)`, `.distinct(…)`, and the write
+    methods (`insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`,
+    `deleteOne`/`deleteMany`), with chained `.sort()/.limit()/.skip()/.projection()`
+    on `find`. Relaxed JSON (unquoted keys, single quotes) and the common BSON
+    constructors (`ObjectId(...)`, `ISODate(...)`, `NumberLong/Int/Decimal(...)`)
+    are supported.
+  - **Edit by `_id`.** Inline cell edits, row inserts and deletes map to
+    `updateOne`/`insertOne`/`deleteMany` keyed on `_id`. The field's inferred
+    BSON type drives value coercion so a `Date`/`Long`/`Int` field is not
+    silently degraded to a string.
+  - **Read-only structure.** The structure view shows a collection's inferred
+    fields and real indexes; collection drop is supported from the explorer.
+    Index/validator editing, transactions, and profile transfer for MongoDB are
+    deferred — see `docs/MONGODB_ROADMAP.md`.
+  - **SSH tunnelling** is available for single-host `mongodb://` connections;
+    it is disabled for `mongodb+srv://` (an SRV record resolves to several
+    hosts, which the single-port tunnel can't represent).
+  - **CLI:** `--driver mongodb` works with the discrete `--host`/`--port`
+    flags, and a new `--uri` / `--connection-string` flag accepts a full
+    `mongodb://` or `mongodb+srv://` URI (the only way to reach Atlas from the
+    CLI). A connection string implies the MongoDB driver when `--driver` is
+    omitted, and MongoDB is now offered in the ad-hoc driver picker.
+    
+ - **Bulk-close tabs from the tab menu.** Right-clicking a workspace tab (or the
   tab's `⋮` menu) now offers **Close other tabs** and **Close all tabs** in
   addition to **Close tab**, so a workspace full of open tables/queries can be
   cleared in one action instead of closing each tab individually.

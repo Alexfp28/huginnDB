@@ -22,6 +22,7 @@ const DRIVERS: { id: Driver; label: string }[] = [
   { id: "postgres", label: "PostgreSQL" },
   { id: "mysql", label: "MySQL" },
   { id: "sqlite", label: "SQLite" },
+  { id: "mongodb", label: "MongoDB" },
 ];
 
 interface Props {

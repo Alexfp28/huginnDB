@@ -21,6 +21,7 @@ export const DEFAULT_PORTS = {
   postgres: 5432,
   mysql: 3306,
   sqlite: 0,
+  mongodb: 27017,
 } as const;
 
 /** Width of the sidebar (in % of the main area) on first launch. */

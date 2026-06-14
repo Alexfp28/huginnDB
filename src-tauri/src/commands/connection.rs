@@ -21,6 +21,7 @@ fn driver_str(driver: Driver) -> &'static str {
         Driver::Postgres => "postgres",
         Driver::Mysql => "mysql",
         Driver::Sqlite => "sqlite",
+        Driver::Mongo => "mongodb",
     }
 }
 
@@ -55,6 +56,12 @@ fn log_connection(
 fn resolve_password(profile: &ConnectionProfile) -> AppResult<String> {
     if matches!(profile.driver, Driver::Sqlite) {
         return Ok(String::new());
+    }
+    // MongoDB's password is optional: it may be embedded in the connection URI
+    // (or the server may allow unauthenticated local access), so a missing
+    // keychain entry is not an error — fall back to an empty string.
+    if matches!(profile.driver, Driver::Mongo) {
+        return Ok(keychain::get_password(&profile.keyring_account())?.unwrap_or_default());
     }
     keychain::require_password(&profile.keyring_account())
 }
@@ -436,6 +443,30 @@ pub async fn open_database_view(
         // SQLite has a single file = single database; per-DB browsing is
         // not meaningful. Treat this as a no-op alias.
         return Ok(parent_id);
+    }
+
+    // MongoDB: a single client reaches every database in the cluster, so a
+    // per-database "view" reuses the parent's client and only re-tags the
+    // target database — no new connection, no re-auth, no second tunnel. The
+    // child carries no SSH handle of its own; it depends on the parent's tunnel
+    // staying alive, and `disconnect` sweeps children before the parent drops.
+    if matches!(parent.driver, Driver::Mongo) {
+        let parent_pool = state.connections.read().get(&parent_id);
+        if let Some(crate::state::DbPool::Mongo(conn)) = parent_pool {
+            let child_pool = crate::state::DbPool::Mongo(crate::state::MongoConn {
+                client: conn.client.clone(),
+                database: Some(database.clone()),
+            });
+            state.connections.write().insert(
+                child_id.clone(),
+                ActivePool {
+                    pool: child_pool,
+                    _ssh: None,
+                },
+            );
+            return Ok(child_id);
+        }
+        return Err(AppError::NotConnected(parent_id));
     }
 
     // Clone the parent profile and substitute the database. The child uses

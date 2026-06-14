@@ -134,6 +134,8 @@ interface PendingAdhoc {
   username: string;
   ssl: boolean;
   password?: string;
+  /** MongoDB connection URI from `--uri`/`--connection-string`, if any. */
+  connectionString?: string;
 }
 
 export default function App() {
@@ -173,6 +175,8 @@ export default function App() {
         database: p.database,
         username: p.username,
         ssl: p.ssl,
+        // Only meaningful for MongoDB; the backend ignores it for SQL drivers.
+        connection_string: p.connectionString ?? null,
         // Connections opened from the CLI are temporary by design: the backend
         // keeps them in memory for the session but never writes them to
         // profiles.json (see ConnectionProfile.ephemeral / store::save_profiles).
@@ -296,19 +300,26 @@ export default function App() {
         return;
       }
 
-      if (args.adhoc_host) {
+      // An ad-hoc launch is triggered by either `--host` or a `--uri`
+      // connection string (the MongoDB-primary path, which needs no host).
+      if (args.adhoc_host || args.adhoc_connection_string) {
         const pending: PendingAdhoc = {
-          name: args.adhoc_name ?? `${args.adhoc_host}/${args.adhoc_database ?? ""}`,
-          host: args.adhoc_host,
+          name:
+            args.adhoc_name ??
+            (args.adhoc_host
+              ? `${args.adhoc_host}/${args.adhoc_database ?? ""}`
+              : "MongoDB"),
+          host: args.adhoc_host ?? "",
           port: args.adhoc_port ?? undefined,
           database: args.adhoc_database ?? "",
           username: args.adhoc_username ?? "",
           ssl: false,
           password: cliPassword,
+          connectionString: args.adhoc_connection_string ?? undefined,
         };
-        // Resolve the driver: an explicit `--driver` wins, then the configured
-        // default; if neither, prompt the user (and nudge them to set a default
-        // in Preferences) rather than silently guessing Postgres.
+        // Resolve the driver: an explicit `--driver` wins; a connection string
+        // implies MongoDB; then the configured default; if none, prompt the
+        // user rather than silently guessing Postgres.
         const explicit = normalizeDriver(args.adhoc_driver);
         if (args.adhoc_driver && !explicit) {
           cliLog(
@@ -316,7 +327,11 @@ export default function App() {
           );
         }
         const configured = usePreferences.getState().prefs.ui.defaultDriver;
-        const driver = explicit ?? configured ?? null;
+        const driver =
+          explicit ??
+          (args.adhoc_connection_string ? "mongodb" : null) ??
+          configured ??
+          null;
         if (driver) {
           await createAndConnectAdhoc(pending, driver);
         } else {

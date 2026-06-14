@@ -49,11 +49,7 @@ pub fn create_workspace(
 
 /// Rename an existing workspace.
 #[tauri::command]
-pub fn rename_workspace(
-    state: State<'_, AppState>,
-    id: String,
-    name: String,
-) -> AppResult<()> {
+pub fn rename_workspace(state: State<'_, AppState>, id: String, name: String) -> AppResult<()> {
     let snapshot = {
         let mut guard = state.tab_state.write();
         guard.rename_workspace(&id, name)?;

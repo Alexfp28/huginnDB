@@ -313,10 +313,13 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     const pkValues = pkValuesFromRow(rowValues);
     // Forward the raw column type so the backend can cast textual literals
     // server-side where a plain string bind would be coerced wrongly (MySQL
-    // BIT — see update_cell). `result.columns` already carries `data_type`.
-    const columnType = result?.columns.find(
-      (c) => c.name === columnName,
-    )?.data_type;
+    // BIT — see update_cell; MongoDB Date/int/long — see string_to_bson).
+    // Prefer the catalog/inferred type from the schema store (`cols`) since a
+    // MongoDB result set reports a generic "bson" per column, while the schema
+    // store carries the inferred per-field BSON type.
+    const columnType =
+      cols?.find((c) => c.name === columnName)?.data_type ??
+      result?.columns.find((c) => c.name === columnName)?.data_type;
     await api.updateCell({
       connectionId,
       schema,
@@ -438,7 +441,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       .map(([column, c]) => ({
         column,
         value: c.value,
-        columnType: result?.columns.find((col) => col.name === column)?.data_type,
+        columnType:
+          cols?.find((col) => col.name === column)?.data_type ??
+          result?.columns.find((col) => col.name === column)?.data_type,
       }));
     // Empty draft (user never typed) → silently cancel rather than send
     // an `INSERT () VALUES ()` that the backend would reject.

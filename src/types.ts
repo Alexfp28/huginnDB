@@ -5,8 +5,8 @@
  * `src-tauri/src/commands/`.
  */
 
-/** SQL backend supported by a profile. */
-export type Driver = "postgres" | "mysql" | "sqlite";
+/** Database backend supported by a profile. */
+export type Driver = "postgres" | "mysql" | "sqlite" | "mongodb";
 
 /**
  * Authentication method for the SSH tunnel. The actual secret (password or
@@ -63,6 +63,10 @@ export interface ConnectionProfile {
   username: string;
   ssl: boolean;
   ssh_tunnel?: SshTunnel | null;
+  /** Raw connection URI — the primary connection input for MongoDB
+   *  (`mongodb://…` / `mongodb+srv://…`). When set it takes precedence over the
+   *  discrete host/port/database fields. `null`/absent for the SQL drivers. */
+  connection_string?: string | null;
   /** Session-only profile (e.g. a CLI ad-hoc connection) that the backend
    *  keeps in memory but never writes to `profiles.json`. */
   ephemeral?: boolean;
@@ -480,6 +484,8 @@ export interface StartupArgs {
   adhoc_database: string | null;
   adhoc_username: string | null;
   adhoc_driver: string | null;
+  /** Connection URI from `--uri`/`--connection-string` (MongoDB-primary). */
+  adhoc_connection_string: string | null;
   adhoc_name: string | null;
   /** Password from `--password`/`--pass`. In-memory only, never persisted. */
   adhoc_password: string | null;

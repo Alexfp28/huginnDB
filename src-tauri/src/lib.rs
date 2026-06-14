@@ -115,6 +115,12 @@ fn parse_args(args: &[String]) -> StartupArgs {
             "--driver" => {
                 result.adhoc_driver = value(&mut iter);
             }
+            // Connection URI for an ad-hoc launch. The primary path for MongoDB
+            // (`mongodb://…` / `mongodb+srv://…`); implies `--driver mongodb`
+            // when no driver is given.
+            "--connection-string" | "--uri" => {
+                result.adhoc_connection_string = value(&mut iter);
+            }
             "--name" => {
                 result.adhoc_name = value(&mut iter);
             }
@@ -170,6 +176,25 @@ mod cli_tests {
         // split_once('=') must only split on the first '='.
         let a = parse_args(&v(&["--password=a=b=c"]));
         assert_eq!(a.adhoc_password.as_deref(), Some("a=b=c"));
+    }
+
+    #[test]
+    fn connection_string_uri_flag() {
+        // `--uri` is the MongoDB-friendly alias; the value (an SRV URI with its
+        // own `=` query params) must survive the first-`=` split.
+        let a = parse_args(&v(&[
+            "--uri=mongodb+srv://u:p@cluster.mongodb.net/db?retryWrites=true",
+        ]));
+        assert_eq!(
+            a.adhoc_connection_string.as_deref(),
+            Some("mongodb+srv://u:p@cluster.mongodb.net/db?retryWrites=true")
+        );
+        // The long spelling and the space form work too.
+        let b = parse_args(&v(&["--connection-string", "mongodb://localhost:27017"]));
+        assert_eq!(
+            b.adhoc_connection_string.as_deref(),
+            Some("mongodb://localhost:27017")
+        );
     }
 
     #[test]

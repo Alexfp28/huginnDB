@@ -83,7 +83,10 @@
       "passwordKeepHint": "(leave blank to keep current)",
       "ssl": "SSL",
       "sqlitePath": "Database file path",
-      "sqlitePathPlaceholder": "C:\\path\\to\\database.db"
+      "sqlitePathPlaceholder": "C:\\path\\to\\database.db",
+      "connectionString": "Connection string",
+      "connectionStringPlaceholder": "mongodb://localhost:27017  or  mongodb+srv://user:pass@cluster.mongodb.net/db",
+      "connectionStringHint": "Primary input for MongoDB. Covers Atlas (mongodb+srv://), replica sets, authSource and URI options. Host/port/database fields are ignored when a connection string is set."
     },
     "ssh": {
       "enable": "Connect through SSH tunnel",
@@ -113,7 +116,8 @@
       "forgetHostKey": "Forget host key",
       "forgetConfirm": "Forget the saved SSH host key for {{hostPort}}?",
       "forgetDone": "Host key forgotten. The next connection will trust whatever the server presents (when the policy is \"Trust on first use\").",
-      "forgetNone": "No host key was stored for this host."
+      "forgetNone": "No host key was stored for this host.",
+      "unavailableForSrv": "SSH tunnelling is not available for mongodb+srv:// connections (SRV resolves to multiple hosts). Use a direct mongodb://host:port URI to tunnel."
     },
     "test": "Test",
     "testing": "Testing…",
@@ -289,7 +293,8 @@
       "refTable": "referenced table",
       "refColumns": "referenced columns",
       "add": "Add foreign key"
-    }
+    },
+    "readOnlyMongo": "Read-only (MongoDB)"
   },
   "tabs": {
     "queryFileName": "query.sql",
@@ -354,12 +359,30 @@
     "title": "Preferences",
     "description": "Changes apply live. The preferences file lives in your platform's config directory; the dialog is also available with",
     "sections": {
-      "general": { "label": "General", "desc": "App behaviour" },
-      "editor": { "label": "Editor", "desc": "Monaco SQL editor" },
-      "grid": { "label": "Data grid", "desc": "Tables & paging" },
-      "appearance": { "label": "Appearance", "desc": "Themes & colours" },
-      "shortcuts": { "label": "Shortcuts", "desc": "Keyboard bindings" },
-      "about": { "label": "About", "desc": "Version & paths" }
+      "general": {
+        "label": "General",
+        "desc": "App behaviour"
+      },
+      "editor": {
+        "label": "Editor",
+        "desc": "Monaco SQL editor"
+      },
+      "grid": {
+        "label": "Data grid",
+        "desc": "Tables & paging"
+      },
+      "appearance": {
+        "label": "Appearance",
+        "desc": "Themes & colours"
+      },
+      "shortcuts": {
+        "label": "Shortcuts",
+        "desc": "Keyboard bindings"
+      },
+      "about": {
+        "label": "About",
+        "desc": "Version & paths"
+      }
     },
     "general": {
       "defaultDriver": {

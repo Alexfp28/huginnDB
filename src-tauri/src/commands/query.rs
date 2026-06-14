@@ -33,6 +33,7 @@ fn driver_str(pool: &DbPool) -> &'static str {
         DbPool::Postgres(_) => "postgres",
         DbPool::Mysql(_) => "mysql",
         DbPool::Sqlite(_) => "sqlite",
+        DbPool::Mongo(_) => "mongodb",
     }
 }
 
@@ -293,6 +294,33 @@ async fn execute_with_state(
     let driver = driver_str(&pool);
     let start = Instant::now();
 
+    // MongoDB: parse + run the mongosh-style statement in the mongo module,
+    // which classifies read vs write itself and shapes the result.
+    if let DbPool::Mongo(conn) = &pool {
+        let result = crate::db::mongo::query::execute(conn, sql).await;
+        match &result {
+            Ok(r) => log_sql(
+                app,
+                connection_id,
+                driver,
+                sql,
+                start,
+                Some(r.rows_affected),
+                None,
+            ),
+            Err(e) => log_sql(
+                app,
+                connection_id,
+                driver,
+                sql,
+                start,
+                None,
+                Some(&e.to_string()),
+            ),
+        }
+        return result;
+    }
+
     if !is_read_only(sql) {
         let rows_affected = try_sql!(
             app,
@@ -304,6 +332,7 @@ async fn execute_with_state(
                 DbPool::Postgres(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
                 DbPool::Mysql(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
                 DbPool::Sqlite(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
+                DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
             }
         );
         log_sql(
@@ -358,6 +387,7 @@ async fn execute_with_state(
             );
             sqlite_result(&rows)
         }
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
     let result = QueryResult {
         rows_affected: data.len() as u64,
@@ -407,6 +437,10 @@ pub async fn execute_batch(
 ) -> AppResult<BatchResult> {
     let pool = pool_for(state.inner(), &connection_id)?;
     let driver = driver_str(&pool);
+
+    if let DbPool::Mongo(conn) = &pool {
+        return crate::db::mongo::query::execute_batch(conn, &statements).await;
+    }
 
     let mut outcomes: Vec<StmtOutcome> = Vec::with_capacity(statements.len());
     let mut last_result: Option<QueryResult> = None;
@@ -526,6 +560,7 @@ pub async fn execute_batch(
             );
             drive!(conn, sqlite_result);
         }
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     }
 
     Ok(BatchResult {
@@ -661,6 +696,27 @@ pub async fn fetch_table_data(
     search_columns: Option<Vec<String>>,
 ) -> AppResult<QueryResult> {
     let pool = pool_for(state.inner(), &connection_id)?;
+
+    // MongoDB browse: delegate to the mongo module (find + count). Clone the
+    // option args so the SQL path below — though unreachable for mongo — still
+    // type-checks without a use-after-move.
+    if let DbPool::Mongo(conn) = &pool {
+        let f = filters.clone().unwrap_or_default();
+        let sc = search_columns.clone().unwrap_or_default();
+        return crate::db::mongo::query::fetch_collection_data(
+            conn,
+            &table,
+            limit,
+            offset,
+            order_by.as_deref(),
+            order_desc.unwrap_or(false),
+            &f,
+            search.as_deref().filter(|s| !s.is_empty()),
+            &sc,
+        )
+        .await;
+    }
+
     let driver = driver_str(&pool);
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let pg = matches!(&pool, DbPool::Postgres(_));
@@ -700,6 +756,7 @@ pub async fn fetch_table_data(
             }
         }
         DbPool::Sqlite(_) => quote_ident(true, &table),
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
 
     // LIMIT/OFFSET stay inline (they are integers we already parsed),
@@ -803,6 +860,7 @@ pub async fn fetch_table_data(
                 .collect();
             (columns, data)
         }
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
     let elapsed_ms = start.elapsed().as_millis() as u64;
     log_sql(
@@ -844,6 +902,7 @@ pub async fn fetch_table_data(
                 }
                 q.fetch_optional(p).await
             }
+            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
         }
     );
     let total: Option<u64> = raw_count.map(|n| n as u64);
@@ -911,6 +970,45 @@ pub async fn update_cell(
 
     let pool = pool_for(state.inner(), &connection_id)?;
     let driver = driver_str(&pool);
+
+    // MongoDB: update one field of the document addressed by `_id` ($set). The
+    // PK is always `_id`, so the first pk value is the id; `column_type` is the
+    // field's inferred BSON type used to coerce the textual cell value.
+    if let DbPool::Mongo(conn) = &pool {
+        let start = Instant::now();
+        let id = pk_values.first().cloned().unwrap_or(Value::Null);
+        let res = crate::db::mongo::query::update_cell(
+            conn,
+            &table,
+            &id,
+            &column,
+            value.as_deref(),
+            column_type.as_deref(),
+        )
+        .await;
+        match &res {
+            Ok(n) => log_sql(
+                &app,
+                &connection_id,
+                driver,
+                "(mongo update)",
+                start,
+                Some(*n),
+                None,
+            ),
+            Err(e) => log_sql(
+                &app,
+                &connection_id,
+                driver,
+                "(mongo update)",
+                start,
+                None,
+                Some(&e.to_string()),
+            ),
+        }
+        return res;
+    }
+
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let pg = matches!(&pool, DbPool::Postgres(_));
 
@@ -1034,6 +1132,7 @@ pub async fn update_cell(
                 tx.commit().await?;
                 Ok(affected)
             }
+            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
         }
     }
     .await;
@@ -1121,6 +1220,39 @@ pub async fn delete_rows(
 
     let pool = pool_for(state.inner(), &connection_id)?;
     let driver = driver_str(&pool);
+
+    // MongoDB: delete by `_id` ({_id: {$in: [...]}}). Each pk tuple is a single
+    // `_id` value.
+    if let DbPool::Mongo(conn) = &pool {
+        let start = Instant::now();
+        let ids: Vec<Value> = pk_value_rows
+            .iter()
+            .map(|r| r.first().cloned().unwrap_or(Value::Null))
+            .collect();
+        let res = crate::db::mongo::query::delete_rows(conn, &table, &ids).await;
+        match &res {
+            Ok(n) => log_sql(
+                &app,
+                &connection_id,
+                driver,
+                "(mongo delete)",
+                start,
+                Some(*n),
+                None,
+            ),
+            Err(e) => log_sql(
+                &app,
+                &connection_id,
+                driver,
+                "(mongo delete)",
+                start,
+                None,
+                Some(&e.to_string()),
+            ),
+        }
+        return res;
+    }
+
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let pg = matches!(&pool, DbPool::Postgres(_));
 
@@ -1187,6 +1319,7 @@ pub async fn delete_rows(
                 }
                 q.execute(&p).await.map(|r| r.rows_affected())
             }
+            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
         }
     );
     log_sql(
@@ -1228,6 +1361,35 @@ pub async fn insert_row(
     }
     let pool = pool_for(state.inner(), &connection_id)?;
     let driver = driver_str(&pool);
+
+    // MongoDB: insert one document built from the column/value pairs; returns
+    // the generated `_id`.
+    if let DbPool::Mongo(conn) = &pool {
+        let start = Instant::now();
+        let res = crate::db::mongo::query::insert_row(conn, &table, &values).await;
+        match &res {
+            Ok(_) => log_sql(
+                &app,
+                &connection_id,
+                driver,
+                "(mongo insert)",
+                start,
+                Some(1),
+                None,
+            ),
+            Err(e) => log_sql(
+                &app,
+                &connection_id,
+                driver,
+                "(mongo insert)",
+                start,
+                None,
+                Some(&e.to_string()),
+            ),
+        }
+        return res;
+    }
+
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let pg = matches!(&pool, DbPool::Postgres(_));
     let is_mysql = matches!(&pool, DbPool::Mysql(_));
@@ -1331,6 +1493,7 @@ pub async fn insert_row(
                 .map(|r| (Some(r.rows_affected()), Value::from(r.last_insert_rowid())));
             (base_sql, outcome)
         }
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
 
     let (rows, returned) = try_sql!(&app, &connection_id, driver, &sql_used, start, outcome);
@@ -1423,6 +1586,12 @@ pub async fn fetch_fk_options(
     };
 
     let pool = pool_for(state.inner(), &connection_id)?;
+    // MongoDB has no foreign keys; the FK combobox is not offered for it.
+    if matches!(&pool, DbPool::Mongo(_)) {
+        return Err(AppError::InvalidInput(
+            "foreign-key lookups are not supported on MongoDB".into(),
+        ));
+    }
     let pg = matches!(&pool, DbPool::Postgres(_));
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
 
@@ -1537,6 +1706,7 @@ pub async fn fetch_fk_options(
                 })
                 .collect()
         }
+        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
     };
 
     let has_more = options.len() as i64 > limit;
@@ -1558,5 +1728,8 @@ fn qualified_table(pool: &DbPool, schema: Option<&str>, table: &str) -> String {
             None => quote_ident(false, table),
         },
         DbPool::Sqlite(_) => quote_ident(true, table),
+        // MongoDB never builds SQL-qualified names; commands dispatch to the
+        // mongo module before reaching here.
+        DbPool::Mongo(_) => table.to_string(),
     }
 }

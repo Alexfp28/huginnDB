@@ -24,6 +24,8 @@ const DRIVER_ALIASES: Record<string, Driver> = {
   maria: "mysql",
   sqlite: "sqlite",
   sqlite3: "sqlite",
+  mongodb: "mongodb",
+  mongo: "mongodb",
 };
 
 /** Canonicalize a free-form driver string; `null` when empty/unrecognized. */

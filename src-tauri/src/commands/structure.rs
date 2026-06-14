@@ -29,6 +29,9 @@ fn driver_of(pool: &DbPool) -> Driver {
         DbPool::Postgres(_) => Driver::Postgres,
         DbPool::Mysql(_) => Driver::Mysql,
         DbPool::Sqlite(_) => Driver::Sqlite,
+        // MongoDB has no SQL DDL driver; structure *editing* is not supported,
+        // and the callers below guard against it before reaching `driver_of`.
+        DbPool::Mongo(_) => unreachable!("mongo structure changes are rejected before driver_of"),
     }
 }
 
@@ -49,6 +52,8 @@ pub async fn get_table_structure(
         DbPool::Postgres(p) => pg_structure(&p, schema, table).await,
         DbPool::Mysql(p) => mysql_structure(&p, schema, table).await,
         DbPool::Sqlite(p) => sqlite_structure(&p, table).await,
+        // Read-only structure for MongoDB: inferred fields + real indexes.
+        DbPool::Mongo(conn) => crate::db::mongo::schema::table_structure(&conn, &table).await,
     }
 }
 
@@ -248,7 +253,9 @@ async fn mysql_structure(
         }
         let col: String = r.get("column_name");
         let non_unique: i64 = r.get("non_unique");
-        let e = grouped.entry(name).or_insert_with(|| (Vec::new(), non_unique == 0));
+        let e = grouped
+            .entry(name)
+            .or_insert_with(|| (Vec::new(), non_unique == 0));
         e.0.push(col);
     }
     let indexes = grouped
@@ -282,15 +289,17 @@ async fn mysql_structure(
     let mut fk_groups: BTreeMap<String, ForeignKeyDef> = BTreeMap::new();
     for r in fk_rows {
         let cname: String = r.get("constraint_name");
-        let entry = fk_groups.entry(cname.clone()).or_insert_with(|| ForeignKeyDef {
-            name: Some(cname),
-            columns: vec![],
-            ref_schema: r.get::<Option<String>, _>("ref_schema"),
-            ref_table: r.get::<String, _>("ref_table"),
-            ref_columns: vec![],
-            on_delete: rule_to_action(r.get::<Option<String>, _>("delete_rule")),
-            on_update: rule_to_action(r.get::<Option<String>, _>("update_rule")),
-        });
+        let entry = fk_groups
+            .entry(cname.clone())
+            .or_insert_with(|| ForeignKeyDef {
+                name: Some(cname),
+                columns: vec![],
+                ref_schema: r.get::<Option<String>, _>("ref_schema"),
+                ref_table: r.get::<String, _>("ref_table"),
+                ref_columns: vec![],
+                on_delete: rule_to_action(r.get::<Option<String>, _>("delete_rule")),
+                on_update: rule_to_action(r.get::<Option<String>, _>("update_rule")),
+            });
         entry.columns.push(r.get::<String, _>("column_name"));
         if let Some(rc) = r.get::<Option<String>, _>("ref_column") {
             entry.ref_columns.push(rc);
@@ -322,13 +331,12 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
     let rows = sqlx::query(&q).fetch_all(p).await?;
     // Detect AUTOINCREMENT from the stored CREATE statement (PRAGMA doesn't
     // expose it).
-    let create_sql: Option<String> = sqlx::query(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
-    )
-    .bind(&table)
-    .fetch_optional(p)
-    .await?
-    .and_then(|r| r.get::<Option<String>, _>("sql"));
+    let create_sql: Option<String> =
+        sqlx::query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .bind(&table)
+            .fetch_optional(p)
+            .await?
+            .and_then(|r| r.get::<Option<String>, _>("sql"));
     let has_autoincrement = create_sql
         .as_deref()
         .map(|s| s.to_uppercase().contains("AUTOINCREMENT"))
@@ -343,7 +351,8 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
             // INTEGER PRIMARY KEY is SQLite's rowid alias; mark auto when the
             // table declared AUTOINCREMENT.
             let auto = is_pk && has_autoincrement && ty.to_uppercase().contains("INT");
-            let default: Option<String> = r.try_get::<Option<String>, _>("dflt_value").ok().flatten();
+            let default: Option<String> =
+                r.try_get::<Option<String>, _>("dflt_value").ok().flatten();
             ColumnDef {
                 original_name: Some(name.clone()),
                 name,
@@ -378,7 +387,10 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
     }
 
     // FKs (composite-capable), grouped by id.
-    let fl = format!("PRAGMA foreign_key_list(\"{}\")", table.replace('"', "\"\""));
+    let fl = format!(
+        "PRAGMA foreign_key_list(\"{}\")",
+        table.replace('"', "\"\"")
+    );
     let fk_rows = sqlx::query(&fl).fetch_all(p).await?;
     let mut fk_groups: BTreeMap<i64, ForeignKeyDef> = BTreeMap::new();
     for r in fk_rows {
@@ -441,10 +453,15 @@ pub async fn preview_structure_change(
     args: StructureChangeArgs,
 ) -> AppResult<StructurePreview> {
     let pool = pool_for(state.inner(), &args.connection_id)?;
+    if matches!(&pool, DbPool::Mongo(_)) {
+        return Err(AppError::InvalidInput(
+            "structure editing is not supported on MongoDB in this version".into(),
+        ));
+    }
     let driver = driver_of(&pool);
     let statements = build_ddl(driver, args.original.as_ref(), &args.desired)?;
-    let rebuild = driver == Driver::Sqlite
-        && sqlite_rebuild_required(args.original.as_ref(), &args.desired);
+    let rebuild =
+        driver == Driver::Sqlite && sqlite_rebuild_required(args.original.as_ref(), &args.desired);
     Ok(StructurePreview {
         statements,
         rebuild,
@@ -457,6 +474,11 @@ pub async fn apply_structure_change(
     args: StructureChangeArgs,
 ) -> AppResult<()> {
     let pool = pool_for(state.inner(), &args.connection_id)?;
+    if matches!(&pool, DbPool::Mongo(_)) {
+        return Err(AppError::InvalidInput(
+            "structure editing is not supported on MongoDB in this version".into(),
+        ));
+    }
     let driver = driver_of(&pool);
     let statements = build_ddl(driver, args.original.as_ref(), &args.desired)?;
 
@@ -486,6 +508,7 @@ pub async fn apply_structure_change(
                 sqlx::query(stmt).execute(p).await?;
             }
         }
+        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
     }
     Ok(())
 }

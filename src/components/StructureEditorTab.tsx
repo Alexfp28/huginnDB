@@ -90,6 +90,11 @@ export function StructureEditorTab({
   });
   const typeSuggestions = useMemo(() => columnTypesFor(driver), [driver]);
 
+  // MongoDB structure is read-only in this version: the backend rejects
+  // preview/apply, so the editor shows the inferred fields + indexes for
+  // inspection only and hides the Apply action.
+  const isReadOnly = driver === "mongodb";
+
   const [original, setOriginal] = useState<TableStructure | null>(null);
   const [name, setName] = useState(table ?? "");
   const [columns, setColumns] = useState<WorkingColumn[]>(
@@ -148,6 +153,12 @@ export function StructureEditorTab({
   const desiredRef = useRef(desired);
   desiredRef.current = desired;
   const runPreview = useCallback(() => {
+    // MongoDB has no DDL preview; structure is read-only here.
+    if (isReadOnly) {
+      setDdl("");
+      setPreviewError(null);
+      return;
+    }
     if (!desiredRef.current.name || desiredRef.current.columns.length === 0) {
       setDdl("");
       setPreviewError(null);
@@ -168,7 +179,7 @@ export function StructureEditorTab({
         setDdl("");
         setPreviewError(String(e));
       });
-  }, [connectionId, original]);
+  }, [connectionId, original, isReadOnly]);
 
   useEffect(() => {
     const id = setTimeout(runPreview, 400);
@@ -245,13 +256,19 @@ export function StructureEditorTab({
           disabled={mode === "edit"}
         />
         <div className="ml-auto flex items-center gap-2">
-          <Button
-            size="sm"
-            onClick={onApplyClick}
-            disabled={applying || !name.trim() || columns.length === 0}
-          >
-            {applying ? t("structure.applying") : t("structure.apply")}
-          </Button>
+          {isReadOnly ? (
+            <span className="rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+              {t("structure.readOnlyMongo")}
+            </span>
+          ) : (
+            <Button
+              size="sm"
+              onClick={onApplyClick}
+              disabled={applying || !name.trim() || columns.length === 0}
+            >
+              {applying ? t("structure.applying") : t("structure.apply")}
+            </Button>
+          )}
         </div>
       </div>
 
