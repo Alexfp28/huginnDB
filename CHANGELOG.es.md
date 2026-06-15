@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-06-15
+
 ### Añadido
 
 - **Formulario de conexión de MongoDB (basado en campos).** El diálogo de
