@@ -13,11 +13,11 @@
  * reference-stability rule called out in CLAUDE.md.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 import Editor from "@monaco-editor/react";
-import { Pause, Play, Trash2, Search } from "lucide-react";
+import { Pause, Play, Trash2, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLogs, type LogKindFilter } from "@/stores/logs";
@@ -97,6 +97,17 @@ export function Console() {
 
   const selectedDetailValue =
     selected?.sql ?? selected?.message ?? selected?.error ?? "";
+
+  // Esc closes the detail pane and returns to the full list — so inspecting a
+  // record no longer requires clearing the console to get back (1.1.1 fix).
+  useEffect(() => {
+    if (selectedId == null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectedId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId]);
 
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
@@ -203,6 +214,15 @@ export function Console() {
             {selected.connection_id && (
               <span className="truncate">conn {selected.connection_id}</span>
             )}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="ml-auto h-5 w-5 shrink-0"
+              onClick={() => setSelectedId(null)}
+              title={t("console.closeDetail")}
+            >
+              <X className="h-3 w-3" />
+            </Button>
           </div>
           {selected.error && (
             <div className="border-b border-destructive/40 bg-destructive/10 px-2 py-1 font-mono text-[11px] text-destructive">

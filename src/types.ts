@@ -67,6 +67,11 @@ export interface ConnectionProfile {
    *  (`mongodb://…` / `mongodb+srv://…`). When set it takes precedence over the
    *  discrete host/port/database fields. `null`/absent for the SQL drivers. */
   connection_string?: string | null;
+  /** MongoDB `authSource` (the database to authenticate against, e.g.
+   *  `admin`). The form-built `connection_string` already embeds it as a query
+   *  option; it is persisted separately so the CLI fallback (no URI) and the
+   *  form repopulation have it explicitly. `null`/absent for the SQL drivers. */
+  auth_source?: string | null;
   /** Session-only profile (e.g. a CLI ad-hoc connection) that the backend
    *  keeps in memory but never writes to `profiles.json`. */
   ephemeral?: boolean;
@@ -486,6 +491,8 @@ export interface StartupArgs {
   adhoc_driver: string | null;
   /** Connection URI from `--uri`/`--connection-string` (MongoDB-primary). */
   adhoc_connection_string: string | null;
+  /** MongoDB `authSource` from `--auth-source` (used by the URI-less path). */
+  adhoc_auth_source: string | null;
   adhoc_name: string | null;
   /** Password from `--password`/`--pass`. In-memory only, never persisted. */
   adhoc_password: string | null;

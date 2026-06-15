@@ -84,9 +84,13 @@
       "ssl": "SSL",
       "sqlitePath": "Database file path",
       "sqlitePathPlaceholder": "C:\\path\\to\\database.db",
+      "authSource": "Auth source",
+      "authSourcePlaceholder": "admin",
       "connectionString": "Connection string",
       "connectionStringPlaceholder": "mongodb://localhost:27017  or  mongodb+srv://user:pass@cluster.mongodb.net/db",
-      "connectionStringHint": "Primary input for MongoDB. Covers Atlas (mongodb+srv://), replica sets, authSource and URI options. Host/port/database fields are ignored when a connection string is set."
+      "connectionStringHint": "Built automatically from the fields above. The password is stored securely and is not embedded.",
+      "editConnectionString": "Edit connection string",
+      "connectionStringWarning": "Editing the connection string by hand can introduce errors — double-check it. Use this for Atlas (mongodb+srv://), replica sets, or extra URI options the form doesn't cover."
     },
     "ssh": {
       "enable": "Connect through SSH tunnel",
@@ -157,7 +161,7 @@
     "sectionTables": "tables",
     "sectionViews": "views",
     "sectionIndexes": "indexes",
-    "filterPlaceholder": "Filter tables…",
+    "filterPlaceholder": "Filter tables… (users; orders)",
     "filterInDb": "Filter in {{db}}…",
     "filterScopedTo": "Searching in {{db}} only",
     "noMatches": "No tables match the filter.",
@@ -541,6 +545,7 @@
     "resume": "Resume",
     "pause": "Pause",
     "clear": "Clear",
+    "closeDetail": "Close detail (Esc)",
     "kindSql": "SQL",
     "kindConnection": "Connection",
     "filterPlaceholder": "Filter SQL, error, driver…",

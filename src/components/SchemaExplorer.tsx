@@ -62,6 +62,22 @@ import {
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import type { Driver, TableInfo } from "@/types";
 
+/**
+ * Match a table/database name against the filter box. HeidiSQL-style: the
+ * filter may hold several `;`-separated patterns and a name matches when it
+ * contains ANY of them (OR), so `users; orders` surfaces both tables at once.
+ * An empty filter (or one that's only separators/whitespace) matches all.
+ */
+function matchesFilter(name: string, filter: string): boolean {
+  const patterns = filter
+    .split(";")
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean);
+  if (patterns.length === 0) return true;
+  const n = name.toLowerCase();
+  return patterns.some((p) => n.includes(p));
+}
+
 export function SchemaExplorer({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
   // Multi-DB mode triggers when the parent profile has no `database` set
@@ -180,7 +196,7 @@ function SingleDbExplorer({
       { tables: TableInfo[]; views: TableInfo[] }
     > = {};
     for (const tbl of cs?.tables ?? []) {
-      if (needle && !tbl.name.toLowerCase().includes(needle)) continue;
+      if (needle && !matchesFilter(tbl.name, needle)) continue;
       grouped[tbl.schema] ??= { tables: [], views: [] };
       if (tbl.kind === "view") {
         grouped[tbl.schema].views.push(tbl);
@@ -498,9 +514,9 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
       const childId = `${parentId}::db::${db.name}`;
       const tables = byConnection[childId]?.tables ?? [];
       const byTable = tables.some((t) =>
-        t.name.toLowerCase().includes(debouncedNeedle),
+        matchesFilter(t.name, debouncedNeedle),
       );
-      const byName = db.name.toLowerCase().includes(debouncedNeedle);
+      const byName = matchesFilter(db.name, debouncedNeedle);
       if (byName || byTable) m.set(db.name, { byName, byTable });
     }
     return m;

@@ -69,6 +69,13 @@ pub struct ConnectionProfile {
     /// fields in [`crate::db::pool::build_url`].
     #[serde(default)]
     pub connection_string: Option<String>,
+    /// MongoDB `authSource` (the auth database, e.g. `admin`). The form-built
+    /// `connection_string` already carries it as a query option; it is stored
+    /// separately so the URI-less fallback in [`crate::db::mongo::open_pool`]
+    /// (CLI `--auth-source`) and form repopulation have it explicitly. `None`
+    /// for the SQL drivers.
+    #[serde(default)]
+    pub auth_source: Option<String>,
     /// Session-only profile that must never be persisted to `profiles.json`.
     /// Set for ad-hoc connections opened from the CLI (`--host …`): they live
     /// in `state.profiles` in memory so the explorer / tabs / `pool_for` treat
@@ -254,6 +261,9 @@ pub struct StartupArgs {
     /// fields can't express an SRV seed list or URI options. When present and
     /// no `--driver` is given, the driver defaults to `mongodb`.
     pub adhoc_connection_string: Option<String>,
+    /// MongoDB `authSource` supplied via `--auth-source`. Folded into the
+    /// assembled URI when no `--uri` is given (the URI-less ad-hoc path).
+    pub adhoc_auth_source: Option<String>,
     /// Display name for the ad-hoc connection.
     pub adhoc_name: Option<String>,
     /// Optional password supplied via `--password`/`--pass`. Opt-in and kept

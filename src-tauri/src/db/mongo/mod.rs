@@ -61,16 +61,24 @@ pub async fn open_pool(
             } else {
                 format!("/{}", profile.database)
             };
+            // Append `?authSource=…` when the profile pins one (CLI
+            // `--auth-source`). Without it, auth defaults to the connection's
+            // database — the exact gap that made URI-less Mongo logins fail.
+            let query = match profile.auth_source.as_deref().map(str::trim) {
+                Some(src) if !src.is_empty() => format!("?authSource={}", enc(src)),
+                _ => String::new(),
+            };
             if profile.username.is_empty() {
-                format!("mongodb://{}:{}{}", profile.host, profile.port, db)
+                format!("mongodb://{}:{}{}{}", profile.host, profile.port, db, query)
             } else {
                 format!(
-                    "mongodb://{}:{}@{}:{}{}",
+                    "mongodb://{}:{}@{}:{}{}{}",
                     enc(&profile.username),
                     enc(password),
                     profile.host,
                     profile.port,
-                    db
+                    db,
+                    query
                 )
             }
         }
@@ -96,6 +104,15 @@ pub async fn open_pool(
         }
         if cred.username.is_none() && !profile.username.is_empty() {
             cred.username = Some(profile.username.clone());
+        }
+        // Honour an explicit authSource when the URI didn't carry one (e.g. a
+        // profile that stores `auth_source` but a bare `mongodb://…` URI).
+        if cred.source.is_none() {
+            if let Some(src) = profile.auth_source.as_deref().map(str::trim) {
+                if !src.is_empty() {
+                    cred.source = Some(src.to_string());
+                }
+            }
         }
         options.credential = Some(cred);
     }

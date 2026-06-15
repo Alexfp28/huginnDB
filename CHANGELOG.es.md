@@ -8,6 +8,357 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Añadido
+
+- **Formulario de conexión de MongoDB (basado en campos).** El diálogo de
+  conexión de MongoDB es ahora primordialmente un formulario, como Mongo
+  Compass: campos discretos (host, puerto, base de datos, usuario, contraseña,
+  **auth source**) construyen la cadena de conexión `mongodb://` en vivo,
+  mostrada en modo solo lectura debajo. Un nuevo conmutador **Editar cadena de
+  conexión** revela la URI cruda para editarla a mano —con un aviso ámbar de que
+  las ediciones manuales pueden introducir errores— para los casos que el
+  formulario no cubre (Atlas `mongodb+srv://`, conjuntos de réplica, opciones
+  extra de URI). La contraseña nunca se incrusta en la cadena almacenada: sigue
+  pasando por el llavero del SO. Editar un perfil guardado vuelve a poblar el
+  formulario cuando su URI es representable, y se abre en modo de edición cruda
+  en caso contrario.
+- **`authSource` para MongoDB.** Un campo dedicado *Auth source* (p.ej. `admin`)
+  se añade a la cadena de conexión como `?authSource=…`, y un nuevo flag de CLI
+  `--auth-source` cubre la ruta ad-hoc sin URI
+  (`--host … --auth-source admin`). Antes la única forma de configurarlo era
+  escribir la URI entera a mano, y la ruta de campos discretos lo omitía por
+  completo — así que los inicios de sesión de MongoDB sin URI que necesitaban una
+  base de datos de autenticación no predeterminada fallaban.
+- **Filtro multi-tabla en el explorador de esquemas (estilo HeidiSQL).** El
+  filtro de tablas acepta ahora varios patrones separados por `;` y coincide con
+  una tabla cuando contiene **cualquiera** de ellos, así que `users; orders`
+  muestra ambas a la vez. Funciona en exploradores tanto de una sola base de
+  datos como multi-base-de-datos.
+
+### Corregido
+
+- **El panel de detalle de la Consola se puede cerrar sin vaciar la consola.**
+  Hacer clic en una entrada de log abría su vista de detalle sin forma de volver
+  a la lista completa salvo vaciar la consola; un botón de **cerrar** (y la tecla
+  `Esc`) descartan ahora el detalle y devuelven a la lista de entradas.
+
+## [1.1.0]
+
+### Añadido
+
+- **Driver de MongoDB (MVP).** HuginnDB se conecta ahora a MongoDB junto a los
+  motores SQL. Conecta con una cadena de conexión (`mongodb://…` o Atlas
+  `mongodb+srv://…`, la entrada principal — cubre conjuntos de réplica,
+  `authSource` y opciones de URI), navega por bases de datos → colecciones en el
+  explorador, e inspecciona documentos en la rejilla de datos (los campos de
+  nivel superior se convierten en columnas, `_id` primero; los documentos/arrays
+  anidados se renderizan como JSON y se expanden en la previsualización de celda).
+  - **Editor de consultas estilo `mongosh`.** Ejecuta `db.coll.find({…})`,
+    `.aggregate([…])`, `.countDocuments(…)`, `.distinct(…)` y los métodos de
+    escritura (`insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`,
+    `deleteOne`/`deleteMany`), con `.sort()/.limit()/.skip()/.projection()`
+    encadenados en `find`. Se admiten JSON relajado (claves sin comillas, comillas
+    simples) y los constructores BSON comunes (`ObjectId(...)`, `ISODate(...)`,
+    `NumberLong/Int/Decimal(...)`).
+  - **Edición por `_id`.** Las ediciones de celda en línea, las inserciones de
+    fila y los borrados se mapean a `updateOne`/`insertOne`/`deleteMany`
+    indexados por `_id`. El tipo BSON inferido del campo guía la coerción de
+    valor, de modo que un campo `Date`/`Long`/`Int` no se degrada silenciosamente
+    a cadena.
+  - **Estructura de solo lectura.** La vista de estructura muestra los campos
+    inferidos de una colección y sus índices reales; se admite eliminar la
+    colección desde el explorador. La edición de índices/validadores, las
+    transacciones y la transferencia de perfiles para MongoDB quedan diferidas —
+    véase `docs/MONGODB_ROADMAP.md`.
+  - **Túnel SSH** disponible para conexiones `mongodb://` de un solo host; está
+    deshabilitado para `mongodb+srv://` (un registro SRV resuelve a varios hosts,
+    que el túnel de un solo puerto no puede representar).
+  - **CLI:** `--driver mongodb` funciona con los flags discretos
+    `--host`/`--port`, y un nuevo flag `--uri` / `--connection-string` acepta una
+    URI `mongodb://` o `mongodb+srv://` completa (la única forma de alcanzar
+    Atlas desde la CLI). Una cadena de conexión implica el driver de MongoDB
+    cuando se omite `--driver`, y MongoDB se ofrece ahora en el selector de driver
+    ad-hoc.
+
+ - **Cerrar pestañas en bloque desde el menú de pestañas.** Hacer clic derecho en
+  una pestaña del espacio de trabajo (o el menú `⋮` de la pestaña) ofrece ahora
+  **Cerrar otras pestañas** y **Cerrar todas las pestañas** además de **Cerrar
+  pestaña**, de modo que un espacio de trabajo lleno de tablas/consultas abiertas
+  se puede limpiar en una sola acción en vez de cerrar cada pestaña
+  individualmente.
+
+### Corregido
+
+- **Filtrar el explorador de esquemas ya no falla en conexiones sin estadísticas
+  de tabla.** `list_tables` serializaba las estadísticas ausentes de recuento de
+  filas / tamaño como JSON `null`; el badge de métrica del explorador solo se
+  protegía contra `undefined`, así que un `null` llegaba a `formatBytes` y lanzaba
+  *"Cannot read properties of null (reading 'toFixed')"* — tumbando todo el
+  panel. Esto afectaba a las conexiones CLI/ad-hoc y a builds de SQLite sin
+  `dbstat`, y aparecía al filtrar porque el filtro fuerza la expansión de todas
+  las secciones (renderizando badges que antes estaban colapsados). El backend
+  omite ahora las estadísticas ausentes (acorde al contrato `?: number` del
+  frontend) y el badge se protege con `!= null`; `formatBytes`/`formatCount`
+  además abortan ante entradas no finitas.
+- **Abrir o cerrar el editor de celda lateral ya no reinicia la división Esquema /
+  Espacio de trabajo.** El editor lateral se acopla como hermano en la fila
+  `[Esquema | Espacio de trabajo | Celda]`, y dockview redistribuye el espacio
+  liberado/ocupado proporcionalmente entre *todos* los hermanos cuando se añade o
+  elimina un hijo — redimensionando silenciosamente el panel de Esquema cada vez.
+  El ancho de Esquema se recuerda ahora mientras el editor lateral está ausente y
+  se vuelve a imponer en cada apertura/cierre, de modo que solo el panel de
+  Espacio de trabajo absorbe el cambio.
+- **Duplicar una fila de MySQL con una columna `BIT` y luego guardar podía fallar
+  con "Data too long for column".** El control 0/1 mostraba el valor normalizado
+  pero dejaba la celda borrador con el valor crudo duplicado; si ese valor no era
+  ya exactamente `"0"`/`"1"` (p.ej. un `"true"` duplicado, o una celda `BIT(1)`
+  heredada que arrastraba un entero más ancho/basura), el valor crudo era lo que
+  se confirmaba, y `CAST(? AS UNSIGNED)` a `BIT(1)` desbordaba. El control
+  sincroniza ahora la celda confirmada con el `0`/`1` mostrado al montarse.
+
+## [1.0.10] — 2026-06-11
+
+### Añadido
+
+- **Ejecutar un buffer entero de sentencias de una vez.** Pulsar `Ctrl+Enter` (o
+  el nuevo botón "Run all (N)") en un editor que contiene varias sentencias
+  delimitadas por `;` —p.ej. un lote de INSERTs copiado de la rejilla— las
+  ejecuta ahora en orden sobre una única conexión y muestra un resumen por
+  sentencia, con las filas del último SELECT en la rejilla. Antes el buffer
+  entero se enviaba como una sola sentencia preparada, que el driver rechazaba
+  ("cannot insert multiple commands into a prepared statement"). Ejecutarlas
+  sobre una sola conexión también significa que un `BEGIN`/`COMMIT` explícito (o
+  `USE` de MySQL) se arrastra ahora a través del lote. El CodeLens "▶ Run" por
+  sentencia sigue ejecutando una sola sentencia.
+- **Selector de base de datos en el editor de consultas.** En un servidor
+  multi-base-de-datos (Postgres / MySQL) la pestaña de consulta tiene ahora un
+  desplegable de base de datos: elige una base de datos y la consulta se ejecuta
+  contra ella — y el autocompletado cambia a sus tablas — sin escribir `USE`/un
+  prefijo de esquema en el SQL. Respaldado por los pools hijos por base de datos
+  ya existentes. SQLite (archivo único) no muestra selector.
+- **Previsualizaciones de tema y editor en Preferencias.** Apariencia muestra una
+  pequeña maqueta del armazón de la app más muestras de color pintadas con el
+  tema seleccionado; Editor muestra un fragmento SQL de ejemplo renderizado con
+  la fuente, el tamaño, el ajuste de línea y los colores del tema de Monaco
+  elegidos.
+- **Conmutador de pantalla completa en el editor de celda lateral**, igual que el
+  editor modal (`F11` / `Esc`, o el botón de cabecera).
+- **Control dedicado 0/1 para columnas `BIT`** en la fila borrador de inserción y
+  la edición de celda en línea (MySQL). Emite el valor numérico que la columna
+  espera y etiqueta las opciones según la preferencia de visualización de BIT de
+  la rejilla, en vez de un campo de texto que parecía pedir un booleano.
+
+### Cambiado
+
+- **Las conexiones abiertas desde la CLI son ahora temporales.** Una conexión
+  ad-hoc lanzada con `--host …` se mantiene en memoria durante la sesión (de modo
+  que el explorador y las pestañas funcionan con normalidad, marcada como "temp")
+  pero ya no se escribe en `profiles.json`, así que no se acumula entre lanzamientos.
+  Los perfiles creados en la app siguen persistiendo como antes.
+- **Las tarjetas de badge de driver son conscientes del tema** — los logos de
+  marca conservan sus colores pero la tarjeta/anillo siguen ahora el tema activo
+  en vez de un cuadrado blanco fijo que chocaba con los temas oscuros.
+
+### Corregido
+
+- **Un `LONGTEXT` grande (p.ej. un documento JSON grande) en MySQL se renderizaba
+  como un volcado hexadecimal.** Cuando el servidor marca una columna de texto
+  como binaria (dependiente de charset/collation), sqlx la reporta como
+  `LONGBLOB` y `try_get::<String>` la rechazaba en una comprobación de
+  compatibilidad de tipo *antes* de mirar los bytes, así que el valor caía a hex
+  sin importar su contenido. Ahora leemos los bytes crudos y validamos el UTF-8
+  nosotros mismos, de modo que el texto UTF-8 válido se decodifica como texto.
+
+## [1.0.9] — 2026-06-09
+
+### Corregido
+
+- **Abrir una base de datos concreta fallaba con "no stored password for keychain
+  account" cuando la contraseña venía de la CLI.** Expandir una base de datos en
+  el árbol levanta un pool hijo (`open_database_view`) que re-resolvía las
+  credenciales desde el llavero del SO — pero una contraseña pasada vía
+  `--password` (o el diálogo de conexión) vive solo en memoria y nunca se
+  almacenaba allí. El backend mantiene ahora una caché en memoria, solo de sesión,
+  del secreto usado al conectar (indexada por perfil, vaciada al desconectar);
+  los pools hijos la reutilizan y solo recurren al llavero cuando no se cacheó
+  nada.
+
+## [1.0.8] — 2026-06-09
+
+### Añadido
+
+- **Driver de base de datos por defecto configurable** (Ajustes → General). Se usa
+  cuando se crea una conexión sin un driver explícito: un lanzamiento por CLI sin
+  `--driver`, y el driver inicial del formulario "Nueva conexión". Por defecto es
+  **"Preguntar cada vez"** — así que un lanzamiento ad-hoc por CLI (`--host …`)
+  sin `--driver` y sin un valor por defecto configurado abre ahora un selector de
+  driver (y te anima a fijar uno por defecto) en vez de asumir silenciosamente
+  PostgreSQL y desencajar con un servidor MySQL.
+
+### Cambiado
+
+- **`--driver` acepta ahora alias y es insensible a mayúsculas** (`MySQL`,
+  `MYSQL`, `mariadb` → mysql; `postgresql`, `pg`, `psql` → postgres; `sqlite3` →
+  sqlite). Un valor no reconocido ya no cae silenciosamente a PostgreSQL — enruta
+  al selector de driver.
+- **Los fallos de conexión causados por un driver desencajado se explican ahora a
+  sí mismos.** Cuando un error de protocolo de cable indica el backend equivocado
+  (p.ej. el driver de Postgres leyendo un handshake de MySQL — "Postgres protocol
+  error … unknown transaction status"), el mensaje de error sugiere ahora cambiar
+  de driver, en la Consola y en los diálogos de conexión.
+
+## [1.0.7] — 2026-06-08
+
+### Corregido
+
+- **Las conexiones con SSL desactivado fallaban durante la negociación TLS**
+  ("unexpected response from SSLRequest"). Con la casilla de SSL desmarcada la URL
+  de conexión no llevaba `sslmode`, así que sqlx recurría a su valor por defecto
+  `prefer`/`PREFERRED` — que aún envía un `SSLRequest` de Postgres (o negocia TLS
+  de MySQL) y se atraganta contra servidores o poolers que no lo hablan. El
+  conmutador de SSL es ahora explícito: off → `sslmode=disable` /
+  `ssl-mode=DISABLED` (directo a un arranque en texto plano, sin negociación), on
+  → `require` / `REQUIRED`. Un servidor que genuinamente requiere TLS falla ahora
+  con un error claro de "activa SSL" en vez de un byte de handshake críptico.
+
+## [1.0.6] — 2026-06-08
+
+### Corregido
+
+- **La sintaxis `--flag=value` de la CLI se ignoraba.** El parser de argumentos de
+  arranque solo aceptaba la forma separada por espacios (`--password secret`); la
+  forma con igual (`--password=secret`) no coincidía con el flag y el valor se
+  descartaba silenciosamente — así que un lanzamiento ad-hoc como
+  `huginndb.exe --host … --password=…` creaba el perfil pero reportaba "no
+  --password given". El parser acepta ahora ambas formas para cada flag
+  (partiendo por el primer `=` para que los valores que contienen `=`
+  sobrevivan), con pruebas unitarias que cubren ambas grafías.
+
+## [1.0.5] — 2026-06-08
+
+### Cambiado
+
+- **El diálogo de conexión es ahora un gestor maestro/detalle** (la misma
+  disposición que el diálogo de preferencias): un raíl izquierdo lista cada
+  conexión guardada con un punto "conectado" en vivo y una entrada "Nueva
+  conexión", y el panel derecho edita el perfil seleccionado mediante las
+  pestañas General / Túnel SSH. El pie incluye Probar, Conectar (guardar + abrir
+  el pool), Borrar (respetando `confirmDestructive`) y Guardar. Abrir desde el
+  `+`/editar de la barra lateral sigue funcionando; conectar desde el gestor
+  enfoca la conexión en la vista principal. Importar/exportar perfiles viven en la
+  cabecera del gestor, y Archivo → "Gestionar conexiones" abre ahora este gestor
+  (enfocado en la conexión actual) en vez del antiguo modal envoltorio de lista,
+  que se ha eliminado.
+
+### Añadido
+
+- **Los logos oficiales de bases de datos reemplazan las iniciales del driver.**
+  Las listas de conexión, el menú de archivo, el desplegable de la barra de estado
+  y el gestor de conexiones muestran ahora las marcas de PostgreSQL / MySQL /
+  SQLite (incluidas localmente, sin CDN) sobre una tarjeta clara para que los
+  logos más oscuros sigan siendo legibles en ambos temas.
+- **El logo de la app corona ahora la pantalla de bienvenida del espacio de
+  trabajo vacío**, sobre la pista "huginndb — selecciona o crea una conexión".
+- **La conexión activa es ahora visible de un vistazo.** El control de conexiones
+  de la barra de estado muestra el nombre y el logo de la conexión actual (en vez
+  de un mero recuento), y tanto ese desplegable como el menú Archivo marcan la
+  conexión enfocada con un check.
+- **El panel de previsualización de celda se puede desactivar.** Una nueva
+  preferencia `grid.cellPreview` (Ajustes → Rejilla de datos) controla si el panel
+  flotante de previsualización de valor aparece al seleccionar una celda. Con él
+  desactivado, el clic simple queda como pura navegación; el editor pesado sigue
+  accesible vía doble clic y el menú contextual. Por defecto activado (el
+  comportamiento histórico).
+- **`grid.truncateLongTextAt` se expone ahora en Ajustes** y se aplica de verdad:
+  la rejilla limita el texto renderizado de una celda al número de caracteres
+  configurado (0 lo desactiva) para que un valor de varios MB no infle el DOM. El
+  valor completo sigue disponible en la previsualización/editor.
+
+### Corregido
+
+- **Varias preferencias eran no-ops silenciosos.** Se auditó cada conmutador y se
+  cablearon los que no se respetaban:
+  - `grid.nullDisplay` — la cadena NULL configurada se renderiza ahora tanto en la
+    rejilla de datos como en el panel de previsualización de celda (antes
+    hard-codeada `NULL`).
+  - `grid.zebraStripes` — se aplican los fondos de fila alternos (se ignoraba).
+  - `grid.stickyHeader` — la cabecera de columna solo se fija cuando está activado
+    (antes siempre fija).
+  - `grid.defaultPageSize` — las nuevas pestañas de tabla abren al tamaño de página
+    configurado (antes hard-codeado a 100); el desplegable de tamaño de página
+    incluye valores personalizados.
+  - `ui.queryHistoryLimit` — el buffer circular del historial de consultas respeta
+    el tamaño configurado (antes hard-codeado a 50).
+  - `ui.confirmDestructive` — desactivarlo ahora sí salta las confirmaciones de
+    borrado (borrar conexión, borrar consulta guardada, borrar filas); la guarda
+    de teclear-el-nombre de `DROP TABLE` se mantiene intencionadamente al margen.
+- **Ctrl+S en el editor lateral acoplado no limpiaba la guarda de cambios sin
+  guardar.** Cuando una celda estaba seleccionada con el panel lateral abierto, el
+  panel flotante de previsualización de celda era el que capturaba Ctrl+S y
+  persistía *su* valor obsoleto (pre-edición), así que las ediciones del panel
+  lateral no se guardaban y su línea base sucia nunca se reiniciaba — moverse a
+  otra celda hacía saltar entonces el diálogo de descartar cambios. El panel
+  lateral posee ahora Ctrl+S (fase de captura, con precedencia sobre la
+  previsualización): guarda su propio buffer en el sitio, reinicia la línea base y
+  mantiene el panel abierto para que puedas seguir sin el aviso.
+- **El editor de detalle de la Consola ignoraba las preferencias del editor.**
+  Sigue ahora el tema de Monaco, la familia de fuente y el tamaño de fuente
+  configurados en vez del modo claro/oscuro de la app y una fuente fija.
+- **El autoconectar por CLI no hacía nada para los lanzamientos ad-hoc y fallaba
+  silenciosamente.** El manejador de argumentos de arranque estaba supeditado a
+  tener al menos un perfil guardado, así que los lanzamientos
+  `--host/--port/--database/--driver/--user/--password` se saltaban por completo
+  en una máquina sin perfiles; además se tragaba cada error, así que un nombre de
+  perfil mal escrito o una conexión fallida no producían feedback. El manejador se
+  ejecuta ahora una vez al arrancar independientemente de la lista de perfiles,
+  espera un refresco de perfiles antes de emparejar `--connect-profile` por
+  nombre/id, y reporta los fallos (perfil no encontrado, error de conexión,
+  configuración ad-hoc) en el panel de Consola. El backend además hace eco de los
+  flags parseados a stderr al arrancar (contraseña redactada) para que un
+  lanzamiento por terminal pueda confirmar que los argumentos llegaron.
+- **El túnel SSH no recurría a un puerto alternativo cuando el puerto local fijado
+  estaba tomado con acceso exclusivo.** El respaldo ante colisión de bind solo
+  reconocía `AddrInUse`; en Windows un puerto tomado por otro túnel/socket abierto
+  en uso exclusivo — o dentro de un rango reservado (reservas de `netsh` de
+  Hyper-V/WSL) — aparece como `WSAEACCES` (`PermissionDenied`), que se colaba y
+  rompía la conexión. El respaldo cubre ahora también `PermissionDenied` y
+  `AddrNotAvailable`, reintentando en un puerto asignado por el SO. La
+  reasignación se registra en la Consola (no solo en stderr) para que no sea
+  invisible.
+
+## [1.0.4] — 2026-06-06
+
+### Añadido
+
+- **Flag `--password`/`--pass` de la CLI y alias `--user`.** La contraseña se
+  puede suministrar ahora por línea de comandos tanto para `--connect-profile`
+  (sobrescribiendo el secreto guardado en el llavero) como para lanzamientos
+  ad-hoc; cuando está presente la app autoconecta sin el diálogo de contraseña. La
+  contraseña se usa **solo en memoria** — se pasa directamente a `connect` y nunca
+  se escribe en el llavero del SO. `--user` se acepta como alias de `--username`
+  para coincidir con la grafía usada por `psql`/`mysql`.
+
+### Corregido
+
+- **Los títulos del panel principal seguían en inglés bajo una interfaz en
+  español.** Los paneles del dockview exterior (Esquema, Guardadas, Espacio de
+  trabajo, Consola, Celda) tenían títulos en inglés hard-codeados, horneados en la
+  disposición persistida, así que nunca seguían el idioma seleccionado. Los
+  títulos se obtienen ahora de i18n, se reaplican tras una restauración de
+  disposición y se actualizan en vivo cuando cambia el idioma. Las casillas Vista
+  → Paneles usan las mismas etiquetas traducidas. Los fallbacks de las pestañas
+  internas del espacio de trabajo (las etiquetas por defecto `Query`/`Table` y el
+  sufijo `(structure)` en las pestañas del editor de estructura) están ahora
+  localizados también.
+
+- **`LONGTEXT`/`TEXT` de MySQL se renderizaban como un blob hexadecimal.** sqlx
+  nombra una columna `LONGBLOB`/`BLOB` (en vez de `LONGTEXT`/`TEXT`) a partir del
+  flag de columna `BINARY` a nivel de protocolo, que el servidor a veces fija en
+  columnas de texto reales dependiendo del charset/collation — así que un campo
+  `LONGTEXT` podía aparecer como un volcado hexadecimal (HeidiSQL lo mostraba como
+  texto). El decodificador prueba ahora primero una decodificación `String` UTF-8
+  y solo recurre a hex para bytes genuinamente no-UTF-8.
+
 ## [1.0.3] — 2026-06-03
 
 ### Añadido
