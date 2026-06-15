@@ -84,9 +84,13 @@
       "ssl": "SSL",
       "sqlitePath": "Ruta del fichero de base de datos",
       "sqlitePathPlaceholder": "C:\\ruta\\al\\fichero.db",
+      "authSource": "Origen de autenticación",
+      "authSourcePlaceholder": "admin",
       "connectionString": "Cadena de conexión",
       "connectionStringPlaceholder": "mongodb://localhost:27017  o  mongodb+srv://user:pass@cluster.mongodb.net/db",
-      "connectionStringHint": "Entrada principal para MongoDB. Cubre Atlas (mongodb+srv://), replica sets, authSource y opciones de la URI. Los campos host/puerto/base de datos se ignoran cuando hay cadena de conexión."
+      "connectionStringHint": "Se construye automáticamente a partir de los campos de arriba. La contraseña se guarda de forma segura y no se incrusta en la cadena.",
+      "editConnectionString": "Editar cadena de conexión",
+      "connectionStringWarning": "Editar la cadena de conexión a mano puede introducir errores — revísala con cuidado. Úsalo para Atlas (mongodb+srv://), replica sets u opciones de la URI que el formulario no cubre."
     },
     "ssh": {
       "enable": "Conectar vía túnel SSH",
@@ -157,7 +161,7 @@
     "sectionTables": "tablas",
     "sectionViews": "vistas",
     "sectionIndexes": "índices",
-    "filterPlaceholder": "Filtrar tablas…",
+    "filterPlaceholder": "Filtrar tablas… (users; orders)",
     "filterInDb": "Filtrar en {{db}}…",
     "filterScopedTo": "Buscando solo en {{db}}",
     "noMatches": "Ninguna tabla coincide con el filtro.",
@@ -541,6 +545,7 @@
     "resume": "Reanudar",
     "pause": "Pausar",
     "clear": "Limpiar",
+    "closeDetail": "Cerrar detalle (Esc)",
     "kindSql": "SQL",
     "kindConnection": "Conexión",
     "filterPlaceholder": "Filtrar SQL, error, driver…",
