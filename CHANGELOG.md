@@ -6,6 +6,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **MongoDB connection form (field-driven).** The MongoDB connection dialog is
+  now form-primary, like Mongo Compass: discrete fields (host, port, database,
+  username, password, **auth source**) build the `mongodb://` connection string
+  live, shown read-only below them. A new **Edit connection string** toggle
+  reveals the raw URI for hand editing — with an amber warning that manual edits
+  can introduce errors — for cases the form doesn't cover (Atlas
+  `mongodb+srv://`, replica sets, extra URI options). The password is never
+  embedded in the stored string: it continues through the OS keychain. Editing a
+  saved profile re-populates the form when its URI is representable, and opens in
+  raw-edit mode otherwise.
+- **`authSource` for MongoDB.** A dedicated *Auth source* field (e.g. `admin`)
+  is appended to the connection string as `?authSource=…`, and a new CLI
+  `--auth-source` flag covers the URI-less ad-hoc path
+  (`--host … --auth-source admin`). Previously the only way to set it was to
+  hand-write the whole URI, and the discrete-field path omitted it entirely —
+  so URI-less MongoDB logins that needed a non-default auth database failed.
+- **Multi-table filter in the schema explorer (HeidiSQL-style).** The table
+  filter now accepts several `;`-separated patterns and matches a table when it
+  contains **any** of them, so `users; orders` surfaces both at once. Works in
+  both single- and multi-database explorers.
+
+### Fixed
+
+- **The Console detail pane can be closed without clearing the console.**
+  Clicking a log entry opened its detail view with no way back to the full list
+  short of emptying the console; a **close** button (and the `Esc` key) now
+  dismiss the detail and return to the entry list.
+
 ## [1.1.0]
 
 ### Added
