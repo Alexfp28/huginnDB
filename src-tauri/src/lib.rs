@@ -121,6 +121,12 @@ fn parse_args(args: &[String]) -> StartupArgs {
             "--connection-string" | "--uri" => {
                 result.adhoc_connection_string = value(&mut iter);
             }
+            // MongoDB authSource for the URI-less ad-hoc path (`--host … \
+            // --auth-source admin`). Ignored when a full `--uri` is supplied,
+            // which carries its own `?authSource=…`.
+            "--auth-source" => {
+                result.adhoc_auth_source = value(&mut iter);
+            }
             "--name" => {
                 result.adhoc_name = value(&mut iter);
             }
@@ -195,6 +201,19 @@ mod cli_tests {
             b.adhoc_connection_string.as_deref(),
             Some("mongodb://localhost:27017")
         );
+    }
+
+    #[test]
+    fn auth_source_flag() {
+        let a = parse_args(&v(&[
+            "--host=localhost",
+            "--username=root",
+            "--auth-source=admin",
+        ]));
+        assert_eq!(a.adhoc_auth_source.as_deref(), Some("admin"));
+        // Space form too.
+        let b = parse_args(&v(&["--auth-source", "myAuthDb"]));
+        assert_eq!(b.adhoc_auth_source.as_deref(), Some("myAuthDb"));
     }
 
     #[test]

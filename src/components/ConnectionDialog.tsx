@@ -16,7 +16,7 @@
  * focus the connection in the main view once it opens.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { Database, Download, Plug, Plus, Trash2, Upload } from "lucide-react";
@@ -48,6 +48,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DriverBadge } from "@/components/DriverBadge";
 import { api } from "@/lib/tauri";
+import { buildMongoUri, parseMongoUri } from "@/lib/mongoUri";
 import { DEFAULT_PORTS } from "@/lib/constants";
 import { confirmDestructive } from "@/lib/confirmDestructive";
 import { cn } from "@/lib/utils";
@@ -115,8 +116,16 @@ export function ConnectionDialog({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [ssl, setSsl] = useState(false);
-  /** MongoDB connection URI (primary input for the Mongo driver). */
+  /** MongoDB connection URI. In form mode this is the *raw-edit buffer* used
+   *  only when `mongoUriManual` is on; otherwise the URI is derived from the
+   *  discrete fields via `buildMongoUri`. */
   const [connectionString, setConnectionString] = useState("");
+  /** MongoDB `authSource` form field (e.g. `admin`). */
+  const [authSource, setAuthSource] = useState("");
+  /** When true, the MongoDB connection string is edited by hand (Compass-style
+   *  escape hatch for SRV / replica sets / extra URI options) and the discrete
+   *  fields are disabled. */
+  const [mongoUriManual, setMongoUriManual] = useState(false);
 
   // SSH tunnel fields ------------------------------------------------------
   const [sshEnabled, setSshEnabled] = useState(false);
@@ -158,7 +167,34 @@ export function ConnectionDialog({
       setUsername(p.username);
       setSsl(p.ssl);
       setConnectionString(p.connection_string ?? "");
+      setAuthSource(p.auth_source ?? "");
       setPassword("");
+
+      // MongoDB: decide form vs raw-edit mode. A stored URI we can parse back
+      // into the discrete fields opens in form mode (re-populating host / port
+      // / db / user / authSource from the URI); anything we can't represent
+      // losslessly (SRV, multi-host, embedded password, extra options) opens
+      // in raw-edit mode showing the URI verbatim.
+      if (p.driver === "mongodb") {
+        const cs = (p.connection_string ?? "").trim();
+        const parsed = cs ? parseMongoUri(cs) : null;
+        if (cs && !parsed) {
+          setMongoUriManual(true);
+        } else {
+          setMongoUriManual(false);
+          if (parsed) {
+            setHost(parsed.host);
+            setPort(parsed.port);
+            setDatabase(parsed.database);
+            // The legacy 1.1.0 form kept user / authSource as separate fields
+            // outside the URI — fall back to those when the URI omits them.
+            if (parsed.username) setUsername(parsed.username);
+            if (parsed.authSource) setAuthSource(parsed.authSource);
+          }
+        }
+      } else {
+        setMongoUriManual(false);
+      }
 
       const tunnel = p.ssh_tunnel;
       if (tunnel) {
@@ -195,6 +231,8 @@ export function ConnectionDialog({
       setPassword("");
       setSsl(false);
       setConnectionString("");
+      setAuthSource("");
+      setMongoUriManual(false);
 
       setSshEnabled(false);
       setSshHost("");
@@ -229,11 +267,23 @@ export function ConnectionDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingId]);
 
+  /** URI derived live from the discrete MongoDB fields (form mode). The
+   *  password is intentionally excluded — it travels via the keychain. */
+  const builtMongoUri = useMemo(
+    () => buildMongoUri({ host, port, database, username, authSource }),
+    [host, port, database, username, authSource],
+  );
+
+  /** The URI this profile will actually connect with: the hand-edited buffer
+   *  in raw-edit mode, otherwise the field-derived one. */
+  const effectiveMongoUri = mongoUriManual ? connectionString : builtMongoUri;
+
   /** A MongoDB SRV URI resolves to multiple hosts — incompatible with the
-   *  single-port SSH tunnel, so tunnelling is disabled for it. */
+   *  single-port SSH tunnel, so tunnelling is disabled for it. (Only reachable
+   *  in raw-edit mode; the field-built URI is always single-host.) */
   const isMongoSrv =
     driver === "mongodb" &&
-    connectionString.trim().startsWith("mongodb+srv://");
+    effectiveMongoUri.trim().startsWith("mongodb+srv://");
 
   function buildSshTunnel(): SshTunnel | null {
     if (!sshEnabled || driver === "sqlite" || isMongoSrv) return null;
@@ -263,7 +313,13 @@ export function ConnectionDialog({
       ssl,
       ssh_tunnel: buildSshTunnel(),
       connection_string:
-        driver === "mongodb" ? connectionString.trim() || null : null,
+        driver === "mongodb" ? effectiveMongoUri.trim() || null : null,
+      // Persisted explicitly for the URI-less CLI path and form repopulation.
+      // In raw-edit mode the authSource lives inside the pasted URI instead.
+      auth_source:
+        driver === "mongodb" && !mongoUriManual
+          ? authSource.trim() || null
+          : null,
     };
   }
 
@@ -352,6 +408,29 @@ export function ConnectionDialog({
     if (port === DEFAULT_PORTS[driver] || port === 0) {
       setPort(DEFAULT_PORTS[d]);
     }
+  }
+
+  /** Toggle the MongoDB raw-edit mode. Entering seeds the buffer from the
+   *  field-built URI; leaving folds the (possibly edited) URI back into the
+   *  fields when it's representable, otherwise stays in raw-edit so SRV /
+   *  multi-host / option-rich URIs aren't silently lost. */
+  function onToggleMongoUriManual(next: boolean) {
+    if (next) {
+      setConnectionString(builtMongoUri);
+      setMongoUriManual(true);
+      return;
+    }
+    const parsed = parseMongoUri(connectionString);
+    if (parsed) {
+      setHost(parsed.host);
+      setPort(parsed.port);
+      setDatabase(parsed.database);
+      setUsername(parsed.username);
+      setAuthSource(parsed.authSource);
+      setMongoUriManual(false);
+    }
+    // else: parse failed — keep raw-edit on (the Switch reflects mongoUriManual,
+    // so it visibly stays enabled). The amber banner already explains why.
   }
 
   // Refresh the trusted fingerprint display whenever the SSH host:port
@@ -605,25 +684,38 @@ export function ConnectionDialog({
                     </Field>
                     {driver === "mongodb" ? (
                       <>
-                        <Field
-                          label={t("connectionDialog.fields.connectionString")}
-                        >
+                        {/* Form-primary fields (Compass-style). Disabled while
+                            the connection string is hand-edited below. */}
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2">
+                            <Field label={t("connectionDialog.fields.host")}>
+                              <Input
+                                value={host}
+                                disabled={mongoUriManual}
+                                onChange={(e) => setHost(e.target.value)}
+                              />
+                            </Field>
+                          </div>
+                          <Field label={t("connectionDialog.fields.port")}>
+                            <Input
+                              type="number"
+                              value={port}
+                              disabled={mongoUriManual}
+                              onChange={(e) => setPort(Number(e.target.value))}
+                            />
+                          </Field>
+                        </div>
+                        <Field label={t("connectionDialog.fields.database")}>
                           <Input
-                            value={connectionString}
-                            onChange={(e) =>
-                              setConnectionString(e.target.value)
-                            }
-                            placeholder={t(
-                              "connectionDialog.fields.connectionStringPlaceholder",
-                            )}
+                            value={database}
+                            disabled={mongoUriManual}
+                            onChange={(e) => setDatabase(e.target.value)}
                           />
                         </Field>
-                        <p className="-mt-1 text-[11px] text-muted-foreground">
-                          {t("connectionDialog.fields.connectionStringHint")}
-                        </p>
                         <Field label={t("connectionDialog.fields.username")}>
                           <Input
                             value={username}
+                            disabled={mongoUriManual}
                             onChange={(e) => setUsername(e.target.value)}
                           />
                         </Field>
@@ -639,6 +731,53 @@ export function ConnectionDialog({
                             }
                           />
                         </Field>
+                        <Field label={t("connectionDialog.fields.authSource")}>
+                          <Input
+                            value={authSource}
+                            disabled={mongoUriManual}
+                            onChange={(e) => setAuthSource(e.target.value)}
+                            placeholder={t(
+                              "connectionDialog.fields.authSourcePlaceholder",
+                            )}
+                          />
+                        </Field>
+
+                        {/* Derived connection string + raw-edit escape hatch. */}
+                        <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                          <Label className="text-sm">
+                            {t("connectionDialog.fields.editConnectionString")}
+                          </Label>
+                          <Switch
+                            checked={mongoUriManual}
+                            onCheckedChange={onToggleMongoUriManual}
+                          />
+                        </div>
+                        <Field
+                          label={t("connectionDialog.fields.connectionString")}
+                        >
+                          <Input
+                            value={effectiveMongoUri}
+                            readOnly={!mongoUriManual}
+                            onChange={(e) =>
+                              setConnectionString(e.target.value)
+                            }
+                            placeholder={t(
+                              "connectionDialog.fields.connectionStringPlaceholder",
+                            )}
+                            className={
+                              mongoUriManual ? undefined : "text-muted-foreground"
+                            }
+                          />
+                        </Field>
+                        {mongoUriManual ? (
+                          <p className="-mt-1 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-500">
+                            {t("connectionDialog.fields.connectionStringWarning")}
+                          </p>
+                        ) : (
+                          <p className="-mt-1 text-[11px] text-muted-foreground">
+                            {t("connectionDialog.fields.connectionStringHint")}
+                          </p>
+                        )}
                       </>
                     ) : driver !== "sqlite" ? (
                       <>

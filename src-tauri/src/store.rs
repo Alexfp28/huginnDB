@@ -77,6 +77,7 @@ mod tests {
             ssl: false,
             ssh_tunnel: None,
             connection_string: None,
+            auth_source: None,
             ephemeral,
         }
     }

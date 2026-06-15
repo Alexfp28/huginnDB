@@ -136,6 +136,8 @@ interface PendingAdhoc {
   password?: string;
   /** MongoDB connection URI from `--uri`/`--connection-string`, if any. */
   connectionString?: string;
+  /** MongoDB authSource from `--auth-source`, if any. */
+  authSource?: string;
 }
 
 export default function App() {
@@ -177,6 +179,7 @@ export default function App() {
         ssl: p.ssl,
         // Only meaningful for MongoDB; the backend ignores it for SQL drivers.
         connection_string: p.connectionString ?? null,
+        auth_source: p.authSource ?? null,
         // Connections opened from the CLI are temporary by design: the backend
         // keeps them in memory for the session but never writes them to
         // profiles.json (see ConnectionProfile.ephemeral / store::save_profiles).
@@ -316,6 +319,7 @@ export default function App() {
           ssl: false,
           password: cliPassword,
           connectionString: args.adhoc_connection_string ?? undefined,
+          authSource: args.adhoc_auth_source ?? undefined,
         };
         // Resolve the driver: an explicit `--driver` wins; a connection string
         // implies MongoDB; then the configured default; if none, prompt the
