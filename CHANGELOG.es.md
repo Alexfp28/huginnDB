@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-06-18
+
 ### Añadido
 
 - **Consolidación en una sola ventana (instancia única).** Lanzar `huginndb` de
