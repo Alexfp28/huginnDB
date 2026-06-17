@@ -21,13 +21,17 @@ import type {
   ConnectionProfile,
   ConnectionTabState,
   DatabaseInfo,
+  Diagnostics,
+  FeedbackKind,
   FkOptionsPage,
+  IssueOutcome,
   ImportAnalysis,
   ImportResult,
   IndexInfo,
   Preferences,
   QueryResult,
   RowValue,
+  SortSpec,
   StartupArgs,
   StructurePreview,
   TableInfo,
@@ -217,11 +221,14 @@ export const api = {
     table: string;
     limit: number;
     offset: number;
-    orderBy?: string;
-    orderDesc?: boolean;
+    /** Ordered multi-column sort; `order[0]` is the primary key. */
+    order?: SortSpec[];
     filters?: ColumnFilter[];
     search?: string;
     searchColumns?: string[];
+    /** Run the `COUNT(*)` companion. Pass `false` when only the sort/page
+     *  changed and the caller reuses its cached total (defaults to true). */
+    withCount?: boolean;
   }) => invoke<QueryResult>("fetch_table_data", args),
 
   /**
@@ -416,4 +423,37 @@ export const api = {
    * HuginnDB with `--connect-profile` or ad-hoc connection flags.
    */
   getStartupArgs: () => invoke<StartupArgs>("get_startup_args"),
+
+  /**
+   * Drain a connection intent forwarded by a *second* launch (single-instance
+   * handler). Called once when the CLI-connect bridge mounts to recover an
+   * intent emitted before the listener existed (boot race). Returns `null`
+   * when nothing is pending; the backend clears the buffer on read.
+   */
+  takePendingCliConnect: () =>
+    invoke<StartupArgs | null>("take_pending_cli_connect"),
+
+  // Issue reporter ---------------------------------------------------------
+
+  /** Build/runtime facts to fold into a bug/feature report body. */
+  getDiagnostics: () => invoke<Diagnostics>("get_diagnostics"),
+
+  /** Store (or clear, when `token` is empty) the GitHub PAT in the OS
+   *  keychain. */
+  setGithubPat: (token: string) => invoke<void>("set_github_pat", { token }),
+
+  /** Whether a GitHub PAT is currently stored. */
+  hasGithubPat: () => invoke<boolean>("has_github_pat"),
+
+  /** Forget the stored GitHub PAT. */
+  clearGithubPat: () => invoke<void>("clear_github_pat"),
+
+  /**
+   * File a bug report or feature request. With a stored PAT the issue is
+   * created via the GitHub API (`created: true`, URL is the new issue);
+   * otherwise a pre-filled `issues/new` URL is returned for the caller to
+   * open in the browser (`created: false`).
+   */
+  submitIssue: (report: { kind: FeedbackKind; title: string; body: string }) =>
+    invoke<IssueOutcome>("submit_issue", { report }),
 };

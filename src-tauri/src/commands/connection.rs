@@ -858,3 +858,15 @@ pub fn import_profiles(
 pub fn get_startup_args(state: State<'_, AppState>) -> AppResult<StartupArgs> {
     Ok(state.startup_args.clone())
 }
+
+/// Drain any connection intent forwarded by a *second* launch.
+///
+/// The single-instance handler in `lib.rs` buffers the second launch's parsed
+/// args here and emits `huginndb://cli-connect`. The frontend calls this once
+/// when its event bridge mounts, to recover an intent that may have been
+/// emitted before the listener existed (boot race). Returns `None` when there
+/// is nothing pending and clears the buffer so it is consumed exactly once.
+#[tauri::command]
+pub fn take_pending_cli_connect(state: State<'_, AppState>) -> AppResult<Option<StartupArgs>> {
+    Ok(state.pending_cli_connect.write().take())
+}

@@ -55,6 +55,10 @@ pub enum AppError {
     /// Import/export error (format validation, encryption, decryption).
     #[error("transfer error: {0}")]
     Transfer(String),
+
+    /// Outbound HTTP failure surfaced by `reqwest` (in-app issue reporter).
+    #[error("network error: {0}")]
+    Network(#[from] reqwest::Error),
 }
 
 impl Serialize for AppError {

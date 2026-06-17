@@ -19,6 +19,10 @@ tauri-plugin-dialog = "2.0"
 tauri-plugin-window-state = "2.0"
 tauri-plugin-updater = "2.0"
 tauri-plugin-process = "2.0"
+# Forwards a second launch's argv to the already-running instance instead of
+# spawning a new window, so the CLI consolidates into one window (see lib.rs
+# `handle_second_instance`). Desktop-only; registered under `#[cfg(desktop)]`.
+tauri-plugin-single-instance = "2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
@@ -58,6 +62,13 @@ russh = { version = "0.60", default-features = false, features = [
     "rsa",
 ] }
 tokio-util = { version = "0.7", features = ["rt"] }
+# HTTP client for the in-app issue reporter (commands::feedback). rustls so it
+# reuses the ring/rustls tree already pulled by sqlx/mongodb/russh — no second
+# TLS stack, no OpenSSL/system build dep. `json` for the GitHub REST payload.
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "json",
+] }
 aes-gcm = "0.10"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 sha2 = "0.10"

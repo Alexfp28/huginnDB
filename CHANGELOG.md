@@ -6,6 +6,67 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Single-window consolidation (single instance).** Launching `huginndb` again
+  while a window is already open no longer spawns a second window. The running
+  window is focused, and — if the new launch carries a connection
+  (`--connect-profile`, `--host …`, `--uri …`) — a dialog asks whether to open
+  it in a **new workspace** or the **current** one. This makes the workspace the
+  real top-level container: keep, say, a MySQL "config" connection and a MongoDB
+  "data" connection side by side in one window instead of two detached IDE-like
+  instances. A relaunch with no connection flags simply brings the window to the
+  front. Implemented with `tauri-plugin-single-instance`; the second launch's
+  argv is parsed by the same code path as cold start and forwarded over a new
+  `huginndb://cli-connect` event (buffered backend-side to survive a launch that
+  races the window's boot).
+- **In-app issue reporter.** A new *Report / suggest* entry (File menu, and a
+  "Report this error" action on failed Console entries) opens a dialog to file
+  a **bug** or a **feature request** straight to the GitHub tracker. With a
+  GitHub Personal Access Token configured (stored in the OS keychain, never on
+  disk) the issue is created directly via the REST API and linked back; without
+  one, a pre-filled `issues/new` page opens in the browser for manual
+  submission. Reports can optionally bundle diagnostics (app version, OS/arch),
+  and the "Report this error" path pre-fills the driver, statement, and error
+  text. Adds a `reqwest` (rustls) dependency for the API path.
+- **Multi-column sort in the data grid.** A plain click on a column header
+  sorts by it (cycling ASC → DESC → unsorted); **Ctrl/Cmd+click** adds the
+  column as an additional, lower-precedence sort level (cycling
+  ASC → DESC → removed in place). Headers now show a direction arrow (↑/↓)
+  instead of only highlighting, plus a small level number when more than one
+  column participates, so the active ordering is readable at a glance rather
+  than only inferable from the console. The `fetch_table_data` command now
+  takes an ordered `order` list (replacing the single `orderBy`/`orderDesc`
+  pair) and builds `ORDER BY c1 …, c2 …` across all four drivers (the MongoDB
+  path uses a multi-key sort document).
+- **Primary/foreign-key icons on data columns.** The data-grid column headers
+  now show a key icon — amber for a primary-key column, sky-blue for a
+  single-column foreign key — and the schema explorer gains the foreign-key
+  key next to the existing primary-key one. Mirrors HeidiSQL's at-a-glance key
+  indicators; uses metadata already returned by `list_columns`, no extra
+  queries.
+
+### Performance
+
+- **Skip the redundant `COUNT(*)` when only sorting or paging.** The data
+  browser previously re-ran `SELECT COUNT(*)` on every fetch, including pure
+  sort/offset/page changes where the total can't have changed. The frontend
+  now caches the total and recomputes it only when the filter/search predicate
+  changes (new `with_count` flag on `fetch_table_data`), removing one
+  round trip per sort/page interaction — most noticeable on large tables. The
+  MongoDB browse path skips `count_documents` the same way. (Sorting on a
+  non-indexed column is still a server-side full sort; that's governed by the
+  table's indexes, not the client.)
+
+### Changed
+
+- **Simpler "Drop table" confirmation.** Dropping a table no longer requires
+  typing the table name to confirm — it now shows a plain destructive
+  confirmation dialog (with an irreversibility warning) and a Cancel / Drop
+  choice, matching what users expect from other database managers. The action
+  is still gated behind an explicit confirmation; only the type-the-name
+  friction was removed.
+
 ## [1.1.1] — 2026-06-15
 
 ### Added

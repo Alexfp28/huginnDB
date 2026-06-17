@@ -497,3 +497,31 @@ export interface StartupArgs {
   /** Password from `--password`/`--pass`. In-memory only, never persisted. */
   adhoc_password: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// In-app issue reporter — mirror of src-tauri/src/commands/feedback.rs
+// ---------------------------------------------------------------------------
+
+/** What the user is filing: a defect or an idea. */
+export type FeedbackKind = "bug" | "feature";
+
+/** One level of a data-grid sort. `order[0]` is the primary key, `order[1]`
+ *  the first tie-breaker, etc. Mirrors `SortSpec` in the Rust query command. */
+export interface SortSpec {
+  column: string;
+  desc: boolean;
+}
+
+/** Build/runtime facts folded into a report body, from `get_diagnostics`. */
+export interface Diagnostics {
+  app_version: string;
+  os: string;
+  arch: string;
+}
+
+/** Result of `submit_issue`: `created` is true when filed via the API
+ *  (the URL is the created issue), false when it's a pre-filled URL to open. */
+export interface IssueOutcome {
+  url: string;
+  created: boolean;
+}

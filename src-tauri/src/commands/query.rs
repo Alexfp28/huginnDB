@@ -115,6 +115,19 @@ pub struct ColumnFilter {
     pub value: Value,
 }
 
+/// One level of an `ORDER BY` clause built by [`fetch_table_data`].
+///
+/// The frontend sends an ordered list (`order[0]` is the primary sort key,
+/// `order[1]` the tie-breaker, …) so the data browser can sort by several
+/// columns at once. Identifiers are quoted via [`quote_ident`]; only the
+/// `ASC`/`DESC` keyword is interpolated, derived from the boolean.
+#[derive(Debug, Deserialize, Clone)]
+pub struct SortSpec {
+    pub column: String,
+    #[serde(default)]
+    pub desc: bool,
+}
+
 /// One column/value pair used to build an INSERT statement.
 ///
 /// We use parallel positional encoding (`Vec<RowValue>`) instead of a
@@ -689,17 +702,24 @@ pub async fn fetch_table_data(
     table: String,
     limit: i64,
     offset: i64,
-    order_by: Option<String>,
-    order_desc: Option<bool>,
+    order: Option<Vec<SortSpec>>,
     filters: Option<Vec<ColumnFilter>>,
     search: Option<String>,
     search_columns: Option<Vec<String>>,
+    // Whether to run the companion `SELECT COUNT(*)`. The frontend passes
+    // `false` when only the sort/offset/page changed (the total can't have
+    // changed) and reuses its cached total, saving a round trip per
+    // interaction. Defaults to `true` (count) when omitted.
+    with_count: Option<bool>,
 ) -> AppResult<QueryResult> {
     let pool = pool_for(state.inner(), &connection_id)?;
 
     // MongoDB browse: delegate to the mongo module (find + count). Clone the
     // option args so the SQL path below — though unreachable for mongo — still
     // type-checks without a use-after-move.
+    let order = order.unwrap_or_default();
+    let want_count = with_count.unwrap_or(true);
+
     if let DbPool::Mongo(conn) = &pool {
         let f = filters.clone().unwrap_or_default();
         let sc = search_columns.clone().unwrap_or_default();
@@ -708,11 +728,11 @@ pub async fn fetch_table_data(
             &table,
             limit,
             offset,
-            order_by.as_deref(),
-            order_desc.unwrap_or(false),
+            &order,
             &f,
             search.as_deref().filter(|s| !s.is_empty()),
             &sc,
+            want_count,
         )
         .await;
     }
@@ -721,16 +741,19 @@ pub async fn fetch_table_data(
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let pg = matches!(&pool, DbPool::Postgres(_));
 
-    let order_clause = match order_by {
-        Some(col) => {
-            let dir = if order_desc.unwrap_or(false) {
-                "DESC"
-            } else {
-                "ASC"
-            };
-            format!(" ORDER BY {} {}", quote_ident(pg_or_sqlite, &col), dir)
-        }
-        None => String::new(),
+    // Build a multi-level `ORDER BY c1 ASC, c2 DESC, …`. Identifiers are
+    // quoted; only the ASC/DESC keyword is interpolated (from the bool).
+    let order_clause = if order.is_empty() {
+        String::new()
+    } else {
+        let parts: Vec<String> = order
+            .iter()
+            .map(|s| {
+                let dir = if s.desc { "DESC" } else { "ASC" };
+                format!("{} {}", quote_ident(pg_or_sqlite, &s.column), dir)
+            })
+            .collect();
+        format!(" ORDER BY {}", parts.join(", "))
     };
 
     let filters = filters.unwrap_or_default();
@@ -873,48 +896,56 @@ pub async fn fetch_table_data(
         None,
     );
 
-    let count_start = Instant::now();
-    let raw_count: Option<i64> = try_sql!(
-        &app,
-        &connection_id,
-        driver,
-        &count_sql,
-        count_start,
-        match &pool {
-            DbPool::Postgres(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
+    // The COUNT companion is skipped when the caller already knows the total
+    // (only sort/offset/page changed). This halves the round trips for the
+    // common case of paging through or re-sorting a large result set.
+    let total: Option<u64> = if want_count {
+        let count_start = Instant::now();
+        let raw_count: Option<i64> = try_sql!(
+            &app,
+            &connection_id,
+            driver,
+            &count_sql,
+            count_start,
+            match &pool {
+                DbPool::Postgres(p) => {
+                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+                    for b in &where_binds {
+                        q = q.bind(b);
+                    }
+                    q.fetch_optional(p).await
                 }
-                q.fetch_optional(p).await
-            }
-            DbPool::Mysql(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
+                DbPool::Mysql(p) => {
+                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+                    for b in &where_binds {
+                        q = q.bind(b);
+                    }
+                    q.fetch_optional(p).await
                 }
-                q.fetch_optional(p).await
-            }
-            DbPool::Sqlite(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
+                DbPool::Sqlite(p) => {
+                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+                    for b in &where_binds {
+                        q = q.bind(b);
+                    }
+                    q.fetch_optional(p).await
                 }
-                q.fetch_optional(p).await
+                DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
             }
-            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-        }
-    );
-    let total: Option<u64> = raw_count.map(|n| n as u64);
-    log_sql(
-        &app,
-        &connection_id,
-        driver,
-        &count_sql,
-        count_start,
-        total,
-        None,
-    );
+        );
+        let total = raw_count.map(|n| n as u64);
+        log_sql(
+            &app,
+            &connection_id,
+            driver,
+            &count_sql,
+            count_start,
+            total,
+            None,
+        );
+        total
+    } else {
+        None
+    };
 
     Ok(QueryResult {
         rows_affected: data.len() as u64,

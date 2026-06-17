@@ -8,6 +8,72 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Añadido
+
+- **Consolidación en una sola ventana (instancia única).** Lanzar `huginndb` de
+  nuevo con una ventana ya abierta ya no crea una segunda ventana. Se enfoca la
+  ventana existente y —si el nuevo lanzamiento trae una conexión
+  (`--connect-profile`, `--host …`, `--uri …`)— un diálogo pregunta si abrirla
+  en un **workspace nuevo** o en el **actual**. Esto convierte el workspace en
+  el verdadero contenedor de nivel superior: mantén, por ejemplo, una conexión
+  MySQL de «configuración» y una MongoDB de «datos» a la vez en una sola ventana
+  en lugar de dos instancias separadas tipo IDE. Un relanzamiento sin flags de
+  conexión simplemente trae la ventana al frente. Implementado con
+  `tauri-plugin-single-instance`; el argv del segundo lanzamiento se parsea con
+  el mismo código que el arranque en frío y se reenvía por un nuevo evento
+  `huginndb://cli-connect` (con búfer en el backend para sobrevivir a un
+  lanzamiento que coincida con el arranque de la ventana).
+- **Reporte de incidencias integrado.** Una nueva entrada *Reportar / sugerir*
+  (menú Archivo, y una acción «Reportar este error» en las entradas con error de
+  la Consola) abre un diálogo para crear un **bug** o una **sugerencia de
+  feature** directamente en el tracker de GitHub. Con un Personal Access Token
+  de GitHub configurado (guardado en el llavero del SO, nunca en disco) la
+  incidencia se crea directamente vía la API REST y se enlaza de vuelta; sin él,
+  se abre en el navegador una página `issues/new` pre-rellenada para enviarla a
+  mano. Los reportes pueden incluir diagnósticos opcionales (versión de la app,
+  SO/arquitectura), y la ruta «Reportar este error» pre-rellena el driver, la
+  sentencia y el texto del error. Añade una dependencia `reqwest` (rustls) para
+  la ruta de la API.
+- **Ordenación multicolumna en la rejilla de datos.** Un clic normal en la
+  cabecera de una columna ordena por ella (ciclo ASC → DESC → sin orden);
+  **Ctrl/Cmd+clic** añade la columna como nivel de orden adicional de menor
+  precedencia (ciclo ASC → DESC → eliminado en su sitio). Las cabeceras muestran
+  ahora una flecha de dirección (↑/↓) en vez de solo resaltarse, más un pequeño
+  número de nivel cuando participa más de una columna, de modo que la ordenación
+  activa se lee de un vistazo en lugar de deducirse solo desde la consola. El
+  comando `fetch_table_data` recibe ahora una lista ordenada `order` (en
+  sustitución del par único `orderBy`/`orderDesc`) y construye
+  `ORDER BY c1 …, c2 …` en los cuatro drivers (la ruta de MongoDB usa un
+  documento de orden multiclave).
+- **Iconos de clave primaria/ajena en las columnas de datos.** Las cabeceras de
+  la rejilla muestran ahora un icono de llave —ámbar para una columna de clave
+  primaria, azul cielo para una clave ajena de una sola columna— y el explorador
+  de esquema gana la llave de clave ajena junto a la de clave primaria que ya
+  existía. Replica los indicadores de clave a simple vista de HeidiSQL; usa
+  metadata que `list_columns` ya devuelve, sin consultas extra.
+
+### Rendimiento
+
+- **Evitar el `COUNT(*)` redundante al ordenar o paginar.** El navegador de
+  datos volvía a ejecutar `SELECT COUNT(*)` en cada fetch, incluso en cambios de
+  solo orden/offset/página donde el total no puede haber cambiado. El frontend
+  cachea ahora el total y solo lo recalcula cuando cambia el predicado de
+  filtro/búsqueda (nuevo flag `with_count` en `fetch_table_data`), eliminando un
+  viaje de ida y vuelta por cada interacción de orden/página —más notable en
+  tablas grandes. La ruta de exploración de MongoDB omite `count_documents` de
+  la misma forma. (Ordenar por una columna sin índice sigue siendo un orden
+  completo del lado del servidor; eso depende de los índices de la tabla, no del
+  cliente.)
+
+### Cambiado
+
+- **Confirmación de «Eliminar tabla» más simple.** Eliminar una tabla ya no
+  exige escribir el nombre de la tabla para confirmar: ahora muestra un diálogo
+  de confirmación destructiva normal (con un aviso de irreversibilidad) y una
+  elección Cancelar / Eliminar, como esperan los usuarios de otros gestores de
+  bases de datos. La acción sigue protegida tras una confirmación explícita;
+  solo se quitó la fricción de teclear el nombre.
+
 ## [1.1.1] — 2026-06-15
 
 ### Añadido

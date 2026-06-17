@@ -17,10 +17,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 import Editor from "@monaco-editor/react";
-import { Pause, Play, Trash2, Search, X } from "lucide-react";
+import { Pause, Play, Trash2, Search, X, MessageSquarePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLogs, type LogKindFilter } from "@/stores/logs";
+import { useFeedbackDialog } from "@/stores/feedbackDialog";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco-themes";
 import type { LogEntry } from "@/types";
@@ -31,6 +32,28 @@ function formatTime(ms: number): string {
   const d = new Date(ms);
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+}
+
+/** Build a bug-report prefill from a failed console entry, so "Report this
+ *  error" opens the FeedbackDialog with the driver / SQL / error already
+ *  filled in. The user can edit before submitting. */
+function errorReportPrefill(entry: LogEntry) {
+  const lines = [
+    "While using HuginnDB I hit this error:",
+    "",
+    "```",
+    entry.error ?? "",
+    "```",
+  ];
+  if (entry.sql) {
+    lines.push("", "Statement:", "```sql", entry.sql, "```");
+  }
+  if (entry.driver) lines.push("", `Driver: ${entry.driver}`);
+  return {
+    kind: "bug" as const,
+    title: (entry.error ?? "Error").slice(0, 80),
+    description: lines.join("\n"),
+  };
 }
 
 /** Collapse whitespace so a multi-line SQL statement renders on a single
@@ -214,10 +237,24 @@ export function Console() {
             {selected.connection_id && (
               <span className="truncate">conn {selected.connection_id}</span>
             )}
+            {selected.error && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto h-5 gap-1 px-1.5 text-[11px]"
+                onClick={() =>
+                  useFeedbackDialog.getState().openWith(errorReportPrefill(selected))
+                }
+                title={t("feedback.reportThisError")}
+              >
+                <MessageSquarePlus className="h-3 w-3" />
+                {t("feedback.reportThisError")}
+              </Button>
+            )}
             <Button
               size="icon"
               variant="ghost"
-              className="ml-auto h-5 w-5 shrink-0"
+              className={cn("h-5 w-5 shrink-0", !selected.error && "ml-auto")}
               onClick={() => setSelectedId(null)}
               title={t("console.closeDetail")}
             >
