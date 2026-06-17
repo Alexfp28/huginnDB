@@ -21,7 +21,7 @@
  * compose with the search via `AND`.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -43,6 +43,7 @@ import type {
   DraftRow,
   QueryResult,
   RowValue,
+  SortSpec,
 } from "@/types";
 import { DataGrid } from "@/components/DataGrid";
 import { Button } from "@/components/ui/button";
@@ -115,6 +116,36 @@ function duplicateDraft(
   return { cells, error: null, saving: false };
 }
 
+/**
+ * Compute the next sort state from a header click.
+ *
+ * - **Plain click** (`additive === false`): collapse to a single key on
+ *   `column`, cycling its direction ASC → DESC → none (clicking a third time,
+ *   or while already multi-sorted, resets to that one column ascending).
+ * - **Ctrl/Cmd+click** (`additive === true`): keep the existing keys and add
+ *   `column` as the lowest-precedence level (ASC); if it's already present,
+ *   cycle it ASC → DESC → removed in place.
+ */
+function nextSort(
+  current: SortSpec[],
+  column: string,
+  additive: boolean,
+): SortSpec[] {
+  const existing = current.find((s) => s.column === column);
+  if (additive) {
+    if (!existing) return [...current, { column, desc: false }];
+    if (!existing.desc)
+      return current.map((s) =>
+        s.column === column ? { ...s, desc: true } : s,
+      );
+    return current.filter((s) => s.column !== column);
+  }
+  // Plain click: a single-key cycle, ignoring any multi-sort already active.
+  if (!existing || current.length > 1) return [{ column, desc: false }];
+  if (!existing.desc) return [{ column, desc: true }];
+  return [];
+}
+
 export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const reportSelection = useGridSelection((s) => s.report);
   const clearSelection = useGridSelection((s) => s.clear);
@@ -161,8 +192,12 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       ),
     [pageSize],
   );
-  const [sortColumn, setSortColumn] = useState<string | undefined>();
-  const [sortDesc, setSortDesc] = useState(false);
+  /**
+   * Multi-column sort, in precedence order (`sort[0]` is the primary key).
+   * A plain header click replaces it with a single key; Ctrl/Cmd+click adds
+   * (or cycles) a level. See [[applySort]].
+   */
+  const [sort, setSort] = useState<SortSpec[]>([]);
   /** Free-text search bound to the toolbar input (uncommitted draft). */
   const [filter, setFilter] = useState("");
   /** What was actually committed via Enter — drives the backend fetch. */
@@ -208,6 +243,13 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     [cols],
   );
 
+  /** Apply a header click to the sort state and refetch from page 0 (a new
+   *  ordering shouldn't leave the user stranded mid-table). */
+  const applySort = useCallback((column: string, additive: boolean) => {
+    setSort((current) => nextSort(current, column, additive));
+    setOffset(0);
+  }, []);
+
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [draft, setDraft] = useState<DraftRow | null>(null);
 
@@ -230,10 +272,27 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    *  the (legacy) `RETURNING <pk>` hint on inserts. Do NOT use this for
    *  any UPDATE/DELETE predicate — that needs the full `pkColumns`. */
   const pkColumn = pkColumns[0];
+  /** Single-column FK columns, for the grid header key icon (presentational). */
+  const fkColumnNames = useMemo(
+    () => cols?.filter((c) => c.referenced_table).map((c) => c.name) ?? [],
+    [cols],
+  );
+
+  // Cached row count + the predicate it was computed for. The total only
+  // changes when the filter/search changes, so sort/offset/page changes reuse
+  // it and skip the `COUNT(*)` companion — one fewer round trip per
+  // interaction on large tables (see fetch_table_data `with_count`).
+  const cachedTotalRef = useRef<number | null>(null);
+  const countKeyRef = useRef<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    // The count depends only on the WHERE predicate (filters + committed
+    // search), not on sort/offset/pageSize.
+    const countKey = JSON.stringify({ f: serverFilters, s: appliedFilter });
+    const withCount =
+      countKey !== countKeyRef.current || cachedTotalRef.current === null;
     try {
       const r = await api.fetchTableData({
         connectionId,
@@ -241,12 +300,20 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         table,
         limit: pageSize,
         offset,
-        orderBy: sortColumn,
-        orderDesc: sortDesc,
+        order: sort.length ? sort : undefined,
         filters: serverFilters.length ? serverFilters : undefined,
         search: appliedFilter || undefined,
         searchColumns: appliedFilter ? searchColumns : undefined,
+        withCount,
       });
+      if (withCount) {
+        cachedTotalRef.current = r.total;
+        countKeyRef.current = countKey;
+      } else {
+        // Backend returned total=null (count skipped); restore the cached one
+        // so the pagination footer stays accurate.
+        r.total = cachedTotalRef.current;
+      }
       setResult(r);
     } catch (e) {
       setError(String(e));
@@ -259,8 +326,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     table,
     pageSize,
     offset,
-    sortColumn,
-    sortDesc,
+    sort,
     serverFilters,
     appliedFilter,
     searchColumns,
@@ -568,13 +634,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             tableName={table}
             driver={driver}
             pkColumnNames={pkColumns.map((c) => c.name)}
+            fkColumnNames={fkColumnNames}
             onCellSave={onCellSave}
-            sortColumn={sortColumn}
-            sortDesc={sortDesc}
-            onSortChange={(c, d) => {
-              setSortColumn(c);
-              setSortDesc(d);
-            }}
+            sort={sort}
+            onSortChange={applySort}
             // `globalFilter` drives the grid's client-side `visibleRows`
             // pass and MUST match the filter the backend used to build
             // `result.rows` — that's `appliedFilter`, not the

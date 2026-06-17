@@ -26,7 +26,15 @@ import {
   useReactTable,
   type ColumnDef,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ChevronDown, Plus, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
+  KeyRound,
+  Plus,
+  X,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,6 +51,7 @@ import type {
   DraftCell,
   DraftRow,
   QueryResult,
+  SortSpec,
 } from "@/types";
 import { BitInput } from "@/components/BitInput";
 import { CellEditor } from "@/components/CellEditor";
@@ -97,6 +106,9 @@ interface Props {
    * user notices.
    */
   pkColumnNames?: string[];
+  /** Names of columns that are a single-column FOREIGN KEY, for the header
+   *  key icon (HeidiSQL-style). Purely presentational. */
+  fkColumnNames?: string[];
   /**
    * Cell edit callback. Receives the **full row values array** (not a
    * row index) so the parent can resolve identity (PK value) directly
@@ -111,9 +123,11 @@ interface Props {
     columnName: string,
     value: string | null,
   ) => Promise<void>;
-  onSortChange?: (column: string, desc: boolean) => void;
-  sortColumn?: string;
-  sortDesc?: boolean;
+  /** Header click handler. `additive` is true when Ctrl/Cmd was held, which
+   *  the parent uses to build a multi-column sort. */
+  onSortChange?: (column: string, additive: boolean) => void;
+  /** Active multi-column sort, in precedence order. */
+  sort?: SortSpec[];
   /**
    * Applied filter — drives the client-side `visibleRows` pass and is
    * what the grid believes is the *current* search. For tabs that
@@ -245,8 +259,8 @@ export function DataGrid({
   pkColumnNames,
   onCellSave,
   onSortChange,
-  sortColumn,
-  sortDesc,
+  sort,
+  fkColumnNames,
   globalFilter,
   filterInput,
   onGlobalFilterChange,
@@ -591,31 +605,75 @@ export function DataGrid({
     return m;
   }, [result.columns]);
 
+  // Key-icon lookups for the header (PK = amber, FK = sky), HeidiSQL-style.
+  const pkNameSet = useMemo(
+    () => new Set(pkColumnNames ?? []),
+    [pkColumnNames],
+  );
+  const fkNameSet = useMemo(
+    () => new Set(fkColumnNames ?? []),
+    [fkColumnNames],
+  );
+
   const columns = useMemo<ColumnDef<CellValue[]>[]>(
     () =>
       result.columns.map((col, idx) => ({
         id: col.name,
-        header: () => (
-          <button
-            className="flex items-center gap-1 hover:text-foreground"
-            onClick={() =>
-              onSortChange?.(
-                col.name,
-                sortColumn === col.name ? !sortDesc : false,
-              )
-            }
-          >
-            <span className="truncate">{col.name}</span>
-            <span className="text-[9px] uppercase text-muted-foreground/50">
-              {col.data_type}
-            </span>
-            <ArrowUpDown
-              className={`h-3 w-3 ${
-                sortColumn === col.name ? "text-foreground" : "opacity-30"
-              }`}
-            />
-          </button>
-        ),
+        header: () => {
+          // Sort level for this column (-1 when not sorted). The arrow shows
+          // the direction; the number only renders for a multi-column sort,
+          // where precedence matters.
+          const sortIndex = sort?.findIndex((s) => s.column === col.name) ?? -1;
+          const active = sortIndex >= 0;
+          const spec = active ? sort![sortIndex] : null;
+          const showRank = active && (sort?.length ?? 0) > 1;
+          return (
+            <button
+              className="flex items-center gap-1 hover:text-foreground"
+              onClick={(e) =>
+                onSortChange?.(col.name, e.ctrlKey || e.metaKey)
+              }
+              title={
+                showRank
+                  ? `Sort level ${sortIndex + 1} — Ctrl/Cmd+click to add a column`
+                  : "Click to sort — Ctrl/Cmd+click to add a column"
+              }
+            >
+              {pkNameSet.has(col.name) && (
+                <KeyRound
+                  className="h-3 w-3 shrink-0 text-amber-400"
+                  aria-label="primary key"
+                />
+              )}
+              {fkNameSet.has(col.name) && (
+                <KeyRound
+                  className="h-3 w-3 shrink-0 text-sky-400"
+                  aria-label="foreign key"
+                />
+              )}
+              <span className="truncate">{col.name}</span>
+              <span className="text-[9px] uppercase text-muted-foreground/50">
+                {col.data_type}
+              </span>
+              {active ? (
+                <span className="flex items-center text-foreground">
+                  {spec!.desc ? (
+                    <ArrowDown className="h-3 w-3" />
+                  ) : (
+                    <ArrowUp className="h-3 w-3" />
+                  )}
+                  {showRank && (
+                    <span className="ml-0.5 text-[9px] font-semibold tabular-nums">
+                      {sortIndex + 1}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <ArrowUpDown className="h-3 w-3 opacity-30" />
+              )}
+            </button>
+          );
+        },
         accessorFn: (row) => row[idx],
         cell: (info) => {
           const v = info.getValue() as CellValue;
@@ -752,8 +810,9 @@ export function DataGrid({
       bitDisplay,
       nullDisplay,
       truncateLongTextAt,
-      sortColumn,
-      sortDesc,
+      sort,
+      pkNameSet,
+      fkNameSet,
       onSortChange,
       fkEditCell,
       inlineEdit,

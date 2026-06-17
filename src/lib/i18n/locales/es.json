@@ -153,6 +153,42 @@
     "description": "\"{{name}}\" se lanzó sin --driver y no hay un driver por defecto configurado. Elige el motor con el que conectar.",
     "note": "Consejo: configura un driver por defecto en Ajustes → General para saltarte esto la próxima vez."
   },
+  "cliConnect": {
+    "title": "Abrir conexión entrante",
+    "description": "Un nuevo lanzamiento quiere abrir \"{{name}}\". ¿La añado al workspace actual o la abro en uno nuevo?",
+    "nameLabel": "Nombre del nuevo workspace",
+    "newWorkspace": "Nuevo workspace",
+    "activeWorkspace": "Workspace actual",
+    "cancel": "Cancelar"
+  },
+  "feedback": {
+    "menuEntry": "Reportar / sugerir…",
+    "title": "Reportar o sugerir",
+    "description": "Crea un bug o una sugerencia de feature en el tracker de GitHub del proyecto.",
+    "kindBug": "Bug",
+    "kindFeature": "Feature",
+    "titleLabel": "Título",
+    "titlePlaceholder": "Resumen breve",
+    "descLabel": "Descripción",
+    "descPlaceholder": "Qué ocurrió, qué esperabas, pasos para reproducir…",
+    "includeDiagnostics": "Incluir versión de la app y SO",
+    "patConfigured": "Token de GitHub configurado",
+    "patNone": "Sin token de GitHub",
+    "patAdd": "Añadir token",
+    "patChange": "Cambiar",
+    "patClear": "Quitar",
+    "patSave": "Guardar",
+    "patSaved": "Token de GitHub guardado",
+    "patCleared": "Token de GitHub eliminado",
+    "hintApi": "La incidencia se creará directamente en GitHub.",
+    "hintBrowser": "Sin token, se abre una página de GitHub pre-rellenada para que la envíes.",
+    "submit": "Crear incidencia",
+    "openBrowser": "Abrir en GitHub",
+    "created": "Incidencia creada",
+    "viewIssue": "Ver",
+    "openedBrowser": "Se abrió una incidencia pre-rellenada en tu navegador",
+    "reportThisError": "Reportar este error"
+  },
   "schema": {
     "loading": "Cargando esquema…",
     "title": "Esquema",
@@ -186,8 +222,7 @@
     },
     "drop": {
       "title": "¿Eliminar tabla {{name}}?",
-      "description": "Esto elimina la tabla y sus datos de forma permanente. Escribe el nombre de la tabla para confirmar.",
-      "confirmInput": "Escribe {{name}} para confirmar",
+      "description": "Esto elimina la tabla y todos sus datos de forma permanente. No se puede deshacer.",
       "submit": "Eliminar tabla",
       "dropping": "Eliminando…",
       "failed": "Error al eliminar: {{message}}"

@@ -29,23 +29,42 @@ mod transfer;
 
 use state::{AppState, StartupArgs};
 
-/// Parse command-line arguments into [`StartupArgs`].
+/// Parse the process's own command-line arguments into [`StartupArgs`].
 ///
-/// We intentionally avoid pulling in `clap` for the small set of flags we
+/// Thin wrapper over [`parse_cli_args`] for the cold-start path. We
+/// intentionally avoid pulling in `clap` for the small set of flags we
 /// support. Unknown flags are ignored silently so external launchers can pass
 /// extra metadata without breaking the app.
 fn parse_startup_args() -> StartupArgs {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let argv: Vec<String> = std::env::args().collect();
+    parse_cli_args(&argv)
+}
+
+/// Parse a full `argv` (program name at `argv[0]`) into [`StartupArgs`] and
+/// log a redacted summary.
+///
+/// Shared by the cold-start path ([`parse_startup_args`]) and the
+/// single-instance callback, which receives the *second* launch's argv with
+/// the same shape (`argv[0]` is the executable). Both must `skip(1)` so the
+/// program name is never mistaken for a flag value.
+fn parse_cli_args(argv: &[String]) -> StartupArgs {
+    let args: Vec<String> = argv.iter().skip(1).cloned().collect();
     let result = parse_args(&args);
-    // Echo what we parsed to stderr when any flag was supplied. The user
-    // typically launches from a terminal, so this is the quickest way to
-    // confirm the args actually reached the app (and were spelled right)
-    // without opening devtools. The password is intentionally not logged.
+    log_parsed_args(&result);
+    result
+}
+
+/// Echo what we parsed to stderr when any flag was supplied. The user
+/// typically launches from a terminal, so this is the quickest way to confirm
+/// the args actually reached the app (and were spelled right) without opening
+/// devtools. The password is intentionally not logged.
+fn log_parsed_args(result: &StartupArgs) {
     let has_any = result.connect_profile.is_some()
         || result.adhoc_host.is_some()
         || result.adhoc_database.is_some()
         || result.adhoc_username.is_some()
-        || result.adhoc_driver.is_some();
+        || result.adhoc_driver.is_some()
+        || result.adhoc_connection_string.is_some();
     if has_any {
         eprintln!(
             "[cli] startup args: connect_profile={:?} by_id={} host={:?} port={:?} db={:?} user={:?} driver={:?} name={:?} password={}",
@@ -60,7 +79,6 @@ fn parse_startup_args() -> StartupArgs {
             if result.adhoc_password.is_some() { "<provided>" } else { "<none>" },
         );
     }
-    result
 }
 
 /// Pure arg-parser over an explicit slice (so it's unit-testable without
@@ -224,13 +242,70 @@ mod cli_tests {
     }
 }
 
+/// Does this parsed arg set carry a connection intent (vs. just flags we
+/// ignore)? Mirrors the frontend's own check in `App.tsx`.
+fn has_connection_intent(args: &StartupArgs) -> bool {
+    args.connect_profile.is_some()
+        || args.adhoc_host.is_some()
+        || args.adhoc_connection_string.is_some()
+}
+
+/// Tauri event carrying a *second* launch's connection intent to the running
+/// instance. The frontend listens on this (see `cli-connect-bridge.ts`) and
+/// asks the user whether to open it in a new or the active workspace.
+#[cfg(desktop)]
+const CLI_CONNECT_EVENT: &str = "huginndb://cli-connect";
+
+/// Single-instance callback: a second `huginndb …` launch landed while this
+/// process owns the lock. Focus the existing window and, if the new argv
+/// carries a connection, buffer it and emit [`CLI_CONNECT_EVENT`] so the
+/// frontend can route it into a workspace. A launch with no connection flags
+/// just brings the window to the front.
+#[cfg(desktop)]
+fn handle_second_instance(app: &tauri::AppHandle, argv: Vec<String>) {
+    use tauri::{Emitter, Manager};
+
+    // Bring the existing window forward. Prefer the labelled "main" window;
+    // fall back to whatever window exists so a config change to the label
+    // can't silently break focus.
+    if let Some(window) = app
+        .get_webview_window("main")
+        .or_else(|| app.webview_windows().into_values().next())
+    {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+
+    let args = parse_cli_args(&argv);
+    if !has_connection_intent(&args) {
+        return;
+    }
+    // Buffer before emitting so a launch that races the window's boot is not
+    // lost (events are not replayed for late subscribers). The frontend
+    // drains this on bridge mount and then relies on the live event.
+    *app.state::<AppState>().pending_cli_connect.write() = Some(args.clone());
+    let _ = app.emit(CLI_CONNECT_EVENT, args);
+}
+
 /// Entry point invoked from `main.rs`.
 ///
 /// Initialises the application state, registers the Tauri dialog plugin
 /// (used for SQLite file pickers), and wires up every command handler.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+    // The single-instance plugin MUST be registered before any other so its
+    // argv-forwarding lock is installed first. Desktop-only: there is no
+    // second-launch concept on mobile.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            handle_second_instance(app, argv);
+        }));
+    }
+    builder
         .plugin(tauri_plugin_dialog::init())
         // Remembers window position, size, and maximised state across
         // launches. The plugin writes its own JSON blob alongside our
@@ -258,6 +333,7 @@ pub fn run() {
             commands::connection::export_profiles,
             commands::connection::import_profiles,
             commands::connection::get_startup_args,
+            commands::connection::take_pending_cli_connect,
             commands::schema::list_databases,
             commands::schema::list_tables,
             commands::schema::list_columns,
@@ -291,6 +367,11 @@ pub fn run() {
             commands::workspaces::delete_workspace,
             commands::workspaces::reorder_workspaces,
             commands::workspaces::set_active_workspace,
+            commands::feedback::get_diagnostics,
+            commands::feedback::set_github_pat,
+            commands::feedback::has_github_pat,
+            commands::feedback::clear_github_pat,
+            commands::feedback::submit_issue,
         ])
         .run(tauri::generate_context!())
         .expect("error while running HuginnDB");

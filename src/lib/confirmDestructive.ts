@@ -10,10 +10,9 @@
  * Read from the store imperatively (not via a hook) so it can be called from
  * event handlers and non-component code paths alike.
  *
- * NOTE: high-friction guards that ask the user to *type* a name (e.g. the
- * `DROP TABLE` confirmation in `SchemaExplorer`) deliberately do NOT route
- * through here — dropping a table is a different safety tier and stays gated
- * regardless of this preference.
+ * NOTE: `DROP TABLE` (in `SchemaExplorer`) uses its own dedicated, always-on
+ * confirmation dialog rather than this preference-gated helper — dropping a
+ * table is a higher safety tier, so it is confirmed regardless of this toggle.
  */
 
 import { usePreferences } from "@/stores/preferences";

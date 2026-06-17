@@ -45,6 +45,10 @@ import { SideEditorPanel } from "@/components/SideEditorPanel";
 import { SavedQueriesPanel } from "@/components/SavedQueriesPanel";
 import { Console } from "@/components/Console";
 import { startLogBridge } from "@/lib/log-bridge";
+import { startCliConnectBridge } from "@/lib/cli-connect-bridge";
+import { useWorkspaces } from "@/stores/workspaces";
+import { CliConnectChoiceDialog } from "@/components/CliConnectChoiceDialog";
+import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { api } from "@/lib/tauri";
 import { useLogs } from "@/stores/logs";
 import { normalizeDriver, driverMismatchHint } from "@/lib/driver";
@@ -140,6 +144,17 @@ interface PendingAdhoc {
   authSource?: string;
 }
 
+/** Best-effort display name for a connection intent — used in the
+ *  second-launch routing dialog and as the default new-workspace name. */
+function intentDisplayName(args: StartupArgs): string {
+  if (args.adhoc_name) return args.adhoc_name;
+  if (args.connect_profile) return args.connect_profile;
+  if (args.adhoc_host)
+    return `${args.adhoc_host}/${args.adhoc_database ?? ""}`;
+  if (args.adhoc_connection_string) return "MongoDB";
+  return "connection";
+}
+
 export default function App() {
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
@@ -152,6 +167,9 @@ export default function App() {
   /** Set when a CLI ad-hoc launch has no `--driver` and no configured default
    *  — opens the driver picker; the params resume once the user chooses. */
   const [driverPrompt, setDriverPrompt] = useState<PendingAdhoc | null>(null);
+  /** Set when a second launch forwards a connection; opens the routing dialog
+   *  (new vs. active workspace). */
+  const [cliChoice, setCliChoice] = useState<StartupArgs | null>(null);
 
   /** Emit a visible Console entry for CLI diagnostics. */
   const cliLog = useCallback((message: string, error?: string) => {
@@ -245,25 +263,15 @@ export default function App() {
     void useUpdateStore.getState().checkOnLaunch();
   }, []);
 
-  // Handle command-line arguments exactly once, on mount. Crucially this is
-  // NOT gated on `profiles` being non-empty: ad-hoc launches (`--host …`) must
-  // work on a machine with zero saved profiles, and the old guard silently
-  // skipped them. For the profile-by-name/id path we await a fresh
-  // `refreshConnections()` so the lookup sees the loaded list regardless of
-  // boot timing. Failures are surfaced in the Console panel instead of being
-  // swallowed — "nothing happened with no feedback" was the original bug.
-  useEffect(() => {
-    if (cliArgsHandled.current) return;
-    cliArgsHandled.current = true;
-
-    async function handleCliArgs() {
-      let args: StartupArgs;
-      try {
-        args = await api.getStartupArgs();
-      } catch (e) {
-        console.error("[cli] failed to read startup args", e);
-        return;
-      }
+  // Apply one parsed connection intent: connect a saved profile, or stage an
+  // ad-hoc connection (prompting for a driver when one can't be resolved).
+  // Shared by the cold-start path and the second-launch routing dialog, which
+  // both feed the exact same `StartupArgs`. Whatever workspace is active when
+  // this runs is where the connection lands (tab state is workspace-scoped),
+  // so the dialog switches workspaces BEFORE calling this. Failures surface in
+  // the Console panel instead of being swallowed.
+  const applyConnectionIntent = useCallback(
+    async (args: StartupArgs) => {
       // A `--password` on the CLI is used in-memory only: passed straight to
       // `connect`, never written to the keychain. `undefined` keeps the
       // normal keychain / password-dialog flow.
@@ -341,12 +349,78 @@ export default function App() {
         } else {
           setDriverPrompt(pending);
         }
+      }
+    },
+    [
+      cliLog,
+      connectProfile,
+      createAndConnectAdhoc,
+      refreshConnections,
+      refreshSchema,
+      setSelected,
+    ],
+  );
+
+  // Route a second-launch connection intent once the user has picked a
+  // workspace. "New workspace" creates + switches to it first so the
+  // connection lands there; "active" applies the intent in place.
+  const routeIntentToWorkspace = useCallback(
+    async (args: StartupArgs, newWorkspaceName: string | null) => {
+      try {
+        if (newWorkspaceName !== null) {
+          const meta = await useWorkspaces.getState().create(newWorkspaceName);
+          await useWorkspaces.getState().switchTo(meta.id);
+        }
+      } catch (e) {
+        cliLog("failed to create workspace for incoming connection", String(e));
+      }
+      await applyConnectionIntent(args);
+    },
+    [applyConnectionIntent, cliLog],
+  );
+
+  // Handle this process's own command-line arguments exactly once, on mount.
+  // Crucially NOT gated on `profiles` being non-empty: ad-hoc launches
+  // (`--host …`) must work on a machine with zero saved profiles, and the old
+  // guard silently skipped them.
+  useEffect(() => {
+    if (cliArgsHandled.current) return;
+    cliArgsHandled.current = true;
+    void (async () => {
+      let args: StartupArgs;
+      try {
+        args = await api.getStartupArgs();
+      } catch (e) {
+        console.error("[cli] failed to read startup args", e);
         return;
       }
-    }
-
-    void handleCliArgs();
+      await applyConnectionIntent(args);
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Listen for *second* launches forwarded by the single-instance handler.
+  // The window was already focused in Rust; we ask the user where to route the
+  // connection. Drain any intent buffered before this listener existed (a
+  // launch that raced our boot) first, then subscribe to the live event.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const buffered = await api.takePendingCliConnect();
+        if (!cancelled && buffered) setCliChoice(buffered);
+      } catch (e) {
+        console.error("[cli] failed to drain pending connect", e);
+      }
+      const fn = await startCliConnectBridge((args) => setCliChoice(args));
+      if (cancelled) fn();
+      else unlisten = fn;
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   // Subscribe to the Rust `huginndb://log` Tauri event so the Console
@@ -520,6 +594,22 @@ export default function App() {
         }}
         onCancel={() => setDriverPrompt(null)}
       />
+      <CliConnectChoiceDialog
+        open={cliChoice !== null}
+        connectionName={cliChoice ? intentDisplayName(cliChoice) : ""}
+        onNewWorkspace={(name) => {
+          const args = cliChoice;
+          setCliChoice(null);
+          if (args) void routeIntentToWorkspace(args, name);
+        }}
+        onActiveWorkspace={() => {
+          const args = cliChoice;
+          setCliChoice(null);
+          if (args) void routeIntentToWorkspace(args, null);
+        }}
+        onCancel={() => setCliChoice(null)}
+      />
+      <FeedbackDialog />
       <Toaster
         position="bottom-right"
         theme={activeTheme.mode === "dark" ? "dark" : "light"}

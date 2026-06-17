@@ -960,7 +960,16 @@ function TableRow({
                     className="flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground"
                   >
                     {c.is_primary_key && (
-                      <KeyRound className="h-2.5 w-2.5 shrink-0 text-amber-400" />
+                      <KeyRound
+                        className="h-2.5 w-2.5 shrink-0 text-amber-400"
+                        aria-label="primary key"
+                      />
+                    )}
+                    {c.referenced_table && (
+                      <KeyRound
+                        className="h-2.5 w-2.5 shrink-0 text-sky-400"
+                        aria-label={`foreign key → ${c.referenced_table}`}
+                      />
                     )}
                     <span className="truncate">{c.name}</span>
                     <span className="ml-auto shrink-0 pl-2 text-[10px] uppercase">
@@ -1156,12 +1165,10 @@ function DropTableDialog({
   onDone: () => void;
 }) {
   const { t } = useTranslation();
-  const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
-    if (confirm !== target.name) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -1180,12 +1187,6 @@ function DropTableDialog({
           <DialogTitle>{t("schema.drop.title", { name: target.name })}</DialogTitle>
           <DialogDescription>{t("schema.drop.description")}</DialogDescription>
         </DialogHeader>
-        <Input
-          autoFocus
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          placeholder={t("schema.drop.confirmInput", { name: target.name })}
-        />
         {error && (
           <div className="text-xs text-destructive">
             {t("schema.drop.failed", { message: error })}
@@ -1197,8 +1198,9 @@ function DropTableDialog({
           </Button>
           <Button
             variant="destructive"
+            autoFocus
             onClick={submit}
-            disabled={submitting || confirm !== target.name}
+            disabled={submitting}
           >
             {submitting ? t("schema.drop.dropping") : t("schema.drop.submit")}
           </Button>

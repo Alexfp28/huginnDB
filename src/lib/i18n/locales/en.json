@@ -153,6 +153,42 @@
     "description": "\"{{name}}\" was launched without --driver and no default driver is set. Pick the backend to connect with.",
     "note": "Tip: set a default driver in Settings → General to skip this next time."
   },
+  "cliConnect": {
+    "title": "Open incoming connection",
+    "description": "A new launch wants to open \"{{name}}\". Add it to the current workspace, or open it in a new one?",
+    "nameLabel": "New workspace name",
+    "newWorkspace": "New workspace",
+    "activeWorkspace": "Current workspace",
+    "cancel": "Cancel"
+  },
+  "feedback": {
+    "menuEntry": "Report / suggest…",
+    "title": "Report or suggest",
+    "description": "File a bug or a feature request to the project's GitHub tracker.",
+    "kindBug": "Bug",
+    "kindFeature": "Feature",
+    "titleLabel": "Title",
+    "titlePlaceholder": "Short summary",
+    "descLabel": "Description",
+    "descPlaceholder": "What happened, what you expected, steps to reproduce…",
+    "includeDiagnostics": "Include app version and OS",
+    "patConfigured": "GitHub token configured",
+    "patNone": "No GitHub token",
+    "patAdd": "Add token",
+    "patChange": "Change",
+    "patClear": "Remove",
+    "patSave": "Save",
+    "patSaved": "GitHub token saved",
+    "patCleared": "GitHub token removed",
+    "hintApi": "The issue will be created directly on GitHub.",
+    "hintBrowser": "Without a token, a pre-filled GitHub page opens for you to submit.",
+    "submit": "Create issue",
+    "openBrowser": "Open on GitHub",
+    "created": "Issue created",
+    "viewIssue": "View",
+    "openedBrowser": "Opened a pre-filled issue in your browser",
+    "reportThisError": "Report this error"
+  },
   "schema": {
     "loading": "Loading schema…",
     "title": "Schema",
@@ -186,8 +222,7 @@
     },
     "drop": {
       "title": "Drop table {{name}}?",
-      "description": "This permanently removes the table and its data. Type the table name below to confirm.",
-      "confirmInput": "Type {{name}} to confirm",
+      "description": "This permanently removes the table and all of its data. This cannot be undone.",
       "submit": "Drop table",
       "dropping": "Dropping…",
       "failed": "Drop failed: {{message}}"

@@ -23,6 +23,7 @@ import {
   Download,
   FolderOpen,
   LayoutGrid,
+  MessageSquarePlus,
   PlugZap,
   Plus,
   Settings,
@@ -45,6 +46,7 @@ import { ExportProfilesDialog } from "@/components/ExportProfilesDialog";
 import { ImportProfilesDialog } from "@/components/ImportProfilesDialog";
 import { DriverBadge } from "@/components/DriverBadge";
 import { driverMismatchHint } from "@/lib/driver";
+import { useFeedbackDialog } from "@/stores/feedbackDialog";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
 
@@ -200,6 +202,14 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
           <DropdownMenuItem onSelect={resetLayout} className="text-xs">
             <LayoutGrid className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.resetLayout")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => useFeedbackDialog.getState().openWith()}
+            className="text-xs"
+          >
+            <MessageSquarePlus className="mr-2 h-3.5 w-3.5" />
+            {t("feedback.menuEntry")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

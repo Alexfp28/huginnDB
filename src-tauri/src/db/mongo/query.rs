@@ -8,7 +8,7 @@
 //! affected-document count in `rows_affected` and carry no rows.
 
 use crate::commands::query::{
-    BatchResult, ColumnFilter, ColumnMeta, FilterOp, QueryResult, RowValue, StmtOutcome,
+    BatchResult, ColumnFilter, ColumnMeta, FilterOp, QueryResult, RowValue, SortSpec, StmtOutcome,
 };
 use crate::error::AppResult;
 use crate::state::MongoConn;
@@ -322,11 +322,11 @@ pub async fn fetch_collection_data(
     collection: &str,
     limit: i64,
     offset: i64,
-    order_by: Option<&str>,
-    order_desc: bool,
+    order: &[SortSpec],
     filters: &[ColumnFilter],
     search: Option<&str>,
     search_columns: &[String],
+    with_count: bool,
 ) -> AppResult<QueryResult> {
     let start = Instant::now();
     let db = resolve_db(conn)?;
@@ -334,21 +334,33 @@ pub async fn fetch_collection_data(
 
     let filter = build_filter(filters, search, search_columns);
 
-    let total = coll.count_documents(filter.clone()).await?;
+    // Skip the count when the caller already knows the total (sort/page-only
+    // change); `count_documents` over a filter is the slow part on big
+    // collections, mirroring the SQL COUNT(*) skip in `fetch_table_data`.
+    let total = if with_count {
+        Some(coll.count_documents(filter.clone()).await?)
+    } else {
+        None
+    };
 
     let mut action = coll
         .find(filter)
         .limit(limit.max(0))
         .skip(offset.max(0) as u64);
-    if let Some(col) = order_by {
-        let dir = if order_desc { -1 } else { 1 };
-        action = action.sort(doc! { col: dir });
+    if !order.is_empty() {
+        // BSON documents preserve insertion order, so a multi-key sort doc
+        // honours the requested precedence (order[0] is the primary key).
+        let mut sort_doc = Document::new();
+        for s in order {
+            sort_doc.insert(s.column.clone(), if s.desc { -1 } else { 1 });
+        }
+        action = action.sort(sort_doc);
     }
     let mut cursor = action.await?;
     let docs = collect(&mut cursor).await?;
 
     let mut result = docs_to_result(docs, start.elapsed().as_millis() as u64);
-    result.total = Some(total);
+    result.total = total;
     Ok(result)
 }
 

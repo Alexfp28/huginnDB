@@ -301,6 +301,14 @@ pub struct AppState {
     pub known_hosts: crate::ssh_known_hosts::SharedKnownHosts,
     /// CLI arguments parsed before the Tauri builder ran.
     pub startup_args: StartupArgs,
+    /// Connection intent forwarded by a *second* launch (see the
+    /// single-instance handler in `lib.rs`). Buffered here because Tauri
+    /// events are not replayed: if the second launch lands while the window
+    /// is still booting, a listener attached afterwards would miss the
+    /// `huginndb://cli-connect` event. The frontend drains this via
+    /// `take_pending_cli_connect` once its bridge is mounted, then relies on
+    /// the live event for every subsequent launch.
+    pub pending_cli_connect: Arc<RwLock<Option<StartupArgs>>>,
 }
 
 impl AppState {
@@ -325,6 +333,7 @@ impl AppState {
             tab_state: Arc::new(RwLock::new(tab_state)),
             known_hosts: crate::ssh_known_hosts::load_shared(),
             startup_args,
+            pending_cli_connect: Arc::new(RwLock::new(None)),
         }
     }
 }
