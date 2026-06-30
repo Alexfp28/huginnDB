@@ -204,6 +204,7 @@
     "warming": "Caching schema… {{done}}/{{total}} databases",
     "context": {
       "open": "Open in tab",
+      "newQueryHere": "New query here",
       "copyName": "Copy name",
       "copySelect": "Copy SELECT statement",
       "refresh": "Refresh",
@@ -266,6 +267,8 @@
     "zoomOut": "Smaller rows (Ctrl + −)",
     "zoomReset": "Reset row size (Ctrl + 0)",
     "ctxCopy": "Copy",
+    "ctxGoToReference": "Go to referenced row",
+    "fkNavHint": "Ctrl/Cmd+click → referenced row",
     "ctxCopyWithColumn": "Copy with column name",
     "ctxCopyRowAs": "Copy row as",
     "ctxFilterBy": "Filter by this value",

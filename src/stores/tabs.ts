@@ -64,7 +64,21 @@ export const useTabs = create<TabsState>((set, get) => ({
           t.table === input.table,
       );
       if (existing) {
-        set({ activeId: existing.id });
+        // Re-navigation (FK "go to referenced row") may carry a fresh
+        // initial filter for an already-open table — apply it so the tab
+        // refilters to the new master record instead of silently no-opping.
+        if (input.initialFilters) {
+          set((s) => ({
+            tabs: s.tabs.map((t) =>
+              t.id === existing.id
+                ? { ...t, initialFilters: input.initialFilters }
+                : t,
+            ),
+            activeId: existing.id,
+          }));
+        } else {
+          set({ activeId: existing.id });
+        }
         return existing.id;
       }
     }

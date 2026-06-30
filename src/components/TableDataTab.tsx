@@ -32,6 +32,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/schema";
+import { useTabs } from "@/stores/tabs";
 import { useFilterHistory } from "@/stores/filterHistory";
 import { useConnections } from "@/stores/connections";
 import { useGridSelection } from "@/stores/gridSelection";
@@ -202,7 +203,26 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const [filter, setFilter] = useState("");
   /** What was actually committed via Enter — drives the backend fetch. */
   const [appliedFilter, setAppliedFilter] = useState("");
-  const [serverFilters, setServerFilters] = useState<ColumnFilter[]>([]);
+  // Seed filters from the tab's `initialFilters` (set by FK "go to referenced
+  // row" navigation) so the table lands pre-filtered to the master record.
+  const tabInitialFilters = useTabs(
+    (s) => s.tabs.find((t) => t.id === tabId)?.initialFilters,
+  );
+  const [serverFilters, setServerFilters] = useState<ColumnFilter[]>(
+    () => tabInitialFilters ?? [],
+  );
+  // Re-apply when a *new* `initialFilters` array arrives — i.e. the user
+  // navigated via FK into a table tab that was already open. The initial mount
+  // already seeded `serverFilters` above, so the ref starts at that value and
+  // the effect skips it; only a later, distinct array triggers a refilter.
+  const appliedInitialRef = useRef(tabInitialFilters);
+  useEffect(() => {
+    if (tabInitialFilters && tabInitialFilters !== appliedInitialRef.current) {
+      appliedInitialRef.current = tabInitialFilters;
+      setServerFilters(tabInitialFilters);
+      setOffset(0);
+    }
+  }, [tabInitialFilters]);
 
   const pushHistory = useFilterHistory((s) => s.push);
   const filterHistory = useFilterHistory(
@@ -397,6 +417,28 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       columnType,
     });
     await fetchData();
+  }
+
+  /**
+   * "Go to referenced row": open (or focus) the table the FK column points at,
+   * pre-filtered to the clicked value. Resolves the referenced table/column
+   * from the schema-store column metadata (`cols`), which carries the
+   * single-column FK reference. No-op for non-FK columns. The referenced table
+   * lives in the same connection/database, so we reuse `connectionId`.
+   */
+  function onNavigateFk(columnName: string, value: CellValue) {
+    const col = cols?.find((c) => c.name === columnName);
+    if (!col?.referenced_table || !col.referenced_column) return;
+    useTabs.getState().open({
+      kind: "table",
+      title: col.referenced_table,
+      connectionId,
+      schema: col.referenced_schema ?? undefined,
+      table: col.referenced_table,
+      initialFilters: [
+        { column: col.referenced_column, op: "eq", value },
+      ],
+    });
   }
 
   function onAddFilter(f: ColumnFilter) {
@@ -635,6 +677,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             driver={driver}
             pkColumnNames={pkColumns.map((c) => c.name)}
             fkColumnNames={fkColumnNames}
+            onNavigateFk={onNavigateFk}
             onCellSave={onCellSave}
             sort={sort}
             onSortChange={applySort}
