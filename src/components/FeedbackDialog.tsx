@@ -106,12 +106,14 @@ export function FeedbackDialog() {
         toast.success(t("feedback.created"), {
           action: {
             label: t("feedback.viewIssue"),
-            onClick: () => window.open(outcome.url, "_blank", "noreferrer"),
+            onClick: () => {
+              void api.openUrl(outcome.url);
+            },
           },
         });
       } else {
         // No token: open the pre-filled new-issue page for manual submission.
-        window.open(outcome.url, "_blank", "noreferrer");
+        await api.openUrl(outcome.url);
         toast.info(t("feedback.openedBrowser"));
       }
       setOpen(false);

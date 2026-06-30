@@ -317,6 +317,9 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Lets the frontend relaunch the app after installing an update.
         .plugin(tauri_plugin_process::init())
+        // Opens external URLs in the OS default browser. The in-app issue
+        // reporter relies on this: `window.open` is a no-op in the WebView.
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState::new_with_args(parse_startup_args()))
         .invoke_handler(tauri::generate_handler![
             commands::connection::list_profiles,
