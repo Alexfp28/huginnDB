@@ -673,9 +673,33 @@ function DatabaseRoot({
   /** True when *another* DB is the active scope — render this one dimmed. */
   dimmed: boolean;
 }) {
+  const { t } = useTranslation();
   const [childId, setChildId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+
+  // "New query here": open a query tab scoped to *this* database. We must run
+  // it against the synthetic `<parentId>::db::<db>` pool, so if the subtree was
+  // never expanded (no `childId` yet) we open the database view first to obtain
+  // that id — the same call the expand effect makes.
+  const openQueryHere = async () => {
+    let id = childId;
+    if (!id) {
+      try {
+        id = await api.openDatabaseView(parentId, dbName);
+        setChildId(id);
+      } catch (e) {
+        setError(String(e));
+        return;
+      }
+    }
+    useTabs.getState().open({
+      kind: "query",
+      title: t("tabs.queryFileName"),
+      connectionId: id,
+      query: "-- write a SQL query and press Ctrl+Enter\n",
+    });
+  };
 
   // Three ways the subtree can be open:
   //   1. The user clicked the chevron (`expanded`).
@@ -699,40 +723,49 @@ function DatabaseRoot({
 
   return (
     <div>
-      <button
-        className={cn(
-          "flex w-full items-center gap-1 px-2 py-1 transition-opacity hover:bg-accent/40",
-          dimmed && "opacity-50 hover:opacity-100",
-        )}
-        onClick={() => {
-          onToggle();
-          // `expanded` reflects the state *before* this click:
-          // true → user is collapsing → clear active scope.
-          // false → user is expanding → set this DB as active.
-          onActivate(expanded ? null : dbName);
-        }}
-      >
-        {effectiveExpanded ? (
-          <ChevronDown className="h-3 w-3 shrink-0" />
-        ) : (
-          <ChevronRight className="h-3 w-3 shrink-0" />
-        )}
-        {/* Always reserve the dot's width so names don't shift when a DB
-            becomes the active scope; only the active one is coloured. */}
-        <span
-          className={cn(
-            "h-1.5 w-1.5 shrink-0 rounded-full",
-            active ? "bg-emerald-400" : "bg-transparent",
-          )}
-        />
-        <Database
-          className={cn(
-            "h-3.5 w-3.5 shrink-0",
-            active ? "text-emerald-500" : "text-muted-foreground",
-          )}
-        />
-        <span className="truncate text-xs">{dbName}</span>
-      </button>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <button
+            className={cn(
+              "flex w-full items-center gap-1 px-2 py-1 transition-opacity hover:bg-accent/40",
+              dimmed && "opacity-50 hover:opacity-100",
+            )}
+            onClick={() => {
+              onToggle();
+              // `expanded` reflects the state *before* this click:
+              // true → user is collapsing → clear active scope.
+              // false → user is expanding → set this DB as active.
+              onActivate(expanded ? null : dbName);
+            }}
+          >
+            {effectiveExpanded ? (
+              <ChevronDown className="h-3 w-3 shrink-0" />
+            ) : (
+              <ChevronRight className="h-3 w-3 shrink-0" />
+            )}
+            {/* Always reserve the dot's width so names don't shift when a DB
+                becomes the active scope; only the active one is coloured. */}
+            <span
+              className={cn(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                active ? "bg-emerald-400" : "bg-transparent",
+              )}
+            />
+            <Database
+              className={cn(
+                "h-3.5 w-3.5 shrink-0",
+                active ? "text-emerald-500" : "text-muted-foreground",
+              )}
+            />
+            <span className="truncate text-xs">{dbName}</span>
+          </button>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => void openQueryHere()}>
+            {t("schema.context.newQueryHere")}
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
       {effectiveExpanded && (
         <div className="ml-3 border-l border-border/40">
           {error && (
