@@ -375,6 +375,7 @@ pub fn run() {
             commands::feedback::has_github_pat,
             commands::feedback::clear_github_pat,
             commands::feedback::submit_issue,
+            commands::feedback::mailto_report_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running HuginnDB");

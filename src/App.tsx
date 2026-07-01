@@ -17,7 +17,15 @@ import {
   type DockviewReadyEvent,
   type IDockviewPanelProps,
 } from "dockview-react";
-import { Moon, Settings, Sun } from "lucide-react";
+import {
+  CheckCircle2,
+  Info,
+  Moon,
+  Settings,
+  Sun,
+  TriangleAlert,
+  XCircle,
+} from "lucide-react";
 import { Toaster } from "sonner";
 import {
   selectUpdateNotificationVisible,
@@ -614,6 +622,12 @@ export default function App() {
         position="bottom-right"
         theme={activeTheme.mode === "dark" ? "dark" : "light"}
         closeButton
+        icons={{
+          success: <CheckCircle2 className="h-4 w-4 text-brand" />,
+          error: <XCircle className="h-4 w-4 text-destructive" />,
+          info: <Info className="h-4 w-4 text-muted-foreground" />,
+          warning: <TriangleAlert className="h-4 w-4 text-amber-500" />,
+        }}
       />
       {updateNotificationVisible && availableVersion && (
         <UpdateBanner version={availableVersion} />

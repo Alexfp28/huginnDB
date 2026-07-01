@@ -11,7 +11,11 @@
     "process:default",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://github.com/*" }, { "url": "http://github.com/*" }]
+      "allow": [
+        { "url": "https://github.com/*" },
+        { "url": "http://github.com/*" },
+        { "url": "mailto:*" }
+      ]
     }
   ]
 }

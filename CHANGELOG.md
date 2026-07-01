@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **"I don't have a GitHub account" fallback in the issue reporter.** Both
+  existing paths (API creation with a stored PAT, or the pre-filled
+  `issues/new` browser page without one) still land on GitHub, which is a
+  dead end for a user with no account — the browser page just shows a login
+  wall. A new link in the dialog's footer builds a `mailto:` URL instead
+  (same title/kind-prefixed subject and body, diagnostics block included when
+  toggled on) and opens it via the `opener` plugin, handing delivery to the
+  user's own default mail app — HuginnDB never touches SMTP or holds a
+  mail-sending credential. Percent-encoding is hand-rolled (RFC 3986
+  unreserved set) rather than reusing `url`'s `query_pairs_mut`, which is
+  `application/x-www-form-urlencoded` and would turn spaces into literal `+`
+  characters in the body — technically invalid in a `mailto:` query and
+  rendered as-is by several mail clients. The recipient is the project's
+  `contact@shion.es` address, kept separate from the mailto path's GitHub
+  siblings so a stray report can't be mistaken for a security disclosure.
+  Requires widening the `opener:allow-open-url` capability, previously scoped
+  to `github.com` only, to also allow `mailto:*`.
+
 ## [1.3.0] — 2026-06-30
 
 ### Added

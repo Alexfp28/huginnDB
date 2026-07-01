@@ -1,7 +1,9 @@
 //! In-app issue reporter.
 //!
 //! Lets the user file a **bug report** or a **feature request** straight to
-//! the project's GitHub tracker without leaving the app. Two delivery paths:
+//! the project's GitHub tracker without leaving the app, or — if they don't
+//! have a GitHub account — hand the report to their own mail client instead.
+//! Three delivery paths:
 //!
 //! * **Authenticated (preferred):** when the user has stored a GitHub
 //!   Personal Access Token, the issue is created directly through the REST
@@ -11,6 +13,10 @@
 //!   `…/issues/new?title=…&body=…&labels=…` URL for the frontend to open in
 //!   the browser, so the user can submit it manually. No network dependency
 //!   on this path.
+//! * **No GitHub account:** a `mailto:` URL prefilled with subject and body,
+//!   opened in the user's default mail app. Nothing is sent by HuginnDB
+//!   itself — the OS mail client does the actual delivery, so there's no
+//!   secret to embed in a distributed binary.
 //!
 //! The PAT is stored in the OS keychain (never on disk), reusing the same
 //! [`crate::keychain`] service as connection passwords.
@@ -24,6 +30,10 @@ const GITHUB_PAT_ACCOUNT: &str = "github::pat";
 
 /// Owner/repo the reporter files against.
 const REPO: &str = "Alexfp28/huginnDB";
+
+/// Mailbox the `mailto:` fallback targets when the user has no GitHub
+/// account. Kept separate from the maintainer's personal address on purpose.
+const SUPPORT_EMAIL: &str = "contact@shion.es";
 
 /// Diagnostics the frontend folds into a report body so we don't have to
 /// gather host/runtime facts in TypeScript.
@@ -172,4 +182,44 @@ fn prefilled_issue_url(title: &str, body: &str, labels: &[&str]) -> AppResult<St
         .append_pair("body", body)
         .append_pair("labels", &labels.join(","));
     Ok(url.into())
+}
+
+/// Build a `mailto:` URL for the "no GitHub account" fallback: same title and
+/// body as the GitHub path, but opened in the OS mail client instead. Hand-rolled
+/// percent-encoding (RFC 3986 unreserved set) rather than `url`'s
+/// `query_pairs_mut`, which is `application/x-www-form-urlencoded` and would
+/// encode spaces as `+` — technically wrong in a `mailto:` query and rendered
+/// literally by some mail clients instead of being turned back into spaces.
+#[tauri::command]
+pub fn mailto_report_url(report: IssueReport) -> AppResult<String> {
+    let title = report.title.trim();
+    if title.is_empty() {
+        return Err(AppError::InvalidInput("issue title is required".into()));
+    }
+    let prefix = match report.kind.as_str() {
+        "feature" => "[Feature]",
+        _ => "[Bug]",
+    };
+    let subject = format!("{prefix} {title}");
+    Ok(format!(
+        "mailto:{SUPPORT_EMAIL}?subject={}&body={}",
+        percent_encode_component(&subject),
+        percent_encode_component(&report.body)
+    ))
+}
+
+/// Percent-encode every byte outside the RFC 3986 "unreserved" set
+/// (`ALPHA / DIGIT / "-" / "." / "_" / "~"`), matching JS `encodeURIComponent`
+/// rather than form encoding.
+fn percent_encode_component(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for byte in input.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(*byte as char);
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
 }

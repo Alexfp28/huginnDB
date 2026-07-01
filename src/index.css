@@ -304,3 +304,63 @@
   background-color: hsl(var(--background));
   box-shadow: inset 0 2px 0 0 hsl(var(--brand));
 }
+
+/* -------------------------------------------------------------------------
+ * Sonner toast theme bridge
+ * -------------------------------------------------------------------------
+ * Sonner's own stylesheet hardcodes a literal white (light) / black (dark)
+ * toast via --normal-bg/--normal-border/--normal-text and a fixed grey
+ * description colour, ignoring the active HuginnDB theme — hence the
+ * "black and white" look. It also floats the close button half outside the
+ * card's top-left corner (--toast-close-button-transform). We repoint the
+ * variables at our own tokens so a toast reads as a themed popover-surface
+ * card, move the close button to an inset top-right position, and give
+ * each outcome a slim colour-coded left edge instead of a solid rich-colour
+ * block (keeps it minimal; the coloured icon from `App.tsx`'s `icons` prop
+ * carries the rest of the signal). Sonner injects its stylesheet at mount
+ * time, so — same rationale as the dockview overrides above — !important
+ * is required to win the cascade reliably. */
+[data-sonner-toaster] {
+  --normal-bg: hsl(var(--popover));
+  --normal-border: hsl(var(--border));
+  --normal-text: hsl(var(--popover-foreground));
+  --border-radius: calc(var(--radius) + 2px);
+}
+[data-sonner-toast] {
+  box-shadow:
+    0 8px 24px hsl(var(--background) / 0.28),
+    0 1px 2px hsl(var(--background) / 0.16) !important;
+  padding-right: 34px !important;
+}
+[data-sonner-toast] [data-description] {
+  color: hsl(var(--muted-foreground)) !important;
+}
+[data-sonner-toast] [data-button] {
+  background: hsl(var(--brand)) !important;
+  color: hsl(var(--brand-foreground)) !important;
+}
+[data-sonner-toast] [data-close-button] {
+  top: 6px !important;
+  right: 6px !important;
+  left: unset !important;
+  transform: none !important;
+  background: transparent !important;
+  border: none !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+[data-sonner-toast] [data-close-button]:hover {
+  background: hsl(var(--accent)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+[data-sonner-toast][data-type="success"] {
+  border-left: 3px solid hsl(var(--brand)) !important;
+}
+[data-sonner-toast][data-type="error"] {
+  border-left: 3px solid hsl(var(--destructive)) !important;
+}
+[data-sonner-toast][data-type="info"] {
+  border-left: 3px solid hsl(var(--muted-foreground) / 0.5) !important;
+}
+[data-sonner-toast][data-type="warning"] {
+  border-left: 3px solid #f59e0b !important;
+}

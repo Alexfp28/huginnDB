@@ -458,10 +458,18 @@ export const api = {
     invoke<IssueOutcome>("submit_issue", { report }),
 
   /**
-   * Open an external URL in the OS default browser via the `opener` plugin.
-   * `window.open` is a no-op inside the Tauri WebView, so every external link
-   * (e.g. the GitHub issue page) must go through this command. The capability
-   * scopes it to `github.com` (see `src-tauri/capabilities/default.json`).
+   * Build a `mailto:` URL prefilled with the report, for the "I don't have a
+   * GitHub account" fallback. The caller opens it with `openUrl`.
+   */
+  mailtoReportUrl: (report: { kind: FeedbackKind; title: string; body: string }) =>
+    invoke<string>("mailto_report_url", { report }),
+
+  /**
+   * Open an external URL in the OS default browser (or mail client, for
+   * `mailto:`) via the `opener` plugin. `window.open` is a no-op inside the
+   * Tauri WebView, so every external link must go through this command. The
+   * capability scopes it to `github.com` and `mailto:` (see
+   * `src-tauri/capabilities/default.json`).
    */
   openUrl: (url: string) =>
     invoke<void>("plugin:opener|open_url", { url, with: null }),

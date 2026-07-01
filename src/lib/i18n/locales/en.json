@@ -187,7 +187,9 @@
     "created": "Issue created",
     "viewIssue": "View",
     "openedBrowser": "Opened a pre-filled issue in your browser",
-    "reportThisError": "Report this error"
+    "reportThisError": "Report this error",
+    "noGithub": "I don't have a GitHub account",
+    "openedMailClient": "Opened a pre-filled email in your mail app"
   },
   "schema": {
     "loading": "Loading schema…",

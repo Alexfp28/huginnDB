@@ -187,7 +187,9 @@
     "created": "Incidencia creada",
     "viewIssue": "Ver",
     "openedBrowser": "Se abrió una incidencia pre-rellenada en tu navegador",
-    "reportThisError": "Reportar este error"
+    "reportThisError": "Reportar este error",
+    "noGithub": "No tengo cuenta de GitHub",
+    "openedMailClient": "Se abrió un correo pre-rellenado en tu aplicación de correo"
   },
   "schema": {
     "loading": "Cargando esquema…",

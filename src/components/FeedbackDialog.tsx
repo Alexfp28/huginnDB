@@ -92,15 +92,37 @@ export function FeedbackDialog() {
     }
   }
 
+  /** Body shared by the GitHub and mailto paths. */
+  async function buildBody(): Promise<string> {
+    let body = description.trim();
+    if (includeDiagnostics) {
+      const diag = await api.getDiagnostics();
+      body = `${body}\n${diagnosticsBlock(diag)}`;
+    }
+    return body;
+  }
+
+  async function handleMailto() {
+    if (!title.trim()) return;
+    setSubmitting(true);
+    try {
+      const body = await buildBody();
+      const url = await api.mailtoReportUrl({ kind, title: title.trim(), body });
+      await api.openUrl(url);
+      toast.info(t("feedback.openedMailClient"));
+      setOpen(false);
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleSubmit() {
     if (!title.trim()) return;
     setSubmitting(true);
     try {
-      let body = description.trim();
-      if (includeDiagnostics) {
-        const diag = await api.getDiagnostics();
-        body = `${body}\n${diagnosticsBlock(diag)}`;
-      }
+      const body = await buildBody();
       const outcome = await api.submitIssue({ kind, title: title.trim(), body });
       if (outcome.created) {
         toast.success(t("feedback.created"), {
@@ -248,13 +270,24 @@ export function FeedbackDialog() {
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => setOpen(false)}>
-            {t("common.cancel")}
+        <DialogFooter className="sm:justify-between">
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs text-muted-foreground"
+            onClick={handleMailto}
+            disabled={!title.trim() || submitting}
+          >
+            {t("feedback.noGithub")}
           </Button>
-          <Button onClick={handleSubmit} disabled={!title.trim() || submitting}>
-            {hasPat ? t("feedback.submit") : t("feedback.openBrowser")}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={handleSubmit} disabled={!title.trim() || submitting}>
+              {hasPat ? t("feedback.submit") : t("feedback.openBrowser")}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
