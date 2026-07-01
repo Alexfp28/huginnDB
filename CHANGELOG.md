@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-07-01
+
 ### Added
 
 - **"I don't have a GitHub account" fallback in the issue reporter.** Both
@@ -26,10 +28,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Requires widening the `opener:allow-open-url` capability, previously scoped
   to `github.com` only, to also allow `mailto:*`.
 
-## [1.3.0] — 2026-06-30
-
-### Added
-
 - **"Go to referenced row" on foreign-key cells (IDE-style).** In the data
   browser, **Ctrl/Cmd+click** on a cell whose column is a single-column foreign
   key now jumps straight to the referenced master record — opening (or focusing)
@@ -42,7 +40,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `initialFilters` on the tab; re-navigating into an already-open table
   re-applies it instead of silently doing nothing.
 - **"New query here" on a database (multi-DB explorer).** Right-clicking a
-  database node in the multi-database explorer now offers *New query here*,
+  database node in the multi-database explorer now offers _New query here_,
   opening a query tab already scoped to that database. It runs against the same
   synthetic per-database connection the explorer uses, so the query targets the
   database you clicked without first having to expand it or switch the active
@@ -82,7 +80,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   argv is parsed by the same code path as cold start and forwarded over a new
   `huginndb://cli-connect` event (buffered backend-side to survive a launch that
   races the window's boot).
-- **In-app issue reporter.** A new *Report / suggest* entry (File menu, and a
+- **In-app issue reporter.** A new _Report / suggest_ entry (File menu, and a
   "Report this error" action on failed Console entries) opens a dialog to file
   a **bug** or a **feature request** straight to the GitHub tracker. With a
   GitHub Personal Access Token configured (stored in the OS keychain, never on
@@ -143,7 +141,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   embedded in the stored string: it continues through the OS keychain. Editing a
   saved profile re-populates the form when its URI is representable, and opens in
   raw-edit mode otherwise.
-- **`authSource` for MongoDB.** A dedicated *Auth source* field (e.g. `admin`)
+- **`authSource` for MongoDB.** A dedicated _Auth source_ field (e.g. `admin`)
   is appended to the connection string as `?authSource=…`, and a new CLI
   `--auth-source` flag covers the URI-less ad-hoc path
   (`--host … --auth-source admin`). Previously the only way to set it was to
@@ -194,8 +192,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     `mongodb://` or `mongodb+srv://` URI (the only way to reach Atlas from the
     CLI). A connection string implies the MongoDB driver when `--driver` is
     omitted, and MongoDB is now offered in the ad-hoc driver picker.
-    
- - **Bulk-close tabs from the tab menu.** Right-clicking a workspace tab (or the
+- **Bulk-close tabs from the tab menu.** Right-clicking a workspace tab (or the
   tab's `⋮` menu) now offers **Close other tabs** and **Close all tabs** in
   addition to **Close tab**, so a workspace full of open tables/queries can be
   cleared in one action instead of closing each tab individually.
@@ -205,8 +202,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **Filtering the schema explorer no longer crashes on connections without table
   stats.** `list_tables` serialized absent row-count / size statistics as JSON
   `null`; the explorer's metric badge guarded only against `undefined`, so a
-  `null` reached `formatBytes` and threw *"Cannot read properties of null
-  (reading 'toFixed')"* — taking down the whole panel. This bit CLI/ad-hoc
+  `null` reached `formatBytes` and threw _"Cannot read properties of null
+  (reading 'toFixed')"_ — taking down the whole panel. This bit CLI/ad-hoc
   connections and SQLite builds without `dbstat`, and surfaced on filter because
   the filter force-expands every section (rendering badges that were previously
   collapsed). The backend now omits absent stats (matching the `?: number`
@@ -215,7 +212,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **Opening or closing the side cell-editor no longer resets the Schema /
   Workspace split.** The side-editor docks as a sibling in the
   `[Schema | Workspace | Cell]` row, and dockview redistributes freed/taken
-  space proportionally across *all* siblings when a child is added or removed —
+  space proportionally across _all_ siblings when a child is added or removed —
   silently resizing the Schema panel each time. The Schema width is now
   remembered while the side-editor is absent and re-asserted on every
   open/close, so only the Workspace panel absorbs the change.
@@ -272,7 +269,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **A large `LONGTEXT` (e.g. a big JSON document) in MySQL rendered as a hex
   dump.** When the server flags a text column as binary (charset/collation
   dependent), sqlx reports it as `LONGBLOB` and `try_get::<String>` rejected it
-  on a type-compatibility check *before* looking at the bytes, so the value fell
+  on a type-compatibility check _before_ looking at the bytes, so the value fell
   through to hex regardless of content. We now read the raw bytes and validate
   UTF-8 ourselves, so valid-UTF-8 text decodes as text.
 
@@ -395,7 +392,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     type-the-name `DROP TABLE` guard intentionally stays regardless.
 - **Ctrl+S in the docked side editor didn't clear the unsaved-changes guard.**
   When a cell was selected with the side panel open, the floating cell-preview
-  panel was the one catching Ctrl+S and persisting *its* stale (pre-edit) value,
+  panel was the one catching Ctrl+S and persisting _its_ stale (pre-edit) value,
   so the side panel's edits weren't saved and its dirty baseline never reset —
   moving to another cell then popped the discard-changes dialog. The side panel
   now owns Ctrl+S (capture phase, taking precedence over the preview): it saves
