@@ -456,4 +456,13 @@ export const api = {
    */
   submitIssue: (report: { kind: FeedbackKind; title: string; body: string }) =>
     invoke<IssueOutcome>("submit_issue", { report }),
+
+  /**
+   * Open an external URL in the OS default browser via the `opener` plugin.
+   * `window.open` is a no-op inside the Tauri WebView, so every external link
+   * (e.g. the GitHub issue page) must go through this command. The capability
+   * scopes it to `github.com` (see `src-tauri/capabilities/default.json`).
+   */
+  openUrl: (url: string) =>
+    invoke<void>("plugin:opener|open_url", { url, with: null }),
 };

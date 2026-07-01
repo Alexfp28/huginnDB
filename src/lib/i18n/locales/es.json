@@ -204,6 +204,7 @@
     "warming": "Cacheando esquema… {{done}}/{{total}} bases",
     "context": {
       "open": "Abrir en pestaña",
+      "newQueryHere": "Nueva query aquí",
       "copyName": "Copiar nombre",
       "copySelect": "Copiar sentencia SELECT",
       "refresh": "Actualizar",
@@ -261,6 +262,8 @@
   },
   "dataGrid": {
     "ctxCopy": "Copiar",
+    "ctxGoToReference": "Ir al registro referenciado",
+    "fkNavHint": "Ctrl/Cmd+clic → registro referenciado",
     "ctxCopyWithColumn": "Copiar con el nombre de columna",
     "ctxCopyRowAs": "Copiar fila como",
     "ctxFilterBy": "Filtrar por este valor",

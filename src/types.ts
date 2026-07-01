@@ -249,6 +249,14 @@ export interface AppTab {
   structureMode?: StructureMode;
   /** Stats from the most recent query execution in this tab. */
   lastQueryStats?: { rows: number; elapsed_ms: number };
+  /**
+   * Seed server-side filters for a `kind: "table"` tab — set when the tab is
+   * opened by "go to referenced row" (FK navigation) so the table lands
+   * pre-filtered to the master record. Transient (not persisted); re-opening
+   * an already-open table with a fresh array re-applies it. See
+   * `TableDataTab` + `useTabs.open`.
+   */
+  initialFilters?: ColumnFilter[];
 }
 
 /**

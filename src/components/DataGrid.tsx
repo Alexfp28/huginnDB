@@ -41,7 +41,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
-import { formatBitValue, isBitType, isNumericType } from "@/lib/utils";
+import { cn, formatBitValue, isBitType, isNumericType } from "@/lib/utils";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences";
 import type {
   CellValue,
@@ -109,6 +109,15 @@ interface Props {
   /** Names of columns that are a single-column FOREIGN KEY, for the header
    *  key icon (HeidiSQL-style). Purely presentational. */
   fkColumnNames?: string[];
+  /**
+   * "Go to referenced row" — invoked when the user Ctrl/Cmd+clicks (or picks
+   * the context-menu item on) a cell whose column is a single-column FK, with
+   * the FK value. The parent resolves the referenced table from its column
+   * metadata and opens it filtered to that value (IDE "go to definition").
+   * Only the cells whose column carries `referenced_table` (known via
+   * `draftColumns`/`columnInfoByName`) trigger it.
+   */
+  onNavigateFk?: (columnName: string, value: CellValue) => void;
   /**
    * Cell edit callback. Receives the **full row values array** (not a
    * row index) so the parent can resolve identity (PK value) directly
@@ -261,6 +270,7 @@ export function DataGrid({
   onSortChange,
   sort,
   fkColumnNames,
+  onNavigateFk,
   globalFilter,
   filterInput,
   onGlobalFilterChange,
@@ -1095,14 +1105,43 @@ export function DataGrid({
                     const meta = result.columns[backendIdx];
                     const value = rowValues[backendIdx];
                     const colIdx = backendIdx;
+                    // FK-navigable iff the parent wired `onNavigateFk` and this
+                    // column carries a single-column FK reference. Drives the
+                    // Ctrl/Cmd+click accelerator, the context-menu entry, and a
+                    // subtle hover affordance.
+                    const isFkCell =
+                      !!onNavigateFk &&
+                      !!columnInfoByName.get(meta.name)?.referenced_table;
                     return (
                       <ContextMenu key={cell.id}>
                         <ContextMenuTrigger asChild>
                           <td
-                            className="cursor-pointer border-b border-border/50 px-2"
+                            className={cn(
+                              "cursor-pointer border-b border-border/50 px-2",
+                              isFkCell &&
+                                "hover:underline hover:decoration-dotted hover:decoration-sky-400/70 hover:underline-offset-2",
+                            )}
+                            title={isFkCell ? t("dataGrid.fkNavHint") : undefined}
                             style={cellStyle}
                             onClick={(e) => {
                               e.stopPropagation();
+                              // Ctrl/Cmd+click on a single-column FK cell is the
+                              // "go to referenced row" accelerator (IDE-style).
+                              // It takes precedence over the multi-selection
+                              // toggle that the same chord drives on non-FK
+                              // cells, but never over Shift-range selection.
+                              if (
+                                (e.ctrlKey || e.metaKey) &&
+                                !e.shiftKey &&
+                                onNavigateFk &&
+                                columnInfoByName.get(meta.name)
+                                  ?.referenced_table &&
+                                value !== null &&
+                                value !== undefined
+                              ) {
+                                onNavigateFk(meta.name, value);
+                                return;
+                              }
                               setSelectedRowIndex(i);
                               // Ctrl/Cmd/Shift-click on a cell drives the
                               // OS-style multi-selection; a plain click also
@@ -1217,6 +1256,20 @@ export function DataGrid({
                             {meta.name}
                             {value === null ? " · NULL" : ""}
                           </ContextMenuLabel>
+                          {isFkCell &&
+                            value !== null &&
+                            value !== undefined && (
+                              <>
+                                <ContextMenuItem
+                                  onSelect={() =>
+                                    onNavigateFk?.(meta.name, value)
+                                  }
+                                >
+                                  {t("dataGrid.ctxGoToReference")}
+                                </ContextMenuItem>
+                                <ContextMenuSeparator />
+                              </>
+                            )}
                           <ContextMenuItem
                             onSelect={() => copyToClipboard(formatValue(value))}
                           >

@@ -23,6 +23,12 @@ use crate::log_bus::{self, LogEntry, LogKind};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+// Brought into scope for `<&Pool>::execute(&str)` / `<&mut Conn>::execute(&str)`
+// in the ad-hoc DML paths. Passing a `&str` (no bound arguments) runs through
+// sqlx's text/simple-query protocol — the unprepared path — whereas
+// `sqlx::query(sql)` always prepares. Inherent `Query::execute` calls elsewhere
+// are unaffected (inherent methods win over the trait).
+use sqlx::Executor as _;
 use std::time::Instant;
 use tauri::{AppHandle, State};
 
@@ -335,6 +341,21 @@ async fn execute_with_state(
     }
 
     if !is_read_only(sql) {
+        // Ad-hoc, hand-typed DML/DDL runs through the **unprepared** simple-query
+        // protocol (`raw_sql`), not the prepared/binary protocol that
+        // `sqlx::query(...)` uses. The editor never binds parameters, so there's
+        // nothing to prepare — and MySQL's prepared protocol rejects or
+        // mishandles a whole family of statements a CLI client runs without
+        // complaint (the recurring BIT / integer-literal and "command not
+        // supported in the prepared statement protocol" errors). The simple
+        // protocol parses the statement exactly like the server's CLI would, so
+        // what the user types is what executes. We only need `rows_affected`
+        // here, so there's no result-set decoding to worry about. SELECTs keep
+        // the prepared path below (their typed decoding is unaffected).
+        //
+        // Passing the bare `&str` to `Executor::execute` is what selects the
+        // unprepared protocol: a `&str` carries no bound arguments, and sqlx
+        // sends argument-less queries via the simple-query (text) protocol.
         let rows_affected = try_sql!(
             app,
             connection_id,
@@ -342,9 +363,9 @@ async fn execute_with_state(
             sql,
             start,
             match &pool {
-                DbPool::Postgres(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
-                DbPool::Mysql(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
-                DbPool::Sqlite(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
+                DbPool::Postgres(p) => p.execute(sql).await.map(|r| r.rows_affected()),
+                DbPool::Mysql(p) => p.execute(sql).await.map(|r| r.rows_affected()),
+                DbPool::Sqlite(p) => p.execute(sql).await.map(|r| r.rows_affected()),
                 DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
             }
         );
@@ -507,7 +528,15 @@ pub async fn execute_batch(
                         }
                     }
                 } else {
-                    match sqlx::query(sql).execute(&mut *$conn).await {
+                    // Non-SELECT statements run through the unprepared simple-query
+                    // protocol — see the rationale in `execute_with_state`. The
+                    // prepared/binary protocol rejects or mishandles statements a
+                    // CLI client accepts (notably MySQL BIT / integer-literal DML),
+                    // and an ad-hoc editor binds no parameters, so there's nothing
+                    // to prepare. Passing the bare `&str` to `Executor::execute`
+                    // (no bound arguments) is what selects the text protocol. Only
+                    // `rows_affected` is consumed here.
+                    match (&mut *$conn).execute(sql).await {
                         Ok(r) => {
                             let ra = r.rows_affected();
                             total_affected += ra;

@@ -6,6 +6,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-06-30
+
+### Added
+
+- **"Go to referenced row" on foreign-key cells (IDE-style).** In the data
+  browser, **Ctrl/Cmd+click** on a cell whose column is a single-column foreign
+  key now jumps straight to the referenced master record — opening (or focusing)
+  the parent table pre-filtered to that value, the way "go to definition" works
+  in an editor. The same action is available from the cell's right-click menu
+  ("Go to referenced row"), and FK-navigable cells gain a subtle hover
+  underline. Reuses the FK metadata already returned by `list_columns`
+  (`referenced_schema` / `referenced_table` / `referenced_column`) — no new
+  backend query. The target table receives the filter through a new transient
+  `initialFilters` on the tab; re-navigating into an already-open table
+  re-applies it instead of silently doing nothing.
+- **"New query here" on a database (multi-DB explorer).** Right-clicking a
+  database node in the multi-database explorer now offers *New query here*,
+  opening a query tab already scoped to that database. It runs against the same
+  synthetic per-database connection the explorer uses, so the query targets the
+  database you clicked without first having to expand it or switch the active
+  scope.
+
+### Fixed
+
+- **The in-app issue reporter now actually opens the browser.** Filing a report
+  (or following the "view issue" link) relied on `window.open`, which is a no-op
+  inside the Tauri WebView — clicking did nothing. URL opening now goes through
+  the `tauri-plugin-opener` plugin and lands in the OS default browser. The new
+  capability is scoped to `github.com`, the only host the reporter ever links
+  to. Adds the `tauri-plugin-opener` dependency.
+- **Hand-typed `INSERT`/`UPDATE` with `BIT`/integer values no longer errors on
+  MySQL.** Ad-hoc statements from the SQL editor were sent over the prepared
+  (binary) protocol, which rejects or mishandles a family of statements a CLI
+  client runs without complaint — the recurring `BIT` / integer-literal errors.
+  The editor binds no parameters, so there is nothing to prepare: non-`SELECT`
+  statements now run through the **unprepared** simple-query protocol
+  (`sqlx::raw_sql`) in both the single-statement and batch paths, so what you
+  type is parsed exactly as the server's own client would. `SELECT` decoding is
+  unchanged.
+
 ## [1.2.0] — 2026-06-18
 
 ### Added
