@@ -8,6 +8,64 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-07-02
+
+### Añadido
+
+- **Usuarios/permisos del servidor (panel "Seguridad").** Un nuevo botón
+  "Security" junto al de refrescar del explorador de esquema (y, por base de
+  datos, en el menú contextual del explorador multi-BD) abre una pestaña con
+  los usuarios/roles que la conexión puede ver, con los privilegios
+  cargándose bajo demanda al expandir cada fila. Implementado para **todos**
+  los drivers, no solo un subconjunto: **PostgreSQL** (`pg_roles` +
+  `pg_auth_members` para la pertenencia a roles, permisos sobre tablas vía
+  `information_schema.role_table_grants`), **MySQL** (`mysql.user` +
+  `mysql.role_edges` para los roles de MySQL 8, privilegios parseados desde
+  `SHOW GRANTS FOR '<user>'@'<host>'` porque MySQL no tiene una vista de
+  catálogo equivalente a la de Postgres), **MongoDB** (`usersInfo` sobre la
+  base de datos resuelta, privilegios vía `usersInfo` con
+  `showPrivileges: true`), y **SQLite**, que no tiene ningún concepto de
+  usuarios/permisos y ahora muestra un estado vacío explícito ("este driver
+  no tiene modelo de usuarios en el servidor") en vez de omitir la función en
+  silencio. Una cuenta de MySQL sin `SELECT` sobre `mysql.user` degrada a
+  mostrarse solo a sí misma (`CURRENT_USER()`) en vez de fallar todo el
+  panel. Nuevos comandos de backend `list_users` / `list_privileges` en
+  `src-tauri/src/commands/schema.rs` (despachados a
+  `src-tauri/src/db/mongo/schema.rs` para MongoDB); nuevos DTOs `UserInfo` /
+  `PrivilegeInfo` reflejados en `src/types.ts`; nuevo componente frontend
+  `SecurityTab.tsx` (TanStack Table) y tipo de pestaña `security`.
+- **Keepalive de conexión + reconexión tras pérdida de conexión.** HuginnDB
+  no hacía nada proactivo para mantener una conexión viva — sin timeout de
+  inactividad, sin heartbeat — dependiendo por completo del comportamiento
+  por defecto de `sqlx` ("validar en el siguiente uso"), que no ayuda con un
+  pool inactivo entre acciones del usuario ni con un túnel SSH caído. Cada
+  conexión de nivel superior recibe ahora un ping en segundo plano cada 3
+  minutos; un ping fallido marca la conexión como perdida, lo que pone en
+  rojo su punto de estado tanto en la lista de conexiones como en el
+  desplegable de conexiones de la barra de estado, y sustituye el botón de
+  conectar/desconectar por uno de "reconectar" de un solo clic — se acabó
+  descubrir una conexión muerta a mitad de una consulta con solo un error
+  críptico del driver. Reconectar reutiliza el mismo id de conexión y
+  mantiene intactas las pestañas abiertas y el estado del árbol de esquema,
+  en vez de cerrarlo todo y empezar de cero. Limitado a las conexiones de
+  perfil de nivel superior; los pools sintéticos por base de datos del modo
+  multi-BD comparten la viveza de su conexión padre y no reciben un
+  heartbeat propio. Nuevo módulo de backend `src-tauri/src/keepalive.rs`;
+  nuevo frontend `stores/connectionHealth.ts` +
+  `lib/connection-health-bridge.ts`.
+- **F5 / Ctrl+R (Cmd+R en macOS) ahora refrescan dentro de la app en vez de
+  recargar el WebView como si fuera una pestaña de navegador.** Con una
+  pestaña de tabla activa, vuelve a ejecutar la consulta de esa pestaña
+  (igual que pulsar su botón de recargar, respetando los filtros/orden/
+  página actuales); si no, refresca el árbol de esquema (lista de bases de
+  datos y tablas) de la conexión seleccionada — el mismo objetivo que el
+  botón de refrescar del explorador, tanto en modo single-BD como multi-BD.
+  Nuevo registro `src/lib/tableRefresh.ts` (con la misma forma "se registra
+  al montar, se limpia al desmontar" que el registro de proveedores SQL de
+  Monaco) que permite al manejador de teclas global en `App.tsx` llegar a la
+  función de recarga de la pestaña de tabla activa sin pasar un callback a
+  través del árbol de paneles de dockview.
+
 ### Cambiado
 
 - **Los workspaces se sustituyen por ventanas nativas.** Los workspaces

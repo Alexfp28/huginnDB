@@ -6,6 +6,57 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-07-02
+
+### Added
+
+- **Server-side users/permissions ("Security" panel).** A new `Security`
+  action next to the schema explorer's refresh button (and, per database, in
+  the multi-DB explorer's context menu) opens a tab listing the users/roles
+  the current connection can see, with lazy-loaded privileges on row expand.
+  Implemented for every driver rather than a subset: **PostgreSQL**
+  (`pg_roles` + `pg_auth_members` for role membership, table grants via
+  `information_schema.role_table_grants`), **MySQL** (`mysql.user` +
+  `mysql.role_edges` for MySQL 8 roles, privileges parsed out of
+  `SHOW GRANTS FOR '<user>'@'<host>'` since MySQL has no privilege catalog
+  view equivalent to Postgres'), **MongoDB** (`usersInfo` per the resolved
+  database, privileges via `usersInfo` with `showPrivileges: true`), and
+  **SQLite**, which has no user/permission concept at all and now renders an
+  explicit "this driver has no server-side user model" empty state instead
+  of silently omitting the feature. A MySQL account without `SELECT` on
+  `mysql.user` degrades to reporting just itself (`CURRENT_USER()`) instead
+  of failing the whole panel. New backend commands `list_users` /
+  `list_privileges` in `src-tauri/src/commands/schema.rs` (dispatched to
+  `src-tauri/src/db/mongo/schema.rs` for MongoDB); new `UserInfo` /
+  `PrivilegeInfo` DTOs mirrored in `src/types.ts`; new frontend
+  `SecurityTab.tsx` (TanStack Table) and `security` tab kind.
+- **Connection keepalive + lost-connection reconnect.** HuginnDB previously
+  did nothing proactive to keep a connection alive — no idle timeout, no
+  heartbeat — relying entirely on `sqlx`'s default "validate on next use"
+  behaviour, which doesn't help an idle pool between user actions or a
+  dropped SSH tunnel. Every top-level connection now gets a background ping
+  every 3 minutes; a failed ping flags the connection as lost, which turns
+  its status dot red in both the connection list and the status-bar
+  connections dropdown and swaps the connect/disconnect button for a
+  one-click "reconnect" — no more discovering a dead connection mid-query
+  with only a cryptic driver error. Reconnecting reuses the same connection
+  id and keeps open tabs and schema-tree state intact rather than closing
+  everything and starting over. Scoped to top-level profile connections
+  only; the synthetic per-database pools used by multi-DB browsing share
+  their parent's liveness and don't get a separate heartbeat. New backend
+  module `src-tauri/src/keepalive.rs`; new frontend
+  `stores/connectionHealth.ts` + `lib/connection-health-bridge.ts`.
+- **F5 / Ctrl+R (Cmd+R on macOS) now refresh in-app instead of reloading the
+  WebView like a browser tab.** With a table tab active, it re-runs that
+  tab's own query (same as clicking its reload button, respecting the
+  current filters/sort/page); otherwise it refreshes the schema tree
+  (database + table list) for the selected connection — matching the
+  explorer's own refresh button in both single-DB and multi-DB mode. New
+  `src/lib/tableRefresh.ts` registry (same "populate on mount, clear on
+  unmount" shape as the Monaco SQL provider registry) lets the global
+  key handler in `App.tsx` reach the active table tab's reload function
+  without threading a callback through the dockview panel tree.
+
 ### Changed
 
 - **Workspaces replaced by native windows.** Workspaces were only ever a
