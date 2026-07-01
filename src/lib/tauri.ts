@@ -36,7 +36,6 @@ import type {
   StructurePreview,
   TableInfo,
   TableStructure,
-  WorkspaceMeta,
 } from "@/types";
 
 export const api = {
@@ -317,60 +316,31 @@ export const api = {
   updatePreferences: (prefs: Preferences) =>
     invoke<void>("update_preferences", { prefs }),
 
-  /** Look up the persisted workspace for a connection, if any. */
+  /** Look up the persisted tab state for a connection, if any. Only the
+   *  main window ever calls this — secondary windows are ephemeral. */
   getTabState: (connectionId: string) =>
     invoke<ConnectionTabState | null>("get_tab_state", { connectionId }),
 
-  /** Replace the persisted workspace for a connection. */
+  /** Replace the persisted tab state for a connection. */
   saveTabState: (connectionId: string, tabStateValue: ConnectionTabState) =>
     invoke<void>("save_tab_state", { connectionId, tabStateValue }),
 
-  /** Drop the persisted workspace for a connection. */
+  /** Drop the persisted tab state for a connection. */
   clearTabState: (connectionId: string) =>
     invoke<void>("clear_tab_state", { connectionId }),
 
-  // Workspaces -----------------------------------------------------------
-  //
-  // Workspaces wrap the per-connection tab state into named groups. The
-  // active workspace scopes every `getTabState` / `saveTabState` call,
-  // so switching workspaces transparently swaps the visible tabs
-  // without closing the underlying pool.
+  // Multi-window -----------------------------------------------------------
 
-  /** Sorted list of workspaces (by `order`). Includes color / icon for
-   *  the switcher chrome. */
-  listWorkspaces: () => invoke<WorkspaceMeta[]>("list_workspaces"),
+  /** Open a new, blank window. Optionally carries a connection intent for
+   *  the new window's frontend to pick up via `takeWindowStartupIntent`.
+   *  Returns the new window's label. */
+  openNewWindow: (intent?: StartupArgs | null) =>
+    invoke<string>("open_new_window", { intent: intent ?? null }),
 
-  /** Id of the workspace currently in focus. `null` before hydration. */
-  getActiveWorkspaceId: () =>
-    invoke<string | null>("get_active_workspace_id"),
-
-  /** Create a workspace and return its meta. New workspaces land at the
-   *  end of the list. */
-  createWorkspace: (name: string, color?: string | null, icon?: string | null) =>
-    invoke<WorkspaceMeta>("create_workspace", { name, color, icon }),
-
-  renameWorkspace: (id: string, name: string) =>
-    invoke<void>("rename_workspace", { id, name }),
-
-  /** Update color and/or icon — pass `null` to clear either field. */
-  updateWorkspaceAppearance: (
-    id: string,
-    color: string | null,
-    icon: string | null,
-  ) =>
-    invoke<void>("update_workspace_appearance", { id, color, icon }),
-
-  /** Delete a workspace. Errors if it is the only one. */
-  deleteWorkspace: (id: string) =>
-    invoke<void>("delete_workspace", { id }),
-
-  /** Apply a new ordering. The first id becomes `order=0`, etc. */
-  reorderWorkspaces: (ids: string[]) =>
-    invoke<void>("reorder_workspaces", { ids }),
-
-  /** Switch the active workspace. Subsequent tab-state calls scope to it. */
-  setActiveWorkspace: (id: string) =>
-    invoke<void>("set_active_workspace", { id }),
+  /** Drain the connection intent stashed for this window's label by
+   *  `openNewWindow`. Call once on boot alongside `getStartupArgs`. */
+  takeWindowStartupIntent: (label: string) =>
+    invoke<StartupArgs | null>("take_window_startup_intent", { label }),
 
   // Import / Export --------------------------------------------------------
 

@@ -34,7 +34,11 @@
       "noConnections": "No connections yet.",
       "importProfiles": "Import profiles…",
       "exportProfiles": "Export profiles…",
-      "disconnectAll": "Disconnect all",
+      "disconnectAll": "Disconnect all"
+    },
+    "window": {
+      "label": "Window",
+      "newWindow": "New window",
       "resetLayout": "Reset window layout"
     },
     "view": {
@@ -47,6 +51,10 @@
       "metricSize": "Show table size",
       "preferences": "Preferences…",
       "help": "Drag panel tabs to rearrange. Drop outside the dock area to float a panel. Counts and sizes are engine estimates."
+    },
+    "help": {
+      "label": "Help",
+      "about": "About HuginnDB"
     }
   },
   "connections": {
@@ -155,10 +163,10 @@
   },
   "cliConnect": {
     "title": "Open incoming connection",
-    "description": "A new launch wants to open \"{{name}}\". Add it to the current workspace, or open it in a new one?",
-    "nameLabel": "New workspace name",
-    "newWorkspace": "New workspace",
-    "activeWorkspace": "Current workspace",
+    "description": "A new launch wants to open \"{{name}}\". Open it in this window, or in a new one?",
+    "dontAskAgain": "Don't ask again",
+    "newWindow": "New window",
+    "currentWindow": "This window",
     "cancel": "Cancel"
   },
   "feedback": {

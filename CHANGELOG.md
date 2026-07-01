@@ -6,6 +6,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **Workspaces replaced by native windows.** Workspaces were only ever a
+  stand-in for real per-window instances, and the "new workspace vs current"
+  dialog shown on a second `huginndb …` launch never worked correctly. The
+  workspace switcher is gone; **Window → New window** opens a real, blank OS
+  window instead. Secondary windows are intentionally ephemeral — nothing
+  about their tabs or layout survives an app restart, only the main
+  window's does. The on-disk `tab_state.json` moves to v3 (a flat
+  `connections` map); on upgrade, a v2 blob keeps only the previously
+  **active** workspace's tabs and discards every other workspace — there is
+  no merge. The second-launch dialog still asks "this window or a new one?"
+  by default, but now offers a "don't ask again" toggle that remembers the
+  choice (`Preferences → cliConnectDefault`).
+- **Top bar menus split from 2 to 4.** File and View had accumulated
+  unrelated actions as the app grew. File now holds only connection
+  management (new/manage/import/export, the connection list, disconnect
+  all); a new **Window** menu takes New window and Reset window layout; a
+  new **Help** menu takes Report/suggest and About (previously File-only
+  and gear-icon-only, respectively). View is unchanged (panel visibility +
+  schema-tree metric).
+
+### Fixed
+
+- **A new window created via "Window → New window" rendered blank and
+  Windows flagged it as "Not Responding".** `WebviewWindowBuilder::build()`
+  deadlocks on Windows when called from a synchronous Tauri command — a
+  documented WebView2 issue. `open_new_window` is now an `async fn`, which
+  Tauri docs call out as the fix.
+- **A CLI ad-hoc connection (`--host …`) without `--password` never
+  actually connected**, even when chosen via the second-launch dialog's
+  "this window" option — it silently created a disconnected profile and
+  only logged a hint to the Console. The connect is now always attempted
+  (SQLite has no password concept at all, and some servers allow
+  passwordless/trust auth); a genuine auth failure still surfaces the same
+  way a saved-profile connect failure does.
+
 ## [1.3.0] — 2026-07-01
 
 ### Added

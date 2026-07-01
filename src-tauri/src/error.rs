@@ -59,6 +59,10 @@ pub enum AppError {
     /// Outbound HTTP failure surfaced by `reqwest` (in-app issue reporter).
     #[error("network error: {0}")]
     Network(#[from] reqwest::Error),
+
+    /// Tauri window-management failure (e.g. creating a new window).
+    #[error("window error: {0}")]
+    Window(#[from] tauri::Error),
 }
 
 impl Serialize for AppError {

@@ -35,6 +35,7 @@ import i18n from "@/lib/i18n";
 import { useTabs } from "@/stores/tabs";
 import { useSchema } from "@/stores/schema";
 import { usePreferences } from "@/stores/preferences";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   getInnerDockviewApi,
   setPendingInternalLayout,
@@ -113,6 +114,13 @@ function scheduleSave(connectionId: string) {
  * state, or when the call fails — never blocks the connect flow.
  */
 export async function hydrateTabState(connectionId: string): Promise<void> {
+  // Only the main window persists tab state — secondary windows (opened via
+  // "New window") are intentionally ephemeral, so they never hydrate from or
+  // save to `tab_state.json` (see `commands::prefs::get_tab_state`). Without
+  // this guard a secondary window would silently overwrite the main
+  // window's persisted snapshot the moment it opened a connection.
+  if (getCurrentWindow().label !== "main") return;
+
   const restore = usePreferences.getState().prefs.ui.restoreTabsOnOpen;
   if (!restore) {
     // Skip both restore *and* save: with the preference off, we leave the

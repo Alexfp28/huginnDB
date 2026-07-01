@@ -5,7 +5,7 @@
  * when a *second* `huginndb …` launch forwards a connection intent to the
  * already-running window. The window has already been focused in Rust; the
  * frontend's job is to ask the user how to route the incoming connection
- * (new vs. active workspace) and then drive the connect flow.
+ * (this window vs. a new one) and then drive the connect flow.
  *
  * Mount once at App startup — re-subscribing every render would fire the
  * dialog multiple times per launch.

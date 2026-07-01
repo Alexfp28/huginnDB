@@ -1,16 +1,14 @@
 /**
  * Asked when a *second* `huginndb …` launch forwards a connection to the
- * already-running window (single-instance consolidation). Rather than
- * spawning a separate window like a second IDE, we keep everything in one
- * window and let the user decide where the incoming connection lands: a brand
- * new workspace (e.g. keep "MySQL config" and "Mongo data" side by side) or
- * the workspace they are already in.
+ * already-running instance (single-instance consolidation). The user decides
+ * whether the incoming connection lands in the window that's already open,
+ * or in a brand new one — with an opt-out to stop asking and always apply
+ * the same choice.
  *
- * The window itself was already focused in Rust (`handle_second_instance`);
+ * The main window was already focused in Rust (`handle_second_instance`);
  * this dialog only routes the connection.
  */
 
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -21,69 +19,63 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 
 interface Props {
   open: boolean;
-  /** Display name of the incoming connection (for the prompt copy and the
-   *  default new-workspace name). */
+  /** Display name of the incoming connection, for the prompt copy. */
   connectionName: string;
-  /** Open the connection in a freshly created workspace named `name`. */
-  onNewWorkspace: (name: string) => void;
-  /** Open the connection in the currently active workspace. */
-  onActiveWorkspace: () => void;
+  dontAskAgain: boolean;
+  onDontAskAgainChange: (value: boolean) => void;
+  /** Open the connection in a freshly opened window. */
+  onNewWindow: () => void;
+  /** Open the connection in the current (already-focused) window. */
+  onCurrentWindow: () => void;
   onCancel: () => void;
 }
 
 export function CliConnectChoiceDialog({
   open,
   connectionName,
-  onNewWorkspace,
-  onActiveWorkspace,
+  dontAskAgain,
+  onDontAskAgainChange,
+  onNewWindow,
+  onCurrentWindow,
   onCancel,
 }: Props) {
   const { t } = useTranslation();
-  const [name, setName] = useState(connectionName);
-
-  // Reset the editable name whenever a new intent arrives (the dialog is
-  // reused across launches; a stale name from the previous one would be
-  // confusing).
-  useEffect(() => {
-    if (open) setName(connectionName);
-  }, [open, connectionName]);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{t("cliConnect.title")}</DialogTitle>
           <DialogDescription>
             {t("cliConnect.description", { name: connectionName })}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="cli-connect-ws-name">
-            {t("cliConnect.nameLabel")}
+        <div className="flex items-center justify-between gap-4 rounded-md border border-border/60 bg-muted/30 px-3 py-2.5">
+          <Label
+            htmlFor="cli-connect-dont-ask"
+            className="text-xs font-normal text-muted-foreground"
+          >
+            {t("cliConnect.dontAskAgain")}
           </Label>
-          <Input
-            id="cli-connect-ws-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+          <Switch
+            id="cli-connect-dont-ask"
+            checked={dontAskAgain}
+            onCheckedChange={onDontAskAgainChange}
           />
         </div>
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="ghost" onClick={onCancel}>
             {t("cliConnect.cancel")}
           </Button>
-          <Button variant="outline" onClick={onActiveWorkspace}>
-            {t("cliConnect.activeWorkspace")}
+          <Button variant="outline" onClick={onCurrentWindow}>
+            {t("cliConnect.currentWindow")}
           </Button>
-          <Button
-            onClick={() => onNewWorkspace(name.trim() || connectionName)}
-          >
-            {t("cliConnect.newWorkspace")}
-          </Button>
+          <Button onClick={onNewWindow}>{t("cliConnect.newWindow")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

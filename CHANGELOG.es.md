@@ -8,6 +8,47 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Cambiado
+
+- **Los workspaces se sustituyen por ventanas nativas.** Los workspaces
+  nunca fueron más que un sustituto de las instancias reales por ventana, y
+  el diálogo "nuevo workspace vs actual" que aparecía al lanzar
+  `huginndb …` por segunda vez nunca funcionó del todo bien. El selector de
+  workspaces desaparece; **Ventana → Ventana nueva** abre ahora una ventana
+  de sistema real y en blanco. Las ventanas secundarias son intencionalmente
+  **efímeras** — nada de sus pestañas o su disposición sobrevive a un
+  reinicio de la app, solo lo de la ventana principal. El fichero
+  `tab_state.json` pasa a v3 (un mapa plano de `connections`); al
+  actualizar, un blob v2 conserva solo las pestañas del workspace que
+  estaba **activo** y descarta el resto — no hay fusión. El diálogo de
+  segundo lanzamiento sigue preguntando "¿esta ventana o una nueva?" por
+  defecto, pero ahora incluye un interruptor "No volver a preguntar" que
+  recuerda la elección (`Preferencias → cliConnectDefault`).
+- **Los menús de la barra superior pasan de 2 a 4.** Archivo y Vista habían
+  acumulado acciones sin relación entre sí a medida que crecía la app.
+  Archivo ahora solo gestiona conexiones (nueva/gestionar/importar/exportar,
+  la lista de conexiones, desconectar todas); un nuevo menú **Ventana**
+  incluye Ventana nueva y Restablecer disposición de ventanas; un nuevo
+  menú **Ayuda** incluye Reportar/sugerir y Acerca de (antes solo en
+  Archivo y solo accesible desde el icono de engranaje, respectivamente).
+  Vista no cambia (visibilidad de paneles + métrica del árbol de esquema).
+
+### Corregido
+
+- **Una ventana nueva creada desde "Ventana → Ventana nueva" aparecía en
+  blanco y Windows la marcaba como "No responde".**
+  `WebviewWindowBuilder::build()` se bloquea en Windows cuando se llama
+  desde un comando de Tauri síncrono — un problema documentado de
+  WebView2. `open_new_window` es ahora una `async fn`, que es la solución
+  que indica la propia documentación de Tauri.
+- **Una conexión ad-hoc por CLI (`--host …`) sin `--password` nunca llegaba
+  a conectar realmente**, incluso al elegir "esta ventana" en el diálogo de
+  segundo lanzamiento — creaba en silencio un perfil desconectado y solo
+  dejaba una pista en la Consola. Ahora siempre se intenta conectar (SQLite
+  no tiene concepto de contraseña, y algunos servidores permiten
+  autenticación sin contraseña/de confianza); un fallo de autenticación
+  real sigue mostrándose igual que en una conexión de perfil guardado.
+
 ## [1.2.0] — 2026-06-18
 
 ### Añadido

@@ -34,7 +34,11 @@
       "noConnections": "Aún no hay conexiones.",
       "importProfiles": "Importar perfiles…",
       "exportProfiles": "Exportar perfiles…",
-      "disconnectAll": "Desconectar todas",
+      "disconnectAll": "Desconectar todas"
+    },
+    "window": {
+      "label": "Ventana",
+      "newWindow": "Ventana nueva",
       "resetLayout": "Restablecer disposición de ventanas"
     },
     "view": {
@@ -47,6 +51,10 @@
       "metricSize": "Mostrar tamaño de tabla",
       "preferences": "Preferencias…",
       "help": "Arrastra las pestañas para reorganizar. Suelta fuera del área para flotar un panel. Los recuentos y tamaños son estimaciones del motor."
+    },
+    "help": {
+      "label": "Ayuda",
+      "about": "Acerca de HuginnDB"
     }
   },
   "connections": {
@@ -155,10 +163,10 @@
   },
   "cliConnect": {
     "title": "Abrir conexión entrante",
-    "description": "Un nuevo lanzamiento quiere abrir \"{{name}}\". ¿La añado al workspace actual o la abro en uno nuevo?",
-    "nameLabel": "Nombre del nuevo workspace",
-    "newWorkspace": "Nuevo workspace",
-    "activeWorkspace": "Workspace actual",
+    "description": "Un nuevo lanzamiento quiere abrir \"{{name}}\". ¿La abro en esta ventana o en una nueva?",
+    "dontAskAgain": "No volver a preguntar",
+    "newWindow": "Ventana nueva",
+    "currentWindow": "Esta ventana",
     "cancel": "Cancelar"
   },
   "feedback": {

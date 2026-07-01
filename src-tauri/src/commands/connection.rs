@@ -12,7 +12,7 @@ use crate::transfer::{
     ExportedSecret, ImportAnalysis, ImportConflict, ImportResult,
 };
 use std::time::Instant;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
 /// Driver label used by the Console panel.
@@ -142,7 +142,7 @@ pub fn save_profile(
 
 /// Delete the profile with `id` and its associated keychain entries.
 ///
-/// Also drops the per-connection workspace state (open tabs, schema-tree
+/// Also drops the persisted per-connection tab state (open tabs, schema-tree
 /// expansion) so we don't keep dangling entries pointing at a profile that
 /// no longer exists.
 #[tauri::command]
@@ -164,15 +164,9 @@ pub fn delete_profile(state: State<'_, AppState>, id: String) -> AppResult<()> {
             keychain::delete_password(&ssh_account)?;
         }
     }
-    // Sweep the deleted connection out of every workspace — a profile
-    // removal is global, not scoped to whichever workspace happens to
-    // be active. Without this we'd leave dangling tabs that point at
-    // an id the user can never reach again.
     let tab_state_snapshot = {
         let mut guard = state.tab_state.write();
-        for ws in &mut guard.workspaces {
-            ws.connections.remove(&id);
-        }
+        guard.connections.remove(&id);
         guard.clone()
     };
     crate::tab_state::save_tab_state(&tab_state_snapshot)?;
@@ -869,4 +863,53 @@ pub fn get_startup_args(state: State<'_, AppState>) -> AppResult<StartupArgs> {
 #[tauri::command]
 pub fn take_pending_cli_connect(state: State<'_, AppState>) -> AppResult<Option<StartupArgs>> {
     Ok(state.pending_cli_connect.write().take())
+}
+
+// ---------------------------------------------------------------------------
+// Multi-window
+// ---------------------------------------------------------------------------
+
+/// Open a new, blank HuginnDB window ("New window"). Optionally carries a
+/// connection `intent` (e.g. from the CLI second-launch dialog choosing
+/// "new window") for the new window's frontend to pick up on boot via
+/// [`take_window_startup_intent`].
+///
+/// Secondary windows are intentionally ephemeral: they never touch
+/// `tab_state.json` (see `commands::prefs::get_tab_state`), so nothing about
+/// them survives an app restart.
+///
+/// `WebviewWindowBuilder::new(...).build()` deadlocks on Windows (a WebView2
+/// issue) when called from a *synchronous* command or event handler — the
+/// new window comes up blank/unresponsive and can't even be closed via its
+/// own "×" button. Tauri's own docs call this out and say to use an `async`
+/// command instead (an earlier attempt here routed the build through
+/// `run_on_main_thread`, which avoided the outright hang but still left the
+/// window blank — `async fn` is the actual fix). See
+/// <https://github.com/tauri-apps/tauri/issues/13963>.
+#[tauri::command]
+pub async fn open_new_window(app: AppHandle, intent: Option<StartupArgs>) -> AppResult<String> {
+    let label = format!("win-{}", Uuid::new_v4());
+    if let Some(args) = intent {
+        app.state::<AppState>()
+            .window_startup_intents
+            .write()
+            .insert(label.clone(), args);
+    }
+    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+        .title("HuginnDB")
+        .inner_size(1400.0, 900.0)
+        .min_inner_size(900.0, 600.0)
+        .build()?;
+    Ok(label)
+}
+
+/// Drain the connection intent stashed for `label` by [`open_new_window`].
+/// Called once by a secondary window's frontend on boot, alongside the
+/// existing `get_startup_args` cold-start call.
+#[tauri::command]
+pub fn take_window_startup_intent(
+    state: State<'_, AppState>,
+    label: String,
+) -> AppResult<Option<StartupArgs>> {
+    Ok(state.window_startup_intents.write().remove(&label))
 }

@@ -41,8 +41,9 @@ import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useTranslation } from "react-i18next";
 import { setLanguage } from "@/lib/i18n";
 import { FileMenu } from "@/components/FileMenu";
+import { WindowMenu } from "@/components/WindowMenu";
 import { ViewMenu } from "@/components/ViewMenu";
-import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
+import { HelpMenu } from "@/components/HelpMenu";
 import { SchemaExplorer } from "@/components/SchemaExplorer";
 import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
@@ -54,7 +55,7 @@ import { SavedQueriesPanel } from "@/components/SavedQueriesPanel";
 import { Console } from "@/components/Console";
 import { startLogBridge } from "@/lib/log-bridge";
 import { startCliConnectBridge } from "@/lib/cli-connect-bridge";
-import { useWorkspaces } from "@/stores/workspaces";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CliConnectChoiceDialog } from "@/components/CliConnectChoiceDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { api } from "@/lib/tauri";
@@ -153,7 +154,7 @@ interface PendingAdhoc {
 }
 
 /** Best-effort display name for a connection intent — used in the
- *  second-launch routing dialog and as the default new-workspace name. */
+ *  second-launch routing dialog's prompt copy. */
 function intentDisplayName(args: StartupArgs): string {
   if (args.adhoc_name) return args.adhoc_name;
   if (args.connect_profile) return args.connect_profile;
@@ -176,8 +177,9 @@ export default function App() {
    *  — opens the driver picker; the params resume once the user chooses. */
   const [driverPrompt, setDriverPrompt] = useState<PendingAdhoc | null>(null);
   /** Set when a second launch forwards a connection; opens the routing dialog
-   *  (new vs. active workspace). */
+   *  (this window vs. a new one). */
   const [cliChoice, setCliChoice] = useState<StartupArgs | null>(null);
+  const [cliDontAskAgain, setCliDontAskAgain] = useState(false);
 
   /** Emit a visible Console entry for CLI diagnostics. */
   const cliLog = useCallback((message: string, error?: string) => {
@@ -215,14 +217,13 @@ export default function App() {
         const saved = await useConnections.getState().save(profile);
         await refreshConnections();
         setSelected(saved.id);
-        if (p.password) {
-          await connectProfile(saved.id, p.password);
-          await refreshSchema(saved.id);
-        } else {
-          cliLog(
-            `ad-hoc profile "${saved.name}" created; no --password given, connect manually`,
-          );
-        }
+        // Always attempt the connect, even without `--password`: SQLite has
+        // no password concept at all, and some servers allow passwordless /
+        // trust auth. A real auth failure still surfaces via the catch below
+        // — same as the saved-profile path just above, which never gated on
+        // whether a CLI password was supplied.
+        await connectProfile(saved.id, p.password);
+        await refreshSchema(saved.id);
       } catch (e) {
         const err = String(e);
         const hint = driverMismatchHint(err);
@@ -238,6 +239,8 @@ export default function App() {
   const setMode = useThemeStore((s) => s.setActiveMode);
   const hydratePreferences = usePreferences((s) => s.hydrate);
   const language = usePreferences((s) => s.prefs.ui.language);
+  const cliConnectDefault = usePreferences((s) => s.prefs.ui.cliConnectDefault);
+  const updateUiPrefs = usePreferences((s) => s.updateUi);
   const openSettings = useSettingsDialog((s) => s.openAt);
   const updateNotificationVisible = useUpdateStore(
     selectUpdateNotificationVisible,
@@ -369,59 +372,94 @@ export default function App() {
     ],
   );
 
-  // Route a second-launch connection intent once the user has picked a
-  // workspace. "New workspace" creates + switches to it first so the
-  // connection lands there; "active" applies the intent in place.
-  const routeIntentToWorkspace = useCallback(
-    async (args: StartupArgs, newWorkspaceName: string | null) => {
+  /** Open `args` in a brand new, blank window (the new window's boot effect
+   *  picks the intent back up via `takeWindowStartupIntent`). */
+  const openInNewWindow = useCallback(
+    async (args: StartupArgs) => {
       try {
-        if (newWorkspaceName !== null) {
-          const meta = await useWorkspaces.getState().create(newWorkspaceName);
-          await useWorkspaces.getState().switchTo(meta.id);
-        }
+        await api.openNewWindow(args);
       } catch (e) {
-        cliLog("failed to create workspace for incoming connection", String(e));
+        cliLog("failed to open a new window for incoming connection", String(e));
       }
-      await applyConnectionIntent(args);
     },
-    [applyConnectionIntent, cliLog],
+    [cliLog],
   );
 
-  // Handle this process's own command-line arguments exactly once, on mount.
-  // Crucially NOT gated on `profiles` being non-empty: ad-hoc launches
-  // (`--host …`) must work on a machine with zero saved profiles, and the old
-  // guard silently skipped them.
+  // Route a second-launch connection intent to this window or a new one.
+  // Only the main window ever runs this — it's the one the dialog opens in.
+  const routeIncomingConnection = useCallback(
+    (args: StartupArgs, target: "current" | "new") => {
+      if (target === "new") void openInNewWindow(args);
+      else void applyConnectionIntent(args);
+    },
+    [applyConnectionIntent, openInNewWindow],
+  );
+
+  /** Decide how to handle a second-launch intent: apply the remembered
+   *  choice silently, or ask via the dialog when the preference is "ask". */
+  const handleIncomingConnection = useCallback(
+    (args: StartupArgs) => {
+      if (cliConnectDefault === "ask") {
+        setCliDontAskAgain(false);
+        setCliChoice(args);
+      } else {
+        routeIncomingConnection(args, cliConnectDefault);
+      }
+    },
+    [cliConnectDefault, routeIncomingConnection],
+  );
+  // The second-launch listener effect below subscribes once on mount, so it
+  // would otherwise close over the first render's `handleIncomingConnection`
+  // (and thus a stale `cliConnectDefault`) for the rest of the session — see
+  // CLAUDE.md gotcha #9 for the same pattern with Monaco's Ctrl+Enter.
+  const handleIncomingConnectionRef = useRef(handleIncomingConnection);
+  handleIncomingConnectionRef.current = handleIncomingConnection;
+
+  // Handle this window's own startup connection intent exactly once, on
+  // mount. The main window reads the process's own CLI args
+  // (`get_startup_args`); a secondary window opened via "New window" instead
+  // drains the intent stashed for its label by `open_new_window`. Crucially
+  // NOT gated on `profiles` being non-empty: ad-hoc launches (`--host …`)
+  // must work on a machine with zero saved profiles, and the old guard
+  // silently skipped them.
   useEffect(() => {
     if (cliArgsHandled.current) return;
     cliArgsHandled.current = true;
     void (async () => {
-      let args: StartupArgs;
+      let args: StartupArgs | null;
       try {
-        args = await api.getStartupArgs();
+        const label = getCurrentWindow().label;
+        args =
+          label === "main"
+            ? await api.getStartupArgs()
+            : await api.takeWindowStartupIntent(label);
       } catch (e) {
         console.error("[cli] failed to read startup args", e);
         return;
       }
-      await applyConnectionIntent(args);
+      if (args) await applyConnectionIntent(args);
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Listen for *second* launches forwarded by the single-instance handler.
-  // The window was already focused in Rust; we ask the user where to route the
-  // connection. Drain any intent buffered before this listener existed (a
-  // launch that raced our boot) first, then subscribe to the live event.
+  // The main window was already focused in Rust; we route the connection
+  // there or to a new window (asking first, unless the user opted out).
+  // Drain any intent buffered before this listener existed (a launch that
+  // raced our boot) first, then subscribe to the live event.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     let cancelled = false;
     void (async () => {
       try {
         const buffered = await api.takePendingCliConnect();
-        if (!cancelled && buffered) setCliChoice(buffered);
+        if (!cancelled && buffered) handleIncomingConnectionRef.current(buffered);
       } catch (e) {
         console.error("[cli] failed to drain pending connect", e);
       }
-      const fn = await startCliConnectBridge((args) => setCliChoice(args));
+      const fn = await startCliConnectBridge((args) =>
+        handleIncomingConnectionRef.current(args),
+      );
       if (cancelled) fn();
       else unlisten = fn;
     })();
@@ -429,6 +467,7 @@ export default function App() {
       cancelled = true;
       unlisten?.();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Subscribe to the Rust `huginndb://log` Tauri event so the Console
@@ -505,10 +544,11 @@ export default function App() {
     <TooltipProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
         <header className="relative flex h-9 items-center border-b border-border px-2">
-          {/* Left — File + View menus + workspace switcher */}
+          {/* Left — File + Window + View + Help menus */}
           <FileMenu selectedConnectionId={selected} onSelect={setSelected} />
+          <WindowMenu />
           <ViewMenu />
-          <WorkspaceSwitcher />
+          <HelpMenu />
 
           {/* Centred breadcrumb — absolutely positioned so it stays in the
               middle of the bar regardless of action button widths. */}
@@ -605,15 +645,19 @@ export default function App() {
       <CliConnectChoiceDialog
         open={cliChoice !== null}
         connectionName={cliChoice ? intentDisplayName(cliChoice) : ""}
-        onNewWorkspace={(name) => {
+        dontAskAgain={cliDontAskAgain}
+        onDontAskAgainChange={setCliDontAskAgain}
+        onCurrentWindow={() => {
           const args = cliChoice;
           setCliChoice(null);
-          if (args) void routeIntentToWorkspace(args, name);
+          if (cliDontAskAgain) updateUiPrefs({ cliConnectDefault: "current" });
+          if (args) routeIncomingConnection(args, "current");
         }}
-        onActiveWorkspace={() => {
+        onNewWindow={() => {
           const args = cliChoice;
           setCliChoice(null);
-          if (args) void routeIntentToWorkspace(args, null);
+          if (cliDontAskAgain) updateUiPrefs({ cliConnectDefault: "new" });
+          if (args) routeIncomingConnection(args, "new");
         }}
         onCancel={() => setCliChoice(null)}
       />

@@ -294,7 +294,7 @@ pub struct AppState {
     pub profiles: Arc<RwLock<Vec<ConnectionProfile>>>,
     /// User-tunable preferences loaded from `prefs.json`.
     pub prefs: Arc<RwLock<crate::prefs::Preferences>>,
-    /// Per-connection workspace state loaded from `tab_state.json`.
+    /// Per-connection tab state loaded from `tab_state.json`.
     pub tab_state: Arc<RwLock<crate::tab_state::PersistedTabState>>,
     /// Trusted SSH host-key fingerprints loaded from `known_hosts.json`.
     /// Shared with every SSH tunnel opened during the session.
@@ -309,6 +309,11 @@ pub struct AppState {
     /// `take_pending_cli_connect` once its bridge is mounted, then relies on
     /// the live event for every subsequent launch.
     pub pending_cli_connect: Arc<RwLock<Option<StartupArgs>>>,
+    /// Connection intent stashed for a freshly-opened secondary window,
+    /// keyed by its Tauri window label. Populated by `open_new_window` and
+    /// drained exactly once by `take_window_startup_intent` when that
+    /// window's frontend boots.
+    pub window_startup_intents: Arc<RwLock<HashMap<String, StartupArgs>>>,
 }
 
 impl AppState {
@@ -334,6 +339,7 @@ impl AppState {
             known_hosts: crate::ssh_known_hosts::load_shared(),
             startup_args,
             pending_cli_connect: Arc::new(RwLock::new(None)),
+            window_startup_intents: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }

@@ -61,6 +61,7 @@ const DEFAULT_PREFS: Preferences = {
     language: "en",
     cellEditorMode: "modal",
     defaultDriver: null,
+    cliConnectDefault: "ask",
   },
 };
 

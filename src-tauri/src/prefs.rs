@@ -93,6 +93,12 @@ pub struct UiPrefs {
     /// in which case the CLI prompts for the driver instead of guessing.
     /// Stringly-typed; the frontend owns the enum.
     pub default_driver: Option<String>,
+    /// Remembered choice for the "second launch" connect dialog when a
+    /// running instance receives a new CLI connection intent. One of
+    /// "ask" | "current" | "new". "ask" (the default) always shows the
+    /// dialog; the other two apply that action silently. Stringly-typed;
+    /// the frontend owns the enum.
+    pub cli_connect_default: String,
 }
 
 impl Default for Preferences {
@@ -146,6 +152,7 @@ impl Default for UiPrefs {
             language: "en".into(),
             cell_editor_mode: "modal".into(),
             default_driver: None,
+            cli_connect_default: "ask".into(),
         }
     }
 }

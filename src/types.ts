@@ -371,27 +371,19 @@ export interface UiPrefs {
    * then prompts for the driver instead of guessing.
    */
   defaultDriver: Driver | null;
+  /**
+   * Remembered choice for the "second launch" connect dialog when a running
+   * instance receives a new CLI connection intent. `"ask"` (the default)
+   * always shows the dialog; the other two apply that action silently.
+   */
+  cliConnectDefault: CliConnectDefault;
 }
 
 export type CellEditorMode = "modal" | "side";
 
-/**
- * Lightweight workspace summary used by the topbar switcher. The full
- * `connections` map never crosses the IPC boundary in this shape — tab
- * data is fetched on demand via `getTabState`, scoped to the active
- * workspace.
- */
-export interface WorkspaceMeta {
-  id: string;
-  name: string;
-  /** Optional accent hex color, e.g. `"#7c3aed"`. */
-  color: string | null;
-  /** Optional lucide-react icon name (free-form on the wire). */
-  icon: string | null;
-  order: number;
-}
+export type CliConnectDefault = "ask" | "current" | "new";
 
-/** Per-connection slice of an active workspace. */
+/** Per-connection slice of the persisted tab state. */
 export interface ConnectionTabState {
   tabs: PersistedTab[];
   activeTabId: string | null;
