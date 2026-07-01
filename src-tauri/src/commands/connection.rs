@@ -327,11 +327,13 @@ pub async fn connect(
                     );
                 }
             }
+            let keepalive = crate::keepalive::spawn(app.clone(), id.clone(), pool.clone());
             state.connections.write().insert(
                 id.clone(),
                 ActivePool {
                     pool,
                     _ssh: ssh_handle,
+                    _keepalive: Some(keepalive),
                 },
             );
             log_connection(&app, &id, profile.driver, "connect: ok", Some(start), None);
@@ -456,6 +458,7 @@ pub async fn open_database_view(
                 ActivePool {
                     pool: child_pool,
                     _ssh: None,
+                    _keepalive: None,
                 },
             );
             return Ok(child_id);
@@ -498,6 +501,7 @@ pub async fn open_database_view(
                 ActivePool {
                     pool,
                     _ssh: ssh_handle,
+                    _keepalive: None,
                 },
             );
             log_connection(

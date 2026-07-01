@@ -142,6 +142,30 @@ export interface IndexInfo {
   unique: boolean;
 }
 
+/**
+ * One server-side user/role in the "Security" panel. Field meaning is
+ * driver-specific — see `list_users` in `src-tauri/src/commands/schema.rs`.
+ * `name` is `"user@host"` for MySQL, a bare name for every other driver.
+ * Always an empty list for SQLite (no user/permission concept).
+ */
+export interface UserInfo {
+  name: string;
+  is_superuser: boolean;
+  can_login: boolean;
+  roles: string[];
+}
+
+/**
+ * One granted privilege for a `UserInfo`, lazy-loaded when its row is
+ * expanded. `schema`/`table` are both `null` for a server/database-wide
+ * grant (e.g. `ON *.*`).
+ */
+export interface PrivilegeInfo {
+  privilege: string;
+  schema: string | null;
+  table: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Table-structure editor — mirror of the Rust DTOs in src-tauri/src/db/ddl.rs.
 // camelCase on the wire.
@@ -231,7 +255,7 @@ export interface BatchResult {
 }
 
 /** Tabs in the main workspace can host either table data or a query editor. */
-export type TabKind = "table" | "query" | "structure";
+export type TabKind = "table" | "query" | "structure" | "security";
 
 /** New-table vs edit-existing for a structure tab. */
 export type StructureMode = "new" | "edit";

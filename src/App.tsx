@@ -34,6 +34,7 @@ import {
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
+import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
 import { usePreferences } from "@/stores/preferences";
@@ -55,6 +56,7 @@ import { SavedQueriesPanel } from "@/components/SavedQueriesPanel";
 import { Console } from "@/components/Console";
 import { startLogBridge } from "@/lib/log-bridge";
 import { startCliConnectBridge } from "@/lib/cli-connect-bridge";
+import { startConnectionHealthBridge } from "@/lib/connection-health-bridge";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CliConnectChoiceDialog } from "@/components/CliConnectChoiceDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
@@ -73,6 +75,7 @@ import {
   restoreOrInitLayout,
   trackSchemaWidthAroundSideEditor,
 } from "@/lib/dockview";
+import { refreshTable } from "@/lib/tableRefresh";
 
 // ---------------------------------------------------------------------------
 // Panel components — thin wrappers that pull the current connection from
@@ -487,6 +490,23 @@ export default function App() {
     };
   }, []);
 
+  // Subscribe to the Rust `huginndb://connection-lost` Tauri event so the
+  // connection list can surface a reconnect action the moment the
+  // background keepalive (`src-tauri/src/keepalive.rs`) detects a dead
+  // pool, instead of the user finding out mid-query.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    void startConnectionHealthBridge().then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   // Update notifications now render as a custom `UpdateBanner` at the
   // top of the window (see the JSX below). The previous implementation
   // used a corner Sonner toast, but the toast was easy to miss and its
@@ -507,11 +527,29 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         togglePalette();
+      } else if (
+        !e.repeat &&
+        (e.key === "F5" || ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")))
+      ) {
+        // F5 / Ctrl+R (Cmd+R on macOS) would otherwise reload the whole
+        // WebView like a browser tab. Redirect it to the same "refresh"
+        // action already offered as a button: the active table tab's data
+        // if one is open, otherwise the schema tree (database + table list)
+        // for the selected connection — same target the explorer's own
+        // refresh button hits in both single-DB and multi-DB mode.
+        e.preventDefault();
+        const activeTab = useTabs
+          .getState()
+          .tabs.find((t) => t.id === useTabs.getState().activeId);
+        if (activeTab?.kind === "table" && refreshTable(activeTab.id)) {
+          return;
+        }
+        if (selected) void useSchema.getState().refresh(selected);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openSettings, togglePalette]);
+  }, [openSettings, togglePalette, selected]);
 
   // Stable derived breadcrumb metadata; both inputs are reference-stable
   // store values, so this satisfies the Zustand selector invariant.

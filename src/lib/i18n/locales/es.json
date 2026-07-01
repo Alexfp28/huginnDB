@@ -69,7 +69,9 @@
     "deleteTooltip": "Eliminar",
     "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",
     "connectFailed": "Error al conectar: {{message}}",
-    "manageTitle": "Gestionar conexiones"
+    "manageTitle": "Gestionar conexiones",
+    "reconnectTooltip": "Conexión perdida — reconectar",
+    "lost": "Conexión perdida: {{message}}"
   },
   "connectionDialog": {
     "titleNew": "Nueva conexión",
@@ -237,7 +239,25 @@
       "submit": "Eliminar tabla",
       "dropping": "Eliminando…",
       "failed": "Error al eliminar: {{message}}"
-    }
+    },
+    "security": "Seguridad"
+  },
+  "security": {
+    "title": "Seguridad",
+    "loading": "Cargando usuarios…",
+    "empty": "Este driver no tiene modelo de usuarios/permisos en el servidor.",
+    "noPrivileges": "No hay privilegios concedidos.",
+    "loadingPrivileges": "Cargando privilegios…",
+    "columns": {
+      "user": "Usuario",
+      "superuser": "Superusuario",
+      "canLogin": "Puede iniciar sesión",
+      "roles": "Roles",
+      "privilege": "Privilegio",
+      "target": "Objetivo"
+    },
+    "targetAll": "*.* (todo)",
+    "refresh": "Actualizar"
   },
   "cellEditor": {
     "title": "Editor de celda",

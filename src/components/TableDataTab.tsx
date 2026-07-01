@@ -56,6 +56,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
+import { registerTableRefresh, unregisterTableRefresh } from "@/lib/tableRefresh";
 
 interface Props {
   /** The owning tab's id — used to scope the grid-selection report. */
@@ -359,6 +360,15 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Registered so the global F5 / Ctrl+R interceptor (App.tsx) can reload
+  // this tab's data when it's the active one, instead of the WebView's
+  // default full-page reload. Re-registered whenever `fetchData`'s identity
+  // changes so the handler always closes over the current filters/sort/page.
+  useEffect(() => {
+    registerTableRefresh(tabId, fetchData);
+    return () => unregisterTableRefresh(tabId);
+  }, [tabId, fetchData]);
 
   /**
    * Indices of every PK column inside `result.columns`, memoised so cell

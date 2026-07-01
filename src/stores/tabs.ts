@@ -55,13 +55,13 @@ export const useTabs = create<TabsState>((set, get) => ({
   tabs: [],
   activeId: null,
   open: (input) => {
-    if (input.kind === "table") {
+    if (input.kind === "table" || input.kind === "security") {
       const existing = get().tabs.find(
         (t) =>
-          t.kind === "table" &&
+          t.kind === input.kind &&
           t.connectionId === input.connectionId &&
-          t.schema === input.schema &&
-          t.table === input.table,
+          (input.kind !== "table" ||
+            (t.schema === input.schema && t.table === input.table)),
       );
       if (existing) {
         // Re-navigation (FK "go to referenced row") may carry a fresh

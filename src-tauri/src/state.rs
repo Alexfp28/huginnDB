@@ -201,6 +201,10 @@ pub struct MongoConn {
 pub struct ActivePool {
     pub pool: DbPool,
     pub _ssh: Option<crate::db::ssh::SshTunnelHandle>,
+    /// Background keepalive ping (see [`crate::keepalive`]). `None` for the
+    /// synthetic per-database pools opened by `open_database_view`, which
+    /// deliberately don't get their own heartbeat.
+    pub _keepalive: Option<crate::keepalive::KeepaliveHandle>,
 }
 
 /// Map of profile-id → live pool.

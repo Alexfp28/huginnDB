@@ -77,6 +77,45 @@ pub struct IndexInfo {
     pub unique: bool,
 }
 
+/// One server-side user/role, as surfaced by the "Security" panel.
+///
+/// Field meaning is necessarily driver-specific:
+/// - **Postgres** — one row per `pg_roles` entry. `name` is the role name.
+/// - **MySQL** — one row per `mysql.user` account. `name` is `"user@host"`
+///   (MySQL accounts are scoped by host, so the pair is the real identity —
+///   the same user name can exist multiple times with different hosts).
+/// - **SQLite** — always empty; the engine has no user/permission concept.
+/// - **MongoDB** — one row per user document in the resolved database
+///   (`db.runCommand({usersInfo: 1})`). `name` is the bare username.
+#[derive(Debug, Serialize)]
+pub struct UserInfo {
+    pub name: String,
+    /// True for a superuser/admin-equivalent account. `false` where the
+    /// engine has no such concept or it couldn't be determined.
+    pub is_superuser: bool,
+    /// True unless the account is explicitly locked/disabled. Defaults to
+    /// `true` for engines that don't expose this.
+    pub can_login: bool,
+    /// Group/role memberships. Postgres: role names this role is a member
+    /// of. MySQL: granted roles (MySQL 8 roles, if any). MongoDB:
+    /// `"role@db"` strings. Always empty for SQLite.
+    pub roles: Vec<String>,
+}
+
+/// One granted privilege, as surfaced when the user expands a row in the
+/// "Security" panel.
+///
+/// `schema` / `table` are `None` for a server- or database-wide grant (e.g.
+/// Postgres/MySQL `GRANT ... ON *.*`, or a MongoDB privilege whose resource
+/// has no collection). Both are `Some` for a grant scoped to one
+/// table/collection.
+#[derive(Debug, Serialize)]
+pub struct PrivilegeInfo {
+    pub privilege: String,
+    pub schema: Option<String>,
+    pub table: Option<String>,
+}
+
 /// Resolve the active pool for `id`, or fail with [`AppError::NotConnected`].
 fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
     state
@@ -821,4 +860,250 @@ pub async fn server_version(
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
     Ok(version)
+}
+
+/// List server-side users/roles visible to the connection.
+///
+/// Always returns a (possibly empty) list rather than an error for engines
+/// with reduced visibility — e.g. a MySQL account without `SELECT` on
+/// `mysql.user` falls back to reporting just itself via `CURRENT_USER()`
+/// instead of failing the whole panel.
+#[tauri::command]
+pub async fn list_users(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<Vec<UserInfo>> {
+    let pool = pool_for(state.inner(), &connection_id)?;
+    if let DbPool::Mongo(conn) = &pool {
+        return crate::db::mongo::schema::list_users(conn).await;
+    }
+    let users = match pool {
+        DbPool::Postgres(p) => {
+            // One row per role, roles-of-membership aggregated in the same
+            // round-trip via pg_auth_members so we don't N+1 per role.
+            let rows = sqlx::query(
+                "SELECT r.rolname, r.rolsuper, r.rolcanlogin, \
+                        COALESCE(array_agg(g.rolname) FILTER (WHERE g.rolname IS NOT NULL), '{}') AS roles \
+                 FROM pg_roles r \
+                 LEFT JOIN pg_auth_members m ON m.member = r.oid \
+                 LEFT JOIN pg_roles g ON g.oid = m.roleid \
+                 GROUP BY r.rolname, r.rolsuper, r.rolcanlogin \
+                 ORDER BY r.rolname",
+            )
+            .fetch_all(&p)
+            .await?;
+            rows.into_iter()
+                .map(|r| UserInfo {
+                    name: r.get::<String, _>("rolname"),
+                    is_superuser: r.get::<bool, _>("rolsuper"),
+                    can_login: r.get::<bool, _>("rolcanlogin"),
+                    roles: r.get::<Vec<String>, _>("roles"),
+                })
+                .collect()
+        }
+        DbPool::Mysql(p) => {
+            // mysql.user requires a global SELECT privilege the connected
+            // account may not have; fall back to reporting just the current
+            // user (via CURRENT_USER(), always readable) rather than
+            // failing the whole panel.
+            let rows_res = sqlx::query(
+                "SELECT User, Host, Super_priv, account_locked FROM mysql.user \
+                 ORDER BY User, Host",
+            )
+            .fetch_all(&p)
+            .await;
+            match rows_res {
+                Ok(rows) => {
+                    // MySQL 8 roles: mysql.role_edges lists (from_user/host)
+                    // granted TO (to_user/host). Best-effort — absent on
+                    // MySQL 5.7 / MariaDB, where the query simply errors and
+                    // we leave every `roles` list empty.
+                    let mut role_map: std::collections::HashMap<(String, String), Vec<String>> =
+                        std::collections::HashMap::new();
+                    if let Ok(edges) = sqlx::query(
+                        "SELECT TO_USER, TO_HOST, FROM_USER FROM mysql.role_edges",
+                    )
+                    .fetch_all(&p)
+                    .await
+                    {
+                        for e in edges {
+                            let key = (e.get::<String, _>("TO_USER"), e.get::<String, _>("TO_HOST"));
+                            role_map.entry(key).or_default().push(e.get::<String, _>("FROM_USER"));
+                        }
+                    }
+                    rows.into_iter()
+                        .map(|r| {
+                            let user: String = r.get("User");
+                            let host: String = r.get("Host");
+                            let can_login = r
+                                .try_get::<String, _>("account_locked")
+                                .map(|v| v != "Y")
+                                .unwrap_or(true);
+                            let roles = role_map
+                                .get(&(user.clone(), host.clone()))
+                                .cloned()
+                                .unwrap_or_default();
+                            UserInfo {
+                                name: format!("{user}@{host}"),
+                                is_superuser: r.get::<String, _>("Super_priv") == "Y",
+                                can_login,
+                                roles,
+                            }
+                        })
+                        .collect()
+                }
+                Err(_) => {
+                    let current: String = sqlx::query_scalar("SELECT CURRENT_USER()")
+                        .fetch_one(&p)
+                        .await?;
+                    vec![UserInfo {
+                        name: current,
+                        is_superuser: false,
+                        can_login: true,
+                        roles: vec![],
+                    }]
+                }
+            }
+        }
+        // SQLite has no user/permission model.
+        DbPool::Sqlite(_) => vec![],
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+    };
+    Ok(users)
+}
+
+/// List the privileges granted to `user` (as returned by [`list_users`]).
+#[tauri::command]
+pub async fn list_privileges(
+    state: State<'_, AppState>,
+    connection_id: String,
+    user: String,
+) -> AppResult<Vec<PrivilegeInfo>> {
+    let pool = pool_for(state.inner(), &connection_id)?;
+    if let DbPool::Mongo(conn) = &pool {
+        return crate::db::mongo::schema::list_privileges(conn, &user).await;
+    }
+    let privs = match pool {
+        DbPool::Postgres(p) => {
+            let rows = sqlx::query(
+                "SELECT privilege_type, table_schema, table_name \
+                 FROM information_schema.role_table_grants \
+                 WHERE grantee = $1 \
+                 ORDER BY table_schema, table_name, privilege_type",
+            )
+            .bind(&user)
+            .fetch_all(&p)
+            .await?;
+            rows.into_iter()
+                .map(|r| PrivilegeInfo {
+                    privilege: r.get::<String, _>("privilege_type"),
+                    schema: Some(r.get::<String, _>("table_schema")),
+                    table: Some(r.get::<String, _>("table_name")),
+                })
+                .collect()
+        }
+        DbPool::Mysql(p) => {
+            // `user` is "user@host" as produced by list_users. SHOW GRANTS
+            // requires the literal pair, quoted as MySQL string literals —
+            // not identifiers, so quote_ident does not apply here. The
+            // source is always a catalog lookup (mysql.user), never
+            // free-form input, but quotes are still escaped defensively.
+            let (name, host) = user.rsplit_once('@').unwrap_or((user.as_str(), "%"));
+            let q = format!(
+                "SHOW GRANTS FOR '{}'@'{}'",
+                name.replace('\'', "''"),
+                host.replace('\'', "''"),
+            );
+            let rows = sqlx::query(&q).fetch_all(&p).await?;
+            let mut out = Vec::new();
+            for r in rows {
+                // SHOW GRANTS returns one text column whose name is
+                // "Grants for <user>@<host>" — read positionally instead.
+                let line: String = r.try_get(0).unwrap_or_default();
+                out.extend(parse_mysql_grant(&line));
+            }
+            out
+        }
+        DbPool::Sqlite(_) => vec![],
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+    };
+    Ok(privs)
+}
+
+/// Parse one `SHOW GRANTS FOR ...` line into individual [`PrivilegeInfo`]
+/// rows.
+///
+/// Handles the common shapes: `GRANT <privs> ON <db>.<table> TO ...`,
+/// `... ON *.*`, `... ON \`db\`.*`, and the `GRANT PROXY ON ...` special
+/// case (whose "target" is a user, not a schema/table). Anything that
+/// doesn't match the expected `GRANT ... ON ... TO ...` shape is skipped
+/// rather than mis-parsed.
+fn parse_mysql_grant(line: &str) -> Vec<PrivilegeInfo> {
+    let Some(rest) = line.strip_prefix("GRANT ") else {
+        return vec![];
+    };
+    let Some(on_idx) = rest.find(" ON ") else {
+        return vec![];
+    };
+    let privileges_part = &rest[..on_idx];
+    let after_on = &rest[on_idx + 4..];
+    let Some(to_idx) = after_on.rfind(" TO ") else {
+        return vec![];
+    };
+    let target_part = after_on[..to_idx].trim();
+
+    let (schema, table) = if privileges_part.trim() == "PROXY" {
+        (None, None)
+    } else {
+        let cleaned = target_part.replace('`', "");
+        match cleaned.split_once('.') {
+            Some((db, tbl)) => (
+                (db != "*").then(|| db.to_string()),
+                (tbl != "*").then(|| tbl.to_string()),
+            ),
+            None => (None, None),
+        }
+    };
+
+    split_mysql_privilege_list(privileges_part)
+        .into_iter()
+        .map(|privilege| PrivilegeInfo {
+            privilege,
+            schema: schema.clone(),
+            table: table.clone(),
+        })
+        .collect()
+}
+
+/// Split a comma-separated privilege list, ignoring commas inside a
+/// column-list suffix like `SELECT (col1, col2)`.
+fn split_mysql_privilege_list(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut cur = String::new();
+    for ch in s.chars() {
+        match ch {
+            '(' => {
+                depth += 1;
+                cur.push(ch);
+            }
+            ')' => {
+                depth -= 1;
+                cur.push(ch);
+            }
+            ',' if depth == 0 => {
+                let trimmed = cur.trim();
+                if !trimmed.is_empty() {
+                    out.push(trimmed.to_string());
+                }
+                cur.clear();
+            }
+            _ => cur.push(ch),
+        }
+    }
+    let trimmed = cur.trim();
+    if !trimmed.is_empty() {
+        out.push(trimmed.to_string());
+    }
+    out
 }

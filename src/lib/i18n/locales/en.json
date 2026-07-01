@@ -69,7 +69,9 @@
     "deleteTooltip": "Delete",
     "deleteConfirm": "Delete connection \"{{name}}\"?",
     "connectFailed": "Connect failed: {{message}}",
-    "manageTitle": "Manage connections"
+    "manageTitle": "Manage connections",
+    "reconnectTooltip": "Connection lost — reconnect",
+    "lost": "Connection lost: {{message}}"
   },
   "connectionDialog": {
     "titleNew": "New connection",
@@ -237,7 +239,25 @@
       "submit": "Drop table",
       "dropping": "Dropping…",
       "failed": "Drop failed: {{message}}"
-    }
+    },
+    "security": "Security"
+  },
+  "security": {
+    "title": "Security",
+    "loading": "Loading users…",
+    "empty": "This driver has no server-side user/permission model.",
+    "noPrivileges": "No privileges granted.",
+    "loadingPrivileges": "Loading privileges…",
+    "columns": {
+      "user": "User",
+      "superuser": "Superuser",
+      "canLogin": "Can log in",
+      "roles": "Roles",
+      "privilege": "Privilege",
+      "target": "Target"
+    },
+    "targetAll": "*.* (all)",
+    "refresh": "Refresh"
   },
   "cellEditor": {
     "title": "Cell editor",

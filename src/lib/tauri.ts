@@ -29,6 +29,7 @@ import type {
   ImportResult,
   IndexInfo,
   Preferences,
+  PrivilegeInfo,
   QueryResult,
   RowValue,
   SortSpec,
@@ -36,6 +37,7 @@ import type {
   StructurePreview,
   TableInfo,
   TableStructure,
+  UserInfo,
 } from "@/types";
 
 export const api = {
@@ -141,6 +143,16 @@ export const api = {
     schema: string | undefined,
     table: string,
   ) => invoke<IndexInfo[]>("list_indexes", { connectionId, schema, table }),
+
+  /** List server-side users/roles for the "Security" panel. Always
+   *  resolves to an empty array for SQLite. */
+  listUsers: (connectionId: string) =>
+    invoke<UserInfo[]>("list_users", { connectionId }),
+
+  /** Lazy-loaded on row expand: the privileges granted to `user` (the
+   *  `UserInfo.name` returned by `listUsers`). */
+  listPrivileges: (connectionId: string, user: string) =>
+    invoke<PrivilegeInfo[]>("list_privileges", { connectionId, user }),
 
   /** Full editable structure of a table (columns, indexes, FKs, defaults,
    *  auto-increment) for the visual structure editor. */

@@ -6,8 +6,9 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plug, PlugZap, Plus, Pencil, Trash2 } from "lucide-react";
+import { Plug, PlugZap, Plus, Pencil, RotateCw, Trash2 } from "lucide-react";
 import { useConnections } from "@/stores/connections";
+import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export function ConnectionList({
   const { t } = useTranslation();
   const { profiles, active, refresh, connect, disconnect, remove } =
     useConnections();
+  const lostConnections = useConnectionHealth((s) => s.lost);
   const refreshSchema = useSchema((s) => s.refresh);
   const dropSchema = useSchema((s) => s.drop);
   const closeTabs = useTabs((s) => s.closeForConnection);
@@ -75,6 +77,22 @@ export function ConnectionList({
     setPwPromptProfile(null);
   }
 
+  /**
+   * The background keepalive (`src-tauri/src/keepalive.rs`) flagged this
+   * connection's pool as dead. Tear it down and reopen it — using the raw
+   * store `disconnect` (not `handleDisconnect`) so open tabs and the
+   * schema-tree expansion survive, since the tab-state restore on connect
+   * only kicks in when there is nothing already open for this connection.
+   */
+  async function handleReconnect(p: ConnectionProfile) {
+    try {
+      await disconnect(p.id);
+    } catch {
+      // The pool was already dead; proceed to reconnect regardless.
+    }
+    await handleConnect(p);
+  }
+
   async function handleDisconnect(p: ConnectionProfile) {
     await disconnect(p.id);
     dropSchema(p.id);
@@ -116,6 +134,8 @@ export function ConnectionList({
         {profiles.map((p) => {
           const isActive = active.has(p.id);
           const isSelected = selectedConnectionId === p.id;
+          const lostError = lostConnections[p.id];
+          const isLost = isActive && !!lostError;
           return (
             <div
               key={p.id}
@@ -131,8 +151,13 @@ export function ConnectionList({
               <span
                 className={cn(
                   "h-1.5 w-1.5 shrink-0 rounded-full",
-                  isActive ? "bg-emerald-400" : "bg-muted-foreground/40",
+                  isLost
+                    ? "bg-destructive"
+                    : isActive
+                      ? "bg-emerald-400"
+                      : "bg-muted-foreground/40",
                 )}
+                title={isLost ? t("connections.lost", { message: lostError }) : undefined}
               />
 
               {/* Name + subtitle */}
@@ -150,15 +175,36 @@ export function ConnectionList({
                   )}
                 </div>
                 <div className="truncate text-[11px] text-muted-foreground">
-                  {p.driver === "sqlite"
-                    ? p.database.split(/[/\\]/).pop() ?? p.database
-                    : `${p.host}:${p.port}/${p.database}`}
+                  {isLost
+                    ? t("connections.lost", { message: lostError })
+                    : p.driver === "sqlite"
+                      ? p.database.split(/[/\\]/).pop() ?? p.database
+                      : `${p.host}:${p.port}/${p.database}`}
                 </div>
               </div>
 
               {/* Hover actions */}
-              <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                {isActive ? (
+              <div
+                className={cn(
+                  "flex items-center gap-1 transition-opacity",
+                  isLost
+                    ? "opacity-100"
+                    : "opacity-0 group-hover:opacity-100",
+                )}
+              >
+                {isLost ? (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleReconnect(p);
+                    }}
+                    title={t("connections.reconnectTooltip")}
+                  >
+                    <RotateCw className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                ) : isActive ? (
                   <Button
                     size="icon"
                     variant="ghost"

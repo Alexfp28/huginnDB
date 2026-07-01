@@ -7,7 +7,7 @@
 //! uses ([`DatabaseInfo`], [`TableInfo`], [`ColumnInfo`], [`IndexInfo`]) so the
 //! frontend tree renders MongoDB without a separate code path.
 
-use crate::commands::schema::{ColumnInfo, DatabaseInfo, IndexInfo, TableInfo};
+use crate::commands::schema::{ColumnInfo, DatabaseInfo, IndexInfo, PrivilegeInfo, TableInfo, UserInfo};
 use crate::db::ddl::{ColumnDef, IndexDef, TableStructure};
 use crate::error::{AppError, AppResult};
 use crate::state::MongoConn;
@@ -202,6 +202,101 @@ pub async fn table_structure(conn: &MongoConn, collection: &str) -> AppResult<Ta
         indexes: index_defs,
         foreign_keys: vec![],
     })
+}
+
+/// Roles that imply admin-equivalent access, used to derive
+/// [`UserInfo::is_superuser`]. Not exhaustive (custom roles can grant
+/// equivalent power) — best-effort, matching the built-in role names
+/// MongoDB ships.
+const SUPERUSER_ROLES: &[&str] = &[
+    "root",
+    "dbOwner",
+    "userAdminAnyDatabase",
+    "dbAdminAnyDatabase",
+    "clusterAdmin",
+    "atlasAdmin",
+];
+
+/// List the users defined on the resolved database via `usersInfo`.
+///
+/// MongoDB scopes users per-database (not per-cluster), so this mirrors
+/// [`list_collections`] in only covering the database the connection handle
+/// currently targets.
+pub async fn list_users(conn: &MongoConn) -> AppResult<Vec<UserInfo>> {
+    let db = resolve_db(conn)?;
+    let result = db.run_command(doc! {"usersInfo": 1}).await?;
+    let users = result.get_array("users").cloned().unwrap_or_default();
+
+    let mut out: Vec<UserInfo> = users
+        .into_iter()
+        .filter_map(|u| u.as_document().cloned())
+        .map(|u| {
+            let name = u.get_str("user").unwrap_or("").to_string();
+            let roles: Vec<(String, bool)> = u
+                .get_array("roles")
+                .ok()
+                .into_iter()
+                .flatten()
+                .filter_map(|r| r.as_document())
+                .map(|r| {
+                    let role = r.get_str("role").unwrap_or("").to_string();
+                    let db_name = r.get_str("db").unwrap_or("").to_string();
+                    let is_super = SUPERUSER_ROLES.contains(&role.as_str());
+                    (format!("{role}@{db_name}"), is_super)
+                })
+                .collect();
+            UserInfo {
+                name,
+                is_superuser: roles.iter().any(|(_, is_super)| *is_super),
+                // MongoDB has no per-account lock flag reachable via
+                // usersInfo; a user document existing means it can log in.
+                can_login: true,
+                roles: roles.into_iter().map(|(r, _)| r).collect(),
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+/// List `user`'s effective privileges (resource + action) on the resolved
+/// database, via `usersInfo` with `showPrivileges: true`.
+pub async fn list_privileges(conn: &MongoConn, user: &str) -> AppResult<Vec<PrivilegeInfo>> {
+    let db = resolve_db(conn)?;
+    let db_name = db.name().to_string();
+    let result = db
+        .run_command(doc! {
+            "usersInfo": {"user": user, "db": db_name},
+            "showPrivileges": true,
+        })
+        .await?;
+    let users = result.get_array("users").cloned().unwrap_or_default();
+
+    let mut out = Vec::new();
+    for u in users.iter().filter_map(|u| u.as_document()) {
+        let privs = u.get_array("inheritedPrivileges").ok().into_iter().flatten();
+        for p in privs.filter_map(|p| p.as_document()) {
+            let resource = p.get_document("resource").ok();
+            let schema = resource
+                .and_then(|r| r.get_str("db").ok())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            let table = resource
+                .and_then(|r| r.get_str("collection").ok())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            for action in p.get_array("actions").ok().into_iter().flatten() {
+                if let Some(action) = action.as_str() {
+                    out.push(PrivilegeInfo {
+                        privilege: action.to_string(),
+                        schema: schema.clone(),
+                        table: table.clone(),
+                    });
+                }
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// Best-effort liveness check used by `test_connection`: ping the admin db.

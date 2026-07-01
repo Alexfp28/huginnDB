@@ -50,6 +50,7 @@ import { Button } from "@/components/ui/button";
 import { TableDataTab } from "@/components/TableDataTab";
 import { QueryEditorTab } from "@/components/QueryEditorTab";
 import { StructureEditorTab } from "@/components/StructureEditorTab";
+import { SecurityTab } from "@/components/SecurityTab";
 import {
   huginnDockviewThemeInner,
   registerInnerDockviewApi,
@@ -106,6 +107,11 @@ function QueryPanel(props: IDockviewPanelProps<QueryPanelParams>) {
   return <QueryEditorTab tabId={tabId} connectionId={connectionId} />;
 }
 
+function SecurityPanel(props: IDockviewPanelProps<QueryPanelParams>) {
+  const { tabId, connectionId } = props.params;
+  return <SecurityTab tabId={tabId} connectionId={connectionId} />;
+}
+
 function StructurePanel(props: IDockviewPanelProps<StructurePanelParams>) {
   const { tabId, connectionId, schema, table, mode } = props.params;
   return (
@@ -123,6 +129,7 @@ const INNER_COMPONENTS = {
   table: TablePanel,
   query: QueryPanel,
   structure: StructurePanel,
+  security: SecurityPanel,
 };
 
 // ---------------------------------------------------------------------------

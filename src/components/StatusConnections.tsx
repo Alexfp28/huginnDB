@@ -11,8 +11,9 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronUp, Plug, X } from "lucide-react";
+import { Check, ChevronUp, Plug, RotateCw, X } from "lucide-react";
 import { useConnections } from "@/stores/connections";
+import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
@@ -35,6 +36,7 @@ export function StatusConnections() {
   const versions = useConnections((s) => s.versions);
   const connect = useConnections((s) => s.connect);
   const disconnect = useConnections((s) => s.disconnect);
+  const lostConnections = useConnectionHealth((s) => s.lost);
   const refreshSchema = useSchema((s) => s.refresh);
   const dropSchema = useSchema((s) => s.drop);
   const closeTabs = useTabs((s) => s.closeForConnection);
@@ -77,6 +79,17 @@ export function StatusConnections() {
       const hint = driverMismatchHint(msg);
       alert(`Connect failed: ${hint ? `${msg} — ${hint}` : msg}`);
     }
+  }
+
+  /** Mirrors `ConnectionList.handleReconnect`: tear down the dead pool and
+   *  reopen it, keeping any open tabs intact. */
+  async function handleReconnect(p: ConnectionProfile) {
+    try {
+      await disconnect(p.id);
+    } catch {
+      // The pool was already dead; proceed to reconnect regardless.
+    }
+    await handleConnect(p);
   }
 
   async function handleDisconnect(id: string) {
@@ -136,46 +149,71 @@ export function StatusConnections() {
             {t("statusBar.noConnections")}
           </div>
         ) : (
-          activeProfiles.map((p) => (
-            <DropdownMenuItem
-              key={p.id}
-              onSelect={() => setSelected(p.id)}
-              className="gap-2"
-            >
-              {selected === p.id ? (
-                <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
-              ) : (
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
-              )}
-              <span
-                className={cn(
-                  "flex-1 truncate text-xs",
-                  selected === p.id && "font-semibold",
+          activeProfiles.map((p) => {
+            const lostError = lostConnections[p.id];
+            const isLost = !!lostError;
+            return (
+              <DropdownMenuItem
+                key={p.id}
+                onSelect={() => setSelected(p.id)}
+                className="gap-2"
+              >
+                {selected === p.id ? (
+                  <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
+                ) : (
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 shrink-0 rounded-full",
+                      isLost ? "bg-destructive" : "bg-brand",
+                    )}
+                  />
                 )}
-              >
-                {p.name}
-              </span>
-              {versions[p.id] && (
-                <span className="max-w-[6rem] truncate font-mono text-[10px] text-muted-foreground">
-                  {versions[p.id]}
+                <span
+                  className={cn(
+                    "flex-1 truncate text-xs",
+                    selected === p.id && "font-semibold",
+                  )}
+                  title={isLost ? t("connections.lost", { message: lostError }) : undefined}
+                >
+                  {p.name}
                 </span>
-              )}
-              <DriverBadge driver={p.driver} />
-              <button
-                type="button"
-                title={t("statusBar.disconnect")}
-                className="ml-0.5 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
-                onClick={(e) => {
-                  // Don't let the click bubble to the row's onSelect (jump).
-                  e.preventDefault();
-                  e.stopPropagation();
-                  void handleDisconnect(p.id);
-                }}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </DropdownMenuItem>
-          ))
+                {versions[p.id] && !isLost && (
+                  <span className="max-w-[6rem] truncate font-mono text-[10px] text-muted-foreground">
+                    {versions[p.id]}
+                  </span>
+                )}
+                <DriverBadge driver={p.driver} />
+                {isLost ? (
+                  <button
+                    type="button"
+                    title={t("connections.reconnectTooltip")}
+                    className="ml-0.5 rounded-sm p-0.5 text-destructive transition-colors hover:bg-destructive/15"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleReconnect(p);
+                    }}
+                  >
+                    <RotateCw className="h-3 w-3" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    title={t("statusBar.disconnect")}
+                    className="ml-0.5 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+                    onClick={(e) => {
+                      // Don't let the click bubble to the row's onSelect (jump).
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleDisconnect(p.id);
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </DropdownMenuItem>
+            );
+          })
         )}
 
         {idleProfiles.length > 0 && (

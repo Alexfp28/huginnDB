@@ -11,6 +11,7 @@ import { create } from "zustand";
 import { api } from "@/lib/tauri";
 import { useFilterHistory } from "@/stores/filterHistory";
 import { flushTabState, hydrateTabState } from "@/stores/persistedTabs";
+import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import type { ConnectionProfile } from "@/types";
@@ -77,6 +78,9 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
   },
   connect: async (id, password, sshSecret) => {
     await api.connect(id, password, sshSecret);
+    // A successful (re)connect opens a fresh pool with its own heartbeat —
+    // any previous "connection lost" flag no longer applies.
+    useConnectionHealth.getState().clear(id);
     const active = new Set(get().active);
     active.add(id);
     set({ active });
@@ -104,6 +108,9 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     await flushTabState(id);
 
     await api.disconnect(id);
+    // An explicit disconnect isn't a "lost" connection — clear any stale
+    // flag so a later reconnect doesn't briefly show the wrong state.
+    useConnectionHealth.getState().clear(id);
     const active = new Set(get().active);
     active.delete(id);
     // Remove the stale version entry so a reconnect always fetches a fresh one.

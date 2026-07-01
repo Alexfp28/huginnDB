@@ -35,6 +35,7 @@ import {
   Eye,
   KeyRound,
   LayoutList,
+  ShieldCheck,
 } from "lucide-react";
 import { useSchema, tableKey } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
@@ -68,6 +69,15 @@ import type { Driver, TableInfo } from "@/types";
  * contains ANY of them (OR), so `users; orders` surfaces both tables at once.
  * An empty filter (or one that's only separators/whitespace) matches all.
  */
+/** Open (or focus, if already open) the "Security" tab for `connectionId`. */
+function openSecurityTab(connectionId: string, title: string) {
+  useTabs.getState().open({
+    kind: "security",
+    title,
+    connectionId,
+  });
+}
+
 function matchesFilter(name: string, filter: string): boolean {
   const patterns = filter
     .split(";")
@@ -234,17 +244,27 @@ function SingleDbExplorer({
           <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {title}
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => refresh(connectionId)}
-            disabled={cs.loading}
-            title={t("schema.refresh")}
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${cs.loading ? "animate-spin" : ""}`}
-            />
-          </Button>
+          <div className="flex items-center gap-0.5">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => openSecurityTab(connectionId, t("security.title"))}
+              title={t("security.title")}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => refresh(connectionId)}
+              disabled={cs.loading}
+              title={t("schema.refresh")}
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${cs.loading ? "animate-spin" : ""}`}
+              />
+            </Button>
+          </div>
         </div>
       )}
       {!isControlled && (
@@ -558,17 +578,27 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t("schema.title")}
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => refresh(parentId)}
-          disabled={cs.loading}
-          title={t("schema.refresh")}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${cs.loading ? "animate-spin" : ""}`}
-          />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => openSecurityTab(parentId, t("security.title"))}
+            title={t("security.title")}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => refresh(parentId)}
+            disabled={cs.loading}
+            title={t("schema.refresh")}
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${cs.loading ? "animate-spin" : ""}`}
+            />
+          </Button>
+        </div>
       </div>
       <div className="px-3 pb-2">
         <Input
@@ -701,6 +731,22 @@ function DatabaseRoot({
     });
   };
 
+  // "Security": same lazy-open-then-navigate pattern as `openQueryHere`,
+  // scoped to this database's synthetic connection id.
+  const openSecurityHere = async () => {
+    let id = childId;
+    if (!id) {
+      try {
+        id = await api.openDatabaseView(parentId, dbName);
+        setChildId(id);
+      } catch (e) {
+        setError(String(e));
+        return;
+      }
+    }
+    openSecurityTab(id, t("security.title"));
+  };
+
   // Three ways the subtree can be open:
   //   1. The user clicked the chevron (`expanded`).
   //   2. The user is searching and the DB was already opened earlier
@@ -763,6 +809,9 @@ function DatabaseRoot({
         <ContextMenuContent>
           <ContextMenuItem onSelect={() => void openQueryHere()}>
             {t("schema.context.newQueryHere")}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => void openSecurityHere()}>
+            {t("security.title")}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>

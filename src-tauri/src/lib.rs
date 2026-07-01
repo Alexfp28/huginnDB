@@ -18,6 +18,7 @@
 mod commands;
 mod db;
 mod error;
+mod keepalive;
 mod keychain;
 mod log_bus;
 mod prefs;
@@ -346,6 +347,8 @@ pub fn run() {
             commands::schema::drop_table,
             commands::schema::rename_table,
             commands::schema::server_version,
+            commands::schema::list_users,
+            commands::schema::list_privileges,
             commands::structure::get_table_structure,
             commands::structure::preview_structure_change,
             commands::structure::apply_structure_change,
