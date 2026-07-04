@@ -109,6 +109,7 @@ export function ConnectionDialog({
 
   // General fields ---------------------------------------------------------
   const [name, setName] = useState("");
+  const [group, setGroup] = useState("");
   const [driver, setDriver] = useState<Driver>("postgres");
   const [host, setHost] = useState("localhost");
   const [port, setPort] = useState(5432);
@@ -160,6 +161,7 @@ export function ConnectionDialog({
   function loadFields(p: ConnectionProfile | null) {
     if (p) {
       setName(p.name);
+      setGroup(p.group ?? "");
       setDriver(p.driver);
       setHost(p.host);
       setPort(p.port);
@@ -223,6 +225,7 @@ export function ConnectionDialog({
       // shop that's MySQL-first doesn't have to switch the dropdown every time.
       const def = usePreferences.getState().prefs.ui.defaultDriver ?? "postgres";
       setName("");
+      setGroup("");
       setDriver(def);
       setHost("localhost");
       setPort(DEFAULT_PORTS[def]);
@@ -267,6 +270,15 @@ export function ConnectionDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingId]);
 
+  /** Distinct group names already in use, for the datalist suggestion below
+   *  the Group field — a soft nudge toward reusing an existing name instead
+   *  of a near-duplicate (free text, so nothing enforces this). */
+  const existingGroups = useMemo(() => {
+    const names = new Set<string>();
+    for (const p of profiles) if (p.group) names.add(p.group);
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [profiles]);
+
   /** URI derived live from the discrete MongoDB fields (form mode). The
    *  password is intentionally excluded — it travels via the keychain. */
   const builtMongoUri = useMemo(
@@ -305,6 +317,7 @@ export function ConnectionDialog({
     return {
       id: editingId ?? draftId,
       name,
+      group: group.trim() || null,
       driver,
       host,
       port,
@@ -665,6 +678,19 @@ export function ConnectionDialog({
                         onChange={(e) => setName(e.target.value)}
                         placeholder={t("connectionDialog.fields.namePlaceholder")}
                       />
+                    </Field>
+                    <Field label={t("connectionDialog.fields.group")}>
+                      <Input
+                        value={group}
+                        onChange={(e) => setGroup(e.target.value)}
+                        placeholder={t("connectionDialog.fields.groupPlaceholder")}
+                        list="connection-group-suggestions"
+                      />
+                      <datalist id="connection-group-suggestions">
+                        {existingGroups.map((g) => (
+                          <option key={g} value={g} />
+                        ))}
+                      </datalist>
                     </Field>
                     <Field label={t("connectionDialog.fields.driver")}>
                       <Select

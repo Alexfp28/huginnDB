@@ -75,6 +75,10 @@ export interface ConnectionProfile {
   /** Session-only profile (e.g. a CLI ad-hoc connection) that the backend
    *  keeps in memory but never writes to `profiles.json`. */
   ephemeral?: boolean;
+  /** Free-text group/folder label for the connection list. `null`/absent
+   *  means ungrouped. Purely a display grouping — matched by string
+   *  equality in the frontend, no separate group registry. */
+  group?: string | null;
 }
 
 /** Database / schema row in the schema explorer. */
@@ -370,6 +374,10 @@ export interface GridPrefs {
    *  the grid maps it to one of these so toggling re-renders without a
    *  re-query. */
   bitDisplay: "true_false" | "zero_one";
+  /** User-resized column widths (px), keyed by `"<schema>.<table>"` then by
+   *  column name (see `tableKey` in `stores/schema.ts`). Ad-hoc query result
+   *  grids resize in-session only and never write here. */
+  columnWidths: Record<string, Record<string, number>>;
 }
 
 /** Schema-tree metric column. Source of truth for the enum is the frontend. */
@@ -401,6 +409,10 @@ export interface UiPrefs {
    * always shows the dialog; the other two apply that action silently.
    */
   cliConnectDefault: CliConnectDefault;
+  /** Names of connection-list groups currently collapsed in the sidebar.
+   *  Matched by string equality against the live `ConnectionProfile.group`
+   *  values — a stale entry from a renamed/deleted group is harmless. */
+  collapsedConnectionGroups: string[];
 }
 
 export type CellEditorMode = "modal" | "side";

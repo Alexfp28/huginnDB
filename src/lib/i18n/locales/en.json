@@ -58,17 +58,8 @@
     }
   },
   "connections": {
-    "sidebarTitle": "Connections",
-    "empty": "No connections yet. Click + to add one.",
-    "newTooltip": "New connection",
-    "connectTooltip": "Connect",
     "disconnectTooltip": "Disconnect",
-    "temporary": "Temporary connection — not saved to disk",
-    "temporaryShort": "temp",
-    "editTooltip": "Edit",
-    "deleteTooltip": "Delete",
     "deleteConfirm": "Delete connection \"{{name}}\"?",
-    "connectFailed": "Connect failed: {{message}}",
     "manageTitle": "Manage connections",
     "reconnectTooltip": "Connection lost — reconnect",
     "lost": "Connection lost: {{message}}"
@@ -84,6 +75,8 @@
     "fields": {
       "name": "Name",
       "namePlaceholder": "Production DB",
+      "group": "Group",
+      "groupPlaceholder": "e.g. Acme Corp (optional)",
       "driver": "Driver",
       "host": "Host",
       "port": "Port",
@@ -239,6 +232,15 @@
       "submit": "Drop table",
       "dropping": "Dropping…",
       "failed": "Drop failed: {{message}}"
+    },
+    "createDatabase": {
+      "title": "New database",
+      "description": "Create a new database on this server.",
+      "namePlaceholder": "Database name",
+      "submit": "Create",
+      "creating": "Creating…",
+      "failed": "Could not create database: {{message}}",
+      "createdSingleDb": "Database \"{{name}}\" created. This connection is scoped to a single database — open a new connection (or a multi-database one) to browse into it."
     },
     "security": "Security"
   },

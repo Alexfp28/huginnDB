@@ -129,6 +129,9 @@ export const api = {
   listDatabases: (connectionId: string) =>
     invoke<DatabaseInfo[]>("list_databases", { connectionId }),
 
+  createDatabase: (connectionId: string, name: string) =>
+    invoke<void>("create_database", { connectionId, name }),
+
   listTables: (connectionId: string, database?: string) =>
     invoke<TableInfo[]>("list_tables", { connectionId, database }),
 

@@ -79,6 +79,7 @@ mod tests {
             connection_string: None,
             auth_source: None,
             ephemeral,
+            group: None,
         }
     }
 

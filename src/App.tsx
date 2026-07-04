@@ -57,6 +57,8 @@ import { Console } from "@/components/Console";
 import { startLogBridge } from "@/lib/log-bridge";
 import { startCliConnectBridge } from "@/lib/cli-connect-bridge";
 import { startConnectionHealthBridge } from "@/lib/connection-health-bridge";
+import { startConnectionSyncBridge } from "@/lib/connection-sync-bridge";
+import { startPrefsSyncBridge } from "@/lib/prefs-sync-bridge";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CliConnectChoiceDialog } from "@/components/CliConnectChoiceDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
@@ -498,6 +500,36 @@ export default function App() {
     let unlisten: (() => void) | null = null;
     let cancelled = false;
     void startConnectionHealthBridge().then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // Cross-window sync (issue #18): every window shares one backend
+  // AppState, but each window's frontend used to hold a private snapshot
+  // of `active`/`profiles`/`prefs` with no way to learn about another
+  // window's connect/disconnect/profile edit/settings change.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    void startConnectionSyncBridge().then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    void startPrefsSyncBridge().then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
     });

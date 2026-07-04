@@ -89,3 +89,29 @@ export function formatBitValue(
   }
   return String(value);
 }
+
+/**
+ * Bucket items by their free-text `group` field (e.g. `ConnectionProfile`).
+ * Ungrouped items (`group` null/empty) come back separately so callers can
+ * render them flat, with no header — groups are sorted alphabetically by
+ * name for a stable, locale-aware order.
+ */
+export function bucketByGroup<T extends { group?: string | null }>(
+  items: T[],
+): { ungrouped: T[]; groups: Array<{ name: string; items: T[] }> } {
+  const ungrouped: T[] = [];
+  const byGroup = new Map<string, T[]>();
+  for (const item of items) {
+    if (item.group) {
+      const list = byGroup.get(item.group) ?? [];
+      list.push(item);
+      byGroup.set(item.group, list);
+    } else {
+      ungrouped.push(item);
+    }
+  }
+  const groups = Array.from(byGroup.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([name, groupItems]) => ({ name, items: groupItems }));
+  return { ungrouped, groups };
+}

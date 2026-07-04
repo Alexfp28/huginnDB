@@ -13,6 +13,7 @@
 
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// File name used for the persisted preferences blob.
@@ -68,6 +69,12 @@ pub struct GridPrefs {
     /// frontend grid maps it to the chosen representation, so toggling this
     /// re-renders without re-querying.
     pub bit_display: String,
+    /// User-resized column widths (px), keyed by `"<schema>.<table>"` then by
+    /// column name. Only populated for real browsed tables — ad-hoc query
+    /// result grids resize in-session only and never write here. Entries are
+    /// tiny (a `u16` each), so unlike `tab_state.json`'s query bodies this
+    /// isn't pruned; even thousands of tables/columns stay a small blob.
+    pub column_widths: HashMap<String, HashMap<String, u16>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,6 +106,11 @@ pub struct UiPrefs {
     /// dialog; the other two apply that action silently. Stringly-typed;
     /// the frontend owns the enum.
     pub cli_connect_default: String,
+    /// Names of connection-list groups (`ConnectionProfile.group`) currently
+    /// collapsed in the sidebar. Purely a display convenience — matched by
+    /// string equality against the live group names, so a renamed/deleted
+    /// group's stale entry here is harmless (it just never matches again).
+    pub collapsed_connection_groups: Vec<String>,
 }
 
 impl Default for Preferences {
@@ -138,6 +150,7 @@ impl Default for GridPrefs {
             default_page_size: 100,
             cell_preview: true,
             bit_display: "true_false".into(),
+            column_widths: HashMap::new(),
         }
     }
 }
@@ -153,6 +166,7 @@ impl Default for UiPrefs {
             cell_editor_mode: "modal".into(),
             default_driver: None,
             cli_connect_default: "ask".into(),
+            collapsed_connection_groups: Vec::new(),
         }
     }
 }

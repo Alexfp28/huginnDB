@@ -45,8 +45,10 @@ fn driver_str(pool: &DbPool) -> &'static str {
 
 /// Emit a SQL log entry after a statement has finished (successfully or
 /// otherwise). Pulled out so every call site stays a single line.
+#[allow(clippy::too_many_arguments)]
 fn log_sql(
     app: &AppHandle,
+    window_label: &str,
     connection_id: &str,
     driver: &str,
     sql: &str,
@@ -65,7 +67,7 @@ fn log_sql(
     if let Some(e) = error {
         entry = entry.error(e);
     }
-    log_bus::emit(app, entry);
+    log_bus::emit(app, window_label, entry);
 }
 
 /// Unwrap a `Result<_, sqlx::Error>` produced by a SQL call and, on
@@ -80,12 +82,12 @@ fn log_sql(
 /// 2. `return Err(...)` from inside an async closure would not exit the
 ///    outer function; a macro expands inline and does.
 macro_rules! try_sql {
-    ($app:expr, $cid:expr, $driver:expr, $sql:expr, $start:expr, $res:expr) => {
+    ($app:expr, $window:expr, $cid:expr, $driver:expr, $sql:expr, $start:expr, $res:expr) => {
         match $res {
             Ok(v) => v,
             Err(e) => {
                 let msg = e.to_string();
-                log_sql($app, $cid, $driver, $sql, $start, None, Some(&msg));
+                log_sql($app, $window, $cid, $driver, $sql, $start, None, Some(&msg));
                 return Err(e.into());
             }
         }
@@ -289,11 +291,12 @@ fn sqlite_result(rows: &[sqlx::sqlite::SqliteRow]) -> (Vec<ColumnMeta>, Vec<Vec<
 #[tauri::command]
 pub async fn execute_query(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     sql: String,
 ) -> AppResult<QueryResult> {
-    execute_with_state(&app, state.inner(), &connection_id, &sql).await
+    execute_with_state(&app, window.label(), state.inner(), &connection_id, &sql).await
 }
 
 /// Shared implementation used by both [`execute_query`] and
@@ -305,6 +308,7 @@ pub async fn execute_query(
 /// error) so the Console panel sees the same statement the engine ran.
 async fn execute_with_state(
     app: &AppHandle,
+    window_label: &str,
     state: &AppState,
     connection_id: &str,
     sql: &str,
@@ -320,6 +324,7 @@ async fn execute_with_state(
         match &result {
             Ok(r) => log_sql(
                 app,
+                window_label,
                 connection_id,
                 driver,
                 sql,
@@ -329,6 +334,7 @@ async fn execute_with_state(
             ),
             Err(e) => log_sql(
                 app,
+                window_label,
                 connection_id,
                 driver,
                 sql,
@@ -358,6 +364,7 @@ async fn execute_with_state(
         // sends argument-less queries via the simple-query (text) protocol.
         let rows_affected = try_sql!(
             app,
+            window_label,
             connection_id,
             driver,
             sql,
@@ -371,6 +378,7 @@ async fn execute_with_state(
         );
         log_sql(
             app,
+            window_label,
             connection_id,
             driver,
             sql,
@@ -391,6 +399,7 @@ async fn execute_with_state(
         DbPool::Postgres(p) => {
             let rows = try_sql!(
                 app,
+                window_label,
                 connection_id,
                 driver,
                 sql,
@@ -402,6 +411,7 @@ async fn execute_with_state(
         DbPool::Mysql(p) => {
             let rows = try_sql!(
                 app,
+                window_label,
                 connection_id,
                 driver,
                 sql,
@@ -413,6 +423,7 @@ async fn execute_with_state(
         DbPool::Sqlite(p) => {
             let rows = try_sql!(
                 app,
+                window_label,
                 connection_id,
                 driver,
                 sql,
@@ -432,6 +443,7 @@ async fn execute_with_state(
     };
     log_sql(
         app,
+        window_label,
         connection_id,
         driver,
         sql,
@@ -465,10 +477,12 @@ async fn execute_with_state(
 #[tauri::command]
 pub async fn execute_batch(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
+    let window_label = window.label();
     let pool = pool_for(state.inner(), &connection_id)?;
     let driver = driver_str(&pool);
 
@@ -498,7 +512,16 @@ pub async fn execute_batch(
                             let (columns, data) = $decode(&rows);
                             let ra = data.len() as u64;
                             total_affected += ra;
-                            log_sql(&app, &connection_id, driver, sql, start, Some(ra), None);
+                            log_sql(
+                                &app,
+                                window_label,
+                                &connection_id,
+                                driver,
+                                sql,
+                                start,
+                                Some(ra),
+                                None,
+                            );
                             last_result = Some(QueryResult {
                                 columns,
                                 rows: data,
@@ -516,7 +539,16 @@ pub async fn execute_batch(
                         }
                         Err(e) => {
                             let msg = e.to_string();
-                            log_sql(&app, &connection_id, driver, sql, start, None, Some(&msg));
+                            log_sql(
+                                &app,
+                                window_label,
+                                &connection_id,
+                                driver,
+                                sql,
+                                start,
+                                None,
+                                Some(&msg),
+                            );
                             outcomes.push(StmtOutcome {
                                 index,
                                 preview: stmt_preview(sql),
@@ -540,7 +572,16 @@ pub async fn execute_batch(
                         Ok(r) => {
                             let ra = r.rows_affected();
                             total_affected += ra;
-                            log_sql(&app, &connection_id, driver, sql, start, Some(ra), None);
+                            log_sql(
+                                &app,
+                                window_label,
+                                &connection_id,
+                                driver,
+                                sql,
+                                start,
+                                Some(ra),
+                                None,
+                            );
                             outcomes.push(StmtOutcome {
                                 index,
                                 preview: stmt_preview(sql),
@@ -551,7 +592,16 @@ pub async fn execute_batch(
                         }
                         Err(e) => {
                             let msg = e.to_string();
-                            log_sql(&app, &connection_id, driver, sql, start, None, Some(&msg));
+                            log_sql(
+                                &app,
+                                window_label,
+                                &connection_id,
+                                driver,
+                                sql,
+                                start,
+                                None,
+                                Some(&msg),
+                            );
                             outcomes.push(StmtOutcome {
                                 index,
                                 preview: stmt_preview(sql),
@@ -572,6 +622,7 @@ pub async fn execute_batch(
         DbPool::Postgres(p) => {
             let mut conn = try_sql!(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 "(batch)",
@@ -583,6 +634,7 @@ pub async fn execute_batch(
         DbPool::Mysql(p) => {
             let mut conn = try_sql!(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 "(batch)",
@@ -594,6 +646,7 @@ pub async fn execute_batch(
         DbPool::Sqlite(p) => {
             let mut conn = try_sql!(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 "(batch)",
@@ -725,6 +778,7 @@ fn build_filter_clause(
 #[allow(clippy::too_many_arguments)]
 pub async fn fetch_table_data(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -741,6 +795,7 @@ pub async fn fetch_table_data(
     // interaction. Defaults to `true` (count) when omitted.
     with_count: Option<bool>,
 ) -> AppResult<QueryResult> {
+    let window_label = window.label();
     let pool = pool_for(state.inner(), &connection_id)?;
 
     // MongoDB browse: delegate to the mongo module (find + count). Clone the
@@ -826,6 +881,7 @@ pub async fn fetch_table_data(
             }
             let rows = try_sql!(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 &data_sql,
@@ -857,6 +913,7 @@ pub async fn fetch_table_data(
             }
             let rows = try_sql!(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 &data_sql,
@@ -888,6 +945,7 @@ pub async fn fetch_table_data(
             }
             let rows = try_sql!(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 &data_sql,
@@ -917,6 +975,7 @@ pub async fn fetch_table_data(
     let elapsed_ms = start.elapsed().as_millis() as u64;
     log_sql(
         &app,
+        window_label,
         &connection_id,
         driver,
         &data_sql,
@@ -932,6 +991,7 @@ pub async fn fetch_table_data(
         let count_start = Instant::now();
         let raw_count: Option<i64> = try_sql!(
             &app,
+            window_label,
             &connection_id,
             driver,
             &count_sql,
@@ -964,6 +1024,7 @@ pub async fn fetch_table_data(
         let total = raw_count.map(|n| n as u64);
         log_sql(
             &app,
+            window_label,
             &connection_id,
             driver,
             &count_sql,
@@ -1005,6 +1066,7 @@ pub async fn fetch_table_data(
 #[allow(clippy::too_many_arguments)]
 pub async fn update_cell(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -1015,6 +1077,7 @@ pub async fn update_cell(
     value: Option<String>,
     column_type: Option<String>,
 ) -> AppResult<u64> {
+    let window_label = window.label();
     if pk_columns.is_empty() {
         return Err(AppError::InvalidInput(
             "update_cell: no primary-key columns supplied".into(),
@@ -1049,6 +1112,7 @@ pub async fn update_cell(
         match &res {
             Ok(n) => log_sql(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 "(mongo update)",
@@ -1058,6 +1122,7 @@ pub async fn update_cell(
             ),
             Err(e) => log_sql(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 "(mongo update)",
@@ -1071,6 +1136,9 @@ pub async fn update_cell(
 
     let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
     let pg = matches!(&pool, DbPool::Postgres(_));
+    // `schema` is consumed below to build `qt`; keep a copy for the catalog
+    // fallback further down (only actually read when `column_type` is absent).
+    let schema_for_catalog = schema.clone();
 
     let qt = if let Some(s) = schema {
         format!(
@@ -1108,11 +1176,25 @@ pub async fn update_cell(
     // unaffected. Only MySQL needs this; PG/SQLite cast textual literals to
     // their bit/blob types correctly on their own.
     let is_mysql = matches!(&pool, DbPool::Mysql(_));
+    // Same fallback as `insert_row`: if the frontend's `column_type` hint is
+    // missing (stale/unloaded schema cache), fall back to a catalog lookup
+    // rather than silently binding a MySQL BIT column as plain text (issue #15).
+    let catalog_bit_cast = is_mysql
+        && column_type.is_none()
+        && list_columns_inner(state.inner(), &connection_id, schema_for_catalog, table.clone())
+            .await
+            .map(|cols| {
+                cols.iter().any(|c| {
+                    c.name == column && c.data_type.trim().to_ascii_uppercase().starts_with("BIT")
+                })
+            })
+            .unwrap_or(false);
     let bit_cast = is_mysql
-        && column_type
+        && (column_type
             .as_deref()
             .map(|t| t.trim().to_ascii_uppercase().starts_with("BIT"))
-            .unwrap_or(false);
+            .unwrap_or(false)
+            || catalog_bit_cast);
     let set_placeholder = if pg {
         "$1".to_string()
     } else if bit_cast {
@@ -1196,9 +1278,10 @@ pub async fn update_cell(
         }
     }
     .await;
-    let affected = try_sql!(&app, &connection_id, driver, &sql, start, res);
+    let affected = try_sql!(&app, window_label, &connection_id, driver, &sql, start, res);
     log_sql(
         &app,
+        window_label,
         &connection_id,
         driver,
         &sql,
@@ -1253,6 +1336,7 @@ fn json_to_string(v: &Value) -> Option<String> {
 #[allow(clippy::too_many_arguments)]
 pub async fn delete_rows(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -1260,6 +1344,7 @@ pub async fn delete_rows(
     pk_columns: Vec<String>,
     pk_value_rows: Vec<Vec<Value>>,
 ) -> AppResult<u64> {
+    let window_label = window.label();
     if pk_columns.is_empty() {
         return Err(AppError::InvalidInput(
             "delete_rows: no primary-key columns supplied".into(),
@@ -1293,6 +1378,7 @@ pub async fn delete_rows(
         match &res {
             Ok(n) => log_sql(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 "(mongo delete)",
@@ -1302,6 +1388,7 @@ pub async fn delete_rows(
             ),
             Err(e) => log_sql(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 "(mongo delete)",
@@ -1353,6 +1440,7 @@ pub async fn delete_rows(
     let start = Instant::now();
     let affected = try_sql!(
         &app,
+        window_label,
         &connection_id,
         driver,
         &sql,
@@ -1384,6 +1472,7 @@ pub async fn delete_rows(
     );
     log_sql(
         &app,
+        window_label,
         &connection_id,
         driver,
         &sql,
@@ -1405,8 +1494,10 @@ pub async fn delete_rows(
 /// frontend. MySQL/SQLite return the last insert id when available; if
 /// neither path applies the response is `null`.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_row(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -1414,6 +1505,7 @@ pub async fn insert_row(
     pk_column: Option<String>,
     values: Vec<RowValue>,
 ) -> AppResult<Value> {
+    let window_label = window.label();
     if values.is_empty() {
         return Err(AppError::InvalidInput(
             "insert_row: no columns supplied".into(),
@@ -1430,6 +1522,7 @@ pub async fn insert_row(
         match &res {
             Ok(_) => log_sql(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 "(mongo insert)",
@@ -1439,6 +1532,7 @@ pub async fn insert_row(
             ),
             Err(e) => log_sql(
                 &app,
+                window_label,
                 &connection_id,
                 driver,
                 "(mongo insert)",
@@ -1464,6 +1558,28 @@ pub async fn insert_row(
         .collect();
     let binds: Vec<Option<String>> = values.iter().map(|v| v.value.clone()).collect();
 
+    // The frontend supplies `column_type` from whatever schema-cache/query-result
+    // metadata it has on hand at commit time; if that's stale or hasn't loaded
+    // yet, a MySQL BIT column can arrive with `column_type: None`, in which case
+    // the branch below would silently bind it as plain text and MySQL rejects
+    // the literal with "Data too long for column" (issue #15). Only pay for a
+    // catalog round-trip when at least one value actually lacks a type hint —
+    // the common case (frontend metadata present) skips this entirely.
+    let catalog_bit_columns: std::collections::HashSet<String> =
+        if is_mysql && values.iter().any(|v| v.column_type.is_none()) {
+            list_columns_inner(state.inner(), &connection_id, schema.clone(), table.clone())
+                .await
+                .map(|cols| {
+                    cols.into_iter()
+                        .filter(|c| c.data_type.trim().to_ascii_uppercase().starts_with("BIT"))
+                        .map(|c| c.name)
+                        .collect()
+                })
+                .unwrap_or_default()
+        } else {
+            std::collections::HashSet::new()
+        };
+
     // MySQL BIT columns require CAST(? AS UNSIGNED) — binding a plain string
     // stores the ASCII bytes of the literal rather than its numeric value (e.g.
     // "1" stores byte 0x31 = 49, not integer 1). Build BIT-aware placeholders
@@ -1476,7 +1592,8 @@ pub async fn insert_row(
                     .column_type
                     .as_deref()
                     .map(|t| t.trim().to_ascii_uppercase().starts_with("BIT"))
-                    .unwrap_or(false);
+                    .unwrap_or(false)
+                    || catalog_bit_columns.contains(&rv.column);
                 if is_bit {
                     let normalized = rv.value.as_deref().map(normalize_bit_value);
                     ("CAST(? AS UNSIGNED)".to_string(), normalized)
@@ -1556,8 +1673,25 @@ pub async fn insert_row(
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
 
-    let (rows, returned) = try_sql!(&app, &connection_id, driver, &sql_used, start, outcome);
-    log_sql(&app, &connection_id, driver, &sql_used, start, rows, None);
+    let (rows, returned) = try_sql!(
+        &app,
+        window_label,
+        &connection_id,
+        driver,
+        &sql_used,
+        start,
+        outcome
+    );
+    log_sql(
+        &app,
+        window_label,
+        &connection_id,
+        driver,
+        &sql_used,
+        start,
+        rows,
+        None,
+    );
     Ok(returned)
 }
 

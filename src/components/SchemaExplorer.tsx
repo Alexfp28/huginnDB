@@ -30,6 +30,7 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
+  Plus,
   RefreshCw,
   Table as TableIcon,
   Eye,
@@ -174,6 +175,13 @@ function SingleDbExplorer({
 
   const [renameTarget, setRenameTarget] = useState<TableInfo | null>(null);
   const [dropTarget, setDropTarget] = useState<TableInfo | null>(null);
+  // Same rationale as `MultiDbExplorer`'s "+" button (see `create_database`'s
+  // doc comment): server-level DDL, Postgres/MySQL only. Offered here too —
+  // a profile scoped to one specific database is at least as common as
+  // multi-DB browsing, and there's no reason someone connected that way
+  // can't add a sibling database on the same server.
+  const canCreateDatabase = driver === "postgres" || driver === "mysql";
+  const [createDbOpen, setCreateDbOpen] = useState(false);
 
   useEffect(() => {
     // Fire refresh only when no successful fetch has happened yet AND no
@@ -245,6 +253,16 @@ function SingleDbExplorer({
             {title}
           </div>
           <div className="flex items-center gap-0.5">
+            {canCreateDatabase && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setCreateDbOpen(true)}
+                title={t("schema.createDatabase.title")}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            )}
             <Button
               size="icon"
               variant="ghost"
@@ -266,6 +284,21 @@ function SingleDbExplorer({
             </Button>
           </div>
         </div>
+      )}
+      {createDbOpen && (
+        <CreateDatabaseDialog
+          connectionId={connectionId}
+          onClose={() => setCreateDbOpen(false)}
+          onDone={(name) => {
+            setCreateDbOpen(false);
+            refresh(connectionId);
+            // This connection is scoped to one database, so there's no
+            // visible database list here for the user to notice updated —
+            // unlike the multi-DB toolbar's "+", where the new node
+            // appearing in the tree IS the confirmation.
+            alert(t("schema.createDatabase.createdSingleDb", { name }));
+          }}
+        />
       )}
       {!isControlled && (
         <div className="px-3 pb-2">
@@ -422,6 +455,14 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   const warmDatabases = useSchema((s) => s.warmDatabases);
   const warm = useSchema((s) => s.warm[parentId]);
   const toggleNode = useSchema((s) => s.toggleNode);
+  // CREATE DATABASE is server-level DDL, only meaningful for Postgres/MySQL —
+  // SQLite never reaches multi-DB mode at all, and MongoDB creates databases
+  // implicitly on first write (see `create_database`'s doc comment).
+  const driver = useConnections((s) =>
+    s.profiles.find((p) => p.id === parentId)?.driver,
+  );
+  const canCreateDatabase = driver === "postgres" || driver === "mysql";
+  const [createDbOpen, setCreateDbOpen] = useState(false);
   // Subscribe to the whole map so `matchingDbs` reactively recomputes
   // as each prefetch lands. The membership check is cheap (Map lookup
   // per database) so the broader subscription is fine here.
@@ -579,6 +620,16 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
           {t("schema.title")}
         </div>
         <div className="flex items-center gap-0.5">
+          {canCreateDatabase && (
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setCreateDbOpen(true)}
+              title={t("schema.createDatabase.title")}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button
             size="icon"
             variant="ghost"
@@ -600,6 +651,16 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
           </Button>
         </div>
       </div>
+      {createDbOpen && (
+        <CreateDatabaseDialog
+          connectionId={parentId}
+          onClose={() => setCreateDbOpen(false)}
+          onDone={() => {
+            setCreateDbOpen(false);
+            refresh(parentId);
+          }}
+        />
+      )}
       <div className="px-3 pb-2">
         <Input
           value={filter}
@@ -1225,6 +1286,77 @@ function RenameTableDialog({
             }
           >
             {submitting ? t("schema.rename.renaming") : t("schema.rename.submit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Modal for `CREATE DATABASE` — the "+" button in both the multi-DB
+ *  explorer toolbar and the single-DB root header. Postgres/MySQL only;
+ *  see `create_database`'s doc comment for why. */
+function CreateDatabaseDialog({
+  connectionId,
+  onClose,
+  onDone,
+}: {
+  connectionId: string;
+  onClose: () => void;
+  /** Fired with the created database's name — a single-DB caller has no
+   *  visible list to refresh, so it uses this to confirm success instead. */
+  onDone: (name: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.createDatabase(connectionId, trimmed);
+      onDone(trimmed);
+    } catch (e) {
+      setError(String(e));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("schema.createDatabase.title")}</DialogTitle>
+          <DialogDescription>
+            {t("schema.createDatabase.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("schema.createDatabase.namePlaceholder")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+        />
+        {error && (
+          <div className="text-xs text-destructive">
+            {t("schema.createDatabase.failed", { message: error })}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            {t("common.cancel")}
+          </Button>
+          <Button onClick={submit} disabled={submitting || !name.trim()}>
+            {submitting
+              ? t("schema.createDatabase.creating")
+              : t("schema.createDatabase.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

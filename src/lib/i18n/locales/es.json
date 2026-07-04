@@ -58,17 +58,8 @@
     }
   },
   "connections": {
-    "sidebarTitle": "Conexiones",
-    "empty": "Aún no hay conexiones. Pulsa + para crear una.",
-    "newTooltip": "Nueva conexión",
-    "connectTooltip": "Conectar",
     "disconnectTooltip": "Desconectar",
-    "temporary": "Conexión temporal — no se guarda en disco",
-    "temporaryShort": "temp",
-    "editTooltip": "Editar",
-    "deleteTooltip": "Eliminar",
     "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",
-    "connectFailed": "Error al conectar: {{message}}",
     "manageTitle": "Gestionar conexiones",
     "reconnectTooltip": "Conexión perdida — reconectar",
     "lost": "Conexión perdida: {{message}}"
@@ -84,6 +75,8 @@
     "fields": {
       "name": "Nombre",
       "namePlaceholder": "Base de datos de producción",
+      "group": "Grupo",
+      "groupPlaceholder": "p. ej. Acme Corp (opcional)",
       "driver": "Driver",
       "host": "Host",
       "port": "Puerto",
@@ -239,6 +232,15 @@
       "submit": "Eliminar tabla",
       "dropping": "Eliminando…",
       "failed": "Error al eliminar: {{message}}"
+    },
+    "createDatabase": {
+      "title": "Nueva base de datos",
+      "description": "Crea una nueva base de datos en este servidor.",
+      "namePlaceholder": "Nombre de la base de datos",
+      "submit": "Crear",
+      "creating": "Creando…",
+      "failed": "No se pudo crear la base de datos: {{message}}",
+      "createdSingleDb": "Base de datos \"{{name}}\" creada. Esta conexión está limitada a una sola base de datos — abre una conexión nueva (o una en modo multi-base) para explorarla."
     },
     "security": "Seguridad"
   },

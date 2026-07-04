@@ -85,6 +85,12 @@ pub struct ConnectionProfile {
     /// nothing about an ephemeral profile ever touches disk or the keychain.
     #[serde(default)]
     pub ephemeral: bool,
+    /// Free-text group/folder label for organizing the connection list (e.g.
+    /// several drivers/environments for the same client). `None`/empty means
+    /// ungrouped. Grouping is purely a display concern — no separate group
+    /// registry, just equality-matched on this string in the frontend.
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 /// How the client decides whether to trust the SSH server's host key.
@@ -232,6 +238,14 @@ impl ActiveConnections {
     /// don't need to know it exists.
     pub fn get(&self, id: &str) -> Option<DbPool> {
         self.inner.get(id).map(|a| a.pool.clone())
+    }
+
+    /// Whether `id` already has a live pool. Used by `connect` to make
+    /// re-connecting to an already-active profile from a second window a
+    /// no-op instead of tearing down the first window's pool (and any SSH
+    /// tunnel) via [`Self::insert`]'s replace semantics.
+    pub fn contains(&self, id: &str) -> bool {
+        self.inner.contains_key(id)
     }
 
     /// Ids of every currently active connection.

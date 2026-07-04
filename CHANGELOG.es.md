@@ -8,6 +8,110 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-07-04
+
+### Añadido
+
+- **Crear base de datos.** Tanto la barra de herramientas del explorador
+  multi-BD como la cabecera raíz de una conexión de una sola base de datos
+  ganan un botón "+" (solo Postgres/MySQL — es DDL de nivel de servidor,
+  oculto para SQLite/MongoDB) que abre un diálogo de nombre y ejecuta
+  `CREATE DATABASE` mediante un nuevo comando de backend `create_database`,
+  validado con la misma lista de permitidos `validate_ident` que usa el
+  editor de estructura. La barra multi-BD refresca su lista de bases de
+  datos al crear una; una conexión de una sola base de datos no tiene esa
+  lista que mostrar, así que confirma con un mensaje en su lugar (un perfil
+  limitado a una base de datos es al menos tan común como la navegación
+  multi-BD — no hay razón para que sea el único modo que no puede crear una
+  base de datos hermana en el mismo servidor).
+- **Columnas redimensionables en la rejilla de datos.** `DataGrid.tsx`
+  incorpora ahora la API de redimensionado de columnas de TanStack Table
+  (tiradores en los bordes de columna, `columnResizeMode: "onEnd"` para que
+  arrastrar no dispare un re-render por cada frame). Los anchos se
+  persisten por tabla navegada (nuevo `grid.columnWidths` en `prefs.json`,
+  indexado por `"<esquema>.<tabla>"` y luego por nombre de columna) — las
+  rejillas de resultados de consultas ad-hoc redimensionan solo durante la
+  sesión, ya que no tienen una identidad de tabla estable a la que
+  asociarlo.
+- **Agrupación de conexiones.** `ConnectionProfile` gana un campo `group`
+  de texto libre (un solo grupo por conexión, sin registro de grupos
+  aparte — se agrupan por igualdad simple de texto), editable desde un
+  nuevo campo "Grupo" en el diálogo de conexión (con sugerencias de grupos
+  ya existentes para evitar duplicados por error). El desplegable de
+  conexiones de la barra de estado (`StatusConnections.tsx`) — el selector
+  real que usa la app — agrupa ahora tanto las conexiones activas como las
+  disponibles en cabeceras colapsables por grupo, dejando las conexiones
+  sin grupo igual que antes, sin cabecera. El estado de colapsado se guarda
+  por nombre de grupo en `prefs.json` (`ui.collapsedConnectionGroups`).
+  Nuevo helper `bucketByGroup` en `src/lib/utils.ts`.
+
+### Corregido
+
+- **Conectar el mismo perfil desde una segunda ventana tiraba el pool en
+  vivo de la primera ventana.** `ActiveConnections::insert` reemplaza
+  incondicionalmente cualquier pool ya registrado para un id — correcto
+  para reconectar un pool muerto, incorrecto para una segunda ventana
+  llamando a `connect` sobre un perfil ya activo, lo que tiraba en silencio
+  el pool (y cualquier túnel SSH) de la primera ventana. `connect` ahora
+  comprueba `ActiveConnections::contains` primero y no hace nada (reutiliza
+  el pool existente) en vez de caer al camino de reemplazo.
+- **Ninguna ventana se enteraba de las conexiones, ediciones de perfil o
+  cambios de preferencias hechos en otra ventana.** Cada ventana de Tauri
+  comparte el mismo `AppState` de backend, pero cada frontend guardaba una
+  copia privada de `active`/`profiles`/`prefs` tomada solo al arrancar, sin
+  ningún puente de vuelta — peor que simple desactualización en el caso de
+  las preferencias, ya que cada guardado envía el blob *entero* (no un
+  diff): dos ventanas cambiando ajustes distintos podían perder en silencio
+  el que se guardara primero en cuanto se disparara el guardado con
+  retardo de la otra. `connect`/`disconnect`/`save_profile`/
+  `delete_profile`/`import_profiles`/`update_preferences` emiten ahora los
+  eventos `connection-opened`/`-closed`/`profiles-changed`/`prefs-changed`;
+  nuevos bridges de frontend (`connection-sync-bridge.ts`,
+  `prefs-sync-bridge.ts`) los aplican en el store de cada ventana —
+  `markConnected`/`markDisconnected` en `stores/connections.ts` (extraídos
+  de `connect()`/`disconnect()` para que la ruta de sincronización y la
+  ruta local compartan exactamente la misma limpieza, incluido el barrido
+  de pestañas/esquema de las conexiones hijas sintéticas multi-BD) y
+  `applyExternal` en `stores/preferences.ts` (adopta el snapshot recibido
+  sin volver a disparar un guardado, así que no puede entrar en bucle ni
+  volver a competir).
+- **`insert_row`/`update_cell` de MySQL podían enlazar una columna `BIT`
+  como texto plano cuando la metadata de caché de esquema del frontend aún
+  no había cargado.** Ambos comandos decidían si envolver el placeholder de
+  una columna `BIT` de MySQL en `CAST(? AS UNSIGNED)` según una pista
+  `column_type` que envía el frontend junto al valor; cuando esa pista es
+  `None` (caché de esquema vacía/desactualizada para la tabla en
+  cuestión), el valor se enlazaba como una cadena de texto plano, que MySQL
+  rechaza con `1406 (22001): Data too long for column` para cualquier cosa
+  más ancha de un carácter (p. ej. `"true"`). Ambos comandos ahora recurren
+  a una consulta de catálogo (`list_columns_inner`, el mismo helper que ya
+  usa `fetch_fk_options`) cuando falta la pista, así que una columna `BIT`
+  se detecta correctamente de cualquier forma. `insert_row` solo paga el
+  viaje de ida y vuelta extra cuando al menos un valor realmente carece de
+  pista de tipo.
+- **Las entradas de log de la Consola y del ciclo de vida de la conexión se
+  filtraban entre ventanas.** Cada ventana de Tauri (la principal, o
+  cualquier "Ventana nueva" secundaria) montaba el mismo frontend y se
+  suscribía de forma independiente al mismo evento de log del backend, que
+  se emitía como broadcast a todo el proceso (`AppHandle::emit`) en vez de
+  dirigido — así que una consulta ejecutada en una ventana aparecía también
+  en la Consola de todas las demás ventanas abiertas, haciendo que una
+  ventana secundaria pareciera una copia sin sentido de la principal en vez
+  de una instancia independiente. `log_bus::emit` recibe ahora la etiqueta
+  de la ventana de origen y entrega solo a esa ventana
+  (`AppHandle::emit_to`); todos los comandos que producen una entrada de
+  log SQL o de ciclo de vida de conexión (`execute_query`, `execute_batch`,
+  `fetch_table_data`, `update_cell`, `delete_rows`, `insert_row`, `connect`,
+  `disconnect`, `test_connection`, `open_database_view`) reciben ahora un
+  parámetro `tauri::Window` (inyectado automáticamente por Tauri desde el
+  webview invocante — sin cambios en el frontend) para suministrarla. La
+  entrada de diagnóstico propia del keepalive en segundo plano no tiene una
+  ventana de origen única (informa sobre una conexión que cualquier
+  ventana puede estar navegando), así que sigue siendo broadcast vía una
+  nueva `log_bus::broadcast`; el evento separado `connection-lost` que
+  emite para la UX de reconexión ya era correcto como broadcast y no se ha
+  tocado.
+
 ## [1.4.0] — 2026-07-02
 
 ### Añadido

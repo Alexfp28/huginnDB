@@ -75,7 +75,7 @@ pub fn spawn(app: AppHandle, connection_id: String, pool: DbPool) -> KeepaliveHa
             }
             if let Err(e) = ping(&pool).await {
                 let msg = e.to_string();
-                log_bus::emit(
+                log_bus::broadcast(
                     &app,
                     LogEntry::new(LogKind::Connection)
                         .connection_id(connection_id.clone())

@@ -52,6 +52,7 @@ const DEFAULT_PREFS: Preferences = {
     defaultPageSize: 100,
     cellPreview: true,
     bitDisplay: "true_false",
+    columnWidths: {},
   },
   ui: {
     confirmDestructive: true,
@@ -62,6 +63,7 @@ const DEFAULT_PREFS: Preferences = {
     cellEditorMode: "modal",
     defaultDriver: null,
     cliConnectDefault: "ask",
+    collapsedConnectionGroups: [],
   },
 };
 
@@ -73,6 +75,16 @@ interface PreferencesState {
   updateGrid: (patch: Partial<GridPrefs>) => void;
   updateUi: (patch: Partial<UiPrefs>) => void;
   resetAll: () => void;
+  /**
+   * Adopt a snapshot that's already persisted elsewhere — the cross-window
+   * `prefs-changed` broadcast (`prefs-sync-bridge.ts`) after another window
+   * saved. Deliberately does NOT call `scheduleSave`: the payload came from
+   * a save that already completed, so re-saving it here would be a
+   * redundant disk write at best and, at worst, a race against a newer
+   * local edit made in the moment between the event firing and this
+   * running.
+   */
+  applyExternal: (prefs: Preferences) => void;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -189,6 +201,10 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   resetAll() {
     set({ prefs: DEFAULT_PREFS });
     scheduleSave(DEFAULT_PREFS);
+  },
+
+  applyExternal(prefs) {
+    set({ prefs });
   },
 }));
 

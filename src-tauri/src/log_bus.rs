@@ -127,9 +127,25 @@ impl LogEntry {
     }
 }
 
-/// Push an entry onto the bus. Errors from the Tauri emitter are
-/// swallowed on purpose — see the module-level note.
-pub fn emit(app: &AppHandle, entry: LogEntry) {
+/// Push an entry onto the bus, targeted at the window that triggered it.
+///
+/// Uses `emit_to` rather than a broadcast `emit`: every window (main or a
+/// secondary "New window") mounts the same frontend and would otherwise all
+/// receive — and independently render — every other window's Console
+/// entries, making a secondary window look like a pointless copy of the
+/// main one. Errors from the Tauri emitter are swallowed on purpose — see
+/// the module-level note.
+pub fn emit(app: &AppHandle, window_label: &str, entry: LogEntry) {
+    let _ = app.emit_to(window_label, LOG_EVENT, entry);
+}
+
+/// Push an entry to every open window.
+///
+/// For entries with no single originating window — background tasks like
+/// [`crate::keepalive`], which report on a connection shared by every
+/// window that may be browsing it — broadcasting is correct: unlike a
+/// command-triggered [`emit`], there's no "wrong" window to filter out.
+pub fn broadcast(app: &AppHandle, entry: LogEntry) {
     let _ = app.emit(LOG_EVENT, entry);
 }
 

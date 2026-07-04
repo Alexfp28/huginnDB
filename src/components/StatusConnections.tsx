@@ -11,12 +11,21 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronUp, Plug, RotateCw, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Plug,
+  RotateCw,
+  X,
+} from "lucide-react";
 import { useConnections } from "@/stores/connections";
 import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
+import { usePreferences } from "@/stores/preferences";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -26,7 +35,7 @@ import {
 } from "@/components/ui/dropdown";
 import { DriverBadge } from "@/components/DriverBadge";
 import { driverMismatchHint } from "@/lib/driver";
-import { cn } from "@/lib/utils";
+import { bucketByGroup, cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
 
 export function StatusConnections() {
@@ -42,6 +51,10 @@ export function StatusConnections() {
   const closeTabs = useTabs((s) => s.closeForConnection);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
+  const collapsedGroups = usePreferences(
+    (s) => s.prefs.ui.collapsedConnectionGroups,
+  );
+  const updateUi = usePreferences((s) => s.updateUi);
 
   // Split profiles into active / idle. Both inputs are reference-stable, so
   // deriving here (rather than via a store selector) honours the Zustand rule.
@@ -51,6 +64,24 @@ export function StatusConnections() {
     for (const p of profiles) (active.has(p.id) ? a : idle).push(p);
     return { activeProfiles: a, idleProfiles: idle };
   }, [profiles, active]);
+
+  // Bucket each section by `group` — a group collapsed here hides it in
+  // both Active and Available, matching a user's expectation that "Acme"
+  // is one thing to fold, not two independent toggles.
+  const activeBuckets = useMemo(
+    () => bucketByGroup(activeProfiles),
+    [activeProfiles],
+  );
+  const idleBuckets = useMemo(() => bucketByGroup(idleProfiles), [idleProfiles]);
+
+  function toggleGroup(name: string) {
+    const collapsed = collapsedGroups.includes(name);
+    updateUi({
+      collapsedConnectionGroups: collapsed
+        ? collapsedGroups.filter((g) => g !== name)
+        : [...collapsedGroups, name],
+    });
+  }
 
   // The connection currently in focus (a live pool the workspace points at).
   // Drives the trigger label so the active connection is visible at a glance.
@@ -103,6 +134,110 @@ export function StatusConnections() {
     }
   }
 
+  function renderActiveItem(p: ConnectionProfile) {
+    const lostError = lostConnections[p.id];
+    const isLost = !!lostError;
+    return (
+      <DropdownMenuItem
+        key={p.id}
+        onSelect={() => setSelected(p.id)}
+        className="gap-2"
+      >
+        {selected === p.id ? (
+          <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
+        ) : (
+          <span
+            className={cn(
+              "h-1.5 w-1.5 shrink-0 rounded-full",
+              isLost ? "bg-destructive" : "bg-brand",
+            )}
+          />
+        )}
+        <span
+          className={cn(
+            "flex-1 truncate text-xs",
+            selected === p.id && "font-semibold",
+          )}
+          title={isLost ? t("connections.lost", { message: lostError }) : undefined}
+        >
+          {p.name}
+        </span>
+        {versions[p.id] && !isLost && (
+          <span className="max-w-[6rem] truncate font-mono text-[10px] text-muted-foreground">
+            {versions[p.id]}
+          </span>
+        )}
+        <DriverBadge driver={p.driver} />
+        {isLost ? (
+          <button
+            type="button"
+            title={t("connections.reconnectTooltip")}
+            className="ml-0.5 rounded-sm p-0.5 text-destructive transition-colors hover:bg-destructive/15"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void handleReconnect(p);
+            }}
+          >
+            <RotateCw className="h-3 w-3" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            title={t("statusBar.disconnect")}
+            className="ml-0.5 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+            onClick={(e) => {
+              // Don't let the click bubble to the row's onSelect (jump).
+              e.preventDefault();
+              e.stopPropagation();
+              void handleDisconnect(p.id);
+            }}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </DropdownMenuItem>
+    );
+  }
+
+  function renderIdleItem(p: ConnectionProfile) {
+    return (
+      <DropdownMenuItem
+        key={p.id}
+        onSelect={() => void handleConnect(p)}
+        className="gap-2"
+      >
+        <Plug className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="flex-1 truncate text-xs">{p.name}</span>
+        <DriverBadge driver={p.driver} />
+      </DropdownMenuItem>
+    );
+  }
+
+  /** One group's collapsible header, shared by the Active/Available lists. */
+  function GroupHeader({ name, count: n }: { name: string; count: number }) {
+    const collapsed = collapsedGroups.includes(name);
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleGroup(name);
+        }}
+        className="flex w-full items-center gap-1 px-2 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+      >
+        {collapsed ? (
+          <ChevronRight className="h-3 w-3 shrink-0" />
+        ) : (
+          <ChevronDown className="h-3 w-3 shrink-0" />
+        )}
+        <span className="truncate">{name}</span>
+        <span className="text-muted-foreground/60">({n})</span>
+      </button>
+    );
+  }
+
   const count = activeProfiles.length;
 
   return (
@@ -149,71 +284,15 @@ export function StatusConnections() {
             {t("statusBar.noConnections")}
           </div>
         ) : (
-          activeProfiles.map((p) => {
-            const lostError = lostConnections[p.id];
-            const isLost = !!lostError;
-            return (
-              <DropdownMenuItem
-                key={p.id}
-                onSelect={() => setSelected(p.id)}
-                className="gap-2"
-              >
-                {selected === p.id ? (
-                  <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
-                ) : (
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 shrink-0 rounded-full",
-                      isLost ? "bg-destructive" : "bg-brand",
-                    )}
-                  />
-                )}
-                <span
-                  className={cn(
-                    "flex-1 truncate text-xs",
-                    selected === p.id && "font-semibold",
-                  )}
-                  title={isLost ? t("connections.lost", { message: lostError }) : undefined}
-                >
-                  {p.name}
-                </span>
-                {versions[p.id] && !isLost && (
-                  <span className="max-w-[6rem] truncate font-mono text-[10px] text-muted-foreground">
-                    {versions[p.id]}
-                  </span>
-                )}
-                <DriverBadge driver={p.driver} />
-                {isLost ? (
-                  <button
-                    type="button"
-                    title={t("connections.reconnectTooltip")}
-                    className="ml-0.5 rounded-sm p-0.5 text-destructive transition-colors hover:bg-destructive/15"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void handleReconnect(p);
-                    }}
-                  >
-                    <RotateCw className="h-3 w-3" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    title={t("statusBar.disconnect")}
-                    className="ml-0.5 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
-                    onClick={(e) => {
-                      // Don't let the click bubble to the row's onSelect (jump).
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void handleDisconnect(p.id);
-                    }}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </DropdownMenuItem>
-            );
-          })
+          <>
+            {activeBuckets.ungrouped.map(renderActiveItem)}
+            {activeBuckets.groups.map(({ name, items }) => (
+              <div key={name}>
+                <GroupHeader name={name} count={items.length} />
+                {!collapsedGroups.includes(name) && items.map(renderActiveItem)}
+              </div>
+            ))}
+          </>
         )}
 
         {idleProfiles.length > 0 && (
@@ -222,16 +301,12 @@ export function StatusConnections() {
             <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               {t("statusBar.connectionsAvailable")}
             </div>
-            {idleProfiles.map((p) => (
-              <DropdownMenuItem
-                key={p.id}
-                onSelect={() => void handleConnect(p)}
-                className="gap-2"
-              >
-                <Plug className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span className="flex-1 truncate text-xs">{p.name}</span>
-                <DriverBadge driver={p.driver} />
-              </DropdownMenuItem>
+            {idleBuckets.ungrouped.map(renderIdleItem)}
+            {idleBuckets.groups.map(({ name, items }) => (
+              <div key={name}>
+                <GroupHeader name={name} count={items.length} />
+                {!collapsedGroups.includes(name) && items.map(renderIdleItem)}
+              </div>
             ))}
           </>
         )}

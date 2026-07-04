@@ -43,6 +43,24 @@ interface ConnectionsState {
   connect: (id: string, password?: string, sshSecret?: string) => Promise<void>;
   /** Close the pool for `id`. */
   disconnect: (id: string) => Promise<void>;
+  /**
+   * Local-only side effect of a connection becoming active — no backend
+   * call. Used by `connect()` itself and by the cross-window sync bridge
+   * (`connection-sync-bridge.ts`) when *another* window opened the pool.
+   */
+  markConnected: (id: string) => void;
+  /**
+   * Local-only side effect of a connection closing — no backend call. Same
+   * split as `markConnected`; mirrors `disconnect()`'s cleanup so a window
+   * that didn't initiate the disconnect still drops its own tabs/schema
+   * cache for a pool that's now dead everywhere.
+   */
+  markDisconnected: (id: string) => void;
+  /** Re-fetch just the saved-profiles list (not `active`) — used by the
+   *  sync bridge after another window creates/edits/deletes/imports a
+   *  profile, where a full `refresh()` would be a heavier no-op for the
+   *  `active` half. */
+  refreshProfiles: () => Promise<void>;
   /** Convenience helper for components. */
   isActive: (id: string) => boolean;
   /** Return the cached server version for `id`, or undefined if not yet fetched. */
@@ -78,12 +96,7 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
   },
   connect: async (id, password, sshSecret) => {
     await api.connect(id, password, sshSecret);
-    // A successful (re)connect opens a fresh pool with its own heartbeat —
-    // any previous "connection lost" flag no longer applies.
-    useConnectionHealth.getState().clear(id);
-    const active = new Set(get().active);
-    active.add(id);
-    set({ active });
+    get().markConnected(id);
 
     // Rehydrate the persisted workspace (open tabs + schema-tree
     // expansion) before we kick off the version probe, so the user sees
@@ -100,21 +113,36 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
       // Version display is non-critical; swallow the error silently.
     }
   },
+  markConnected: (id) => {
+    // A successful (re)connect opens a fresh pool with its own heartbeat —
+    // any previous "connection lost" flag no longer applies. Also correct
+    // when this fires from the sync bridge: the other window's `connect`
+    // just opened a live pool, so any stale "lost" flag here is wrong too.
+    useConnectionHealth.getState().clear(id);
+    set((s) => {
+      if (s.active.has(id)) return s;
+      const active = new Set(s.active);
+      active.add(id);
+      return { active };
+    });
+  },
   disconnect: async (id) => {
     // Flush any pending workspace snapshot to disk and detach the
     // subscription before the pool is dropped. Doing this BEFORE the
     // backend disconnect means a save failure can't leave us with no
     // pool but a still-mounted subscription.
     await flushTabState(id);
-
     await api.disconnect(id);
+    get().markDisconnected(id);
+  },
+  markDisconnected: (id) => {
     // An explicit disconnect isn't a "lost" connection — clear any stale
     // flag so a later reconnect doesn't briefly show the wrong state.
     useConnectionHealth.getState().clear(id);
-    const active = new Set(get().active);
-    active.delete(id);
-    // Remove the stale version entry so a reconnect always fetches a fresh one.
     set((s) => {
+      const active = new Set(s.active);
+      active.delete(id);
+      // Remove the stale version entry so a reconnect always fetches a fresh one.
       const versions = { ...s.versions };
       delete versions[id];
       return { active, versions };
@@ -131,7 +159,9 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     // connections in the backend (see `open_database_view`); the backend
     // sweeps them when the parent disconnects, but the frontend stores
     // also keep per-child schema slices and open tabs. Drop them here so
-    // we don't leave orphaned trees / tabs pointing at dead pools.
+    // we don't leave orphaned trees / tabs pointing at dead pools. This
+    // matters just as much when the pool died via ANOTHER window's
+    // disconnect — this window's own tabs/schema for it are equally stale.
     const prefix = `${id}::db::`;
     const tabsState = useTabs.getState();
     const schemaState = useSchema.getState();
@@ -148,6 +178,10 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
         schemaState.drop(childId);
       }
     }
+  },
+  refreshProfiles: async () => {
+    const profiles = await api.listProfiles();
+    set({ profiles });
   },
   isActive: (id) => get().active.has(id),
   getVersion: (id) => get().versions[id],

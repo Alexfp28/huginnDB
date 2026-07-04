@@ -8,7 +8,17 @@ use crate::error::AppResult;
 use crate::prefs::{self, Preferences};
 use crate::state::AppState;
 use crate::tab_state::{self, ConnectionTabState};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
+
+/// Broadcast (unscoped — every window) after a successful `update_preferences`,
+/// carrying the full persisted snapshot. Each window's frontend hydrates its
+/// own private `Preferences` copy once at boot and otherwise has no way to
+/// learn another window changed a setting; without this, two windows racing
+/// to save (each sending its *entire* blob, not a diff) silently lose
+/// whichever one saved first the moment the other's debounce timer fires —
+/// see issue #18. The listener just adopts the payload as its new baseline
+/// (no re-save), so this is idempotent for the window that triggered it too.
+pub const PREFS_CHANGED_EVENT: &str = "huginndb://prefs-changed";
 
 /// Return the in-memory preferences snapshot.
 #[tauri::command]
@@ -22,12 +32,17 @@ pub fn get_preferences(state: State<'_, AppState>) -> AppResult<Preferences> {
 /// are merged client-side. This keeps the wire shape trivial and lets us
 /// keep the on-disk file as a faithful mirror of frontend state.
 #[tauri::command]
-pub fn update_preferences(state: State<'_, AppState>, prefs: Preferences) -> AppResult<()> {
+pub fn update_preferences(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    prefs: Preferences,
+) -> AppResult<()> {
     {
         let mut guard = state.prefs.write();
         *guard = prefs.clone();
     }
     prefs::save_preferences(&prefs)?;
+    let _ = app.emit(PREFS_CHANGED_EVENT, prefs);
     Ok(())
 }
 

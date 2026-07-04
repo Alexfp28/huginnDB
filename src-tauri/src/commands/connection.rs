@@ -12,8 +12,24 @@ use crate::transfer::{
     ExportedSecret, ImportAnalysis, ImportConflict, ImportResult,
 };
 use std::time::Instant;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
+
+/// Tauri events broadcast (unscoped — every window, not `emit_to` a single
+/// one) so that a change made from *any* window's frontend is reflected in
+/// every other window's `useConnections` store. Before this, each window's
+/// `active`/`profiles` state was a private snapshot taken once at boot with
+/// no way to learn about another window's `connect`/`disconnect`/profile
+/// edit — see issue #18.
+pub const CONNECTION_OPENED_EVENT: &str = "huginndb://connection-opened";
+pub const CONNECTION_CLOSED_EVENT: &str = "huginndb://connection-closed";
+pub const PROFILES_CHANGED_EVENT: &str = "huginndb://profiles-changed";
+
+/// Payload for [`CONNECTION_OPENED_EVENT`] / [`CONNECTION_CLOSED_EVENT`].
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ConnectionSyncPayload {
+    pub connection_id: String,
+}
 
 /// Driver label used by the Console panel.
 fn driver_str(driver: Driver) -> &'static str {
@@ -30,6 +46,7 @@ fn driver_str(driver: Driver) -> &'static str {
 /// boundary that's currently invisible to the user.
 fn log_connection(
     app: &AppHandle,
+    window_label: &str,
     connection_id: &str,
     driver: Driver,
     message: &str,
@@ -46,7 +63,7 @@ fn log_connection(
     if let Some(e) = error {
         entry = entry.error(e);
     }
-    log_bus::emit(app, entry);
+    log_bus::emit(app, window_label, entry);
 }
 
 /// Look up the password for `profile` from the OS keychain.
@@ -95,6 +112,7 @@ pub fn list_profiles(state: State<'_, AppState>) -> AppResult<Vec<ConnectionProf
 ///   tunnel, any previously-stored SSH secret for this profile is removed.
 #[tauri::command]
 pub fn save_profile(
+    app: AppHandle,
     state: State<'_, AppState>,
     mut profile: ConnectionProfile,
     password: Option<String>,
@@ -137,6 +155,7 @@ pub fn save_profile(
         }
         store::save_profiles(&profiles)?;
     }
+    let _ = app.emit(PROFILES_CHANGED_EVENT, ());
     Ok(profile)
 }
 
@@ -146,7 +165,7 @@ pub fn save_profile(
 /// expansion) so we don't keep dangling entries pointing at a profile that
 /// no longer exists.
 #[tauri::command]
-pub fn delete_profile(state: State<'_, AppState>, id: String) -> AppResult<()> {
+pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) -> AppResult<()> {
     let removed = {
         let mut profiles = state.profiles.write();
         let removed = profiles
@@ -170,6 +189,7 @@ pub fn delete_profile(state: State<'_, AppState>, id: String) -> AppResult<()> {
         guard.clone()
     };
     crate::tab_state::save_tab_state(&tab_state_snapshot)?;
+    let _ = app.emit(PROFILES_CHANGED_EVENT, ());
     Ok(())
 }
 
@@ -181,11 +201,13 @@ pub fn delete_profile(state: State<'_, AppState>, id: String) -> AppResult<()> {
 #[tauri::command]
 pub async fn test_connection(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     profile: ConnectionProfile,
     password: Option<String>,
     ssh_secret: Option<String>,
 ) -> AppResult<String> {
+    let window_label = window.label();
     let pw = match password {
         Some(p) => p,
         None => resolve_password(&profile)?,
@@ -214,6 +236,7 @@ pub async fn test_connection(
     let start = Instant::now();
     log_connection(
         &app,
+        window_label,
         &profile.id,
         profile.driver,
         "test_connection: start",
@@ -224,6 +247,7 @@ pub async fn test_connection(
         Ok(()) => {
             log_connection(
                 &app,
+                window_label,
                 &profile.id,
                 profile.driver,
                 "test_connection: ok",
@@ -236,6 +260,7 @@ pub async fn test_connection(
             let msg = e.to_string();
             log_connection(
                 &app,
+                window_label,
                 &profile.id,
                 profile.driver,
                 "test_connection: failed",
@@ -253,11 +278,13 @@ pub async fn test_connection(
 #[tauri::command]
 pub async fn connect(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     id: String,
     password: Option<String>,
     ssh_secret: Option<String>,
 ) -> AppResult<()> {
+    let window_label = window.label();
     let profile = state
         .profiles
         .read()
@@ -265,6 +292,24 @@ pub async fn connect(
         .find(|p| p.id == id)
         .cloned()
         .ok_or_else(|| AppError::NotFound(format!("profile {id}")))?;
+
+    // Idempotent: a second `connect` for an already-active id — e.g. a
+    // secondary window connecting to the same profile the main window
+    // already opened — must NOT fall through to `ActiveConnections::insert`,
+    // whose replace semantics would tear down the live pool (and any SSH
+    // tunnel) out from under the window that's using it. Reuse it instead.
+    if state.connections.read().contains(&id) {
+        log_connection(
+            &app,
+            window_label,
+            &id,
+            profile.driver,
+            "connect: already active, reusing existing pool",
+            None,
+            None,
+        );
+        return Ok(());
+    }
 
     let pw = match password {
         Some(p) => p,
@@ -279,6 +324,7 @@ pub async fn connect(
     let start = Instant::now();
     log_connection(
         &app,
+        window_label,
         &id,
         profile.driver,
         &format!(
@@ -316,6 +362,7 @@ pub async fn connect(
                 if tunnel.local_port != 0 && handle.local_port != tunnel.local_port {
                     log_connection(
                         &app,
+                        window_label,
                         &id,
                         profile.driver,
                         &format!(
@@ -336,13 +383,28 @@ pub async fn connect(
                     _keepalive: Some(keepalive),
                 },
             );
-            log_connection(&app, &id, profile.driver, "connect: ok", Some(start), None);
+            log_connection(
+                &app,
+                window_label,
+                &id,
+                profile.driver,
+                "connect: ok",
+                Some(start),
+                None,
+            );
+            let _ = app.emit(
+                CONNECTION_OPENED_EVENT,
+                ConnectionSyncPayload {
+                    connection_id: id.clone(),
+                },
+            );
             Ok(())
         }
         Err(e) => {
             let msg = e.to_string();
             log_connection(
                 &app,
+                window_label,
                 &id,
                 profile.driver,
                 "connect: failed",
@@ -358,7 +420,12 @@ pub async fn connect(
 /// per-database pool registered as `<id>::db::<db>` so multi-DB browsing
 /// sessions don't leak when the parent connection is closed.
 #[tauri::command]
-pub fn disconnect(app: AppHandle, state: State<'_, AppState>, id: String) -> AppResult<()> {
+pub fn disconnect(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<()> {
     // Drop the session-cached secret for this profile (children reuse the
     // parent's entry, so a single remove covers them).
     state.session_secrets.write().remove(&id);
@@ -389,7 +456,13 @@ pub fn disconnect(app: AppHandle, state: State<'_, AppState>, id: String) -> App
             .find(|p| p.id == id)
             .map(|p| p.driver)
             .unwrap_or(Driver::Sqlite);
-        log_connection(&app, &id, driver, "disconnect", None, None);
+        log_connection(&app, window.label(), &id, driver, "disconnect", None, None);
+        let _ = app.emit(
+            CONNECTION_CLOSED_EVENT,
+            ConnectionSyncPayload {
+                connection_id: id.clone(),
+            },
+        );
     }
     Ok(())
 }
@@ -418,10 +491,12 @@ pub fn database_view_id(parent_id: &str, database: &str) -> String {
 #[tauri::command]
 pub async fn open_database_view(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     parent_id: String,
     database: String,
 ) -> AppResult<String> {
+    let window_label = window.label();
     let child_id = database_view_id(&parent_id, &database);
     if state.connections.read().get(&child_id).is_some() {
         return Ok(child_id);
@@ -488,6 +563,7 @@ pub async fn open_database_view(
     let start = Instant::now();
     log_connection(
         &app,
+        window_label,
         &child_id,
         parent.driver,
         &format!("open_database_view: {database}"),
@@ -506,6 +582,7 @@ pub async fn open_database_view(
             );
             log_connection(
                 &app,
+                window_label,
                 &child_id,
                 parent.driver,
                 "open_database_view: ok",
@@ -518,6 +595,7 @@ pub async fn open_database_view(
             let msg = e.to_string();
             log_connection(
                 &app,
+                window_label,
                 &child_id,
                 parent.driver,
                 "open_database_view: failed",
@@ -713,6 +791,7 @@ pub async fn export_profiles(
 /// profiles that were already on this machine.
 #[tauri::command]
 pub fn import_profiles(
+    app: AppHandle,
     state: State<'_, AppState>,
     file_path: String,
     passphrase: Option<String>,
@@ -840,6 +919,7 @@ pub fn import_profiles(
     }
 
     store::save_profiles(&profiles)?;
+    let _ = app.emit(PROFILES_CHANGED_EVENT, ());
     Ok(result)
 }
 

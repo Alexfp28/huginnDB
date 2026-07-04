@@ -6,6 +6,99 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-07-04
+
+### Added
+
+- **Create database.** Both the multi-DB explorer toolbar and the
+  single-database root header gained a "+" button (Postgres/MySQL only —
+  server-level DDL, hidden for SQLite/MongoDB) that opens a name dialog and
+  issues `CREATE DATABASE` via a new `create_database` backend command,
+  validated through the same `validate_ident` allowlist the structure
+  editor uses. The multi-DB toolbar refreshes its database list on success;
+  a single-DB connection has no such list to show the change, so it
+  confirms with a message instead (a profile scoped to one database is at
+  least as common as multi-DB browsing — there's no reason it should be the
+  one mode that can't create a sibling database on the same server).
+- **Resizable data-grid columns.** `DataGrid.tsx` now wires up TanStack
+  Table's column-resizing API (drag handles on column borders,
+  `columnResizeMode: "onEnd"` so a drag doesn't spam re-renders). Widths are
+  persisted per browsed table (`prefs.json`'s new `grid.columnWidths`,
+  keyed by `"<schema>.<table>"` then column name) — ad-hoc query result
+  grids resize in-session only, matching how they don't have a stable table
+  identity to key against.
+
+- **Connection grouping.** `ConnectionProfile` gained a free-text `group`
+  field (single group per connection, no separate group registry — grouped
+  by simple string equality), editable from a new "Group" field in the
+  connection dialog (with a datalist of existing group names as a
+  duplicate-avoidance nudge). The status-bar connections dropdown
+  (`StatusConnections.tsx`) — the app's actual live connection
+  switcher — now buckets both the Active and Available sections into
+  collapsible per-group headers, with ungrouped connections staying flat at
+  the top exactly as before. Collapse state persists per group name in
+  `prefs.json` (`ui.collapsedConnectionGroups`). New `bucketByGroup` helper
+  in `src/lib/utils.ts`.
+
+### Fixed
+
+- **Connecting the same profile from a second window tore down the first
+  window's live pool.** `ActiveConnections::insert` unconditionally replaces
+  whatever pool is already registered for an id — correct for reconnecting
+  a dead pool, wrong for a second window's `connect` call racing an
+  already-active profile, which silently dropped the first window's pool
+  (and any SSH tunnel) out from under it. `connect` now checks
+  `ActiveConnections::contains` first and no-ops (reusing the existing
+  pool) instead of falling through to the replace path.
+- **No window learned about another window's connections, profile edits, or
+  preference changes.** Every Tauri window shares one backend `AppState`,
+  but each window's frontend held a private snapshot of `active`/`profiles`/
+  `prefs` taken once at boot with no bridge back out — worse than staleness
+  for preferences specifically, since every save sends the *entire* blob
+  (not a diff): two windows changing different settings would silently lose
+  whichever saved first the moment the other's debounced write landed.
+  `connect`/`disconnect`/`save_profile`/`delete_profile`/`import_profiles`/
+  `update_preferences` now broadcast `connection-opened`/`-closed`/
+  `profiles-changed`/`prefs-changed` events; new frontend bridges
+  (`connection-sync-bridge.ts`, `prefs-sync-bridge.ts`) apply them to every
+  window's stores — `markConnected`/`markDisconnected` in
+  `stores/connections.ts` (factored out of `connect()`/`disconnect()` so
+  the sync path and the local path share the exact same cleanup, including
+  the multi-DB synthetic-child tab/schema sweep) and `applyExternal` in
+  `stores/preferences.ts` (adopts the broadcasted snapshot without
+  re-triggering a save, so it can't loop or re-race).
+- **MySQL `insert_row`/`update_cell` could bind a `BIT` column as plain text
+  when the frontend's schema-cache metadata hadn't loaded yet.** Both
+  commands decide whether to wrap a MySQL `BIT` column's placeholder in
+  `CAST(? AS UNSIGNED)` based on a `column_type` hint the frontend sends
+  alongside the value; when that hint is `None` (schema cache empty/stale
+  for the target table), the value was bound as a plain string, which
+  MySQL rejects with `1406 (22001): Data too long for column` for anything
+  wider than one character (e.g. `"true"`). Both commands now fall back to
+  a catalog lookup (`list_columns_inner`, the same helper `fetch_fk_options`
+  already uses) when the hint is missing, so a `BIT` column is detected
+  correctly either way. `insert_row` only pays for the extra round-trip
+  when at least one value actually lacks a type hint.
+- **Console/connection-lifecycle log entries leaked across windows.** Every
+  Tauri window (the main window, or any secondary "New window") mounted the
+  same frontend and independently subscribed to the same backend log event,
+  which was broadcast process-wide (`AppHandle::emit`) rather than targeted —
+  so a query run in one window showed up in every other open window's
+  Console panel too, making a secondary window look like a pointless copy
+  of the main one instead of an independent instance. `log_bus::emit` now
+  takes the originating window's label and delivers only to it
+  (`AppHandle::emit_to`); every command that produces a SQL or
+  connection-lifecycle log entry (`execute_query`, `execute_batch`,
+  `fetch_table_data`, `update_cell`, `delete_rows`, `insert_row`, `connect`,
+  `disconnect`, `test_connection`, `open_database_view`) now takes a
+  `tauri::Window` parameter (auto-injected by Tauri from the invoking
+  webview — no frontend change needed) to supply it. The keepalive
+  background task's own diagnostic log entry has no single originating
+  window (it reports on a connection every window may be browsing), so it
+  keeps broadcasting via a new `log_bus::broadcast`; the separate
+  `connection-lost` event it emits for the reconnect UX was already correct
+  as a broadcast and is unchanged.
+
 ## [1.4.0] — 2026-07-02
 
 ### Added

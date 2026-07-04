@@ -25,7 +25,9 @@ import {
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
+  type Updater,
 } from "@tanstack/react-table";
+import { tableKey } from "@/stores/schema";
 import {
   ArrowDown,
   ArrowUp,
@@ -558,6 +560,39 @@ export function DataGrid({
    */
   const rowHeight = usePreferences((s) => selectGridPrefs(s).rowHeight);
   const updateGrid = usePreferences((s) => s.updateGrid);
+
+  /**
+   * Persisted column widths are keyed by table (`tableKey`), since widths
+   * are inherently per-schema. Ad-hoc query result grids (no `tableName` —
+   * see `QueryEditorTab`) never persist: they resize in-session only. The
+   * persisted map is a sparse `{ columnName: px }` — TanStack's own
+   * `columnSizing` state has the same shape (only explicitly-resized
+   * columns appear; everything else falls back to the column's default
+   * size), so it can be used directly as the initial state with no
+   * reshaping.
+   */
+  const persistKey = tableName ? tableKey(tableSchema, tableName) : null;
+  const persistedColumnWidths = usePreferences(
+    (s) => selectGridPrefs(s).columnWidths,
+  );
+  const [columnSizing, setColumnSizing] = useState<Record<string, number>>(
+    () => (persistKey ? persistedColumnWidths[persistKey] ?? {} : {}),
+  );
+
+  function handleColumnSizingChange(
+    updater: Updater<Record<string, number>>,
+  ) {
+    setColumnSizing((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      if (persistKey) {
+        const grid = usePreferences.getState().prefs.grid;
+        updateGrid({
+          columnWidths: { ...grid.columnWidths, [persistKey]: next },
+        });
+      }
+      return next;
+    });
+  }
   /**
    * Inline styles derived from `rowHeight`. Memoised so the object identity
    * is stable across the per-cell render loop (it feeds hundreds of cells).
@@ -793,7 +828,7 @@ export function DataGrid({
               : rawDisplay;
           const isNumeric = numericColNames.has(col.name);
           return (
-            <div className="flex max-w-md items-center gap-1">
+            <div className="flex min-w-0 items-center gap-1">
               <span
                 className={`truncate font-mono ${
                   isNumeric ? "text-amber-400" : ""
@@ -839,6 +874,14 @@ export function DataGrid({
     data: visibleRows,
     columns,
     getCoreRowModel: getCoreRowModel(),
+    enableColumnResizing: true,
+    // "onEnd" defers the (expensive, store-writing) sizing update until the
+    // pointer is released instead of on every drag-frame — TanStack still
+    // renders a live resize indicator during the drag from its own internal
+    // offset tracking, so this costs nothing visually.
+    columnResizeMode: "onEnd",
+    state: { columnSizing },
+    onColumnSizingChange: handleColumnSizingChange,
   });
 
   /** Open the heavyweight Monaco modal directly (read-only view, or the
@@ -1013,7 +1056,7 @@ export function DataGrid({
         // Close the cell preview when clicking outside the table cells.
         onClick={() => setSelectedCell(null)}
       >
-        <table className="w-full border-separate border-spacing-0 text-left">
+        <table className="w-full table-fixed border-separate border-spacing-0 text-left">
           <thead
             className={
               stickyHeader ? "sticky top-0 z-10 bg-card" : "bg-card"
@@ -1023,17 +1066,30 @@ export function DataGrid({
               <tr key={hg.id}>
                 <th
                   className="border-b border-border bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
-                  style={headerStyle}
+                  style={{ ...headerStyle, width: 40 }}
                 >
                   #
                 </th>
                 {hg.headers.map((h) => (
                   <th
                     key={h.id}
-                    className="border-b border-border bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
-                    style={headerStyle}
+                    className="relative border-b border-border bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
+                    style={{ ...headerStyle, width: h.getSize() }}
                   >
-                    {flexRender(h.column.columnDef.header, h.getContext())}
+                    <div className="overflow-hidden">
+                      {flexRender(h.column.columnDef.header, h.getContext())}
+                    </div>
+                    {/* Drag handle — thin strip on the column's trailing edge.
+                        `select-none`/`touch-none` stop text selection and
+                        mobile scroll-gesture conflicts while dragging. */}
+                    <div
+                      onMouseDown={h.getResizeHandler()}
+                      onTouchStart={h.getResizeHandler()}
+                      className={cn(
+                        "absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none hover:bg-primary/50",
+                        h.column.getIsResizing() && "bg-primary",
+                      )}
+                    />
                   </th>
                 ))}
               </tr>
@@ -1088,7 +1144,7 @@ export function DataGrid({
                 >
                   <td
                     className="border-b border-border/50 px-2 text-muted-foreground"
-                    style={cellStyle}
+                    style={{ ...cellStyle, width: 40 }}
                   >
                     {i + 1}
                   </td>
@@ -1122,7 +1178,7 @@ export function DataGrid({
                                 "hover:underline hover:decoration-dotted hover:decoration-sky-400/70 hover:underline-offset-2",
                             )}
                             title={isFkCell ? t("dataGrid.fkNavHint") : undefined}
-                            style={cellStyle}
+                            style={{ ...cellStyle, width: cell.column.getSize() }}
                             onClick={(e) => {
                               e.stopPropagation();
                               // Ctrl/Cmd+click on a single-column FK cell is the

@@ -165,6 +165,51 @@ pub async fn list_databases(
         .collect())
 }
 
+/// Create a new database/catalog on the server behind `connection_id`.
+///
+/// Postgres and MySQL only — this is a server-level DDL statement, so it
+/// runs regardless of which database the pool happens to be connected to.
+/// SQLite has no such concept (the file *is* the database) and MongoDB
+/// creates databases implicitly on first write with no `CREATE DATABASE`
+/// wire command, so both are rejected here; the frontend hides the entry
+/// point for them entirely (see the multi-DB explorer toolbar), this is
+/// just defense in depth against a stale/hand-crafted call.
+///
+/// `name` goes through the same [`crate::db::ddl::validate_ident`] allowlist
+/// used by the structure editor (gotcha #16) — `CREATE DATABASE` cannot bind
+/// the name as a parameter, so validating before quoting is the only
+/// injection defense available.
+#[tauri::command]
+pub async fn create_database(
+    state: State<'_, AppState>,
+    connection_id: String,
+    name: String,
+) -> AppResult<()> {
+    crate::db::ddl::validate_ident("database", &name)?;
+    let pool = pool_for(state.inner(), &connection_id)?;
+    match pool {
+        DbPool::Postgres(p) => {
+            let sql = format!("CREATE DATABASE {}", quote_ident(true, &name));
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Mysql(p) => {
+            let sql = format!("CREATE DATABASE {}", quote_ident(false, &name));
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Sqlite(_) => {
+            return Err(AppError::InvalidInput(
+                "SQLite has no separate databases — each file is one database".into(),
+            ));
+        }
+        DbPool::Mongo(_) => {
+            return Err(AppError::InvalidInput(
+                "MongoDB creates databases implicitly on first write".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// List user-visible tables and views, with approximate row counts where available.
 ///
 /// Row counts are sourced from engine statistics catalogs in a single query to
