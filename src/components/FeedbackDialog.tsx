@@ -22,12 +22,12 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/tauri";
 import { useFeedbackDialog } from "@/stores/feedbackDialog";
 import type { Diagnostics, FeedbackKind } from "@/types";
-import { cn } from "@/lib/utils";
 
 /** Render the optional diagnostics markdown block appended to the body. */
 function diagnosticsBlock(d: Diagnostics): string {
@@ -192,17 +192,13 @@ export function FeedbackDialog() {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="feedback-desc">{t("feedback.descLabel")}</Label>
-            <textarea
+            <Textarea
               id="feedback-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={5}
               placeholder={t("feedback.descPlaceholder")}
-              className={cn(
-                "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm",
-                "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                "resize-y",
-              )}
+              className="resize-y"
             />
           </div>
 

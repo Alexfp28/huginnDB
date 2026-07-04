@@ -518,7 +518,7 @@ export function ConnectionDialog({
     switch (testStatus.kind) {
       case "ok":
       case "saved":
-        return "text-emerald-400";
+        return "text-success";
       case "testing":
         return "text-muted-foreground";
       case "error":
@@ -623,7 +623,7 @@ export function ConnectionDialog({
                       className={cn(
                         "h-1.5 w-1.5 shrink-0 rounded-full",
                         isActive
-                          ? "bg-emerald-400"
+                          ? "bg-brand"
                           : "bg-muted-foreground/40",
                       )}
                       title={
@@ -796,7 +796,7 @@ export function ConnectionDialog({
                           />
                         </Field>
                         {mongoUriManual ? (
-                          <p className="-mt-1 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-500">
+                          <p className="-mt-1 rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-2xs text-warning">
                             {t("connectionDialog.fields.connectionStringWarning")}
                           </p>
                         ) : (

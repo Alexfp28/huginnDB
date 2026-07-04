@@ -6,6 +6,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **Design-system foundation (UI/UX overhaul, phase 0).** First pass of a
+  larger interface redesign toward a modern, dense dev-tool look. No new
+  features — this is groundwork the rest of the overhaul builds on:
+  - Two new semantic theme tokens, `--success` and `--warning`, distinct from
+    `brand` (the app's one "live / do this" accent) and `destructive` (errors).
+    Every built-in theme sets its own curated values and both are editable in
+    Settings → Appearance like any other colour. This replaces the hard-coded
+    `emerald-*` / `amber-*` / `blue-500` / `red-500` literals that were
+    scattered across ~12 components and ignored the active theme entirely — so
+    custom themes now recolour connection-status, valid/invalid, warning and
+    error affordances. `applyTheme` also clears any token a (pre-existing)
+    custom theme doesn't define, letting the stylesheet default apply instead
+    of leaving a stale inline value from the previously active theme.
+  - Unified the "this connection is live" indicator on the `brand` token; it
+    previously rendered emerald in the File menu but brand in the status-bar
+    switcher for the exact same state.
+  - Added an elevation scale (`shadow-elevation-1…4`, keyed off `--foreground`
+    so it reads in both light and dark themes) and a tokenised micro-type scale
+    (`text-2xs` / `text-3xs`, with a 10px legibility floor) to replace ad-hoc
+    `text-[9px/10px/11px]` values.
+  - Stronger, consistent keyboard focus ring (`ring-2` + offset) on buttons,
+    inputs and selects, replacing the near-invisible 1px flush ring.
+  - Form field labels now default to `text-foreground` instead of muted grey,
+    giving every dialog real label/value hierarchy.
+  - `Input` gained density variants (`inputSize` default/sm/xs) and a new shared
+    `Textarea` primitive replaces the hand-rolled multiline fields in the
+    feedback and save-query dialogs.
+  - Defined a real UI sans-serif font stack (Inter first, falling back to the
+    platform UI font) instead of relying on the bare system default.
+
 ## [1.5.0] — 2026-07-04
 
 ### Added

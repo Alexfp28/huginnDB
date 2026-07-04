@@ -261,7 +261,7 @@ function JsonValidationBadge({ value }: { value: string }) {
   if (!value.trim()) return null;
   try {
     JSON.parse(value);
-    return <span className="text-xs text-emerald-400">{t("cellEditor.jsonValid")}</span>;
+    return <span className="text-xs text-success">{t("cellEditor.jsonValid")}</span>;
   } catch (e) {
     return (
       <span className="text-xs text-destructive">

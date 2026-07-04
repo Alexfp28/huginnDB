@@ -159,7 +159,7 @@ export function UpdatesCard({ currentVersion }: Props) {
       )}
 
       {hasError && (
-        <div className="mt-2 text-[12px] text-red-500">
+        <div className="mt-2 text-xs text-destructive">
           {t("update.errorPrefix")} {error}
         </div>
       )}

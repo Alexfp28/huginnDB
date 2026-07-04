@@ -685,7 +685,7 @@ export default function App() {
               {updateNotificationVisible && (
                 <span
                   aria-hidden
-                  className="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-background"
+                  className="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-background"
                 />
               )}
             </Button>
@@ -740,7 +740,7 @@ export default function App() {
           success: <CheckCircle2 className="h-4 w-4 text-brand" />,
           error: <XCircle className="h-4 w-4 text-destructive" />,
           info: <Info className="h-4 w-4 text-muted-foreground" />,
-          warning: <TriangleAlert className="h-4 w-4 text-amber-500" />,
+          warning: <TriangleAlert className="h-4 w-4 text-warning" />,
         }}
       />
       {updateNotificationVisible && availableVersion && (

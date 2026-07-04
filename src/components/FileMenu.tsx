@@ -166,7 +166,7 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
                   <span
                     className={cn(
                       "h-1.5 w-1.5 shrink-0 rounded-full",
-                      isActive ? "bg-emerald-400" : "bg-muted-foreground/40",
+                      isActive ? "bg-brand" : "bg-muted-foreground/40",
                     )}
                   />
                   <span

@@ -1129,9 +1129,9 @@ export function DataGrid({
                   key={row.id}
                   className={
                     isMultiSelected
-                      ? "bg-blue-500/20"
+                      ? "bg-brand/20"
                       : isSelected
-                        ? "bg-blue-500/10"
+                        ? "bg-brand/10"
                         : zebraStripes && i % 2 === 1
                           ? "bg-muted/30 hover:bg-accent/30"
                           : "hover:bg-accent/30"

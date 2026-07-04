@@ -759,7 +759,7 @@ function DatabaseRoot({
   /** True when the parent has determined this DB contains a table match
    *  for the current filter — auto-opens the subtree (Compass-style). */
   autoExpand?: boolean;
-  /** True when this is the DB the filter is scoped to (emerald marker). */
+  /** True when this is the DB the filter is scoped to (brand marker). */
   active: boolean;
   /** True when *another* DB is the active scope — render this one dimmed. */
   dimmed: boolean;
@@ -855,13 +855,13 @@ function DatabaseRoot({
             <span
               className={cn(
                 "h-1.5 w-1.5 shrink-0 rounded-full",
-                active ? "bg-emerald-400" : "bg-transparent",
+                active ? "bg-brand" : "bg-transparent",
               )}
             />
             <Database
               className={cn(
                 "h-3.5 w-3.5 shrink-0",
-                active ? "text-emerald-500" : "text-muted-foreground",
+                active ? "text-brand" : "text-muted-foreground",
               )}
             />
             <span className="truncate text-xs">{dbName}</span>

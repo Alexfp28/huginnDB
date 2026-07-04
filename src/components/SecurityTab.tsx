@@ -128,7 +128,7 @@ export function SecurityTab({
         header: t("security.columns.superuser"),
         cell: ({ getValue }) =>
           getValue<boolean>() ? (
-            <ShieldCheck className="h-3.5 w-3.5 text-amber-400" />
+            <ShieldCheck className="h-3.5 w-3.5 text-warning" />
           ) : null,
       },
       {

@@ -126,7 +126,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
                     {s.id === "about" && showUpdateDot && (
                       <span
                         aria-hidden
-                        className="pointer-events-none absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-background"
+                        className="pointer-events-none absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-background"
                       />
                     )}
                   </div>

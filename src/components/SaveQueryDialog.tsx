@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useSavedQueries, type SavedQuery } from "@/stores/savedQueries";
 
@@ -90,10 +91,12 @@ export function SaveQueryDialog({
           </div>
           <div className="grid gap-1">
             <Label>{t("saveQuery.descriptionLabel")}</Label>
-            <Input
+            <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={t("saveQuery.descriptionPlaceholder")}
+              rows={3}
+              className="resize-y"
             />
           </div>
           <div className="grid gap-1">
