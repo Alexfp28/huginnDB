@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Visible row-selection checkboxes in the data grid (UI/UX overhaul, phase 1).**
+  Multi-row selection already worked via Ctrl/Cmd- and Shift-click, but there
+  was no visible affordance — the `#` gutter only ever showed the row number, so
+  the feature was undiscoverable. The gutter now renders a tri-state select-all
+  checkbox in the header (checked / indeterminate / empty over the visible rows)
+  and a per-row checkbox that appears on row hover and stays while the row is
+  selected. Both are backed by the existing PK-keyed selection set (survives
+  sort / filter / refetch) and tinted with the `brand` token; row numbers now
+  use `tabular-nums`.
+
 ### Changed
 
 - **Design-system foundation (UI/UX overhaul, phase 0).** First pass of a

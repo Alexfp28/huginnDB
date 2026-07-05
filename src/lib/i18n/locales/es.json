@@ -293,6 +293,9 @@
     "closeHint": "esc cerrar"
   },
   "dataGrid": {
+    "selectAll": "Seleccionar todas las filas",
+    "deselectAll": "Limpiar selección",
+    "selectRow": "Seleccionar fila",
     "ctxCopy": "Copiar",
     "ctxGoToReference": "Ir al registro referenciado",
     "fkNavHint": "Ctrl/Cmd+clic → registro referenciado",

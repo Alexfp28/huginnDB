@@ -293,6 +293,9 @@
     "closeHint": "esc close"
   },
   "dataGrid": {
+    "selectAll": "Select all rows",
+    "deselectAll": "Clear selection",
+    "selectRow": "Select row",
     "expandEditor": "Open in full editor",
     "openInSideEditor": "Open in side editor",
     "zoomIn": "Larger rows (Ctrl + +)",

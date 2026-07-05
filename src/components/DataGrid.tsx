@@ -515,6 +515,35 @@ export function DataGrid({
   }
 
   /**
+   * Header tri-state select-all state, computed over the *visible* rows that
+   * have a resolvable key. `allSelected` when every selectable visible row is
+   * in the set; `someSelected` drives the checkbox's indeterminate dash.
+   * Toggling only ever touches the visible set — never rows filtered out of
+   * view (mirrors the prune effect above that keeps the set honest).
+   */
+  const selectableVisibleKeys = useMemo(
+    () =>
+      keyedVisibleRows
+        .map((r) => r.key)
+        .filter((k): k is string => k !== null),
+    [keyedVisibleRows],
+  );
+  const allSelected =
+    selectableVisibleKeys.length > 0 &&
+    selectableVisibleKeys.every((k) => selectedKeys.has(k));
+  const someSelected = selectedKeys.size > 0 && !allSelected;
+
+  /** Select-all / clear from the header checkbox. */
+  function toggleSelectAll() {
+    setSelectedKeys((prev) => {
+      const everyVisibleSelected =
+        prev.size > 0 && selectableVisibleKeys.every((k) => prev.has(k));
+      return everyVisibleSelected ? new Set() : new Set(selectableVisibleKeys);
+    });
+    lastClickedKeyRef.current = null;
+  }
+
+  /**
    * Pre-computed set of column names that carry numeric data.
    * Recomputed only when the column list changes (not on every row render).
    */
@@ -1068,7 +1097,32 @@ export function DataGrid({
                   className="border-b border-border bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
                   style={{ ...headerStyle, width: 40 }}
                 >
-                  #
+                  {selectionEnabled ? (
+                    <input
+                      type="checkbox"
+                      // Callback ref: native checkboxes only expose the
+                      // "indeterminate" (dash) state via JS, so we set it on
+                      // every render from `someSelected`.
+                      ref={(el) => {
+                        if (el) el.indeterminate = someSelected;
+                      }}
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      aria-label={
+                        allSelected
+                          ? t("dataGrid.deselectAll")
+                          : t("dataGrid.selectAll")
+                      }
+                      title={
+                        allSelected
+                          ? t("dataGrid.deselectAll")
+                          : t("dataGrid.selectAll")
+                      }
+                      className="accent-brand cursor-pointer align-middle"
+                    />
+                  ) : (
+                    "#"
+                  )}
                 </th>
                 {hg.headers.map((h) => (
                   <th
@@ -1127,15 +1181,16 @@ export function DataGrid({
               return (
                 <tr
                   key={row.id}
-                  className={
+                  className={cn(
+                    "group/row",
                     isMultiSelected
                       ? "bg-brand/20"
                       : isSelected
                         ? "bg-brand/10"
                         : zebraStripes && i % 2 === 1
                           ? "bg-muted/30 hover:bg-accent/30"
-                          : "hover:bg-accent/30"
-                  }
+                          : "hover:bg-accent/30",
+                  )}
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedRowIndex(i);
@@ -1143,10 +1198,37 @@ export function DataGrid({
                   }}
                 >
                   <td
-                    className="border-b border-border/50 px-2 text-muted-foreground"
+                    className="border-b border-border/50 px-2 tabular-nums text-muted-foreground"
                     style={{ ...cellStyle, width: 40 }}
                   >
-                    {i + 1}
+                    {selectionEnabled && rowKey !== null ? (
+                      <>
+                        <input
+                          type="checkbox"
+                          checked={isMultiSelected}
+                          onChange={() => toggleRowKey(rowKey)}
+                          // Stop the row's onClick (a plain click there clears
+                          // the multi-selection) from firing on checkbox click.
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={t("dataGrid.selectRow")}
+                          className={cn(
+                            "accent-brand cursor-pointer align-middle",
+                            isMultiSelected
+                              ? "inline-block"
+                              : "hidden group-hover/row:inline-block",
+                          )}
+                        />
+                        <span
+                          className={
+                            isMultiSelected ? "hidden" : "group-hover/row:hidden"
+                          }
+                        >
+                          {i + 1}
+                        </span>
+                      </>
+                    ) : (
+                      i + 1
+                    )}
                   </td>
                   {row.getVisibleCells().map((cell) => {
                     // Resolve column meta + value by *name*, not by the
