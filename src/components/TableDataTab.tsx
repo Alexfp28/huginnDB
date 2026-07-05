@@ -642,7 +642,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
-          <span className="text-muted-foreground">
+          <span className="tabular-nums text-muted-foreground">
             {(offset + 1).toLocaleString()}–
             {Math.min(offset + pageSize, (total ?? offset + pageSize)).toLocaleString()}
             {total !== null && ` / ${total.toLocaleString()}`}

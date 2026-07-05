@@ -39,6 +39,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Data-grid readability polish (UI/UX overhaul, phase 1).** Column headers now
+  show a persistent sort glyph that brightens on hover (it was a near-invisible
+  30%-opacity icon), and the whole header cell gets a hover background so
+  sortability is discoverable; the active-sort indicator is right-aligned and
+  tinted with `brand`. Numeric readouts — the row count, pagination range and
+  query elapsed time — use tabular figures so they stop shifting width as they
+  change, the row/total counts are emphasised in the foreground, and the
+  elapsed time turns amber then red only when a query is slow.
 - **Tokenised data-semantic accents (`--pk` / `--fk` / `--numeric`).** The
   primary-key / foreign-key key icons and numeric cell values were hard-coded
   as `amber-400` / `sky-400` in the grid and schema tree, ignoring the active

@@ -713,7 +713,7 @@ export function DataGrid({
           const showRank = active && (sort?.length ?? 0) > 1;
           return (
             <button
-              className="flex items-center gap-1 hover:text-foreground"
+              className="group/sort -mx-1 flex w-full items-center gap-1 rounded-sm px-1 hover:bg-accent/50 hover:text-foreground"
               onClick={(e) =>
                 onSortChange?.(col.name, e.ctrlKey || e.metaKey)
               }
@@ -736,24 +736,26 @@ export function DataGrid({
                 />
               )}
               <span className="truncate">{col.name}</span>
-              <span className="text-[9px] uppercase text-muted-foreground/50">
+              <span className="text-3xs uppercase text-muted-foreground/50">
                 {col.data_type}
               </span>
               {active ? (
-                <span className="flex items-center text-foreground">
+                <span className="ml-auto flex shrink-0 items-center text-brand">
                   {spec!.desc ? (
                     <ArrowDown className="h-3 w-3" />
                   ) : (
                     <ArrowUp className="h-3 w-3" />
                   )}
                   {showRank && (
-                    <span className="ml-0.5 text-[9px] font-semibold tabular-nums">
+                    <span className="ml-0.5 text-3xs font-semibold tabular-nums">
                       {sortIndex + 1}
                     </span>
                   )}
                 </span>
               ) : (
-                <ArrowUpDown className="h-3 w-3 opacity-30" />
+                // Persistent (not near-invisible) glyph that brightens on
+                // header hover so sortability is discoverable at a glance.
+                <ArrowUpDown className="ml-auto h-3 w-3 shrink-0 opacity-40 transition-opacity group-hover/sort:opacity-100" />
               )}
             </button>
           );
@@ -1162,10 +1164,19 @@ export function DataGrid({
             </button>
           </span>
         ))}
-        <span className="text-muted-foreground">
-          {visibleRows.length.toLocaleString()} {t("dataGrid.rows")}
+        <span className="tabular-nums text-muted-foreground">
+          <span className="font-medium text-foreground">
+            {visibleRows.length.toLocaleString()}
+          </span>{" "}
+          {t("dataGrid.rows")}
           {result.total !== null && result.total !== undefined && (
-            <> {t("dataGrid.of")} {result.total.toLocaleString()}</>
+            <>
+              {" "}
+              {t("dataGrid.of")}{" "}
+              <span className="font-medium text-foreground">
+                {result.total.toLocaleString()}
+              </span>
+            </>
           )}
         </span>
         {onInsertRow && (
@@ -1178,7 +1189,18 @@ export function DataGrid({
             {t("dataGrid.insert")}
           </button>
         )}
-        <span className="ml-auto text-muted-foreground">
+        <span
+          className={cn(
+            "ml-auto tabular-nums",
+            // Draw attention only when a query is slow; fast queries stay
+            // muted (colouring every timing green/amber would be noise).
+            result.elapsed_ms > 2000
+              ? "text-destructive"
+              : result.elapsed_ms > 500
+                ? "text-warning"
+                : "text-muted-foreground",
+          )}
+        >
           {result.elapsed_ms} ms
         </span>
       </div>
