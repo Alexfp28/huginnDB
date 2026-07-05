@@ -1104,13 +1104,13 @@ function TableRow({
                   >
                     {c.is_primary_key && (
                       <KeyRound
-                        className="h-2.5 w-2.5 shrink-0 text-amber-400"
+                        className="h-2.5 w-2.5 shrink-0 text-pk"
                         aria-label="primary key"
                       />
                     )}
                     {c.referenced_table && (
                       <KeyRound
-                        className="h-2.5 w-2.5 shrink-0 text-sky-400"
+                        className="h-2.5 w-2.5 shrink-0 text-fk"
                         aria-label={`foreign key → ${c.referenced_table}`}
                       />
                     )}

@@ -20,6 +20,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Tokenised data-semantic accents (`--pk` / `--fk` / `--numeric`).** The
+  primary-key / foreign-key key icons and numeric cell values were hard-coded
+  as `amber-400` / `sky-400` in the grid and schema tree, ignoring the active
+  theme. They're now theme tokens (curated per built-in theme; darker on light
+  themes so numerics stay legible on white) applied in DataGrid and
+  SchemaExplorer. Kept out of the Appearance colour editor as niche system
+  accents.
 - **Design-system foundation (UI/UX overhaul, phase 0).** First pass of a
   larger interface redesign toward a modern, dense dev-tool look. No new
   features — this is groundwork the rest of the overhaul builds on:

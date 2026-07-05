@@ -46,6 +46,11 @@ export default {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
         },
+        // Data-semantic accents (text/icon only). Enable `text-pk`, `text-fk`,
+        // `text-numeric` and `decoration-fk` — see index.css for rationale.
+        pk: "hsl(var(--pk))",
+        fk: "hsl(var(--fk))",
+        numeric: "hsl(var(--numeric))",
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",

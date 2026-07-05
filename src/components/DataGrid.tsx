@@ -715,13 +715,13 @@ export function DataGrid({
             >
               {pkNameSet.has(col.name) && (
                 <KeyRound
-                  className="h-3 w-3 shrink-0 text-amber-400"
+                  className="h-3 w-3 shrink-0 text-pk"
                   aria-label="primary key"
                 />
               )}
               {fkNameSet.has(col.name) && (
                 <KeyRound
-                  className="h-3 w-3 shrink-0 text-sky-400"
+                  className="h-3 w-3 shrink-0 text-fk"
                   aria-label="foreign key"
                 />
               )}
@@ -860,7 +860,7 @@ export function DataGrid({
             <div className="flex min-w-0 items-center gap-1">
               <span
                 className={`truncate font-mono ${
-                  isNumeric ? "text-amber-400" : ""
+                  isNumeric ? "text-numeric" : ""
                 }`}
               >
                 {v === null ? (
@@ -1257,7 +1257,7 @@ export function DataGrid({
                             className={cn(
                               "cursor-pointer border-b border-border/50 px-2",
                               isFkCell &&
-                                "hover:underline hover:decoration-dotted hover:decoration-sky-400/70 hover:underline-offset-2",
+                                "hover:underline hover:decoration-dotted hover:decoration-fk/70 hover:underline-offset-2",
                             )}
                             title={isFkCell ? t("dataGrid.fkNavHint") : undefined}
                             style={{ ...cellStyle, width: cell.column.getSize() }}

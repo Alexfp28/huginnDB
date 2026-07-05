@@ -50,6 +50,16 @@ export interface ThemeColors {
   successForeground: string;
   warning: string;
   warningForeground: string;
+  /**
+   * Data-semantic accent hues (text/icon only, so no foreground pair):
+   * `pk` marks a primary-key column, `fk` a foreign-key column, `numeric`
+   * numeric cell values. Kept out of `COLOR_KEYS` (not shown in the Appearance
+   * editor) as niche system accents, but still per-theme so custom themes
+   * recolour them. See index.css for the light/dark default rationale.
+   */
+  pk: string;
+  fk: string;
+  numeric: string;
   destructive: string;
   destructiveForeground: string;
   border: string;
@@ -112,6 +122,9 @@ export const BUILT_IN_THEMES: Theme[] = [
       successForeground: "#08160c",
       warning: "#f59e0b",
       warningForeground: "#1a1204",
+      pk: "#fbbf24",
+      fk: "#38bdf8",
+      numeric: "#fbbf24",
       destructive: "#b1342a",
       destructiveForeground: "#fafafa",
       border: "#262a33",
@@ -145,6 +158,9 @@ export const BUILT_IN_THEMES: Theme[] = [
       successForeground: "#ffffff",
       warning: "#d97706",
       warningForeground: "#ffffff",
+      pk: "#b45309",
+      fk: "#0284c7",
+      numeric: "#b45309",
       destructive: "#dc2626",
       destructiveForeground: "#fafafa",
       border: "#e4e4e7",
@@ -178,6 +194,9 @@ export const BUILT_IN_THEMES: Theme[] = [
       successForeground: "#0c1118",
       warning: "#fbbf24",
       warningForeground: "#0c1118",
+      pk: "#fbbf24",
+      fk: "#7dd3fc",
+      numeric: "#fbbf24",
       destructive: "#ef4444",
       destructiveForeground: "#fef2f2",
       border: "#323844",
@@ -211,6 +230,9 @@ export const BUILT_IN_THEMES: Theme[] = [
       successForeground: "#fdf6e3",
       warning: "#b58900",
       warningForeground: "#002b36",
+      pk: "#b58900",
+      fk: "#268bd2",
+      numeric: "#b58900",
       destructive: "#dc322f",
       destructiveForeground: "#fdf6e3",
       border: "#0a3a47",
@@ -247,6 +269,9 @@ export const BUILT_IN_THEMES: Theme[] = [
       successForeground: "#fbfaf3",
       warning: "#bf7d2e",
       warningForeground: "#fbfaf3",
+      pk: "#b5761f",
+      fk: "#3f6f9f",
+      numeric: "#b5761f",
       destructive: "#b1342a",
       destructiveForeground: "#fbfaf3",
       border: "#d9d5c1",
@@ -280,6 +305,9 @@ export const BUILT_IN_THEMES: Theme[] = [
       successForeground: "#1f1e1b",
       warning: "#d9a441",
       warningForeground: "#1f1e1b",
+      pk: "#d9a441",
+      fk: "#8fb7d4",
+      numeric: "#d9a441",
       destructive: "#d4684a",
       destructiveForeground: "#1f1e1b",
       border: "#3a3730",
@@ -313,6 +341,9 @@ export const BUILT_IN_THEMES: Theme[] = [
       successForeground: "#000000",
       warning: "#ffb300",
       warningForeground: "#000000",
+      pk: "#ffd54f",
+      fk: "#40c4ff",
+      numeric: "#ffd54f",
       destructive: "#ff5252",
       destructiveForeground: "#000000",
       border: "#ffffff",
@@ -343,6 +374,9 @@ const VAR_NAMES: Record<keyof ThemeColors, string> = {
   successForeground: "--success-foreground",
   warning: "--warning",
   warningForeground: "--warning-foreground",
+  pk: "--pk",
+  fk: "--fk",
+  numeric: "--numeric",
   destructive: "--destructive",
   destructiveForeground: "--destructive-foreground",
   border: "--border",

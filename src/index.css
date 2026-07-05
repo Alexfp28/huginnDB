@@ -37,6 +37,17 @@
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 240 10% 4%;
+    /* Data-semantic accent hues (text/icon only — no surface, so no
+       foreground pair). `pk` = primary-key marker, `fk` = foreign-key marker,
+       `numeric` = numeric cell values. These were hard-coded as
+       amber-400 / sky-400 across DataGrid + SchemaExplorer (a deliberate
+       semantic pair from the earlier design pass, but theme-blind); tokenising
+       them lets custom themes recolour type/key hints. Light defaults are
+       darker so they stay legible on a white surface. Kept out of the
+       Appearance colour editor (COLOR_KEYS) as niche system accents. */
+    --pk: 35 92% 33%;
+    --fk: 200 98% 39%;
+    --numeric: 35 92% 33%;
     --border: 240 6% 90%;
     --input: 240 6% 90%;
     --ring: 240 5% 65%;
@@ -66,6 +77,9 @@
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 240 10% 4%;
+    --pk: 43 96% 56%;
+    --fk: 199 89% 64%;
+    --numeric: 43 96% 56%;
     --border: 240 6% 16%;
     --input: 240 6% 16%;
     --ring: 240 5% 40%;
