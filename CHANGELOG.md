@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Schema tree redesign (UI/UX overhaul, phase 1).** The left database/table
+  tree gained clear hierarchy and orientation. The currently-open table is now
+  marked in the tree — a soft brand wash plus a 2px inset brand rail, driven by
+  the active tab — so you can always see "where you are". The table name is the
+  boldest element on its row (foreground / medium weight) against the muted
+  section labels and column rows, column data types are colour-coded (numeric
+  amber / boolean green / others muted, reusing the grid's semantic hues), and a
+  table's columns load behind a shimmer skeleton instead of an italic
+  "loading…" line. The single-database "database created" confirmation is now a
+  themed toast instead of a native `alert()`.
 - **Keyboard navigation in the data grid (UI/UX overhaul, phase 1).** The grid
   was mouse-only, at odds with the app's keyboard-first identity. Cells now
   carry a keyboard-navigable "active cell" marked with an inset `brand` ring:

@@ -43,6 +43,7 @@ import { useTabs } from "@/stores/tabs";
 import { useConnections } from "@/stores/connections";
 import { usePreferences } from "@/stores/preferences";
 import { api } from "@/lib/tauri";
+import { toast } from "sonner";
 import type { SchemaTableMetric } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +88,38 @@ function matchesFilter(name: string, filter: string): boolean {
   if (patterns.length === 0) return true;
   const n = name.toLowerCase();
   return patterns.some((p) => n.includes(p));
+}
+
+/**
+ * Coarse colour for a column's data type, tying the tree's type labels to the
+ * grid's semantic hues: numeric → `numeric` (the same amber as numeric cells),
+ * boolean → `success`, everything else stays muted. Deliberately restrained —
+ * a full per-family palette would need dedicated tokens; this reuses what the
+ * grid already establishes so the two surfaces read as one system.
+ */
+function typeColorClass(dataType: string): string {
+  const d = dataType.toLowerCase();
+  if (/(int|serial|numeric|decimal|real|double|float|money|bit|number)/.test(d))
+    return "text-numeric";
+  if (/bool/.test(d)) return "text-success";
+  return "text-muted-foreground/70";
+}
+
+/** Shimmer placeholder rows shown while a table's columns load, instead of a
+ *  bare italic "loading…" line — reads as an active fetch rather than a stall.
+ *  Keeps the original label as the accessible status text. */
+function ColumnSkeleton({ label }: { label: string }) {
+  return (
+    <div className="space-y-1 py-1" role="status" aria-label={label}>
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="h-2.5 animate-pulse rounded bg-muted-foreground/15"
+          style={{ width: `${70 - i * 12}%` }}
+        />
+      ))}
+    </div>
+  );
 }
 
 export function SchemaExplorer({ connectionId }: { connectionId: string }) {
@@ -296,7 +329,7 @@ function SingleDbExplorer({
             // visible database list here for the user to notice updated —
             // unlike the multi-DB toolbar's "+", where the new node
             // appearing in the tree IS the confirmation.
-            alert(t("schema.createDatabase.createdSingleDb", { name }));
+            toast.success(t("schema.createDatabase.createdSingleDb", { name }));
           }}
         />
       )}
@@ -976,8 +1009,10 @@ function TableSection({
           <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
         )}
         {icon}
-        <span className="text-[11px] text-muted-foreground">{label}</span>
-        <span className="ml-auto text-[10px] text-muted-foreground/60">
+        <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+          {label}
+        </span>
+        <span className="ml-auto text-3xs tabular-nums text-muted-foreground/60">
           {items.length}
         </span>
       </button>
@@ -1033,6 +1068,19 @@ function TableRow({
   const cols = cs.columns[k];
   const isView = t.kind === "view";
 
+  // Reflect the currently-open table tab so the tree shows "you are here".
+  // The selector returns a primitive string, so it's reference-stable and
+  // safe as a Zustand selector (stores gotcha #1). NUL separators avoid any
+  // schema/table name colliding with the delimiter.
+  const activeTableKey = useTabs((s) => {
+    const a = s.tabs.find((x) => x.id === s.activeId);
+    return a && a.kind === "table"
+      ? `${a.connectionId} ${a.schema ?? ""} ${a.table}`
+      : null;
+  });
+  const isActive =
+    activeTableKey === `${connectionId} ${t.schema ?? ""} ${t.name}`;
+
   const copyName = () => {
     void navigator.clipboard.writeText(t.name);
   };
@@ -1050,7 +1098,15 @@ function TableRow({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div>
-          <div className="flex items-center pl-8 pr-2 hover:bg-accent/30">
+          <div
+            className={cn(
+              "flex items-center pl-8 pr-2 hover:bg-accent/30",
+              // Active-table "you are here" marker: soft brand wash + a 2px
+              // inset brand rail (inset shadow, so it adds no layout shift).
+              isActive &&
+                "bg-brand/10 shadow-[inset_2px_0_0_hsl(var(--brand))] hover:bg-brand/15",
+            )}
+          >
             <button
               onClick={() => {
                 toggleNode(connectionId, tableNodeKey);
@@ -1064,12 +1120,29 @@ function TableRow({
                 <ChevronRight className="h-3 w-3" />
               )}
               {isView ? (
-                <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                <Eye
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    isActive ? "text-brand" : "text-muted-foreground",
+                  )}
+                />
               ) : (
-                <TableIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                <TableIcon
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    isActive ? "text-brand" : "text-muted-foreground",
+                  )}
+                />
               )}
               <span
-                className="truncate text-xs"
+                className={cn(
+                  "truncate text-xs",
+                  // Table name is the row's primary target → the boldest leaf
+                  // in the 3-tier ramp (section label muted / column muted).
+                  isActive
+                    ? "font-semibold text-brand"
+                    : "font-medium text-foreground",
+                )}
                 onClick={(e) => {
                   e.stopPropagation();
                   actions.openTab({
@@ -1095,12 +1168,17 @@ function TableRow({
           </div>
 
           {tableOpen && (
-            <div className="ml-10 border-l border-border/50 pl-2 pr-2">
+            <div
+              className={cn(
+                "ml-10 border-l pl-2 pr-2",
+                isActive ? "border-brand/30" : "border-border/50",
+              )}
+            >
               {cols ? (
                 cols.map((c) => (
                   <div
                     key={c.name}
-                    className="flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground"
+                    className="flex items-center gap-1 py-0.5 text-2xs text-muted-foreground"
                   >
                     {c.is_primary_key && (
                       <KeyRound
@@ -1115,15 +1193,18 @@ function TableRow({
                       />
                     )}
                     <span className="truncate">{c.name}</span>
-                    <span className="ml-auto shrink-0 pl-2 text-[10px] uppercase">
+                    <span
+                      className={cn(
+                        "ml-auto shrink-0 pl-2 text-3xs uppercase",
+                        typeColorClass(c.data_type),
+                      )}
+                    >
                       {c.data_type}
                     </span>
                   </div>
                 ))
               ) : (
-                <div className="py-0.5 pl-1 text-[11px] italic text-muted-foreground">
-                  {loadingLabel}
-                </div>
+                <ColumnSkeleton label={loadingLabel} />
               )}
             </div>
           )}
