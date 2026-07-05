@@ -18,7 +18,7 @@
  *   keeps acting on the current page only.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   flexRender,
@@ -34,6 +34,7 @@ import {
   ArrowUpDown,
   ChevronDown,
   KeyRound,
+  Loader2,
   Plus,
   X,
 } from "lucide-react";
@@ -218,6 +219,21 @@ interface Props {
   onDraftCellChange?: (column: string, cell: DraftCell) => void;
   onDraftCommit?: () => void;
   onDraftCancel?: () => void;
+
+  /**
+   * Optional content rendered at the START of the toolbar row (before the
+   * search box), with a divider after it. TableDataTab folds its breadcrumb +
+   * refresh + zoom controls in here so a table tab shows ONE toolbar instead
+   * of two stacked bars. Query-result tabs omit it.
+   */
+  toolbarLeading?: ReactNode;
+  /**
+   * When true, dims the grid body and shows a spinner overlay — used while a
+   * refetch is in flight but stale rows are still on screen, so the grid
+   * doesn't look frozen. Initial load (no rows yet) is handled by the caller's
+   * skeleton placeholder instead.
+   */
+  loading?: boolean;
 }
 
 /** Render a cell value as a plain string for display and search. */
@@ -292,6 +308,8 @@ export function DataGrid({
   onDraftCellChange,
   onDraftCommit,
   onDraftCancel,
+  toolbarLeading,
+  loading,
 }: Props) {
   const { t } = useTranslation();
   const draftRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -1132,8 +1150,13 @@ export function DataGrid({
   return (
     // `relative` allows CellPreview to be positioned absolute within this container.
     <div className="relative flex h-full flex-col">
-      {/* Toolbar: filter chips + text filter + row count + elapsed time + insert */}
+      {/* Toolbar: optional leading slot (breadcrumb/refresh/zoom from a table
+          tab) + filter chips + text filter + row count + elapsed time + insert */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs">
+        {toolbarLeading}
+        {toolbarLeading && (
+          <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+        )}
         <SearchInput
           value={filterInput ?? globalFilter ?? ""}
           onChange={onGlobalFilterChange}
@@ -1205,10 +1228,12 @@ export function DataGrid({
         </span>
       </div>
 
-      {/* Scrollable data table */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-auto outline-none"
+      {/* Scrollable data table, wrapped so the refetch overlay covers only the
+          grid body (not the toolbar). */}
+      <div className="relative flex-1 overflow-hidden">
+        <div
+          ref={scrollRef}
+          className="h-full overflow-auto outline-none"
         // Focusable so it can receive keyboard navigation; a cell click focuses
         // it (below). The active-cell ring is the visible focus affordance, so
         // the container's own outline is suppressed.
@@ -1724,6 +1749,18 @@ export function DataGrid({
             )}
           </tbody>
         </table>
+        </div>
+        {/* Refetch overlay: dims the (stale) rows and shows a spinner so a
+            reload doesn't look frozen. pointer-events-none keeps the stale
+            data interactive. Initial load is handled by the caller's skeleton. */}
+        {loading && (
+          <div
+            className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center bg-background/40"
+            aria-hidden
+          >
+            <Loader2 className="mt-6 h-5 w-5 animate-spin text-brand" />
+          </div>
+        )}
       </div>
 
       {/* Compact cell preview panel — gated by the `cellPreview` grid pref.

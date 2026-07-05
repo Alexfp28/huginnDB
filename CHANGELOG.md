@@ -39,6 +39,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Unified table-browser chrome (UI/UX overhaul, phase 1).** A table tab used
+  to stack two near-identical toolbars. The top bar's breadcrumb (schema ›
+  table) and refresh now fold into the data grid's own toolbar so there's a
+  single bar, and paging + row-zoom move to a footer status strip with tabular
+  figures. The first load of a table shows a shimmer skeleton (with the
+  breadcrumb) instead of a bare "loading…" line, and a refetch dims the stale
+  rows behind a spinner rather than looking frozen. The delete-row confirmation
+  button now uses the destructive (red) style, matching the drop-table dialog.
 - **Data-grid readability polish (UI/UX overhaul, phase 1).** Column headers now
   show a persistent sort glyph that brightens on hover (it was a near-invisible
   30%-opacity icon), and the whole header cell gets a hover background so
