@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Keyboard navigation in the data grid (UI/UX overhaul, phase 1).** The grid
+  was mouse-only, at odds with the app's keyboard-first identity. Cells now
+  carry a keyboard-navigable "active cell" marked with an inset `brand` ring:
+  arrow keys move it, Home / End jump to the row's first / last column, Enter
+  opens the cell editor (inline / FK combobox / modal, same routing as
+  double-click) and Escape clears it. Clicking a cell seeds the active cell so
+  the keyboard picks up from there, and the active cell scrolls into view as it
+  moves (instantly — the indicator never animates, since it tracks every
+  keypress).
 - **Visible row-selection checkboxes in the data grid (UI/UX overhaul, phase 1).**
   Multi-row selection already worked via Ctrl/Cmd- and Shift-click, but there
   was no visible affordance — the `#` gutter only ever showed the row number, so

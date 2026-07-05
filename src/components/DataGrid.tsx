@@ -374,6 +374,16 @@ export function DataGrid({
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
   /** Row index of the currently selected row (blue highlight). */
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  /**
+   * Keyboard-navigable active cell — `{ r, c }` indexing the visible row model
+   * and the visible leaf columns. Drives the inset focus ring and arrow / Home
+   * / End / Enter navigation; the grid was otherwise mouse-only, which
+   * contradicts the app's keyboard-first identity. Set on cell click (so the
+   * keyboard picks up where the mouse left off) and cleared on Escape.
+   */
+  const [activeCell, setActiveCell] = useState<{ r: number; c: number } | null>(
+    null,
+  );
 
   /**
    * Multi-row selection. Keyed by the parent-supplied stable row key
@@ -979,6 +989,101 @@ export function DataGrid({
     openModalEditor(rowValues, column, fmt ?? "");
   }
 
+  /**
+   * Grid-level keyboard navigation, bound to the (focusable) scroll container.
+   * Moves the inset-ring active cell with the arrows / Home / End, opens the
+   * editor on Enter, clears on Escape. The ring never animates its movement:
+   * this fires on every keypress, so motion would read as lag (see the
+   * keyboard-action rule). Guards: skip when an inline editor is open or focus
+   * is inside a form control, and never swallow modified chords (Ctrl+C etc.).
+   */
+  function handleGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (inlineEdit || fkEditCell) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("input, textarea, select, [contenteditable='true']")) {
+      return;
+    }
+    const rows = table.getRowModel().rows;
+    const colCount = table.getVisibleLeafColumns().length;
+    if (rows.length === 0 || colCount === 0) return;
+
+    const focusCell = (r: number, c: number) => {
+      setActiveCell({ r, c });
+      setSelectedRowIndex(r);
+      // Keep the cell in view without smooth scrolling (instant per the
+      // no-motion-on-keyboard rule), deferred a frame so the ring has painted.
+      requestAnimationFrame(() => {
+        scrollRef.current
+          ?.querySelector<HTMLElement>(`[data-cell="${r}-${c}"]`)
+          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      });
+    };
+
+    if (e.key === "Escape") {
+      if (activeCell) {
+        e.preventDefault();
+        setActiveCell(null);
+      }
+      return;
+    }
+
+    const navKeys = [
+      "ArrowDown",
+      "ArrowUp",
+      "ArrowRight",
+      "ArrowLeft",
+      "Home",
+      "End",
+    ];
+
+    // First nav keypress with no active cell just anchors at the top-left
+    // rather than jumping a step past it.
+    if (!activeCell) {
+      if (navKeys.includes(e.key)) {
+        e.preventDefault();
+        focusCell(0, 0);
+      }
+      return;
+    }
+
+    if (e.key === "Enter") {
+      const row = rows[activeCell.r];
+      const cell = row?.getVisibleCells()[activeCell.c];
+      const bi = cell ? (columnIndexByName.get(cell.column.id) ?? -1) : -1;
+      if (!row || bi < 0) return;
+      e.preventDefault();
+      openCellEdit(row.original as CellValue[], result.columns[bi]);
+      return;
+    }
+
+    let { r, c } = activeCell;
+    switch (e.key) {
+      case "ArrowDown":
+        r = Math.min(r + 1, rows.length - 1);
+        break;
+      case "ArrowUp":
+        r = Math.max(r - 1, 0);
+        break;
+      case "ArrowRight":
+        c = Math.min(c + 1, colCount - 1);
+        break;
+      case "ArrowLeft":
+        c = Math.max(c - 1, 0);
+        break;
+      case "Home":
+        c = 0;
+        break;
+      case "End":
+        c = colCount - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    focusCell(r, c);
+  }
+
   async function copyToClipboard(text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -1081,7 +1186,12 @@ export function DataGrid({
       {/* Scrollable data table */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-auto"
+        className="flex-1 overflow-auto outline-none"
+        // Focusable so it can receive keyboard navigation; a cell click focuses
+        // it (below). The active-cell ring is the visible focus affordance, so
+        // the container's own outline is suppressed.
+        tabIndex={0}
+        onKeyDown={handleGridKeyDown}
         // Close the cell preview when clicking outside the table cells.
         onClick={() => setSelectedCell(null)}
       >
@@ -1230,7 +1340,7 @@ export function DataGrid({
                       i + 1
                     )}
                   </td>
-                  {row.getVisibleCells().map((cell) => {
+                  {row.getVisibleCells().map((cell, cIdx) => {
                     // Resolve column meta + value by *name*, not by the
                     // position of the cell in `getVisibleCells()`. The
                     // grid currently keeps both orders in sync, but a
@@ -1250,19 +1360,32 @@ export function DataGrid({
                     const isFkCell =
                       !!onNavigateFk &&
                       !!columnInfoByName.get(meta.name)?.referenced_table;
+                    const isActiveCell =
+                      activeCell?.r === i && activeCell?.c === cIdx;
                     return (
                       <ContextMenu key={cell.id}>
                         <ContextMenuTrigger asChild>
                           <td
+                            data-cell={`${i}-${cIdx}`}
                             className={cn(
                               "cursor-pointer border-b border-border/50 px-2",
                               isFkCell &&
                                 "hover:underline hover:decoration-dotted hover:decoration-fk/70 hover:underline-offset-2",
+                              // Inset ring marks the keyboard-active cell.
+                              // `relative z-10` lifts it above neighbours so the
+                              // ring isn't clipped by adjacent cell borders. No
+                              // transition — the ring must track keys instantly.
+                              isActiveCell &&
+                                "relative z-10 ring-2 ring-inset ring-brand",
                             )}
                             title={isFkCell ? t("dataGrid.fkNavHint") : undefined}
                             style={{ ...cellStyle, width: cell.column.getSize() }}
                             onClick={(e) => {
                               e.stopPropagation();
+                              // Focus the container so keyboard nav continues
+                              // from here, and mark this cell active.
+                              scrollRef.current?.focus({ preventScroll: true });
+                              setActiveCell({ r: i, c: cIdx });
                               // Ctrl/Cmd+click on a single-column FK cell is the
                               // "go to referenced row" accelerator (IDE-style).
                               // It takes precedence over the multi-selection
