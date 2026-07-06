@@ -633,6 +633,7 @@
     "noQueries": "Aún no hay consultas.",
     "running": "ejecutando…",
     "run": "Ejecutar",
+    "runTitle": "Ejecutar — Ctrl/Cmd+Enter",
     "runAll": "Ejecutar todo ({{count}})",
     "runAllTitle": "Ejecuta todas las sentencias en orden sobre una conexión",
     "runStatement": "Ejecutar esta sentencia",

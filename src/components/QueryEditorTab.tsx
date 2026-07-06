@@ -22,7 +22,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Editor, { type Monaco } from "@monaco-editor/react";
-import { Bookmark, Check, Database, History, Play, Trash2, X } from "lucide-react";
+import {
+  Bookmark,
+  Check,
+  Database,
+  History,
+  Loader2,
+  Play,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/connections";
@@ -116,6 +125,9 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const [databases, setDatabases] = useState<DatabaseInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  // Modifier-key label for the Run button's shortcut chip (⌘ on macOS, Ctrl
+  // elsewhere). Matches the Ctrl+Enter command bound in `handleMount`.
+  const runHint = /Mac/i.test(navigator.userAgent) ? "⌘↵" : "Ctrl↵";
   const [showHistory, setShowHistory] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [filter, setFilter] = useState("");
@@ -416,6 +428,34 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           {/* Compact action row: save + history (Run is Ctrl+Enter) and,
               for multi-DB servers, a database selector that scopes the tab. */}
           <div className="flex items-center gap-1 border-b border-border bg-background px-2 py-1">
+            {/* Primary action. The whole point of a query editor — previously
+                Run had no button at all (Ctrl+Enter / CodeLens only). Runs the
+                buffer, routing to the batch runner when it holds >1 statement,
+                and shows a busy state so the tab doesn't look inert mid-query. */}
+            <Button
+              size="sm"
+              onClick={() => (multiStatement ? void runBatch() : void runQuery())}
+              disabled={!sql.trim() || running}
+              title={multiStatement ? t("query.runAllTitle") : t("query.runTitle")}
+              className="gap-1.5"
+            >
+              {running ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play className="h-3.5 w-3.5" />
+              )}
+              {running
+                ? t("query.running")
+                : multiStatement
+                  ? t("query.runAll", { count: statements.length })
+                  : t("query.run")}
+              {!running && (
+                <kbd className="ml-0.5 rounded border border-brand-foreground/30 bg-brand-foreground/10 px-1 py-px text-[10px] font-medium leading-none">
+                  {runHint}
+                </kbd>
+              )}
+            </Button>
+            <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
             <Button
               size="sm"
               variant="ghost"
@@ -445,7 +485,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             )}
 
             {driver !== "sqlite" && databases.length > 0 && (
-              <div className="ml-1 flex items-center gap-1">
+              <div className="ml-auto flex items-center gap-1">
                 <Database className="h-3.5 w-3.5 text-muted-foreground" />
                 <Select
                   value={selectedDb || DEFAULT_DB}
@@ -469,27 +509,6 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                   </SelectContent>
                 </Select>
               </div>
-            )}
-
-            {multiStatement && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="ml-auto h-6 gap-1 px-2 text-[11px] text-primary hover:text-primary"
-                onClick={() => void runBatch()}
-                disabled={running}
-                title={t("query.runAllTitle")}
-              >
-                <Play className="h-3 w-3" />
-                {t("query.runAll", { count: statements.length })}
-              </Button>
-            )}
-            {running && (
-              <span
-                className={`text-[11px] text-muted-foreground ${multiStatement ? "ml-2" : "ml-auto"}`}
-              >
-                {t("query.running")}
-              </span>
             )}
           </div>
 

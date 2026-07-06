@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Visible Run button in the query editor (UI/UX overhaul, phase 2).** The
+  editor's primary action had no button at all — it was Ctrl+Enter and a
+  per-statement CodeLens only, with a "Run all" that appeared conditionally. A
+  brand-filled Run button now leads the toolbar with a Ctrl/⌘+Enter shortcut
+  chip, runs the whole buffer (routing to the batch runner when it holds more
+  than one statement), and shows a spinner while executing. Save / history are
+  demoted behind a divider.
 - **Schema tree redesign (UI/UX overhaul, phase 1).** The left database/table
   tree gained clear hierarchy and orientation. The currently-open table is now
   marked in the tree — a soft brand wash plus a 2px inset brand rail, driven by

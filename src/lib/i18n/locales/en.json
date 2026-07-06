@@ -633,6 +633,7 @@
     "noQueries": "No queries yet.",
     "running": "running…",
     "run": "Run",
+    "runTitle": "Run — Ctrl/Cmd+Enter",
     "runAll": "Run all ({{count}})",
     "runAllTitle": "Run every statement in order on one connection",
     "runStatement": "Run this statement",
