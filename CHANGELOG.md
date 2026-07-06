@@ -49,6 +49,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Shared segmented control + console/structure cleanup (UI/UX overhaul,
+  phase 2).** A new `Segmented` primitive (keyboard-navigable radiogroup styled
+  as one pill strip with a raised active segment) replaces the hand-rolled
+  variants: the feedback dialog's bug/feature toggle (two full buttons) and the
+  structure editor's section tabs (plain buttons with no active-tab language).
+  The console's log filter now uses the shared `Input` (small size) instead of
+  a hand-rolled search box, and its kind checkboxes are tinted with `accent-brand`.
 - **CellEditor flagship framing (UI/UX overhaul, phase 2).** The Monaco cell
   editor — the app's "star feature" — looked like a stock dialog. It now has a
   titled header rail: the column name, a `brand`-tinted content-type badge

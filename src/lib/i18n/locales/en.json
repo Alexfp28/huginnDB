@@ -337,6 +337,7 @@
   },
   "structure": {
     "loading": "Loading structure…",
+    "sectionsLabel": "Structure section",
     "tableName": "Table",
     "tableNamePlaceholder": "table_name",
     "apply": "Apply",

@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Segmented } from "@/components/ui/segmented";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/tauri";
@@ -161,24 +162,18 @@ export function FeedbackDialog() {
 
         <div className="flex flex-col gap-3">
           {/* Kind toggle */}
-          <div className="grid grid-cols-2 gap-2">
-            {kinds.map((k) => {
+          <Segmented
+            value={kind}
+            onValueChange={setKind}
+            options={kinds.map((k) => {
               const Icon = k.icon;
-              const selected = kind === k.id;
-              return (
-                <Button
-                  key={k.id}
-                  type="button"
-                  variant={selected ? "default" : "outline"}
-                  className="justify-start gap-2"
-                  onClick={() => setKind(k.id)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {k.label}
-                </Button>
-              );
+              return {
+                value: k.id,
+                label: k.label,
+                icon: <Icon className="h-3.5 w-3.5" />,
+              };
             })}
-          </div>
+          />
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="feedback-title">{t("feedback.titleLabel")}</Label>

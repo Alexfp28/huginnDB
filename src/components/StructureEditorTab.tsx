@@ -17,6 +17,7 @@ import { Plus, Trash2, RefreshCw } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import {
   Dialog,
   DialogContent,
@@ -273,20 +274,16 @@ export function StructureEditorTab({
       </div>
 
       {/* Section tabs */}
-      <div className="flex gap-1 border-b border-border px-3 py-1.5 text-xs">
-        {(["columns", "indexes", "fks"] as const).map((s) => (
-          <button
-            key={s}
-            className={`rounded px-2 py-1 ${
-              section === s
-                ? "bg-accent font-medium"
-                : "text-muted-foreground hover:bg-accent/40"
-            }`}
-            onClick={() => setSection(s)}
-          >
-            {t(`structure.section.${s}`)}
-          </button>
-        ))}
+      <div className="border-b border-border px-3 py-1.5">
+        <Segmented
+          value={section}
+          onValueChange={setSection}
+          aria-label={t("structure.sectionsLabel")}
+          options={(["columns", "indexes", "fks"] as const).map((s) => ({
+            value: s,
+            label: t(`structure.section.${s}`),
+          }))}
+        />
       </div>
 
       {/* Body: editor grids on top, DDL preview at the bottom */}

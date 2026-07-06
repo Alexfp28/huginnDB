@@ -337,6 +337,7 @@
   },
   "structure": {
     "loading": "Cargando estructura…",
+    "sectionsLabel": "Sección de estructura",
     "tableName": "Tabla",
     "tableNamePlaceholder": "nombre_tabla",
     "apply": "Aplicar",
