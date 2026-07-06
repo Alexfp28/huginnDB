@@ -49,6 +49,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Clearer connection status (UI/UX overhaul, phase 3).** A lost connection —
+  arguably the most important operational signal — was a 6px red dot plus a
+  cryptic red icon. Lost rows in the status-bar connection switcher now get a
+  destructive row wash and an explicit labelled "Reconnect" button; the
+  live/lost indicator dots are a touch larger, the row action buttons have a
+  real hit area, and a failed connect surfaces a toast instead of a native
+  `alert()`. Status-bar stats (row count, elapsed time, selection) promote their
+  numbers to the foreground with tabular figures.
 - **Accessible tab actions + active-tab weight (UI/UX overhaul, phase 3).** The
   workspace tabs' close (×) and actions (⋮) buttons were revealed on hover only,
   leaving them unreachable by keyboard; they now also appear on keyboard focus

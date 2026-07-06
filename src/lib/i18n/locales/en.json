@@ -62,6 +62,7 @@
     "deleteConfirm": "Delete connection \"{{name}}\"?",
     "manageTitle": "Manage connections",
     "reconnectTooltip": "Connection lost — reconnect",
+    "reconnect": "Reconnect",
     "lost": "Connection lost: {{message}}"
   },
   "connectionDialog": {

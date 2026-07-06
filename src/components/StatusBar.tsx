@@ -68,7 +68,7 @@ export function StatusBar() {
         {selection && selection.count > 0 ? (
           <>
             <Sep />
-            <span className="text-foreground">
+            <span className="tabular-nums text-foreground">
               {t("statusBar.selected", { count: selection.count })}
             </span>
           </>
@@ -76,12 +76,16 @@ export function StatusBar() {
           stats && (
             <>
               <Sep />
-              <span>
-                {stats.rows.toLocaleString()} {t("statusBar.rows")}
+              <span className="tabular-nums">
+                <span className="text-foreground">
+                  {stats.rows.toLocaleString()}
+                </span>{" "}
+                {t("statusBar.rows")}
               </span>
               <Sep />
-              <span>
-                {t("statusBar.executedIn")} {stats.elapsed_ms}{" "}
+              <span className="tabular-nums">
+                {t("statusBar.executedIn")}{" "}
+                <span className="text-foreground">{stats.elapsed_ms}</span>{" "}
                 {t("statusBar.ms")}
               </span>
             </>

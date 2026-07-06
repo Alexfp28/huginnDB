@@ -20,6 +20,7 @@ import {
   RotateCw,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useConnections } from "@/stores/connections";
 import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
@@ -108,7 +109,7 @@ export function StatusConnections() {
       // silently doing nothing.
       const msg = String(e);
       const hint = driverMismatchHint(msg);
-      alert(`Connect failed: ${hint ? `${msg} — ${hint}` : msg}`);
+      toast.error(hint ? `${msg} — ${hint}` : msg);
     }
   }
 
@@ -141,17 +142,19 @@ export function StatusConnections() {
       <DropdownMenuItem
         key={p.id}
         onSelect={() => setSelected(p.id)}
-        className="gap-2"
+        // A lost pool is the most important state in this list — give the whole
+        // row a destructive wash so it's unmissable, not just a 6px red dot.
+        className={cn(
+          "gap-2",
+          isLost && "bg-destructive/10 focus:bg-destructive/15",
+        )}
       >
-        {selected === p.id ? (
+        {isLost ? (
+          <span className="h-2 w-2 shrink-0 rounded-full bg-destructive" />
+        ) : selected === p.id ? (
           <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
         ) : (
-          <span
-            className={cn(
-              "h-1.5 w-1.5 shrink-0 rounded-full",
-              isLost ? "bg-destructive" : "bg-brand",
-            )}
-          />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-brand" />
         )}
         <span
           className={cn(
@@ -163,16 +166,17 @@ export function StatusConnections() {
           {p.name}
         </span>
         {versions[p.id] && !isLost && (
-          <span className="max-w-[6rem] truncate font-mono text-[10px] text-muted-foreground">
+          <span className="max-w-[6rem] truncate font-mono text-3xs text-muted-foreground">
             {versions[p.id]}
           </span>
         )}
         <DriverBadge driver={p.driver} />
         {isLost ? (
+          // Explicit labelled affordance rather than a cryptic red icon.
           <button
             type="button"
             title={t("connections.reconnectTooltip")}
-            className="ml-0.5 rounded-sm p-0.5 text-destructive transition-colors hover:bg-destructive/15"
+            className="ml-0.5 flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium text-destructive transition-colors hover:bg-destructive/20"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -180,12 +184,13 @@ export function StatusConnections() {
             }}
           >
             <RotateCw className="h-3 w-3" />
+            {t("connections.reconnect")}
           </button>
         ) : (
           <button
             type="button"
             title={t("statusBar.disconnect")}
-            className="ml-0.5 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+            className="ml-0.5 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
             onClick={(e) => {
               // Don't let the click bubble to the row's onSelect (jump).
               e.preventDefault();
@@ -193,7 +198,7 @@ export function StatusConnections() {
               void handleDisconnect(p.id);
             }}
           >
-            <X className="h-3 w-3" />
+            <X className="h-3.5 w-3.5" />
           </button>
         )}
       </DropdownMenuItem>

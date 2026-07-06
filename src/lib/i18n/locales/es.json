@@ -62,6 +62,7 @@
     "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",
     "manageTitle": "Gestionar conexiones",
     "reconnectTooltip": "Conexión perdida — reconectar",
+    "reconnect": "Reconectar",
     "lost": "Conexión perdida: {{message}}"
   },
   "connectionDialog": {
