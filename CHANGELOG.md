@@ -16,7 +16,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   section labels and column rows, column data types are colour-coded (numeric
   amber / boolean green / others muted, reusing the grid's semantic hues), and a
   table's columns load behind a shimmer skeleton instead of an italic
-  "loading…" line. The single-database "database created" confirmation is now a
+  "loading…" line. Column indentation follows a consistent 12px-per-level
+  ladder (schema → section → table) with a continuous depth-guide hairline that
+  drops from under each open table's chevron, and table metric badges use
+  tabular figures. The single-database "database created" confirmation is now a
   themed toast instead of a native `alert()`.
 - **Keyboard navigation in the data grid (UI/UX overhaul, phase 1).** The grid
   was mouse-only, at odds with the app's keyboard-first identity. Cells now

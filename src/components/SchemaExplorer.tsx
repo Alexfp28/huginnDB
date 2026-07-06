@@ -1159,7 +1159,7 @@ function TableRow({
               {(() => {
                 const badge = tableMetricLabel(t, metric);
                 return badge ? (
-                  <span className="ml-auto shrink-0 pl-2 text-[10px] text-muted-foreground">
+                  <span className="ml-auto shrink-0 pl-2 text-3xs tabular-nums text-muted-foreground">
                     {badge}
                   </span>
                 ) : null;
@@ -1168,10 +1168,15 @@ function TableRow({
           </div>
 
           {tableOpen && (
+            // Column list. `ml-8` aligns the depth guide to the table row's
+            // left edge (pl-8) so the vertical hairline drops straight down
+            // from under the table's chevron — a continuous tree guide, and a
+            // consistent 12px-per-level indent ladder (schema 8 → section 20 →
+            // table 32). Brand-tinted while this table is the active tab.
             <div
               className={cn(
-                "ml-10 border-l pl-2 pr-2",
-                isActive ? "border-brand/30" : "border-border/50",
+                "ml-8 border-l pl-3 pr-2",
+                isActive ? "border-brand/40" : "border-border/60",
               )}
             >
               {cols ? (
