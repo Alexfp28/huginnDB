@@ -430,7 +430,10 @@
     "theme": "Theme: {{name}}",
     "language": "Language: {{name}}",
     "language_en": "English",
-    "language_es": "Spanish"
+    "language_es": "Spanish",
+    "hintNavigate": "navigate",
+    "hintRun": "run",
+    "hintClose": "close"
   },
   "settings": {
     "title": "Preferences",

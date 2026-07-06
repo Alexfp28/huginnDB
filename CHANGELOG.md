@@ -49,6 +49,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Command palette polish (UI/UX overhaul, phase 2).** The flagship
+  keyboard-first surface gained the affordances it was missing: a persistent
+  footer legend (↑↓ navigate · ↵ run · esc close), a trailing ↵ on the active
+  row, a `brand` left-edge accent + brand-tinted icon on the active row, group
+  counts on the section headers, and an iconified empty state. The highlighted
+  row now scrolls into view during arrow-key navigation (it could previously
+  scroll off-screen), and a failed connect surfaces a toast instead of a native
+  `alert()`.
 - **Unified table-browser chrome (UI/UX overhaul, phase 1).** A table tab used
   to stack two near-identical toolbars. The top bar's breadcrumb (schema ›
   table) and refresh now fold into the data grid's own toolbar so there's a
