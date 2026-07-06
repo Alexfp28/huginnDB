@@ -49,6 +49,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Accessible tab actions + active-tab weight (UI/UX overhaul, phase 3).** The
+  workspace tabs' close (×) and actions (⋮) buttons were revealed on hover only,
+  leaving them unreachable by keyboard; they now also appear on keyboard focus
+  (focus-within / focus-visible). The active tab's label gains medium weight to
+  match the brand top-cap + raised surface it already carries.
 - **Distinctive dialog shell (UI/UX overhaul, phase 3).** Every dialog rode a
   flat `shadow-lg` with a fade-only entry and a bare low-opacity close glyph.
   `DialogContent` now scales in from centre (zoom, the correct motion for a

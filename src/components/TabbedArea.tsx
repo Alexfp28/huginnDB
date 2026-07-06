@@ -193,7 +193,12 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
     <div
       className={cn(
         "group/tab flex h-full items-center gap-2 px-3 text-xs",
-        isActive ? "text-foreground" : "text-muted-foreground/70",
+        // The active tab already carries a bg-background surface + a 2px brand
+        // top cap from index.css (`.inner-dock .dv-active-tab`); here we add the
+        // matching weight so the label reads as the active one too.
+        isActive
+          ? "font-medium text-foreground"
+          : "text-muted-foreground/70",
       )}
       title={tooltip}
       // Middle-click (wheel button) closes the tab, matching editor
@@ -221,7 +226,12 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           <button
             className={cn(
               "rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-              isActive ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100",
+              // Reveal on hover AND on keyboard focus (focus-within on the tab,
+              // or the button itself receiving focus) so the close/menu actions
+              // aren't mouse-only.
+              isActive
+                ? "opacity-100"
+                : "opacity-0 focus-visible:opacity-100 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100",
             )}
             onClick={(e) => e.stopPropagation()}
             // Don't let dockview start a tab drag from the menu trigger.
