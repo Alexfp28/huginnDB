@@ -49,6 +49,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Distinctive dialog shell (UI/UX overhaul, phase 3).** Every dialog rode a
+  flat `shadow-lg` with a fade-only entry and a bare low-opacity close glyph.
+  `DialogContent` now scales in from centre (zoom, the correct motion for a
+  centred modal), rides the shared elevation scale (`shadow-elevation-4`), and
+  its close button is a properly padded control with a hover background instead
+  of a hit-area-less 70%-opacity X.
 - **Shared segmented control + console/structure cleanup (UI/UX overhaul,
   phase 2).** A new `Segmented` primitive (keyboard-navigable radiogroup styled
   as one pill strip with a raised active segment) replaces the hand-rolled
