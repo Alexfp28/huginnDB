@@ -49,6 +49,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **CellEditor flagship framing (UI/UX overhaul, phase 2).** The Monaco cell
+  editor — the app's "star feature" — looked like a stock dialog. It now has a
+  titled header rail: the column name, a `brand`-tinted content-type badge
+  (JSON/XML/SQL/TEXT), and char/byte-count pills, with the panel/fullscreen
+  controls grouped to the right. Ctrl/⌘+S and Ctrl/⌘+Enter save from inside the
+  editor (bound via Monaco so they aren't swallowed) with the shortcut shown in
+  the footer, the JSON-validity badge is now a compact chip with the parser
+  message in its tooltip instead of dumped inline, and the brittle `mr-8`
+  close-button-dodge hack is replaced by reserved header padding.
 - **Command palette polish (UI/UX overhaul, phase 2).** The flagship
   keyboard-first surface gained the affordances it was missing: a persistent
   footer legend (↑↓ navigate · ↵ run · esc close), a trailing ↵ on the active

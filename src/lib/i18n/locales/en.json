@@ -273,6 +273,7 @@
     "saveFailed": "Save failed: {{message}}",
     "jsonValid": "valid JSON",
     "jsonInvalid": "invalid: {{message}}",
+    "jsonInvalidShort": "invalid JSON",
     "moveToSide": "Move to side panel",
     "sideEmpty": "Right-click a cell and choose \"Open in side editor\" to edit it here.",
     "discardChangesTitle": "Unsaved changes",

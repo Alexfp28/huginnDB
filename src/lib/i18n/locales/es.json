@@ -273,6 +273,7 @@
     "saveFailed": "Error al guardar: {{message}}",
     "jsonValid": "JSON válido",
     "jsonInvalid": "inválido: {{message}}",
+    "jsonInvalidShort": "JSON inválido",
     "moveToSide": "Mover al panel lateral",
     "sideEmpty": "Haz clic derecho en una celda y elige \"Abrir en el editor lateral\" para editarla aquí.",
     "discardChangesTitle": "Cambios sin guardar",
