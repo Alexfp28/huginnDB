@@ -49,6 +49,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Themed tooltips (UI/UX overhaul, phase 3).** Added a `SimpleTooltip`
+  convenience wrapper over the themed Tooltip primitive and migrated the
+  standalone header buttons (theme toggle, preferences) off native `title=""`
+  so their tooltips match the app's theme instead of the OS default. Tooltips
+  nested inside Radix menus/dropdowns are being migrated case-by-case (they can
+  fight the menu's own hover/portal handling), so the rest of the chrome keeps
+  native titles for now.
 - **Clearer connection status (UI/UX overhaul, phase 3).** A lost connection —
   arguably the most important operational signal — was a 6px red dot plus a
   cryptic red icon. Lost rows in the status-bar connection switcher now get a

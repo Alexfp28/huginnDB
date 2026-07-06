@@ -69,7 +69,7 @@ import { DEFAULT_PORTS } from "@/lib/constants";
 import { AdHocDriverDialog } from "@/components/AdHocDriverDialog";
 import type { ConnectionProfile, Driver, StartupArgs } from "@/types";
 import { Button } from "@/components/ui/button";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider, SimpleTooltip } from "@/components/ui/tooltip";
 import {
   huginnDockviewTheme,
   persistLayout,
@@ -645,50 +645,57 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right — theme + settings */}
+          {/* Right — theme + settings. Standalone chrome buttons → themed
+              SimpleTooltip instead of native `title` (see gotcha in tooltip.tsx
+              about not bulk-migrating tooltips nested inside menus). */}
           <div className="ml-auto flex items-center gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() =>
-                setMode(activeTheme.mode === "dark" ? "light" : "dark")
-              }
-              title={t("common.tooltipToggleTheme")}
-            >
-              {activeTheme.mode === "dark" ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() =>
-                // Jump straight to the About panel only when there's a
-                // pending update to act on; otherwise restore the default
-                // behaviour (open at whichever section the user last used).
-                updateNotificationVisible
-                  ? openSettings("about")
-                  : openSettings()
-              }
-              title={
+            <SimpleTooltip label={t("common.tooltipToggleTheme")} side="bottom">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() =>
+                  setMode(activeTheme.mode === "dark" ? "light" : "dark")
+                }
+              >
+                {activeTheme.mode === "dark" ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
+              </Button>
+            </SimpleTooltip>
+            <SimpleTooltip
+              side="bottom"
+              label={
                 updateNotificationVisible
                   ? t("update.tooltipUpdateAvailable", {
                       version: availableVersion,
                     })
                   : t("common.tooltipOpenPreferences")
               }
-              className="relative"
             >
-              <Settings className="h-4 w-4" />
-              {updateNotificationVisible && (
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-background"
-                />
-              )}
-            </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() =>
+                  // Jump straight to the About panel only when there's a
+                  // pending update to act on; otherwise restore the default
+                  // behaviour (open at whichever section the user last used).
+                  updateNotificationVisible
+                    ? openSettings("about")
+                    : openSettings()
+                }
+                className="relative"
+              >
+                <Settings className="h-4 w-4" />
+                {updateNotificationVisible && (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-background"
+                  />
+                )}
+              </Button>
+            </SimpleTooltip>
           </div>
         </header>
         <SettingsDialog />
