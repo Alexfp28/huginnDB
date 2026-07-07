@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Connection errors no longer clip at the dialog edge.** A failed Test /
+  Connect rendered its (often long) backend message on a single `truncate`d
+  line in the connection dialog footer, so anything past the dialog width was
+  cut off with an ellipsis and unreadable — most database driver errors are far
+  wider than the footer. Error and save-error states now get a bounded,
+  wrapping, vertically-scrollable box (destructive-tinted, with an alert icon)
+  and a one-click copy button for the full message; the short states (testing /
+  success / saved) stay on their single line.
+
 ## [1.5.0] — 2026-07-04
 
 ### Added

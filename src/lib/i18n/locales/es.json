@@ -131,6 +131,7 @@
     "testOk": "Conexión correcta",
     "testFailed": "Error: {{message}}",
     "saveFailed": "Error al guardar: {{message}}",
+    "copyError": "Copiar error",
     "saved": "Guardado",
     "save": "Guardar",
     "saving": "Guardando…",

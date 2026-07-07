@@ -131,6 +131,7 @@
     "testOk": "Connection successful",
     "testFailed": "Failed: {{message}}",
     "saveFailed": "Save failed: {{message}}",
+    "copyError": "Copy error",
     "saved": "Saved",
     "save": "Save",
     "saving": "Saving…",

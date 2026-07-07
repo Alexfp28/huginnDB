@@ -19,7 +19,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { Database, Download, Plug, Plus, Trash2, Upload } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  Copy,
+  Database,
+  Download,
+  Plug,
+  Plus,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -144,6 +154,8 @@ export function ConnectionDialog({
   );
 
   const [testStatus, setTestStatus] = useState<TestStatus>({ kind: "idle" });
+  /** Transient "copied" feedback on the error-box copy button. */
+  const [errorCopied, setErrorCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -528,6 +540,18 @@ export function ConnectionDialog({
         return "";
     }
   })();
+
+  /** `error` and `saveError` carry a (potentially long) backend message that
+   *  gets its own wrapping, scrollable box; the short states stay one-line. */
+  const isErrorStatus =
+    testStatus.kind === "error" || testStatus.kind === "saveError";
+
+  function onCopyError() {
+    if (testStatus.kind !== "error" && testStatus.kind !== "saveError") return;
+    void navigator.clipboard.writeText(testStatus.message);
+    setErrorCopied(true);
+    window.setTimeout(() => setErrorCopied(false), 1500);
+  }
 
   const tunnelTabDisabled = driver === "sqlite" || isMongoSrv;
   const busy = saving || connecting;
@@ -1066,11 +1090,41 @@ export function ConnectionDialog({
 
             {/* Action footer */}
             <div className="border-t border-border px-5 py-3">
-              {statusText && (
-                <div className={`mb-2 truncate text-xs ${statusClass}`}>
-                  {statusText}
-                </div>
-              )}
+              {statusText &&
+                (isErrorStatus ? (
+                  // Long DB errors used to truncate at the dialog edge. Give
+                  // them a bounded, wrapping, scrollable box with a copy
+                  // affordance instead of a single clipped line.
+                  <div className="mb-2 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                    <p className="max-h-24 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-destructive">
+                      {statusText}
+                    </p>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 text-destructive hover:text-destructive"
+                          onClick={onCopyError}
+                        >
+                          {errorCopied ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">
+                        {t("connectionDialog.copyError")}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                ) : (
+                  <div className={`mb-2 truncate text-xs ${statusClass}`}>
+                    {statusText}
+                  </div>
+                ))}
               <div className="flex items-center gap-2">
                 <Button variant="ghost" onClick={onTest} disabled={busy || !name}>
                   {t("connectionDialog.test")}
