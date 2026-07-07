@@ -402,6 +402,7 @@
     "connections": "{{count}} connected",
     "connectionsActive": "Active connections",
     "connectionsAvailable": "Connect to…",
+    "activeLabel": "active",
     "noConnections": "No active connections",
     "jumpTo": "Go to workspace",
     "disconnect": "Disconnect",
