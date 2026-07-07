@@ -1037,6 +1037,28 @@ pub async fn fetch_table_data(
         None
     };
 
+    // An empty page carries no rows for the per-driver decode to read column
+    // metadata from, so `columns` came back empty above — which left the grid
+    // with no headers and no way to begin an insert on an empty table (issue
+    // #27). Fall back to the catalog definition so an empty table still shows
+    // its full structure. Only pays the extra introspection query when the
+    // page is genuinely empty; a failed lookup degrades to the old empty list.
+    let columns = if columns.is_empty() {
+        list_columns_inner(state.inner(), &connection_id, schema, table)
+            .await
+            .map(|cols| {
+                cols.into_iter()
+                    .map(|c| ColumnMeta {
+                        name: c.name,
+                        data_type: c.data_type,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    } else {
+        columns
+    };
+
     Ok(QueryResult {
         rows_affected: data.len() as u64,
         rows: data,
