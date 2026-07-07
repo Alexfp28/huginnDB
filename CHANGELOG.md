@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-07-07
+
 ### Added
 
 - **Drop database from the multi-DB explorer (#19).** The database node's

@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-07-07
+
 ### Añadido
 
 - **Eliminar base de datos desde el explorador multi-base (#19).** El menú
