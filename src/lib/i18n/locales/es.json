@@ -700,5 +700,39 @@
     "install": "Instalar y reiniciar",
     "later": "Más tarde",
     "tooltipUpdateAvailable": "Hay una actualización disponible ({{version}})"
+  },
+  "whatsNew": {
+    "menuEntry": "Novedades",
+    "title": "Novedades en HuginnDB",
+    "versionLabel": "Versión {{version}}",
+    "viewChangelog": "Changelog completo",
+    "gotIt": "Entendido",
+    "releases": {
+      "1_6_0": {
+        "tagline": "Una renovación de la interfaz de arriba abajo — el mismo HuginnDB keyboard-first, más afilado en cada rincón.",
+        "items": {
+          "design": {
+            "title": "Sistema de diseño refinado",
+            "body": "Escala coherente de color, tipografía y elevación, anillos de foco más claros y tokens semánticos de éxito / aviso que siguen tu tema."
+          },
+          "grid": {
+            "title": "Rejilla de datos navegable con teclado",
+            "body": "Mueve la celda activa con las flechas, selecciona filas con casillas visibles y lee los números con cifras tabulares alineadas."
+          },
+          "schema": {
+            "title": "Árbol de esquema rediseñado",
+            "body": "La tabla abierta queda marcada para saber siempre dónde estás, los tipos de columna van coloreados y las filas cargan tras un esqueleto sutil."
+          },
+          "editor": {
+            "title": "Editor de consultas y paleta más afilados",
+            "body": "Botón Ejecutar visible con su atajo, un editor de celda estelar con distintivos de tipo de contenido y una paleta de comandos pulida con pistas."
+          },
+          "chrome": {
+            "title": "Estado más claro y tooltips con tema",
+            "body": "Las conexiones perdidas son inconfundibles y se reconectan en un clic, y los tooltips del chrome ahora siguen tu tema en vez del del SO."
+          }
+        }
+      }
+    }
   }
 }

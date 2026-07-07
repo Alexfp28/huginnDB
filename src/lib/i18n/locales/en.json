@@ -700,5 +700,39 @@
     "install": "Install and relaunch",
     "later": "Later",
     "tooltipUpdateAvailable": "An update is available ({{version}})"
+  },
+  "whatsNew": {
+    "menuEntry": "What's new",
+    "title": "What's new in HuginnDB",
+    "versionLabel": "Version {{version}}",
+    "viewChangelog": "Full changelog",
+    "gotIt": "Got it",
+    "releases": {
+      "1_6_0": {
+        "tagline": "A top-to-bottom interface overhaul — the same keyboard-first HuginnDB, sharper in every corner.",
+        "items": {
+          "design": {
+            "title": "Refined design system",
+            "body": "A consistent colour, type and elevation scale, clearer focus rings, and semantic success / warning tokens that follow your theme."
+          },
+          "grid": {
+            "title": "Keyboard-navigable data grid",
+            "body": "Move the active cell with the arrow keys, select rows with visible checkboxes, and read numbers in aligned tabular figures."
+          },
+          "schema": {
+            "title": "Redesigned schema tree",
+            "body": "The open table is marked so you always know where you are, column types are colour-coded, and rows load behind a subtle skeleton."
+          },
+          "editor": {
+            "title": "Sharper query editor & command palette",
+            "body": "A visible Run button with its shortcut, a flagship cell editor with content-type badges, and a polished command palette with hints."
+          },
+          "chrome": {
+            "title": "Clearer status & themed tooltips",
+            "body": "Lost connections are unmissable with one-click reconnect, and tooltips across the chrome now match your theme instead of the OS."
+          }
+        }
+      }
+    }
   }
 }

@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **"What's new" presentation after an update.** The first launch after an
+  update bumps the app to a release flagged `major` now pops a curated,
+  iconified highlights dialog (the punchy counterpart to the exhaustive
+  changelog in Settings → About). Content is a hand-authored, bundled
+  catalogue in `src/lib/releaseNotes.ts` with bilingual copy in i18n; the
+  seen-marker is persisted in `localStorage` (mirroring the update store) so
+  it fires exactly once per major release, main-window only. Reachable any
+  time from Help → "What's new". When cutting a `major` release, add its entry
+  (matching the manifest version exactly) and flag it `major`.
 - **Visible Run button in the query editor (UI/UX overhaul, phase 2).** The
   editor's primary action had no button at all — it was Ctrl+Enter and a
   per-statement CodeLens only, with a "Run all" that appeared conditionally. A

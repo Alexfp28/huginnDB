@@ -32,6 +32,9 @@ import {
   useUpdateStore,
 } from "@/stores/update";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { getCurrentVersion } from "@/lib/updater";
+import { useWhatsNew } from "@/stores/whatsNew";
+import { WhatsNewDialog } from "@/components/WhatsNewDialog";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
@@ -277,6 +280,23 @@ export default function App() {
   // boot or show an error toast.
   useEffect(() => {
     void useUpdateStore.getState().checkOnLaunch();
+  }, []);
+
+  // One-shot "What's new" presentation: on the first launch after an update
+  // bumped the app to a version flagged `major` in `releaseNotes.ts`, pop the
+  // highlights dialog. MAIN-WINDOW-ONLY — the seen-marker is shared, so a
+  // secondary ephemeral window shouldn't also fire it (same rationale as the
+  // CLI-routing guard below and CLAUDE.md gotcha #8).
+  useEffect(() => {
+    if (getCurrentWindow().label !== "main") return;
+    void (async () => {
+      try {
+        const version = await getCurrentVersion();
+        useWhatsNew.getState().notifyLaunch(version);
+      } catch (e) {
+        console.error("[whatsNew] version lookup failed", e);
+      }
+    })();
   }, []);
 
   // Apply one parsed connection intent: connect a saved profile, or stage an
@@ -750,6 +770,7 @@ export default function App() {
         onCancel={() => setCliChoice(null)}
       />
       <FeedbackDialog />
+      <WhatsNewDialog />
       <Toaster
         position="bottom-right"
         theme={activeTheme.mode === "dark" ? "dark" : "light"}
