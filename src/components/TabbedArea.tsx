@@ -154,22 +154,34 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
     const tab = tabs.find((t) => t.id === id);
     if (!tab) return { label: id, tooltip: id };
 
-    const profileById = new Map(profiles.map((p) => [p.id, p.name]));
-    // Synthetic multi-DB ids look like `<parentId>::db::<db>`; resolve the
-    // parent's display name and append the database (see open_database_view).
+    const profileById = new Map(profiles.map((p) => [p.id, p]));
+    // Resolve a connectionId to its "Connection · database" context so two
+    // tabs on the same table can be told apart (issue #22). A plain profile id
+    // resolves to `name · database`; a synthetic multi-DB id (`<parentId>::db::
+    // <db>`, see open_database_view) to `parentName · db`.
     const resolveConn = (cid: string): string => {
       const direct = profileById.get(cid);
-      if (direct) return direct;
+      if (direct)
+        return direct.database ? `${direct.name} · ${direct.database}` : direct.name;
       const sep = cid.indexOf("::db::");
       if (sep > 0) {
         const parent = profileById.get(cid.slice(0, sep));
         const db = cid.slice(sep + "::db::".length);
-        if (parent) return `${parent} · ${db}`;
+        if (parent) return `${parent.name} · ${db}`;
+        return db;
       }
       return cid;
     };
 
-    const showConn = new Set(tabs.map((x) => x.connectionId)).size > 1;
+    // Prefix the connection/database context whenever it's needed to tell tabs
+    // apart: either more than one connection is in play, or another open tab
+    // carries the same bare title (the same table opened on two connections /
+    // databases — issue #22, where both rendered as an identical bare name). A
+    // lone tab, or unique titles on a single connection, stay bare.
+    const distinctConnections = new Set(tabs.map((x) => x.connectionId)).size;
+    const titleCollision =
+      tabs.filter((x) => x.kind === tab.kind && x.title === tab.title).length > 1;
+    const showConn = distinctConnections > 1 || titleCollision;
     const connName = resolveConn(tab.connectionId);
     return {
       label: showConn ? `${connName} · ${tab.title}` : tab.title,
