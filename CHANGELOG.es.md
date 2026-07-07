@@ -8,6 +8,53 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Añadido
+
+- **Eliminar base de datos desde el explorador multi-base (#19).** El menú
+  contextual del nodo de base de datos incorpora una acción destructiva
+  "Eliminar base de datos…" (solo Postgres/MySQL), para poder borrar una base
+  que hayas creado — antes el nodo solo ofrecía "Nueva query aquí" / "Seguridad"
+  y una base recién creada quedaba atascada. Un nuevo comando de backend
+  `drop_database` (validado con `validate_ident`) cierra el pool sintético por
+  base de datos (esperando a `Pool::close`) antes de lanzar `DROP DATABASE`,
+  para que Postgres no lo rechace por tener sesiones activas; al terminar, la UI
+  cierra las pestañas y el esquema de esa base y refresca el árbol.
+- **Agrupaciones de conexión como carpetas en el menú File (#20).** El menú File
+  listaba todas las conexiones en plano, así que el `group` de un perfil no
+  tenía efecto visible ahí. Ahora se agrupan: primero las sin grupo, luego una
+  carpeta etiquetada por grupo (ordenadas) con sus conexiones indentadas debajo.
+- **Combobox temático para el campo Grupo (#21).** El campo Grupo del editor de
+  conexiones usaba un `<datalist>` nativo cuyo desplegable lo dibujaba el
+  SO/webview e ignoraba el tema de la app. Ahora es un combobox temático (y sigue
+  permitiendo crear: escribir un nombre nuevo crea un grupo nuevo) que filtra por
+  subcadena los grupos existentes en un popover con el estilo de la app.
+
+### Corregido
+
+- **Los errores de conexión ya no se cortan en el borde del diálogo.** Un Test /
+  Conectar fallido mostraba su mensaje de backend (a menudo largo) en una única
+  línea con `truncate` en el pie del diálogo de conexiones, así que todo lo que
+  excedía el ancho quedaba cortado con puntos suspensivos e ilegible — la
+  mayoría de errores de driver son mucho más anchos que el pie. Los estados de
+  error ahora usan una caja acotada, con salto de línea y scroll vertical
+  (tintada en color destructivo, con icono de alerta) y un botón para copiar el
+  mensaje completo; los estados cortos (probando / correcto / guardado) siguen
+  en una sola línea.
+- **La misma tabla en dos conexiones/bases ya no se muestra con pestañas
+  idénticas (#22).** Las etiquetas de pestaña solo añadían el prefijo de conexión
+  cuando había más de una conexión con pestañas abiertas, y el prefijo omitía la
+  base de datos, así que la misma tabla abierta en dos conexiones (o dos bases
+  con el mismo nombre) aparecía como un nombre indistinguible. Ahora las
+  etiquetas incluyen el contexto `conexión · base` y lo muestran en cuanto otra
+  pestaña abierta comparte el nombre base.
+- **Un segundo lanzamiento por CLI ya no abre una tercera ventana (#23).** Con
+  "abrir siempre en una ventana nueva" activado, lanzar de nuevo desde la CLI con
+  una instancia ya en marcha producía tres ventanas. El enrutado del segundo
+  lanzamiento se ejecutaba en todas las ventanas, así que la ventana creada para
+  satisfacer la ruta "nueva ventana" volvía a drenar el buffer de intención
+  compartido y lo enrutaba una segunda vez. Ahora el enrutado está limitado solo
+  a la ventana principal.
+
 ## [1.5.0] — 2026-07-04
 
 ### Añadido

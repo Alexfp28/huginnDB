@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Drop database from the multi-DB explorer (#19).** The database node's
+  context menu gained a destructive "Drop database…" action (Postgres/MySQL
+  only), so a database you created can also be removed — previously the node
+  only offered "New query here" / "Security" and a created database was stuck.
+  A new `validate_ident`-guarded `drop_database` backend command closes the
+  synthetic per-database pool (awaiting `Pool::close`) before issuing `DROP
+  DATABASE`, so Postgres doesn't reject it for having live sessions; on success
+  the UI tears down that database's tabs + schema slice and refreshes the tree.
+- **Connection groups shown as folders in the File menu (#20).** The File menu
+  listed every connection flat, so a profile's `group` had no visible effect
+  there. Connections are now bucketed by group: ungrouped first, then one
+  labelled folder per group (sorted) with its connections indented beneath.
+- **Themed combobox for the Group field (#21).** The connection editor's Group
+  field used a native `<datalist>` whose suggestion popup was drawn by the
+  OS/webview and ignored the app theme. It's now a themed, still-creatable
+  combobox (typing a new name still creates a new group) that substring-filters
+  existing group names in an in-theme popover.
+
 ### Fixed
 
 - **Connection errors no longer clip at the dialog edge.** A failed Test /
@@ -16,6 +36,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   wrapping, vertically-scrollable box (destructive-tinted, with an alert icon)
   and a one-click copy button for the full message; the short states (testing /
   success / saved) stay on their single line.
+- **Same table on two connections/databases no longer renders identical tabs
+  (#22).** Tab labels only carried a connection prefix when more than one
+  distinct connection had tabs open, and the prefix omitted the database, so
+  the same table opened on two connections (or two same-named databases) showed
+  as an indistinguishable bare name. Labels now include `connection · database`
+  context and escalate to it whenever another open tab shares the bare title.
+- **A CLI second-launch no longer spawns a third window (#23).** With "always
+  open in a new window" set, launching again from the CLI while an instance was
+  running produced three windows. The second-launch routing ran in every
+  window, so the window spawned to satisfy the "new window" route re-drained the
+  shared pending-intent buffer and routed it a second time. Routing is now
+  gated to the main window only.
 
 ## [1.5.0] — 2026-07-04
 
