@@ -18,7 +18,7 @@
  * unidirectional (store → dockview) and can't feed back on itself.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MoreVertical,
   PanelsTopLeft,
@@ -218,11 +218,28 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
     !!thisTab &&
     tabs.some((tb) => tb.id !== id && tb.connectionId === thisTab.connectionId);
 
+  // Keep the active tab fully in view. dockview appends a newly-opened tab at
+  // the end of the strip and can leave it clipped behind the right-hand
+  // actions (the overflow ∨, the tab-switcher button, "+"), so an active tab
+  // you just opened isn't visible. Scroll it into the scrollable tab list
+  // whenever it becomes active; the rAF defers past dockview's panel-add
+  // layout so the tab has its real width when we measure. `block: "nearest"`
+  // keeps it from nudging any vertical scroll.
+  const tabRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isActive) return;
+    const raf = requestAnimationFrame(() => {
+      tabRef.current?.scrollIntoView({ inline: "nearest", block: "nearest" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isActive]);
+
   return (
     <ContextMenu>
       <SimpleTooltip label={tooltip} side="bottom">
       <ContextMenuTrigger asChild>
     <div
+      ref={tabRef}
       className={cn(
         "group/tab flex h-full items-center gap-2 px-3 text-xs",
         // The active tab already carries a bg-background surface + a 2px brand

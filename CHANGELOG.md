@@ -21,6 +21,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     you can see at a glance what you already have open while browsing.
   - **Tab-strip switcher button** with a live open-tab count, doubling as the
     overflow affordance when tabs don't all fit.
+  - **The active tab is always scrolled into view.** Opening a table when the
+    strip was already full left the new (active) tab clipped behind the
+    overflow ∨ / switcher / "+" controls — dockview scrolls the active tab in,
+    but does so before our custom tab content has laid out, so the new tab was
+    left hidden. The active tab now scrolls itself fully into view once its
+    content is painted.
   - **Pinning + richer bulk-close.** Tabs can be pinned (⋮ / right-click, or
     from the switcher) so they survive "close others / all / to the right";
     pinned tabs carry a pin marker and group first in the switcher. The tab
