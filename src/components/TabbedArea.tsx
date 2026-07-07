@@ -19,7 +19,14 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { MoreVertical, Plus, X } from "lucide-react";
+import {
+  MoreVertical,
+  PanelsTopLeft,
+  Pin,
+  PinOff,
+  Plus,
+  X,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +55,8 @@ import { useUi } from "@/stores/ui";
 import { useConnections } from "@/stores/connections";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { useTabSwitcher } from "@/components/TabSwitcher";
+import { resolveConnectionLabel } from "@/lib/connectionLabel";
 import { TableDataTab } from "@/components/TableDataTab";
 import { QueryEditorTab } from "@/components/QueryEditorTab";
 import { StructureEditorTab } from "@/components/StructureEditorTab";
@@ -166,25 +175,6 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
     const tab = tabs.find((t) => t.id === id);
     if (!tab) return { label: id, tooltip: id };
 
-    const profileById = new Map(profiles.map((p) => [p.id, p]));
-    // Resolve a connectionId to its "Connection · database" context so two
-    // tabs on the same table can be told apart (issue #22). A plain profile id
-    // resolves to `name · database`; a synthetic multi-DB id (`<parentId>::db::
-    // <db>`, see open_database_view) to `parentName · db`.
-    const resolveConn = (cid: string): string => {
-      const direct = profileById.get(cid);
-      if (direct)
-        return direct.database ? `${direct.name} · ${direct.database}` : direct.name;
-      const sep = cid.indexOf("::db::");
-      if (sep > 0) {
-        const parent = profileById.get(cid.slice(0, sep));
-        const db = cid.slice(sep + "::db::".length);
-        if (parent) return `${parent.name} · ${db}`;
-        return db;
-      }
-      return cid;
-    };
-
     // Prefix the connection/database context whenever it's needed to tell tabs
     // apart: either more than one connection is in play, or another open tab
     // carries the same bare title (the same table opened on two connections /
@@ -194,7 +184,7 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
     const titleCollision =
       tabs.filter((x) => x.kind === tab.kind && x.title === tab.title).length > 1;
     const showConn = distinctConnections > 1 || titleCollision;
-    const connName = resolveConn(tab.connectionId);
+    const connName = resolveConnectionLabel(profiles, tab.connectionId);
     return {
       label: showConn ? `${connName} · ${tab.title}` : tab.title,
       tooltip:
@@ -204,18 +194,29 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
     };
   }, [tabs, profiles, id]);
 
+  const thisTab = tabs.find((tb) => tb.id === id);
+  // User-assigned tab colour (issue #24), rendered as a 2px inset cap on the
+  // tab's top edge.
+  const tabColor = thisTab?.color;
+  const isPinned = !!thisTab?.pinned;
+
   // Route closing through the store so the reconciler does the actual panel
   // removal — keeps add/remove strictly store → dockview.
   const requestClose = () => useTabs.getState().close(id);
   const closeOthers = () => useTabs.getState().closeOthers(id);
+  const closeToRight = () => useTabs.getState().closeToRight(id);
+  const closeOthersInConnection = () =>
+    useTabs.getState().closeOthersInConnection(id);
   const closeAll = () => useTabs.getState().closeAll();
   const setColor = (color: string | null) =>
     useTabs.getState().setColor(id, color);
+  const togglePin = () => useTabs.getState().setPinned(id, !isPinned);
   const hasOthers = tabs.length > 1;
-
-  // User-assigned tab colour (issue #24), rendered as a 2px inset cap on the
-  // tab's top edge.
-  const tabColor = tabs.find((tb) => tb.id === id)?.color;
+  // Whether another tab of this connection exists (gates "close others in
+  // this connection").
+  const hasOthersInConnection =
+    !!thisTab &&
+    tabs.some((tb) => tb.id !== id && tb.connectionId === thisTab.connectionId);
 
   return (
     <ContextMenu>
@@ -245,6 +246,9 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
         }
       }}
     >
+      {isPinned && (
+        <Pin className="h-3 w-3 shrink-0 -rotate-45 text-brand" />
+      )}
       <span className="max-w-[220px] truncate">{label}</span>
       {/*
        * Explicit action menu (⋮). Drag-to-split should work natively, but
@@ -274,6 +278,15 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           </DropdownMenuTrigger>
         </SimpleTooltip>
         <DropdownMenuContent align="end" className="text-xs">
+          <DropdownMenuItem onClick={togglePin}>
+            {isPinned ? (
+              <PinOff className="mr-2 h-3.5 w-3.5" />
+            ) : (
+              <Pin className="mr-2 h-3.5 w-3.5" />
+            )}
+            {isPinned ? t("tabs.unpin") : t("tabs.pin")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {/*
            * Splits require a reference `group` — `panel.api.moveTo` silently
            * coerces `position` to `'center'` when `group` is undefined
@@ -345,6 +358,15 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           <DropdownMenuItem disabled={!hasOthers} onClick={closeOthers}>
             {t("tabs.closeOthers")}
           </DropdownMenuItem>
+          <DropdownMenuItem disabled={!hasOthers} onClick={closeToRight}>
+            {t("tabs.closeToRight")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!hasOthersInConnection}
+            onClick={closeOthersInConnection}
+          >
+            {t("tabs.closeOthersInConnection")}
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={closeAll}>
             {t("tabs.closeAll")}
           </DropdownMenuItem>
@@ -370,11 +392,24 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       </ContextMenuTrigger>
       </SimpleTooltip>
       <ContextMenuContent className="text-xs">
+        <ContextMenuItem onSelect={togglePin}>
+          {isPinned ? t("tabs.unpin") : t("tabs.pin")}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem onSelect={requestClose}>
           {t("tabs.closeTab")}
         </ContextMenuItem>
         <ContextMenuItem disabled={!hasOthers} onSelect={closeOthers}>
           {t("tabs.closeOthers")}
+        </ContextMenuItem>
+        <ContextMenuItem disabled={!hasOthers} onSelect={closeToRight}>
+          {t("tabs.closeToRight")}
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={!hasOthersInConnection}
+          onSelect={closeOthersInConnection}
+        >
+          {t("tabs.closeOthersInConnection")}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={closeAll}>
@@ -385,31 +420,47 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   );
 }
 
-/** Per-group "+" action that opens a fresh query tab on the selected
- *  connection. Rendered in the group header's right slot. */
+/** Per-group right-slot actions: a button that lists all open tabs (the
+ *  overflow / quick-switch affordance, with a live count) plus the "+" that
+ *  opens a fresh query tab on the selected connection. */
 function NewTabAction(_props: IDockviewHeaderActionsProps) {
   const { t } = useTranslation();
   const connectionId = useUi((s) => s.selectedConnectionId);
+  const tabCount = useTabs((s) => s.tabs.length);
   return (
-    <SimpleTooltip label={t("tabs.newQueryTooltip")} side="bottom">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 text-muted-foreground hover:bg-accent hover:text-brand"
-        disabled={!connectionId}
-        onClick={() => {
-          if (!connectionId) return;
-          useTabs.getState().open({
-            kind: "query",
-            title: t("tabs.queryFileName"),
-            connectionId,
-            query: "-- write a SQL query and press Ctrl+Enter\n",
-          });
-        }}
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </Button>
-    </SimpleTooltip>
+    <div className="flex items-center gap-0.5 pr-1">
+      <SimpleTooltip label={t("tabSwitcher.tooltip")} side="bottom">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 px-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          disabled={tabCount === 0}
+          onClick={() => useTabSwitcher.getState().setOpen(true)}
+        >
+          <PanelsTopLeft className="h-3.5 w-3.5" />
+          <span className="text-2xs tabular-nums">{tabCount}</span>
+        </Button>
+      </SimpleTooltip>
+      <SimpleTooltip label={t("tabs.newQueryTooltip")} side="bottom">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:bg-accent hover:text-brand"
+          disabled={!connectionId}
+          onClick={() => {
+            if (!connectionId) return;
+            useTabs.getState().open({
+              kind: "query",
+              title: t("tabs.queryFileName"),
+              connectionId,
+              query: "-- write a SQL query and press Ctrl+Enter\n",
+            });
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </SimpleTooltip>
+    </div>
   );
 }
 

@@ -41,6 +41,7 @@ import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco-themes";
 import { useQueryHistory } from "@/stores/queryHistory";
 import { useCommandPalette } from "@/components/CommandPalette";
+import { useTabSwitcher } from "@/components/TabSwitcher";
 import type { BatchResult, DatabaseInfo, QueryResult } from "@/types";
 import { DataGrid } from "@/components/DataGrid";
 import { Button } from "@/components/ui/button";
@@ -400,6 +401,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     // IS per-editor, so this one is correctly bound here.
     editor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
       useCommandPalette.getState().toggle();
+    });
+
+    // Ctrl/Cmd+P quick-switches between open tabs. Monaco swallows it inside
+    // its focus area too, so register the editor-scoped command (gotcha #9).
+    editor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
+      useTabSwitcher.getState().toggle();
     });
 
     // The SQL completion + per-statement "▶ Run" CodeLens providers are

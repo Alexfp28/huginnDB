@@ -1115,6 +1115,20 @@ function TableRow({
   const isActive =
     activeTableKey === `${connectionId} ${t.schema ?? ""} ${t.name}`;
 
+  // Whether this table is open in a tab *anywhere* (not just the active one),
+  // so the tree can answer "do I have this open?" at a glance when many tabs
+  // are open. Returns a primitive boolean → reference-stable selector return
+  // (stores gotcha #1).
+  const isOpen = useTabs((s) =>
+    s.tabs.some(
+      (x) =>
+        x.kind === "table" &&
+        x.connectionId === connectionId &&
+        (x.schema ?? "") === (t.schema ?? "") &&
+        x.table === t.name,
+    ),
+  );
+
   const copyName = () => {
     void navigator.clipboard.writeText(t.name);
   };
@@ -1190,6 +1204,16 @@ function TableRow({
               >
                 {t.name}
               </span>
+              {isOpen && !isActive && (
+                // "Open in a tab" marker — a soft brand dot so you can tell,
+                // while browsing, which tables you already have open (the
+                // active one carries the stronger rail + bold instead).
+                <span
+                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand/70"
+                  aria-label={ct("schema.tableOpenTooltip")}
+                  title={ct("schema.tableOpenTooltip")}
+                />
+              )}
               {(() => {
                 const badge = tableMetricLabel(t, metric);
                 return badge ? (

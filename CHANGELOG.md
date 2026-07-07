@@ -8,6 +8,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Tab management overhaul.** With many tabs open it was hard to tell what
+  you had open or jump to a specific table. Four additions address that:
+  - **Open-tabs quick switcher (Ctrl/Cmd+P).** A keyboard-first overlay
+    listing *currently open* tabs across every connection, grouped pinned-first
+    then by `connection · database`. Search by name, navigate with the arrows,
+    Enter jumps (and points the workspace at that tab's connection), and each
+    row pins/unpins or closes inline (Delete closes the highlighted one).
+    Distinct from the command palette (Ctrl+K), which opens *new* things.
+  - **Open-table markers in the schema tree.** Every table that's open in a
+    tab now shows a soft brand dot in the tree — not just the active one — so
+    you can see at a glance what you already have open while browsing.
+  - **Tab-strip switcher button** with a live open-tab count, doubling as the
+    overflow affordance when tabs don't all fit.
+  - **Pinning + richer bulk-close.** Tabs can be pinned (⋮ / right-click, or
+    from the switcher) so they survive "close others / all / to the right";
+    pinned tabs carry a pin marker and group first in the switcher. The tab
+    menus gained "Close tabs to the right" and "Close others in this
+    connection". Pins persist per connection across restarts.
 - **"What's new" presentation after an update.** The first launch after an
   update bumps the app to a release flagged `major` now pops a curated,
   iconified highlights dialog (the punchy counterpart to the exhaustive

@@ -52,6 +52,7 @@ import { SchemaExplorer } from "@/components/SchemaExplorer";
 import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
 import { CommandPalette, useCommandPalette } from "@/components/CommandPalette";
+import { TabSwitcher, useTabSwitcher } from "@/components/TabSwitcher";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { ConnectionErrorBoundary } from "@/components/ConnectionErrorBoundary";
 import { SideEditorPanel } from "@/components/SideEditorPanel";
@@ -582,6 +583,7 @@ export default function App() {
   // panel layout — except inside Monaco, which swallows Ctrl+K; the editor
   // registers its own command for that case (see QueryEditorTab, gotcha #9).
   const togglePalette = useCommandPalette((s) => s.toggle);
+  const toggleSwitcher = useTabSwitcher((s) => s.toggle);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
@@ -590,6 +592,12 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         togglePalette();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        // Quick-switch between open tabs. Monaco swallows this inside its
+        // focus area, so QueryEditorTab registers an editor-scoped command
+        // too (gotcha #9).
+        e.preventDefault();
+        toggleSwitcher();
       } else if (
         !e.repeat &&
         (e.key === "F5" || ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")))
@@ -612,7 +620,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openSettings, togglePalette, selected]);
+  }, [openSettings, togglePalette, toggleSwitcher, selected]);
 
   // Stable derived breadcrumb metadata; both inputs are reference-stable
   // store values, so this satisfies the Zustand selector invariant.
@@ -740,6 +748,7 @@ export default function App() {
         <StatusBar />
       </div>
       <CommandPalette />
+      <TabSwitcher />
       <AdHocDriverDialog
         open={driverPrompt !== null}
         connectionName={driverPrompt?.name ?? ""}
