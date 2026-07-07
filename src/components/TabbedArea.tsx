@@ -138,6 +138,17 @@ const INNER_COMPONENTS = {
 // tooltip, and the close affordances (X button + middle-click).
 // ---------------------------------------------------------------------------
 
+/** Preset swatches offered in the tab colour picker (issue #24). Explicit hex
+ *  so a user's chosen colour is stable regardless of theme. */
+const TAB_COLORS = [
+  "#ef4444",
+  "#f59e0b",
+  "#22c55e",
+  "#0ea5e9",
+  "#a855f7",
+  "#ec4899",
+];
+
 function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const { t } = useTranslation();
   const id = props.api.id;
@@ -154,22 +165,34 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
     const tab = tabs.find((t) => t.id === id);
     if (!tab) return { label: id, tooltip: id };
 
-    const profileById = new Map(profiles.map((p) => [p.id, p.name]));
-    // Synthetic multi-DB ids look like `<parentId>::db::<db>`; resolve the
-    // parent's display name and append the database (see open_database_view).
+    const profileById = new Map(profiles.map((p) => [p.id, p]));
+    // Resolve a connectionId to its "Connection · database" context so two
+    // tabs on the same table can be told apart (issue #22). A plain profile id
+    // resolves to `name · database`; a synthetic multi-DB id (`<parentId>::db::
+    // <db>`, see open_database_view) to `parentName · db`.
     const resolveConn = (cid: string): string => {
       const direct = profileById.get(cid);
-      if (direct) return direct;
+      if (direct)
+        return direct.database ? `${direct.name} · ${direct.database}` : direct.name;
       const sep = cid.indexOf("::db::");
       if (sep > 0) {
         const parent = profileById.get(cid.slice(0, sep));
         const db = cid.slice(sep + "::db::".length);
-        if (parent) return `${parent} · ${db}`;
+        if (parent) return `${parent.name} · ${db}`;
+        return db;
       }
       return cid;
     };
 
-    const showConn = new Set(tabs.map((x) => x.connectionId)).size > 1;
+    // Prefix the connection/database context whenever it's needed to tell tabs
+    // apart: either more than one connection is in play, or another open tab
+    // carries the same bare title (the same table opened on two connections /
+    // databases — issue #22, where both rendered as an identical bare name). A
+    // lone tab, or unique titles on a single connection, stay bare.
+    const distinctConnections = new Set(tabs.map((x) => x.connectionId)).size;
+    const titleCollision =
+      tabs.filter((x) => x.kind === tab.kind && x.title === tab.title).length > 1;
+    const showConn = distinctConnections > 1 || titleCollision;
     const connName = resolveConn(tab.connectionId);
     return {
       label: showConn ? `${connName} · ${tab.title}` : tab.title,
@@ -185,7 +208,13 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const requestClose = () => useTabs.getState().close(id);
   const closeOthers = () => useTabs.getState().closeOthers(id);
   const closeAll = () => useTabs.getState().closeAll();
+  const setColor = (color: string | null) =>
+    useTabs.getState().setColor(id, color);
   const hasOthers = tabs.length > 1;
+
+  // User-assigned tab colour (issue #24), rendered as a 2px inset cap on the
+  // tab's top edge.
+  const tabColor = tabs.find((tb) => tb.id === id)?.color;
 
   return (
     <ContextMenu>
@@ -195,6 +224,7 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
         "group/tab flex h-full items-center gap-2 px-3 text-xs",
         isActive ? "text-foreground" : "text-muted-foreground/70",
       )}
+      style={tabColor ? { boxShadow: `inset 0 2px 0 0 ${tabColor}` } : undefined}
       title={tooltip}
       // Middle-click (wheel button) closes the tab, matching editor
       // conventions. `mousedown` preventDefault suppresses the browser's
@@ -262,6 +292,40 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           >
             {t("tabs.floatPanel")}
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <div className="px-2 py-1.5">
+            <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+              {t("tabs.color")}
+            </div>
+            <div className="flex items-center gap-1">
+              {TAB_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  className={cn(
+                    "h-4 w-4 rounded-full border border-border/50 transition-transform hover:scale-110",
+                    tabColor === c &&
+                      "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
+                  )}
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+              <button
+                type="button"
+                onClick={() => setColor(null)}
+                className={cn(
+                  "flex h-4 w-4 items-center justify-center rounded-full border border-border/50 text-muted-foreground hover:bg-accent",
+                  !tabColor &&
+                    "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
+                )}
+                title={t("tabs.colorNone")}
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </div>
+          </div>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={requestClose}>
             {t("tabs.closeTab")}

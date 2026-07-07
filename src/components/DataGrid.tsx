@@ -1056,7 +1056,12 @@ export function DataGrid({
         // Close the cell preview when clicking outside the table cells.
         onClick={() => setSelectedCell(null)}
       >
-        <table className="w-full table-fixed border-separate border-spacing-0 text-left">
+        {/* `select-none`: row range-select via Shift+Click otherwise also
+            drags a native text selection across the rows (issue #30). Inline
+            cell-edit inputs keep their own selection (form controls override
+            an ancestor's user-select), and copying goes through the row
+            context menu / cell preview panel rather than raw text selection. */}
+        <table className="w-full table-fixed select-none border-separate border-spacing-0 text-left">
           <thead
             className={
               stickyHeader ? "sticky top-0 z-10 bg-card" : "bg-card"

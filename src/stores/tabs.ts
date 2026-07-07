@@ -25,6 +25,8 @@ interface TabsState {
   /** Close every tab except `id`, which stays open and active. */
   closeOthers: (id: string) => void;
   setActive: (id: string) => void;
+  /** Set (or clear, with `null`) a tab's cosmetic colour. */
+  setColor: (id: string, color: string | null) => void;
   /** Update the in-memory SQL of a query tab. */
   updateQuery: (id: string, query: string) => void;
   /**
@@ -108,6 +110,12 @@ export const useTabs = create<TabsState>((set, get) => ({
         : { tabs: [], activeId: null };
     }),
   setActive: (id) => set({ activeId: id }),
+  setColor: (id, color) =>
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === id ? { ...t, color: color ?? undefined } : t,
+      ),
+    })),
   updateQuery: (id, query) =>
     set((s) => ({
       tabs: s.tabs.map((t) => (t.id === id ? { ...t, query } : t)),

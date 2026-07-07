@@ -16,7 +16,7 @@
  * focus the connection in the main view once it opens.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
@@ -25,6 +25,7 @@ import {
   Copy,
   Database,
   Download,
+  Folder,
   Plug,
   Plus,
   Trash2,
@@ -704,17 +705,12 @@ export function ConnectionDialog({
                       />
                     </Field>
                     <Field label={t("connectionDialog.fields.group")}>
-                      <Input
+                      <GroupCombobox
                         value={group}
-                        onChange={(e) => setGroup(e.target.value)}
+                        onChange={setGroup}
+                        suggestions={existingGroups}
                         placeholder={t("connectionDialog.fields.groupPlaceholder")}
-                        list="connection-group-suggestions"
                       />
-                      <datalist id="connection-group-suggestions">
-                        {existingGroups.map((g) => (
-                          <option key={g} value={g} />
-                        ))}
-                      </datalist>
                     </Field>
                     <Field label={t("connectionDialog.fields.driver")}>
                       <Select
@@ -749,7 +745,7 @@ export function ConnectionDialog({
                           <Field label={t("connectionDialog.fields.port")}>
                             <Input
                               type="number"
-                              value={port}
+                              value={port || ""}
                               disabled={mongoUriManual}
                               onChange={(e) => setPort(Number(e.target.value))}
                             />
@@ -843,7 +839,7 @@ export function ConnectionDialog({
                           <Field label={t("connectionDialog.fields.port")}>
                             <Input
                               type="number"
-                              value={port}
+                              value={port || ""}
                               onChange={(e) => setPort(Number(e.target.value))}
                             />
                           </Field>
@@ -925,7 +921,7 @@ export function ConnectionDialog({
                             <Field label={t("connectionDialog.ssh.port")}>
                               <Input
                                 type="number"
-                                value={sshPort}
+                                value={sshPort || ""}
                                 onChange={(e) =>
                                   setSshPort(Number(e.target.value))
                                 }
@@ -1016,7 +1012,7 @@ export function ConnectionDialog({
                           <Field label={t("connectionDialog.ssh.localPort")}>
                             <Input
                               type="number"
-                              value={sshLocalPort}
+                              value={sshLocalPort || ""}
                               onChange={(e) =>
                                 setSshLocalPort(Number(e.target.value))
                               }
@@ -1183,6 +1179,90 @@ function Field({
     <div className="grid min-w-0 gap-1">
       <Label>{label}</Label>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Free-text "creatable" combobox for the Group field. Replaces the native
+ * `<datalist>` (issue #21), whose suggestion popup is drawn by the OS/webview
+ * and ignores the app theme. This is a themed popover anchored under the
+ * input: it lists matching existing group names but never constrains the
+ * value — typing a brand-new name still creates a new group on save.
+ */
+function GroupCombobox({
+  value,
+  onChange,
+  suggestions,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  suggestions: string[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Show every other group when the field is empty, else substring-filter —
+  // and never suggest the exact value already typed (nothing to pick).
+  const matches = useMemo(() => {
+    const term = value.trim().toLowerCase();
+    return suggestions.filter(
+      (g) => g.toLowerCase() !== term && (!term || g.toLowerCase().includes(term)),
+    );
+  }, [suggestions, value]);
+
+  // Close on any click outside the combobox subtree.
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <Input
+        value={value}
+        autoComplete="off"
+        placeholder={placeholder}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+        }}
+      />
+      {open && matches.length > 0 && (
+        <div
+          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+          // Keep the input focused when a suggestion is clicked so the click
+          // resolves before the outside-click handler can fire.
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {matches.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => {
+                onChange(g);
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-accent hover:text-accent-foreground"
+            >
+              <Folder className="h-3 w-3 shrink-0 opacity-60" />
+              <span className="truncate">{g}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

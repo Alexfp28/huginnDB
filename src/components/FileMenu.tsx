@@ -15,12 +15,13 @@
  *   └── Disconnect all  (disabled when nothing is connected)
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Check,
   ChevronDown,
   Download,
+  Folder,
   FolderOpen,
   PlugZap,
   Plus,
@@ -43,7 +44,7 @@ import { ExportProfilesDialog } from "@/components/ExportProfilesDialog";
 import { ImportProfilesDialog } from "@/components/ImportProfilesDialog";
 import { DriverBadge } from "@/components/DriverBadge";
 import { driverMismatchHint } from "@/lib/driver";
-import { cn } from "@/lib/utils";
+import { bucketByGroup, cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
 
 interface Props {
@@ -69,6 +70,12 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const { t } = useTranslation();
+
+  // Bucket the flat profile list by `group` so the menu mirrors the folder
+  // hierarchy the user set up (issue #20 — the group field had no visible
+  // effect here). Ungrouped connections list first, then one labelled folder
+  // per group (sorted). Same helper as the status-bar connection switcher.
+  const buckets = useMemo(() => bucketByGroup(profiles), [profiles]);
 
   /** Connect to a profile (or just select it if it's already active). */
   async function handleSelect(p: ConnectionProfile) {
@@ -99,6 +106,34 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
       }
     }
     onSelect(null);
+  }
+
+  /** One connection row. `indented` nudges it right so it reads as sitting
+   *  under its group folder header. */
+  function renderProfile(p: ConnectionProfile, indented = false) {
+    const isActive = active.has(p.id);
+    const isSelected = selectedConnectionId === p.id;
+    return (
+      <DropdownMenuItem
+        key={p.id}
+        onSelect={() => handleSelect(p)}
+        className={cn("gap-2", indented && "pl-6")}
+      >
+        <span
+          className={cn(
+            "h-1.5 w-1.5 shrink-0 rounded-full",
+            isActive ? "bg-emerald-400" : "bg-muted-foreground/40",
+          )}
+        />
+        <span
+          className={cn("flex-1 truncate text-xs", isSelected && "font-semibold")}
+        >
+          {p.name}
+        </span>
+        <DriverBadge driver={p.driver} />
+        {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-brand" />}
+      </DropdownMenuItem>
+    );
   }
 
   return (
@@ -154,36 +189,18 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
               {t("menu.file.noConnections")}
             </div>
           ) : (
-            profiles.map((p) => {
-              const isActive = active.has(p.id);
-              const isSelected = selectedConnectionId === p.id;
-              return (
-                <DropdownMenuItem
-                  key={p.id}
-                  onSelect={() => handleSelect(p)}
-                  className="gap-2"
-                >
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 shrink-0 rounded-full",
-                      isActive ? "bg-emerald-400" : "bg-muted-foreground/40",
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "flex-1 truncate text-xs",
-                      isSelected && "font-semibold",
-                    )}
-                  >
-                    {p.name}
-                  </span>
-                  <DriverBadge driver={p.driver} />
-                  {isSelected && (
-                    <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
-                  )}
-                </DropdownMenuItem>
-              );
-            })
+            <>
+              {buckets.ungrouped.map((p) => renderProfile(p))}
+              {buckets.groups.map(({ name, items }) => (
+                <div key={name}>
+                  <div className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80">
+                    <Folder className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{name}</span>
+                  </div>
+                  {items.map((p) => renderProfile(p, true))}
+                </div>
+              ))}
+            </>
           )}
 
           <DropdownMenuSeparator />

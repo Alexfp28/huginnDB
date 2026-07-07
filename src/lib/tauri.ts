@@ -132,6 +132,12 @@ export const api = {
   createDatabase: (connectionId: string, name: string) =>
     invoke<void>("create_database", { connectionId, name }),
 
+  /** Drop a database on the server behind `connectionId` (the parent
+   *  connection). Postgres/MySQL only; the backend closes the synthetic
+   *  per-database pool first. */
+  dropDatabase: (connectionId: string, name: string) =>
+    invoke<void>("drop_database", { connectionId, name }),
+
   listTables: (connectionId: string, database?: string) =>
     invoke<TableInfo[]>("list_tables", { connectionId, database }),
 

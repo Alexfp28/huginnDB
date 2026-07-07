@@ -141,7 +141,10 @@ export function StatusConnections() {
       <DropdownMenuItem
         key={p.id}
         onSelect={() => setSelected(p.id)}
-        className="gap-2"
+        // The focused connection (the one the workspace points at) gets a
+        // resting brand wash so it reads as "active", distinct from the other
+        // merely-connected rows (issue #31).
+        className={cn("gap-2", selected === p.id && "bg-brand/10")}
       >
         {selected === p.id ? (
           <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
@@ -162,6 +165,11 @@ export function StatusConnections() {
         >
           {p.name}
         </span>
+        {selected === p.id && (
+          <span className="shrink-0 rounded bg-brand/15 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-brand">
+            {t("statusBar.activeLabel")}
+          </span>
+        )}
         {versions[p.id] && !isLost && (
           <span className="max-w-[6rem] truncate font-mono text-[10px] text-muted-foreground">
             {versions[p.id]}
