@@ -342,6 +342,7 @@
     "tableNamePlaceholder": "table_name",
     "apply": "Apply",
     "applying": "Applying…",
+    "applyFailed": "Apply failed: {{message}}",
     "ddlPreview": "DDL preview",
     "rebuildWarning": "rebuilds table",
     "rebuildTitle": "Rebuild table on SQLite?",

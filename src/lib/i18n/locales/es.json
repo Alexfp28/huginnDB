@@ -342,6 +342,7 @@
     "tableNamePlaceholder": "nombre_tabla",
     "apply": "Aplicar",
     "applying": "Aplicando…",
+    "applyFailed": "Error al aplicar: {{message}}",
     "ddlPreview": "Vista previa DDL",
     "rebuildWarning": "reconstruye la tabla",
     "rebuildTitle": "¿Reconstruir la tabla en SQLite?",

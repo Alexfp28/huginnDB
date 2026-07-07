@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -205,7 +206,13 @@ export function StructureEditorTab({
         setForeignKeys(s.foreignKeys);
       }
     } catch (e) {
-      setPreviewError(String(e));
+      // Surface the failure both in the DDL pane and as a toast. The pane
+      // alone was easy to miss (small, bottom of the tab), so a rejected DDL
+      // apply — e.g. MySQL "key too long" on an oversized PK — looked like it
+      // silently did nothing (issue #26).
+      const message = String(e);
+      setPreviewError(message);
+      toast.error(t("structure.applyFailed", { message }));
     } finally {
       setApplying(false);
       setConfirmRebuild(false);
