@@ -343,6 +343,7 @@
     "apply": "Apply",
     "applying": "Applying…",
     "applyFailed": "Apply failed: {{message}}",
+    "refresh": "Reload structure from server",
     "ddlPreview": "DDL preview",
     "rebuildWarning": "rebuilds table",
     "rebuildTitle": "Rebuild table on SQLite?",

@@ -343,6 +343,7 @@
     "apply": "Aplicar",
     "applying": "Aplicando…",
     "applyFailed": "Error al aplicar: {{message}}",
+    "refresh": "Recargar estructura del servidor",
     "ddlPreview": "Vista previa DDL",
     "rebuildWarning": "reconstruye la tabla",
     "rebuildTitle": "¿Reconstruir la tabla en SQLite?",

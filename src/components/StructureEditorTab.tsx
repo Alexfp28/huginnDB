@@ -115,28 +115,32 @@ export function StructureEditorTab({
   const [applying, setApplying] = useState(false);
   const [confirmRebuild, setConfirmRebuild] = useState(false);
 
-  // Load the existing structure when editing.
-  useEffect(() => {
+  // (Re)load the existing structure from the server. Runs on mount and from
+  // the manual refresh button (issue #25) so external changes made while the
+  // tab is open can be pulled in; a refresh resets the working state to the
+  // server's current definition. The table name is fixed in edit mode, so
+  // re-reading by `table` always targets the right table.
+  const reload = useCallback(async () => {
     if (mode !== "edit" || !table) return;
-    let cancelled = false;
     setLoading(true);
-    api
-      .getTableStructure(connectionId, schema, table)
-      .then((s) => {
-        if (cancelled) return;
-        setOriginal(s);
-        setName(s.name);
-        setColumns(s.columns.map((c) => ({ ...c, _key: nextKey() })));
-        setIndexes(s.indexes);
-        setForeignKeys(s.foreignKeys);
-        setLoadError(null);
-      })
-      .catch((e) => !cancelled && setLoadError(String(e)))
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const s = await api.getTableStructure(connectionId, schema, table);
+      setOriginal(s);
+      setName(s.name);
+      setColumns(s.columns.map((c) => ({ ...c, _key: nextKey() })));
+      setIndexes(s.indexes);
+      setForeignKeys(s.foreignKeys);
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(String(e));
+    } finally {
+      setLoading(false);
+    }
   }, [mode, connectionId, schema, table]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   /** Assemble the desired structure from the working state. */
   const desired = useMemo<TableStructure>(
@@ -263,6 +267,22 @@ export function StructureEditorTab({
           disabled={mode === "edit"}
         />
         <div className="ml-auto flex items-center gap-2">
+          {mode === "edit" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => void reload()}
+              disabled={loading || applying}
+              title={t("structure.refresh")}
+            >
+              <RefreshCw
+                className={
+                  loading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"
+                }
+              />
+            </Button>
+          )}
           {isReadOnly ? (
             <span className="rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground">
               {t("structure.readOnlyMongo")}
