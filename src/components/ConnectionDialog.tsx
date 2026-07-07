@@ -745,7 +745,7 @@ export function ConnectionDialog({
                           <Field label={t("connectionDialog.fields.port")}>
                             <Input
                               type="number"
-                              value={port}
+                              value={port || ""}
                               disabled={mongoUriManual}
                               onChange={(e) => setPort(Number(e.target.value))}
                             />
@@ -839,7 +839,7 @@ export function ConnectionDialog({
                           <Field label={t("connectionDialog.fields.port")}>
                             <Input
                               type="number"
-                              value={port}
+                              value={port || ""}
                               onChange={(e) => setPort(Number(e.target.value))}
                             />
                           </Field>
@@ -921,7 +921,7 @@ export function ConnectionDialog({
                             <Field label={t("connectionDialog.ssh.port")}>
                               <Input
                                 type="number"
-                                value={sshPort}
+                                value={sshPort || ""}
                                 onChange={(e) =>
                                   setSshPort(Number(e.target.value))
                                 }
@@ -1012,7 +1012,7 @@ export function ConnectionDialog({
                           <Field label={t("connectionDialog.ssh.localPort")}>
                             <Input
                               type="number"
-                              value={sshLocalPort}
+                              value={sshLocalPort || ""}
                               onChange={(e) =>
                                 setSshLocalPort(Number(e.target.value))
                               }
