@@ -623,6 +623,8 @@
     "resume": "Resume",
     "pause": "Pause",
     "clear": "Clear",
+    "scrollTop": "Scroll to top",
+    "scrollBottom": "Scroll to bottom",
     "closeDetail": "Close detail (Esc)",
     "kindSql": "SQL",
     "kindConnection": "Connection",
