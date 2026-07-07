@@ -342,6 +342,7 @@ pub fn run() {
             commands::connection::take_window_startup_intent,
             commands::schema::list_databases,
             commands::schema::create_database,
+            commands::schema::drop_database,
             commands::schema::list_tables,
             commands::schema::list_columns,
             commands::schema::list_indexes,

@@ -217,7 +217,8 @@
       "editStructure": "Editar estructura…",
       "newTable": "Nueva tabla…",
       "rename": "Renombrar…",
-      "drop": "Eliminar tabla…"
+      "drop": "Eliminar tabla…",
+      "dropDatabase": "Eliminar base de datos…"
     },
     "rename": {
       "title": "Renombrar tabla",
@@ -242,6 +243,9 @@
       "creating": "Creando…",
       "failed": "No se pudo crear la base de datos: {{message}}",
       "createdSingleDb": "Base de datos \"{{name}}\" creada. Esta conexión está limitada a una sola base de datos — abre una conexión nueva (o una en modo multi-base) para explorarla."
+    },
+    "dropDatabase": {
+      "confirm": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor. No se puede deshacer."
     },
     "security": "Seguridad"
   },

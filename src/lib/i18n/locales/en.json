@@ -217,7 +217,8 @@
       "editStructure": "Edit structure…",
       "newTable": "New table…",
       "rename": "Rename…",
-      "drop": "Drop table…"
+      "drop": "Drop table…",
+      "dropDatabase": "Drop database…"
     },
     "rename": {
       "title": "Rename table",
@@ -242,6 +243,9 @@
       "creating": "Creating…",
       "failed": "Could not create database: {{message}}",
       "createdSingleDb": "Database \"{{name}}\" created. This connection is scoped to a single database — open a new connection (or a multi-database one) to browse into it."
+    },
+    "dropDatabase": {
+      "confirm": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server. This cannot be undone."
     },
     "security": "Security"
   },
