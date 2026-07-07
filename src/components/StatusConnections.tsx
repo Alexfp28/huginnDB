@@ -35,6 +35,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
 import { DriverBadge } from "@/components/DriverBadge";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { driverMismatchHint } from "@/lib/driver";
 import { bucketByGroup, cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
@@ -257,16 +258,16 @@ export function StatusConnections() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "flex items-center gap-1.5 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring",
-            count > 0 && "text-foreground",
-          )}
-          title={t("statusBar.connectionsActive")}
-        >
-          {current ? (
+      <SimpleTooltip label={t("statusBar.connectionsActive")} side="top">
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "flex items-center gap-1.5 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring",
+              count > 0 && "text-foreground",
+            )}
+          >
+            {current ? (
             <DriverBadge driver={current.driver} />
           ) : (
             <span
@@ -285,7 +286,8 @@ export function StatusConnections() {
           </span>
           <ChevronUp className="h-3 w-3 opacity-60" />
         </button>
-      </DropdownMenuTrigger>
+        </DropdownMenuTrigger>
+      </SimpleTooltip>
       <DropdownMenuContent
         side="top"
         align="start"

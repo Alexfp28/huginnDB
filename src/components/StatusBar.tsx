@@ -25,6 +25,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /** Thin vertical divider between status bar sections. */
@@ -104,18 +105,19 @@ export function StatusBar() {
 
       {/* Right — encoding · version · history · density · theme */}
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            import("@/components/CommandPalette").then((m) =>
-              m.useCommandPalette.getState().toggle(),
-            );
-          }}
-          title={t("statusBar.commandPaletteTooltip")}
-          className="rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          {t("statusBar.commandPaletteHint")}
-        </button>
+        <SimpleTooltip label={t("statusBar.commandPaletteTooltip")} side="top">
+          <button
+            type="button"
+            onClick={() => {
+              import("@/components/CommandPalette").then((m) =>
+                m.useCommandPalette.getState().toggle(),
+              );
+            }}
+            className="rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {t("statusBar.commandPaletteHint")}
+          </button>
+        </SimpleTooltip>
         <Sep />
         <span>{t("statusBar.encoding")}</span>
         {serverVersion && (
@@ -160,16 +162,17 @@ function HistoryMenu({ count }: { count: number }) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex items-center gap-1 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          title={t("statusBar.recentQueries")}
-        >
-          <History className="h-3 w-3" />
-          {t("statusBar.history")} {count}
-        </button>
-      </DropdownMenuTrigger>
+      <SimpleTooltip label={t("statusBar.recentQueries")} side="top">
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <History className="h-3 w-3" />
+            {t("statusBar.history")} {count}
+          </button>
+        </DropdownMenuTrigger>
+      </SimpleTooltip>
       <DropdownMenuContent side="top" align="end" className="w-96">
         <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {t("statusBar.recentQueries")}
@@ -221,15 +224,16 @@ function DensityMenu() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex items-center gap-1 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          title={t("statusBar.density")}
-        >
-          <Rows3 className="h-3 w-3" />
-        </button>
-      </DropdownMenuTrigger>
+      <SimpleTooltip label={t("statusBar.density")} side="top">
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <Rows3 className="h-3 w-3" />
+          </button>
+        </DropdownMenuTrigger>
+      </SimpleTooltip>
       <DropdownMenuContent side="top" align="end" className="w-40">
         <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {t("statusBar.density")}
@@ -257,17 +261,18 @@ function ThemeToggle() {
   const mode = useThemeStore((s) => selectActiveTheme(s).mode);
   const setMode = useThemeStore((s) => s.setActiveMode);
   return (
-    <button
-      type="button"
-      onClick={() => setMode(mode === "dark" ? "light" : "dark")}
-      title={t("statusBar.toggleTheme")}
-      className="flex items-center rounded-sm p-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      {mode === "dark" ? (
-        <Sun className="h-3 w-3" />
-      ) : (
-        <Moon className="h-3 w-3" />
-      )}
-    </button>
+    <SimpleTooltip label={t("statusBar.toggleTheme")} side="top">
+      <button
+        type="button"
+        onClick={() => setMode(mode === "dark" ? "light" : "dark")}
+        className="flex items-center rounded-sm p-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        {mode === "dark" ? (
+          <Sun className="h-3 w-3" />
+        ) : (
+          <Moon className="h-3 w-3" />
+        )}
+      </button>
+    </SimpleTooltip>
   );
 }

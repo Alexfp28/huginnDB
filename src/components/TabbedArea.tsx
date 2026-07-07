@@ -47,6 +47,7 @@ import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 import { useConnections } from "@/stores/connections";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { TableDataTab } from "@/components/TableDataTab";
 import { QueryEditorTab } from "@/components/QueryEditorTab";
 import { StructureEditorTab } from "@/components/StructureEditorTab";
@@ -218,6 +219,7 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
 
   return (
     <ContextMenu>
+      <SimpleTooltip label={tooltip} side="bottom">
       <ContextMenuTrigger asChild>
     <div
       className={cn(
@@ -230,7 +232,6 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           : "text-muted-foreground/70",
       )}
       style={tabColor ? { boxShadow: `inset 0 2px 0 0 ${tabColor}` } : undefined}
-      title={tooltip}
       // Middle-click (wheel button) closes the tab, matching editor
       // conventions. `mousedown` preventDefault suppresses the browser's
       // middle-click autoscroll affordance.
@@ -252,25 +253,26 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
        * native drag drop overlay flaky in a nested dockview.
        */}
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className={cn(
-              "rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-              // Reveal on hover AND on keyboard focus (focus-within on the tab,
-              // or the button itself receiving focus) so the close/menu actions
-              // aren't mouse-only.
-              isActive
-                ? "opacity-100"
-                : "opacity-0 focus-visible:opacity-100 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100",
-            )}
-            onClick={(e) => e.stopPropagation()}
-            // Don't let dockview start a tab drag from the menu trigger.
-            onMouseDown={(e) => e.stopPropagation()}
-            title={t("tabs.actionsTooltip")}
-          >
-            <MoreVertical className="h-3.5 w-3.5" />
-          </button>
-        </DropdownMenuTrigger>
+        <SimpleTooltip label={t("tabs.actionsTooltip")} side="bottom">
+          <DropdownMenuTrigger asChild>
+            <button
+              className={cn(
+                "rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                // Reveal on hover AND on keyboard focus (focus-within on the
+                // tab, or the button itself receiving focus) so the close/menu
+                // actions aren't mouse-only.
+                isActive
+                  ? "opacity-100"
+                  : "opacity-0 focus-visible:opacity-100 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100",
+              )}
+              onClick={(e) => e.stopPropagation()}
+              // Don't let dockview start a tab drag from the menu trigger.
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <MoreVertical className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+        </SimpleTooltip>
         <DropdownMenuContent align="end" className="text-xs">
           {/*
            * Splits require a reference `group` — `panel.api.moveTo` silently
@@ -348,23 +350,25 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <button
-        className={cn(
-          "rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive",
-          isActive ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100",
-        )}
-        onClick={(e) => {
-          e.stopPropagation();
-          requestClose();
-        }}
-        // Same drag-suppression as the menu trigger.
-        onMouseDown={(e) => e.stopPropagation()}
-        title={t("tabs.closeTab")}
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+      <SimpleTooltip label={t("tabs.closeTab")} side="bottom">
+        <button
+          className={cn(
+            "rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive",
+            isActive ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100",
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            requestClose();
+          }}
+          // Same drag-suppression as the menu trigger.
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </SimpleTooltip>
     </div>
       </ContextMenuTrigger>
+      </SimpleTooltip>
       <ContextMenuContent className="text-xs">
         <ContextMenuItem onSelect={requestClose}>
           {t("tabs.closeTab")}
@@ -387,24 +391,25 @@ function NewTabAction(_props: IDockviewHeaderActionsProps) {
   const { t } = useTranslation();
   const connectionId = useUi((s) => s.selectedConnectionId);
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="h-7 w-7 text-muted-foreground hover:bg-accent hover:text-brand"
-      disabled={!connectionId}
-      onClick={() => {
-        if (!connectionId) return;
-        useTabs.getState().open({
-          kind: "query",
-          title: t("tabs.queryFileName"),
-          connectionId,
-          query: "-- write a SQL query and press Ctrl+Enter\n",
-        });
-      }}
-      title={t("tabs.newQueryTooltip")}
-    >
-      <Plus className="h-3.5 w-3.5" />
-    </Button>
+    <SimpleTooltip label={t("tabs.newQueryTooltip")} side="bottom">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-muted-foreground hover:bg-accent hover:text-brand"
+        disabled={!connectionId}
+        onClick={() => {
+          if (!connectionId) return;
+          useTabs.getState().open({
+            kind: "query",
+            title: t("tabs.queryFileName"),
+            connectionId,
+            query: "-- write a SQL query and press Ctrl+Enter\n",
+          });
+        }}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </Button>
+    </SimpleTooltip>
   );
 }
 

@@ -29,9 +29,13 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName;
  * rendering the child bare when there's no label. Use the primitives directly
  * for anything richer (rich content, controlled open, custom side/align).
  *
- * NOTE: prefer this for standalone chrome buttons. A tooltip nested inside a
- * Radix menu / dropdown item can fight that surface's own hover/portal
- * handling — migrate those case-by-case with a live check rather than in bulk.
+ * NOTE: use this for standalone chrome buttons AND for menu/context triggers
+ * (wrap the `*Trigger asChild` element — the tooltip fires on hover, the menu
+ * still opens on click; both `asChild` slots compose onto the button). What it
+ * is NOT for is a tooltip nested *inside* open menu content (a DropdownMenuItem
+ * or a swatch inside DropdownMenuContent): there the Radix tooltip fights the
+ * menu's own hover/portal handling, so those spots keep a native `title=""` —
+ * a plain OS tooltip that doesn't conflict. Don't migrate in-menu-item titles.
  */
 export function SimpleTooltip({
   label,

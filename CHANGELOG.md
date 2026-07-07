@@ -50,12 +50,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Changed
 
 - **Themed tooltips (UI/UX overhaul, phase 3).** Added a `SimpleTooltip`
-  convenience wrapper over the themed Tooltip primitive and migrated the
-  standalone header buttons (theme toggle, preferences) off native `title=""`
-  so their tooltips match the app's theme instead of the OS default. Tooltips
-  nested inside Radix menus/dropdowns are being migrated case-by-case (they can
-  fight the menu's own hover/portal handling), so the rest of the chrome keeps
-  native titles for now.
+  convenience wrapper over the themed Tooltip primitive and migrated the app
+  chrome off native `title=""` so its tooltips match the app's theme instead of
+  the OS default: the header buttons (theme toggle, preferences), every
+  status-bar affordance (command palette, query-history, density and theme
+  toggles, the connections switcher) and the workspace tabs (label, actions ⋮,
+  close, new-query +). Menu/context triggers are wrapped at the trigger so the
+  tooltip fires on hover while the menu still opens on click. The one case left
+  on native `title=""` — deliberately — is a tooltip that lives *inside* open
+  menu content (the connection rows' reconnect/disconnect, the tab colour
+  swatches): a Radix tooltip there fights the menu's own hover/portal handling,
+  and a native OS tooltip doesn't.
 - **Clearer connection status (UI/UX overhaul, phase 3).** A lost connection —
   arguably the most important operational signal — was a 6px red dot plus a
   cryptic red icon. Lost rows in the status-bar connection switcher now get a
