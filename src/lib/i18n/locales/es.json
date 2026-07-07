@@ -385,6 +385,8 @@
     "closeOthers": "Cerrar las demás",
     "closeAll": "Cerrar todas",
     "actionsTooltip": "Acciones de la pestaña",
+    "color": "Color",
+    "colorNone": "Sin color",
     "splitRight": "Dividir a la derecha",
     "splitDown": "Dividir abajo",
     "floatPanel": "Sacar a ventana flotante",

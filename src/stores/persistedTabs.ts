@@ -67,6 +67,7 @@ function snapshotFor(connectionId: string): ConnectionTabState {
       table: t.table ?? null,
       query: t.query ?? null,
       title: t.title ?? null,
+      color: t.color ?? null,
     }));
   const activeId = tabs.find((t) => t.id === tabsState.activeId)?.id ?? null;
   const expandedSchemaNodes = schemaSlice
@@ -149,6 +150,7 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
         schema: p.schema ?? undefined,
         table: p.table ?? undefined,
         query: p.query ?? undefined,
+        color: p.color ?? undefined,
       }));
 
       // Merge: keep tabs from other connections, drop the previous set
