@@ -28,6 +28,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   SO/webview e ignoraba el tema de la app. Ahora es un combobox temático (y sigue
   permitiendo crear: escribir un nombre nuevo crea un grupo nuevo) que filtra por
   subcadena los grupos existentes en un popover con el estilo de la app.
+- **Colorear pestañas (#24).** Las pestañas abiertas se pueden colorear desde su
+  menú ⋮ (seis colores predefinidos + limpiar); el color se muestra como una
+  franja de 2px en el borde superior de la pestaña y se persiste por conexión.
+- **Botón de refresco en el editor de estructura (#25).** La pestaña de
+  estructura incorpora un botón para releer la definición actual de la tabla
+  desde el servidor, y así traer cambios hechos en otro sitio con la pestaña
+  abierta.
+- **Ir arriba / ir abajo en la consola (#29).** Dos botones en la barra saltan
+  al primer o último registro del log.
+- **Conexión activa marcada en el desplegable de estado (#31).** La conexión en
+  la que está enfocado el workspace ahora recibe un wash de marca + etiqueta
+  "activa" en el desplegable de la barra de estado, distinta de las demás filas
+  solo conectadas.
 
 ### Corregido
 
@@ -54,6 +67,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   satisfacer la ruta "nueva ventana" volvía a drenar el buffer de intención
   compartido y lo enrutaba una segunda vez. Ahora el enrutado está limitado solo
   a la ventana principal.
+- **Las tablas vacías muestran sus columnas y el botón de insertar (#27).** Una
+  tabla sin filas no mostraba cabeceras ni forma de añadir la primera fila,
+  porque las columnas se derivaban de la primera fila. `fetch_table_data` ahora
+  recurre a la definición del catálogo cuando una página vuelve vacía.
+- **Los errores al aplicar DDL se muestran (#26).** Un cambio de estructura que
+  la base de datos rechaza — p. ej. una clave primaria que excede el máximo de
+  bytes de MySQL — solo aparecía en el pequeño panel de vista previa DDL y
+  parecía no hacer nada. Ahora también lanza un toast.
+- **El campo de puerto se puede vaciar (#28).** Vaciar un campo de puerto
+  numérico dejaba un `0` pegado que no se podía borrar. Ahora el `0` se muestra
+  como campo vacío, restaurando el borrado/reescritura normal (los cuatro
+  campos de puerto).
+- **Sin selección de texto al seleccionar filas con Shift+Click (#30).**
+  Seleccionar un rango de filas también arrastraba una selección de texto; el
+  grid ahora es `select-none`.
+- **Consistencia de los desplegables de conexión (#31).** El desplegable del
+  menú File ya muestra los grupos de conexión (ver el cambio de agrupación
+  arriba) y el desplegable de la barra de estado marca la conexión activa,
+  resolviendo ambas partes del reporte.
 
 ## [1.5.0] — 2026-07-04
 

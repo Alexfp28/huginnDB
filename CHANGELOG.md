@@ -25,6 +25,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   OS/webview and ignored the app theme. It's now a themed, still-creatable
   combobox (typing a new name still creates a new group) that substring-filters
   existing group names in an in-theme popover.
+- **Tab colour coding (#24).** Open tabs can be colour-coded from the tab's ⋮
+  menu (six preset swatches + clear); the colour shows as a 2px cap on the
+  tab's top edge and persists per connection.
+- **Refresh button in the structure editor (#25).** The table-structure tab
+  gained a refresh button that re-reads the table's current definition from the
+  server, so changes made elsewhere while the tab is open can be pulled in.
+- **Scroll-to-top / scroll-to-bottom in the console (#29).** Two toolbar
+  buttons jump the console log to its first or last entry.
+- **Active connection marked in the status dropdown (#31).** The connection the
+  workspace is focused on now gets a brand wash + "active" tag in the status-bar
+  dropdown, distinct from the other merely-connected rows.
 
 ### Fixed
 
@@ -48,6 +59,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   window, so the window spawned to satisfy the "new window" route re-drained the
   shared pending-intent buffer and routed it a second time. Routing is now
   gated to the main window only.
+- **Empty tables show their columns and the insert affordance (#27).** A table
+  with no rows rendered no column headers and no way to add the first row,
+  because the result decoders derive columns from the first row. `fetch_table_data`
+  now falls back to the catalog definition when a page comes back empty.
+- **DDL apply failures are surfaced (#26).** A structure change the database
+  rejects — e.g. a primary key exceeding MySQL's max key length — only showed a
+  message in the small DDL-preview pane and read as a silent no-op. It now also
+  raises a toast.
+- **The port field can be cleared (#28).** Emptying a numeric port field snapped
+  back to a stuck `0` that couldn't be backspaced away. Falsy `0` now renders as
+  an empty field, restoring normal clear/retype (all four port inputs).
+- **No text highlighting on Shift+Click row selection (#30).** Range-selecting
+  rows also dragged a native text selection across their contents; the grid is
+  now `select-none`.
+- **Connection dropdown consistency (#31).** The File-menu dropdown now shows
+  connection groups (see the grouping change above) and the status-bar dropdown
+  marks the active connection, resolving both halves of the report.
 
 ## [1.5.0] — 2026-07-04
 
