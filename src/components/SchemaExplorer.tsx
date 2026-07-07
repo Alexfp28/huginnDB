@@ -63,6 +63,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
+import { confirmDestructive } from "@/lib/confirmDestructive";
 import type { Driver, TableInfo } from "@/types";
 
 /**
@@ -740,6 +741,7 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
                 key={db.name}
                 parentId={parentId}
                 dbName={db.name}
+                canDrop={canCreateDatabase}
                 expanded={cs.expanded.has(`db:${db.name}`)}
                 onToggle={() => toggleNode(parentId, `db:${db.name}`)}
                 onActivate={(name) => setActiveDatabaseName(name)}
@@ -766,6 +768,7 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
 function DatabaseRoot({
   parentId,
   dbName,
+  canDrop,
   expanded,
   onToggle,
   onActivate,
@@ -778,6 +781,8 @@ function DatabaseRoot({
 }: {
   parentId: string;
   dbName: string;
+  /** Whether `DROP DATABASE` is offered (Postgres/MySQL only). */
+  canDrop: boolean;
   expanded: boolean;
   onToggle: () => void;
   /** Called when the user expands/collapses this DB via the chevron. */
@@ -839,6 +844,24 @@ function DatabaseRoot({
       }
     }
     openSecurityTab(id, t("security.title"));
+  };
+
+  // Drop this database (Postgres/MySQL). Irreversible, so it's gated behind
+  // the typed-confirmation prompt. On success we tear down the child pool's
+  // frontend state (its schema slice + any open tabs) and refresh the parent
+  // tree so the row disappears; the backend already closed the child pool.
+  const dropThisDatabase = async () => {
+    if (!confirmDestructive(t("schema.dropDatabase.confirm", { name: dbName })))
+      return;
+    try {
+      await api.dropDatabase(parentId, dbName);
+      const childId = `${parentId}::db::${dbName}`;
+      useTabs.getState().closeForConnection(childId);
+      useSchema.getState().drop(childId);
+      await useSchema.getState().refresh(parentId);
+    } catch (e) {
+      setError(String(e));
+    }
   };
 
   // Three ways the subtree can be open:
@@ -907,6 +930,17 @@ function DatabaseRoot({
           <ContextMenuItem onSelect={() => void openSecurityHere()}>
             {t("security.title")}
           </ContextMenuItem>
+          {canDrop && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                onSelect={() => void dropThisDatabase()}
+                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+              >
+                {t("schema.context.dropDatabase")}
+              </ContextMenuItem>
+            </>
+          )}
         </ContextMenuContent>
       </ContextMenu>
       {effectiveExpanded && (

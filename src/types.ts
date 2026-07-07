@@ -271,6 +271,9 @@ export interface AppTab {
   connectionId: string;
   schema?: string;
   table?: string;
+  /** User-assigned tab colour (hex, e.g. `#ef4444`). Undefined = no colour.
+   *  Purely cosmetic; persisted per connection. */
+  color?: string;
   /** Initial / current SQL for query tabs. */
   query?: string;
   /** For structure tabs: whether we're creating a new table or editing one. */
@@ -442,6 +445,7 @@ export interface PersistedTab {
   table: string | null;
   query: string | null;
   title: string | null;
+  color: string | null;
 }
 
 /**

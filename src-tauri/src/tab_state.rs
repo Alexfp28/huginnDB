@@ -84,6 +84,10 @@ pub struct PersistedTab {
     pub table: Option<String>,
     pub query: Option<String>,
     pub title: Option<String>,
+    /// User-assigned cosmetic tab colour (hex string). Stored opaquely; the
+    /// backend never interprets it. Must live here or serde drops it on the
+    /// typed IPC boundary (see CLAUDE.md gotcha #14).
+    pub color: Option<String>,
 }
 
 impl Default for PersistedTabState {
@@ -116,6 +120,7 @@ impl Default for PersistedTab {
             table: None,
             query: None,
             title: None,
+            color: None,
         }
     }
 }

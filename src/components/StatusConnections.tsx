@@ -144,9 +144,14 @@ export function StatusConnections() {
         onSelect={() => setSelected(p.id)}
         // A lost pool is the most important state in this list — give the whole
         // row a destructive wash so it's unmissable, not just a 6px red dot.
+        // Otherwise the focused connection (the one the workspace points at)
+        // gets a resting brand wash so it reads as "active", distinct from the
+        // other merely-connected rows (issue #31).
         className={cn(
           "gap-2",
-          isLost && "bg-destructive/10 focus:bg-destructive/15",
+          isLost
+            ? "bg-destructive/10 focus:bg-destructive/15"
+            : selected === p.id && "bg-brand/10",
         )}
       >
         {isLost ? (
@@ -165,6 +170,11 @@ export function StatusConnections() {
         >
           {p.name}
         </span>
+        {selected === p.id && (
+          <span className="shrink-0 rounded bg-brand/15 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-brand">
+            {t("statusBar.activeLabel")}
+          </span>
+        )}
         {versions[p.id] && !isLost && (
           <span className="max-w-[6rem] truncate font-mono text-3xs text-muted-foreground">
             {versions[p.id]}

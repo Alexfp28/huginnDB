@@ -132,6 +132,7 @@
     "testOk": "Connection successful",
     "testFailed": "Failed: {{message}}",
     "saveFailed": "Save failed: {{message}}",
+    "copyError": "Copy error",
     "saved": "Saved",
     "save": "Save",
     "saving": "Saving…",
@@ -217,7 +218,8 @@
       "editStructure": "Edit structure…",
       "newTable": "New table…",
       "rename": "Rename…",
-      "drop": "Drop table…"
+      "drop": "Drop table…",
+      "dropDatabase": "Drop database…"
     },
     "rename": {
       "title": "Rename table",
@@ -242,6 +244,9 @@
       "creating": "Creating…",
       "failed": "Could not create database: {{message}}",
       "createdSingleDb": "Database \"{{name}}\" created. This connection is scoped to a single database — open a new connection (or a multi-database one) to browse into it."
+    },
+    "dropDatabase": {
+      "confirm": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server. This cannot be undone."
     },
     "security": "Security"
   },
@@ -343,6 +348,8 @@
     "tableNamePlaceholder": "table_name",
     "apply": "Apply",
     "applying": "Applying…",
+    "applyFailed": "Apply failed: {{message}}",
+    "refresh": "Reload structure from server",
     "ddlPreview": "DDL preview",
     "rebuildWarning": "rebuilds table",
     "rebuildTitle": "Rebuild table on SQLite?",
@@ -384,6 +391,8 @@
     "closeOthers": "Close other tabs",
     "closeAll": "Close all tabs",
     "actionsTooltip": "Tab actions",
+    "color": "Colour",
+    "colorNone": "No colour",
     "splitRight": "Split right",
     "splitDown": "Split down",
     "floatPanel": "Float in new window",
@@ -402,6 +411,7 @@
     "connections": "{{count}} connected",
     "connectionsActive": "Active connections",
     "connectionsAvailable": "Connect to…",
+    "activeLabel": "active",
     "noConnections": "No active connections",
     "jumpTo": "Go to workspace",
     "disconnect": "Disconnect",
@@ -624,6 +634,8 @@
     "resume": "Resume",
     "pause": "Pause",
     "clear": "Clear",
+    "scrollTop": "Scroll to top",
+    "scrollBottom": "Scroll to bottom",
     "closeDetail": "Close detail (Esc)",
     "kindSql": "SQL",
     "kindConnection": "Connection",

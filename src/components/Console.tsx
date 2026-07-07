@@ -13,11 +13,20 @@
  * reference-stability rule called out in CLAUDE.md.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Virtuoso } from "react-virtuoso";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import Editor from "@monaco-editor/react";
-import { Pause, Play, Trash2, Search, X, MessageSquarePlus } from "lucide-react";
+import {
+  ChevronsDown,
+  ChevronsUp,
+  MessageSquarePlus,
+  Pause,
+  Play,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -96,6 +105,7 @@ export function Console() {
   const toggleKind = useLogs((s) => s.toggleKind);
   const editorPrefs = usePreferences(selectEditorPrefs);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const listRef = useRef<VirtuosoHandle>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -158,6 +168,33 @@ export function Console() {
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7"
+          disabled={filtered.length === 0}
+          onClick={() =>
+            listRef.current?.scrollToIndex({ index: 0, behavior: "smooth" })
+          }
+          title={t("console.scrollTop")}
+        >
+          <ChevronsUp className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7"
+          disabled={filtered.length === 0}
+          onClick={() =>
+            listRef.current?.scrollToIndex({
+              index: filtered.length - 1,
+              behavior: "smooth",
+            })
+          }
+          title={t("console.scrollBottom")}
+        >
+          <ChevronsDown className="h-3.5 w-3.5" />
+        </Button>
         <div className="mx-1 h-5 w-px bg-border" />
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <input
@@ -203,6 +240,7 @@ export function Console() {
           </div>
         ) : (
           <Virtuoso
+            ref={listRef}
             data={filtered}
             followOutput={paused ? false : "smooth"}
             itemContent={(_index, entry) => (

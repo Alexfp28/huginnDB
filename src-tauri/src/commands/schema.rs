@@ -210,6 +210,64 @@ pub async fn create_database(
     Ok(())
 }
 
+/// Drop a database/catalog on the server behind `connection_id`.
+///
+/// The mirror of [`create_database`]: Postgres and MySQL only, server-level
+/// DDL, `name` validated through the same `validate_ident` allowlist because
+/// `DROP DATABASE` can't bind its identifier as a parameter.
+///
+/// `connection_id` is the *parent* connection. Before issuing the drop we
+/// close any synthetic per-database pool this session opened while browsing
+/// the target (`<connection_id>::db::<name>`, see `open_database_view`):
+/// Postgres refuses to drop a database that still has sessions attached, and
+/// our own child pool is the most likely holder. `Pool::close().await` waits
+/// for those connections to actually go away rather than relying on the lazy
+/// drop of the `ActivePool`. Dropping the database the parent pool itself is
+/// connected to still fails server-side (as it must) and that error surfaces
+/// to the caller unchanged.
+#[tauri::command]
+pub async fn drop_database(
+    state: State<'_, AppState>,
+    connection_id: String,
+    name: String,
+) -> AppResult<()> {
+    crate::db::ddl::validate_ident("database", &name)?;
+    // Remove + close our child pool first. The write guard is released at the
+    // end of this statement, so the subsequent `.close().await` never holds
+    // the lock across an await point.
+    let child_id = crate::commands::connection::database_view_id(&connection_id, &name);
+    let removed = state.connections.write().remove(&child_id);
+    if let Some(active) = removed {
+        match &active.pool {
+            DbPool::Postgres(p) => p.close().await,
+            DbPool::Mysql(p) => p.close().await,
+            _ => {}
+        }
+    }
+    let pool = pool_for(state.inner(), &connection_id)?;
+    match pool {
+        DbPool::Postgres(p) => {
+            let sql = format!("DROP DATABASE {}", quote_ident(true, &name));
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Mysql(p) => {
+            let sql = format!("DROP DATABASE {}", quote_ident(false, &name));
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Sqlite(_) => {
+            return Err(AppError::InvalidInput(
+                "SQLite has no separate databases — delete the file instead".into(),
+            ));
+        }
+        DbPool::Mongo(_) => {
+            return Err(AppError::InvalidInput(
+                "Dropping a MongoDB database isn't supported here".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// List user-visible tables and views, with approximate row counts where available.
 ///
 /// Row counts are sourced from engine statistics catalogs in a single query to

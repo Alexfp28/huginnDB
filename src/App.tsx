@@ -452,7 +452,18 @@ export default function App() {
   // there or to a new window (asking first, unless the user opted out).
   // Drain any intent buffered before this listener existed (a launch that
   // raced our boot) first, then subscribe to the live event.
+  //
+  // MAIN-WINDOW-ONLY. Both the shared `pending_cli_connect` buffer and the
+  // broadcast `cli-connect` event are meant for the running instance's main
+  // window, which owns the routing decision. A secondary window handles only
+  // its own startup intent (via `window_startup_intents`, in the effect
+  // above). If secondary windows also ran this, the intent would be processed
+  // twice: a window spawned to satisfy a "new window" route would boot,
+  // re-drain the still-full buffer, and route it AGAIN — opening a third
+  // window nobody asked for (issue #23). Same guard rationale as CLAUDE.md
+  // gotcha #8 (only the main window touches shared session state).
   useEffect(() => {
+    if (getCurrentWindow().label !== "main") return;
     let unlisten: (() => void) | null = null;
     let cancelled = false;
     void (async () => {
