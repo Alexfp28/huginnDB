@@ -11,6 +11,7 @@
 //!                classification).
 
 pub mod ddl;
+pub mod dump;
 pub mod mongo;
 pub mod pool;
 pub mod sql;

@@ -354,6 +354,8 @@ pub fn run() {
             commands::structure::get_table_structure,
             commands::structure::preview_structure_change,
             commands::structure::apply_structure_change,
+            commands::dump::export_database,
+            commands::dump::read_text_file,
             commands::query::execute_query,
             commands::query::execute_batch,
             commands::query::fetch_table_data,

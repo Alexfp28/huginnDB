@@ -57,7 +57,7 @@ pub async fn get_table_structure(
     }
 }
 
-async fn pg_structure(
+pub(crate) async fn pg_structure(
     p: &sqlx::PgPool,
     schema: Option<String>,
     table: String,
@@ -201,7 +201,7 @@ fn pg_action(code: String) -> Option<String> {
     }
 }
 
-async fn mysql_structure(
+pub(crate) async fn mysql_structure(
     p: &sqlx::MySqlPool,
     schema: Option<String>,
     table: String,

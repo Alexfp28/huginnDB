@@ -347,7 +347,17 @@ fn column_clause(driver: Driver, c: &ColumnDef, include_inline_pk: bool) -> Stri
     parts.join(" ")
 }
 
-fn build_create(driver: Driver, s: &TableStructure) -> AppResult<Vec<String>> {
+/// Build a from-scratch CREATE for `s`: bare `CREATE TABLE` first (no FK —
+/// PG/MySQL emit those as separate `ALTER TABLE ADD CONSTRAINT` statements,
+/// SQLite inlines them), followed by FK/CREATE INDEX statements. `stmts[0]`
+/// is always the bare CREATE TABLE for PG/MySQL, `stmts[1..]` the rest —
+/// [`crate::db::dump`] relies on this exact split to phase a whole-database
+/// export without needing a table-dependency topological sort. `pub(crate)`
+/// so `dump` can call it directly and skip [`build_ddl`]'s `validate_default`
+/// allowlist, which is meant to gate *user-typed* structure-editor input, not
+/// defaults already round-tripped from a live catalog (e.g. Postgres's
+/// `'foo'::text` cast-style defaults, which the allowlist would reject).
+pub(crate) fn build_create(driver: Driver, s: &TableStructure) -> AppResult<Vec<String>> {
     let qt = qualified(driver, s.schema.as_deref(), &s.name);
     let pk_cols: Vec<&ColumnDef> = s.columns.iter().filter(|c| c.is_primary_key).collect();
     // SQLite: a single INTEGER PRIMARY KEY AUTOINCREMENT must be inline.

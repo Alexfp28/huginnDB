@@ -406,6 +406,24 @@ export const api = {
       conflictResolutions: conflictResolutions ?? [],
     }),
 
+  // Database export / import ------------------------------------------------
+
+  /**
+   * Dump the target database of `connectionId` (schema + data) to a
+   * user-chosen `.sql` file — the save dialog is opened on the Rust side.
+   * Returns the written path. Rejects if the user cancels the dialog.
+   */
+  exportDatabase: (connectionId: string) =>
+    invoke<string>("export_database", { connectionId }),
+
+  /**
+   * Read a text file at `filePath`. Used by the "Import .sql…" flow to load
+   * a picked file's content before splitting it with `splitSql` and running
+   * it through `executeBatch` — there is no separate import-execution command.
+   */
+  readTextFile: (filePath: string) =>
+    invoke<string>("read_text_file", { filePath }),
+
   // CLI args ---------------------------------------------------------------
 
   /**

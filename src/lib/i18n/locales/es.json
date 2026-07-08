@@ -251,6 +251,17 @@
     "dropDatabase": {
       "confirm": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor. No se puede deshacer."
     },
+    "exportDatabase": {
+      "title": "Exportar base de datos…",
+      "success": "Base de datos exportada a {{path}}"
+    },
+    "importSql": {
+      "title": "Importar .sql…",
+      "pickTitle": "Importar fichero SQL",
+      "confirm": "¿Ejecutar {{count}} sentencia(s) de este fichero contra la conexión activa? Esto puede modificar o borrar datos y no se puede deshacer.",
+      "success": "Importación terminada — se ejecutaron {{count}} sentencia(s).",
+      "failed": "Importación detenida en la sentencia {{index}}: {{message}}"
+    },
     "security": "Seguridad"
   },
   "security": {
@@ -400,6 +411,7 @@
     "actionsTooltip": "Acciones de la pestaña",
     "color": "Color",
     "colorNone": "Sin color",
+    "colorCustom": "Color personalizado…",
     "splitRight": "Dividir a la derecha",
     "splitDown": "Dividir abajo",
     "floatPanel": "Sacar a ventana flotante",
@@ -570,6 +582,13 @@
       "schemaMetric": {
         "label": "Métrica del árbol de esquema",
         "desc": "Número mostrado junto al nombre de cada tabla en el explorador."
+      },
+      "tabAccentStyle": {
+        "label": "Estilo de acento de las tabs",
+        "desc": "Cómo se dibuja la tab activa y el color que le asignes a una tab.",
+        "cap": "Franja superior",
+        "rail": "Carril izquierdo",
+        "boxed": "Recuadro"
       },
       "bitDisplay": {
         "label": "Representación de BIT",

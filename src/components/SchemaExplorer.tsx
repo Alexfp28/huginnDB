@@ -30,6 +30,7 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
+  Download,
   Plus,
   RefreshCw,
   Table as TableIcon,
@@ -37,13 +38,16 @@ import {
   KeyRound,
   LayoutList,
   ShieldCheck,
+  Upload,
 } from "lucide-react";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useSchema, tableKey } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { useConnections } from "@/stores/connections";
 import { usePreferences } from "@/stores/preferences";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
+import { splitSql } from "@/lib/sqlSplit";
 import type { SchemaTableMetric } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +83,64 @@ function openSecurityTab(connectionId: string, title: string) {
     title,
     connectionId,
   });
+}
+
+type Translate = (key: string, opts?: Record<string, unknown>) => string;
+
+/** Export `connectionId`'s target database to a user-chosen `.sql` file and
+ *  toast the outcome. A cancelled save dialog is a silent no-op, not an error. */
+async function exportDatabaseWithToast(connectionId: string, t: Translate) {
+  try {
+    const path = await api.exportDatabase(connectionId);
+    toast.success(t("schema.exportDatabase.success", { path }));
+  } catch (e) {
+    const message = String(e);
+    if (!message.includes("export cancelled")) toast.error(message);
+  }
+}
+
+/** Pick a `.sql` file, confirm, and run it through the existing batch runner
+ *  (`splitSql` + `executeBatch`) against `connectionId` — the same runner the
+ *  query editor uses, so import gets no separate execution path. Returns
+ *  `false` if the user cancelled the picker/confirmation or the file held no
+ *  statements, `true` once a batch actually ran (regardless of per-statement
+ *  outcome — failures are toasted, not thrown). */
+async function importSqlFile(connectionId: string, t: Translate): Promise<boolean> {
+  const picked = await openFileDialog({
+    multiple: false,
+    directory: false,
+    title: t("schema.importSql.pickTitle"),
+    filters: [{ name: "SQL", extensions: ["sql"] }],
+  });
+  if (typeof picked !== "string" || !picked) return false;
+  const text = await api.readTextFile(picked);
+  const statements = splitSql(text);
+  if (statements.length === 0) return false;
+  if (
+    !confirmDestructive(
+      t("schema.importSql.confirm", { count: statements.length }),
+    )
+  ) {
+    return false;
+  }
+  const result = await api.executeBatch(
+    connectionId,
+    statements.map((s) => s.text),
+  );
+  const failed = result.statements.find((s) => s.error);
+  if (failed) {
+    toast.error(
+      t("schema.importSql.failed", {
+        index: failed.index + 1,
+        message: failed.error,
+      }),
+    );
+  } else {
+    toast.success(
+      t("schema.importSql.success", { count: result.statements.length }),
+    );
+  }
+  return true;
 }
 
 function matchesFilter(name: string, filter: string): boolean {
@@ -297,6 +359,26 @@ function SingleDbExplorer({
                 <Plus className="h-3.5 w-3.5" />
               </Button>
             )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => void exportDatabaseWithToast(connectionId, t)}
+              title={t("schema.exportDatabase.title")}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() =>
+                void importSqlFile(connectionId, t).then((ran) => {
+                  if (ran) refresh(connectionId);
+                })
+              }
+              title={t("schema.importSql.title")}
+            >
+              <Upload className="h-3.5 w-3.5" />
+            </Button>
             <Button
               size="icon"
               variant="ghost"
@@ -846,6 +928,36 @@ function DatabaseRoot({
     openSecurityTab(id, t("security.title"));
   };
 
+  // Export / import: same lazy-open-then-use pattern as `openQueryHere`,
+  // scoped to this database's synthetic connection id.
+  const exportThisDatabase = async () => {
+    let id = childId;
+    if (!id) {
+      try {
+        id = await api.openDatabaseView(parentId, dbName);
+        setChildId(id);
+      } catch (e) {
+        setError(String(e));
+        return;
+      }
+    }
+    await exportDatabaseWithToast(id, t);
+  };
+
+  const importSqlHere = async () => {
+    let id = childId;
+    if (!id) {
+      try {
+        id = await api.openDatabaseView(parentId, dbName);
+        setChildId(id);
+      } catch (e) {
+        setError(String(e));
+        return;
+      }
+    }
+    if (await importSqlFile(id, t)) await useSchema.getState().refresh(id);
+  };
+
   // Drop this database (Postgres/MySQL). Irreversible, so it's gated behind
   // the typed-confirmation prompt. On success we tear down the child pool's
   // frontend state (its schema slice + any open tabs) and refresh the parent
@@ -929,6 +1041,13 @@ function DatabaseRoot({
           </ContextMenuItem>
           <ContextMenuItem onSelect={() => void openSecurityHere()}>
             {t("security.title")}
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => void exportThisDatabase()}>
+            {t("schema.exportDatabase.title")}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => void importSqlHere()}>
+            {t("schema.importSql.title")}
           </ContextMenuItem>
           {canDrop && (
             <>
@@ -1184,7 +1303,11 @@ function TableRow({
               )}
               <span
                 className={cn(
-                  "truncate text-xs",
+                  // min-w-0 lets this flex-item shrink below its content's
+                  // intrinsic width so `truncate` can actually clip long
+                  // names — without it the row overflows and the metric
+                  // badge gets pushed off, forcing horizontal scroll.
+                  "min-w-0 truncate text-xs",
                   // Table name is the row's primary target → the boldest leaf
                   // in the 3-tier ramp (section label muted / column muted).
                   isActive

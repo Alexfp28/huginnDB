@@ -251,6 +251,17 @@
     "dropDatabase": {
       "confirm": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server. This cannot be undone."
     },
+    "exportDatabase": {
+      "title": "Export database…",
+      "success": "Database exported to {{path}}"
+    },
+    "importSql": {
+      "title": "Import .sql…",
+      "pickTitle": "Import SQL file",
+      "confirm": "Run {{count}} statement(s) from this file against the active connection? This can modify or delete data and cannot be undone.",
+      "success": "Import finished — {{count}} statement(s) ran.",
+      "failed": "Import stopped at statement {{index}}: {{message}}"
+    },
     "security": "Security"
   },
   "security": {
@@ -400,6 +411,7 @@
     "actionsTooltip": "Tab actions",
     "color": "Colour",
     "colorNone": "No colour",
+    "colorCustom": "Custom colour…",
     "splitRight": "Split right",
     "splitDown": "Split down",
     "floatPanel": "Float in new window",
@@ -570,6 +582,13 @@
       "schemaMetric": {
         "label": "Schema tree metric",
         "desc": "Number rendered next to each table name in the schema explorer."
+      },
+      "tabAccentStyle": {
+        "label": "Tab accent style",
+        "desc": "How the active tab and any tab colour you assign are drawn.",
+        "cap": "Top cap",
+        "rail": "Left rail",
+        "boxed": "Boxed"
       },
       "bitDisplay": {
         "label": "BIT display",
