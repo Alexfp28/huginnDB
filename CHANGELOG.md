@@ -6,46 +6,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-### Added
-
-- **Export and import whole databases (#34), marked Beta.** No way to get a database out
-  of HuginnDB (or back in) short of scripting it by hand. "Export database…"
-  (multi-DB explorer context menu, or a toolbar button on a single-DB
-  connection) dumps schema + data to one portable `.sql` file for
-  Postgres, MySQL, or SQLite. Postgres/MySQL write in three phases — bare
-  `CREATE TABLE`, then all data, then `ALTER TABLE ADD CONSTRAINT` (FK) +
-  `CREATE INDEX` — so a whole-database dump never needs a table-dependency
-  topological sort and never needs elevated privileges (e.g. Postgres's
-  superuser-only `session_replication_role`). SQLite instead dumps its
-  catalog verbatim from `sqlite_master` (higher fidelity than reconstructing
-  DDL — it keeps `CHECK` constraints etc.) bracketed by
-  `PRAGMA foreign_keys=OFF/ON`. "Import .sql…" picks a file and runs it
-  through the *existing* query batch runner (the same `splitSql` +
-  `execute_batch` path the query editor already uses) instead of a second
-  execution path, gated behind the destructive-action confirmation. Labelled
-  Beta in the UI — verified by type-checking and `cargo check` only so far,
-  not yet exercised end-to-end against a live server on all three drivers.
-- **Free-form tab colour, and a selectable accent style (#35).** The tab
-  colour picker offered only six fixed swatches; a native colour input now
-  sits alongside them for any hex value. Separately, the active-tab / custom
-  colour accent was hard-coded to a 2px top cap — a new
-  Settings → Grid → "Tab accent style" preference (`cap` / `rail` / `boxed`)
-  switches it to a left rail or a raised-surface look instead, and a custom
-  tab colour now follows whichever edge the chosen style uses instead of
-  always drawing on top.
-
-### Fixed
-
-- **Long table names no longer force horizontal scroll in the schema tree
-  (#33).** The table-name label had `truncate` but, as a flex child with no
-  `min-w-0`, never actually shrank below its content width (flex items
-  default to `min-width: auto`) — so a long name pushed the row-count/size
-  badge off and the tree scrolled horizontally instead of ellipsizing.
-- **The tab's right-click menu now matches its ⋮ menu (#36).** The two were
-  hand-maintained separately and had drifted: right-click was missing
-  Split right/down, Float panel, and the colour swatches that the ⋮ menu
-  already had. Both now show the same actions in the same order.
-
 ## [1.6.0] — 2026-07-08
 
 ### Added
@@ -129,6 +89,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   selected. Both are backed by the existing PK-keyed selection set (survives
   sort / filter / refetch) and tinted with the `brand` token; row numbers now
   use `tabular-nums`.
+- **Export and import whole databases (#34), marked Beta.** No way to get a database out
+  of HuginnDB (or back in) short of scripting it by hand. "Export database…"
+  (multi-DB explorer context menu, or a toolbar button on a single-DB
+  connection) dumps schema + data to one portable `.sql` file for
+  Postgres, MySQL, or SQLite. Postgres/MySQL write in three phases — bare
+  `CREATE TABLE`, then all data, then `ALTER TABLE ADD CONSTRAINT` (FK) +
+  `CREATE INDEX` — so a whole-database dump never needs a table-dependency
+  topological sort and never needs elevated privileges (e.g. Postgres's
+  superuser-only `session_replication_role`). SQLite instead dumps its
+  catalog verbatim from `sqlite_master` (higher fidelity than reconstructing
+  DDL — it keeps `CHECK` constraints etc.) bracketed by
+  `PRAGMA foreign_keys=OFF/ON`. "Import .sql…" picks a file and runs it
+  through the *existing* query batch runner (the same `splitSql` +
+  `execute_batch` path the query editor already uses) instead of a second
+  execution path, gated behind the destructive-action confirmation. Labelled
+  Beta in the UI — verified by type-checking and `cargo check` only so far,
+  not yet exercised end-to-end against a live server on all three drivers.
+- **Free-form tab colour, and a selectable accent style (#35).** The tab
+  colour picker offered only six fixed swatches; a native colour input now
+  sits alongside them for any hex value. Separately, the active-tab / custom
+  colour accent was hard-coded to a 2px top cap — a new
+  Settings → Grid → "Tab accent style" preference (`cap` / `rail` / `boxed`)
+  switches it to a left rail or a raised-surface look instead, and a custom
+  tab colour now follows whichever edge the chosen style uses instead of
+  always drawing on top.
 
 ### Changed
 
@@ -239,6 +224,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     feedback and save-query dialogs.
   - Defined a real UI sans-serif font stack (Inter first, falling back to the
     platform UI font) instead of relying on the bare system default.
+
+### Fixed
+
+- **Long table names no longer force horizontal scroll in the schema tree
+  (#33).** The table-name label had `truncate` but, as a flex child with no
+  `min-w-0`, never actually shrank below its content width (flex items
+  default to `min-width: auto`) — so a long name pushed the row-count/size
+  badge off and the tree scrolled horizontally instead of ellipsizing.
+- **The tab's right-click menu now matches its ⋮ menu (#36).** The two were
+  hand-maintained separately and had drifted: right-click was missing
+  Split right/down, Float panel, and the colour swatches that the ⋮ menu
+  already had. Both now show the same actions in the same order.
 
 ## [1.5.1] — 2026-07-07
 
