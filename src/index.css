@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* WebView2 (Edge/Chromium) draws a native password reveal/clear control that
+ * can't be themed and renders near-black — invisible on dark surfaces. Hide it
+ * everywhere; password fields use the themed toggle in `PasswordInput`. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

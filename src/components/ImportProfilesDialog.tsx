@@ -15,7 +15,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/connections";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -180,9 +180,8 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
               <Label htmlFor="import-passphrase" className="text-xs">
                 {t("transfer.import.passphrase")}
               </Label>
-              <Input
+              <PasswordInput
                 id="import-passphrase"
-                type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
                 onKeyDown={(e) => {

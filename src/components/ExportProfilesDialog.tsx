@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/connections";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -164,9 +164,8 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
                 <Label htmlFor="passphrase" className="text-xs">
                   {t("transfer.export.passphrase")}
                 </Label>
-                <Input
+                <PasswordInput
                   id="passphrase"
-                  type="password"
                   value={passphrase}
                   onChange={(e) => setPassphrase(e.target.value)}
                   placeholder={t("transfer.export.passphrasePlaceholder")}
@@ -177,9 +176,8 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
                 <Label htmlFor="passphrase-confirm" className="text-xs">
                   {t("transfer.export.passphraseConfirm")}
                 </Label>
-                <Input
+                <PasswordInput
                   id="passphrase-confirm"
-                  type="password"
                   value={passphraseConfirm}
                   onChange={(e) => setPassphraseConfirm(e.target.value)}
                   placeholder={t("transfer.export.passphraseConfirmPlaceholder")}

@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Legible show/hide toggle on every password field.** WebView2 draws a
+  native password-reveal eye that can't be themed and renders near-black —
+  effectively invisible on dark surfaces. It's now hidden app-wide and
+  replaced by a themed `PasswordInput` toggle (muted → foreground on hover,
+  bilingual label). Applied to all secret fields: connection password, SSH
+  password / passphrase, the export & import passphrases, the connect-time
+  password prompt, and the GitHub token in the feedback dialog.
+
 - **Tab management overhaul.** With many tabs open it was hard to tell what
   you had open or jump to a specific table. Four additions address that:
   - **Open-tabs quick switcher (Ctrl/Cmd+P).** A keyboard-first overlay

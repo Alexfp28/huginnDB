@@ -4,6 +4,8 @@
     "alpha": "alpha",
     "cancel": "Cancel",
     "close": "Close",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
     "delete": "Delete",
     "duplicate": "Duplicate",
     "save": "Save",

@@ -39,6 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -766,8 +767,7 @@ export function ConnectionDialog({
                           />
                         </Field>
                         <Field label={t("connectionDialog.fields.password")}>
-                          <Input
-                            type="password"
+                          <PasswordInput
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder={
@@ -857,8 +857,7 @@ export function ConnectionDialog({
                           />
                         </Field>
                         <Field label={t("connectionDialog.fields.password")}>
-                          <Input
-                            type="password"
+                          <PasswordInput
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder={
@@ -957,8 +956,7 @@ export function ConnectionDialog({
 
                           {sshAuthMethod === "password" ? (
                             <Field label={t("connectionDialog.ssh.sshPassword")}>
-                              <Input
-                                type="password"
+                              <PasswordInput
                                 value={sshSecret}
                                 onChange={(e) => setSshSecret(e.target.value)}
                                 placeholder={
@@ -995,8 +993,7 @@ export function ConnectionDialog({
                                 </div>
                               </Field>
                               <Field label={t("connectionDialog.ssh.passphrase")}>
-                                <Input
-                                  type="password"
+                                <PasswordInput
                                   value={sshSecret}
                                   onChange={(e) => setSshSecret(e.target.value)}
                                   placeholder={

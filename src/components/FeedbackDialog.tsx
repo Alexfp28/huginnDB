@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Segmented } from "@/components/ui/segmented";
 import { Label } from "@/components/ui/label";
@@ -237,8 +238,7 @@ export function FeedbackDialog() {
             </div>
             {showPatField && (
               <div className="mt-2 flex gap-2">
-                <Input
-                  type="password"
+                <PasswordInput
                   value={patInput}
                   onChange={(e) => setPatInput(e.target.value)}
                   placeholder="ghp_…"
