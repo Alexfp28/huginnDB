@@ -420,11 +420,17 @@ export interface UiPrefs {
    *  Matched by string equality against the live `ConnectionProfile.group`
    *  values — a stale entry from a renamed/deleted group is harmless. */
   collapsedConnectionGroups: string[];
+  /** Visual treatment for a tab's active/colour accent — "cap" (2px inset
+   *  top border, the original look), "rail" (3px inset left border), or
+   *  "boxed" (raised surface + bottom-edge underline for a custom colour). */
+  tabAccentStyle: TabAccentStyle;
 }
 
 export type CellEditorMode = "modal" | "side";
 
 export type CliConnectDefault = "ask" | "current" | "new";
+
+export type TabAccentStyle = "cap" | "rail" | "boxed";
 
 /** Per-connection slice of the persisted tab state. */
 export interface ConnectionTabState {

@@ -64,6 +64,7 @@ const DEFAULT_PREFS: Preferences = {
     defaultDriver: null,
     cliConnectDefault: "ask",
     collapsedConnectionGroups: [],
+    tabAccentStyle: "cap",
   },
 };
 

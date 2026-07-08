@@ -52,6 +52,7 @@ import {
 } from "dockview-react";
 import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
+import { usePreferences } from "@/stores/preferences";
 import { useConnections } from "@/stores/connections";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -68,6 +69,7 @@ import {
   consumePendingInternalLayout,
 } from "@/lib/dockview";
 import { cn } from "@/lib/utils";
+import type { TabAccentStyle } from "@/types";
 
 interface Props {
   connectionId: string | null;
@@ -159,6 +161,23 @@ const TAB_COLORS = [
   "#ec4899",
 ];
 
+/** Box-shadow for a per-tab custom colour, on the same edge as the active-tab
+ *  accent rule in `index.css` for the given `tabAccentStyle` — so the two
+ *  never compete for opposite sides of the tab. "boxed" uses the elevation
+ *  shadow for the *default* brand accent, so a custom colour there draws a
+ *  bottom-edge underline instead of fighting over the same box-shadow slot. */
+function accentBoxShadow(style: TabAccentStyle, color: string): string {
+  switch (style) {
+    case "rail":
+      return `inset 3px 0 0 0 ${color}`;
+    case "boxed":
+      return `inset 0 -2px 0 0 ${color}`;
+    case "cap":
+    default:
+      return `inset 0 2px 0 0 ${color}`;
+  }
+}
+
 function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const { t } = useTranslation();
   const id = props.api.id;
@@ -195,9 +214,10 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   }, [tabs, profiles, id]);
 
   const thisTab = tabs.find((tb) => tb.id === id);
-  // User-assigned tab colour (issue #24), rendered as a 2px inset cap on the
-  // tab's top edge.
+  // User-assigned tab colour (issue #24), rendered as an inset accent whose
+  // edge follows `tabAccentStyle` (issue #35) — see `accentBoxShadow`.
   const tabColor = thisTab?.color;
+  const tabAccentStyle = usePreferences((s) => s.prefs.ui.tabAccentStyle);
   const isPinned = !!thisTab?.pinned;
 
   // Route closing through the store so the reconciler does the actual panel
@@ -249,7 +269,11 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           ? "font-medium text-foreground"
           : "text-muted-foreground/70",
       )}
-      style={tabColor ? { boxShadow: `inset 0 2px 0 0 ${tabColor}` } : undefined}
+      style={
+        tabColor
+          ? { boxShadow: accentBoxShadow(tabAccentStyle, tabColor) }
+          : undefined
+      }
       // Middle-click (wheel button) closes the tab, matching editor
       // conventions. `mousedown` preventDefault suppresses the browser's
       // middle-click autoscroll affordance.
@@ -366,6 +390,15 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
               >
                 <X className="h-2.5 w-2.5" />
               </button>
+              {/* Free-form colour, beyond the preset swatches (issue #35). A
+                  rectangle (vs. the presets' circles) signals "custom". */}
+              <input
+                type="color"
+                value={tabColor ?? "#888888"}
+                onChange={(e) => setColor(e.target.value)}
+                className="h-4 w-6 cursor-pointer rounded border border-border/50 bg-transparent p-0"
+                title={t("tabs.colorCustom")}
+              />
             </div>
           </div>
           <DropdownMenuSeparator />
@@ -410,8 +443,77 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       </SimpleTooltip>
       <ContextMenuContent className="text-xs">
         <ContextMenuItem onSelect={togglePin}>
+          {isPinned ? (
+            <PinOff className="mr-2 h-3.5 w-3.5" />
+          ) : (
+            <Pin className="mr-2 h-3.5 w-3.5" />
+          )}
           {isPinned ? t("tabs.unpin") : t("tabs.pin")}
         </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          onSelect={() =>
+            props.api.moveTo({ group: props.api.group, position: "right" })
+          }
+        >
+          {t("tabs.splitRight")}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() =>
+            props.api.moveTo({ group: props.api.group, position: "bottom" })
+          }
+        >
+          {t("tabs.splitDown")}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() => {
+            const panel = props.containerApi.getPanel(id);
+            if (panel) props.containerApi.addFloatingGroup(panel);
+          }}
+        >
+          {t("tabs.floatPanel")}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <div className="px-2 py-1.5">
+          <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+            {t("tabs.color")}
+          </div>
+          <div className="flex items-center gap-1">
+            {TAB_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                className={cn(
+                  "h-4 w-4 rounded-full border border-border/50 transition-transform hover:scale-110",
+                  tabColor === c &&
+                    "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
+                )}
+                style={{ backgroundColor: c }}
+                title={c}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => setColor(null)}
+              className={cn(
+                "flex h-4 w-4 items-center justify-center rounded-full border border-border/50 text-muted-foreground hover:bg-accent",
+                !tabColor &&
+                  "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
+              )}
+              title={t("tabs.colorNone")}
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+            <input
+              type="color"
+              value={tabColor ?? "#888888"}
+              onChange={(e) => setColor(e.target.value)}
+              className="h-4 w-6 cursor-pointer rounded border border-border/50 bg-transparent p-0"
+              title={t("tabs.colorCustom")}
+            />
+          </div>
+        </div>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={requestClose}>
           {t("tabs.closeTab")}
@@ -524,6 +626,7 @@ function EmptyWatermark() {
 export function TabbedArea(_props: Props) {
   const tabs = useTabs((s) => s.tabs);
   const activeId = useTabs((s) => s.activeId);
+  const tabAccentStyle = usePreferences((s) => s.prefs.ui.tabAccentStyle);
   const [api, setApi] = useState<DockviewApi | null>(null);
 
   const onReady = (event: DockviewReadyEvent) => {
@@ -616,7 +719,7 @@ export function TabbedArea(_props: Props) {
     // we make sure the box it lives in is unambiguously sized and a
     // positioned ancestor — otherwise the overlays anchor against an outer
     // dockview's shell and the vertical layout collapses on the first split.
-    <div className="inner-dock relative h-full w-full">
+    <div className="inner-dock relative h-full w-full" data-tab-accent={tabAccentStyle}>
       <DockviewReact
         components={INNER_COMPONENTS}
         defaultTabComponent={WorkspaceTab}

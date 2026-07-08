@@ -18,13 +18,19 @@ import {
   selectGridPrefs,
   selectUiPrefs,
 } from "@/stores/preferences";
-import type { GridPrefs, SchemaTableMetric } from "@/types";
+import type { GridPrefs, SchemaTableMetric, TabAccentStyle } from "@/types";
 import { PrefRow } from "./PrefRow";
 
 const METRIC_KEYS: Record<SchemaTableMetric, string> = {
   none: "menu.view.metricHide",
   "row-count": "menu.view.metricRowCount",
   size: "menu.view.metricSize",
+};
+
+const TAB_ACCENT_KEYS: Record<TabAccentStyle, string> = {
+  cap: "settings.grid.tabAccentStyle.cap",
+  rail: "settings.grid.tabAccentStyle.rail",
+  boxed: "settings.grid.tabAccentStyle.boxed",
 };
 
 export function GridSection() {
@@ -179,6 +185,29 @@ export function GridSection() {
             {(Object.keys(METRIC_KEYS) as SchemaTableMetric[]).map((k) => (
               <SelectItem key={k} value={k} className="text-xs">
                 {t(METRIC_KEYS[k])}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </PrefRow>
+
+      <PrefRow
+        label={t("settings.grid.tabAccentStyle.label")}
+        description={t("settings.grid.tabAccentStyle.desc")}
+      >
+        <Select
+          value={ui.tabAccentStyle}
+          onValueChange={(v) =>
+            updateUi({ tabAccentStyle: v as TabAccentStyle })
+          }
+        >
+          <SelectTrigger className="h-8 w-44 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(TAB_ACCENT_KEYS) as TabAccentStyle[]).map((k) => (
+              <SelectItem key={k} value={k} className="text-xs">
+                {t(TAB_ACCENT_KEYS[k])}
               </SelectItem>
             ))}
           </SelectContent>

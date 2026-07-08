@@ -337,10 +337,24 @@ input[type="password"]::-ms-clear {
 .inner-dock .dv-tab:not(.dv-active-tab):hover {
   background-color: hsl(var(--accent));
 }
-/* Active tab merges into the content surface and carries a 2px brand cap. */
+/* Active tab merges into the content surface and carries a brand accent in
+ * one of three styles (`ui.tabAccentStyle`, stamped as `data-tab-accent` on
+ * `.inner-dock` by TabbedArea). Default is "cap" — kept unprefixed so an
+ * unset/unknown value still renders the original look. A per-tab custom
+ * colour (`WorkspaceTab`'s inline `boxShadow`) overrides this box-shadow
+ * entirely on that one tab — matching axis, computed from the same
+ * preference, so the two never fight over conflicting positions. */
 .inner-dock .dv-tab.dv-active-tab {
   background-color: hsl(var(--background));
   box-shadow: inset 0 2px 0 0 hsl(var(--brand));
+}
+.inner-dock[data-tab-accent="rail"] .dv-tab.dv-active-tab {
+  box-shadow: inset 3px 0 0 0 hsl(var(--brand));
+}
+.inner-dock[data-tab-accent="boxed"] .dv-tab.dv-active-tab {
+  box-shadow:
+    0 2px 6px hsl(var(--foreground) / 0.08),
+    0 1px 2px hsl(var(--foreground) / 0.06);
 }
 
 /* -------------------------------------------------------------------------

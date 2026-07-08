@@ -111,6 +111,10 @@ pub struct UiPrefs {
     /// string equality against the live group names, so a renamed/deleted
     /// group's stale entry here is harmless (it just never matches again).
     pub collapsed_connection_groups: Vec<String>,
+    /// Visual treatment for a tab's active/colour accent. One of
+    /// "cap" | "rail" | "boxed". Stringly-typed; the frontend owns the enum
+    /// and applies it via CSS + an inline style, the backend just round-trips.
+    pub tab_accent_style: String,
 }
 
 impl Default for Preferences {
@@ -167,6 +171,7 @@ impl Default for UiPrefs {
             default_driver: None,
             cli_connect_default: "ask".into(),
             collapsed_connection_groups: Vec::new(),
+            tab_accent_style: "cap".into(),
         }
     }
 }
