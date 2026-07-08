@@ -8,6 +8,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Export and import whole databases (#34).** No way to get a database out
+  of HuginnDB (or back in) short of scripting it by hand. "Export database…"
+  (multi-DB explorer context menu, or a toolbar button on a single-DB
+  connection) dumps schema + data to one portable `.sql` file for
+  Postgres, MySQL, or SQLite. Postgres/MySQL write in three phases — bare
+  `CREATE TABLE`, then all data, then `ALTER TABLE ADD CONSTRAINT` (FK) +
+  `CREATE INDEX` — so a whole-database dump never needs a table-dependency
+  topological sort and never needs elevated privileges (e.g. Postgres's
+  superuser-only `session_replication_role`). SQLite instead dumps its
+  catalog verbatim from `sqlite_master` (higher fidelity than reconstructing
+  DDL — it keeps `CHECK` constraints etc.) bracketed by
+  `PRAGMA foreign_keys=OFF/ON`. "Import .sql…" picks a file and runs it
+  through the *existing* query batch runner (the same `splitSql` +
+  `execute_batch` path the query editor already uses) instead of a second
+  execution path, gated behind the destructive-action confirmation.
+- **Free-form tab colour, and a selectable accent style (#35).** The tab
+  colour picker offered only six fixed swatches; a native colour input now
+  sits alongside them for any hex value. Separately, the active-tab / custom
+  colour accent was hard-coded to a 2px top cap — a new
+  Settings → Grid → "Tab accent style" preference (`cap` / `rail` / `boxed`)
+  switches it to a left rail or a raised-surface look instead, and a custom
+  tab colour now follows whichever edge the chosen style uses instead of
+  always drawing on top.
+
+### Fixed
+
+- **Long table names no longer force horizontal scroll in the schema tree
+  (#33).** The table-name label had `truncate` but, as a flex child with no
+  `min-w-0`, never actually shrank below its content width (flex items
+  default to `min-width: auto`) — so a long name pushed the row-count/size
+  badge off and the tree scrolled horizontally instead of ellipsizing.
+- **The tab's right-click menu now matches its ⋮ menu (#36).** The two were
+  hand-maintained separately and had drifted: right-click was missing
+  Split right/down, Float panel, and the colour swatches that the ⋮ menu
+  already had. Both now show the same actions in the same order.
+
+## [1.6.0] — 2026-07-08
+
+### Added
+
 - **Legible show/hide toggle on every password field.** WebView2 draws a
   native password-reveal eye that can't be themed and renders near-black —
   effectively invisible on dark surfaces. It's now hidden app-wide and
