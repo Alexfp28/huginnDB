@@ -252,11 +252,11 @@
       "confirm": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor. No se puede deshacer."
     },
     "exportDatabase": {
-      "title": "Exportar base de datos…",
+      "title": "Exportar base de datos… (Beta)",
       "success": "Base de datos exportada a {{path}}"
     },
     "importSql": {
-      "title": "Importar .sql…",
+      "title": "Importar .sql… (Beta)",
       "pickTitle": "Importar fichero SQL",
       "confirm": "¿Ejecutar {{count}} sentencia(s) de este fichero contra la conexión activa? Esto puede modificar o borrar datos y no se puede deshacer.",
       "success": "Importación terminada — se ejecutaron {{count}} sentencia(s).",

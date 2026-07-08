@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- **Export and import whole databases (#34).** No way to get a database out
+- **Export and import whole databases (#34), marked Beta.** No way to get a database out
   of HuginnDB (or back in) short of scripting it by hand. "Export database…"
   (multi-DB explorer context menu, or a toolbar button on a single-DB
   connection) dumps schema + data to one portable `.sql` file for
@@ -22,7 +22,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `PRAGMA foreign_keys=OFF/ON`. "Import .sql…" picks a file and runs it
   through the *existing* query batch runner (the same `splitSql` +
   `execute_batch` path the query editor already uses) instead of a second
-  execution path, gated behind the destructive-action confirmation.
+  execution path, gated behind the destructive-action confirmation. Labelled
+  Beta in the UI — verified by type-checking and `cargo check` only so far,
+  not yet exercised end-to-end against a live server on all three drivers.
 - **Free-form tab colour, and a selectable accent style (#35).** The tab
   colour picker offered only six fixed swatches; a native colour input now
   sits alongside them for any hex value. Separately, the active-tab / custom
