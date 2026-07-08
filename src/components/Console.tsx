@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useLogs, type LogKindFilter } from "@/stores/logs";
 import { useFeedbackDialog } from "@/stores/feedbackDialog";
@@ -200,7 +201,7 @@ export function Console() {
             type="checkbox"
             checked={kinds.sql}
             onChange={() => toggleKind("sql")}
-            className="h-3 w-3"
+            className="h-3 w-3 accent-brand"
           />
           {t("console.kindSql")}
         </label>
@@ -209,19 +210,19 @@ export function Console() {
             type="checkbox"
             checked={kinds.connection}
             onChange={() => toggleKind("connection")}
-            className="h-3 w-3"
+            className="h-3 w-3 accent-brand"
           />
           {t("console.kindConnection")}
         </label>
         <div className="mx-1 h-5 w-px bg-border" />
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
+          <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("console.filterPlaceholder")}
-            className="h-7 w-full rounded border border-border bg-background pl-6 pr-2 font-mono text-[11px] outline-none focus:ring-1 focus:ring-ring"
+            inputSize="sm"
+            className="pl-6 font-mono"
           />
         </div>
         <div className="px-1 text-[10px] tabular-nums text-muted-foreground">

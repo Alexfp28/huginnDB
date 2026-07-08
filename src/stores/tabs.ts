@@ -20,13 +20,19 @@ interface TabsState {
   open: (tab: Omit<AppTab, "id"> & { id?: string }) => string;
   /** Remove a tab. If it was active, the previous tab becomes active. */
   close: (id: string) => void;
-  /** Close every tab in the current workspace. */
+  /** Close every tab in the current workspace (pinned tabs are kept). */
   closeAll: () => void;
-  /** Close every tab except `id`, which stays open and active. */
+  /** Close every tab except `id` and pinned ones; `id` stays active. */
   closeOthers: (id: string) => void;
+  /** Close every tab positioned after `id` in the list, keeping pinned ones. */
+  closeToRight: (id: string) => void;
+  /** Close every tab of `id`'s connection except `id` and pinned ones. */
+  closeOthersInConnection: (id: string) => void;
   setActive: (id: string) => void;
   /** Set (or clear, with `null`) a tab's cosmetic colour. */
   setColor: (id: string, color: string | null) => void;
+  /** Pin / unpin a tab (pinned tabs survive bulk-close). */
+  setPinned: (id: string, pinned: boolean) => void;
   /** Update the in-memory SQL of a query tab. */
   updateQuery: (id: string, query: string) => void;
   /**
@@ -99,15 +105,52 @@ export const useTabs = create<TabsState>((set, get) => ({
       return { tabs, activeId };
     });
   },
-  closeAll: () => set({ tabs: [], activeId: null }),
+  closeAll: () =>
+    set((s) => {
+      // Pinned tabs survive a "close all" so they can't be lost by accident.
+      const kept = s.tabs.filter((t) => t.pinned);
+      const activeId = kept.some((t) => t.id === s.activeId)
+        ? s.activeId
+        : (kept[kept.length - 1]?.id ?? null);
+      return { tabs: kept, activeId };
+    }),
   closeOthers: (id) =>
     set((s) => {
-      const kept = s.tabs.filter((t) => t.id === id);
-      // If the target somehow no longer exists, fall back to clearing all
-      // rather than leaving orphaned tabs the reconciler can't account for.
-      return kept.length
-        ? { tabs: kept, activeId: id }
-        : { tabs: [], activeId: null };
+      const kept = s.tabs.filter((t) => t.id === id || t.pinned);
+      // If the target somehow no longer exists, fall back to keeping only the
+      // pinned set rather than leaving orphaned tabs the reconciler can't
+      // account for.
+      const activeId = kept.some((t) => t.id === id)
+        ? id
+        : (kept[kept.length - 1]?.id ?? null);
+      return { tabs: kept, activeId };
+    }),
+  closeToRight: (id) =>
+    set((s) => {
+      const idx = s.tabs.findIndex((t) => t.id === id);
+      if (idx < 0) return {};
+      // Keep everything up to and including the anchor, plus any pinned tab
+      // that happens to sit to its right.
+      const kept = s.tabs.filter((t, i) => i <= idx || t.pinned);
+      const activeId = kept.some((t) => t.id === s.activeId)
+        ? s.activeId
+        : id;
+      return { tabs: kept, activeId };
+    }),
+  closeOthersInConnection: (id) =>
+    set((s) => {
+      const target = s.tabs.find((t) => t.id === id);
+      if (!target) return {};
+      // Other connections' tabs are untouched; within this connection only the
+      // anchor and pinned tabs stay.
+      const kept = s.tabs.filter(
+        (t) =>
+          t.connectionId !== target.connectionId || t.id === id || t.pinned,
+      );
+      const activeId = kept.some((t) => t.id === s.activeId)
+        ? s.activeId
+        : id;
+      return { tabs: kept, activeId };
     }),
   setActive: (id) => set({ activeId: id }),
   setColor: (id, color) =>
@@ -115,6 +158,10 @@ export const useTabs = create<TabsState>((set, get) => ({
       tabs: s.tabs.map((t) =>
         t.id === id ? { ...t, color: color ?? undefined } : t,
       ),
+    })),
+  setPinned: (id, pinned) =>
+    set((s) => ({
+      tabs: s.tabs.map((t) => (t.id === id ? { ...t, pinned } : t)),
     })),
   updateQuery: (id, query) =>
     set((s) => ({

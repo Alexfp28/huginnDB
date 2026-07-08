@@ -274,6 +274,10 @@ export interface AppTab {
   /** User-assigned tab colour (hex, e.g. `#ef4444`). Undefined = no colour.
    *  Purely cosmetic; persisted per connection. */
   color?: string;
+  /** Pinned tabs survive bulk-close (close others / all / to the right) and
+   *  are grouped first in the tab switcher, so they don't get lost among many
+   *  open tabs. Persisted per connection. */
+  pinned?: boolean;
   /** Initial / current SQL for query tabs. */
   query?: string;
   /** For structure tabs: whether we're creating a new table or editing one. */
@@ -446,6 +450,9 @@ export interface PersistedTab {
   query: string | null;
   title: string | null;
   color: string | null;
+  /** Whether the tab was pinned. Must round-trip through the Rust struct or
+   *  serde drops it on the typed IPC boundary (gotcha #14). */
+  pinned: boolean | null;
 }
 
 /**

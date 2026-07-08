@@ -88,6 +88,9 @@ pub struct PersistedTab {
     /// backend never interprets it. Must live here or serde drops it on the
     /// typed IPC boundary (see CLAUDE.md gotcha #14).
     pub color: Option<String>,
+    /// Whether the tab was pinned. Same IPC-boundary rule as `color` — the
+    /// field must exist on the struct or serde drops it on save.
+    pub pinned: Option<bool>,
 }
 
 impl Default for PersistedTabState {
@@ -121,6 +124,7 @@ impl Default for PersistedTab {
             query: None,
             title: None,
             color: None,
+            pinned: None,
         }
     }
 }

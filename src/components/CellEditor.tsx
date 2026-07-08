@@ -9,7 +9,7 @@
  * provided, the user's content is passed back to it as a string on save.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize2, Minimize2, PanelRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -55,15 +55,24 @@ export function CellEditorBody({
   language,
   onLanguageChange,
   readonly,
+  onSubmit,
 }: {
   value: string;
   onChange: (v: string) => void;
   language: ContentLanguage;
   onLanguageChange: (l: ContentLanguage) => void;
   readonly?: boolean;
+  /** Save/commit action bound to Ctrl/Cmd+S and Ctrl/Cmd+Enter inside Monaco. */
+  onSubmit?: () => void;
 }) {
   const { t } = useTranslation();
   const editorPrefs = usePreferences(selectEditorPrefs);
+  // Ctrl+S / Ctrl+Enter must be bound through Monaco's addCommand: Monaco
+  // swallows them inside its focus area, so a window keydown listener never
+  // sees them (CLAUDE.md gotcha #9). The command reads a ref so the handler
+  // never freezes to the first render's `onSubmit`.
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
@@ -98,6 +107,11 @@ export function CellEditorBody({
           language={language}
           theme={resolveMonacoTheme(editorPrefs.theme)}
           onChange={(v) => onChange(v ?? "")}
+          onMount={(editor, monacoNs) => {
+            const save = () => onSubmitRef.current?.();
+            editor.addCommand(monacoNs.KeyMod.CtrlCmd | monacoNs.KeyCode.KeyS, save);
+            editor.addCommand(monacoNs.KeyMod.CtrlCmd | monacoNs.KeyCode.Enter, save);
+          }}
           options={{
             readOnly: !!readonly,
             minimap: { enabled: editorPrefs.minimap },
@@ -133,6 +147,12 @@ export function CellEditor({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const openInSide = useCellEditor((s) => s.open);
+  const canSave = !readonly && !!onSave;
+  // Modifier label for the save-shortcut chip (⌘ on macOS, Ctrl elsewhere).
+  const saveHint = /Mac/i.test(navigator.userAgent) ? "⌘S" : "Ctrl+S";
+  // Content-type badge label: the auto-detected / selected language.
+  const typeLabel = language === "plaintext" ? "TEXT" : language.toUpperCase();
+  const bytes = useMemo(() => new TextEncoder().encode(value).length, [value]);
 
   useEffect(() => {
     if (open) {
@@ -196,37 +216,51 @@ export function CellEditor({
         )}
       >
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">
-            <span>{columnName ?? t("cellEditor.title")}</span>
-            <span className="text-xs font-normal text-muted-foreground">
-              {t("cellEditor.chars", { count: value.length })}
+          {/* Titled header rail for the flagship editor: column name +
+              content-type badge + char/byte pills, with the panel/fullscreen
+              controls grouped right. `pr-8` reserves space for the dialog's
+              built-in close button (replaces the old per-button `mr-8` hack). */}
+          <DialogTitle className="flex items-center gap-2 pr-8">
+            <span className="truncate font-mono text-sm font-semibold">
+              {columnName ?? t("cellEditor.title")}
             </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="ml-auto"
-              onClick={moveToSidePanel}
-              title={t("cellEditor.moveToSide")}
-            >
-              <PanelRight className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="mr-8"
-              onClick={() => setFullscreen((v) => !v)}
-              title={
-                fullscreen
-                  ? t("cellEditor.exitFullscreen")
-                  : t("cellEditor.fullscreen")
-              }
-            >
-              {fullscreen ? (
-                <Minimize2 className="h-4 w-4" />
-              ) : (
-                <Maximize2 className="h-4 w-4" />
-              )}
-            </Button>
+            <span className="shrink-0 rounded bg-brand/10 px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide text-brand">
+              {typeLabel}
+            </span>
+            <span className="hidden shrink-0 items-center gap-1 text-2xs tabular-nums text-muted-foreground sm:flex">
+              <span className="rounded bg-muted px-1.5 py-0.5">
+                {t("cellEditor.chars", { count: value.length })}
+              </span>
+              <span className="rounded bg-muted px-1.5 py-0.5">
+                {bytes.toLocaleString()} B
+              </span>
+            </span>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={moveToSidePanel}
+                title={t("cellEditor.moveToSide")}
+              >
+                <PanelRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setFullscreen((v) => !v)}
+                title={
+                  fullscreen
+                    ? t("cellEditor.exitFullscreen")
+                    : t("cellEditor.fullscreen")
+                }
+              >
+                {fullscreen ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1">
@@ -236,16 +270,25 @@ export function CellEditor({
             language={language}
             onLanguageChange={setLanguage}
             readonly={readonly}
+            onSubmit={canSave ? handleSave : undefined}
           />
         </div>
         {saveError && (
           <div className="text-xs text-destructive">{saveError}</div>
         )}
-        <DialogFooter>
+        <DialogFooter className="items-center">
+          {canSave && (
+            <span className="mr-auto flex items-center gap-1 text-2xs text-muted-foreground">
+              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+                {saveHint}
+              </kbd>
+              {t("common.save")}
+            </span>
+          )}
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {readonly ? t("common.close") : t("cellEditor.discard")}
           </Button>
-          {!readonly && onSave && (
+          {canSave && (
             <Button onClick={handleSave} disabled={saving}>
               {saving ? t("cellEditor.saving") : t("common.save")}
             </Button>
@@ -261,11 +304,20 @@ function JsonValidationBadge({ value }: { value: string }) {
   if (!value.trim()) return null;
   try {
     JSON.parse(value);
-    return <span className="text-xs text-emerald-400">{t("cellEditor.jsonValid")}</span>;
-  } catch (e) {
     return (
-      <span className="text-xs text-destructive">
-        {t("cellEditor.jsonInvalid", { message: (e as Error).message })}
+      <span className="rounded bg-success/10 px-1.5 py-0.5 text-2xs font-medium text-success">
+        {t("cellEditor.jsonValid")}
+      </span>
+    );
+  } catch (e) {
+    // Compact badge; the full parser message goes to the tooltip rather than
+    // being dumped raw into the toolbar row.
+    return (
+      <span
+        className="rounded bg-destructive/10 px-1.5 py-0.5 text-2xs font-medium text-destructive"
+        title={(e as Error).message}
+      >
+        {t("cellEditor.jsonInvalidShort")}
       </span>
     );
   }

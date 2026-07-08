@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import type { ConnectionProfile } from "@/types";
@@ -64,8 +64,7 @@ export function ConnectPasswordDialog({
 
         <div className="grid gap-1">
           <Label>{t("connectPassword.password")}</Label>
-          <Input
-            type="password"
+          <PasswordInput
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => {

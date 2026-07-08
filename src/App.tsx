@@ -32,6 +32,9 @@ import {
   useUpdateStore,
 } from "@/stores/update";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { getCurrentVersion } from "@/lib/updater";
+import { useWhatsNew } from "@/stores/whatsNew";
+import { WhatsNewDialog } from "@/components/WhatsNewDialog";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
@@ -49,6 +52,7 @@ import { SchemaExplorer } from "@/components/SchemaExplorer";
 import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
 import { CommandPalette, useCommandPalette } from "@/components/CommandPalette";
+import { TabSwitcher, useTabSwitcher } from "@/components/TabSwitcher";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { ConnectionErrorBoundary } from "@/components/ConnectionErrorBoundary";
 import { SideEditorPanel } from "@/components/SideEditorPanel";
@@ -69,7 +73,7 @@ import { DEFAULT_PORTS } from "@/lib/constants";
 import { AdHocDriverDialog } from "@/components/AdHocDriverDialog";
 import type { ConnectionProfile, Driver, StartupArgs } from "@/types";
 import { Button } from "@/components/ui/button";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider, SimpleTooltip } from "@/components/ui/tooltip";
 import {
   huginnDockviewTheme,
   persistLayout,
@@ -277,6 +281,23 @@ export default function App() {
   // boot or show an error toast.
   useEffect(() => {
     void useUpdateStore.getState().checkOnLaunch();
+  }, []);
+
+  // One-shot "What's new" presentation: on the first launch after an update
+  // bumped the app to a version flagged `major` in `releaseNotes.ts`, pop the
+  // highlights dialog. MAIN-WINDOW-ONLY — the seen-marker is shared, so a
+  // secondary ephemeral window shouldn't also fire it (same rationale as the
+  // CLI-routing guard below and CLAUDE.md gotcha #8).
+  useEffect(() => {
+    if (getCurrentWindow().label !== "main") return;
+    void (async () => {
+      try {
+        const version = await getCurrentVersion();
+        useWhatsNew.getState().notifyLaunch(version);
+      } catch (e) {
+        console.error("[whatsNew] version lookup failed", e);
+      }
+    })();
   }, []);
 
   // Apply one parsed connection intent: connect a saved profile, or stage an
@@ -562,6 +583,7 @@ export default function App() {
   // panel layout — except inside Monaco, which swallows Ctrl+K; the editor
   // registers its own command for that case (see QueryEditorTab, gotcha #9).
   const togglePalette = useCommandPalette((s) => s.toggle);
+  const toggleSwitcher = useTabSwitcher((s) => s.toggle);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
@@ -570,6 +592,12 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         togglePalette();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        // Quick-switch between open tabs. Monaco swallows this inside its
+        // focus area, so QueryEditorTab registers an editor-scoped command
+        // too (gotcha #9).
+        e.preventDefault();
+        toggleSwitcher();
       } else if (
         !e.repeat &&
         (e.key === "F5" || ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")))
@@ -592,7 +620,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openSettings, togglePalette, selected]);
+  }, [openSettings, togglePalette, toggleSwitcher, selected]);
 
   // Stable derived breadcrumb metadata; both inputs are reference-stable
   // store values, so this satisfies the Zustand selector invariant.
@@ -656,50 +684,57 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right — theme + settings */}
+          {/* Right — theme + settings. Standalone chrome buttons → themed
+              SimpleTooltip instead of native `title` (see gotcha in tooltip.tsx
+              about not bulk-migrating tooltips nested inside menus). */}
           <div className="ml-auto flex items-center gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() =>
-                setMode(activeTheme.mode === "dark" ? "light" : "dark")
-              }
-              title={t("common.tooltipToggleTheme")}
-            >
-              {activeTheme.mode === "dark" ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() =>
-                // Jump straight to the About panel only when there's a
-                // pending update to act on; otherwise restore the default
-                // behaviour (open at whichever section the user last used).
-                updateNotificationVisible
-                  ? openSettings("about")
-                  : openSettings()
-              }
-              title={
+            <SimpleTooltip label={t("common.tooltipToggleTheme")} side="bottom">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() =>
+                  setMode(activeTheme.mode === "dark" ? "light" : "dark")
+                }
+              >
+                {activeTheme.mode === "dark" ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
+              </Button>
+            </SimpleTooltip>
+            <SimpleTooltip
+              side="bottom"
+              label={
                 updateNotificationVisible
                   ? t("update.tooltipUpdateAvailable", {
                       version: availableVersion,
                     })
                   : t("common.tooltipOpenPreferences")
               }
-              className="relative"
             >
-              <Settings className="h-4 w-4" />
-              {updateNotificationVisible && (
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-background"
-                />
-              )}
-            </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() =>
+                  // Jump straight to the About panel only when there's a
+                  // pending update to act on; otherwise restore the default
+                  // behaviour (open at whichever section the user last used).
+                  updateNotificationVisible
+                    ? openSettings("about")
+                    : openSettings()
+                }
+                className="relative"
+              >
+                <Settings className="h-4 w-4" />
+                {updateNotificationVisible && (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-background"
+                  />
+                )}
+              </Button>
+            </SimpleTooltip>
           </div>
         </header>
         <SettingsDialog />
@@ -713,6 +748,7 @@ export default function App() {
         <StatusBar />
       </div>
       <CommandPalette />
+      <TabSwitcher />
       <AdHocDriverDialog
         open={driverPrompt !== null}
         connectionName={driverPrompt?.name ?? ""}
@@ -743,6 +779,7 @@ export default function App() {
         onCancel={() => setCliChoice(null)}
       />
       <FeedbackDialog />
+      <WhatsNewDialog />
       <Toaster
         position="bottom-right"
         theme={activeTheme.mode === "dark" ? "dark" : "light"}
@@ -751,7 +788,7 @@ export default function App() {
           success: <CheckCircle2 className="h-4 w-4 text-brand" />,
           error: <XCircle className="h-4 w-4 text-destructive" />,
           info: <Info className="h-4 w-4 text-muted-foreground" />,
-          warning: <TriangleAlert className="h-4 w-4 text-amber-500" />,
+          warning: <TriangleAlert className="h-4 w-4 text-warning" />,
         }}
       />
       {updateNotificationVisible && availableVersion && (

@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* WebView2 (Edge/Chromium) draws a native password reveal/clear control that
+ * can't be themed and renders near-black — invisible on dark surfaces. Hide it
+ * everywhere; password fields use the themed toggle in `PasswordInput`. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -25,6 +33,29 @@
     --brand-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
+    /* Semantic state accents. Distinct from `brand` (the app's one "do this /
+       this is live" colour) and `destructive` (errors / dangerous actions).
+       `success` marks a healthy / confirmed state, `warning` a caution that
+       isn't an error. Both were previously hard-coded per component
+       (emerald-400 / amber-500), which bypassed the theme system — routing
+       them through tokens lets custom themes recolour them. Per-theme values
+       live in the theme store (themes.ts); these defaults only apply to custom
+       themes persisted before the tokens existed. */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 240 10% 4%;
+    /* Data-semantic accent hues (text/icon only — no surface, so no
+       foreground pair). `pk` = primary-key marker, `fk` = foreign-key marker,
+       `numeric` = numeric cell values. These were hard-coded as
+       amber-400 / sky-400 across DataGrid + SchemaExplorer (a deliberate
+       semantic pair from the earlier design pass, but theme-blind); tokenising
+       them lets custom themes recolour type/key hints. Light defaults are
+       darker so they stay legible on a white surface. Kept out of the
+       Appearance colour editor (COLOR_KEYS) as niche system accents. */
+    --pk: 35 92% 33%;
+    --fk: 200 98% 39%;
+    --numeric: 35 92% 33%;
     --border: 240 6% 90%;
     --input: 240 6% 90%;
     --ring: 240 5% 65%;
@@ -50,6 +81,13 @@
     --brand-foreground: 0 0% 100%;
     --destructive: 0 70% 45%;
     --destructive-foreground: 0 0% 98%;
+    --success: 142 64% 42%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 240 10% 4%;
+    --pk: 43 96% 56%;
+    --fk: 199 89% 64%;
+    --numeric: 43 96% 56%;
     --border: 240 6% 16%;
     --input: 240 6% 16%;
     --ring: 240 5% 40%;

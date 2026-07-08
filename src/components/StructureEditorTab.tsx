@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import {
   Dialog,
   DialogContent,
@@ -300,20 +301,16 @@ export function StructureEditorTab({
       </div>
 
       {/* Section tabs */}
-      <div className="flex gap-1 border-b border-border px-3 py-1.5 text-xs">
-        {(["columns", "indexes", "fks"] as const).map((s) => (
-          <button
-            key={s}
-            className={`rounded px-2 py-1 ${
-              section === s
-                ? "bg-accent font-medium"
-                : "text-muted-foreground hover:bg-accent/40"
-            }`}
-            onClick={() => setSection(s)}
-          >
-            {t(`structure.section.${s}`)}
-          </button>
-        ))}
+      <div className="border-b border-border px-3 py-1.5">
+        <Segmented
+          value={section}
+          onValueChange={setSection}
+          aria-label={t("structure.sectionsLabel")}
+          options={(["columns", "indexes", "fks"] as const).map((s) => ({
+            value: s,
+            label: t(`structure.section.${s}`),
+          }))}
+        />
       </div>
 
       {/* Body: editor grids on top, DDL preview at the bottom */}
@@ -350,7 +347,7 @@ export function StructureEditorTab({
             <RefreshCw className="h-3 w-3" />
             {t("structure.ddlPreview")}
             {rebuild && (
-              <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-500">
+              <span className="rounded bg-warning/20 px-1.5 py-0.5 text-warning">
                 {t("structure.rebuildWarning")}
               </span>
             )}
@@ -481,7 +478,7 @@ function ColumnsEditor({
               <td className="px-1 py-0.5 text-center">
                 <input
                   type="checkbox"
-                  className="accent-blue-500"
+                  className="accent-brand"
                   checked={c.nullable}
                   onChange={(e) =>
                     onPatch(c._key, { nullable: e.target.checked })
@@ -491,7 +488,7 @@ function ColumnsEditor({
               <td className="px-1 py-0.5 text-center">
                 <input
                   type="checkbox"
-                  className="accent-blue-500"
+                  className="accent-brand"
                   checked={c.isPrimaryKey}
                   onChange={(e) =>
                     onPatch(c._key, { isPrimaryKey: e.target.checked })
@@ -501,7 +498,7 @@ function ColumnsEditor({
               <td className="px-1 py-0.5 text-center">
                 <input
                   type="checkbox"
-                  className="accent-blue-500"
+                  className="accent-brand"
                   checked={!!c.autoIncrement}
                   onChange={(e) =>
                     onPatch(c._key, { autoIncrement: e.target.checked })
@@ -586,7 +583,7 @@ function IndexesEditor({
           <label className="flex items-center gap-1">
             <input
               type="checkbox"
-              className="accent-blue-500"
+              className="accent-brand"
               checked={idx.unique}
               onChange={(e) => patch(i, { unique: e.target.checked })}
             />

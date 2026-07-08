@@ -18,7 +18,7 @@
  *   keeps acting on the current page only.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   flexRender,
@@ -34,6 +34,7 @@ import {
   ArrowUpDown,
   ChevronDown,
   KeyRound,
+  Loader2,
   Plus,
   X,
 } from "lucide-react";
@@ -218,6 +219,21 @@ interface Props {
   onDraftCellChange?: (column: string, cell: DraftCell) => void;
   onDraftCommit?: () => void;
   onDraftCancel?: () => void;
+
+  /**
+   * Optional content rendered at the START of the toolbar row (before the
+   * search box), with a divider after it. TableDataTab folds its breadcrumb +
+   * refresh + zoom controls in here so a table tab shows ONE toolbar instead
+   * of two stacked bars. Query-result tabs omit it.
+   */
+  toolbarLeading?: ReactNode;
+  /**
+   * When true, dims the grid body and shows a spinner overlay — used while a
+   * refetch is in flight but stale rows are still on screen, so the grid
+   * doesn't look frozen. Initial load (no rows yet) is handled by the caller's
+   * skeleton placeholder instead.
+   */
+  loading?: boolean;
 }
 
 /** Render a cell value as a plain string for display and search. */
@@ -292,6 +308,8 @@ export function DataGrid({
   onDraftCellChange,
   onDraftCommit,
   onDraftCancel,
+  toolbarLeading,
+  loading,
 }: Props) {
   const { t } = useTranslation();
   const draftRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -374,6 +392,16 @@ export function DataGrid({
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
   /** Row index of the currently selected row (blue highlight). */
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  /**
+   * Keyboard-navigable active cell — `{ r, c }` indexing the visible row model
+   * and the visible leaf columns. Drives the inset focus ring and arrow / Home
+   * / End / Enter navigation; the grid was otherwise mouse-only, which
+   * contradicts the app's keyboard-first identity. Set on cell click (so the
+   * keyboard picks up where the mouse left off) and cleared on Escape.
+   */
+  const [activeCell, setActiveCell] = useState<{ r: number; c: number } | null>(
+    null,
+  );
 
   /**
    * Multi-row selection. Keyed by the parent-supplied stable row key
@@ -512,6 +540,35 @@ export function DataGrid({
     } else {
       lastClickedKeyRef.current = rowKey;
     }
+  }
+
+  /**
+   * Header tri-state select-all state, computed over the *visible* rows that
+   * have a resolvable key. `allSelected` when every selectable visible row is
+   * in the set; `someSelected` drives the checkbox's indeterminate dash.
+   * Toggling only ever touches the visible set — never rows filtered out of
+   * view (mirrors the prune effect above that keeps the set honest).
+   */
+  const selectableVisibleKeys = useMemo(
+    () =>
+      keyedVisibleRows
+        .map((r) => r.key)
+        .filter((k): k is string => k !== null),
+    [keyedVisibleRows],
+  );
+  const allSelected =
+    selectableVisibleKeys.length > 0 &&
+    selectableVisibleKeys.every((k) => selectedKeys.has(k));
+  const someSelected = selectedKeys.size > 0 && !allSelected;
+
+  /** Select-all / clear from the header checkbox. */
+  function toggleSelectAll() {
+    setSelectedKeys((prev) => {
+      const everyVisibleSelected =
+        prev.size > 0 && selectableVisibleKeys.every((k) => prev.has(k));
+      return everyVisibleSelected ? new Set() : new Set(selectableVisibleKeys);
+    });
+    lastClickedKeyRef.current = null;
   }
 
   /**
@@ -674,7 +731,7 @@ export function DataGrid({
           const showRank = active && (sort?.length ?? 0) > 1;
           return (
             <button
-              className="flex items-center gap-1 hover:text-foreground"
+              className="group/sort -mx-1 flex w-full items-center gap-1 rounded-sm px-1 hover:bg-accent/50 hover:text-foreground"
               onClick={(e) =>
                 onSortChange?.(col.name, e.ctrlKey || e.metaKey)
               }
@@ -686,35 +743,37 @@ export function DataGrid({
             >
               {pkNameSet.has(col.name) && (
                 <KeyRound
-                  className="h-3 w-3 shrink-0 text-amber-400"
+                  className="h-3 w-3 shrink-0 text-pk"
                   aria-label="primary key"
                 />
               )}
               {fkNameSet.has(col.name) && (
                 <KeyRound
-                  className="h-3 w-3 shrink-0 text-sky-400"
+                  className="h-3 w-3 shrink-0 text-fk"
                   aria-label="foreign key"
                 />
               )}
               <span className="truncate">{col.name}</span>
-              <span className="text-[9px] uppercase text-muted-foreground/50">
+              <span className="text-3xs uppercase text-muted-foreground/50">
                 {col.data_type}
               </span>
               {active ? (
-                <span className="flex items-center text-foreground">
+                <span className="ml-auto flex shrink-0 items-center text-brand">
                   {spec!.desc ? (
                     <ArrowDown className="h-3 w-3" />
                   ) : (
                     <ArrowUp className="h-3 w-3" />
                   )}
                   {showRank && (
-                    <span className="ml-0.5 text-[9px] font-semibold tabular-nums">
+                    <span className="ml-0.5 text-3xs font-semibold tabular-nums">
                       {sortIndex + 1}
                     </span>
                   )}
                 </span>
               ) : (
-                <ArrowUpDown className="h-3 w-3 opacity-30" />
+                // Persistent (not near-invisible) glyph that brightens on
+                // header hover so sortability is discoverable at a glance.
+                <ArrowUpDown className="ml-auto h-3 w-3 shrink-0 opacity-40 transition-opacity group-hover/sort:opacity-100" />
               )}
             </button>
           );
@@ -831,7 +890,7 @@ export function DataGrid({
             <div className="flex min-w-0 items-center gap-1">
               <span
                 className={`truncate font-mono ${
-                  isNumeric ? "text-amber-400" : ""
+                  isNumeric ? "text-numeric" : ""
                 }`}
               >
                 {v === null ? (
@@ -950,6 +1009,101 @@ export function DataGrid({
     openModalEditor(rowValues, column, fmt ?? "");
   }
 
+  /**
+   * Grid-level keyboard navigation, bound to the (focusable) scroll container.
+   * Moves the inset-ring active cell with the arrows / Home / End, opens the
+   * editor on Enter, clears on Escape. The ring never animates its movement:
+   * this fires on every keypress, so motion would read as lag (see the
+   * keyboard-action rule). Guards: skip when an inline editor is open or focus
+   * is inside a form control, and never swallow modified chords (Ctrl+C etc.).
+   */
+  function handleGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (inlineEdit || fkEditCell) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("input, textarea, select, [contenteditable='true']")) {
+      return;
+    }
+    const rows = table.getRowModel().rows;
+    const colCount = table.getVisibleLeafColumns().length;
+    if (rows.length === 0 || colCount === 0) return;
+
+    const focusCell = (r: number, c: number) => {
+      setActiveCell({ r, c });
+      setSelectedRowIndex(r);
+      // Keep the cell in view without smooth scrolling (instant per the
+      // no-motion-on-keyboard rule), deferred a frame so the ring has painted.
+      requestAnimationFrame(() => {
+        scrollRef.current
+          ?.querySelector<HTMLElement>(`[data-cell="${r}-${c}"]`)
+          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      });
+    };
+
+    if (e.key === "Escape") {
+      if (activeCell) {
+        e.preventDefault();
+        setActiveCell(null);
+      }
+      return;
+    }
+
+    const navKeys = [
+      "ArrowDown",
+      "ArrowUp",
+      "ArrowRight",
+      "ArrowLeft",
+      "Home",
+      "End",
+    ];
+
+    // First nav keypress with no active cell just anchors at the top-left
+    // rather than jumping a step past it.
+    if (!activeCell) {
+      if (navKeys.includes(e.key)) {
+        e.preventDefault();
+        focusCell(0, 0);
+      }
+      return;
+    }
+
+    if (e.key === "Enter") {
+      const row = rows[activeCell.r];
+      const cell = row?.getVisibleCells()[activeCell.c];
+      const bi = cell ? (columnIndexByName.get(cell.column.id) ?? -1) : -1;
+      if (!row || bi < 0) return;
+      e.preventDefault();
+      openCellEdit(row.original as CellValue[], result.columns[bi]);
+      return;
+    }
+
+    let { r, c } = activeCell;
+    switch (e.key) {
+      case "ArrowDown":
+        r = Math.min(r + 1, rows.length - 1);
+        break;
+      case "ArrowUp":
+        r = Math.max(r - 1, 0);
+        break;
+      case "ArrowRight":
+        c = Math.min(c + 1, colCount - 1);
+        break;
+      case "ArrowLeft":
+        c = Math.max(c - 1, 0);
+        break;
+      case "Home":
+        c = 0;
+        break;
+      case "End":
+        c = colCount - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    focusCell(r, c);
+  }
+
   async function copyToClipboard(text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -996,8 +1150,13 @@ export function DataGrid({
   return (
     // `relative` allows CellPreview to be positioned absolute within this container.
     <div className="relative flex h-full flex-col">
-      {/* Toolbar: filter chips + text filter + row count + elapsed time + insert */}
+      {/* Toolbar: optional leading slot (breadcrumb/refresh/zoom from a table
+          tab) + filter chips + text filter + row count + elapsed time + insert */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs">
+        {toolbarLeading}
+        {toolbarLeading && (
+          <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+        )}
         <SearchInput
           value={filterInput ?? globalFilter ?? ""}
           onChange={onGlobalFilterChange}
@@ -1028,10 +1187,19 @@ export function DataGrid({
             </button>
           </span>
         ))}
-        <span className="text-muted-foreground">
-          {visibleRows.length.toLocaleString()} {t("dataGrid.rows")}
+        <span className="tabular-nums text-muted-foreground">
+          <span className="font-medium text-foreground">
+            {visibleRows.length.toLocaleString()}
+          </span>{" "}
+          {t("dataGrid.rows")}
           {result.total !== null && result.total !== undefined && (
-            <> {t("dataGrid.of")} {result.total.toLocaleString()}</>
+            <>
+              {" "}
+              {t("dataGrid.of")}{" "}
+              <span className="font-medium text-foreground">
+                {result.total.toLocaleString()}
+              </span>
+            </>
           )}
         </span>
         {onInsertRow && (
@@ -1044,15 +1212,33 @@ export function DataGrid({
             {t("dataGrid.insert")}
           </button>
         )}
-        <span className="ml-auto text-muted-foreground">
+        <span
+          className={cn(
+            "ml-auto tabular-nums",
+            // Draw attention only when a query is slow; fast queries stay
+            // muted (colouring every timing green/amber would be noise).
+            result.elapsed_ms > 2000
+              ? "text-destructive"
+              : result.elapsed_ms > 500
+                ? "text-warning"
+                : "text-muted-foreground",
+          )}
+        >
           {result.elapsed_ms} ms
         </span>
       </div>
 
-      {/* Scrollable data table */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-auto"
+      {/* Scrollable data table, wrapped so the refetch overlay covers only the
+          grid body (not the toolbar). */}
+      <div className="relative flex-1 overflow-hidden">
+        <div
+          ref={scrollRef}
+          className="h-full overflow-auto outline-none"
+        // Focusable so it can receive keyboard navigation; a cell click focuses
+        // it (below). The active-cell ring is the visible focus affordance, so
+        // the container's own outline is suppressed.
+        tabIndex={0}
+        onKeyDown={handleGridKeyDown}
         // Close the cell preview when clicking outside the table cells.
         onClick={() => setSelectedCell(null)}
       >
@@ -1073,7 +1259,32 @@ export function DataGrid({
                   className="border-b border-border bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
                   style={{ ...headerStyle, width: 40 }}
                 >
-                  #
+                  {selectionEnabled ? (
+                    <input
+                      type="checkbox"
+                      // Callback ref: native checkboxes only expose the
+                      // "indeterminate" (dash) state via JS, so we set it on
+                      // every render from `someSelected`.
+                      ref={(el) => {
+                        if (el) el.indeterminate = someSelected;
+                      }}
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      aria-label={
+                        allSelected
+                          ? t("dataGrid.deselectAll")
+                          : t("dataGrid.selectAll")
+                      }
+                      title={
+                        allSelected
+                          ? t("dataGrid.deselectAll")
+                          : t("dataGrid.selectAll")
+                      }
+                      className="accent-brand cursor-pointer align-middle"
+                    />
+                  ) : (
+                    "#"
+                  )}
                 </th>
                 {hg.headers.map((h) => (
                   <th
@@ -1132,15 +1343,16 @@ export function DataGrid({
               return (
                 <tr
                   key={row.id}
-                  className={
+                  className={cn(
+                    "group/row",
                     isMultiSelected
-                      ? "bg-blue-500/20"
+                      ? "bg-brand/20"
                       : isSelected
-                        ? "bg-blue-500/10"
+                        ? "bg-brand/10"
                         : zebraStripes && i % 2 === 1
                           ? "bg-muted/30 hover:bg-accent/30"
-                          : "hover:bg-accent/30"
-                  }
+                          : "hover:bg-accent/30",
+                  )}
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedRowIndex(i);
@@ -1148,12 +1360,39 @@ export function DataGrid({
                   }}
                 >
                   <td
-                    className="border-b border-border/50 px-2 text-muted-foreground"
+                    className="border-b border-border/50 px-2 tabular-nums text-muted-foreground"
                     style={{ ...cellStyle, width: 40 }}
                   >
-                    {i + 1}
+                    {selectionEnabled && rowKey !== null ? (
+                      <>
+                        <input
+                          type="checkbox"
+                          checked={isMultiSelected}
+                          onChange={() => toggleRowKey(rowKey)}
+                          // Stop the row's onClick (a plain click there clears
+                          // the multi-selection) from firing on checkbox click.
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={t("dataGrid.selectRow")}
+                          className={cn(
+                            "accent-brand cursor-pointer align-middle",
+                            isMultiSelected
+                              ? "inline-block"
+                              : "hidden group-hover/row:inline-block",
+                          )}
+                        />
+                        <span
+                          className={
+                            isMultiSelected ? "hidden" : "group-hover/row:hidden"
+                          }
+                        >
+                          {i + 1}
+                        </span>
+                      </>
+                    ) : (
+                      i + 1
+                    )}
                   </td>
-                  {row.getVisibleCells().map((cell) => {
+                  {row.getVisibleCells().map((cell, cIdx) => {
                     // Resolve column meta + value by *name*, not by the
                     // position of the cell in `getVisibleCells()`. The
                     // grid currently keeps both orders in sync, but a
@@ -1173,19 +1412,32 @@ export function DataGrid({
                     const isFkCell =
                       !!onNavigateFk &&
                       !!columnInfoByName.get(meta.name)?.referenced_table;
+                    const isActiveCell =
+                      activeCell?.r === i && activeCell?.c === cIdx;
                     return (
                       <ContextMenu key={cell.id}>
                         <ContextMenuTrigger asChild>
                           <td
+                            data-cell={`${i}-${cIdx}`}
                             className={cn(
                               "cursor-pointer border-b border-border/50 px-2",
                               isFkCell &&
-                                "hover:underline hover:decoration-dotted hover:decoration-sky-400/70 hover:underline-offset-2",
+                                "hover:underline hover:decoration-dotted hover:decoration-fk/70 hover:underline-offset-2",
+                              // Inset ring marks the keyboard-active cell.
+                              // `relative z-10` lifts it above neighbours so the
+                              // ring isn't clipped by adjacent cell borders. No
+                              // transition — the ring must track keys instantly.
+                              isActiveCell &&
+                                "relative z-10 ring-2 ring-inset ring-brand",
                             )}
                             title={isFkCell ? t("dataGrid.fkNavHint") : undefined}
                             style={{ ...cellStyle, width: cell.column.getSize() }}
                             onClick={(e) => {
                               e.stopPropagation();
+                              // Focus the container so keyboard nav continues
+                              // from here, and mark this cell active.
+                              scrollRef.current?.focus({ preventScroll: true });
+                              setActiveCell({ r: i, c: cIdx });
                               // Ctrl/Cmd+click on a single-column FK cell is the
                               // "go to referenced row" accelerator (IDE-style).
                               // It takes precedence over the multi-selection
@@ -1502,6 +1754,18 @@ export function DataGrid({
             )}
           </tbody>
         </table>
+        </div>
+        {/* Refetch overlay: dims the (stale) rows and shows a spinner so a
+            reload doesn't look frozen. pointer-events-none keeps the stale
+            data interactive. Initial load is handled by the caller's skeleton. */}
+        {loading && (
+          <div
+            className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center bg-background/40"
+            aria-hidden
+          >
+            <Loader2 className="mt-6 h-5 w-5 animate-spin text-brand" />
+          </div>
+        )}
       </div>
 
       {/* Compact cell preview panel — gated by the `cellPreview` grid pref.

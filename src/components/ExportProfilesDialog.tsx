@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/connections";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -156,7 +156,7 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
           {/* Security warning + passphrase fields */}
           {includePasswords && (
             <div className="space-y-3">
-              <div className="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
+              <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/30 px-3 py-2 text-2xs text-warning">
                 <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 {t("transfer.export.securityWarning")}
               </div>
@@ -164,9 +164,8 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
                 <Label htmlFor="passphrase" className="text-xs">
                   {t("transfer.export.passphrase")}
                 </Label>
-                <Input
+                <PasswordInput
                   id="passphrase"
-                  type="password"
                   value={passphrase}
                   onChange={(e) => setPassphrase(e.target.value)}
                   placeholder={t("transfer.export.passphrasePlaceholder")}
@@ -177,9 +176,8 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
                 <Label htmlFor="passphrase-confirm" className="text-xs">
                   {t("transfer.export.passphraseConfirm")}
                 </Label>
-                <Input
+                <PasswordInput
                   id="passphrase-confirm"
-                  type="password"
                   value={passphraseConfirm}
                   onChange={(e) => setPassphraseConfirm(e.target.value)}
                   placeholder={t("transfer.export.passphraseConfirmPlaceholder")}

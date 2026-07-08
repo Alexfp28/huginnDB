@@ -4,6 +4,8 @@
     "alpha": "alpha",
     "cancel": "Cancel",
     "close": "Close",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
     "delete": "Delete",
     "duplicate": "Duplicate",
     "save": "Save",
@@ -62,6 +64,7 @@
     "deleteConfirm": "Delete connection \"{{name}}\"?",
     "manageTitle": "Manage connections",
     "reconnectTooltip": "Connection lost — reconnect",
+    "reconnect": "Reconnect",
     "lost": "Connection lost: {{message}}"
   },
   "connectionDialog": {
@@ -200,6 +203,7 @@
     "title": "Schema",
     "refresh": "Refresh",
     "loadingColumns": "loading…",
+    "tableOpenTooltip": "Open in a tab",
     "sectionTables": "tables",
     "sectionViews": "views",
     "sectionIndexes": "indexes",
@@ -278,6 +282,7 @@
     "saveFailed": "Save failed: {{message}}",
     "jsonValid": "valid JSON",
     "jsonInvalid": "invalid: {{message}}",
+    "jsonInvalidShort": "invalid JSON",
     "moveToSide": "Move to side panel",
     "sideEmpty": "Right-click a cell and choose \"Open in side editor\" to edit it here.",
     "discardChangesTitle": "Unsaved changes",
@@ -298,6 +303,9 @@
     "closeHint": "esc close"
   },
   "dataGrid": {
+    "selectAll": "Select all rows",
+    "deselectAll": "Clear selection",
+    "selectRow": "Select row",
     "expandEditor": "Open in full editor",
     "openInSideEditor": "Open in side editor",
     "zoomIn": "Larger rows (Ctrl + +)",
@@ -338,6 +346,7 @@
   },
   "structure": {
     "loading": "Loading structure…",
+    "sectionsLabel": "Structure section",
     "tableName": "Table",
     "tableNamePlaceholder": "table_name",
     "apply": "Apply",
@@ -383,7 +392,11 @@
     "structureSuffix": "structure",
     "closeTab": "Close tab",
     "closeOthers": "Close other tabs",
+    "closeToRight": "Close tabs to the right",
+    "closeOthersInConnection": "Close others in this connection",
     "closeAll": "Close all tabs",
+    "pin": "Pin tab",
+    "unpin": "Unpin tab",
     "actionsTooltip": "Tab actions",
     "color": "Colour",
     "colorNone": "No colour",
@@ -394,6 +407,21 @@
     "newQueryTooltip": "New query (uses current connection)",
     "emptyOpenSomething": "Open a table from the schema explorer, or create a new query tab.",
     "emptyConnectFirst": "Select or create a connection to begin."
+  },
+  "tabSwitcher": {
+    "title": "Switch tab",
+    "tooltip": "Open tabs (Ctrl/Cmd+P)",
+    "placeholder": "Search open tabs…",
+    "pinned": "Pinned",
+    "current": "current",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "close": "Close tab",
+    "noneOpen": "No tabs open.",
+    "noResults": "No matching tabs.",
+    "hintNavigate": "navigate",
+    "hintJump": "go to tab",
+    "hintClose": "close"
   },
   "statusBar": {
     "disconnected": "disconnected",
@@ -437,7 +465,10 @@
     "theme": "Theme: {{name}}",
     "language": "Language: {{name}}",
     "language_en": "English",
-    "language_es": "Spanish"
+    "language_es": "Spanish",
+    "hintNavigate": "navigate",
+    "hintRun": "run",
+    "hintClose": "close"
   },
   "settings": {
     "title": "Preferences",
@@ -642,6 +673,7 @@
     "noQueries": "No queries yet.",
     "running": "running…",
     "run": "Run",
+    "runTitle": "Run — Ctrl/Cmd+Enter",
     "runAll": "Run all ({{count}})",
     "runAllTitle": "Run every statement in order on one connection",
     "runStatement": "Run this statement",
@@ -690,5 +722,39 @@
     "install": "Install and relaunch",
     "later": "Later",
     "tooltipUpdateAvailable": "An update is available ({{version}})"
+  },
+  "whatsNew": {
+    "menuEntry": "What's new",
+    "title": "What's new in HuginnDB",
+    "versionLabel": "Version {{version}}",
+    "viewChangelog": "Full changelog",
+    "gotIt": "Got it",
+    "releases": {
+      "1_6_0": {
+        "tagline": "A top-to-bottom interface overhaul — the same keyboard-first HuginnDB, sharper in every corner.",
+        "items": {
+          "design": {
+            "title": "Refined design system",
+            "body": "A consistent colour, type and elevation scale, clearer focus rings, and semantic success / warning tokens that follow your theme."
+          },
+          "grid": {
+            "title": "Keyboard-navigable data grid",
+            "body": "Move the active cell with the arrow keys, select rows with visible checkboxes, and read numbers in aligned tabular figures."
+          },
+          "schema": {
+            "title": "Redesigned schema tree",
+            "body": "The open table is marked so you always know where you are, column types are colour-coded, and rows load behind a subtle skeleton."
+          },
+          "editor": {
+            "title": "Sharper query editor & command palette",
+            "body": "A visible Run button with its shortcut, a flagship cell editor with content-type badges, and a polished command palette with hints."
+          },
+          "chrome": {
+            "title": "Clearer status & themed tooltips",
+            "body": "Lost connections are unmissable with one-click reconnect, and tooltips across the chrome now match your theme instead of the OS."
+          }
+        }
+      }
+    }
   }
 }

@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Loader2,
   RefreshCw,
   ZoomIn,
   ZoomOut,
@@ -597,80 +598,39 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     pkColumns.length > 0 &&
     (result === null || pkColumnIndices.every((i) => i >= 0));
 
+  // Compact breadcrumb (schema › table), reused by the merged toolbar and the
+  // initial-load skeleton. The table name is the emphasised element.
+  const breadcrumb = (
+    <span className="flex min-w-0 items-center gap-1">
+      {schema && (
+        <>
+          <span className="truncate text-muted-foreground">{schema}</span>
+          <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+        </>
+      )}
+      <span className="truncate font-medium text-foreground">{table}</span>
+    </span>
+  );
+
+  // Leading toolbar content folded into the grid's own toolbar (via DataGrid's
+  // `toolbarLeading`) so a table tab shows ONE bar instead of two stacked ones.
+  const leadingToolbar = (
+    <>
+      {breadcrumb}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={fetchData}
+        disabled={loading}
+        title={t("tableData.refresh")}
+      >
+        <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+      </Button>
+    </>
+  );
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs">
-        <span className="font-medium">
-          {schema ? `${schema}.` : ""}
-          {table}
-        </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={fetchData}
-          disabled={loading}
-          title={t("tableData.refresh")}
-        >
-          <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-        </Button>
-        <div className="ml-auto flex items-center gap-2">
-          <div className="flex items-center">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => zoomRows(-2)}
-              disabled={rowHeight <= 14}
-              title={t("dataGrid.zoomOut")}
-            >
-              <ZoomOut className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => zoomRows(2)}
-              disabled={rowHeight >= 40}
-              title={t("dataGrid.zoomIn")}
-            >
-              <ZoomIn className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setOffset(Math.max(0, offset - pageSize))}
-            disabled={!canPrev || loading}
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <span className="text-muted-foreground">
-            {(offset + 1).toLocaleString()}–
-            {Math.min(offset + pageSize, (total ?? offset + pageSize)).toLocaleString()}
-            {total !== null && ` / ${total.toLocaleString()}`}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setOffset(offset + pageSize)}
-            disabled={!canNext || loading}
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-          <select
-            value={pageSize}
-            onChange={(e) => {
-              setOffset(0);
-              setPageSize(Number(e.target.value));
-            }}
-            className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
-          >
-            {pageSizeOptions.map((n) => (
-              <option key={n} value={n}>
-                {t("tableData.perPage", { count: n })}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
       {error && (
         <div className="border-b border-border bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
           {error}
@@ -730,13 +690,94 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onDraftCellChange={onDraftCellChange}
             onDraftCommit={onDraftCommit}
             onDraftCancel={onDraftCancel}
+            loading={loading}
+            toolbarLeading={leadingToolbar}
           />
         ) : (
-          <div className="p-4 text-xs text-muted-foreground">
-            {t("tableData.loading")}
+          // Initial load (no rows yet): breadcrumb + shimmer skeleton rows,
+          // so the tab shows its identity and reads as "fetching" rather than
+          // a bare "loading…" line. Refetch-with-stale-rows is handled by the
+          // grid's own dim overlay (the `loading` prop above).
+          <div className="flex h-full flex-col">
+            <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
+              {breadcrumb}
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+            </div>
+            <div className="flex-1 space-y-1.5 p-3" aria-hidden>
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-6 animate-pulse rounded bg-muted-foreground/10"
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
+
+      {/* Footer status strip: zoom (left) + pagination (right). Moved out of
+          the top toolbar so the top shows a single merged bar. */}
+      {result && (
+        <div className="flex items-center gap-2 border-t border-border bg-background px-3 py-1 text-xs">
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => zoomRows(-2)}
+              disabled={rowHeight <= 14}
+              title={t("dataGrid.zoomOut")}
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => zoomRows(2)}
+              disabled={rowHeight >= 40}
+              title={t("dataGrid.zoomIn")}
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setOffset(Math.max(0, offset - pageSize))}
+              disabled={!canPrev || loading}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <span className="tabular-nums text-muted-foreground">
+              {(offset + 1).toLocaleString()}–
+              {Math.min(offset + pageSize, (total ?? offset + pageSize)).toLocaleString()}
+              {total !== null && ` / ${total.toLocaleString()}`}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setOffset(offset + pageSize)}
+              disabled={!canNext || loading}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setOffset(0);
+                setPageSize(Number(e.target.value));
+              }}
+              className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
+            >
+              {pageSizeOptions.map((n) => (
+                <option key={n} value={n}>
+                  {t("tableData.perPage", { count: n })}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* Confirm-delete dialog */}
       <Dialog
@@ -789,7 +830,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             <Button variant="ghost" onClick={() => setPendingDelete(null)}>
               {t("common.cancel")}
             </Button>
-            <Button onClick={confirmDelete}>{t("tableData.delete")}</Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              {t("tableData.delete")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

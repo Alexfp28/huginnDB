@@ -4,7 +4,13 @@
  * icon.
  */
 
-import { CircleHelp, ChevronDown, Info, MessageSquarePlus } from "lucide-react";
+import {
+  CircleHelp,
+  ChevronDown,
+  Info,
+  MessageSquarePlus,
+  Sparkles,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +20,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown";
 import { useFeedbackDialog } from "@/stores/feedbackDialog";
+import { useWhatsNew } from "@/stores/whatsNew";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 
 export function HelpMenu() {
@@ -30,6 +37,13 @@ export function HelpMenu() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuItem
+          onSelect={() => useWhatsNew.getState().openLatest()}
+          className="text-xs"
+        >
+          <Sparkles className="mr-2 h-3.5 w-3.5" />
+          {t("whatsNew.menuEntry")}
+        </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => useFeedbackDialog.getState().openWith()}
           className="text-xs"

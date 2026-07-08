@@ -6,6 +6,198 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Legible show/hide toggle on every password field.** WebView2 draws a
+  native password-reveal eye that can't be themed and renders near-black —
+  effectively invisible on dark surfaces. It's now hidden app-wide and
+  replaced by a themed `PasswordInput` toggle (muted → foreground on hover,
+  bilingual label). Applied to all secret fields: connection password, SSH
+  password / passphrase, the export & import passphrases, the connect-time
+  password prompt, and the GitHub token in the feedback dialog.
+
+- **Tab management overhaul.** With many tabs open it was hard to tell what
+  you had open or jump to a specific table. Four additions address that:
+  - **Open-tabs quick switcher (Ctrl/Cmd+P).** A keyboard-first overlay
+    listing *currently open* tabs across every connection, grouped pinned-first
+    then by `connection · database`. Search by name, navigate with the arrows,
+    Enter jumps (and points the workspace at that tab's connection), and each
+    row pins/unpins or closes inline (Delete closes the highlighted one).
+    Distinct from the command palette (Ctrl+K), which opens *new* things.
+  - **Open-table markers in the schema tree.** Every table that's open in a
+    tab now shows a soft brand dot in the tree — not just the active one — so
+    you can see at a glance what you already have open while browsing.
+  - **Tab-strip switcher button** with a live open-tab count, doubling as the
+    overflow affordance when tabs don't all fit.
+  - **The active tab is always scrolled into view.** Opening a table when the
+    strip was already full left the new (active) tab clipped behind the
+    overflow ∨ / switcher / "+" controls — dockview scrolls the active tab in,
+    but does so before our custom tab content has laid out, so the new tab was
+    left hidden. The active tab now scrolls itself fully into view once its
+    content is painted.
+  - **Pinning + richer bulk-close.** Tabs can be pinned (⋮ / right-click, or
+    from the switcher) so they survive "close others / all / to the right";
+    pinned tabs carry a pin marker and group first in the switcher. The tab
+    menus gained "Close tabs to the right" and "Close others in this
+    connection". Pins persist per connection across restarts.
+- **"What's new" presentation after an update.** The first launch after an
+  update bumps the app to a release flagged `major` now pops a curated,
+  iconified highlights dialog (the punchy counterpart to the exhaustive
+  changelog in Settings → About). Content is a hand-authored, bundled
+  catalogue in `src/lib/releaseNotes.ts` with bilingual copy in i18n; the
+  seen-marker is persisted in `localStorage` (mirroring the update store) so
+  it fires exactly once per major release, main-window only. Reachable any
+  time from Help → "What's new". When cutting a `major` release, add its entry
+  (matching the manifest version exactly) and flag it `major`.
+- **Visible Run button in the query editor (UI/UX overhaul, phase 2).** The
+  editor's primary action had no button at all — it was Ctrl+Enter and a
+  per-statement CodeLens only, with a "Run all" that appeared conditionally. A
+  brand-filled Run button now leads the toolbar with a Ctrl/⌘+Enter shortcut
+  chip, runs the whole buffer (routing to the batch runner when it holds more
+  than one statement), and shows a spinner while executing. Save / history are
+  demoted behind a divider.
+- **Schema tree redesign (UI/UX overhaul, phase 1).** The left database/table
+  tree gained clear hierarchy and orientation. The currently-open table is now
+  marked in the tree — a soft brand wash plus a 2px inset brand rail, driven by
+  the active tab — so you can always see "where you are". The table name is the
+  boldest element on its row (foreground / medium weight) against the muted
+  section labels and column rows, column data types are colour-coded (numeric
+  amber / boolean green / others muted, reusing the grid's semantic hues), and a
+  table's columns load behind a shimmer skeleton instead of an italic
+  "loading…" line. Column indentation follows a consistent 12px-per-level
+  ladder (schema → section → table) with a continuous depth-guide hairline that
+  drops from under each open table's chevron, and table metric badges use
+  tabular figures. The single-database "database created" confirmation is now a
+  themed toast instead of a native `alert()`.
+- **Keyboard navigation in the data grid (UI/UX overhaul, phase 1).** The grid
+  was mouse-only, at odds with the app's keyboard-first identity. Cells now
+  carry a keyboard-navigable "active cell" marked with an inset `brand` ring:
+  arrow keys move it, Home / End jump to the row's first / last column, Enter
+  opens the cell editor (inline / FK combobox / modal, same routing as
+  double-click) and Escape clears it. Clicking a cell seeds the active cell so
+  the keyboard picks up from there, and the active cell scrolls into view as it
+  moves (instantly — the indicator never animates, since it tracks every
+  keypress).
+- **Visible row-selection checkboxes in the data grid (UI/UX overhaul, phase 1).**
+  Multi-row selection already worked via Ctrl/Cmd- and Shift-click, but there
+  was no visible affordance — the `#` gutter only ever showed the row number, so
+  the feature was undiscoverable. The gutter now renders a tri-state select-all
+  checkbox in the header (checked / indeterminate / empty over the visible rows)
+  and a per-row checkbox that appears on row hover and stays while the row is
+  selected. Both are backed by the existing PK-keyed selection set (survives
+  sort / filter / refetch) and tinted with the `brand` token; row numbers now
+  use `tabular-nums`.
+
+### Changed
+
+- **Themed tooltips (UI/UX overhaul, phase 3).** Added a `SimpleTooltip`
+  convenience wrapper over the themed Tooltip primitive and migrated the app
+  chrome off native `title=""` so its tooltips match the app's theme instead of
+  the OS default: the header buttons (theme toggle, preferences), every
+  status-bar affordance (command palette, query-history, density and theme
+  toggles, the connections switcher) and the workspace tabs (label, actions ⋮,
+  close, new-query +). Menu/context triggers are wrapped at the trigger so the
+  tooltip fires on hover while the menu still opens on click. The one case left
+  on native `title=""` — deliberately — is a tooltip that lives *inside* open
+  menu content (the connection rows' reconnect/disconnect, the tab colour
+  swatches): a Radix tooltip there fights the menu's own hover/portal handling,
+  and a native OS tooltip doesn't.
+- **Clearer connection status (UI/UX overhaul, phase 3).** A lost connection —
+  arguably the most important operational signal — was a 6px red dot plus a
+  cryptic red icon. Lost rows in the status-bar connection switcher now get a
+  destructive row wash and an explicit labelled "Reconnect" button; the
+  live/lost indicator dots are a touch larger, the row action buttons have a
+  real hit area, and a failed connect surfaces a toast instead of a native
+  `alert()`. Status-bar stats (row count, elapsed time, selection) promote their
+  numbers to the foreground with tabular figures.
+- **Accessible tab actions + active-tab weight (UI/UX overhaul, phase 3).** The
+  workspace tabs' close (×) and actions (⋮) buttons were revealed on hover only,
+  leaving them unreachable by keyboard; they now also appear on keyboard focus
+  (focus-within / focus-visible). The active tab's label gains medium weight to
+  match the brand top-cap + raised surface it already carries.
+- **Distinctive dialog shell (UI/UX overhaul, phase 3).** Every dialog rode a
+  flat `shadow-lg` with a fade-only entry and a bare low-opacity close glyph.
+  `DialogContent` now scales in from centre (zoom, the correct motion for a
+  centred modal), rides the shared elevation scale (`shadow-elevation-4`), and
+  its close button is a properly padded control with a hover background instead
+  of a hit-area-less 70%-opacity X.
+- **Shared segmented control + console/structure cleanup (UI/UX overhaul,
+  phase 2).** A new `Segmented` primitive (keyboard-navigable radiogroup styled
+  as one pill strip with a raised active segment) replaces the hand-rolled
+  variants: the feedback dialog's bug/feature toggle (two full buttons) and the
+  structure editor's section tabs (plain buttons with no active-tab language).
+  The console's log filter now uses the shared `Input` (small size) instead of
+  a hand-rolled search box, and its kind checkboxes are tinted with `accent-brand`.
+- **CellEditor flagship framing (UI/UX overhaul, phase 2).** The Monaco cell
+  editor — the app's "star feature" — looked like a stock dialog. It now has a
+  titled header rail: the column name, a `brand`-tinted content-type badge
+  (JSON/XML/SQL/TEXT), and char/byte-count pills, with the panel/fullscreen
+  controls grouped to the right. Ctrl/⌘+S and Ctrl/⌘+Enter save from inside the
+  editor (bound via Monaco so they aren't swallowed) with the shortcut shown in
+  the footer, the JSON-validity badge is now a compact chip with the parser
+  message in its tooltip instead of dumped inline, and the brittle `mr-8`
+  close-button-dodge hack is replaced by reserved header padding.
+- **Command palette polish (UI/UX overhaul, phase 2).** The flagship
+  keyboard-first surface gained the affordances it was missing: a persistent
+  footer legend (↑↓ navigate · ↵ run · esc close), a trailing ↵ on the active
+  row, a `brand` left-edge accent + brand-tinted icon on the active row, group
+  counts on the section headers, and an iconified empty state. The highlighted
+  row now scrolls into view during arrow-key navigation (it could previously
+  scroll off-screen), and a failed connect surfaces a toast instead of a native
+  `alert()`.
+- **Unified table-browser chrome (UI/UX overhaul, phase 1).** A table tab used
+  to stack two near-identical toolbars. The top bar's breadcrumb (schema ›
+  table) and refresh now fold into the data grid's own toolbar so there's a
+  single bar, and paging + row-zoom move to a footer status strip with tabular
+  figures. The first load of a table shows a shimmer skeleton (with the
+  breadcrumb) instead of a bare "loading…" line, and a refetch dims the stale
+  rows behind a spinner rather than looking frozen. The delete-row confirmation
+  button now uses the destructive (red) style, matching the drop-table dialog.
+- **Data-grid readability polish (UI/UX overhaul, phase 1).** Column headers now
+  show a persistent sort glyph that brightens on hover (it was a near-invisible
+  30%-opacity icon), and the whole header cell gets a hover background so
+  sortability is discoverable; the active-sort indicator is right-aligned and
+  tinted with `brand`. Numeric readouts — the row count, pagination range and
+  query elapsed time — use tabular figures so they stop shifting width as they
+  change, the row/total counts are emphasised in the foreground, and the
+  elapsed time turns amber then red only when a query is slow.
+- **Tokenised data-semantic accents (`--pk` / `--fk` / `--numeric`).** The
+  primary-key / foreign-key key icons and numeric cell values were hard-coded
+  as `amber-400` / `sky-400` in the grid and schema tree, ignoring the active
+  theme. They're now theme tokens (curated per built-in theme; darker on light
+  themes so numerics stay legible on white) applied in DataGrid and
+  SchemaExplorer. Kept out of the Appearance colour editor as niche system
+  accents.
+- **Design-system foundation (UI/UX overhaul, phase 0).** First pass of a
+  larger interface redesign toward a modern, dense dev-tool look. No new
+  features — this is groundwork the rest of the overhaul builds on:
+  - Two new semantic theme tokens, `--success` and `--warning`, distinct from
+    `brand` (the app's one "live / do this" accent) and `destructive` (errors).
+    Every built-in theme sets its own curated values and both are editable in
+    Settings → Appearance like any other colour. This replaces the hard-coded
+    `emerald-*` / `amber-*` / `blue-500` / `red-500` literals that were
+    scattered across ~12 components and ignored the active theme entirely — so
+    custom themes now recolour connection-status, valid/invalid, warning and
+    error affordances. `applyTheme` also clears any token a (pre-existing)
+    custom theme doesn't define, letting the stylesheet default apply instead
+    of leaving a stale inline value from the previously active theme.
+  - Unified the "this connection is live" indicator on the `brand` token; it
+    previously rendered emerald in the File menu but brand in the status-bar
+    switcher for the exact same state.
+  - Added an elevation scale (`shadow-elevation-1…4`, keyed off `--foreground`
+    so it reads in both light and dark themes) and a tokenised micro-type scale
+    (`text-2xs` / `text-3xs`, with a 10px legibility floor) to replace ad-hoc
+    `text-[9px/10px/11px]` values.
+  - Stronger, consistent keyboard focus ring (`ring-2` + offset) on buttons,
+    inputs and selects, replacing the near-invisible 1px flush ring.
+  - Form field labels now default to `text-foreground` instead of muted grey,
+    giving every dialog real label/value hierarchy.
+  - `Input` gained density variants (`inputSize` default/sm/xs) and a new shared
+    `Textarea` primitive replaces the hand-rolled multiline fields in the
+    feedback and save-query dialogs.
+  - Defined a real UI sans-serif font stack (Inter first, falling back to the
+    platform UI font) instead of relying on the bare system default.
+
 ## [1.5.1] — 2026-07-07
 
 ### Added

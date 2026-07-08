@@ -15,7 +15,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/connections";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -180,9 +180,8 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
               <Label htmlFor="import-passphrase" className="text-xs">
                 {t("transfer.import.passphrase")}
               </Label>
-              <Input
+              <PasswordInput
                 id="import-passphrase"
-                type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
                 onKeyDown={(e) => {
@@ -270,7 +269,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
         {/* ---------------------------------------------------------------- */}
         {step === "done" && result && (
           <div className="space-y-4 py-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-emerald-500">
+            <div className="flex items-center gap-2 text-sm font-medium text-success">
               <CheckCircle2 className="h-4 w-4" />
               {t("transfer.import.done")}
             </div>
@@ -286,7 +285,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
               )}
             </div>
             {result.needs_password.length > 0 && (
-              <div className="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
+              <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/30 px-3 py-2 text-2xs text-warning">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 {t("transfer.import.needsPassword", {
                   count: result.needs_password.length,

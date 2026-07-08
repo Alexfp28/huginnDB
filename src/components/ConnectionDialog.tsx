@@ -39,6 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -531,7 +532,7 @@ export function ConnectionDialog({
     switch (testStatus.kind) {
       case "ok":
       case "saved":
-        return "text-emerald-400";
+        return "text-success";
       case "testing":
         return "text-muted-foreground";
       case "error":
@@ -648,7 +649,7 @@ export function ConnectionDialog({
                       className={cn(
                         "h-1.5 w-1.5 shrink-0 rounded-full",
                         isActive
-                          ? "bg-emerald-400"
+                          ? "bg-brand"
                           : "bg-muted-foreground/40",
                       )}
                       title={
@@ -766,8 +767,7 @@ export function ConnectionDialog({
                           />
                         </Field>
                         <Field label={t("connectionDialog.fields.password")}>
-                          <Input
-                            type="password"
+                          <PasswordInput
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder={
@@ -816,7 +816,7 @@ export function ConnectionDialog({
                           />
                         </Field>
                         {mongoUriManual ? (
-                          <p className="-mt-1 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-500">
+                          <p className="-mt-1 rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-2xs text-warning">
                             {t("connectionDialog.fields.connectionStringWarning")}
                           </p>
                         ) : (
@@ -857,8 +857,7 @@ export function ConnectionDialog({
                           />
                         </Field>
                         <Field label={t("connectionDialog.fields.password")}>
-                          <Input
-                            type="password"
+                          <PasswordInput
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder={
@@ -957,8 +956,7 @@ export function ConnectionDialog({
 
                           {sshAuthMethod === "password" ? (
                             <Field label={t("connectionDialog.ssh.sshPassword")}>
-                              <Input
-                                type="password"
+                              <PasswordInput
                                 value={sshSecret}
                                 onChange={(e) => setSshSecret(e.target.value)}
                                 placeholder={
@@ -995,8 +993,7 @@ export function ConnectionDialog({
                                 </div>
                               </Field>
                               <Field label={t("connectionDialog.ssh.passphrase")}>
-                                <Input
-                                  type="password"
+                                <PasswordInput
                                   value={sshSecret}
                                   onChange={(e) => setSshSecret(e.target.value)}
                                   placeholder={

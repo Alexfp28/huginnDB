@@ -12,9 +12,10 @@
  * see gotcha #9 in CLAUDE.md).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import {
   Database,
@@ -119,7 +120,7 @@ export function CommandPalette() {
                 await refreshSchema(p.id);
                 setSelected(p.id);
               } catch (e) {
-                alert(`Connect failed: ${String(e)}`);
+                toast.error(String(e));
               }
             })();
           }
@@ -242,6 +243,22 @@ export function CommandPalette() {
     setOpen(false);
   }
 
+  // Keep the highlighted row in view during arrow-key navigation — without
+  // this the selection can scroll off-screen in a long result set.
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-index="${highlight}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [highlight]);
+
+  // Per-group counts for the section-header badges.
+  const groupCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of filtered) m.set(c.group, (m.get(c.group) ?? 0) + 1);
+    return m;
+  }, [filtered]);
+
   // Group consecutive items by their `group` label for section headers.
   let lastGroup: string | null = null;
 
@@ -280,42 +297,80 @@ export function CommandPalette() {
             />
           </div>
 
-          <div className="max-h-80 overflow-y-auto p-1">
+          <div ref={listRef} className="max-h-80 overflow-y-auto p-1">
             {filtered.length === 0 ? (
-              <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+              <div className="flex flex-col items-center gap-2 px-3 py-8 text-center text-sm text-muted-foreground">
+                <Search className="h-5 w-5 opacity-40" />
                 {t("commandPalette.noResults")}
               </div>
             ) : (
               filtered.map((cmd, i) => {
                 const showHeader = cmd.group !== lastGroup;
                 lastGroup = cmd.group;
+                const activeRow = i === highlight;
                 return (
                   <div key={cmd.id}>
                     {showHeader && (
-                      <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        {cmd.group}
+                      <div className="flex items-center justify-between px-2 pb-1 pt-2 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        <span>{cmd.group}</span>
+                        <span className="tabular-nums text-muted-foreground/60">
+                          {groupCounts.get(cmd.group)}
+                        </span>
                       </div>
                     )}
                     <button
                       type="button"
+                      data-index={i}
                       onClick={() => runAt(i)}
                       onMouseMove={() => setHighlight(i)}
                       className={cn(
                         "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors",
-                        i === highlight
-                          ? "bg-accent text-accent-foreground"
+                        activeRow
+                          ? "bg-accent text-accent-foreground shadow-[inset_2px_0_0_hsl(var(--brand))]"
                           : "text-foreground",
                       )}
                     >
-                      <span className="shrink-0 text-muted-foreground">
+                      <span
+                        className={cn(
+                          "shrink-0",
+                          activeRow ? "text-brand" : "text-muted-foreground",
+                        )}
+                      >
                         {cmd.icon}
                       </span>
                       <span className="flex-1 truncate">{cmd.label}</span>
+                      {activeRow && (
+                        <kbd className="ml-auto shrink-0 rounded border border-border bg-muted px-1 font-mono text-[10px] leading-none text-muted-foreground">
+                          ↵
+                        </kbd>
+                      )}
                     </button>
                   </div>
                 );
               })
             )}
+          </div>
+
+          {/* Footer legend — reinforces the keyboard-first identity. */}
+          <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-3xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+                ↑↓
+              </kbd>
+              {t("commandPalette.hintNavigate")}
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+                ↵
+              </kbd>
+              {t("commandPalette.hintRun")}
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+                esc
+              </kbd>
+              {t("commandPalette.hintClose")}
+            </span>
           </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

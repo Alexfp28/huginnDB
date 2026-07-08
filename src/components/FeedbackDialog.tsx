@@ -22,12 +22,14 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
+import { Textarea } from "@/components/ui/textarea";
+import { Segmented } from "@/components/ui/segmented";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/tauri";
 import { useFeedbackDialog } from "@/stores/feedbackDialog";
 import type { Diagnostics, FeedbackKind } from "@/types";
-import { cn } from "@/lib/utils";
 
 /** Render the optional diagnostics markdown block appended to the body. */
 function diagnosticsBlock(d: Diagnostics): string {
@@ -161,24 +163,18 @@ export function FeedbackDialog() {
 
         <div className="flex flex-col gap-3">
           {/* Kind toggle */}
-          <div className="grid grid-cols-2 gap-2">
-            {kinds.map((k) => {
+          <Segmented
+            value={kind}
+            onValueChange={setKind}
+            options={kinds.map((k) => {
               const Icon = k.icon;
-              const selected = kind === k.id;
-              return (
-                <Button
-                  key={k.id}
-                  type="button"
-                  variant={selected ? "default" : "outline"}
-                  className="justify-start gap-2"
-                  onClick={() => setKind(k.id)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {k.label}
-                </Button>
-              );
+              return {
+                value: k.id,
+                label: k.label,
+                icon: <Icon className="h-3.5 w-3.5" />,
+              };
             })}
-          </div>
+          />
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="feedback-title">{t("feedback.titleLabel")}</Label>
@@ -192,17 +188,13 @@ export function FeedbackDialog() {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="feedback-desc">{t("feedback.descLabel")}</Label>
-            <textarea
+            <Textarea
               id="feedback-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={5}
               placeholder={t("feedback.descPlaceholder")}
-              className={cn(
-                "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm",
-                "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                "resize-y",
-              )}
+              className="resize-y"
             />
           </div>
 
@@ -246,8 +238,7 @@ export function FeedbackDialog() {
             </div>
             {showPatField && (
               <div className="mt-2 flex gap-2">
-                <Input
-                  type="password"
+                <PasswordInput
                   value={patInput}
                   onChange={(e) => setPatInput(e.target.value)}
                   placeholder="ghp_…"

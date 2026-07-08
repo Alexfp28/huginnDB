@@ -38,6 +38,28 @@ export interface ThemeColors {
    */
   brand: string;
   brandForeground: string;
+  /**
+   * Semantic state accents, distinct from `brand` and `destructive`.
+   * `success` = healthy / confirmed (live connection dot, valid JSON, active
+   * DB); `warning` = caution that isn't an error (destructive-rebuild notice,
+   * superuser flag). Previously hard-coded per component as emerald-400 /
+   * amber-500, which ignored the active theme — now each theme sets its own so
+   * custom themes recolour them like every other token.
+   */
+  success: string;
+  successForeground: string;
+  warning: string;
+  warningForeground: string;
+  /**
+   * Data-semantic accent hues (text/icon only, so no foreground pair):
+   * `pk` marks a primary-key column, `fk` a foreign-key column, `numeric`
+   * numeric cell values. Kept out of `COLOR_KEYS` (not shown in the Appearance
+   * editor) as niche system accents, but still per-theme so custom themes
+   * recolour them. See index.css for the light/dark default rationale.
+   */
+  pk: string;
+  fk: string;
+  numeric: string;
   destructive: string;
   destructiveForeground: string;
   border: string;
@@ -62,6 +84,10 @@ export const COLOR_KEYS: { key: keyof ThemeColors; label: string }[] = [
   { key: "brandForeground", label: "Brand text" },
   { key: "popover", label: "Popover" },
   { key: "popoverForeground", label: "Popover text" },
+  { key: "success", label: "Success" },
+  { key: "successForeground", label: "Success text" },
+  { key: "warning", label: "Warning" },
+  { key: "warningForeground", label: "Warning text" },
   { key: "destructive", label: "Destructive" },
   { key: "destructiveForeground", label: "Destructive text" },
   { key: "border", label: "Border" },
@@ -92,6 +118,13 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#f5f5f7",
       brand: "#0f83fd",
       brandForeground: "#ffffff",
+      success: "#22c55e",
+      successForeground: "#08160c",
+      warning: "#f59e0b",
+      warningForeground: "#1a1204",
+      pk: "#fbbf24",
+      fk: "#38bdf8",
+      numeric: "#fbbf24",
       destructive: "#b1342a",
       destructiveForeground: "#fafafa",
       border: "#262a33",
@@ -121,6 +154,13 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#18181b",
       brand: "#0f83fd",
       brandForeground: "#ffffff",
+      success: "#16a34a",
+      successForeground: "#ffffff",
+      warning: "#d97706",
+      warningForeground: "#ffffff",
+      pk: "#b45309",
+      fk: "#0284c7",
+      numeric: "#b45309",
       destructive: "#dc2626",
       destructiveForeground: "#fafafa",
       border: "#e4e4e7",
@@ -150,6 +190,13 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#d8dce4",
       brand: "#7dd3fc",
       brandForeground: "#0c1118",
+      success: "#4ade80",
+      successForeground: "#0c1118",
+      warning: "#fbbf24",
+      warningForeground: "#0c1118",
+      pk: "#fbbf24",
+      fk: "#7dd3fc",
+      numeric: "#fbbf24",
       destructive: "#ef4444",
       destructiveForeground: "#fef2f2",
       border: "#323844",
@@ -179,6 +226,13 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#fdf6e3",
       brand: "#268bd2",
       brandForeground: "#fdf6e3",
+      success: "#859900",
+      successForeground: "#fdf6e3",
+      warning: "#b58900",
+      warningForeground: "#002b36",
+      pk: "#b58900",
+      fk: "#268bd2",
+      numeric: "#b58900",
       destructive: "#dc322f",
       destructiveForeground: "#fdf6e3",
       border: "#0a3a47",
@@ -211,6 +265,13 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#3d3929",
       brand: "#c96442",
       brandForeground: "#fbfaf3",
+      success: "#5a8250",
+      successForeground: "#fbfaf3",
+      warning: "#bf7d2e",
+      warningForeground: "#fbfaf3",
+      pk: "#b5761f",
+      fk: "#3f6f9f",
+      numeric: "#b5761f",
       destructive: "#b1342a",
       destructiveForeground: "#fbfaf3",
       border: "#d9d5c1",
@@ -240,6 +301,13 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#e8e3d4",
       brand: "#d97757",
       brandForeground: "#1f1e1b",
+      success: "#7fa86f",
+      successForeground: "#1f1e1b",
+      warning: "#d9a441",
+      warningForeground: "#1f1e1b",
+      pk: "#d9a441",
+      fk: "#8fb7d4",
+      numeric: "#d9a441",
       destructive: "#d4684a",
       destructiveForeground: "#1f1e1b",
       border: "#3a3730",
@@ -269,6 +337,13 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#ffeb3b",
       brand: "#ffeb3b",
       brandForeground: "#000000",
+      success: "#00e676",
+      successForeground: "#000000",
+      warning: "#ffb300",
+      warningForeground: "#000000",
+      pk: "#ffd54f",
+      fk: "#40c4ff",
+      numeric: "#ffd54f",
       destructive: "#ff5252",
       destructiveForeground: "#000000",
       border: "#ffffff",
@@ -295,6 +370,13 @@ const VAR_NAMES: Record<keyof ThemeColors, string> = {
   accentForeground: "--accent-foreground",
   brand: "--brand",
   brandForeground: "--brand-foreground",
+  success: "--success",
+  successForeground: "--success-foreground",
+  warning: "--warning",
+  warningForeground: "--warning-foreground",
+  pk: "--pk",
+  fk: "--fk",
+  numeric: "--numeric",
   destructive: "--destructive",
   destructiveForeground: "--destructive-foreground",
   border: "--border",
@@ -306,9 +388,18 @@ export function applyTheme(theme: Theme) {
   const root = document.documentElement;
   if (theme.mode === "dark") root.classList.add("dark");
   else root.classList.remove("dark");
-  for (const key of Object.keys(theme.colors) as (keyof ThemeColors)[]) {
-    const hsl = hexToHslTriple(theme.colors[key]);
+  // Iterate the FULL token set, not just the keys this theme happens to
+  // define. A custom theme persisted before a token existed (e.g. the
+  // success/warning accents added in the UI overhaul) is missing those keys;
+  // since `applyTheme` writes inline vars on <html> and never used to clear
+  // them, switching from a built-in to such a theme would leave the built-in's
+  // inline value stale. Removing the property for any missing/invalid key lets
+  // the stylesheet default in index.css take over instead.
+  for (const key of Object.keys(VAR_NAMES) as (keyof ThemeColors)[]) {
+    const value = theme.colors[key];
+    const hsl = value ? hexToHslTriple(value) : null;
     if (hsl) root.style.setProperty(VAR_NAMES[key], hsl);
+    else root.style.removeProperty(VAR_NAMES[key]);
   }
 }
 
