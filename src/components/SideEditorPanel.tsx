@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { CellEditorBody } from "@/components/CellEditor";
 import { useCellEditor, type CellEditorTarget } from "@/stores/cellEditor";
+import { useTabs } from "@/stores/tabs";
 import { detectLanguage, type ContentLanguage } from "@/lib/detectContentType";
 
 export function SideEditorPanel() {
@@ -34,6 +35,9 @@ export function SideEditorPanel() {
   // Single-object selector — reference-stable until open/close (gotcha #1).
   const target = useCellEditor((s) => s.target);
   const close = useCellEditor((s) => s.close);
+  // The open-tabs list, so this out-of-subtree panel can close itself when the
+  // tab that opened the current cell goes away.
+  const tabs = useTabs((s) => s.tabs);
 
   const [value, setValue] = useState("");
   const [language, setLanguage] = useState<ContentLanguage>("plaintext");
@@ -153,6 +157,18 @@ export function SideEditorPanel() {
     // `value` intentionally excluded — read live via valueRef, not as a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
+
+  // Close the panel when the tab that opened the current cell is closed — the
+  // side editor lives in the outer dockview (outside the tab's subtree), so
+  // without this it lingers with a stale value waiting for the user to discard
+  // it. Force-close regardless of unsaved edits: the source table is gone.
+  useEffect(() => {
+    const owner = loadedTargetRef.current?.ownerId ?? target?.ownerId;
+    if (owner && !tabs.some((t) => t.id === owner)) {
+      setPendingTarget(null);
+      close();
+    }
+  }, [tabs, target, close]);
 
   if (!target) {
     return (

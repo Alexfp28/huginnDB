@@ -16,6 +16,13 @@
 import { create } from "zustand";
 
 export interface CellEditorTarget {
+  /**
+   * Id of the tab that opened this cell. The docked side panel lives outside
+   * the tab's React subtree, so it uses this to close itself when the source
+   * tab is closed (otherwise it lingers with a stale value). Absent for
+   * targets with no owning tab.
+   */
+  ownerId?: string;
   /** Column label shown in the panel header. */
   columnName: string;
   /** Initial text value to edit. */

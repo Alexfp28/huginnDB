@@ -40,6 +40,9 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   initialValue: string;
   columnName?: string;
+  /** Id of the owning tab, forwarded to the side panel on "move to side" so it
+   *  can close itself when that tab is closed. */
+  ownerId?: string;
   readonly?: boolean;
   onSave?: (value: string) => Promise<void> | void;
 }
@@ -146,6 +149,7 @@ export function CellEditor({
   onOpenChange,
   initialValue,
   columnName,
+  ownerId,
   readonly,
   onSave,
 }: Props) {
@@ -211,6 +215,7 @@ export function CellEditor({
   /** Hand the (live) buffer to the docked side panel and close the modal. */
   function moveToSidePanel() {
     openInSide({
+      ownerId,
       columnName: columnName ?? "",
       value,
       readonly,

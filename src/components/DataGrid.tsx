@@ -93,6 +93,9 @@ interface Props {
   connectionId?: string;
   tableSchema?: string;
   tableName?: string;
+  /** Id of the tab hosting this grid. Threaded to the docked side editor so it
+   *  can close itself when this tab is closed (it lives outside the subtree). */
+  tabId?: string;
   /**
    * Driver of the underlying connection. Used purely to make the
    * "Copy as ▸ SQL …" snippets quote identifiers correctly
@@ -283,6 +286,7 @@ export function DataGrid({
   connectionId,
   tableSchema,
   tableName,
+  tabId,
   driver,
   pkColumnNames,
   onCellSave,
@@ -966,6 +970,7 @@ export function DataGrid({
   ) {
     const canSave = !!(editable && onCellSave);
     useCellEditor.getState().open({
+      ownerId: tabId,
       columnName: column.name,
       value,
       readonly: !canSave,
@@ -1835,6 +1840,7 @@ export function DataGrid({
           onOpenChange={setEditorOpen}
           initialValue={editorTarget.value}
           columnName={editorTarget.column.name}
+          ownerId={tabId}
           readonly={!editable || !onCellSave}
           onSave={
             editable && onCellSave

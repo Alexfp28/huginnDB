@@ -675,6 +675,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             connectionId={connectionId}
             tableSchema={schema}
             tableName={table}
+            tabId={tabId}
             driver={driver}
             pkColumnNames={pkColumns.map((c) => c.name)}
             fkColumnNames={fkColumnNames}

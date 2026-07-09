@@ -48,6 +48,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **El editor lateral acoplado ahora se cierra cuando se cierra su pestaña de
+  origen.** El editor lateral (estilo JetBrains) vive fuera del subárbol de
+  cualquier pestaña, así que abrir una celda en él y luego cerrar la pestaña de
+  esa tabla lo dejaba colgado con un valor obsoleto, esperando un descarte
+  manual. Ahora la celda registra la pestaña que la abrió y el panel se cierra
+  solo cuando esa pestaña (o su conexión) desaparece.
 - **El deshacer del editor de celdas ya no alcanza la celda editada
   anteriormente.** El editor lateral acoplado (y el modal) reutilizaban un único
   modelo de Monaco entre celdas, así que tras editar un registro, seleccionar la

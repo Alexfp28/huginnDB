@@ -43,6 +43,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **The docked side editor now closes when its source tab closes.** The
+  JetBrains-style side editor lives outside any tab's subtree, so opening a
+  cell in it and then closing that table's tab left it lingering with a stale
+  value, waiting for a manual discard. The cell now records its owning tab and
+  the panel closes itself when that tab (or its connection) goes away.
 - **Cell editor undo no longer reaches into the previously-edited cell.** The
   docked side editor (and the modal) reused a single Monaco model across cells,
   so after editing one row, selecting the same column on another row and
