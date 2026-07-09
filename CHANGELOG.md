@@ -43,6 +43,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Cell editor undo no longer reaches into the previously-edited cell.** The
+  docked side editor (and the modal) reused a single Monaco model across cells,
+  so after editing one row, selecting the same column on another row and
+  pressing Ctrl+Z restored the *previous* row's value. Monaco is now remounted
+  with a fresh, empty undo stack on each cell load, so undo stays scoped to the
+  current editing session; typing within a cell still undoes normally.
 - **Boolean BIT cell picker no longer collapses on open (#44).** Editing an
   existing row's BIT column (with BIT shown as boolean) opened the native
   `<select>` but it snapped shut the instant you clicked an option: the cell's

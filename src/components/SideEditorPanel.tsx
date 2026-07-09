@@ -37,6 +37,10 @@ export function SideEditorPanel() {
 
   const [value, setValue] = useState("");
   const [language, setLanguage] = useState<ContentLanguage>("plaintext");
+  /** Bumped on every cell load so Monaco remounts with a fresh, empty undo
+   *  stack — otherwise Ctrl+Z would reach back into the previous cell's value
+   *  since this panel reuses one editor across selections. */
+  const [editorKey, setEditorKey] = useState(0);
   const [saving, setSaving] = useState(false);
   /** When true the panel content escapes the dock and covers the whole window.
    *  The panel is a dockview pane (it can't grow past its group), so fullscreen
@@ -74,6 +78,8 @@ export function SideEditorPanel() {
     baselineRef.current = next.value;
     setValue(next.value);
     setLanguage(detectLanguage(next.value ?? ""));
+    // New cell/session → force a fresh Monaco model (see `editorKey`).
+    setEditorKey((k) => k + 1);
   }
 
   // Ctrl/Cmd+S saves the buffer *in place*: persist the edits, reset the
@@ -212,6 +218,7 @@ export function SideEditorPanel() {
         language={language}
         onLanguageChange={setLanguage}
         readonly={readonly}
+        editorKey={editorKey}
       />
       {saveError && (
         <div className="px-1 text-[11px] text-destructive">{saveError}</div>

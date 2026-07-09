@@ -48,6 +48,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **El deshacer del editor de celdas ya no alcanza la celda editada
+  anteriormente.** El editor lateral acoplado (y el modal) reutilizaban un único
+  modelo de Monaco entre celdas, así que tras editar un registro, seleccionar la
+  misma columna en otro registro y pulsar Ctrl+Z restauraba el valor del
+  registro *anterior*. Ahora Monaco se remonta con una pila de deshacer vacía en
+  cada carga de celda, de modo que el deshacer queda acotado a la sesión de
+  edición actual; escribir dentro de una celda se sigue deshaciendo con
+  normalidad.
 - **El selector booleano de celdas BIT ya no se cierra al abrirlo (#44).** Al
   editar una columna BIT de un registro existente (con BIT mostrado como
   booleano) se abría el `<select>` nativo pero se cerraba en cuanto pulsabas una
