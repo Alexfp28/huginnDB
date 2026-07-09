@@ -62,7 +62,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DriverBadge } from "@/components/DriverBadge";
+import { DriverBadge, driverLabel } from "@/components/DriverBadge";
 import { api } from "@/lib/tauri";
 import { buildMongoUri, parseMongoUri } from "@/lib/mongoUri";
 import { DEFAULT_PORTS } from "@/lib/constants";
@@ -969,13 +969,24 @@ export function ConnectionDialog({
                         onValueChange={(v) => onDriverChange(v as Driver)}
                       >
                         <SelectTrigger>
-                          <SelectValue />
+                          {/* Controlled value, so render the brand logo + label
+                              directly rather than via <SelectValue>. */}
+                          <span className="flex items-center gap-2">
+                            <DriverBadge driver={driver} />
+                            {driverLabel(driver)}
+                          </span>
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="postgres">PostgreSQL</SelectItem>
-                          <SelectItem value="mysql">MySQL</SelectItem>
-                          <SelectItem value="sqlite">SQLite</SelectItem>
-                          <SelectItem value="mongodb">MongoDB</SelectItem>
+                          {(
+                            ["postgres", "mysql", "sqlite", "mongodb"] as const
+                          ).map((d) => (
+                            <SelectItem key={d} value={d}>
+                              <span className="flex items-center gap-2">
+                                <DriverBadge driver={d} />
+                                {driverLabel(d)}
+                              </span>
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </Field>

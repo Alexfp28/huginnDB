@@ -31,6 +31,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   *remember per group* (the previous behaviour). The File menu's groups are now
   collapsible too, matching the status-bar switcher.
 
+- **Brand logos in the driver dropdown.** The connection editor's driver
+  selector now shows each database's official logo next to its name (both in
+  the trigger and the options), reusing the bundled `DriverBadge` marks already
+  used elsewhere, instead of a bare list of names.
 - **Live guideline while resizing data-grid columns (#42).** Dragging a column
   edge now shows a full-height vertical guideline that tracks the pointer, so
   you can see the target width before releasing instead of eyeballing it
