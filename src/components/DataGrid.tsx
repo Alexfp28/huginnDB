@@ -1434,6 +1434,19 @@ export function DataGrid({
                             style={{ ...cellStyle, width: cell.column.getSize() }}
                             onClick={(e) => {
                               e.stopPropagation();
+                              // While this cell hosts its own inline editor
+                              // (notably the BIT `<select>`), don't steal focus
+                              // back to the scroll container or recompute the
+                              // active/selected cell — focusing the container
+                              // collapses a just-opened native dropdown, which
+                              // made the boolean BIT picker unusable (issue #44).
+                              // Let the inline editor own clicks inside itself.
+                              if (
+                                inlineEdit?.rowValues === rowValues &&
+                                inlineEdit.column.name === meta.name
+                              ) {
+                                return;
+                              }
                               // Focus the container so keyboard nav continues
                               // from here, and mark this cell active.
                               scrollRef.current?.focus({ preventScroll: true });
