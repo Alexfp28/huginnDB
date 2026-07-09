@@ -19,6 +19,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     range, plus per-row checkboxes on hover) with a **bulk delete** that always
     asks for confirmation, regardless of the "confirm destructive actions"
     preference.
+- **Duplicate connection (#38).** The connections manager gained a *Duplicate*
+  action that clones the selected profile into a fresh draft with a uniquified
+  name ("… (copy)"), ready to tweak and save. The password is intentionally not
+  carried over — credentials are keyed by profile id in the OS keychain and the
+  clone gets a new id — so a banner reminds you to re-enter it before
+  connecting.
 - **Configurable connection-group expand mode (#40).** A new General preference
   (`Connection groups`) controls how folder groups start out in the File menu
   and the connections manager — *always expanded*, *always collapsed*, or

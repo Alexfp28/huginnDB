@@ -131,6 +131,12 @@ export function ConnectionDialog({
   const lastClickedRef = useRef<string | null>(null);
   const groupCollapse = useConnectionGroupCollapse();
 
+  /** A profile queued by "Duplicate" to load as a fresh draft on the next
+   *  editingId change (see the load effect). */
+  const pendingCloneRef = useRef<ConnectionProfile | null>(null);
+  /** Shows the "password isn't copied" banner after a duplicate (#38). */
+  const [duplicateHint, setDuplicateHint] = useState(false);
+
   // General fields ---------------------------------------------------------
   const [name, setName] = useState("");
   const [group, setGroup] = useState("");
@@ -293,10 +299,15 @@ export function ConnectionDialog({
   useEffect(() => {
     if (!open) return;
     const list = useConnections.getState().profiles;
-    const p = editingId ? list.find((x) => x.id === editingId) ?? null : null;
-    setDraftId(p?.id ?? crypto.randomUUID());
+    // A pending clone (from "Duplicate") is loaded as a fresh draft: no
+    // editingId, a brand-new draftId, and the password field left blank.
+    const clone = !editingId ? pendingCloneRef.current : null;
+    pendingCloneRef.current = null;
+    const p = editingId ? list.find((x) => x.id === editingId) ?? null : clone;
+    setDraftId(editingId && p ? p.id : crypto.randomUUID());
     loadFields(p);
     setTestStatus({ kind: "idle" });
+    setDuplicateHint(!!clone);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingId]);
 
@@ -607,6 +618,25 @@ export function ConnectionDialog({
     }
   }
 
+  /** Duplicate the profile currently in the editor (#38). Clones every
+   *  metadata field into a fresh draft with a uniquified name; the password is
+   *  deliberately NOT copied (the keychain is keyed by profile id, and a clone
+   *  gets a new id), so the user re-enters it — the banner flags this. */
+  function onDuplicate() {
+    if (!editingId) return;
+    const base = buildProfile();
+    const existing = new Set(profiles.map((p) => p.name));
+    const copy = t("connectionDialog.duplicateSuffix");
+    let candidate = `${base.name} (${copy})`;
+    for (let n = 2; existing.has(candidate); n++) {
+      candidate = `${base.name} (${copy} ${n})`;
+    }
+    pendingCloneRef.current = { ...base, id: "", name: candidate };
+    // Flip to a new draft; the load effect picks up the pending clone.
+    setEditingId(null);
+    setSelectedIds(new Set());
+  }
+
   function onDriverChange(d: Driver) {
     setDriver(d);
     if (port === DEFAULT_PORTS[driver] || port === 0) {
@@ -886,6 +916,22 @@ export function ConnectionDialog({
           {/* Right pane — editor */}
           <main className="flex min-h-0 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {duplicateHint && (
+                <div className="mb-3 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span className="flex-1">
+                    {t("connectionDialog.duplicatePasswordHint")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateHint(false)}
+                    aria-label={t("common.clear")}
+                    className="shrink-0 rounded-sm p-0.5 hover:bg-warning/20"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
               <Tabs defaultValue="general" className="w-full">
                 <TabsList className="w-full">
                   <TabsTrigger value="general" className="flex-1">
@@ -1326,6 +1372,16 @@ export function ConnectionDialog({
                 <Button variant="ghost" onClick={onTest} disabled={busy || !name}>
                   {t("connectionDialog.test")}
                 </Button>
+                {editingId && (
+                  <Button
+                    variant="ghost"
+                    onClick={onDuplicate}
+                    disabled={busy}
+                  >
+                    <Copy className="mr-1 h-3.5 w-3.5" />
+                    {t("connectionDialog.duplicate")}
+                  </Button>
+                )}
                 {editingId && (
                   <Button
                     variant="ghost"
