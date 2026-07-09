@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { CellEditorBody } from "@/components/CellEditor";
 import { useCellEditor, type CellEditorTarget } from "@/stores/cellEditor";
+import { useTabs } from "@/stores/tabs";
 import { detectLanguage, type ContentLanguage } from "@/lib/detectContentType";
 
 export function SideEditorPanel() {
@@ -34,9 +35,16 @@ export function SideEditorPanel() {
   // Single-object selector — reference-stable until open/close (gotcha #1).
   const target = useCellEditor((s) => s.target);
   const close = useCellEditor((s) => s.close);
+  // The open-tabs list, so this out-of-subtree panel can close itself when the
+  // tab that opened the current cell goes away.
+  const tabs = useTabs((s) => s.tabs);
 
   const [value, setValue] = useState("");
   const [language, setLanguage] = useState<ContentLanguage>("plaintext");
+  /** Bumped on every cell load so Monaco remounts with a fresh, empty undo
+   *  stack — otherwise Ctrl+Z would reach back into the previous cell's value
+   *  since this panel reuses one editor across selections. */
+  const [editorKey, setEditorKey] = useState(0);
   const [saving, setSaving] = useState(false);
   /** When true the panel content escapes the dock and covers the whole window.
    *  The panel is a dockview pane (it can't grow past its group), so fullscreen
@@ -74,6 +82,8 @@ export function SideEditorPanel() {
     baselineRef.current = next.value;
     setValue(next.value);
     setLanguage(detectLanguage(next.value ?? ""));
+    // New cell/session → force a fresh Monaco model (see `editorKey`).
+    setEditorKey((k) => k + 1);
   }
 
   // Ctrl/Cmd+S saves the buffer *in place*: persist the edits, reset the
@@ -148,6 +158,18 @@ export function SideEditorPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
 
+  // Close the panel when the tab that opened the current cell is closed — the
+  // side editor lives in the outer dockview (outside the tab's subtree), so
+  // without this it lingers with a stale value waiting for the user to discard
+  // it. Force-close regardless of unsaved edits: the source table is gone.
+  useEffect(() => {
+    const owner = loadedTargetRef.current?.ownerId ?? target?.ownerId;
+    if (owner && !tabs.some((t) => t.id === owner)) {
+      setPendingTarget(null);
+      close();
+    }
+  }, [tabs, target, close]);
+
   if (!target) {
     return (
       <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
@@ -212,6 +234,7 @@ export function SideEditorPanel() {
         language={language}
         onLanguageChange={setLanguage}
         readonly={readonly}
+        editorKey={editorKey}
       />
       {saveError && (
         <div className="px-1 text-[11px] text-destructive">{saveError}</div>

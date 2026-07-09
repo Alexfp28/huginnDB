@@ -18,7 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePreferences, selectUiPrefs } from "@/stores/preferences";
-import type { AppLanguage, CellEditorMode, Driver } from "@/types";
+import type {
+  AppLanguage,
+  CellEditorMode,
+  ConnectionGroupExpandMode,
+  Driver,
+} from "@/types";
 import { PrefRow } from "./PrefRow";
 
 /** Sentinel for the "not configured / ask each time" default-driver option,
@@ -123,6 +128,35 @@ export function GeneralSection() {
             </SelectItem>
             <SelectItem value="side" className="text-xs">
               {t("settings.general.cellEditorMode.side")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </PrefRow>
+
+      <PrefRow
+        label={t("settings.general.connectionGroupExpandMode.label")}
+        description={t("settings.general.connectionGroupExpandMode.desc")}
+      >
+        <Select
+          value={ui.connectionGroupExpandMode}
+          onValueChange={(v) =>
+            updateUi({
+              connectionGroupExpandMode: v as ConnectionGroupExpandMode,
+            })
+          }
+        >
+          <SelectTrigger className="h-8 w-40 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="expanded" className="text-xs">
+              {t("settings.general.connectionGroupExpandMode.expanded")}
+            </SelectItem>
+            <SelectItem value="collapsed" className="text-xs">
+              {t("settings.general.connectionGroupExpandMode.collapsed")}
+            </SelectItem>
+            <SelectItem value="remember" className="text-xs">
+              {t("settings.general.connectionGroupExpandMode.remember")}
             </SelectItem>
           </SelectContent>
         </Select>

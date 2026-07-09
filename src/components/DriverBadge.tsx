@@ -21,6 +21,11 @@ const DRIVER_LOGO: Record<Driver, { src: string; label: string }> = {
   mongodb: { src: "/image/db/mongodb.svg", label: "MongoDB" },
 };
 
+/** Official display label for a driver (mirrors the logo map). */
+export function driverLabel(driver: Driver): string {
+  return DRIVER_LOGO[driver].label;
+}
+
 export function DriverBadge({ driver }: { driver: Driver }) {
   const { src, label } = DRIVER_LOGO[driver];
   return (

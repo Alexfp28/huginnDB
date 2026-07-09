@@ -307,7 +307,37 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const cachedTotalRef = useRef<number | null>(null);
   const countKeyRef = useRef<string | null>(null);
 
+  // `searchColumns` is derived from `cols`, which loads asynchronously after
+  // mount. Listing it in `fetchData`'s deps recreated the callback the instant
+  // columns arrived, re-firing the `[fetchData]` effect and issuing a second,
+  // identical COUNT+SELECT on table open (issue #41). It's only ever sent when
+  // a search filter is active, so read it lazily through a ref instead of
+  // depending on its identity.
+  const searchColumnsRef = useRef(searchColumns);
+  searchColumnsRef.current = searchColumns;
+
+  // Signature of the request currently on the wire. React StrictMode (dev)
+  // mounts effects twice, and a transient dep-identity change can re-run the
+  // fetch effect — either way a byte-identical request must not hit the DB
+  // twice (issue #41). We dedupe on the wire: the key is set synchronously
+  // before the first `await`, so the StrictMode remount's call sees it and
+  // bails; it's cleared in `finally`, so genuine later refetches with the same
+  // params still go through.
+  const inflightKeyRef = useRef<string | null>(null);
+
   const fetchData = useCallback(async () => {
+    const reqKey = JSON.stringify({
+      connectionId,
+      schema,
+      table,
+      pageSize,
+      offset,
+      sort,
+      serverFilters,
+      appliedFilter,
+    });
+    if (inflightKeyRef.current === reqKey) return;
+    inflightKeyRef.current = reqKey;
     setLoading(true);
     setError(null);
     // The count depends only on the WHERE predicate (filters + committed
@@ -325,7 +355,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         order: sort.length ? sort : undefined,
         filters: serverFilters.length ? serverFilters : undefined,
         search: appliedFilter || undefined,
-        searchColumns: appliedFilter ? searchColumns : undefined,
+        searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
         withCount,
       });
       if (withCount) {
@@ -341,6 +371,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       setError(String(e));
     } finally {
       setLoading(false);
+      // Only clear if a newer fetch hasn't already claimed the slot.
+      if (inflightKeyRef.current === reqKey) inflightKeyRef.current = null;
     }
   }, [
     connectionId,
@@ -351,7 +383,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     sort,
     serverFilters,
     appliedFilter,
-    searchColumns,
   ]);
 
   useEffect(() => {
@@ -644,6 +675,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             connectionId={connectionId}
             tableSchema={schema}
             tableName={table}
+            tabId={tabId}
             driver={driver}
             pkColumnNames={pkColumns.map((c) => c.name)}
             fkColumnNames={fkColumnNames}

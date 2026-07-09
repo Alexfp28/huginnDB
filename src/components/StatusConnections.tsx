@@ -26,7 +26,7 @@ import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
-import { usePreferences } from "@/stores/preferences";
+import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -53,10 +53,7 @@ export function StatusConnections() {
   const closeTabs = useTabs((s) => s.closeForConnection);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
-  const collapsedGroups = usePreferences(
-    (s) => s.prefs.ui.collapsedConnectionGroups,
-  );
-  const updateUi = usePreferences((s) => s.updateUi);
+  const groupCollapse = useConnectionGroupCollapse();
 
   // Split profiles into active / idle. Both inputs are reference-stable, so
   // deriving here (rather than via a store selector) honours the Zustand rule.
@@ -75,15 +72,6 @@ export function StatusConnections() {
     [activeProfiles],
   );
   const idleBuckets = useMemo(() => bucketByGroup(idleProfiles), [idleProfiles]);
-
-  function toggleGroup(name: string) {
-    const collapsed = collapsedGroups.includes(name);
-    updateUi({
-      collapsedConnectionGroups: collapsed
-        ? collapsedGroups.filter((g) => g !== name)
-        : [...collapsedGroups, name],
-    });
-  }
 
   // The connection currently in focus (a live pool the workspace points at).
   // Drives the trigger label so the active connection is visible at a glance.
@@ -232,14 +220,14 @@ export function StatusConnections() {
 
   /** One group's collapsible header, shared by the Active/Available lists. */
   function GroupHeader({ name, count: n }: { name: string; count: number }) {
-    const collapsed = collapsedGroups.includes(name);
+    const collapsed = groupCollapse.isCollapsed(name);
     return (
       <button
         type="button"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          toggleGroup(name);
+          groupCollapse.toggle(name);
         }}
         className="flex w-full items-center gap-1 px-2 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
       >
@@ -306,7 +294,7 @@ export function StatusConnections() {
             {activeBuckets.groups.map(({ name, items }) => (
               <div key={name}>
                 <GroupHeader name={name} count={items.length} />
-                {!collapsedGroups.includes(name) && items.map(renderActiveItem)}
+                {!groupCollapse.isCollapsed(name) && items.map(renderActiveItem)}
               </div>
             ))}
           </>
@@ -322,7 +310,7 @@ export function StatusConnections() {
             {idleBuckets.groups.map(({ name, items }) => (
               <div key={name}>
                 <GroupHeader name={name} count={items.length} />
-                {!collapsedGroups.includes(name) && items.map(renderIdleItem)}
+                {!groupCollapse.isCollapsed(name) && items.map(renderIdleItem)}
               </div>
             ))}
           </>

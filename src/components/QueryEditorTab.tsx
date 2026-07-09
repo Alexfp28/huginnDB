@@ -625,6 +625,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           ) : result ? (
             <DataGrid
               result={result}
+              tabId={tabId}
               globalFilter={filter}
               onGlobalFilterChange={setFilter}
             />

@@ -424,6 +424,11 @@ export interface UiPrefs {
    *  top border, the original look), "rail" (3px inset left border), or
    *  "boxed" (raised surface + bottom-edge underline for a custom colour). */
   tabAccentStyle: TabAccentStyle;
+  /** How grouped connections start out in the tree views (File menu,
+   *  connections manager). "remember" defers to `collapsedConnectionGroups`;
+   *  "expanded"/"collapsed" force the initial state (per-surface session
+   *  toggles still apply on top). */
+  connectionGroupExpandMode: ConnectionGroupExpandMode;
 }
 
 export type CellEditorMode = "modal" | "side";
@@ -431,6 +436,8 @@ export type CellEditorMode = "modal" | "side";
 export type CliConnectDefault = "ask" | "current" | "new";
 
 export type TabAccentStyle = "cap" | "rail" | "boxed";
+
+export type ConnectionGroupExpandMode = "expanded" | "collapsed" | "remember";
 
 /** Per-connection slice of the persisted tab state. */
 export interface ConnectionTabState {

@@ -8,6 +8,75 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Añadido
+
+- **Gestor de conexiones con búsqueda, árbol y multiselección (#39, #43, #40).**
+  El rail izquierdo del gestor era una lista plana de selección única que se
+  volvía difícil de escanear y buscar en cuanto tenías más de unas pocas
+  conexiones. Ahora:
+  - incluye un **buscador** que filtra por nombre, host, base de datos, grupo o
+    URI;
+  - muestra las conexiones como un **árbol de carpetas** (agrupadas por el campo
+    `group`) con cabeceras de grupo colapsables — una búsqueda activa las
+    despliega para que las coincidencias siempre se vean;
+  - permite **multiselección** (Ctrl/Cmd+clic para alternar, Mayús+clic para un
+    rango, más checkboxes por fila al pasar el ratón) con un **borrado masivo**
+    que siempre pide confirmación, independientemente de la preferencia
+    "confirmar acciones destructivas".
+- **Duplicar conexión (#38).** El gestor de conexiones incorpora una acción
+  *Duplicar* que clona el perfil seleccionado en un borrador nuevo con el nombre
+  uniquificado ("… (copia)"), listo para ajustar y guardar. La contraseña no se
+  copia a propósito — las credenciales se indexan por id de perfil en el
+  keychain del SO y el clon recibe un id nuevo — así que un aviso recuerda
+  reintroducirla antes de conectar.
+- **Modo de despliegue de grupos configurable (#40).** Una nueva preferencia en
+  General (`Grupos de conexiones`) controla cómo aparecen los grupos de carpetas
+  en el menú Archivo y en el gestor de conexiones — *siempre desplegados*,
+  *siempre plegados* o *recordar por grupo* (el comportamiento anterior). Los
+  grupos del menú Archivo ahora también son colapsables, igual que el switcher
+  de la barra de estado.
+- **Logos de marca en el desplegable de driver.** El selector de driver del
+  editor de conexiones ahora muestra el logo oficial de cada base de datos junto
+  a su nombre (tanto en el control como en las opciones), reutilizando los
+  `DriverBadge` ya empaquetados y usados en el resto de la app, en lugar de una
+  lista de nombres a secas.
+- **Guía en vivo al redimensionar columnas de la tabla (#42).** Arrastrar el
+  borde de una columna ahora muestra una guía vertical de altura completa que
+  sigue al cursor, para ver el ancho objetivo antes de soltar en vez de tener
+  que orientarte con la columna vecina. El ancho se sigue aplicando al soltar
+  (el comportamiento diferido y persistido por tabla de siempre).
+
+### Corregido
+
+- **El editor lateral acoplado ahora se cierra cuando se cierra su pestaña de
+  origen.** El editor lateral (estilo JetBrains) vive fuera del subárbol de
+  cualquier pestaña, así que abrir una celda en él y luego cerrar la pestaña de
+  esa tabla lo dejaba colgado con un valor obsoleto, esperando un descarte
+  manual. Ahora la celda registra la pestaña que la abrió y el panel se cierra
+  solo cuando esa pestaña (o su conexión) desaparece.
+- **El deshacer del editor de celdas ya no alcanza la celda editada
+  anteriormente.** El editor lateral acoplado (y el modal) reutilizaban un único
+  modelo de Monaco entre celdas, así que tras editar un registro, seleccionar la
+  misma columna en otro registro y pulsar Ctrl+Z restauraba el valor del
+  registro *anterior*. Ahora Monaco se remonta con una pila de deshacer vacía en
+  cada carga de celda, de modo que el deshacer queda acotado a la sesión de
+  edición actual; escribir dentro de una celda se sigue deshaciendo con
+  normalidad.
+- **El selector booleano de celdas BIT ya no se cierra al abrirlo (#44).** Al
+  editar una columna BIT de un registro existente (con BIT mostrado como
+  booleano) se abría el `<select>` nativo pero se cerraba en cuanto pulsabas una
+  opción: el `onClick` de la celda devolvía el foco al contenedor con scroll,
+  robándoselo al desplegable. Ahora la celda cede los clics a su propio editor
+  inline mientras está activo.
+- **Abrir una tabla ya no lanza COUNT + SELECT dos veces (#41).** Dos cosas
+  duplicaban la carga inicial: el callback dependía de `searchColumns` (derivado
+  de la lista de columnas que se carga de forma asíncrona, así que cambiaba de
+  identidad y reejecutaba el efecto al llegar las columnas) y React StrictMode
+  invoca los efectos dos veces en desarrollo. Ahora `searchColumns` se lee
+  mediante una ref y la carga se deduplica en el envío — una petición idéntica
+  ya en vuelo se descarta — así que abrir una tabla lanza exactamente un
+  COUNT + SELECT, tanto en desarrollo como en producción.
+
 ## [1.5.1] — 2026-07-07
 
 ### Añadido

@@ -115,6 +115,12 @@ pub struct UiPrefs {
     /// "cap" | "rail" | "boxed". Stringly-typed; the frontend owns the enum
     /// and applies it via CSS + an inline style, the backend just round-trips.
     pub tab_accent_style: String,
+    /// How grouped connections start out in the tree views (File menu,
+    /// connections manager). One of "expanded" | "collapsed" | "remember".
+    /// "remember" defers to `collapsed_connection_groups`; the other two force
+    /// the initial state (per-surface session toggles still apply on top).
+    /// Stringly-typed; the frontend owns the enum.
+    pub connection_group_expand_mode: String,
 }
 
 impl Default for Preferences {
@@ -172,6 +178,7 @@ impl Default for UiPrefs {
             cli_connect_default: "ask".into(),
             collapsed_connection_groups: Vec::new(),
             tab_accent_style: "cap".into(),
+            connection_group_expand_mode: "remember".into(),
         }
     }
 }

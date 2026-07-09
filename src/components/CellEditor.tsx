@@ -40,6 +40,9 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   initialValue: string;
   columnName?: string;
+  /** Id of the owning tab, forwarded to the side panel on "move to side" so it
+   *  can close itself when that tab is closed. */
+  ownerId?: string;
   readonly?: boolean;
   onSave?: (value: string) => Promise<void> | void;
 }
@@ -56,6 +59,7 @@ export function CellEditorBody({
   onLanguageChange,
   readonly,
   onSubmit,
+  editorKey,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -64,6 +68,14 @@ export function CellEditorBody({
   readonly?: boolean;
   /** Save/commit action bound to Ctrl/Cmd+S and Ctrl/Cmd+Enter inside Monaco. */
   onSubmit?: () => void;
+  /**
+   * Identity of the *cell/session* currently loaded. When it changes we remount
+   * Monaco (via React `key`) so it builds a fresh model with an empty undo
+   * stack — otherwise the persistent side panel reuses one model across cells
+   * and Ctrl+Z bleeds back into a previously-edited row's value. Typing does
+   * NOT change this (only `value` does), so in-session undo still works.
+   */
+  editorKey?: string | number;
 }) {
   const { t } = useTranslation();
   const editorPrefs = usePreferences(selectEditorPrefs);
@@ -102,6 +114,7 @@ export function CellEditorBody({
       </div>
       <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border">
         <Editor
+          key={editorKey}
           height="100%"
           value={value}
           language={language}
@@ -136,6 +149,7 @@ export function CellEditor({
   onOpenChange,
   initialValue,
   columnName,
+  ownerId,
   readonly,
   onSave,
 }: Props) {
@@ -146,6 +160,10 @@ export function CellEditor({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  /** Bumped whenever a new value is loaded so Monaco remounts with an empty
+   *  undo stack (mirrors the side panel; defensive even though the dialog
+   *  usually unmounts between opens). */
+  const [editorKey, setEditorKey] = useState(0);
   const openInSide = useCellEditor((s) => s.open);
   const canSave = !readonly && !!onSave;
   // Modifier label for the save-shortcut chip (⌘ on macOS, Ctrl elsewhere).
@@ -159,6 +177,7 @@ export function CellEditor({
       setValue(initialValue);
       setLanguage(detectLanguage(initialValue ?? ""));
       setSaveError(null);
+      setEditorKey((k) => k + 1);
     }
   }, [open, initialValue]);
 
@@ -196,6 +215,7 @@ export function CellEditor({
   /** Hand the (live) buffer to the docked side panel and close the modal. */
   function moveToSidePanel() {
     openInSide({
+      ownerId,
       columnName: columnName ?? "",
       value,
       readonly,
@@ -271,6 +291,7 @@ export function CellEditor({
             onLanguageChange={setLanguage}
             readonly={readonly}
             onSubmit={canSave ? handleSave : undefined}
+            editorKey={editorKey}
           />
         </div>
         {saveError && (

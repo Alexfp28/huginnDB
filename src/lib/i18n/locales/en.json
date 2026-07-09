@@ -62,6 +62,9 @@
   "connections": {
     "disconnectTooltip": "Disconnect",
     "deleteConfirm": "Delete connection \"{{name}}\"?",
+    "bulkDeleteConfirm": "Delete {{count}} connections? This cannot be undone.",
+    "selectConnection": "Select {{name}}",
+    "selectedCount": "{{count}} selected",
     "manageTitle": "Manage connections",
     "reconnectTooltip": "Connection lost — reconnect",
     "reconnect": "Reconnect",
@@ -145,8 +148,13 @@
     "connect": "Connect",
     "connecting": "Connecting…",
     "delete": "Delete",
+    "duplicate": "Duplicate",
+    "duplicateSuffix": "copy",
+    "duplicatePasswordHint": "The password isn't copied — re-enter it before connecting.",
     "listTitle": "Saved connections",
-    "emptyList": "No saved connections yet."
+    "emptyList": "No saved connections yet.",
+    "searchPlaceholder": "Search connections…",
+    "noMatches": "No connections match your search."
   },
   "connectPassword": {
     "title": "Password required",
@@ -534,6 +542,13 @@
         "desc": "Where a large cell value opens when you expand it: a centered dialog or a docked right-side panel.",
         "modal": "Dialog",
         "side": "Side panel"
+      },
+      "connectionGroupExpandMode": {
+        "label": "Connection groups",
+        "desc": "How folder groups appear in the File menu and the connections manager: expanded, collapsed, or remembering each group's last state.",
+        "expanded": "Always expanded",
+        "collapsed": "Always collapsed",
+        "remember": "Remember per group"
       }
     },
     "editor": {

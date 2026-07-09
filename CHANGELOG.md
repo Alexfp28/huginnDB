@@ -6,6 +6,67 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Searchable, grouped, multi-select connections manager (#39, #43, #40).**
+  The manager's left rail was a flat single-select list that got unwieldy past
+  a handful of connections. It now:
+  - has a **search box** filtering by name, host, database, group, or URI;
+  - renders connections as a **folder tree** (grouped by the `group` field)
+    with collapsible group headers — an active search force-expands so matches
+    are always visible;
+  - supports **multi-selection** (Ctrl/Cmd-click to toggle, Shift-click for a
+    range, plus per-row checkboxes on hover) with a **bulk delete** that always
+    asks for confirmation, regardless of the "confirm destructive actions"
+    preference.
+- **Duplicate connection (#38).** The connections manager gained a *Duplicate*
+  action that clones the selected profile into a fresh draft with a uniquified
+  name ("… (copy)"), ready to tweak and save. The password is intentionally not
+  carried over — credentials are keyed by profile id in the OS keychain and the
+  clone gets a new id — so a banner reminds you to re-enter it before
+  connecting.
+- **Configurable connection-group expand mode (#40).** A new General preference
+  (`Connection groups`) controls how folder groups start out in the File menu
+  and the connections manager — *always expanded*, *always collapsed*, or
+  *remember per group* (the previous behaviour). The File menu's groups are now
+  collapsible too, matching the status-bar switcher.
+
+- **Brand logos in the driver dropdown.** The connection editor's driver
+  selector now shows each database's official logo next to its name (both in
+  the trigger and the options), reusing the bundled `DriverBadge` marks already
+  used elsewhere, instead of a bare list of names.
+- **Live guideline while resizing data-grid columns (#42).** Dragging a column
+  edge now shows a full-height vertical guideline that tracks the pointer, so
+  you can see the target width before releasing instead of eyeballing it
+  against the neighbouring column. The width still commits on release (the
+  existing deferred, per-table-persisted behaviour).
+
+### Fixed
+
+- **The docked side editor now closes when its source tab closes.** The
+  JetBrains-style side editor lives outside any tab's subtree, so opening a
+  cell in it and then closing that table's tab left it lingering with a stale
+  value, waiting for a manual discard. The cell now records its owning tab and
+  the panel closes itself when that tab (or its connection) goes away.
+- **Cell editor undo no longer reaches into the previously-edited cell.** The
+  docked side editor (and the modal) reused a single Monaco model across cells,
+  so after editing one row, selecting the same column on another row and
+  pressing Ctrl+Z restored the *previous* row's value. Monaco is now remounted
+  with a fresh, empty undo stack on each cell load, so undo stays scoped to the
+  current editing session; typing within a cell still undoes normally.
+- **Boolean BIT cell picker no longer collapses on open (#44).** Editing an
+  existing row's BIT column (with BIT shown as boolean) opened the native
+  `<select>` but it snapped shut the instant you clicked an option: the cell's
+  `onClick` refocused the scroll container, stealing focus from the dropdown.
+  The cell now yields clicks to its own inline editor while one is active.
+- **Opening a table no longer runs COUNT + SELECT twice (#41).** Two things
+  doubled the initial fetch: the callback depended on `searchColumns` (derived
+  from the async-loaded column list, so it changed identity and re-ran the
+  effect once columns arrived), and React StrictMode double-invokes effects in
+  dev. `searchColumns` is now read through a ref, and the fetch dedupes on the
+  wire — a byte-identical request already in flight is skipped — so a table
+  open issues exactly one COUNT + SELECT in both dev and production.
+
 ## [1.6.0] — 2026-07-08
 
 ### Added

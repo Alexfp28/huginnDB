@@ -22,14 +22,18 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   AlertCircle,
   Check,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Database,
   Download,
   Folder,
   Plug,
   Plus,
+  Search,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -58,12 +62,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DriverBadge } from "@/components/DriverBadge";
+import { DriverBadge, driverLabel } from "@/components/DriverBadge";
 import { api } from "@/lib/tauri";
 import { buildMongoUri, parseMongoUri } from "@/lib/mongoUri";
 import { DEFAULT_PORTS } from "@/lib/constants";
 import { confirmDestructive } from "@/lib/confirmDestructive";
-import { cn } from "@/lib/utils";
+import { bucketByGroup, cn } from "@/lib/utils";
+import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
 import type {
   ConnectionProfile,
   Driver,
@@ -118,6 +123,19 @@ export function ConnectionDialog({
   const [editingId, setEditingId] = useState<string | null>(
     initial?.id ?? null,
   );
+
+  // Left-rail: search filter + multi-selection for bulk delete (#39/#43).
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /** Anchor for Shift-range selection over the visible (non-collapsed) rows. */
+  const lastClickedRef = useRef<string | null>(null);
+  const groupCollapse = useConnectionGroupCollapse();
+
+  /** A profile queued by "Duplicate" to load as a fresh draft on the next
+   *  editingId change (see the load effect). */
+  const pendingCloneRef = useRef<ConnectionProfile | null>(null);
+  /** Shows the "password isn't copied" banner after a duplicate (#38). */
+  const [duplicateHint, setDuplicateHint] = useState(false);
 
   // General fields ---------------------------------------------------------
   const [name, setName] = useState("");
@@ -264,10 +282,14 @@ export function ConnectionDialog({
     }
   }
 
-  // When the dialog opens, select whatever the caller asked for.
+  // When the dialog opens, select whatever the caller asked for and reset the
+  // transient rail state (search term + multi-selection).
   useEffect(() => {
     if (!open) return;
     setEditingId(initial?.id ?? null);
+    setSearch("");
+    setSelectedIds(new Set());
+    lastClickedRef.current = null;
   }, [open, initial]);
 
   // Load the editor whenever the selection changes. We read the profile list
@@ -277,10 +299,15 @@ export function ConnectionDialog({
   useEffect(() => {
     if (!open) return;
     const list = useConnections.getState().profiles;
-    const p = editingId ? list.find((x) => x.id === editingId) ?? null : null;
-    setDraftId(p?.id ?? crypto.randomUUID());
+    // A pending clone (from "Duplicate") is loaded as a fresh draft: no
+    // editingId, a brand-new draftId, and the password field left blank.
+    const clone = !editingId ? pendingCloneRef.current : null;
+    pendingCloneRef.current = null;
+    const p = editingId ? list.find((x) => x.id === editingId) ?? null : clone;
+    setDraftId(editingId && p ? p.id : crypto.randomUUID());
     loadFields(p);
     setTestStatus({ kind: "idle" });
+    setDuplicateHint(!!clone);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingId]);
 
@@ -292,6 +319,167 @@ export function ConnectionDialog({
     for (const p of profiles) if (p.group) names.add(p.group);
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [profiles]);
+
+  const searching = search.trim().length > 0;
+
+  /** Profiles matching the rail search box (name / host / database / group). */
+  const filteredProfiles = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return profiles;
+    return profiles.filter((p) =>
+      [p.name, p.host, p.database, p.group, p.connection_string]
+        .filter((x): x is string => !!x)
+        .some((x) => x.toLowerCase().includes(term)),
+    );
+  }, [profiles, search]);
+
+  const buckets = useMemo(
+    () => bucketByGroup(filteredProfiles),
+    [filteredProfiles],
+  );
+
+  /** Ids in render order, skipping collapsed groups — the domain over which
+   *  Shift-range selection operates. An active search force-expands groups. */
+  const visibleIds = useMemo(() => {
+    const ids = buckets.ungrouped.map((p) => p.id);
+    for (const g of buckets.groups) {
+      const collapsed = !searching && groupCollapse.isCollapsed(g.name);
+      if (!collapsed) ids.push(...g.items.map((p) => p.id));
+    }
+    return ids;
+  }, [buckets, searching, groupCollapse]);
+
+  /** Rail row click: plain = single-select + edit; Ctrl/Cmd = toggle into the
+   *  multi-selection; Shift = range from the last anchor (OS-style, mirrors
+   *  the data grid). */
+  function onRowClick(id: string, e: React.MouseEvent) {
+    if (e.shiftKey && lastClickedRef.current) {
+      const a = visibleIds.indexOf(lastClickedRef.current);
+      const b = visibleIds.indexOf(id);
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        const range = visibleIds.slice(lo, hi + 1);
+        setSelectedIds((prev) => new Set([...prev, ...range]));
+      }
+      setEditingId(id);
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      lastClickedRef.current = id;
+      setEditingId(id);
+      return;
+    }
+    setSelectedIds(new Set([id]));
+    lastClickedRef.current = id;
+    setEditingId(id);
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    lastClickedRef.current = id;
+  }
+
+  /** Bulk-delete the multi-selection. Confirmation is ALWAYS shown here (plain
+   *  `window.confirm`, not `confirmDestructive`) — deleting connections is
+   *  destructive regardless of the "confirm destructive actions" preference. */
+  async function onBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!window.confirm(t("connections.bulkDeleteConfirm", { count: ids.length })))
+      return;
+    for (const id of ids) {
+      try {
+        await remove(id);
+      } catch {
+        // Best-effort: one keychain/disk failure shouldn't abort the rest.
+      }
+    }
+    if (editingId && selectedIds.has(editingId)) setEditingId(null);
+    setSelectedIds(new Set());
+    lastClickedRef.current = null;
+  }
+
+  /** One connection row in the rail. A `<div role="button">` rather than a
+   *  `<button>` so the selection `<input type="checkbox">` can nest legally. */
+  function renderRow(p: ConnectionProfile) {
+    const isActive = active.has(p.id);
+    const selected = editingId === p.id;
+    const checked = selectedIds.has(p.id);
+    const multi = selectedIds.size > 1;
+    const subline =
+      p.driver === "sqlite"
+        ? p.database.split(/[/\\]/).pop() ?? p.database
+        : p.driver === "mongodb"
+          ? p.connection_string || `${p.host}:${p.port}`
+          : `${p.host}:${p.port}/${p.database}`;
+    return (
+      <div
+        key={p.id}
+        role="button"
+        tabIndex={0}
+        onClick={(e) => onRowClick(p.id, e)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setEditingId(p.id);
+            setSelectedIds(new Set([p.id]));
+            lastClickedRef.current = p.id;
+          }
+        }}
+        className={cn(
+          "group/row flex w-full cursor-pointer items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors",
+          selected
+            ? "border-primary bg-accent/40"
+            : "border-transparent hover:bg-accent/30",
+          checked && multi && "bg-accent/60",
+        )}
+      >
+        {/* Checkbox reveals on hover / when selected; otherwise the live
+            "connected" status dot occupies the same slot (grid convention). */}
+        <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => toggleSelect(p.id)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={t("connections.selectConnection", { name: p.name })}
+            className={cn(
+              "accent-brand cursor-pointer",
+              checked ? "inline-block" : "hidden group-hover/row:inline-block",
+            )}
+          />
+          <span
+            className={cn(
+              "absolute h-1.5 w-1.5 rounded-full",
+              isActive ? "bg-brand" : "bg-muted-foreground/40",
+              checked ? "hidden" : "group-hover/row:hidden",
+            )}
+            title={isActive ? t("connections.disconnectTooltip") : undefined}
+          />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-medium">{p.name}</span>
+            <DriverBadge driver={p.driver} />
+          </div>
+          <div className="truncate text-[11px] text-muted-foreground">
+            {subline}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   /** URI derived live from the discrete MongoDB fields (form mode). The
    *  password is intentionally excluded — it travels via the keychain. */
@@ -428,6 +616,25 @@ export function ConnectionDialog({
     } catch (e) {
       setTestStatus({ kind: "saveError", message: String(e) });
     }
+  }
+
+  /** Duplicate the profile currently in the editor (#38). Clones every
+   *  metadata field into a fresh draft with a uniquified name; the password is
+   *  deliberately NOT copied (the keychain is keyed by profile id, and a clone
+   *  gets a new id), so the user re-enters it — the banner flags this. */
+  function onDuplicate() {
+    if (!editingId) return;
+    const base = buildProfile();
+    const existing = new Set(profiles.map((p) => p.name));
+    const copy = t("connectionDialog.duplicateSuffix");
+    let candidate = `${base.name} (${copy})`;
+    for (let n = 2; existing.has(candidate); n++) {
+      candidate = `${base.name} (${copy} ${n})`;
+    }
+    pendingCloneRef.current = { ...base, id: "", name: candidate };
+    // Flip to a new draft; the load effect picks up the pending clone.
+    setEditingId(null);
+    setSelectedIds(new Set());
   }
 
   function onDriverChange(d: Driver) {
@@ -609,7 +816,7 @@ export function ConnectionDialog({
         </DialogHeader>
 
         <div className="grid flex-1 grid-cols-[240px_1fr] overflow-hidden">
-          {/* Left rail — saved connections + new */}
+          {/* Left rail — saved connections (searchable, grouped tree) + new */}
           <aside className="flex min-h-0 flex-col border-r border-border bg-card/40">
             <div className="px-2 pt-2">
               <Button
@@ -622,66 +829,109 @@ export function ConnectionDialog({
                 {t("connectionDialog.newConnection")}
               </Button>
             </div>
+            {profiles.length > 0 && (
+              <div className="px-2 pt-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={t("connectionDialog.searchPlaceholder")}
+                    className="h-8 pl-7 pr-7 text-xs"
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => setSearch("")}
+                      aria-label={t("common.clear")}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="mt-1 px-3 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
               {t("connectionDialog.listTitle")}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-              {profiles.length === 0 && (
+              {profiles.length === 0 ? (
                 <div className="px-3 py-3 text-[11px] text-muted-foreground">
                   {t("connectionDialog.emptyList")}
                 </div>
+              ) : filteredProfiles.length === 0 ? (
+                <div className="px-3 py-3 text-[11px] text-muted-foreground">
+                  {t("connectionDialog.noMatches")}
+                </div>
+              ) : (
+                <>
+                  {buckets.ungrouped.map(renderRow)}
+                  {buckets.groups.map(({ name, items }) => {
+                    const collapsed =
+                      !searching && groupCollapse.isCollapsed(name);
+                    return (
+                      <div key={name}>
+                        <button
+                          type="button"
+                          onClick={() => groupCollapse.toggle(name)}
+                          className="flex w-full items-center gap-1 px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                        >
+                          {collapsed ? (
+                            <ChevronRight className="h-3 w-3 shrink-0" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3 shrink-0" />
+                          )}
+                          <Folder className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{name}</span>
+                          <span className="text-muted-foreground/60">
+                            ({items.length})
+                          </span>
+                        </button>
+                        {!collapsed && items.map(renderRow)}
+                      </div>
+                    );
+                  })}
+                </>
               )}
-              {profiles.map((p) => {
-                const isActive = active.has(p.id);
-                const selected = editingId === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => setEditingId(p.id)}
-                    className={cn(
-                      "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors",
-                      selected
-                        ? "border-primary bg-accent/40"
-                        : "border-transparent hover:bg-accent/30",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 shrink-0 rounded-full",
-                        isActive
-                          ? "bg-brand"
-                          : "bg-muted-foreground/40",
-                      )}
-                      title={
-                        isActive
-                          ? t("connections.disconnectTooltip")
-                          : undefined
-                      }
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-sm font-medium">
-                          {p.name}
-                        </span>
-                        <DriverBadge driver={p.driver} />
-                      </div>
-                      <div className="truncate text-[11px] text-muted-foreground">
-                        {p.driver === "sqlite"
-                          ? p.database.split(/[/\\]/).pop() ?? p.database
-                          : p.driver === "mongodb"
-                            ? p.connection_string || `${p.host}:${p.port}`
-                            : `${p.host}:${p.port}/${p.database}`}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
             </div>
+            {selectedIds.size > 1 && (
+              <div className="flex items-center gap-2 border-t border-border px-3 py-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {t("connections.selectedCount", { count: selectedIds.size })}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto h-7 gap-1 px-2 text-destructive hover:text-destructive"
+                  onClick={onBulkDelete}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t("connectionDialog.delete")}
+                </Button>
+              </div>
+            )}
           </aside>
 
           {/* Right pane — editor */}
           <main className="flex min-h-0 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {duplicateHint && (
+                <div className="mb-3 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span className="flex-1">
+                    {t("connectionDialog.duplicatePasswordHint")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateHint(false)}
+                    aria-label={t("common.clear")}
+                    className="shrink-0 rounded-sm p-0.5 hover:bg-warning/20"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
               <Tabs defaultValue="general" className="w-full">
                 <TabsList className="w-full">
                   <TabsTrigger value="general" className="flex-1">
@@ -719,13 +969,24 @@ export function ConnectionDialog({
                         onValueChange={(v) => onDriverChange(v as Driver)}
                       >
                         <SelectTrigger>
-                          <SelectValue />
+                          {/* Controlled value, so render the brand logo + label
+                              directly rather than via <SelectValue>. */}
+                          <span className="flex items-center gap-2">
+                            <DriverBadge driver={driver} />
+                            {driverLabel(driver)}
+                          </span>
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="postgres">PostgreSQL</SelectItem>
-                          <SelectItem value="mysql">MySQL</SelectItem>
-                          <SelectItem value="sqlite">SQLite</SelectItem>
-                          <SelectItem value="mongodb">MongoDB</SelectItem>
+                          {(
+                            ["postgres", "mysql", "sqlite", "mongodb"] as const
+                          ).map((d) => (
+                            <SelectItem key={d} value={d}>
+                              <span className="flex items-center gap-2">
+                                <DriverBadge driver={d} />
+                                {driverLabel(d)}
+                              </span>
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </Field>
@@ -1122,6 +1383,16 @@ export function ConnectionDialog({
                 <Button variant="ghost" onClick={onTest} disabled={busy || !name}>
                   {t("connectionDialog.test")}
                 </Button>
+                {editingId && (
+                  <Button
+                    variant="ghost"
+                    onClick={onDuplicate}
+                    disabled={busy}
+                  >
+                    <Copy className="mr-1 h-3.5 w-3.5" />
+                    {t("connectionDialog.duplicate")}
+                  </Button>
+                )}
                 {editingId && (
                   <Button
                     variant="ghost"

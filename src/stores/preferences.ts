@@ -65,6 +65,7 @@ const DEFAULT_PREFS: Preferences = {
     cliConnectDefault: "ask",
     collapsedConnectionGroups: [],
     tabAccentStyle: "cap",
+    connectionGroupExpandMode: "remember",
   },
 };
 
