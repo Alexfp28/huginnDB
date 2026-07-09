@@ -25,6 +25,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   *remember per group* (the previous behaviour). The File menu's groups are now
   collapsible too, matching the status-bar switcher.
 
+- **Live guideline while resizing data-grid columns (#42).** Dragging a column
+  edge now shows a full-height vertical guideline that tracks the pointer, so
+  you can see the target width before releasing instead of eyeballing it
+  against the neighbouring column. The width still commits on release (the
+  existing deferred, per-table-persisted behaviour).
+
 ### Fixed
 
 - **Boolean BIT cell picker no longer collapses on open (#44).** Editing an

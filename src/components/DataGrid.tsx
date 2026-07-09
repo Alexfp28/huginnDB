@@ -25,6 +25,7 @@ import {
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
+  type Table as TanstackTable,
   type Updater,
 } from "@tanstack/react-table";
 import { tableKey } from "@/stores/schema";
@@ -935,9 +936,10 @@ export function DataGrid({
     getCoreRowModel: getCoreRowModel(),
     enableColumnResizing: true,
     // "onEnd" defers the (expensive, store-writing) sizing update until the
-    // pointer is released instead of on every drag-frame — TanStack still
-    // renders a live resize indicator during the drag from its own internal
-    // offset tracking, so this costs nothing visually.
+    // pointer is released instead of committing a new width on every drag
+    // frame. TanStack does NOT draw its own indicator in this mode — it only
+    // tracks the drag in `columnSizingInfo.deltaOffset` — so we render our own
+    // full-height guideline from that offset (see `ResizeGuideline` below).
     columnResizeMode: "onEnd",
     state: { columnSizing },
     onColumnSizingChange: handleColumnSizingChange,
@@ -1779,6 +1781,8 @@ export function DataGrid({
             <Loader2 className="mt-6 h-5 w-5 animate-spin text-brand" />
           </div>
         )}
+        {/* Live resize guideline (see `columnResizeMode: "onEnd"` above). */}
+        <ResizeGuideline table={table} scrollRef={scrollRef} />
       </div>
 
       {/* Compact cell preview panel — gated by the `cellPreview` grid pref.
@@ -1846,6 +1850,50 @@ export function DataGrid({
         />
       )}
     </div>
+  );
+}
+
+/** Width of the leading row-number / selection column (a manual `<th>`, not a
+ *  TanStack column), so the guideline offset lines up with the data columns. */
+const LEADING_COL_WIDTH = 40;
+
+/**
+ * Full-height vertical guideline drawn while a column is being resized.
+ *
+ * With `columnResizeMode: "onEnd"` the committed width doesn't change until the
+ * pointer is released, so without this the drag gives no feedback (issue #42).
+ * The resizing column's live edge is `getStart() + getSize() + deltaOffset`;
+ * we add the leading column width and subtract the body's horizontal scroll to
+ * land in the wrapper's coordinate space. The component re-renders as TanStack
+ * updates `columnSizingInfo` on each pointer move.
+ */
+function ResizeGuideline({
+  table,
+  scrollRef,
+}: {
+  table: TanstackTable<CellValue[]>;
+  scrollRef: React.RefObject<HTMLDivElement>;
+}) {
+  const info = table.getState().columnSizingInfo;
+  const resizingId = info.isResizingColumn;
+  if (!resizingId) return null;
+  const header = table
+    .getFlatHeaders()
+    .find((h) => h.column.id === resizingId);
+  if (!header) return null;
+  const scrollLeft = scrollRef.current?.scrollLeft ?? 0;
+  const left =
+    LEADING_COL_WIDTH +
+    header.getStart() +
+    header.getSize() +
+    (info.deltaOffset ?? 0) -
+    scrollLeft;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-primary"
+      style={{ left, transform: "translateX(-50%)" }}
+    />
   );
 }
 
