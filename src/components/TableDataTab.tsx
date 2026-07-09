@@ -307,6 +307,15 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const cachedTotalRef = useRef<number | null>(null);
   const countKeyRef = useRef<string | null>(null);
 
+  // `searchColumns` is derived from `cols`, which loads asynchronously after
+  // mount. Listing it in `fetchData`'s deps recreated the callback the instant
+  // columns arrived, re-firing the `[fetchData]` effect and issuing a second,
+  // identical COUNT+SELECT on table open (issue #41). It's only ever sent when
+  // a search filter is active, so read it lazily through a ref instead of
+  // depending on its identity.
+  const searchColumnsRef = useRef(searchColumns);
+  searchColumnsRef.current = searchColumns;
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -325,7 +334,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         order: sort.length ? sort : undefined,
         filters: serverFilters.length ? serverFilters : undefined,
         search: appliedFilter || undefined,
-        searchColumns: appliedFilter ? searchColumns : undefined,
+        searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
         withCount,
       });
       if (withCount) {
@@ -351,7 +360,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     sort,
     serverFilters,
     appliedFilter,
-    searchColumns,
   ]);
 
   useEffect(() => {
