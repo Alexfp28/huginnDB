@@ -48,12 +48,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `<select>` but it snapped shut the instant you clicked an option: the cell's
   `onClick` refocused the scroll container, stealing focus from the dropdown.
   The cell now yields clicks to its own inline editor while one is active.
-- **Opening a table no longer runs COUNT + SELECT twice (#41).** The data-fetch
-  callback depended on `searchColumns`, which is derived from the async-loaded
-  column list; when columns arrived the callback was recreated and the fetch
-  effect fired a second, identical query. `searchColumns` is now read through a
-  ref (it's only sent when a search filter is active), so the initial open
-  issues a single COUNT + SELECT.
+- **Opening a table no longer runs COUNT + SELECT twice (#41).** Two things
+  doubled the initial fetch: the callback depended on `searchColumns` (derived
+  from the async-loaded column list, so it changed identity and re-ran the
+  effect once columns arrived), and React StrictMode double-invokes effects in
+  dev. `searchColumns` is now read through a ref, and the fetch dedupes on the
+  wire — a byte-identical request already in flight is skipped — so a table
+  open issues exactly one COUNT + SELECT in both dev and production.
 
 ## [1.6.0] — 2026-07-08
 

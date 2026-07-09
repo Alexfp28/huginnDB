@@ -54,12 +54,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   opción: el `onClick` de la celda devolvía el foco al contenedor con scroll,
   robándoselo al desplegable. Ahora la celda cede los clics a su propio editor
   inline mientras está activo.
-- **Abrir una tabla ya no lanza COUNT + SELECT dos veces (#41).** El callback de
-  carga de datos dependía de `searchColumns`, derivado de la lista de columnas
-  que se carga de forma asíncrona; al llegar las columnas el callback se recreaba
-  y el efecto de carga disparaba una segunda consulta idéntica. Ahora
-  `searchColumns` se lee mediante una ref (solo se envía cuando hay un filtro de
-  búsqueda activo), así que la apertura inicial lanza un único COUNT + SELECT.
+- **Abrir una tabla ya no lanza COUNT + SELECT dos veces (#41).** Dos cosas
+  duplicaban la carga inicial: el callback dependía de `searchColumns` (derivado
+  de la lista de columnas que se carga de forma asíncrona, así que cambiaba de
+  identidad y reejecutaba el efecto al llegar las columnas) y React StrictMode
+  invoca los efectos dos veces en desarrollo. Ahora `searchColumns` se lee
+  mediante una ref y la carga se deduplica en el envío — una petición idéntica
+  ya en vuelo se descarta — así que abrir una tabla lanza exactamente un
+  COUNT + SELECT, tanto en desarrollo como en producción.
 
 ## [1.5.1] — 2026-07-07
 

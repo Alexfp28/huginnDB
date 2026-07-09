@@ -316,7 +316,28 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const searchColumnsRef = useRef(searchColumns);
   searchColumnsRef.current = searchColumns;
 
+  // Signature of the request currently on the wire. React StrictMode (dev)
+  // mounts effects twice, and a transient dep-identity change can re-run the
+  // fetch effect — either way a byte-identical request must not hit the DB
+  // twice (issue #41). We dedupe on the wire: the key is set synchronously
+  // before the first `await`, so the StrictMode remount's call sees it and
+  // bails; it's cleared in `finally`, so genuine later refetches with the same
+  // params still go through.
+  const inflightKeyRef = useRef<string | null>(null);
+
   const fetchData = useCallback(async () => {
+    const reqKey = JSON.stringify({
+      connectionId,
+      schema,
+      table,
+      pageSize,
+      offset,
+      sort,
+      serverFilters,
+      appliedFilter,
+    });
+    if (inflightKeyRef.current === reqKey) return;
+    inflightKeyRef.current = reqKey;
     setLoading(true);
     setError(null);
     // The count depends only on the WHERE predicate (filters + committed
@@ -350,6 +371,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       setError(String(e));
     } finally {
       setLoading(false);
+      // Only clear if a newer fetch hasn't already claimed the slot.
+      if (inflightKeyRef.current === reqKey) inflightKeyRef.current = null;
     }
   }, [
     connectionId,
