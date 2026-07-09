@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.6.1] — 2026-07-10
+
 ### Añadido
 
 - **Gestor de conexiones con búsqueda, árbol y multiselección (#39, #43, #40).**
