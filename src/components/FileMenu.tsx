@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import {
   Check,
   ChevronDown,
+  ChevronRight,
   Download,
   Folder,
   FolderOpen,
@@ -45,6 +46,7 @@ import { ImportProfilesDialog } from "@/components/ImportProfilesDialog";
 import { DriverBadge } from "@/components/DriverBadge";
 import { driverMismatchHint } from "@/lib/driver";
 import { bucketByGroup, cn } from "@/lib/utils";
+import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
 import type { ConnectionProfile } from "@/types";
 
 interface Props {
@@ -76,6 +78,7 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
   // effect here). Ungrouped connections list first, then one labelled folder
   // per group (sorted). Same helper as the status-bar connection switcher.
   const buckets = useMemo(() => bucketByGroup(profiles), [profiles]);
+  const groupCollapse = useConnectionGroupCollapse();
 
   /** Connect to a profile (or just select it if it's already active). */
   async function handleSelect(p: ConnectionProfile) {
@@ -191,15 +194,36 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
           ) : (
             <>
               {buckets.ungrouped.map((p) => renderProfile(p))}
-              {buckets.groups.map(({ name, items }) => (
-                <div key={name}>
-                  <div className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80">
-                    <Folder className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{name}</span>
+              {buckets.groups.map(({ name, items }) => {
+                const collapsed = groupCollapse.isCollapsed(name);
+                return (
+                  <div key={name}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        // A raw button inside the dropdown content: keep the
+                        // menu open (don't let the click select/dismiss it).
+                        e.preventDefault();
+                        e.stopPropagation();
+                        groupCollapse.toggle(name);
+                      }}
+                      className="flex w-full items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80 hover:text-foreground"
+                    >
+                      {collapsed ? (
+                        <ChevronRight className="h-3 w-3 shrink-0" />
+                      ) : (
+                        <ChevronDown className="h-3 w-3 shrink-0" />
+                      )}
+                      <Folder className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{name}</span>
+                      <span className="text-muted-foreground/50">
+                        ({items.length})
+                      </span>
+                    </button>
+                    {!collapsed && items.map((p) => renderProfile(p, true))}
                   </div>
-                  {items.map((p) => renderProfile(p, true))}
-                </div>
-              ))}
+                );
+              })}
             </>
           )}
 

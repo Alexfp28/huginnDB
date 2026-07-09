@@ -62,6 +62,9 @@
   "connections": {
     "disconnectTooltip": "Desconectar",
     "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",
+    "bulkDeleteConfirm": "¿Eliminar {{count}} conexiones? Esta acción no se puede deshacer.",
+    "selectConnection": "Seleccionar {{name}}",
+    "selectedCount": "{{count}} seleccionadas",
     "manageTitle": "Gestionar conexiones",
     "reconnectTooltip": "Conexión perdida — reconectar",
     "reconnect": "Reconectar",
@@ -145,8 +148,13 @@
     "connect": "Conectar",
     "connecting": "Conectando…",
     "delete": "Eliminar",
+    "duplicate": "Duplicar",
+    "duplicateSuffix": "copia",
+    "duplicatePasswordHint": "La contraseña no se copia — vuelve a introducirla antes de conectar.",
     "listTitle": "Conexiones guardadas",
-    "emptyList": "Aún no hay conexiones guardadas."
+    "emptyList": "Aún no hay conexiones guardadas.",
+    "searchPlaceholder": "Buscar conexiones…",
+    "noMatches": "Ninguna conexión coincide con la búsqueda."
   },
   "connectPassword": {
     "title": "Contraseña requerida",
@@ -534,6 +542,13 @@
         "desc": "Dónde se abre un valor de celda grande al expandirlo: un diálogo centrado o un panel acoplado a la derecha.",
         "modal": "Diálogo",
         "side": "Panel lateral"
+      },
+      "connectionGroupExpandMode": {
+        "label": "Grupos de conexiones",
+        "desc": "Cómo aparecen los grupos de carpetas en el menú Archivo y en el gestor de conexiones: desplegados, plegados, o recordando el estado de cada grupo.",
+        "expanded": "Siempre desplegados",
+        "collapsed": "Siempre plegados",
+        "remember": "Recordar por grupo"
       }
     },
     "editor": {

@@ -6,6 +6,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Searchable, grouped, multi-select connections manager (#39, #43, #40).**
+  The manager's left rail was a flat single-select list that got unwieldy past
+  a handful of connections. It now:
+  - has a **search box** filtering by name, host, database, group, or URI;
+  - renders connections as a **folder tree** (grouped by the `group` field)
+    with collapsible group headers — an active search force-expands so matches
+    are always visible;
+  - supports **multi-selection** (Ctrl/Cmd-click to toggle, Shift-click for a
+    range, plus per-row checkboxes on hover) with a **bulk delete** that always
+    asks for confirmation, regardless of the "confirm destructive actions"
+    preference.
+- **Configurable connection-group expand mode (#40).** A new General preference
+  (`Connection groups`) controls how folder groups start out in the File menu
+  and the connections manager — *always expanded*, *always collapsed*, or
+  *remember per group* (the previous behaviour). The File menu's groups are now
+  collapsible too, matching the status-bar switcher.
+
+### Fixed
+
+- **Boolean BIT cell picker no longer collapses on open (#44).** Editing an
+  existing row's BIT column (with BIT shown as boolean) opened the native
+  `<select>` but it snapped shut the instant you clicked an option: the cell's
+  `onClick` refocused the scroll container, stealing focus from the dropdown.
+  The cell now yields clicks to its own inline editor while one is active.
+- **Opening a table no longer runs COUNT + SELECT twice (#41).** The data-fetch
+  callback depended on `searchColumns`, which is derived from the async-loaded
+  column list; when columns arrived the callback was recreated and the fetch
+  effect fired a second, identical query. `searchColumns` is now read through a
+  ref (it's only sent when a search filter is active), so the initial open
+  issues a single COUNT + SELECT.
+
 ## [1.6.0] — 2026-07-08
 
 ### Added
