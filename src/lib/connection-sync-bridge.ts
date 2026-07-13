@@ -1,14 +1,24 @@
 /**
- * Wires the Rust `huginndb://connection-opened` / `-closed` /
- * `-profiles-changed` events (see `src-tauri/src/commands/connection.rs`)
- * into `stores/connections.ts`.
+ * Wires the Rust `huginndb://connection-closed` / `-profiles-changed` events
+ * (see `src-tauri/src/commands/connection.rs`) into `stores/connections.ts`.
  *
- * Every window shares one backend `AppState`, but each window's frontend
- * used to hold a private `active` Set / `profiles` array snapshotted once
- * at boot, with no way to learn that another window connected/disconnected
- * a profile or edited/imported/deleted one (issue #18). This bridge closes
- * that gap the same way `connection-health-bridge.ts` does for the
- * keepalive's lost-connection signal.
+ * Every window shares one backend `AppState`. Two kinds of cross-window state
+ * are handled differently on purpose:
+ *
+ *   • PROFILES are shared config — a create/edit/delete/import in one window
+ *     must be reflected everywhere (issue #18), so `-profiles-changed`
+ *     re-fetches the profile list.
+ *
+ *   • The set of OPEN connections is per-window (issue #50): a window shows a
+ *     connection as active only when it opened the pool itself, so we do NOT
+ *     listen for `-connection-opened` — a new window must not adopt another
+ *     window's live connections.
+ *
+ * We still listen for `-connection-closed`: because the backend pool is
+ * physically shared, when one window disconnects a profile the pool dies for
+ * *every* window that had it open, so each must drop its now-stale tabs and
+ * schema cache. `markDisconnected` is a no-op for a window that never had the
+ * connection active.
  *
  * Mount once at App startup — re-subscribing every render would attach
  * duplicate listeners (HMR / StrictMode).
@@ -17,7 +27,6 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useConnections } from "@/stores/connections";
 
-const CONNECTION_OPENED_EVENT = "huginndb://connection-opened";
 const CONNECTION_CLOSED_EVENT = "huginndb://connection-closed";
 const PROFILES_CHANGED_EVENT = "huginndb://profiles-changed";
 
@@ -26,12 +35,6 @@ interface ConnectionSyncPayload {
 }
 
 export async function startConnectionSyncBridge(): Promise<UnlistenFn> {
-  const unlistenOpened = await listen<ConnectionSyncPayload>(
-    CONNECTION_OPENED_EVENT,
-    (event) => {
-      useConnections.getState().markConnected(event.payload.connection_id);
-    },
-  );
   const unlistenClosed = await listen<ConnectionSyncPayload>(
     CONNECTION_CLOSED_EVENT,
     (event) => {
@@ -42,7 +45,6 @@ export async function startConnectionSyncBridge(): Promise<UnlistenFn> {
     void useConnections.getState().refreshProfiles();
   });
   return () => {
-    unlistenOpened();
     unlistenClosed();
     unlistenProfiles();
   };

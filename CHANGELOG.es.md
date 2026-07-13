@@ -27,6 +27,41 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `list_privileges`. Se compila tras una feature de cargo opcional `mcp`
   (`cargo build --features mcp --bin huginndb-mcp`), así que un
   `pnpm tauri:build` normal no se ve afectado. Consulta [`docs/MCP.md`](docs/MCP.md).
+  
+### Corregido
+
+- **Las conexiones multi-base ahora muestran un nombre en la barra de título
+  (#51).** La miga de pan central pintaba el catálogo de la conexión
+  directamente, así que una conexión multi-base (sin una base preseleccionada)
+  dejaba el segmento central vacío. Ahora recurre al nombre de la conexión
+  cuando no hay una única base.
+- **El editor lateral acoplado ya no conserva el valor de otra tabla (#49).**
+  Abrir una celda en el editor lateral y cambiar a otra pestaña dejaba el valor
+  antiguo en pantalla aunque estuvieras viendo una tabla distinta. El panel
+  queda ahora ligado a la pestaña que abrió la celda: se limpia al cambiar de
+  pestaña (salvo que el búfer tenga cambios sin guardar, que se conservan para
+  que un cambio de pestaña nunca pierda tu trabajo).
+- **La guía de redimensionado de columnas cae sobre el borde real (#46).** La
+  guía en vivo se posicionaba con los anchos nominales de TanStack, pero la
+  rejilla usa un diseño `table-fixed` a ancho completo que estira las columnas
+  más allá de esos anchos cuando no llenan la vista, así que la guía se
+  desplazaba a la izquierda del borde real (el error crecía por columna). Ahora
+  mide la posición renderizada de la cabecera que se redimensiona.
+- **Las conexiones MongoDB abren sin base preseleccionada (#52).** Abrir una
+  conexión MongoDB en modo multi-base fallaba con un error del driver porque
+  listar colecciones requería una base seleccionada, lo que dejaba en blanco
+  todo el árbol. Listar colecciones a nivel de clúster ahora devuelve vacío
+  (como ya hacen los drivers SQL), así que la lista de bases se renderiza y
+  puedes expandir una base concreta como antes.
+- **Las ventanas nuevas son independientes de la principal (#50).** «Nueva
+  ventana» abría una ventana que adoptaba la conexión activa de la principal —
+  aparecía conectada sin que el usuario abriera nada, contradiciendo la
+  independencia por ventana introducida en 1.4.0. El conjunto de conexiones
+  abiertas es ahora por ventana: una ventana muestra una conexión como activa
+  solo cuando abre el pool ella misma. La configuración compartida (perfiles
+  guardados y preferencias) sigue sincronizándose entre ventanas, y una
+  conexión cerrada en una ventana se sigue limpiando en las demás que la
+  tuvieran abierta.
 
 ## [1.6.1] — 2026-07-10
 

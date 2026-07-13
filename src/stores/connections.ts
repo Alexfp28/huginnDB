@@ -1,7 +1,11 @@
 /**
  * Connections store — saved profiles + the set of profiles that are
- * currently open. Mirrors the Tauri-managed Rust state, refreshed via
- * `api.listProfiles` / `api.activeConnections`.
+ * currently open *in this window*. `profiles` mirrors the Tauri-managed Rust
+ * state (`api.listProfiles`); `active` is a per-window view driven by this
+ * window's own connect()/disconnect() plus the cross-window pool-closed
+ * cleanup in `connection-sync-bridge.ts` (#50). It is NOT seeded from the
+ * backend's global pool set, so opening a new window doesn't adopt another
+ * window's live connections.
  *
  * Server version strings are fetched once per connection and cached here
  * so the status bar and other UI can read them without re-querying.
@@ -45,8 +49,8 @@ interface ConnectionsState {
   disconnect: (id: string) => Promise<void>;
   /**
    * Local-only side effect of a connection becoming active — no backend
-   * call. Used by `connect()` itself and by the cross-window sync bridge
-   * (`connection-sync-bridge.ts`) when *another* window opened the pool.
+   * call. Used by `connect()` itself. Not driven cross-window: a window only
+   * marks a connection active when it opens the pool itself (#50).
    */
   markConnected: (id: string) => void;
   /**
@@ -76,11 +80,16 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
   refresh: async () => {
     set({ loading: true, error: null });
     try {
-      const [profiles, active] = await Promise.all([
-        api.listProfiles(),
-        api.activeConnections(),
-      ]);
-      set({ profiles, active: new Set(active), loading: false });
+      // `active` is deliberately NOT re-seeded from the backend's global pool
+      // set. Every window shares one backend AppState, but each window owns its
+      // own view of which connections are open (#50): a window adds to `active`
+      // only through its own connect()/disconnect(), plus the cross-window
+      // "pool closed everywhere" cleanup in the sync bridge. Pulling
+      // api.activeConnections() here would make a freshly opened window adopt
+      // the connections another window had open — the exact non-independence
+      // #50 reported. The existing `active` set is preserved across refreshes.
+      const profiles = await api.listProfiles();
+      set({ profiles, loading: false });
     } catch (e) {
       set({ error: String(e), loading: false });
     }
@@ -115,9 +124,7 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
   },
   markConnected: (id) => {
     // A successful (re)connect opens a fresh pool with its own heartbeat —
-    // any previous "connection lost" flag no longer applies. Also correct
-    // when this fires from the sync bridge: the other window's `connect`
-    // just opened a live pool, so any stale "lost" flag here is wrong too.
+    // any previous "connection lost" flag no longer applies.
     useConnectionHealth.getState().clear(id);
     set((s) => {
       if (s.active.has(id)) return s;

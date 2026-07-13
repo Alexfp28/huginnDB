@@ -673,7 +673,10 @@ export default function App() {
                     {selectedProfile.driver === "sqlite"
                       ? (selectedProfile.database.split(/[/\\]/).pop() ??
                         selectedProfile.database)
-                      : selectedProfile.database}
+                      : // Multi-DB connections have no single catalog, so
+                        // `database` is empty; fall back to the connection
+                        // name instead of rendering a blank segment (#51).
+                        selectedProfile.database || selectedProfile.name}
                   </span>
                   <span className="text-muted-foreground/40">·</span>
                   <span className="text-muted-foreground">
