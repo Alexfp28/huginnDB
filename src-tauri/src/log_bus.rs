@@ -164,9 +164,11 @@ impl LogSink for TauriSink<'_> {
 }
 
 /// [`LogSink`] that discards every entry. Used by the headless MCP binary,
-/// which has no Console panel to feed.
+/// which has no Console panel to feed — hence gated to the `mcp` feature.
+#[cfg(feature = "mcp")]
 pub struct NoopSink;
 
+#[cfg(feature = "mcp")]
 impl LogSink for NoopSink {
     fn log(&self, _entry: LogEntry) {}
 }

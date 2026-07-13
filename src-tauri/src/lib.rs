@@ -21,6 +21,13 @@ mod error;
 mod keepalive;
 mod keychain;
 mod log_bus;
+/// Headless MCP (Model Context Protocol) connector. Compiled only under the
+/// `mcp` feature (see `Cargo.toml`); the `huginndb-mcp` binary in
+/// `src/bin/mcp.rs` is a thin shim over [`mcp::serve`]. Lives inside the lib
+/// crate — not the binary crate — so it can reach the `pub(crate)` `_inner`
+/// data-path functions the desktop commands share.
+#[cfg(feature = "mcp")]
+pub mod mcp;
 mod prefs;
 mod ssh_known_hosts;
 mod state;

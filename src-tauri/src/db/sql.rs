@@ -33,3 +33,39 @@ pub fn is_read_only(sql: &str) -> bool {
         || head.starts_with("explain")
         || head.starts_with("pragma")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::is_read_only;
+
+    #[test]
+    fn classifies_reads_as_read_only() {
+        for sql in [
+            "SELECT * FROM t",
+            "  select 1",
+            "\n\tWITH x AS (SELECT 1) SELECT * FROM x",
+            "SHOW TABLES",
+            "EXPLAIN SELECT 1",
+            "PRAGMA table_info(t)",
+        ] {
+            assert!(is_read_only(sql), "expected read-only: {sql:?}");
+        }
+    }
+
+    #[test]
+    fn classifies_writes_as_not_read_only() {
+        // Backs the MCP `run_query` guard: none of these may pass in the
+        // read-only server mode.
+        for sql in [
+            "UPDATE t SET a = 1",
+            "DELETE FROM t",
+            "INSERT INTO t VALUES (1)",
+            "DROP TABLE t",
+            "CREATE TABLE t (id INT)",
+            "ALTER TABLE t ADD COLUMN c INT",
+            "TRUNCATE t",
+        ] {
+            assert!(!is_read_only(sql), "expected write: {sql:?}");
+        }
+    }
+}

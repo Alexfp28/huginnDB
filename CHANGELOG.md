@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **MCP connector (`huginndb-mcp`).** A headless, read-only [Model Context
+  Protocol](https://modelcontextprotocol.io) server that exposes the databases
+  HuginnDB already knows about — profiles from `profiles.json`, passwords from
+  the OS keychain — to AI coding tools (Claude Code, Claude Desktop, Cursor, …)
+  over stdio, so an assistant can inspect real schema and data instead of
+  guessing. It is a separate process from the desktop app, opens pools lazily,
+  and is **opt-in per profile** (`--connections <id>`): nothing is reachable
+  until you name it. Read-only by default (`run_query` rejects non-read-only
+  SQL; no write tools), with a `--max-rows` cap (default 1000). Ten tools:
+  `list_connections`, `list_databases`, `list_tables`, `describe_table`,
+  `list_indexes`, `run_query`, `browse_table`, `server_version`, `list_users`,
+  `list_privileges`. Built behind an optional `mcp` cargo feature
+  (`cargo build --features mcp --bin huginndb-mcp`), so a normal
+  `pnpm tauri:build` is unaffected. See [`docs/MCP.md`](docs/MCP.md).
+
 ## [1.6.1] — 2026-07-10
 
 ### Added
