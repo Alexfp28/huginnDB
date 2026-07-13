@@ -35,6 +35,7 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 import { getCurrentVersion } from "@/lib/updater";
 import { useWhatsNew } from "@/stores/whatsNew";
 import { WhatsNewDialog } from "@/components/WhatsNewDialog";
+import { DocsDialog } from "@/components/DocsDialog";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
@@ -783,6 +784,7 @@ export default function App() {
       />
       <FeedbackDialog />
       <WhatsNewDialog />
+      <DocsDialog />
       <Toaster
         position="bottom-right"
         theme={activeTheme.mode === "dark" ? "dark" : "light"}

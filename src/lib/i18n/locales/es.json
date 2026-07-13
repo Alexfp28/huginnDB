@@ -757,6 +757,19 @@
     "later": "Más tarde",
     "tooltipUpdateAvailable": "Hay una actualización disponible ({{version}})"
   },
+  "docs": {
+    "menuEntry": "Documentación",
+    "title": "Documentación",
+    "subtitle": "Guías para sacar el máximo partido a HuginnDB.",
+    "updated": "Actualizado {{date}}",
+    "empty": "No hay documentación disponible.",
+    "entries": {
+      "mcp": {
+        "title": "Conector MCP",
+        "description": "Conecta herramientas de IA a tus bases de datos"
+      }
+    }
+  },
   "whatsNew": {
     "menuEntry": "Novedades",
     "title": "Novedades en HuginnDB",
