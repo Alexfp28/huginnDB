@@ -106,3 +106,25 @@ read better with a JavaScript/JSON grammar.
 - **Hook:** `src/lib/monacoSql.ts` providers are language-scoped; register a
   parallel set for `javascript` and switch the model language per driver in
   `QueryEditorTab.tsx`.
+
+### 11. Per-column BSON type in the data grid
+The data grid (both the collection browser and query-editor results) labels
+every column with the generic type `bson`, even though each field has a concrete
+BSON type (`int`, `long`, `string`, `double`, `decimal128`, `date`, `objectId`,
+`null`, …). The information already exists — `bson_type_name` maps every BSON
+variant, and the read-only **structure view** (`infer_columns`) reports the real
+per-field type — but the tabular result path throws it away.
+- **Why deferred:** BSON is schemaless, so within one result set a field can
+  hold different types across rows; `docs_to_result` sidestepped this by pinning
+  a single generic label rather than deciding how to represent a heterogeneous
+  column. (See the comment at `db/mongo/query.rs` where `data_type: "bson"` is
+  set.)
+- **Hook:** infer each column's type in `docs_to_result` (`db/mongo/query.rs`)
+  from the returned documents — walk the rows, take `bson_type_name` of the
+  first non-null value per field, and fall back to a `mixed` label when the
+  non-null values disagree. The same treatment applies to the `distinct`
+  result and the `count` scalar (`scalar_result`, currently also `"bson"`).
+  `bson_type_name` in `db/mongo/values.rs` already produces the exact labels the
+  MongoDB entry of `columnTypesFor` (`src/lib/columnTypes.ts`) expects, so no
+  frontend change is needed for the common (uniform) case; only a new `mixed`
+  label would be novel to the UI.
