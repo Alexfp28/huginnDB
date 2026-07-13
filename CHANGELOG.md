@@ -6,6 +6,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Multi-database connections now show a name in the title bar (#51).** The
+  centred breadcrumb rendered the connection's catalog directly, so a
+  multi-database connection (no single preselected database) left the middle
+  segment blank. It now falls back to the connection name when there is no
+  single database.
+- **The docked side editor no longer keeps a value from another table (#49).**
+  Opening a cell in the side editor and then switching to a different tab left
+  the old value on screen even though you were looking at an unrelated table.
+  The panel is now scoped to the tab that opened the cell: it clears when you
+  switch away (unless the buffer has unsaved edits, which are preserved so a
+  tab switch never drops your work).
+- **The column-resize guideline lands on the real column edge (#46).** The live
+  guideline was positioned from TanStack's nominal column widths, but the grid
+  uses a `table-fixed`/full-width layout that stretches columns past those
+  widths when they don't fill the viewport, so the guideline drifted left of
+  the actual edge (the error grew per column). It now measures the resizing
+  header's rendered position.
+- **MongoDB connections open without a preselected database (#52).** Opening a
+  MongoDB connection in multi-database mode failed with a driver error because
+  listing collections required a selected database, which blanked the whole
+  tree. Listing collections at the cluster level now returns empty (as the SQL
+  drivers already do), so the database list renders and you can expand into a
+  specific database as before.
+- **New windows are independent from the main window (#50).** "New window"
+  opened a window that adopted the main window's live connection — it appeared
+  connected without the user opening anything, contradicting the per-window
+  independence introduced in 1.4.0. The set of open connections is now
+  per-window: a window shows a connection as active only when it opens the pool
+  itself. Shared configuration (saved profiles and preferences) still syncs
+  across windows, and a connection closed in one window is still cleaned up in
+  the others that had it open.
+
 ## [1.6.1] — 2026-07-10
 
 ### Added
