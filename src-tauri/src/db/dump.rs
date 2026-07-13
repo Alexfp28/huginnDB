@@ -305,7 +305,11 @@ pub fn build_insert_statements(
 /// loaded row. `pg_get_serial_sequence`'s arguments are plain string literals
 /// holding the *unquoted* table/column names, not `quote_ident`-quoted
 /// identifiers — do not "fix" that later.
-pub fn pg_sequence_resync_stmt(unquoted_table: &str, unquoted_column: &str, max_value: i64) -> String {
+pub fn pg_sequence_resync_stmt(
+    unquoted_table: &str,
+    unquoted_column: &str,
+    max_value: i64,
+) -> String {
     format!(
         "SELECT setval(pg_get_serial_sequence('{unquoted_table}', '{unquoted_column}'), {max_value}, true)"
     )
@@ -313,5 +317,8 @@ pub fn pg_sequence_resync_stmt(unquoted_table: &str, unquoted_column: &str, max_
 
 /// MySQL: resync an `AUTO_INCREMENT` column after loading explicit PK values.
 pub fn mysql_auto_increment_resync_stmt(qualified_table: &str, max_value: i64) -> String {
-    format!("ALTER TABLE {qualified_table} AUTO_INCREMENT = {}", max_value + 1)
+    format!(
+        "ALTER TABLE {qualified_table} AUTO_INCREMENT = {}",
+        max_value + 1
+    )
 }

@@ -1,6 +1,6 @@
 [package]
 name = "huginndb"
-version = "1.6.1"
+version = "1.7.0"
 description = "HuginnDB — minimal desktop database manager"
 authors = ["HuginnDB contributors"]
 edition = "2021"
@@ -79,6 +79,31 @@ pbkdf2 = { version = "0.12", features = ["simple"] }
 sha2 = "0.10"
 rand = "0.8"
 base64 = "0.22"
+# Headless MCP (Model Context Protocol) connector — see the `mcp` feature and
+# `src/mcp/`. Optional so a normal `tauri:build` never compiles the extra tree.
+# `server` + `transport-io` are all the read-only stdio server needs.
+rmcp = { version = "2.2", features = [
+    "server",
+    "transport-io",
+    "macros",
+], optional = true }
+# Tool-argument JSON Schemas. Kept at the same "1" major rmcp itself pulls, so
+# cargo unifies to a single `schemars` and the derived `JsonSchema` impls are
+# the type rmcp expects. Direct dep (rather than rmcp's re-export) because the
+# derive macro emits absolute `schemars::` paths.
+schemars = { version = "1", optional = true }
+anyhow = { version = "1", optional = true }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+# Compiles the `huginndb-mcp` binary and its `crate::mcp` module. Off by
+# default: `pnpm tauri:build` / `cargo build` produce only the desktop app.
+# Build the connector with `cargo build --features mcp --bin huginndb-mcp`.
+mcp = ["dep:rmcp", "dep:schemars", "dep:anyhow"]
+
+# Headless MCP server. Gated behind `required-features` so it is skipped
+# unless `--features mcp` is passed; the desktop bundle never pulls it in.
+[[bin]]
+name = "huginndb-mcp"
+path = "src/bin/mcp.rs"
+required-features = ["mcp"]

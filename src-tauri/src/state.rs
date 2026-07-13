@@ -338,6 +338,10 @@ impl AppState {
     /// Load any existing profiles, preferences, and tab state from disk;
     /// failures degrade silently to defaults so a corrupted file doesn't
     /// prevent the app from launching.
+    ///
+    /// The desktop app always goes through [`Self::new_with_args`]; this
+    /// argument-less constructor is the headless MCP binary's entry point.
+    #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
     pub fn new() -> Self {
         Self::new_with_args(StartupArgs::default())
     }

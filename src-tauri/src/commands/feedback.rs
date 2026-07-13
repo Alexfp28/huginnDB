@@ -125,7 +125,10 @@ pub async fn submit_issue(report: IssueReport) -> AppResult<IssueOutcome> {
         }
         None => {
             let url = prefilled_issue_url(title, &report.body, &labels)?;
-            Ok(IssueOutcome { url, created: false })
+            Ok(IssueOutcome {
+                url,
+                created: false,
+            })
         }
     }
 }

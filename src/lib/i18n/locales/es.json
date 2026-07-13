@@ -764,6 +764,19 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_7_0": {
+        "tagline": "Lleva tus bases de datos a tus herramientas de IA — HuginnDB ya habla Model Context Protocol.",
+        "items": {
+          "connector": {
+            "title": "Conector MCP para herramientas de IA",
+            "body": "Un nuevo servidor headless `huginndb-mcp` permite que Claude Code, Claude Desktop, Cursor y otros clientes MCP inspeccionen tus bases de datos —esquema, tablas, índices, filas de muestra e info del servidor— usando las conexiones que ya tienes guardadas."
+          },
+          "safety": {
+            "title": "Solo lectura y opt-in por diseño",
+            "body": "No expone nada hasta que nombras una conexión, las consultas son de solo lectura, las contraseñas siguen en el llavero del sistema y un tope de filas mantiene los resultados a raya. Consulta docs/MCP.md para configurar tu cliente."
+          }
+        }
+      },
       "1_6_0": {
         "tagline": "Una renovación de la interfaz de arriba abajo — el mismo HuginnDB keyboard-first, más afilado en cada rincón.",
         "items": {

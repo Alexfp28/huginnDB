@@ -7,7 +7,9 @@
 //! uses ([`DatabaseInfo`], [`TableInfo`], [`ColumnInfo`], [`IndexInfo`]) so the
 //! frontend tree renders MongoDB without a separate code path.
 
-use crate::commands::schema::{ColumnInfo, DatabaseInfo, IndexInfo, PrivilegeInfo, TableInfo, UserInfo};
+use crate::commands::schema::{
+    ColumnInfo, DatabaseInfo, IndexInfo, PrivilegeInfo, TableInfo, UserInfo,
+};
 use crate::db::ddl::{ColumnDef, IndexDef, TableStructure};
 use crate::error::{AppError, AppResult};
 use crate::state::MongoConn;
@@ -284,7 +286,11 @@ pub async fn list_privileges(conn: &MongoConn, user: &str) -> AppResult<Vec<Priv
 
     let mut out = Vec::new();
     for u in users.iter().filter_map(|u| u.as_document()) {
-        let privs = u.get_array("inheritedPrivileges").ok().into_iter().flatten();
+        let privs = u
+            .get_array("inheritedPrivileges")
+            .ok()
+            .into_iter()
+            .flatten();
         for p in privs.filter_map(|p| p.as_document()) {
             let resource = p.get_document("resource").ok();
             let schema = resource

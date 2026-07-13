@@ -127,6 +127,52 @@ impl LogEntry {
     }
 }
 
+/// Abstract destination for [`LogEntry`]s produced by the shared data path.
+///
+/// The GUI ships entries to a specific window over Tauri; the headless
+/// `huginndb-mcp` binary has no window (nor an [`AppHandle`]) and simply
+/// drops them. Threading a `&dyn LogSink` through the query/table-data
+/// functions lets that path stop depending on Tauri directly, so the same
+/// code runs under both the desktop app and the MCP server.
+pub trait LogSink: Send + Sync {
+    /// Record one entry. Fire-and-forget, like [`emit`] — an implementation
+    /// must never fail the originating DB operation.
+    fn log(&self, entry: LogEntry);
+}
+
+/// [`LogSink`] that emits to one window via [`emit`]. Used by the GUI's
+/// `#[tauri::command]` wrappers, which have an [`AppHandle`] and the label of
+/// the invoking window.
+pub struct TauriSink<'a> {
+    app: &'a AppHandle,
+    window_label: String,
+}
+
+impl<'a> TauriSink<'a> {
+    pub fn new(app: &'a AppHandle, window_label: &str) -> Self {
+        Self {
+            app,
+            window_label: window_label.to_string(),
+        }
+    }
+}
+
+impl LogSink for TauriSink<'_> {
+    fn log(&self, entry: LogEntry) {
+        emit(self.app, &self.window_label, entry);
+    }
+}
+
+/// [`LogSink`] that discards every entry. Used by the headless MCP binary,
+/// which has no Console panel to feed — hence gated to the `mcp` feature.
+#[cfg(feature = "mcp")]
+pub struct NoopSink;
+
+#[cfg(feature = "mcp")]
+impl LogSink for NoopSink {
+    fn log(&self, _entry: LogEntry) {}
+}
+
 /// Push an entry onto the bus, targeted at the window that triggered it.
 ///
 /// Uses `emit_to` rather than a broadcast `emit`: every window (main or a

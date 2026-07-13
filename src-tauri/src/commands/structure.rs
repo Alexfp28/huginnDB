@@ -47,7 +47,18 @@ pub async fn get_table_structure(
     schema: Option<String>,
     table: String,
 ) -> AppResult<TableStructure> {
-    let pool = pool_for(state.inner(), &connection_id)?;
+    get_table_structure_inner(state.inner(), &connection_id, schema, table).await
+}
+
+/// Borrowed-state core of [`get_table_structure`], reused by the headless MCP
+/// `describe_table` tool.
+pub async fn get_table_structure_inner(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<TableStructure> {
+    let pool = pool_for(state, connection_id)?;
     match pool {
         DbPool::Postgres(p) => pg_structure(&p, schema, table).await,
         DbPool::Mysql(p) => mysql_structure(&p, schema, table).await,

@@ -21,7 +21,15 @@
  */
 
 import type { LucideIcon } from "lucide-react";
-import { ListTree, Palette, Plug, SquareTerminal, Table2 } from "lucide-react";
+import {
+  Bot,
+  ListTree,
+  Palette,
+  Plug,
+  ShieldCheck,
+  SquareTerminal,
+  Table2,
+} from "lucide-react";
 
 export interface ReleaseHighlight {
   /** lucide icon shown in the highlight's chip. */
@@ -51,6 +59,23 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.7.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_7_0.tagline",
+    highlights: [
+      {
+        icon: Bot,
+        titleKey: "whatsNew.releases.1_7_0.items.connector.title",
+        bodyKey: "whatsNew.releases.1_7_0.items.connector.body",
+      },
+      {
+        icon: ShieldCheck,
+        titleKey: "whatsNew.releases.1_7_0.items.safety.title",
+        bodyKey: "whatsNew.releases.1_7_0.items.safety.body",
+      },
+    ],
+  },
   {
     version: "1.6.0",
     major: true,

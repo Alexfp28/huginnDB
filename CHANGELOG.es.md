@@ -8,6 +8,26 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-07-14
+
+### Añadido
+
+- **Conector MCP (`huginndb-mcp`).** Un servidor [Model Context
+  Protocol](https://modelcontextprotocol.io) headless y de solo lectura que
+  expone a herramientas de IA (Claude Code, Claude Desktop, Cursor, …) las bases
+  de datos que HuginnDB ya conoce —perfiles de `profiles.json`, contraseñas del
+  llavero del sistema— por stdio, para que el asistente inspeccione el esquema y
+  los datos reales en lugar de adivinar. Es un proceso independiente de la app de
+  escritorio, abre los pools de forma perezosa y es **opt-in por perfil**
+  (`--connections <id>`): no expone nada hasta que lo nombras. Solo lectura por
+  defecto (`run_query` rechaza SQL que no sea de lectura; sin herramientas de
+  escritura), con un tope `--max-rows` (1000 por defecto). Diez herramientas:
+  `list_connections`, `list_databases`, `list_tables`, `describe_table`,
+  `list_indexes`, `run_query`, `browse_table`, `server_version`, `list_users`,
+  `list_privileges`. Se compila tras una feature de cargo opcional `mcp`
+  (`cargo build --features mcp --bin huginndb-mcp`), así que un
+  `pnpm tauri:build` normal no se ve afectado. Consulta [`docs/MCP.md`](docs/MCP.md).
+  
 ### Corregido
 
 - **Las conexiones multi-base ahora muestran un nombre en la barra de título
