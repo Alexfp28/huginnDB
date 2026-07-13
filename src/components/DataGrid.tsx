@@ -1296,6 +1296,7 @@ export function DataGrid({
                 {hg.headers.map((h) => (
                   <th
                     key={h.id}
+                    data-col-id={h.column.id}
                     className="relative border-b border-border bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
                     style={{ ...headerStyle, width: h.getSize() }}
                   >
@@ -1859,19 +1860,20 @@ export function DataGrid({
   );
 }
 
-/** Width of the leading row-number / selection column (a manual `<th>`, not a
- *  TanStack column), so the guideline offset lines up with the data columns. */
-const LEADING_COL_WIDTH = 40;
-
 /**
  * Full-height vertical guideline drawn while a column is being resized.
  *
  * With `columnResizeMode: "onEnd"` the committed width doesn't change until the
  * pointer is released, so without this the drag gives no feedback (issue #42).
- * The resizing column's live edge is `getStart() + getSize() + deltaOffset`;
- * we add the leading column width and subtract the body's horizontal scroll to
- * land in the wrapper's coordinate space. The component re-renders as TanStack
- * updates `columnSizingInfo` on each pointer move.
+ *
+ * The x position is derived from the resizing header's *rendered* right edge,
+ * not from TanStack's nominal `getStart() + getSize()`: the table is
+ * `table-fixed w-full`, so when the columns don't fill the container the
+ * browser stretches each one past its nominal width and the nominal edge drifts
+ * left of the real one (issue #46). We measure the actual `<th>` rect and add
+ * the live pointer delta. `getBoundingClientRect` already reflects horizontal
+ * scroll, so no separate `scrollLeft` term is needed. The component re-renders
+ * as TanStack updates `columnSizingInfo` on each pointer move.
  */
 function ResizeGuideline({
   table,
@@ -1883,17 +1885,19 @@ function ResizeGuideline({
   const info = table.getState().columnSizingInfo;
   const resizingId = info.isResizingColumn;
   if (!resizingId) return null;
-  const header = table
-    .getFlatHeaders()
-    .find((h) => h.column.id === resizingId);
-  if (!header) return null;
-  const scrollLeft = scrollRef.current?.scrollLeft ?? 0;
+  const container = scrollRef.current;
+  // Positioned ancestor of the guideline (the `relative` wrapper around the
+  // scroll container); the `left` value is relative to it.
+  const wrapper = container?.parentElement;
+  if (!container || !wrapper) return null;
+  const th = container.querySelector<HTMLTableCellElement>(
+    `th[data-col-id="${CSS.escape(resizingId)}"]`,
+  );
+  if (!th) return null;
   const left =
-    LEADING_COL_WIDTH +
-    header.getStart() +
-    header.getSize() +
-    (info.deltaOffset ?? 0) -
-    scrollLeft;
+    th.getBoundingClientRect().right -
+    wrapper.getBoundingClientRect().left +
+    (info.deltaOffset ?? 0);
   return (
     <div
       aria-hidden

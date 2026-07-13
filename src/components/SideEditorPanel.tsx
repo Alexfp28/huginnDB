@@ -5,8 +5,9 @@
  * item, or the "move to side panel" button in the modal editor.
  *
  * Lives in the outer dockview as the `side-editor` panel, so it inherits free
- * resize / dock / float and stays open across tab switches until the user
- * closes it. When no cell is targeted it shows a hint.
+ * resize / dock / float. It is scoped to the tab that opened the cell: it
+ * closes when the user switches to a different tab or that tab is closed (#49),
+ * unless the buffer has unsaved edits. When no cell is targeted it shows a hint.
  *
  * NOTE: we never call `window.confirm`/`alert` here — Tauri's webview blocks
  * the native dialogs ("dialog.confirm not allowed"), so the unsaved-changes
@@ -38,6 +39,9 @@ export function SideEditorPanel() {
   // The open-tabs list, so this out-of-subtree panel can close itself when the
   // tab that opened the current cell goes away.
   const tabs = useTabs((s) => s.tabs);
+  // The active tab id, so the panel can clear when the user navigates to a
+  // *different* table than the one this cell belongs to (#49).
+  const activeId = useTabs((s) => s.activeId);
 
   const [value, setValue] = useState("");
   const [language, setLanguage] = useState<ContentLanguage>("plaintext");
@@ -169,6 +173,22 @@ export function SideEditorPanel() {
       close();
     }
   }, [tabs, target, close]);
+
+  // Clear the panel when the user switches to a different tab than the one that
+  // opened the current cell. The side editor is scoped to its owner tab's view;
+  // keeping a value from a table you're no longer looking at is confusing (#49).
+  // Skipped while the buffer is dirty so a mere tab switch never drops unsaved
+  // edits — the user can save or discard first.
+  useEffect(() => {
+    const owner = loadedTargetRef.current?.ownerId ?? target?.ownerId;
+    if (!owner || owner === activeId) return;
+    const dirty =
+      loadedTargetRef.current !== null &&
+      valueRef.current !== baselineRef.current;
+    if (dirty) return;
+    setPendingTarget(null);
+    close();
+  }, [activeId, target, close]);
 
   if (!target) {
     return (

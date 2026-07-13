@@ -48,6 +48,16 @@ pub async fn list_databases(conn: &MongoConn) -> AppResult<Vec<DatabaseInfo>> {
 /// document counts. Size is left `None` for the MVP — exact per-collection size
 /// needs a `collStats` round-trip per collection (deferred; see the roadmap).
 pub async fn list_collections(conn: &MongoConn) -> AppResult<Vec<TableInfo>> {
+    // A parent cluster connection has no database selected yet — the explorer
+    // browses collections only after the user expands a specific database (a
+    // synthetic `<id>::db::<name>` child pool is opened then). Return empty
+    // rather than erroring via `resolve_db`, mirroring MySQL's `list_tables`
+    // returning `Ok(vec![])` when `SELECT DATABASE()` is NULL. Without this the
+    // frontend's parallel `listDatabases()` + `listTables()` boot probe rejects
+    // and blanks the entire tree for a multi-DB Mongo connection (#52).
+    if conn.database.as_deref().filter(|s| !s.is_empty()).is_none() {
+        return Ok(Vec::new());
+    }
     let db = resolve_db(conn)?;
     let db_name = db.name().to_string();
 
