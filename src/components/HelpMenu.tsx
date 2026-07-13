@@ -5,6 +5,7 @@
  */
 
 import {
+  BookOpen,
   CircleHelp,
   ChevronDown,
   Info,
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/dropdown";
 import { useFeedbackDialog } from "@/stores/feedbackDialog";
 import { useWhatsNew } from "@/stores/whatsNew";
+import { useDocsDialog } from "@/stores/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 
 export function HelpMenu() {
@@ -43,6 +45,13 @@ export function HelpMenu() {
         >
           <Sparkles className="mr-2 h-3.5 w-3.5" />
           {t("whatsNew.menuEntry")}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => useDocsDialog.getState().openTo()}
+          className="text-xs"
+        >
+          <BookOpen className="mr-2 h-3.5 w-3.5" />
+          {t("docs.menuEntry")}
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => useFeedbackDialog.getState().openWith()}
