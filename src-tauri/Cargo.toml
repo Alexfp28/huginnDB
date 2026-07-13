@@ -1,6 +1,11 @@
 [package]
 name = "huginndb"
 version = "1.7.0"
+# Two bin targets exist (the desktop app + the optional `huginndb-mcp`
+# connector), which makes a bare `cargo run` — as `tauri dev` invokes it —
+# ambiguous. Pin the desktop app as the default so the dev flow is unaffected;
+# the MCP binary is still built explicitly via `--bin huginndb-mcp`.
+default-run = "huginndb"
 description = "HuginnDB — minimal desktop database manager"
 authors = ["HuginnDB contributors"]
 edition = "2021"
