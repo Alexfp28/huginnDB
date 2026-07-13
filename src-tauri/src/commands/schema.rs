@@ -131,7 +131,16 @@ pub async fn list_databases(
     state: State<'_, AppState>,
     connection_id: String,
 ) -> AppResult<Vec<DatabaseInfo>> {
-    let pool = pool_for(state.inner(), &connection_id)?;
+    list_databases_inner(state.inner(), &connection_id).await
+}
+
+/// Borrowed-state core of [`list_databases`], reused by the headless MCP
+/// `list_databases` tool.
+pub async fn list_databases_inner(
+    state: &AppState,
+    connection_id: &str,
+) -> AppResult<Vec<DatabaseInfo>> {
+    let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_databases(conn).await;
     }
@@ -278,7 +287,14 @@ pub async fn list_tables(
     connection_id: String,
     _database: Option<String>,
 ) -> AppResult<Vec<TableInfo>> {
-    let pool = pool_for(state.inner(), &connection_id)?;
+    list_tables_inner(state.inner(), &connection_id).await
+}
+
+/// Borrowed-state core of [`list_tables`], reused by the headless MCP
+/// `list_tables` tool. The `_database` argument the command accepts is unused
+/// (the pool is already bound to one database), so the inner form drops it.
+pub async fn list_tables_inner(state: &AppState, connection_id: &str) -> AppResult<Vec<TableInfo>> {
+    let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_collections(conn).await;
     }
@@ -697,7 +713,18 @@ pub async fn list_indexes(
     schema: Option<String>,
     table: String,
 ) -> AppResult<Vec<IndexInfo>> {
-    let pool = pool_for(state.inner(), &connection_id)?;
+    list_indexes_inner(state.inner(), &connection_id, schema, table).await
+}
+
+/// Borrowed-state core of [`list_indexes`], reused by the headless MCP
+/// `list_indexes` tool.
+pub async fn list_indexes_inner(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<Vec<IndexInfo>> {
+    let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_indexes(conn, &table).await;
     }
@@ -927,7 +954,13 @@ pub async fn server_version(
     state: State<'_, AppState>,
     connection_id: String,
 ) -> AppResult<String> {
-    let pool = pool_for(state.inner(), &connection_id)?;
+    server_version_inner(state.inner(), &connection_id).await
+}
+
+/// Borrowed-state core of [`server_version`], reused by the headless MCP
+/// `server_version` tool.
+pub async fn server_version_inner(state: &AppState, connection_id: &str) -> AppResult<String> {
+    let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let info = conn
             .client
@@ -976,7 +1009,13 @@ pub async fn list_users(
     state: State<'_, AppState>,
     connection_id: String,
 ) -> AppResult<Vec<UserInfo>> {
-    let pool = pool_for(state.inner(), &connection_id)?;
+    list_users_inner(state.inner(), &connection_id).await
+}
+
+/// Borrowed-state core of [`list_users`], reused by the headless MCP
+/// `list_users` tool.
+pub async fn list_users_inner(state: &AppState, connection_id: &str) -> AppResult<Vec<UserInfo>> {
+    let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_users(conn).await;
     }
@@ -1023,15 +1062,18 @@ pub async fn list_users(
                     // we leave every `roles` list empty.
                     let mut role_map: std::collections::HashMap<(String, String), Vec<String>> =
                         std::collections::HashMap::new();
-                    if let Ok(edges) = sqlx::query(
-                        "SELECT TO_USER, TO_HOST, FROM_USER FROM mysql.role_edges",
-                    )
-                    .fetch_all(&p)
-                    .await
+                    if let Ok(edges) =
+                        sqlx::query("SELECT TO_USER, TO_HOST, FROM_USER FROM mysql.role_edges")
+                            .fetch_all(&p)
+                            .await
                     {
                         for e in edges {
-                            let key = (e.get::<String, _>("TO_USER"), e.get::<String, _>("TO_HOST"));
-                            role_map.entry(key).or_default().push(e.get::<String, _>("FROM_USER"));
+                            let key =
+                                (e.get::<String, _>("TO_USER"), e.get::<String, _>("TO_HOST"));
+                            role_map
+                                .entry(key)
+                                .or_default()
+                                .push(e.get::<String, _>("FROM_USER"));
                         }
                     }
                     rows.into_iter()
@@ -1082,7 +1124,17 @@ pub async fn list_privileges(
     connection_id: String,
     user: String,
 ) -> AppResult<Vec<PrivilegeInfo>> {
-    let pool = pool_for(state.inner(), &connection_id)?;
+    list_privileges_inner(state.inner(), &connection_id, user).await
+}
+
+/// Borrowed-state core of [`list_privileges`], reused by the headless MCP
+/// `list_privileges` tool.
+pub async fn list_privileges_inner(
+    state: &AppState,
+    connection_id: &str,
+    user: String,
+) -> AppResult<Vec<PrivilegeInfo>> {
+    let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_privileges(conn, &user).await;
     }

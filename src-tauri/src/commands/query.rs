@@ -19,7 +19,7 @@ use crate::db::values::{
     mysql_columns, mysql_value, pg_columns, pg_value, sqlite_columns, sqlite_value,
 };
 use crate::error::{AppError, AppResult};
-use crate::log_bus::{self, LogEntry, LogKind};
+use crate::log_bus::{self, LogEntry, LogKind, LogSink};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -43,19 +43,17 @@ fn driver_str(pool: &DbPool) -> &'static str {
     }
 }
 
-/// Emit a SQL log entry after a statement has finished (successfully or
-/// otherwise). Pulled out so every call site stays a single line.
+/// Build the SQL [`LogEntry`] shared by the window- and sink-targeted
+/// emitters below, so the field population lives in exactly one place.
 #[allow(clippy::too_many_arguments)]
-fn log_sql(
-    app: &AppHandle,
-    window_label: &str,
+fn build_sql_entry(
     connection_id: &str,
     driver: &str,
     sql: &str,
     start: Instant,
     rows_affected: Option<u64>,
     error: Option<&str>,
-) {
+) -> LogEntry {
     let mut entry = LogEntry::new(LogKind::Sql)
         .connection_id(connection_id)
         .driver(driver)
@@ -67,7 +65,43 @@ fn log_sql(
     if let Some(e) = error {
         entry = entry.error(e);
     }
+    entry
+}
+
+/// Emit a SQL log entry to a specific window after a statement finished.
+/// Used by the GUI-only command handlers (batch, cell edits) that hold an
+/// [`AppHandle`] and a window label. The MCP-exposed data path uses
+/// [`log_sql_sink`] instead.
+#[allow(clippy::too_many_arguments)]
+fn log_sql(
+    app: &AppHandle,
+    window_label: &str,
+    connection_id: &str,
+    driver: &str,
+    sql: &str,
+    start: Instant,
+    rows_affected: Option<u64>,
+    error: Option<&str>,
+) {
+    let entry = build_sql_entry(connection_id, driver, sql, start, rows_affected, error);
     log_bus::emit(app, window_label, entry);
+}
+
+/// Emit a SQL log entry through a [`LogSink`]. Used by the Tauri-independent
+/// data path ([`execute_with_state`], [`fetch_table_data_inner`]) so the same
+/// code can run under the GUI (a `TauriSink`) or the headless MCP binary (a
+/// `NoopSink`).
+fn log_sql_sink(
+    sink: &dyn LogSink,
+    connection_id: &str,
+    driver: &str,
+    sql: &str,
+    start: Instant,
+    rows_affected: Option<u64>,
+    error: Option<&str>,
+) {
+    let entry = build_sql_entry(connection_id, driver, sql, start, rows_affected, error);
+    sink.log(entry);
 }
 
 /// Unwrap a `Result<_, sqlx::Error>` produced by a SQL call and, on
@@ -88,6 +122,22 @@ macro_rules! try_sql {
             Err(e) => {
                 let msg = e.to_string();
                 log_sql($app, $window, $cid, $driver, $sql, $start, None, Some(&msg));
+                return Err(e.into());
+            }
+        }
+    };
+}
+
+/// [`try_sql!`] variant for the sink-based data path: logs the failure
+/// through a [`LogSink`] rather than to a specific window. See
+/// [`execute_with_state`] / [`fetch_table_data_inner`].
+macro_rules! try_sql_sink {
+    ($sink:expr, $cid:expr, $driver:expr, $sql:expr, $start:expr, $res:expr) => {
+        match $res {
+            Ok(v) => v,
+            Err(e) => {
+                let msg = e.to_string();
+                log_sql_sink($sink, $cid, $driver, $sql, $start, None, Some(&msg));
                 return Err(e.into());
             }
         }
@@ -296,19 +346,19 @@ pub async fn execute_query(
     connection_id: String,
     sql: String,
 ) -> AppResult<QueryResult> {
-    execute_with_state(&app, window.label(), state.inner(), &connection_id, &sql).await
+    let sink = log_bus::TauriSink::new(&app, window.label());
+    execute_with_state(&sink, state.inner(), &connection_id, &sql).await
 }
 
-/// Shared implementation used by both [`execute_query`] and
-/// [`fetch_table_data`]. Takes a borrowed `AppState` so it can be called
-/// from other command handlers without re-acquiring the Tauri `State`
-/// guard.
+/// Shared implementation used by [`execute_query`] and the headless MCP
+/// `run_query` tool. Takes a borrowed [`AppState`] and a [`LogSink`] so it
+/// can run without a Tauri `State` guard or `AppHandle` — the GUI passes a
+/// `TauriSink`, the MCP binary a `NoopSink`.
 ///
 /// Emits a SQL [`LogEntry`] after every execution path (write, read, and
 /// error) so the Console panel sees the same statement the engine ran.
-async fn execute_with_state(
-    app: &AppHandle,
-    window_label: &str,
+pub(crate) async fn execute_with_state(
+    sink: &dyn LogSink,
     state: &AppState,
     connection_id: &str,
     sql: &str,
@@ -322,9 +372,8 @@ async fn execute_with_state(
     if let DbPool::Mongo(conn) = &pool {
         let result = crate::db::mongo::query::execute(conn, sql).await;
         match &result {
-            Ok(r) => log_sql(
-                app,
-                window_label,
+            Ok(r) => log_sql_sink(
+                sink,
                 connection_id,
                 driver,
                 sql,
@@ -332,9 +381,8 @@ async fn execute_with_state(
                 Some(r.rows_affected),
                 None,
             ),
-            Err(e) => log_sql(
-                app,
-                window_label,
+            Err(e) => log_sql_sink(
+                sink,
                 connection_id,
                 driver,
                 sql,
@@ -362,9 +410,8 @@ async fn execute_with_state(
         // Passing the bare `&str` to `Executor::execute` is what selects the
         // unprepared protocol: a `&str` carries no bound arguments, and sqlx
         // sends argument-less queries via the simple-query (text) protocol.
-        let rows_affected = try_sql!(
-            app,
-            window_label,
+        let rows_affected = try_sql_sink!(
+            sink,
             connection_id,
             driver,
             sql,
@@ -376,9 +423,8 @@ async fn execute_with_state(
                 DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
             }
         );
-        log_sql(
-            app,
-            window_label,
+        log_sql_sink(
+            sink,
             connection_id,
             driver,
             sql,
@@ -397,9 +443,8 @@ async fn execute_with_state(
 
     let (columns, data) = match pool {
         DbPool::Postgres(p) => {
-            let rows = try_sql!(
-                app,
-                window_label,
+            let rows = try_sql_sink!(
+                sink,
                 connection_id,
                 driver,
                 sql,
@@ -409,9 +454,8 @@ async fn execute_with_state(
             pg_result(&rows)
         }
         DbPool::Mysql(p) => {
-            let rows = try_sql!(
-                app,
-                window_label,
+            let rows = try_sql_sink!(
+                sink,
                 connection_id,
                 driver,
                 sql,
@@ -421,9 +465,8 @@ async fn execute_with_state(
             mysql_result(&rows)
         }
         DbPool::Sqlite(p) => {
-            let rows = try_sql!(
-                app,
-                window_label,
+            let rows = try_sql_sink!(
+                sink,
                 connection_id,
                 driver,
                 sql,
@@ -441,9 +484,8 @@ async fn execute_with_state(
         elapsed_ms: start.elapsed().as_millis() as u64,
         total: None,
     };
-    log_sql(
-        app,
-        window_label,
+    log_sql_sink(
+        sink,
         connection_id,
         driver,
         sql,
@@ -795,8 +837,44 @@ pub async fn fetch_table_data(
     // interaction. Defaults to `true` (count) when omitted.
     with_count: Option<bool>,
 ) -> AppResult<QueryResult> {
-    let window_label = window.label();
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let sink = log_bus::TauriSink::new(&app, window.label());
+    fetch_table_data_inner(
+        &sink,
+        state.inner(),
+        connection_id,
+        schema,
+        table,
+        limit,
+        offset,
+        order,
+        filters,
+        search,
+        search_columns,
+        with_count,
+    )
+    .await
+}
+
+/// Tauri-independent core of [`fetch_table_data`], reused by the headless MCP
+/// `browse_table` tool. Takes a borrowed [`AppState`] and a [`LogSink`] (a
+/// `TauriSink` in the GUI, a `NoopSink` under MCP) instead of the Tauri
+/// `State` guard + `AppHandle`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn fetch_table_data_inner(
+    sink: &dyn LogSink,
+    state: &AppState,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+    limit: i64,
+    offset: i64,
+    order: Option<Vec<SortSpec>>,
+    filters: Option<Vec<ColumnFilter>>,
+    search: Option<String>,
+    search_columns: Option<Vec<String>>,
+    with_count: Option<bool>,
+) -> AppResult<QueryResult> {
+    let pool = pool_for(state, &connection_id)?;
 
     // MongoDB browse: delegate to the mongo module (find + count). Clone the
     // option args so the SQL path below — though unreachable for mongo — still
@@ -879,9 +957,8 @@ pub async fn fetch_table_data(
             for b in &where_binds {
                 q = q.bind(b);
             }
-            let rows = try_sql!(
-                &app,
-                window_label,
+            let rows = try_sql_sink!(
+                sink,
                 &connection_id,
                 driver,
                 &data_sql,
@@ -911,9 +988,8 @@ pub async fn fetch_table_data(
             for b in &where_binds {
                 q = q.bind(b);
             }
-            let rows = try_sql!(
-                &app,
-                window_label,
+            let rows = try_sql_sink!(
+                sink,
                 &connection_id,
                 driver,
                 &data_sql,
@@ -943,9 +1019,8 @@ pub async fn fetch_table_data(
             for b in &where_binds {
                 q = q.bind(b);
             }
-            let rows = try_sql!(
-                &app,
-                window_label,
+            let rows = try_sql_sink!(
+                sink,
                 &connection_id,
                 driver,
                 &data_sql,
@@ -973,9 +1048,8 @@ pub async fn fetch_table_data(
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
     let elapsed_ms = start.elapsed().as_millis() as u64;
-    log_sql(
-        &app,
-        window_label,
+    log_sql_sink(
+        sink,
         &connection_id,
         driver,
         &data_sql,
@@ -989,9 +1063,8 @@ pub async fn fetch_table_data(
     // common case of paging through or re-sorting a large result set.
     let total: Option<u64> = if want_count {
         let count_start = Instant::now();
-        let raw_count: Option<i64> = try_sql!(
-            &app,
-            window_label,
+        let raw_count: Option<i64> = try_sql_sink!(
+            sink,
             &connection_id,
             driver,
             &count_sql,
@@ -1022,9 +1095,8 @@ pub async fn fetch_table_data(
             }
         );
         let total = raw_count.map(|n| n as u64);
-        log_sql(
-            &app,
-            window_label,
+        log_sql_sink(
+            sink,
             &connection_id,
             driver,
             &count_sql,
@@ -1044,7 +1116,7 @@ pub async fn fetch_table_data(
     // its full structure. Only pays the extra introspection query when the
     // page is genuinely empty; a failed lookup degrades to the old empty list.
     let columns = if columns.is_empty() {
-        list_columns_inner(state.inner(), &connection_id, schema, table)
+        list_columns_inner(state, &connection_id, schema, table)
             .await
             .map(|cols| {
                 cols.into_iter()
@@ -1203,14 +1275,19 @@ pub async fn update_cell(
     // rather than silently binding a MySQL BIT column as plain text (issue #15).
     let catalog_bit_cast = is_mysql
         && column_type.is_none()
-        && list_columns_inner(state.inner(), &connection_id, schema_for_catalog, table.clone())
-            .await
-            .map(|cols| {
-                cols.iter().any(|c| {
-                    c.name == column && c.data_type.trim().to_ascii_uppercase().starts_with("BIT")
-                })
+        && list_columns_inner(
+            state.inner(),
+            &connection_id,
+            schema_for_catalog,
+            table.clone(),
+        )
+        .await
+        .map(|cols| {
+            cols.iter().any(|c| {
+                c.name == column && c.data_type.trim().to_ascii_uppercase().starts_with("BIT")
             })
-            .unwrap_or(false);
+        })
+        .unwrap_or(false);
     let bit_cast = is_mysql
         && (column_type
             .as_deref()

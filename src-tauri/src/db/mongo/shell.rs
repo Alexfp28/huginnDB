@@ -159,9 +159,11 @@ fn finish(collection: String, method: &str, args_and_tail: &str) -> AppResult<Pa
             "limit" => limit = Some(first_int(&margs, "limit")?),
             "skip" => skip = Some(first_int(&margs, "skip")?),
             "projection" | "project" => projection = Some(first_doc(&margs, "projection")?),
-            other => return Err(AppError::InvalidInput(format!(
+            other => {
+                return Err(AppError::InvalidInput(format!(
                 "unsupported cursor modifier `.{other}()` (allowed: sort, limit, skip, projection)"
-            ))),
+            )))
+            }
         }
     }
 

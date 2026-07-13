@@ -138,7 +138,12 @@ async fn export_pg(
         let mut stmts = build_create(Driver::Postgres, &structure)?;
         let create = stmts.remove(0);
         let qt = qualified_name(true, structure.schema.as_deref(), &structure.name);
-        cached.push(CachedTable { create, tail: stmts, structure, qt });
+        cached.push(CachedTable {
+            create,
+            tail: stmts,
+            structure,
+            qt,
+        });
     }
 
     for c in &cached {
@@ -152,7 +157,11 @@ async fn export_pg(
             .iter()
             .map(|col| quote_ident(true, &col.name))
             .collect();
-        let auto_idx = c.structure.columns.iter().position(|col| col.auto_increment);
+        let auto_idx = c
+            .structure
+            .columns
+            .iter()
+            .position(|col| col.auto_increment);
 
         let rows = sqlx::query(&format!("SELECT * FROM {}", c.qt))
             .fetch_all(pool)
@@ -210,7 +219,12 @@ async fn export_mysql(
         let mut stmts = build_create(Driver::Mysql, &structure)?;
         let create = stmts.remove(0);
         let qt = qualified_name(false, None, &structure.name);
-        cached.push(CachedTable { create, tail: stmts, structure, qt });
+        cached.push(CachedTable {
+            create,
+            tail: stmts,
+            structure,
+            qt,
+        });
     }
 
     for c in &cached {
@@ -224,7 +238,11 @@ async fn export_mysql(
             .iter()
             .map(|col| quote_ident(false, &col.name))
             .collect();
-        let auto_idx = c.structure.columns.iter().position(|col| col.auto_increment);
+        let auto_idx = c
+            .structure
+            .columns
+            .iter()
+            .position(|col| col.auto_increment);
 
         let rows = sqlx::query(&format!("SELECT * FROM {}", c.qt))
             .fetch_all(pool)
@@ -305,7 +323,11 @@ async fn export_sqlite(w: &mut impl Write, pool: &sqlx::SqlitePool) -> AppResult
             .collect();
         let literal_rows: Vec<Vec<String>> = rows
             .iter()
-            .map(|row| (0..quoted_cols.len()).map(|i| sqlite_literal(row, i)).collect())
+            .map(|row| {
+                (0..quoted_cols.len())
+                    .map(|i| sqlite_literal(row, i))
+                    .collect()
+            })
             .collect();
         for stmt in build_insert_statements(&quoted, &quoted_cols, &literal_rows, BATCH_SIZE) {
             writeln!(w, "{stmt};\n")?;
