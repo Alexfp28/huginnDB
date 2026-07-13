@@ -1,0 +1,13 @@
+# pnpm settings (single-package repo; no `packages:` key — this file only
+# carries config that pnpm reads from here).
+#
+# pnpm v11 blocks dependency build scripts by default; an un-approved script
+# makes `pnpm install` — and the verify-deps check `pnpm run` performs first —
+# exit non-zero, which aborted `pnpm tauri:dev`. esbuild's post-install links
+# its platform binary, so it must be approved. `allowBuilds` is v11's approval
+# map (written by `pnpm approve-builds`); `onlyBuiltDependencies` is kept for
+# older pnpm / CI that still reads it.
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild
