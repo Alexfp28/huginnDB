@@ -27,9 +27,29 @@ cargo build --release --features mcp --bin huginndb-mcp
 
 ## Configuring a client
 
-Point the client at the built binary and name the profile id(s) to expose.
-Example `mcpServers` block (Claude Desktop / Claude Code / Cursor share this
-shape):
+Build the binary first (see [Building](#building)) — every client points at its
+**absolute path** (on Windows, `…\target\release\huginndb-mcp.exe`).
+
+Wherever a snippet says `<profile-id>`, use the stable UUID `id` of the
+connection you want to expose. Find it in the desktop app, or read it from
+`profiles.json` in your platform config dir (`%APPDATA%\HuginnDB` on Windows,
+`~/.config/HuginnDB` on Linux, `~/Library/Application Support/HuginnDB` on
+macOS) — it's the `id` field, not the display `name`. Expose several at once
+with a comma-separated list (`--connections id1,id2`).
+
+### Claude Code (CLI)
+
+```bash
+claude mcp add huginndb -s user -- /absolute/path/to/huginndb-mcp --connections <profile-id>
+```
+
+- The `--` separates the server's command+args from `claude`'s own flags.
+- `-s user` makes it available in every project; use `-s local` (the default)
+  for just the current repo.
+- Check it with `/mcp` inside a session, then try *"with huginndb, list the
+  tables in `<name>` and show me 5 rows of the first one"*.
+
+Equivalent hand-written config (`~/.claude.json`, or a project `.mcp.json`):
 
 ```json
 {
@@ -42,10 +62,44 @@ shape):
 }
 ```
 
-Find a profile id in the desktop app, or read it from `profiles.json` in your
-platform config dir (`%APPDATA%\HuginnDB` on Windows,
-`~/.config/HuginnDB` on Linux, `~/Library/Application Support/HuginnDB` on
-macOS). The `id` is the stable UUID field — not the display `name`.
+### Claude Desktop
+
+Settings → Developer → **Edit Config** opens `claude_desktop_config.json`
+(`%APPDATA%\Claude\` on Windows, `~/Library/Application Support/Claude/` on
+macOS). Add the server and **restart the app**:
+
+```json
+{
+  "mcpServers": {
+    "huginndb": {
+      "command": "C:\\path\\to\\huginndb-mcp.exe",
+      "args": ["--connections", "<profile-id>"]
+    }
+  }
+}
+```
+
+On Windows, double the backslashes in the JSON path (`\\`).
+
+### Codex CLI
+
+Codex reads MCP servers from `~/.codex/config.toml` (TOML — not Claude's JSON).
+Add a `[mcp_servers.<name>]` table:
+
+```toml
+[mcp_servers.huginndb]
+command = "C:\\path\\to\\huginndb-mcp.exe"
+args = ["--connections", "<profile-id>"]
+# optional: startup_timeout_sec = 20
+```
+
+Or add it from the CLI (stdio servers take a `--`-separated command):
+
+```bash
+codex mcp add huginndb -- /absolute/path/to/huginndb-mcp --connections <profile-id>
+```
+
+The tools then show up under the `huginndb` server inside Codex.
 
 ## Command-line flags
 
