@@ -1,25 +1,50 @@
 # MongoDB roadmap
 
-HuginnDB 1.1.0 ships a **read + basic-edit MVP** of the MongoDB driver. This
-document tracks what was deliberately deferred, why, and the technical hook each
-item depends on, so a future version can pick them up without rediscovering the
-context.
+The MongoDB driver started as a **read + basic-edit MVP** in HuginnDB 1.1.0.
+This document tracks what is done and what was deliberately deferred — with the
+technical hook each deferred item depends on — so the eventual "complete the
+MongoDB driver" pass can lean on it without rediscovering the context.
 
 See `CLAUDE.md` for the architecture and `src-tauri/src/db/mongo/` for the
-driver code. The MVP scope is recorded in `CHANGELOG.md` under 1.1.0.
+driver code. Per-release scope lives in `CHANGELOG.md`.
 
-## Shipped in 1.1.0 (for reference)
+**Status legend:** ✅ done · ⏳ deferred (still open as of 1.6.1).
 
+## Done (as of 1.6.1)
+
+Verified against the 1.6.1 tree; grouped by the version that shipped it.
+
+### 1.1.0 — MVP
 - Connect via connection string (`mongodb://` / `mongodb+srv://`), browse
-  databases → collections, inspect documents in the grid + JSON cell preview.
+  databases → collections, inspect documents in the grid + JSON cell preview
+  (`db/mongo/mod.rs`, `schema.rs`).
 - `mongosh`-style editor: `find` / `findOne` / `aggregate` / `countDocuments` /
-  `distinct` + write methods, chained `sort/limit/skip/projection`, relaxed JSON
-  and common BSON constructors.
-- Edit / insert / delete by `_id`; field-type-aware value coercion.
-- Read-only structure (inferred fields + indexes); collection drop.
-- SSH tunnel for single-host `mongodb://`.
+  `distinct` + the write methods (`insertOne/Many`, `updateOne/Many`,
+  `replaceOne`, `deleteOne/Many`), chained `.sort()/.limit()/.skip()/.projection()`,
+  relaxed JSON and common BSON constructors (`shell.rs`, `query.rs`).
+- Edit / insert / delete by `_id`; field-type-aware value coercion (`query.rs`,
+  `values.rs`).
+- Read-only structure (inferred fields + real indexes); collection drop
+  (`schema.rs::table_structure`).
+- SSH tunnel for single-host `mongodb://`; CLI `--driver mongodb` +
+  `--uri`/`--connection-string`.
 
-## Deferred
+### 1.1.1 — connection UX
+- Field-driven connection form (Compass-style) that builds the URI live, with an
+  **Edit connection string** escape hatch for cases the form can't express.
+- Dedicated **auth source** field + CLI `--auth-source`.
+
+### 1.4.0 — introspection
+- Users & privileges introspection for the Security panel via `usersInfo`
+  (`schema.rs::list_users` / `list_privileges`).
+
+### 1.6.x — data grid parity
+- Multi-column sort in the browse path (multi-key sort document, from the
+  ordered `order` list on the fetch command).
+- Skips `count_documents` on pure sort/page changes, mirroring the SQL
+  `COUNT(*)` skip (`with_count` flag).
+
+## Deferred (⏳ still open as of 1.6.1)
 
 ### 1. Index editor
 Create / drop / alter indexes from the structure editor (currently read-only).
@@ -106,3 +131,25 @@ read better with a JavaScript/JSON grammar.
 - **Hook:** `src/lib/monacoSql.ts` providers are language-scoped; register a
   parallel set for `javascript` and switch the model language per driver in
   `QueryEditorTab.tsx`.
+
+### 11. Per-column BSON type in the data grid
+The data grid (both the collection browser and query-editor results) labels
+every column with the generic type `bson`, even though each field has a concrete
+BSON type (`int`, `long`, `string`, `double`, `decimal128`, `date`, `objectId`,
+`null`, …). The information already exists — `bson_type_name` maps every BSON
+variant, and the read-only **structure view** (`infer_columns`) reports the real
+per-field type — but the tabular result path throws it away.
+- **Why deferred:** BSON is schemaless, so within one result set a field can
+  hold different types across rows; `docs_to_result` sidestepped this by pinning
+  a single generic label rather than deciding how to represent a heterogeneous
+  column. (See the comment at `db/mongo/query.rs` where `data_type: "bson"` is
+  set.)
+- **Hook:** infer each column's type in `docs_to_result` (`db/mongo/query.rs`)
+  from the returned documents — walk the rows, take `bson_type_name` of the
+  first non-null value per field, and fall back to a `mixed` label when the
+  non-null values disagree. The same treatment applies to the `distinct`
+  result and the `count` scalar (`scalar_result`, currently also `"bson"`).
+  `bson_type_name` in `db/mongo/values.rs` already produces the exact labels the
+  MongoDB entry of `columnTypesFor` (`src/lib/columnTypes.ts`) expects, so no
+  frontend change is needed for the common (uniform) case; only a new `mixed`
+  label would be novel to the UI.
