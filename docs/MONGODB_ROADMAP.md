@@ -1,25 +1,50 @@
 # MongoDB roadmap
 
-HuginnDB 1.1.0 ships a **read + basic-edit MVP** of the MongoDB driver. This
-document tracks what was deliberately deferred, why, and the technical hook each
-item depends on, so a future version can pick them up without rediscovering the
-context.
+The MongoDB driver started as a **read + basic-edit MVP** in HuginnDB 1.1.0.
+This document tracks what is done and what was deliberately deferred — with the
+technical hook each deferred item depends on — so the eventual "complete the
+MongoDB driver" pass can lean on it without rediscovering the context.
 
 See `CLAUDE.md` for the architecture and `src-tauri/src/db/mongo/` for the
-driver code. The MVP scope is recorded in `CHANGELOG.md` under 1.1.0.
+driver code. Per-release scope lives in `CHANGELOG.md`.
 
-## Shipped in 1.1.0 (for reference)
+**Status legend:** ✅ done · ⏳ deferred (still open as of 1.6.1).
 
+## Done (as of 1.6.1)
+
+Verified against the 1.6.1 tree; grouped by the version that shipped it.
+
+### 1.1.0 — MVP
 - Connect via connection string (`mongodb://` / `mongodb+srv://`), browse
-  databases → collections, inspect documents in the grid + JSON cell preview.
+  databases → collections, inspect documents in the grid + JSON cell preview
+  (`db/mongo/mod.rs`, `schema.rs`).
 - `mongosh`-style editor: `find` / `findOne` / `aggregate` / `countDocuments` /
-  `distinct` + write methods, chained `sort/limit/skip/projection`, relaxed JSON
-  and common BSON constructors.
-- Edit / insert / delete by `_id`; field-type-aware value coercion.
-- Read-only structure (inferred fields + indexes); collection drop.
-- SSH tunnel for single-host `mongodb://`.
+  `distinct` + the write methods (`insertOne/Many`, `updateOne/Many`,
+  `replaceOne`, `deleteOne/Many`), chained `.sort()/.limit()/.skip()/.projection()`,
+  relaxed JSON and common BSON constructors (`shell.rs`, `query.rs`).
+- Edit / insert / delete by `_id`; field-type-aware value coercion (`query.rs`,
+  `values.rs`).
+- Read-only structure (inferred fields + real indexes); collection drop
+  (`schema.rs::table_structure`).
+- SSH tunnel for single-host `mongodb://`; CLI `--driver mongodb` +
+  `--uri`/`--connection-string`.
 
-## Deferred
+### 1.1.1 — connection UX
+- Field-driven connection form (Compass-style) that builds the URI live, with an
+  **Edit connection string** escape hatch for cases the form can't express.
+- Dedicated **auth source** field + CLI `--auth-source`.
+
+### 1.4.0 — introspection
+- Users & privileges introspection for the Security panel via `usersInfo`
+  (`schema.rs::list_users` / `list_privileges`).
+
+### 1.6.x — data grid parity
+- Multi-column sort in the browse path (multi-key sort document, from the
+  ordered `order` list on the fetch command).
+- Skips `count_documents` on pure sort/page changes, mirroring the SQL
+  `COUNT(*)` skip (`with_count` flag).
+
+## Deferred (⏳ still open as of 1.6.1)
 
 ### 1. Index editor
 Create / drop / alter indexes from the structure editor (currently read-only).
