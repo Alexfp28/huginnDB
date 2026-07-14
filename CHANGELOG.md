@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-07-14
+
 ### Fixed
 
 - **MongoDB Security panel works on multi-database connections.** The 1.7.0 fix

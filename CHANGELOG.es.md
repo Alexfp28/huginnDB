@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-07-14
+
 ### Corregido
 
 - **El panel de Seguridad de MongoDB funciona en conexiones multi-base de

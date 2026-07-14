@@ -63,34 +63,34 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.7.2",
+    version: "1.8.0",
     major: true,
-    taglineKey: "whatsNew.releases.1_7_2.tagline",
+    taglineKey: "whatsNew.releases.1_8_0.tagline",
     highlights: [
       {
         icon: ShieldCheck,
-        titleKey: "whatsNew.releases.1_7_2.items.security.title",
-        bodyKey: "whatsNew.releases.1_7_2.items.security.body",
+        titleKey: "whatsNew.releases.1_8_0.items.security.title",
+        bodyKey: "whatsNew.releases.1_8_0.items.security.body",
       },
       {
         icon: Bot,
-        titleKey: "whatsNew.releases.1_7_2.items.mcpMongo.title",
-        bodyKey: "whatsNew.releases.1_7_2.items.mcpMongo.body",
+        titleKey: "whatsNew.releases.1_8_0.items.mcpMongo.title",
+        bodyKey: "whatsNew.releases.1_8_0.items.mcpMongo.body",
       },
       {
         icon: Target,
-        titleKey: "whatsNew.releases.1_7_2.items.mcpMongoDatabase.title",
-        bodyKey: "whatsNew.releases.1_7_2.items.mcpMongoDatabase.body",
+        titleKey: "whatsNew.releases.1_8_0.items.mcpMongoDatabase.title",
+        bodyKey: "whatsNew.releases.1_8_0.items.mcpMongoDatabase.body",
       },
       {
         icon: Tags,
-        titleKey: "whatsNew.releases.1_7_2.items.columnTypes.title",
-        bodyKey: "whatsNew.releases.1_7_2.items.columnTypes.body",
+        titleKey: "whatsNew.releases.1_8_0.items.columnTypes.title",
+        bodyKey: "whatsNew.releases.1_8_0.items.columnTypes.body",
       },
       {
         icon: HardDrive,
-        titleKey: "whatsNew.releases.1_7_2.items.collectionSize.title",
-        bodyKey: "whatsNew.releases.1_7_2.items.collectionSize.body",
+        titleKey: "whatsNew.releases.1_8_0.items.collectionSize.title",
+        bodyKey: "whatsNew.releases.1_8_0.items.collectionSize.body",
       },
     ],
   },

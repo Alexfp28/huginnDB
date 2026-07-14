@@ -8,11 +8,11 @@ MongoDB driver" pass can lean on it without rediscovering the context.
 See `CLAUDE.md` for the architecture and `src-tauri/src/db/mongo/` for the
 driver code. Per-release scope lives in `CHANGELOG.md`.
 
-**Status legend:** ✅ done · ⏳ deferred (still open as of 1.7.2).
+**Status legend:** ✅ done · ⏳ deferred (still open as of 1.8.0).
 
-## Done (as of 1.7.2)
+## Done (as of 1.8.0)
 
-Verified against the 1.7.2 tree; grouped by the version that shipped it.
+Verified against the 1.8.0 tree; grouped by the version that shipped it.
 
 ### 1.1.0 — MVP
 - Connect via connection string (`mongodb://` / `mongodb+srv://`), browse
@@ -51,7 +51,7 @@ Verified against the 1.7.2 tree; grouped by the version that shipped it.
   `list_collections` returns `[]` at the cluster level, mirroring the SQL
   drivers, instead of failing the whole tree (#52).
 
-### 1.7.2 — multi-DB + MCP parity
+### 1.8.0 — multi-DB + MCP parity
 Closes the gaps #51/#52 left open, and generalizes the MCP connector
 (`huginndb-mcp`, see `docs/MCP_CONNECTOR_ROADMAP.md`) for MongoDB, which had
 been getting noticeably less attention than the SQL drivers.
@@ -123,7 +123,7 @@ work but a larger scope than this pass; flagging them here rather than in
 `docs/MCP_CONNECTOR_ROADMAP.md`, which is scoped to the (now fully-implemented)
 MCP server build-out itself, not per-driver tool quality.
 
-## Deferred (⏳ still open as of 1.7.2)
+## Deferred (⏳ still open as of 1.8.0)
 
 ### 1. Index editor
 Create / drop / alter indexes from the structure editor (currently read-only).
@@ -177,7 +177,7 @@ Tunnel `mongodb+srv://` (Atlas) connections.
   `direct_connection = false`.
 
 ### 7. Collection size in the explorer
-✅ **Fixed in 1.7.2 — see the "1.7.2 — multi-DB + MCP parity" entry above.**
+✅ **Fixed in 1.8.0 — see the "1.8.0 — multi-DB + MCP parity" entry above.**
 (Number kept stable so cross-references elsewhere don't drift.)
 
 ### 8. Table ⇄ JSON view toggle
@@ -208,5 +208,5 @@ read better with a JavaScript/JSON grammar.
   `QueryEditorTab.tsx`.
 
 ### 11. Per-column BSON type in the data grid
-✅ **Fixed in 1.7.2 — see the "1.7.2 — multi-DB + MCP parity" entry above.**
+✅ **Fixed in 1.8.0 — see the "1.8.0 — multi-DB + MCP parity" entry above.**
 (Number kept stable so cross-references elsewhere don't drift.)

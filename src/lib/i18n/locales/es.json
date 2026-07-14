@@ -795,7 +795,7 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
-      "1_7_2": {
+      "1_8_0": {
         "tagline": "MongoDB se pone al día: las conexiones multi-base y el conector MCP ganan paridad real con los drivers SQL.",
         "items": {
           "security": {

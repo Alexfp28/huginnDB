@@ -795,7 +795,7 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
-      "1_7_2": {
+      "1_8_0": {
         "tagline": "MongoDB catches up: multi-database connections and the MCP connector both get real driver parity.",
         "items": {
           "security": {
