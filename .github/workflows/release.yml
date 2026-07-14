@@ -107,19 +107,23 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # GitHub-hosted Windows runners intermittently have Windows Defender's
-      # real-time scanner lock/quarantine the WiX v3 binaries right after
-      # tauri-action downloads wix314-binaries.zip into %LOCALAPPDATA%\tauri:
-      # candle.exe still runs (already scanned) but light.exe then fails to
-      # even launch, with a bare "failed to run ... light.exe" and no WiX
-      # error code. This is known Windows-runner flakiness (tauri-apps/tauri
-      # #4376, #6209, #10453), not a project bug — 1.6.1 built fine four days
-      # earlier with this same workflow. Excluding the WiX cache dir from AV
-      # scanning avoids the race.
-      - name: Exclude WiX toolset cache from Windows Defender
+      # 1.7.0 reliably fails WiX bundling with a bare "failed to run
+      # ...WixTools314\light.exe" (no WiX error code) right after candle.exe
+      # has already run successfully against the same binaries. A Windows
+      # Defender exclusion for the WiX cache dir (tried first) made zero
+      # difference, which rules out AV interference. The actual cause: the
+      # `windows-latest` runner image moved to Windows Server 2025
+      # (`windows-2025-vs2026`) between the 1.6.1 build (2026-07-09) and this
+      # one — confirmed from the job's own "Operating System" banner — and
+      # that OS ships VBScript only as an optional Feature-on-Demand. WiX v3's
+      # light.exe needs the VBScript engine for its ICE validation step and
+      # fails to even launch without it; Tauri's own Windows installer guide
+      # now documents this exact symptom (tauri-apps/tauri#13752, #13336).
+      # Install the capability before building.
+      - name: Install VBScript (required by WiX v3 on Windows Server 2025+)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
-        run: Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\tauri"
+        run: DISM /Online /Add-Capability /CapabilityName:VBSCRIPT~~~~
 
       - name: Build and publish draft release
         uses: tauri-apps/tauri-action@v0
