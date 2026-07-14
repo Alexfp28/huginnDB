@@ -8,11 +8,11 @@ MongoDB driver" pass can lean on it without rediscovering the context.
 See `CLAUDE.md` for the architecture and `src-tauri/src/db/mongo/` for the
 driver code. Per-release scope lives in `CHANGELOG.md`.
 
-**Status legend:** ✅ done · ⏳ deferred (still open as of 1.6.1).
+**Status legend:** ✅ done · ⏳ deferred (still open as of 1.7.2).
 
-## Done (as of 1.6.1)
+## Done (as of 1.7.2)
 
-Verified against the 1.6.1 tree; grouped by the version that shipped it.
+Verified against the 1.7.2 tree; grouped by the version that shipped it.
 
 ### 1.1.0 — MVP
 - Connect via connection string (`mongodb://` / `mongodb+srv://`), browse
@@ -44,7 +44,60 @@ Verified against the 1.6.1 tree; grouped by the version that shipped it.
 - Skips `count_documents` on pure sort/page changes, mirroring the SQL
   `COUNT(*)` skip (`with_count` flag).
 
-## Deferred (⏳ still open as of 1.6.1)
+### 1.7.0 — multi-DB connections
+- Multi-database connections show a name in the title bar instead of a blank
+  breadcrumb (#51).
+- Opening a MongoDB connection with no preselected database no longer errors:
+  `list_collections` returns `[]` at the cluster level, mirroring the SQL
+  drivers, instead of failing the whole tree (#52).
+
+### 1.7.2 — multi-DB + MCP parity
+Closes the gaps #51/#52 left open, and generalizes the MCP connector
+(`huginndb-mcp`, see `docs/MCP_CONNECTOR_ROADMAP.md`) for MongoDB, which had
+been getting noticeably less attention than the SQL drivers.
+
+- **Security panel in multi-DB connections.** `list_users`/`list_privileges`
+  (`schema.rs`) still called `resolve_db(conn)?` unconditionally — the #52 fix
+  only covered `list_collections`, not these two sibling functions, so opening
+  the Security tab on a cluster-level connection (no database selected) still
+  threw "no database selected". Both now run cluster-wide via `usersInfo` with
+  `forAllDBs: true` against the `admin` database when no database is selected
+  (mirroring `ping()`'s existing cluster-level probe), falling back to today's
+  per-database behavior otherwise.
+- **MCP `run_query` no longer blocks MongoDB reads.** The read-only gate in
+  `mcp/mod.rs` used the plain-SQL keyword classifier
+  (`db::sql::is_read_only`, recognising only `select/with/show/explain/pragma`)
+  before dispatching — a mongosh read like `db.coll.find({...})` never matches
+  any of those, so **every** MongoDB `run_query` call was rejected by default,
+  unless the server ran with the global `--allow-writes` flag (which also
+  unlocks real SQL writes). The desktop query editor never had this problem
+  because it dispatches Mongo before the generic gate and lets
+  `MongoOp::is_read()` (`shell.rs`) classify the statement; `run_query` now
+  does the same for Mongo connections.
+- **Per-column BSON type in query/browse results** (was deferred item #11
+  below — see its former write-up for the reasoning). `docs_to_result` /
+  `scalar_result` / the `distinct` result in `db/mongo/query.rs` now infer each
+  column's real BSON type (`int`, `string`, `date`, `objectId`, …, or `mixed`
+  on disagreement) instead of the generic `"bson"` label — this also improves
+  what an MCP client sees from `run_query`/`browse_table`.
+- **Collection size in the explorer** (was deferred item #7 below). A single
+  `$collStats` aggregation run at the database level (`db.aggregate([{$collStats:
+  {storageStats: {}}}])`) returns storage stats for every collection in one
+  round trip, avoiding the N+1 cost the original deferral was worried about.
+  Best-effort: an older server or an insufficiently-privileged role just leaves
+  sizes unknown instead of failing the listing.
+
+**Remaining MCP/MongoDB gap, deliberately not addressed here:** `describe_table`
+still reports the heuristic, sample-based columns from `infer_columns` (no real
+catalog to read, unlike the SQL drivers — see item #9's schema-variance note for
+the related idea of surfacing sample confidence), and the MCP server has no
+per-driver capability negotiation — every tool advertises identically
+regardless of which driver a connection uses. Both are real generalization
+work but a larger scope than this pass; flagging them here rather than in
+`docs/MCP_CONNECTOR_ROADMAP.md`, which is scoped to the (now fully-implemented)
+MCP server build-out itself, not per-driver tool quality.
+
+## Deferred (⏳ still open as of 1.7.2)
 
 ### 1. Index editor
 Create / drop / alter indexes from the structure editor (currently read-only).
@@ -98,12 +151,8 @@ Tunnel `mongodb+srv://` (Atlas) connections.
   `direct_connection = false`.
 
 ### 7. Collection size in the explorer
-`size_bytes` is currently `None` for collections.
-- **Why deferred:** exact size needs a `collStats` round-trip per collection,
-  an N+1 cost the MVP avoided (it uses the cheap `estimated_document_count` for
-  row counts only).
-- **Hook:** `db.run_command({collStats: name})` in `list_collections`, ideally
-  batched or lazy.
+✅ **Fixed in 1.7.2 — see the "1.7.2 — multi-DB + MCP parity" entry above.**
+(Number kept stable so cross-references elsewhere don't drift.)
 
 ### 8. Table ⇄ JSON view toggle
 A dedicated per-tab toggle between the flattened table grid and a raw
@@ -133,23 +182,5 @@ read better with a JavaScript/JSON grammar.
   `QueryEditorTab.tsx`.
 
 ### 11. Per-column BSON type in the data grid
-The data grid (both the collection browser and query-editor results) labels
-every column with the generic type `bson`, even though each field has a concrete
-BSON type (`int`, `long`, `string`, `double`, `decimal128`, `date`, `objectId`,
-`null`, …). The information already exists — `bson_type_name` maps every BSON
-variant, and the read-only **structure view** (`infer_columns`) reports the real
-per-field type — but the tabular result path throws it away.
-- **Why deferred:** BSON is schemaless, so within one result set a field can
-  hold different types across rows; `docs_to_result` sidestepped this by pinning
-  a single generic label rather than deciding how to represent a heterogeneous
-  column. (See the comment at `db/mongo/query.rs` where `data_type: "bson"` is
-  set.)
-- **Hook:** infer each column's type in `docs_to_result` (`db/mongo/query.rs`)
-  from the returned documents — walk the rows, take `bson_type_name` of the
-  first non-null value per field, and fall back to a `mixed` label when the
-  non-null values disagree. The same treatment applies to the `distinct`
-  result and the `count` scalar (`scalar_result`, currently also `"bson"`).
-  `bson_type_name` in `db/mongo/values.rs` already produces the exact labels the
-  MongoDB entry of `columnTypesFor` (`src/lib/columnTypes.ts`) expects, so no
-  frontend change is needed for the common (uniform) case; only a new `mixed`
-  label would be novel to the UI.
+✅ **Fixed in 1.7.2 — see the "1.7.2 — multi-DB + MCP parity" entry above.**
+(Number kept stable so cross-references elsewhere don't drift.)
