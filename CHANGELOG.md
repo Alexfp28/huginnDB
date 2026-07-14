@@ -59,6 +59,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   across windows, and a connection closed in one window is still cleaned up in
   the others that had it open.
 
+### Changed
+
+- **Windows installer switched from MSI (WiX v3) to NSIS.** The release build
+  started failing to bundle the `.msi` on GitHub's Windows runners — WiX v3
+  has been unmaintained/archived since February 2025, and its `light.exe`
+  reliably failed to even launch on the current runner fleet regardless of OS
+  image (Windows Server 2022 or 2025), with no error detail beyond a bare
+  process-launch failure. Tauri officially supports MSI → NSIS as an update
+  path (the reverse is not supported) and the bundled `tauri-cli` here
+  (2.11.1) already includes NSIS's detection of a prior MSI install. Existing
+  installs auto-update to a `-setup.exe` instead of a `.msi`; the installed
+  app itself is unaffected.
+
 ## [1.6.1] — 2026-07-10
 
 ### Added
