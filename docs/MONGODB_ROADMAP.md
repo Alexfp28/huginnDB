@@ -86,6 +86,32 @@ been getting noticeably less attention than the SQL drivers.
   round trip, avoiding the N+1 cost the original deferral was worried about.
   Best-effort: an older server or an insufficiently-privileged role just leaves
   sizes unknown instead of failing the listing.
+- **MCP tools can finally target a database on a multi-DB MongoDB connection.**
+  A real-world MCP session against a multi-DB Mongo connection surfaced that
+  `list_tables`, `describe_table`, `list_indexes`, and `browse_table` all
+  accepted (or, for `list_tables`, didn't even have) a `schema` parameter that
+  was silently **ignored** for MongoDB in `list_tables_inner` /
+  `get_table_structure_inner` / `list_indexes_inner` / `fetch_table_data_inner`
+  — every call on a database-less connection failed with "no database
+  selected", with no way to say which database to use. `run_query` hit the
+  identical error for a bare `db.coll.find()`, and had no parameter for a
+  database at all. The desktop app solves this with `open_database_view`
+  (`commands/connection.rs`), which opens a synthetic per-database pool
+  (`<id>::db::<name>`) when a user expands a database in the explorer — the
+  MCP server had no equivalent gesture. The Mongo half of that function needed
+  no `AppHandle`/`Window` to begin with (a single `mongodb::Client` reaches
+  every database; it's a client clone + database re-tag, no re-auth), so it's
+  now a shared free function (`resolve_mongo_database_view`) the MCP server
+  calls whenever `schema` (or `run_query`'s new `database` parameter) names a
+  database for a Mongo connection with none bound. `getSiblingDB(...)`
+  mid-statement support was considered and deliberately deferred — it needs
+  the executor itself to switch databases per-statement, a bigger change than
+  a resolved-at-call-time parameter; see item #9 below if revisited.
+- **`browse_table`'s `limit`/`offset` now tolerate a numeric string.** Not a
+  MongoDB-specific bug, but found in the same live session: some MCP clients
+  serialize integer arguments as JSON strings despite the advertised
+  `integer` schema, and `serde`'s strict typing rejected `"200"` outright.
+  Both fields now accept either a JSON number or a numeric string.
 
 **Remaining MCP/MongoDB gap, deliberately not addressed here:** `describe_table`
 still reports the heuristic, sample-based columns from `infer_columns` (no real

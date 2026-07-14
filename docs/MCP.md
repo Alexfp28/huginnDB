@@ -139,6 +139,24 @@ Flags accept both `--flag value` and `--flag=value`.
 | `server_version` | The connected engine and version. |
 | `list_users` / `list_privileges` | Server-side users/roles and their grants. |
 
+## MongoDB: targeting a database on a multi-database connection
+
+A MongoDB connection with no default database (`list_connections`'
+`database: ""` — the URI has no `/dbname`) can't run any table-scoped tool
+until it knows which database to use, since there's nothing equivalent to a
+SQL catalog to fall back to. Pass the database name via:
+
+- `schema` on `list_tables`, `describe_table`, `list_indexes`, and
+  `browse_table`.
+- `database` on `run_query` (its bare `sql` has no field for this).
+
+The server resolves this the same way the desktop app's schema explorer does
+when you expand a database — reusing the same MongoDB client and re-tagging
+it, no new connection or re-authentication — and caches it, so repeated calls
+for the same database on the same connection are cheap. A single-database
+connection (one with `/dbname` already in its URI) ignores these — they're
+only needed when `list_connections` shows an empty `database`.
+
 ## Security
 
 - **Read-only.** `run_query` rejects anything that isn't a `SELECT` / `WITH` /
