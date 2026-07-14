@@ -337,24 +337,48 @@ impl Huginn {
         ok_json(&out)
     }
 
-    #[tool(description = "Run a single read-only SQL statement (SELECT / WITH / \
-                          SHOW / EXPLAIN / PRAGMA). Rows are capped by the \
-                          server's --max-rows.")]
+    #[tool(description = "Run a single read-only statement: SQL (SELECT / WITH / \
+                          SHOW / EXPLAIN / PRAGMA) for Postgres/MySQL/SQLite, or a \
+                          mongosh-style read (find/aggregate/countDocuments/distinct) \
+                          for MongoDB. Rows are capped by the server's --max-rows.")]
     async fn run_query(
         &self,
         Parameters(a): Parameters<args::Query>,
     ) -> Result<CallToolResult, ErrorData> {
-        if !self.config.allow_writes && !crate::db::sql::is_read_only(&a.sql) {
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+
+        // The read-only check is driver-aware: plain-SQL keyword matching
+        // (`db::sql::is_read_only`) never recognises mongosh syntax
+        // (`db.coll.find({...})` starts with none of select/with/show/
+        // explain/pragma), so every MongoDB statement used to be rejected
+        // here regardless of `--allow-writes`. `MongoOp::is_read()` is the
+        // same classifier the desktop query editor already relies on (see
+        // `commands::query::execute_with_state`, which dispatches Mongo
+        // *before* the generic gate for this exact reason).
+        let is_mongo = matches!(
+            self.state.connections.read().get(&a.connection_id),
+            Some(crate::state::DbPool::Mongo(_))
+        );
+        let read_only = if is_mongo {
+            crate::db::mongo::shell::parse(&a.sql)
+                .map_err(to_err)?
+                .op
+                .is_read()
+        } else {
+            crate::db::sql::is_read_only(&a.sql)
+        };
+        if !self.config.allow_writes && !read_only {
             return Err(ErrorData::invalid_params(
-                "run_query only accepts read-only statements (SELECT/WITH/SHOW/\
-                 EXPLAIN/PRAGMA); this server runs read-only"
+                "run_query only accepts read-only statements — SELECT/WITH/SHOW/\
+                 EXPLAIN/PRAGMA for SQL drivers, or find/aggregate/countDocuments/\
+                 distinct for MongoDB; this server runs read-only"
                     .to_string(),
                 None,
             ));
         }
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
+
         let mut result = crate::commands::query::execute_with_state(
             &NoopSink,
             &self.state,
@@ -555,6 +579,40 @@ mod tests {
     fn config_allow_writes_false_is_honoured() {
         let c = Config::from_args(&args(&["--allow-writes=false"]));
         assert!(!c.allow_writes);
+    }
+
+    /// Exercises the exact classifier `run_query` uses to gate MongoDB
+    /// statements: `MongoOp::is_read()` on the parsed statement, not
+    /// `db::sql::is_read_only`'s plain-SQL keyword match (which never
+    /// recognises mongosh syntax and used to reject every Mongo read).
+    #[test]
+    fn mongo_run_query_gate_classifies_reads_and_writes() {
+        use crate::db::mongo::shell::parse;
+
+        for read in [
+            "db.users.find({})",
+            "db.users.findOne({_id: 1})",
+            "db.users.aggregate([{$match: {a: 1}}])",
+            "db.users.countDocuments({})",
+            "db.users.distinct('name')",
+        ] {
+            assert!(
+                parse(read).unwrap().op.is_read(),
+                "expected read-only: {read:?}"
+            );
+        }
+
+        for write in [
+            "db.users.insertOne({a: 1})",
+            "db.users.updateOne({}, {$set: {a: 1}})",
+            "db.users.deleteMany({})",
+            "db.users.replaceOne({}, {a: 1})",
+        ] {
+            assert!(
+                !parse(write).unwrap().op.is_read(),
+                "expected write: {write:?}"
+            );
+        }
     }
 
     /// End-to-end exercise of the Tauri-independent `_inner` data path against

@@ -134,7 +134,7 @@ Flags accept both `--flag value` and `--flag=value`.
 | `list_tables` | Tables and views, with approximate row counts and sizes. |
 | `describe_table` | Full structure: columns, types, nullability, PK, FKs, indexes. |
 | `list_indexes` | Indexes on a table and the columns each covers. |
-| `run_query` | Run a single **read-only** SQL statement. |
+| `run_query` | Run a single **read-only** statement (SQL for Postgres/MySQL/SQLite, mongosh-style for MongoDB). |
 | `browse_table` | Browse one page of rows without writing SQL. |
 | `server_version` | The connected engine and version. |
 | `list_users` / `list_privileges` | Server-side users/roles and their grants. |
@@ -142,8 +142,11 @@ Flags accept both `--flag value` and `--flag=value`.
 ## Security
 
 - **Read-only.** `run_query` rejects anything that isn't a `SELECT` / `WITH` /
-  `SHOW` / `EXPLAIN` / `PRAGMA` statement, and no insert/update/delete tools
-  exist in v1.
+  `SHOW` / `EXPLAIN` / `PRAGMA` statement for SQL drivers, or a
+  `find`/`aggregate`/`countDocuments`/`distinct` for MongoDB (the same
+  operation classifier the desktop query editor uses — not a plain-SQL
+  keyword match, so mongosh reads aren't mistaken for writes). No
+  insert/update/delete tools exist in v1.
 - **Opt-in exposure.** Only the profile ids you pass to `--connections` are
   reachable; every other tool call for an unknamed connection is refused.
 - **No new plaintext.** Passwords are read from the OS keychain at connect time,
