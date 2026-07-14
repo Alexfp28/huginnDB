@@ -40,7 +40,7 @@ src/                       frontend
   lib/                     tauri wrapper, themes, constants, monaco-setup
   types.ts                 shared TS types mirroring Rust DTOs
 
-src-tauri/src/             backend
+src-tauri/src/             backend (workspace root; see mcp-server/ below)
   commands/                Tauri command handlers (the public API)
   db/                      pool / sql / values helpers (driver-agnostic)
   keychain.rs              centralised keyring access
@@ -48,6 +48,10 @@ src-tauri/src/             backend
   prefs.rs                 user preferences → prefs.json
   tab_state.rs             per-connection tab state → tab_state.json
   error.rs                 AppError / AppResult
+  mcp/                     MCP connector logic (behind the `mcp` feature)
+
+src-tauri/mcp-server/     sibling crate: the `huginndb-mcp` binary shim
+                           (kept out of the app's own Cargo.toml — gotcha #20)
 ```
 
 Two starter files for new contributors: `src-tauri/src/lib.rs` and `src/App.tsx`.
@@ -99,6 +103,8 @@ These bit us during the first sessions. Don't repeat them.
 18. **SSH tunnel local-port bind falls back to an ephemeral port on collision (`open_tunnel` in `src-tauri/src/db/ssh.rs`).** If the user pinned a fixed `local_port` and something else already holds it (e.g. another hand-opened tunnel on the same port), `TcpListener::bind` fails with `AddrInUse`; instead of breaking the connection we retry `bind(("127.0.0.1", 0))` and let the OS pick a free port. This is transparent because the pool is pointed at the **bound** port returned on `SshTunnelHandle.local_port`, not at `tunnel.local_port`. The saved profile is never rewritten — the override lives only for that tunnel's lifetime. `local_port = 0` (auto) skips the fallback since it can't collide.
 
 19. **`WebviewWindowBuilder::new(...).build()` must be called from an `async fn` Tauri command, never a sync one.** `commands::connection::open_new_window` hit this: a sync command building a new `WebviewWindow` on Windows deadlocks — a documented WebView2 issue — and the symptom is *not* an error, it's a window that renders blank/white and Windows tags "Not Responding". Wrapping the `build()` call in `AppHandle::run_on_main_thread` looked like a fix (the hang went away) but the window still came up blank; only marking the command `async fn` actually works, per Tauri's own docs and [tauri#13963](https://github.com/tauri-apps/tauri/issues/13963). If you add another command that creates a window, make it `async fn` from the start.
+20. **`huginndb-mcp` lives in its own workspace crate (`src-tauri/mcp-server/`), never as a second `[[bin]]` in the app's own `Cargo.toml`.** It used to be exactly that (`src/bin/mcp.rs`, gated behind `required-features = ["mcp"]`), which built and ran fine — until the 1.7.0 release build switched Windows bundling from MSI to NSIS (see below) and immediately broke with `failed to bundle project when getting size of ...\mcp.exe: The system cannot find the file specified`. `tauri-bundler`'s Windows bundling enumerates *every* `[[bin]]` target in the package's own `cargo metadata`, regardless of `required-features` gating, and tries to size/bundle each one — including a binary a normal `pnpm tauri:build` never compiles. This is a known, still-open upstream limitation (tauri-apps/tauri#4807, #14176), not something fixable from `tauri.conf.json` (no config exists to exclude a `[[bin]]` from bundling). The fix is structural: move the extra binary to a sibling workspace package. Since `huginndb-mcp` was already a thin shim over `huginndb_lib::mcp::serve()` (the real logic lives in the lib crate's `mcp` module, still gated behind the `mcp` feature), the split was just a new `Cargo.toml` + `main.rs` in `mcp-server/`, a `[workspace] members = ["mcp-server"]` in the app's `Cargo.toml`, and deleting the old `[[bin]]` block — no logic moved. `cargo metadata` for the `huginndb` package alone now reports exactly one bin target, so tauri-bundler never sees the MCP binary at all. Build it with `cargo build -p huginndb-mcp --release` from `src-tauri/` (not `--features mcp --bin huginndb-mcp` anymore — that flag still *works* since the feature still gates the lib-crate logic, but the binary target it used to select no longer exists in this package).
+21. **Windows installer target is NSIS, not MSI/WiX — don't switch it back without a real reason.** 1.7.0's release build reliably failed bundling the `.msi`: WiX v3 (what `tauri-action` shells out to for MSI) has been archived/unmaintained since February 2025, and its `light.exe` reliably failed to even launch on GitHub's Windows runners — a bare `failed to run ...light.exe`, no WiX diagnostic — regardless of runner OS generation (reproduced identically on both `windows-2022` and the newer `windows-latest`/Server 2025 image GitHub migrated to in June 2026) and regardless of a Windows Defender exclusion or installing the VBSCRIPT optional feature (both ran clean, neither changed the outcome). `candle.exe` always ran fine against the same freshly-downloaded WiX binaries; only `light.exe` failed, matching the historically-known pattern of Defender/AV heuristics flagging that specific binary across the Actions fleet (tauri-apps/tauri#2486, #2640, #10649) — a signature-side issue outside the repo's control, and one WiX v3 will never receive a fix for. `tauri.conf.json`'s `bundle.targets` is `["nsis", "deb", "appimage"]`. Tauri officially supports MSI → NSIS as an update path (not the reverse): the auto-updater's `latest.json` doesn't care about installer format, and NSIS detects a prior WiX MSI install and handles it (a `tauri-bundler` v1.3.0+ capability; the pinned `@tauri-apps/cli` here is 2.11.1, well past it).
 
 ## Workflow
 

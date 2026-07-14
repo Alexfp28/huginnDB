@@ -105,9 +105,11 @@ write-mode ships.
   `transport-io` features). This is the only new dependency and needs the
   maintainer's explicit sign-off (small-tree preference). Alternative:
   hand-roll MCP over JSON-RPC/stdio (more code, no dep).
-- **Location:** `src-tauri/src/bin/mcp.rs` + an `mcp/` module, behind a
-  `mcp` cargo feature / `required-features` so a normal `tauri:build` does not
-  compile it unless asked.
+- **Location:** the logic lives in the `mcp/` module of the desktop app's own
+  library crate, behind an `mcp` cargo feature; the binary shim
+  (`src-tauri/mcp-server/src/main.rs`) is a separate workspace crate so a
+  normal `tauri:build` does not compile or bundle it unless asked (moved out
+  of a `[[bin]]` in the app's own `Cargo.toml` in 1.7.0 — see `CLAUDE.md`).
 - **Startup:** build a headless `AppState` via `AppState::new()`. Open pools
   **lazily** — the first tool call for a given `connection_id` triggers
   `open_pool` with `keychain::require_password(profile.keyring_account())` and

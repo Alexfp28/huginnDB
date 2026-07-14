@@ -1,0 +1,22 @@
+[package]
+name = "huginndb-mcp"
+version = "1.7.0"
+description = "HuginnDB headless MCP (Model Context Protocol) connector"
+authors = ["HuginnDB contributors"]
+edition = "2021"
+rust-version = "1.77"
+
+# A thin shim over `huginndb_lib::mcp::serve` (see src/main.rs); all the logic
+# lives in the library crate. This is a separate workspace member — not a
+# second `[[bin]]` in the tauri app's own Cargo.toml — specifically so
+# tauri-bundler's cargo-metadata scan of the app package never sees it. When
+# it lived there, the NSIS bundler enumerated every `[[bin]]` target
+# regardless of `required-features` gating and tried to size/bundle a binary
+# that a normal `pnpm tauri:build` never compiles, failing with
+# "getting size of ...mcp.exe: The system cannot find the file specified"
+# (tauri-apps/tauri#4807, #14176 — a known, still-open tauri-bundler
+# limitation with multi-bin packages). See CLAUDE.md gotcha for the full story.
+[dependencies]
+huginndb = { path = "..", features = ["mcp"] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"

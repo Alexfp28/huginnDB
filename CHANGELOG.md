@@ -71,6 +71,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   (2.11.1) already includes NSIS's detection of a prior MSI install. Existing
   installs auto-update to a `-setup.exe` instead of a `.msi`; the installed
   app itself is unaffected.
+- **`huginndb-mcp` moved to its own workspace crate (`src-tauri/mcp-server/`).**
+  The NSIS switch above then hit a second, unrelated bundler issue: with more
+  than one `[[bin]]` in a package, `tauri-bundler` tries to size/bundle every
+  declared binary regardless of feature gating, so it went looking for a
+  `huginndb-mcp` build artifact that a normal `pnpm tauri:build` never
+  produces. Moving the (already-thin) binary shim to a sibling crate keeps it
+  entirely out of the app's own `cargo metadata`. Build it with
+  `cargo build -p huginndb-mcp --release` from `src-tauri/` — see
+  [`docs/MCP.md`](docs/MCP.md).
 
 ## [1.6.1] — 2026-07-10
 

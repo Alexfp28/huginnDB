@@ -16,12 +16,14 @@ rationale.
 
 ## Building
 
-The connector is behind an optional `mcp` cargo feature, so a normal
-`pnpm tauri:build` never compiles it. Build it explicitly:
+The connector lives in its own workspace crate (`src-tauri/mcp-server/`), kept
+out of the desktop app's own `Cargo.toml` so a normal `pnpm tauri:build` never
+compiles or bundles it (see the tauri-bundler multi-`[[bin]]` gotcha in
+`CLAUDE.md` for why). Build it explicitly:
 
 ```bash
 cd src-tauri
-cargo build --release --features mcp --bin huginndb-mcp
+cargo build --release -p huginndb-mcp
 # binary at: src-tauri/target/release/huginndb-mcp[.exe]
 ```
 

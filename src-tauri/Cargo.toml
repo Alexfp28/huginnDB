@@ -1,11 +1,14 @@
+# This package is also the workspace root: `mcp-server/` is a sibling crate
+# for the `huginndb-mcp` binary, kept out of this package's own `[[bin]]`
+# list on purpose (see mcp-server/Cargo.toml and CLAUDE.md gotcha #19) so
+# tauri-bundler's Windows bundling never enumerates it.
+[workspace]
+members = ["mcp-server"]
+resolver = "2"
+
 [package]
 name = "huginndb"
 version = "1.7.0"
-# Two bin targets exist (the desktop app + the optional `huginndb-mcp`
-# connector), which makes a bare `cargo run` — as `tauri dev` invokes it —
-# ambiguous. Pin the desktop app as the default so the dev flow is unaffected;
-# the MCP binary is still built explicitly via `--bin huginndb-mcp`.
-default-run = "huginndb"
 description = "HuginnDB — minimal desktop database manager"
 authors = ["HuginnDB contributors"]
 edition = "2021"
@@ -101,14 +104,7 @@ anyhow = { version = "1", optional = true }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
-# Compiles the `huginndb-mcp` binary and its `crate::mcp` module. Off by
-# default: `pnpm tauri:build` / `cargo build` produce only the desktop app.
-# Build the connector with `cargo build --features mcp --bin huginndb-mcp`.
+# Compiles the `crate::mcp` module for the `huginndb-mcp` binary in the
+# sibling `mcp-server` crate. Off by default: `pnpm tauri:build` / a plain
+# `cargo build` here produce only the desktop app.
 mcp = ["dep:rmcp", "dep:schemars", "dep:anyhow"]
-
-# Headless MCP server. Gated behind `required-features` so it is skipped
-# unless `--features mcp` is passed; the desktop bundle never pulls it in.
-[[bin]]
-name = "huginndb-mcp"
-path = "src/bin/mcp.rs"
-required-features = ["mcp"]

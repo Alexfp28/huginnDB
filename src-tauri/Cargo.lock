@@ -2574,6 +2574,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "huginndb-mcp"
+version = "1.7.0"
+dependencies = [
+ "anyhow",
+ "huginndb",
+ "tokio",
+]
+
+[[package]]
 name = "hybrid-array"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

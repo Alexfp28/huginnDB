@@ -63,6 +63,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   conexión cerrada en una ventana se sigue limpiando en las demás que la
   tuvieran abierta.
 
+### Cambiado
+
+- **El instalador de Windows pasa de MSI (WiX v3) a NSIS.** El build de release
+  empezó a fallar al empaquetar el `.msi` en los runners Windows de GitHub —
+  WiX v3 está archivado y sin mantenimiento desde febrero de 2025, y su
+  `light.exe` fallaba de forma sistemática incluso al arrancar en la flota de
+  runners actual, sin importar la imagen del SO (Windows Server 2022 o 2025),
+  con un fallo pelado sin más detalle. Tauri soporta oficialmente MSI → NSIS
+  como ruta de actualización (no al revés), y el `tauri-cli` que ya usa el
+  proyecto (2.11.1) incluye la detección de una instalación MSI previa por
+  parte de NSIS. Las instalaciones existentes reciben un `-setup.exe` en vez
+  de un `.msi`; la app instalada no cambia.
+- **`huginndb-mcp` se traslada a su propio crate del workspace
+  (`src-tauri/mcp-server/`).** El cambio a NSIS anterior destapó un segundo
+  problema, distinto, del bundler: con más de un `[[bin]]` en un paquete,
+  `tauri-bundler` intenta medir/empaquetar todos los binarios declarados sin
+  importar el feature-gating, así que buscaba un artefacto de `huginndb-mcp`
+  que un `pnpm tauri:build` normal nunca produce. Mover el shim (ya era muy
+  fino) a un crate hermano lo saca por completo del `cargo metadata` de la
+  app. Se compila con `cargo build -p huginndb-mcp --release` desde
+  `src-tauri/` — ver [`docs/MCP.md`](docs/MCP.md).
+
 ## [1.6.1] — 2026-07-10
 
 ### Añadido
