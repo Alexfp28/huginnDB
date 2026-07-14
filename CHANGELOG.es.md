@@ -30,6 +30,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   expuesta). El editor de consultas de escritorio nunca tuvo este problema
   porque clasifica las sentencias Mongo con `MongoOp::is_read()` antes de que
   se ejecute el filtro genérico; `run_query` ahora hace lo mismo.
+- **Las tools del MCP ya pueden apuntar a una base concreta en una conexión
+  MongoDB multi-base.** `list_tables`, `describe_table`, `list_indexes` y
+  `browse_table` aceptaban un parámetro `schema` que se ignoraba por completo
+  para MongoDB — cualquier llamada sobre una conexión sin base seleccionada
+  fallaba con "no database selected", sin ninguna forma de indicar qué base
+  usar, y `run_query` no tenía forma de apuntar a una base para un
+  `db.coll.find()` suelto. La app de escritorio resuelve el mismo problema
+  abriendo un pool sintético por base cuando el usuario expande una base en
+  el explorador de esquema; esa lógica no necesitaba `AppHandle`/`Window` de
+  Tauri para empezar, así que ahora se comparte con el servidor MCP, que
+  resuelve el mismo pool por base siempre que `schema` (o el nuevo parámetro
+  `database` de `run_query`) indique una base sobre una conexión sin
+  ninguna vinculada.
+- **`limit`/`offset` de `browse_table` aceptan también un string numérico.**
+  Algunos clientes MCP serializan los argumentos enteros como strings JSON
+  pese al esquema anunciado; ambos campos ahora admiten tanto un número JSON
+  como un string numérico en vez de rechazar la llamada directamente.
 
 ### Añadido
 
