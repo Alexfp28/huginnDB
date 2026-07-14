@@ -110,6 +110,32 @@ impl Config {
     }
 }
 
+/// Deserialize an optional integer that may arrive as a JSON number *or* a
+/// numeric string. Some MCP clients serialize `limit`/`offset` arguments as
+/// strings despite the tool schema advertising `integer` — accepting either
+/// keeps `browse_table` usable instead of hard-rejecting a client's
+/// serialization quirk with an opaque deserialization error.
+fn lenient_opt_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum NumOrString {
+        Num(i64),
+        Str(String),
+    }
+    match Option::<NumOrString>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(NumOrString::Num(n)) => Ok(Some(n)),
+        Some(NumOrString::Str(s)) => s
+            .trim()
+            .parse::<i64>()
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+    }
+}
+
 /// Tool-argument shapes. Each derives [`Deserialize`] (so the `Parameters`
 /// wrapper can parse the JSON-RPC `arguments`) and `JsonSchema` via rmcp's
 /// re-exported `schemars` (so the tool advertises a schema to the client).
@@ -124,10 +150,23 @@ mod args {
     }
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct Tables {
+        pub connection_id: String,
+        /// For MongoDB only: the database to list collections from, when the
+        /// connection has no database bound; see [`Table::schema`]. Ignored
+        /// for SQL drivers (a connection is already bound to one database).
+        #[serde(default)]
+        pub schema: Option<String>,
+    }
+
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Table {
         pub connection_id: String,
         /// Schema / namespace. Omit for the driver default (Postgres
-        /// `public`, MySQL current database, SQLite `main`).
+        /// `public`, MySQL current database, SQLite `main`). For MongoDB,
+        /// this is the **database name** — required when the connection has
+        /// no database bound (see `list_connections`' `database` field);
+        /// opens (or reuses) a per-database view automatically.
         #[serde(default)]
         pub schema: Option<String>,
         pub table: String,
@@ -136,23 +175,35 @@ mod args {
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Query {
         pub connection_id: String,
-        /// A single read-only SQL statement (SELECT / WITH / SHOW / EXPLAIN /
-        /// PRAGMA). Rejected otherwise unless the server runs with
-        /// `--allow-writes`.
+        /// A single read-only statement: SQL (SELECT / WITH / SHOW / EXPLAIN
+        /// / PRAGMA) for Postgres/MySQL/SQLite, or mongosh syntax
+        /// (`db.<collection>.find({...})`) for MongoDB. Rejected otherwise
+        /// unless the server runs with `--allow-writes`.
         pub sql: String,
+        /// MongoDB only: the database `sql`'s `db.<collection>...` should
+        /// target, when the connection has no database bound (see
+        /// `list_connections`' `database` field). Ignored for SQL drivers.
+        #[serde(default)]
+        pub database: Option<String>,
     }
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Browse {
         pub connection_id: String,
+        /// Schema / namespace. For MongoDB, this is the **database name** —
+        /// required when the connection has no database bound; see
+        /// [`Table::schema`].
         #[serde(default)]
         pub schema: Option<String>,
         pub table: String,
         /// Max rows to return this page. Clamped to the server's `--max-rows`.
-        #[serde(default)]
+        /// Accepts a JSON number, or (leniently) a numeric string — some MCP
+        /// clients serialize integer arguments as strings.
+        #[serde(default, deserialize_with = "super::lenient_opt_i64")]
         pub limit: Option<i64>,
-        /// Rows to skip (pagination offset).
-        #[serde(default)]
+        /// Rows to skip (pagination offset). Same lenient number parsing as
+        /// `limit`.
+        #[serde(default, deserialize_with = "super::lenient_opt_i64")]
         pub offset: Option<i64>,
     }
 
@@ -237,6 +288,43 @@ impl Huginn {
         Ok(())
     }
 
+    /// Resolve which connection id a table-scoped (or `run_query`) call
+    /// should actually address. For every driver except MongoDB this is
+    /// always just `connection_id` unchanged — `schema` only ever meant a
+    /// SQL namespace within the already-connected database. For MongoDB,
+    /// `connection_id` may have no database bound at all (a multi-database
+    /// connection, `list_connections`' `database: ""`) — the desktop app
+    /// handles this by opening a synthetic per-database pool when the user
+    /// expands a database in the explorer
+    /// ([`crate::commands::connection::open_database_view`]); the MCP server
+    /// has no equivalent gesture, so `schema` (or `run_query`'s `database`)
+    /// is the caller's only way to say which database a Mongo table/query
+    /// call targets. Reuses the same pure, headless-safe resolver the
+    /// desktop command calls into
+    /// ([`crate::commands::connection::resolve_mongo_database_view`]).
+    async fn resolve_mongo_target(
+        &self,
+        connection_id: &str,
+        schema: Option<&str>,
+    ) -> Result<String, ErrorData> {
+        let is_mongo = matches!(
+            self.state.connections.read().get(connection_id),
+            Some(crate::state::DbPool::Mongo(_))
+        );
+        match schema {
+            Some(db) if is_mongo && !db.is_empty() => {
+                crate::commands::connection::resolve_mongo_database_view(
+                    &self.state,
+                    connection_id,
+                    db,
+                )
+                .await
+                .map_err(to_err)
+            }
+            _ => Ok(connection_id.to_string()),
+        }
+    }
+
     #[tool(description = "List the databases this server is allowed to reach \
                           (profile id, name, driver, host, database, and \
                           whether a pool is currently open).")]
@@ -284,15 +372,21 @@ impl Huginn {
     }
 
     #[tool(description = "List tables and views on a connection, with \
-                          approximate row counts and sizes where available.")]
+                          approximate row counts and sizes where available. \
+                          For MongoDB, pass `schema` (the database name) when \
+                          the connection has no database bound — otherwise \
+                          this returns an empty list.")]
     async fn list_tables(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(a): Parameters<args::Tables>,
     ) -> Result<CallToolResult, ErrorData> {
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
-        let out = crate::commands::schema::list_tables_inner(&self.state, &a.connection_id)
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
+        let out = crate::commands::schema::list_tables_inner(&self.state, &target)
             .await
             .map_err(to_err)?;
         ok_json(&out)
@@ -307,9 +401,12 @@ impl Huginn {
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
         let out = crate::commands::structure::get_table_structure_inner(
             &self.state,
-            &a.connection_id,
+            &target,
             a.schema,
             a.table,
         )
@@ -326,9 +423,12 @@ impl Huginn {
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
         let out = crate::commands::schema::list_indexes_inner(
             &self.state,
-            &a.connection_id,
+            &target,
             a.schema,
             a.table,
         )
@@ -337,32 +437,55 @@ impl Huginn {
         ok_json(&out)
     }
 
-    #[tool(description = "Run a single read-only SQL statement (SELECT / WITH / \
-                          SHOW / EXPLAIN / PRAGMA). Rows are capped by the \
-                          server's --max-rows.")]
+    #[tool(description = "Run a single read-only statement: SQL (SELECT / WITH / \
+                          SHOW / EXPLAIN / PRAGMA) for Postgres/MySQL/SQLite, or a \
+                          mongosh-style read (find/aggregate/countDocuments/distinct) \
+                          for MongoDB. Rows are capped by the server's --max-rows.")]
     async fn run_query(
         &self,
         Parameters(a): Parameters<args::Query>,
     ) -> Result<CallToolResult, ErrorData> {
-        if !self.config.allow_writes && !crate::db::sql::is_read_only(&a.sql) {
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.database.as_deref())
+            .await?;
+
+        // The read-only check is driver-aware: plain-SQL keyword matching
+        // (`db::sql::is_read_only`) never recognises mongosh syntax
+        // (`db.coll.find({...})` starts with none of select/with/show/
+        // explain/pragma), so every MongoDB statement used to be rejected
+        // here regardless of `--allow-writes`. `MongoOp::is_read()` is the
+        // same classifier the desktop query editor already relies on (see
+        // `commands::query::execute_with_state`, which dispatches Mongo
+        // *before* the generic gate for this exact reason).
+        let is_mongo = matches!(
+            self.state.connections.read().get(&target),
+            Some(crate::state::DbPool::Mongo(_))
+        );
+        let read_only = if is_mongo {
+            crate::db::mongo::shell::parse(&a.sql)
+                .map_err(to_err)?
+                .op
+                .is_read()
+        } else {
+            crate::db::sql::is_read_only(&a.sql)
+        };
+        if !self.config.allow_writes && !read_only {
             return Err(ErrorData::invalid_params(
-                "run_query only accepts read-only statements (SELECT/WITH/SHOW/\
-                 EXPLAIN/PRAGMA); this server runs read-only"
+                "run_query only accepts read-only statements — SELECT/WITH/SHOW/\
+                 EXPLAIN/PRAGMA for SQL drivers, or find/aggregate/countDocuments/\
+                 distinct for MongoDB; this server runs read-only"
                     .to_string(),
                 None,
             ));
         }
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let mut result = crate::commands::query::execute_with_state(
-            &NoopSink,
-            &self.state,
-            &a.connection_id,
-            &a.sql,
-        )
-        .await
-        .map_err(to_err)?;
+
+        let mut result =
+            crate::commands::query::execute_with_state(&NoopSink, &self.state, &target, &a.sql)
+                .await
+                .map_err(to_err)?;
         truncate_rows(&mut result, self.config.max_rows);
         ok_json(&result)
     }
@@ -377,6 +500,9 @@ impl Huginn {
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
         let limit = a
             .limit
             .unwrap_or(self.config.max_rows)
@@ -385,7 +511,7 @@ impl Huginn {
         let result = crate::commands::query::fetch_table_data_inner(
             &NoopSink,
             &self.state,
-            a.connection_id,
+            target,
             a.schema,
             a.table,
             limit,
@@ -555,6 +681,66 @@ mod tests {
     fn config_allow_writes_false_is_honoured() {
         let c = Config::from_args(&args(&["--allow-writes=false"]));
         assert!(!c.allow_writes);
+    }
+
+    /// Exercises the exact classifier `run_query` uses to gate MongoDB
+    /// statements: `MongoOp::is_read()` on the parsed statement, not
+    /// `db::sql::is_read_only`'s plain-SQL keyword match (which never
+    /// recognises mongosh syntax and used to reject every Mongo read).
+    #[test]
+    fn mongo_run_query_gate_classifies_reads_and_writes() {
+        use crate::db::mongo::shell::parse;
+
+        for read in [
+            "db.users.find({})",
+            "db.users.findOne({_id: 1})",
+            "db.users.aggregate([{$match: {a: 1}}])",
+            "db.users.countDocuments({})",
+            "db.users.distinct('name')",
+        ] {
+            assert!(
+                parse(read).unwrap().op.is_read(),
+                "expected read-only: {read:?}"
+            );
+        }
+
+        for write in [
+            "db.users.insertOne({a: 1})",
+            "db.users.updateOne({}, {$set: {a: 1}})",
+            "db.users.deleteMany({})",
+            "db.users.replaceOne({}, {a: 1})",
+        ] {
+            assert!(
+                !parse(write).unwrap().op.is_read(),
+                "expected write: {write:?}"
+            );
+        }
+    }
+
+    /// Some MCP clients serialize `limit`/`offset` as JSON strings despite
+    /// the advertised `integer` schema — `browse_table` used to hard-reject
+    /// those calls with an opaque deserialization error.
+    #[test]
+    fn browse_args_accept_limit_as_number_or_string() {
+        let from_number: args::Browse =
+            serde_json::from_str(r#"{"connection_id":"c","table":"t","limit":200}"#).unwrap();
+        assert_eq!(from_number.limit, Some(200));
+
+        let from_string: args::Browse =
+            serde_json::from_str(r#"{"connection_id":"c","table":"t","limit":"200"}"#).unwrap();
+        assert_eq!(from_string.limit, Some(200));
+
+        let absent: args::Browse =
+            serde_json::from_str(r#"{"connection_id":"c","table":"t"}"#).unwrap();
+        assert_eq!(absent.limit, None);
+
+        let explicit_null: args::Browse =
+            serde_json::from_str(r#"{"connection_id":"c","table":"t","limit":null}"#).unwrap();
+        assert_eq!(explicit_null.limit, None);
+
+        let invalid: Result<args::Browse, _> =
+            serde_json::from_str(r#"{"connection_id":"c","table":"t","limit":"not-a-number"}"#);
+        assert!(invalid.is_err());
     }
 
     /// End-to-end exercise of the Tauri-independent `_inner` data path against

@@ -6,6 +6,60 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-07-14
+
+### Fixed
+
+- **MongoDB Security panel works on multi-database connections.** The 1.7.0 fix
+  for #52 taught `list_collections` to return an empty list at the cluster
+  level instead of erroring, but `list_users`/`list_privileges` were never
+  updated the same way — opening the Security tab on a MongoDB connection with
+  no preselected database still threw "no database selected". Both now run
+  cluster-wide via the `usersInfo` command with `forAllDBs: true` against the
+  `admin` database when no database is selected (the same cluster-level
+  pattern the connection health-check ping already used), falling back to the
+  existing per-database behavior otherwise.
+- **MCP `run_query` no longer rejects every MongoDB query.** The read-only
+  guard reused the plain-SQL keyword classifier (`select`/`with`/`show`/
+  `explain`/`pragma`), which a mongosh statement like `db.coll.find({...})`
+  never matches — so any MongoDB read submitted through `huginndb-mcp`'s
+  `run_query` tool was rejected by default, with the only escape hatch being
+  the server-wide `--allow-writes` flag (which also unlocks real SQL writes on
+  every other exposed connection). The desktop query editor never had this
+  problem because it classifies Mongo statements with `MongoOp::is_read()`
+  before the generic gate runs; `run_query` now does the same.
+- **MCP tools can target a database on a multi-database MongoDB connection.**
+  `list_tables`, `describe_table`, `list_indexes`, and `browse_table` accepted
+  a `schema` parameter that was silently ignored for MongoDB — every call on a
+  database-less connection failed with "no database selected", with no way to
+  say which database to use, and `run_query` had no way to target one for a
+  bare `db.coll.find()` either. The desktop app solves the equivalent problem
+  by opening a synthetic per-database pool when a user expands a database in
+  the schema explorer; that logic needed no Tauri `AppHandle`/`Window` to
+  begin with, so it's now shared with the MCP server, which resolves the same
+  per-database pool whenever `schema` (or `run_query`'s new `database`
+  parameter) names a database on a connection with none bound.
+- **`browse_table`'s `limit`/`offset` accept a numeric string.** Some MCP
+  clients serialize integer arguments as JSON strings despite the advertised
+  schema; both fields now parse either a JSON number or a numeric string
+  instead of rejecting the call outright.
+
+### Added
+
+- **Real per-column BSON types in MongoDB query/browse results.** `run_query`,
+  `browse_table`, and the data grid used to label every column with a generic
+  `"bson"` type, even though each field has a concrete BSON type. Columns now
+  report the actual type inferred from the returned documents/values (`int`,
+  `string`, `date`, `objectId`, …), falling back to `"mixed"` when a field's
+  non-null values disagree in type across the result set — an honest answer
+  rather than silently picking one. This also gives AI tools using the MCP
+  connector a real type signal instead of none.
+- **Collection size in the MongoDB explorer.** Collections previously always
+  showed an unknown size. A single `$collStats` aggregation run at the
+  database level now returns storage stats for every collection in one round
+  trip (rather than one `collStats` call per collection), so the explorer can
+  show an on-disk size the same way the SQL drivers do.
+
 ## [1.7.1] — 2026-07-14
 
 ### Added

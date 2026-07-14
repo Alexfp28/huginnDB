@@ -134,16 +134,37 @@ Flags accept both `--flag value` and `--flag=value`.
 | `list_tables` | Tables and views, with approximate row counts and sizes. |
 | `describe_table` | Full structure: columns, types, nullability, PK, FKs, indexes. |
 | `list_indexes` | Indexes on a table and the columns each covers. |
-| `run_query` | Run a single **read-only** SQL statement. |
+| `run_query` | Run a single **read-only** statement (SQL for Postgres/MySQL/SQLite, mongosh-style for MongoDB). |
 | `browse_table` | Browse one page of rows without writing SQL. |
 | `server_version` | The connected engine and version. |
 | `list_users` / `list_privileges` | Server-side users/roles and their grants. |
 
+## MongoDB: targeting a database on a multi-database connection
+
+A MongoDB connection with no default database (`list_connections`'
+`database: ""` — the URI has no `/dbname`) can't run any table-scoped tool
+until it knows which database to use, since there's nothing equivalent to a
+SQL catalog to fall back to. Pass the database name via:
+
+- `schema` on `list_tables`, `describe_table`, `list_indexes`, and
+  `browse_table`.
+- `database` on `run_query` (its bare `sql` has no field for this).
+
+The server resolves this the same way the desktop app's schema explorer does
+when you expand a database — reusing the same MongoDB client and re-tagging
+it, no new connection or re-authentication — and caches it, so repeated calls
+for the same database on the same connection are cheap. A single-database
+connection (one with `/dbname` already in its URI) ignores these — they're
+only needed when `list_connections` shows an empty `database`.
+
 ## Security
 
 - **Read-only.** `run_query` rejects anything that isn't a `SELECT` / `WITH` /
-  `SHOW` / `EXPLAIN` / `PRAGMA` statement, and no insert/update/delete tools
-  exist in v1.
+  `SHOW` / `EXPLAIN` / `PRAGMA` statement for SQL drivers, or a
+  `find`/`aggregate`/`countDocuments`/`distinct` for MongoDB (the same
+  operation classifier the desktop query editor uses — not a plain-SQL
+  keyword match, so mongosh reads aren't mistaken for writes). No
+  insert/update/delete tools exist in v1.
 - **Opt-in exposure.** Only the profile ids you pass to `--connections` are
   reachable; every other tool call for an unknamed connection is refused.
 - **No new plaintext.** Passwords are read from the OS keychain at connect time,

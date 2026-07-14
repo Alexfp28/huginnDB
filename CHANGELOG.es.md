@@ -8,6 +8,66 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-07-14
+
+### Corregido
+
+- **El panel de Seguridad de MongoDB funciona en conexiones multi-base de
+  datos.** El fix de 1.7.0 para #52 enseñó a `list_collections` a devolver una
+  lista vacía a nivel de clúster en vez de dar error, pero `list_users`/
+  `list_privileges` nunca se actualizaron igual — abrir la pestaña de
+  Seguridad en una conexión MongoDB sin base preseleccionada seguía lanzando
+  "no database selected". Ambas funciones ahora operan a nivel de clúster vía
+  el comando `usersInfo` con `forAllDBs: true` contra la base `admin` cuando no
+  hay base seleccionada (el mismo patrón a nivel de clúster que ya usaba el
+  chequeo de salud de la conexión), manteniendo el comportamiento actual por
+  base de datos en el resto de casos.
+- **El `run_query` del MCP ya no rechaza cualquier consulta de MongoDB.** El
+  filtro de solo-lectura reutilizaba el clasificador de palabras clave SQL
+  (`select`/`with`/`show`/`explain`/`pragma`), que una sentencia mongosh como
+  `db.coll.find({...})` nunca cumple — así que cualquier lectura de MongoDB
+  enviada a través de la tool `run_query` de `huginndb-mcp` se rechazaba por
+  defecto, y la única vía de escape era el flag global `--allow-writes` (que
+  además desbloquea escrituras SQL reales en cualquier otra conexión
+  expuesta). El editor de consultas de escritorio nunca tuvo este problema
+  porque clasifica las sentencias Mongo con `MongoOp::is_read()` antes de que
+  se ejecute el filtro genérico; `run_query` ahora hace lo mismo.
+- **Las tools del MCP ya pueden apuntar a una base concreta en una conexión
+  MongoDB multi-base.** `list_tables`, `describe_table`, `list_indexes` y
+  `browse_table` aceptaban un parámetro `schema` que se ignoraba por completo
+  para MongoDB — cualquier llamada sobre una conexión sin base seleccionada
+  fallaba con "no database selected", sin ninguna forma de indicar qué base
+  usar, y `run_query` no tenía forma de apuntar a una base para un
+  `db.coll.find()` suelto. La app de escritorio resuelve el mismo problema
+  abriendo un pool sintético por base cuando el usuario expande una base en
+  el explorador de esquema; esa lógica no necesitaba `AppHandle`/`Window` de
+  Tauri para empezar, así que ahora se comparte con el servidor MCP, que
+  resuelve el mismo pool por base siempre que `schema` (o el nuevo parámetro
+  `database` de `run_query`) indique una base sobre una conexión sin
+  ninguna vinculada.
+- **`limit`/`offset` de `browse_table` aceptan también un string numérico.**
+  Algunos clientes MCP serializan los argumentos enteros como strings JSON
+  pese al esquema anunciado; ambos campos ahora admiten tanto un número JSON
+  como un string numérico en vez de rechazar la llamada directamente.
+
+### Añadido
+
+- **Tipos BSON reales por columna en los resultados de consulta/exploración de
+  MongoDB.** `run_query`, `browse_table` y la grid de datos etiquetaban toda
+  columna con el tipo genérico `"bson"`, aunque cada campo tiene un tipo BSON
+  concreto. Las columnas ahora reportan el tipo real inferido a partir de los
+  documentos/valores devueltos (`int`, `string`, `date`, `objectId`, …),
+  cayendo a `"mixed"` cuando los valores no nulos de un campo discrepan de
+  tipo dentro del mismo resultado — una respuesta honesta en vez de elegir uno
+  en silencio. Esto también da a las herramientas de IA que usan el conector
+  MCP una señal de tipo real en vez de ninguna.
+- **Tamaño de colección en el explorador de MongoDB.** Las colecciones antes
+  siempre mostraban un tamaño desconocido. Una sola agregación `$collStats` a
+  nivel de base de datos ahora devuelve las estadísticas de almacenamiento de
+  todas las colecciones en una sola llamada (en vez de un `collStats` por
+  colección), de forma que el explorador puede mostrar un tamaño en disco
+  igual que ya hacen los drivers SQL.
+
 ## [1.7.1] — 2026-07-14
 
 ### Añadido
