@@ -229,14 +229,31 @@ const SUPERUSER_ROLES: &[&str] = &[
     "atlasAdmin",
 ];
 
+/// Whether the connection has no database selected (the parent cluster
+/// connection before the user expands a specific database in the explorer).
+fn no_database_selected(conn: &MongoConn) -> bool {
+    conn.database.as_deref().filter(|s| !s.is_empty()).is_none()
+}
+
 /// List the users defined on the resolved database via `usersInfo`.
 ///
-/// MongoDB scopes users per-database (not per-cluster), so this mirrors
-/// [`list_collections`] in only covering the database the connection handle
-/// currently targets.
+/// MongoDB scopes users per-database (not per-cluster), so this normally
+/// mirrors [`list_collections`] in only covering the database the connection
+/// handle currently targets. A parent cluster connection has no database to
+/// scope to, though — unlike `list_collections` (which can just return an
+/// empty list, since collections are inherently per-database), "who can log
+/// into this cluster" has a real cluster-wide answer: `usersInfo` accepts
+/// `{forAllDBs: true}` to return every user on every database, run against
+/// any database (`admin` here, mirroring [`ping`]'s cluster-level probe).
 pub async fn list_users(conn: &MongoConn) -> AppResult<Vec<UserInfo>> {
-    let db = resolve_db(conn)?;
-    let result = db.run_command(doc! {"usersInfo": 1}).await?;
+    let result = if no_database_selected(conn) {
+        conn.client
+            .database("admin")
+            .run_command(doc! {"usersInfo": 1, "forAllDBs": true})
+            .await?
+    } else {
+        resolve_db(conn)?.run_command(doc! {"usersInfo": 1}).await?
+    };
     let users = result.get_array("users").cloned().unwrap_or_default();
 
     let mut out: Vec<UserInfo> = users
@@ -273,16 +290,44 @@ pub async fn list_users(conn: &MongoConn) -> AppResult<Vec<UserInfo>> {
 
 /// List `user`'s effective privileges (resource + action) on the resolved
 /// database, via `usersInfo` with `showPrivileges: true`.
+///
+/// Same cluster-wide fallback as [`list_users`]: without a selected database
+/// there is no single `db` to qualify `user` with, so the lookup runs
+/// `{forAllDBs: true}` against `admin` and filters the returned users by name
+/// client-side instead (a user with the same name can exist on more than one
+/// database; privileges from every match are concatenated).
 pub async fn list_privileges(conn: &MongoConn, user: &str) -> AppResult<Vec<PrivilegeInfo>> {
-    let db = resolve_db(conn)?;
-    let db_name = db.name().to_string();
-    let result = db
-        .run_command(doc! {
-            "usersInfo": {"user": user, "db": db_name},
-            "showPrivileges": true,
-        })
-        .await?;
-    let users = result.get_array("users").cloned().unwrap_or_default();
+    let users = if no_database_selected(conn) {
+        let result = conn
+            .client
+            .database("admin")
+            .run_command(doc! {
+                "usersInfo": {"forAllDBs": true},
+                "showPrivileges": true,
+            })
+            .await?;
+        result
+            .get_array("users")
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|u| {
+                u.as_document()
+                    .and_then(|d| d.get_str("user").ok())
+                    .is_some_and(|name| name == user)
+            })
+            .collect()
+    } else {
+        let db = resolve_db(conn)?;
+        let db_name = db.name().to_string();
+        let result = db
+            .run_command(doc! {
+                "usersInfo": {"user": user, "db": db_name},
+                "showPrivileges": true,
+            })
+            .await?;
+        result.get_array("users").cloned().unwrap_or_default()
+    };
 
     let mut out = Vec::new();
     for u in users.iter().filter_map(|u| u.as_document()) {
