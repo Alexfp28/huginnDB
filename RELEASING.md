@@ -1,6 +1,6 @@
 # Releasing HuginnDB
 
-Cutting a release is a matter of bumping the version, pushing a tag, reviewing the draft release that the CI workflow produces, and clicking **Publish**. The actual `.msi` is built by GitHub Actions, not on the maintainer's machine.
+Cutting a release is a matter of bumping the version, pushing a tag, reviewing the draft release that the CI workflow produces, and clicking **Publish**. The actual installer is built by GitHub Actions, not on the maintainer's machine — a Windows `-setup.exe` (NSIS; see CLAUDE.md gotcha #21 for why not MSI/WiX), plus a Linux `.deb`/`.AppImage` if that leg of the build matrix is enabled.
 
 ## One-time setup — signing keys
 
@@ -50,13 +50,14 @@ Go to **Settings → Secrets and variables → Actions → New repository secret
   git push origin v0.2.1-rc1
   ```
 
-  Then check **Actions → release**. The job should finish green and create a draft release containing the `.msi` **and** a `latest.json` whose `signature` field is non-empty.
+  Then check **Actions → release**. The job should finish green and create a draft release containing the installer **and** a `latest.json` whose `signature` field is non-empty.
 - Don't publish the draft if you don't want this to become the "latest" release; just delete it after the check.
 
 ## Regular release flow
 
-1. Bump the version in all three places (they must stay in sync):
+1. Bump the version everywhere it's duplicated (they must stay in sync):
    - `src-tauri/Cargo.toml` → `[package].version`
+   - `src-tauri/mcp-server/Cargo.toml` → `[package].version` (the MCP connector's own crate; not load-bearing for the release, but kept in sync for sanity)
    - `src-tauri/tauri.conf.json` → `version`
    - `package.json` → `version`
 2. Move the matching block from `## [Unreleased]` to a new dated section in `CHANGELOG.md`.
@@ -69,12 +70,12 @@ Go to **Settings → Secrets and variables → Actions → New repository secret
    ```
 
 4. Wait for the **release** workflow to finish in Actions. A draft release will appear in **Releases**.
-5. Sanity-check the draft: the `.msi` and `latest.json` are attached, the file sizes look reasonable, the release notes link to the changelog.
+5. Sanity-check the draft: the installer and `latest.json` are attached, the file sizes look reasonable, the release notes link to the changelog.
 6. Click **Publish release**. Installed copies of HuginnDB 0.2.1+ will see the update on their next launch and prompt to install it.
 
 ## What happens on the user's side
 
 - At launch, the app calls `latest.json` at the URL configured in `tauri.conf.json` → `plugins.updater.endpoints`.
 - If the version field is greater than the running version, a toast appears once, and a red dot lands on the settings gear.
-- The user clicks **Install and relaunch** → the plugin verifies the signature with the embedded public key → downloads the signed `.msi` → installs → relaunches.
+- The user clicks **Install and relaunch** → the plugin verifies the signature with the embedded public key → downloads the signed installer → installs → relaunches.
 - If the user clicks **Later**, the toast won't reappear for that version, but the gear badge persists until the install runs.

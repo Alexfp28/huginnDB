@@ -8,6 +8,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.7.1] — 2026-07-14
+
+### Añadido
+
+- **`huginndb-mcp` ahora viene incluido en el instalador, y Preferencias tiene
+  un panel de MCP.** Antes el conector solo era accesible clonando el repo y
+  compilándolo uno mismo — ningún instalador empaquetado incluía el binario.
+  Ahora es un sidecar de Tauri (`bundle.externalBin`), instalado junto al
+  ejecutable principal, y el workflow de release lo compila y coloca
+  automáticamente. **Preferencias → MCP** resuelve esa ruta, deja elegir qué
+  conexiones guardadas exponer, y genera un snippet `claude mcp add`/JSON
+  listo para pegar — sin tener que rebuscar rutas de instalación ni ids de
+  conexión en `profiles.json` a mano. Ver [`docs/MCP.md`](docs/MCP.md).
+
 ## [1.7.0] — 2026-07-14
 
 ### Añadido
@@ -84,15 +98,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   fino) a un crate hermano lo saca por completo del `cargo metadata` de la
   app. Se compila con `cargo build -p huginndb-mcp --release` desde
   `src-tauri/` — ver [`docs/MCP.md`](docs/MCP.md).
-- **`huginndb-mcp` ahora viene incluido en el instalador, y Preferencias tiene
-  un panel de MCP.** Antes el conector solo era accesible clonando el repo y
-  compilándolo uno mismo — ningún instalador empaquetado incluía el binario.
-  Ahora es un sidecar de Tauri (`bundle.externalBin`), instalado junto al
-  ejecutable principal, y el workflow de release lo compila y coloca
-  automáticamente. **Preferencias → MCP** resuelve esa ruta, deja elegir qué
-  conexiones guardadas exponer, y genera un snippet `claude mcp add`/JSON
-  listo para pegar — sin tener que rebuscar rutas de instalación ni ids de
-  conexión en `profiles.json` a mano.
 
 ## [1.6.1] — 2026-07-10
 

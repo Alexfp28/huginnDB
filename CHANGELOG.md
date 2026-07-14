@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.7.1] — 2026-07-14
+
+### Added
+
+- **`huginndb-mcp` now ships bundled with the installer, and Settings gained
+  an MCP panel.** Previously the connector was reachable only by cloning the
+  repo and building it yourself — no packaged install ever included the
+  binary. It's now a Tauri sidecar (`bundle.externalBin`), installed
+  side-by-side with the main executable, and the release workflow builds and
+  stages it automatically. **Settings → MCP** resolves that path, lets you
+  pick which saved connections to expose, and generates a ready-to-paste
+  `claude mcp add`/JSON snippet — no more hunting through install
+  directories or `profiles.json` for connection ids by hand. See
+  [`docs/MCP.md`](docs/MCP.md).
+
 ## [1.7.0] — 2026-07-14
 
 ### Added
@@ -80,15 +95,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   entirely out of the app's own `cargo metadata`. Build it with
   `cargo build -p huginndb-mcp --release` from `src-tauri/` — see
   [`docs/MCP.md`](docs/MCP.md).
-- **`huginndb-mcp` now ships bundled with the installer, and Settings gained
-  an MCP panel.** Previously the connector was reachable only by cloning the
-  repo and building it yourself — no packaged install ever included the
-  binary. It's now a Tauri sidecar (`bundle.externalBin`), installed
-  side-by-side with the main executable, and the release workflow builds and
-  stages it automatically. **Settings → MCP** resolves that path, lets you
-  pick which saved connections to expose, and generates a ready-to-paste
-  `claude mcp add`/JSON snippet — no more hunting through install
-  directories or `profiles.json` for connection ids by hand.
 
 ## [1.6.1] — 2026-07-10
 
