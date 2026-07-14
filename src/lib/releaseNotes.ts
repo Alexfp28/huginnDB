@@ -23,12 +23,14 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,
+  HardDrive,
   ListTree,
   Palette,
   Plug,
   ShieldCheck,
   SquareTerminal,
   Table2,
+  Tags,
 } from "lucide-react";
 
 export interface ReleaseHighlight {
@@ -59,6 +61,33 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.7.2",
+    major: true,
+    taglineKey: "whatsNew.releases.1_7_2.tagline",
+    highlights: [
+      {
+        icon: ShieldCheck,
+        titleKey: "whatsNew.releases.1_7_2.items.security.title",
+        bodyKey: "whatsNew.releases.1_7_2.items.security.body",
+      },
+      {
+        icon: Bot,
+        titleKey: "whatsNew.releases.1_7_2.items.mcpMongo.title",
+        bodyKey: "whatsNew.releases.1_7_2.items.mcpMongo.body",
+      },
+      {
+        icon: Tags,
+        titleKey: "whatsNew.releases.1_7_2.items.columnTypes.title",
+        bodyKey: "whatsNew.releases.1_7_2.items.columnTypes.body",
+      },
+      {
+        icon: HardDrive,
+        titleKey: "whatsNew.releases.1_7_2.items.collectionSize.title",
+        bodyKey: "whatsNew.releases.1_7_2.items.collectionSize.body",
+      },
+    ],
+  },
   {
     version: "1.7.0",
     major: true,

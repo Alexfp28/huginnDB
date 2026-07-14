@@ -795,6 +795,27 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_7_2": {
+        "tagline": "MongoDB se pone al día: las conexiones multi-base y el conector MCP ganan paridad real con los drivers SQL.",
+        "items": {
+          "security": {
+            "title": "El panel de Seguridad funciona en conexiones multi-base",
+            "body": "Abrir la pestaña de Seguridad en una conexión MongoDB sin base preseleccionada ya no da error — ahora lista usuarios y privilegios de todo el clúster."
+          },
+          "mcpMongo": {
+            "title": "El MCP ya no bloquea las lecturas de MongoDB",
+            "body": "`run_query` usaba un chequeo de solo-lectura pensado solo para SQL que rechazaba cualquier sentencia mongosh por defecto. Ahora reconoce correctamente las lecturas de MongoDB, igual que ya hacía el editor de consultas de escritorio."
+          },
+          "columnTypes": {
+            "title": "Tipos de columna reales en vez de \"bson\" genérico",
+            "body": "Los resultados de consultas y de exploración de tablas ahora muestran el tipo BSON real de cada columna (int, string, date, objectId, …) en vez de una etiqueta genérica — útil tanto para ti como para las herramientas de IA que usan el conector MCP."
+          },
+          "collectionSize": {
+            "title": "Tamaño de colección en el explorador",
+            "body": "Las colecciones de MongoDB ahora muestran su tamaño en disco, obtenido en una sola llamada en vez de omitirlo."
+          }
+        }
+      },
       "1_7_0": {
         "tagline": "Lleva tus bases de datos a tus herramientas de IA — HuginnDB ya habla Model Context Protocol.",
         "items": {

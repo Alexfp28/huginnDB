@@ -795,6 +795,27 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_7_2": {
+        "tagline": "MongoDB catches up: multi-database connections and the MCP connector both get real driver parity.",
+        "items": {
+          "security": {
+            "title": "Security panel works on multi-database connections",
+            "body": "Opening the Security tab on a MongoDB connection with no preselected database no longer errors — it now lists users and privileges across the whole cluster."
+          },
+          "mcpMongo": {
+            "title": "MCP no longer blocks MongoDB reads",
+            "body": "`run_query` used a SQL-only read-only check that rejected every mongosh statement by default. It now recognises MongoDB reads correctly, the same way the desktop query editor already did."
+          },
+          "columnTypes": {
+            "title": "Real column types instead of generic \"bson\"",
+            "body": "Query and browse results now show each column's actual BSON type (int, string, date, objectId, …) instead of one generic label — useful for you and for AI tools using the MCP connector."
+          },
+          "collectionSize": {
+            "title": "Collection size in the explorer",
+            "body": "MongoDB collections now show an on-disk size, fetched in a single batched call instead of skipping it."
+          }
+        }
+      },
       "1_7_0": {
         "tagline": "Bring your databases to your AI tools — HuginnDB now speaks the Model Context Protocol.",
         "items": {
