@@ -14,12 +14,22 @@ the connections you explicitly expose.
 See [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md) for the design
 rationale.
 
-## Building
+## Getting the binary
 
-The connector lives in its own workspace crate (`src-tauri/mcp-server/`), kept
-out of the desktop app's own `Cargo.toml` so a normal `pnpm tauri:build` never
-compiles or bundles it (see the tauri-bundler multi-`[[bin]]` gotcha in
-`CLAUDE.md` for why). Build it explicitly:
+**Packaged installs (the normal case):** `huginndb-mcp` ships as a Tauri
+sidecar, installed right next to the main executable — nothing to build.
+Open **Settings → MCP** in the app: it shows the resolved path, lets you pick
+which saved connections to expose, and generates ready-to-paste config for
+Claude Code / Claude Desktop / other clients. The rest of this doc is the
+reference for what that panel gives you, plus clients it doesn't generate a
+snippet for (Codex).
+
+**Building from source (development only):** the connector lives in its own
+workspace crate (`src-tauri/mcp-server/`), kept out of the desktop app's own
+`Cargo.toml` so a normal `pnpm tauri:build` never compiles or bundles it on
+its own (see the tauri-bundler multi-`[[bin]]` gotcha in `CLAUDE.md` for why;
+the release workflow stages it separately as the sidecar). Build it
+explicitly:
 
 ```bash
 cd src-tauri
@@ -29,8 +39,10 @@ cargo build --release -p huginndb-mcp
 
 ## Configuring a client
 
-Build the binary first (see [Building](#building)) — every client points at its
-**absolute path** (on Windows, `…\target\release\huginndb-mcp.exe`).
+Every client points at the connector's **absolute path** — get it from
+Settings → MCP in a packaged install, or see [Getting the
+binary](#getting-the-binary) for a source build (on Windows,
+`…\target\release\huginndb-mcp.exe`).
 
 Wherever a snippet says `<profile-id>`, use the stable UUID `id` of the
 connection you want to expose. Find it in the desktop app, or read it from

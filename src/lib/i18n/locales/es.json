@@ -18,6 +18,7 @@
     "languageSpanish": "Español",
     "continue": "Continuar",
     "retry": "Reintentar",
+    "copy": "Copiar",
     "errorPanelCrashed": "Algo falló al renderizar este panel."
   },
   "panels": {
@@ -514,6 +515,10 @@
         "label": "Atajos",
         "desc": "Atajos de teclado"
       },
+      "mcp": {
+        "label": "MCP",
+        "desc": "Conector para IA"
+      },
       "about": {
         "label": "Acerca de",
         "desc": "Versión y rutas"
@@ -631,6 +636,19 @@
       "focusSearch": "Enfocar el buscador de la tabla",
       "commitSearch": "Aplicar búsqueda / filtro en la tabla",
       "closeDialog": "Cerrar el diálogo o popover activo"
+    },
+    "mcp": {
+      "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Codex, …) mediante el Model Context Protocol — solo lectura, opt-in por conexión.",
+      "binaryLabel": "Binario del conector",
+      "available": "Instalado y listo.",
+      "unavailable": "No encontrado — esta build no viene de un release empaquetado, así que el conector no está incluido.",
+      "connectionsLabel": "Conexiones a exponer",
+      "noConnections": "Aún no hay conexiones guardadas — añade una primero.",
+      "claudeCodeLabel": "Claude Code",
+      "jsonLabel": "Claude Desktop / otros clientes (JSON)",
+      "selectHint": "Selecciona al menos una conexión arriba.",
+      "copied": "Copiado al portapapeles.",
+      "fullGuide": "Guía completa de configuración (Codex, Claude Desktop, flags, herramientas)…"
     },
     "about": {
       "tagline": "Gestor de bases de datos de escritorio minimalista para PostgreSQL, MySQL y SQLite.",

@@ -29,6 +29,8 @@ vite.config.d.ts
 # Tauri / Rust
 src-tauri/target/
 src-tauri/gen/schemas/
+# Staged sidecar binaries (see release.yml) — build output, not source.
+src-tauri/binaries/
 # Cargo.lock IS committed: this is an application binary, not a library, so a
 # pinned lockfile gives reproducible release builds. It was previously ignored,
 # which let CI resolve dependencies fresh on every run and drift onto a broken

@@ -579,6 +579,14 @@ export interface Diagnostics {
   arch: string;
 }
 
+/** Where the `huginndb-mcp` sidecar binary lives, from
+ *  `get_mcp_connector_info`. `available` is false outside a packaged
+ *  install (e.g. `tauri dev`), where the sidecar isn't staged. */
+export interface McpConnectorInfo {
+  binary_path: string;
+  available: boolean;
+}
+
 /** Result of `submit_issue`: `created` is true when filed via the API
  *  (the URL is the created issue), false when it's a pre-filled URL to open. */
 export interface IssueOutcome {

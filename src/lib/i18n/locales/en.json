@@ -18,6 +18,7 @@
     "languageSpanish": "Español",
     "continue": "Continue",
     "retry": "Retry",
+    "copy": "Copy",
     "errorPanelCrashed": "Something went wrong rendering this panel."
   },
   "panels": {
@@ -514,6 +515,10 @@
         "label": "Shortcuts",
         "desc": "Keyboard bindings"
       },
+      "mcp": {
+        "label": "MCP",
+        "desc": "AI tool connector"
+      },
       "about": {
         "label": "About",
         "desc": "Version & paths"
@@ -631,6 +636,19 @@
       "focusSearch": "Focus the table search input",
       "commitSearch": "Commit search / filter in the data grid",
       "closeDialog": "Close the active dialog or popover"
+    },
+    "mcp": {
+      "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Codex, …) over the Model Context Protocol — read-only, opt-in per connection.",
+      "binaryLabel": "Connector binary",
+      "available": "Installed and ready.",
+      "unavailable": "Not found — this build wasn't installed from a packaged release, so the connector isn't bundled.",
+      "connectionsLabel": "Connections to expose",
+      "noConnections": "No saved connections yet — add one first.",
+      "claudeCodeLabel": "Claude Code",
+      "jsonLabel": "Claude Desktop / other clients (JSON)",
+      "selectHint": "Select at least one connection above.",
+      "copied": "Copied to clipboard.",
+      "fullGuide": "Full setup guide (Codex, Claude Desktop, flags, tools)…"
     },
     "about": {
       "tagline": "Minimal desktop database manager for PostgreSQL, MySQL and SQLite.",

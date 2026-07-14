@@ -14,6 +14,7 @@ export type SettingsSection =
   | "grid"
   | "appearance"
   | "shortcuts"
+  | "mcp"
   | "about";
 
 interface SettingsDialogState {

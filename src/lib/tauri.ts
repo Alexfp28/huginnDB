@@ -26,6 +26,7 @@ import type {
   FkOptionsPage,
   IssueOutcome,
   ImportAnalysis,
+  McpConnectorInfo,
   ImportResult,
   IndexInfo,
   Preferences,
@@ -482,4 +483,9 @@ export const api = {
    */
   openUrl: (url: string) =>
     invoke<void>("plugin:opener|open_url", { url, with: null }),
+
+  // MCP connector ----------------------------------------------------------
+
+  /** Resolve the bundled `huginndb-mcp` sidecar's path (Settings → MCP). */
+  getMcpConnectorInfo: () => invoke<McpConnectorInfo>("get_mcp_connector_info"),
 };
