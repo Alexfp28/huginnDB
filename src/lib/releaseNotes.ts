@@ -31,6 +31,7 @@ import {
   SquareTerminal,
   Table2,
   Tags,
+  Target,
 } from "lucide-react";
 
 export interface ReleaseHighlight {
@@ -75,6 +76,11 @@ export const RELEASE_NOTES: ReleaseNote[] = [
         icon: Bot,
         titleKey: "whatsNew.releases.1_7_2.items.mcpMongo.title",
         bodyKey: "whatsNew.releases.1_7_2.items.mcpMongo.body",
+      },
+      {
+        icon: Target,
+        titleKey: "whatsNew.releases.1_7_2.items.mcpMongoDatabase.title",
+        bodyKey: "whatsNew.releases.1_7_2.items.mcpMongoDatabase.body",
       },
       {
         icon: Tags,

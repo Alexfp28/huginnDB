@@ -806,6 +806,10 @@
             "title": "MCP no longer blocks MongoDB reads",
             "body": "`run_query` used a SQL-only read-only check that rejected every mongosh statement by default. It now recognises MongoDB reads correctly, the same way the desktop query editor already did."
           },
+          "mcpMongoDatabase": {
+            "title": "MCP tools can target a MongoDB database",
+            "body": "list_tables, describe_table, list_indexes, browse_table (schema) and run_query (database) can now target a specific database on a multi-database MongoDB connection — the same thing expanding a database in the explorer does, just from your AI tool."
+          },
           "columnTypes": {
             "title": "Real column types instead of generic \"bson\"",
             "body": "Query and browse results now show each column's actual BSON type (int, string, date, objectId, …) instead of one generic label — useful for you and for AI tools using the MCP connector."
