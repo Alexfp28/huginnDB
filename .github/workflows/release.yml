@@ -37,7 +37,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-latest
+          # Pinned to windows-2022, not windows-latest: GitHub migrated
+          # windows-latest to Windows Server 2025 + VS2026 in June 2026,
+          # which broke WiX v3 bundling here (see this file's git history for
+          # the Windows Defender / VBScript fixes that were tried and didn't
+          # help). WiX v3 — what tauri-action uses to build the MSI — was
+          # archived end-of-life in February 2025 and will never be updated
+          # for compatibility with an OS that didn't exist when it was
+          # frozen. Rather than chase individual incompatibilities, stay on
+          # the last image generation WiX v3 was actually built against.
+          - platform: windows-2022
             args: ""
           # Uncomment to also ship Linux artifacts. Leaving disabled by
           # default keeps the runtime + signing surface small for now.
@@ -106,24 +115,6 @@ jobs:
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
-
-      # 1.7.0 reliably fails WiX bundling with a bare "failed to run
-      # ...WixTools314\light.exe" (no WiX error code) right after candle.exe
-      # has already run successfully against the same binaries. A Windows
-      # Defender exclusion for the WiX cache dir (tried first) made zero
-      # difference, which rules out AV interference. The actual cause: the
-      # `windows-latest` runner image moved to Windows Server 2025
-      # (`windows-2025-vs2026`) between the 1.6.1 build (2026-07-09) and this
-      # one — confirmed from the job's own "Operating System" banner — and
-      # that OS ships VBScript only as an optional Feature-on-Demand. WiX v3's
-      # light.exe needs the VBScript engine for its ICE validation step and
-      # fails to even launch without it; Tauri's own Windows installer guide
-      # now documents this exact symptom (tauri-apps/tauri#13752, #13336).
-      # Install the capability before building.
-      - name: Install VBScript (required by WiX v3 on Windows Server 2025+)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        run: DISM /Online /Add-Capability /CapabilityName:VBSCRIPT~~~~
 
       - name: Build and publish draft release
         uses: tauri-apps/tauri-action@v0
