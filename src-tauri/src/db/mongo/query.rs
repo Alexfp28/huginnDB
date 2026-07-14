@@ -30,9 +30,35 @@ async fn collect(cursor: &mut mongodb::Cursor<Document>) -> AppResult<Vec<Docume
     Ok(out)
 }
 
+/// Infer a single column's BSON type across a result set: the type of the
+/// first non-null value seen for `field`, or `"mixed"` if later non-null
+/// values disagree with it (BSON is schemaless, so within one result set a
+/// field can legitimately hold different types across rows/documents — this
+/// is the honest answer rather than picking one type and silently hiding the
+/// disagreement). `"null"` when `field` is absent or null in every document.
+fn infer_column_type<'a>(docs: impl Iterator<Item = Option<&'a Bson>>) -> String {
+    let mut inferred: Option<&'static str> = None;
+    for v in docs.flatten() {
+        if matches!(v, Bson::Null) {
+            continue;
+        }
+        let t = super::values::bson_type_name(v);
+        match inferred {
+            None => inferred = Some(t),
+            Some(prev) if prev != t => return "mixed".to_string(),
+            _ => {}
+        }
+    }
+    inferred.unwrap_or("null").to_string()
+}
+
 /// Flatten a set of documents into a tabular result. Columns are the union of
 /// top-level field names across all rows, `_id` pinned first, otherwise
-/// first-seen order.
+/// first-seen order. Each column's `data_type` is inferred from the values
+/// actually returned ([`infer_column_type`]) rather than a generic `"bson"`
+/// label, so `run_query`/`browse_table` give an MCP client (or the data grid)
+/// a real type signal — the same treatment the read-only structure view
+/// already gives via `infer_columns`' document sampling.
 fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64) -> QueryResult {
     let mut order: Vec<String> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -49,8 +75,7 @@ fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64) -> QueryResult {
         .iter()
         .map(|name| ColumnMeta {
             name: name.clone(),
-            // BSON is schemaless; the explorer infers per-field types separately.
-            data_type: "bson".to_string(),
+            data_type: infer_column_type(docs.iter().map(|d| d.get(name))),
         })
         .collect();
 
@@ -73,12 +98,14 @@ fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64) -> QueryResult {
     }
 }
 
-/// Single scalar result (used by `count`): one column, one row.
-fn scalar_result(name: &str, value: Value, elapsed_ms: u64) -> QueryResult {
+/// Single scalar result (used by `count`): one column, one row. `data_type` is
+/// passed in by the caller rather than inferred — `count` always returns a
+/// concrete, known type (a 64-bit count), so there's nothing to sample.
+fn scalar_result(name: &str, data_type: &str, value: Value, elapsed_ms: u64) -> QueryResult {
     QueryResult {
         columns: vec![ColumnMeta {
             name: name.to_string(),
-            data_type: "bson".into(),
+            data_type: data_type.to_string(),
         }],
         rows: vec![vec![value]],
         rows_affected: 1,
@@ -140,15 +167,16 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
         }
         MongoOp::Count { filter } => {
             let n = coll.count_documents(filter).await?;
-            Ok(scalar_result("count", Value::from(n), ms()))
+            Ok(scalar_result("count", "long", Value::from(n), ms()))
         }
         MongoOp::Distinct { field, filter } => {
             let values = coll.distinct(&field, filter).await?;
+            let data_type = infer_column_type(values.iter().map(Some));
             let rows: Vec<Vec<Value>> = values.iter().map(|b| vec![bson_to_json(b)]).collect();
             Ok(QueryResult {
                 columns: vec![ColumnMeta {
                     name: field,
-                    data_type: "bson".into(),
+                    data_type,
                 }],
                 rows_affected: rows.len() as u64,
                 rows,
@@ -421,4 +449,59 @@ pub async fn insert_row(
 
     let res = coll.insert_one(document).await?;
     Ok(bson_to_json(&res.inserted_id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn doc_with(pairs: &[(&str, Bson)]) -> Document {
+        let mut d = Document::new();
+        for (k, v) in pairs {
+            d.insert(k.to_string(), v.clone());
+        }
+        d
+    }
+
+    #[test]
+    fn docs_to_result_infers_uniform_column_type() {
+        let docs = vec![
+            doc_with(&[("_id", Bson::Int32(1)), ("name", Bson::String("a".into()))]),
+            doc_with(&[("_id", Bson::Int32(2)), ("name", Bson::String("b".into()))]),
+        ];
+        let result = docs_to_result(docs, 0);
+        let name_col = result.columns.iter().find(|c| c.name == "name").unwrap();
+        assert_eq!(name_col.data_type, "string");
+    }
+
+    #[test]
+    fn docs_to_result_falls_back_to_mixed_on_type_disagreement() {
+        let docs = vec![
+            doc_with(&[("value", Bson::Int32(1))]),
+            doc_with(&[("value", Bson::String("oops".into()))]),
+        ];
+        let result = docs_to_result(docs, 0);
+        let col = result.columns.iter().find(|c| c.name == "value").unwrap();
+        assert_eq!(col.data_type, "mixed");
+    }
+
+    #[test]
+    fn docs_to_result_ignores_nulls_when_inferring_type() {
+        let docs = vec![
+            doc_with(&[("value", Bson::Null)]),
+            doc_with(&[("value", Bson::Int64(42))]),
+        ];
+        let result = docs_to_result(docs, 0);
+        let col = result.columns.iter().find(|c| c.name == "value").unwrap();
+        assert_eq!(col.data_type, "long");
+    }
+
+    #[test]
+    fn docs_to_result_reports_null_when_field_never_present() {
+        let docs = vec![doc_with(&[("_id", Bson::Int32(1))])];
+        let result = docs_to_result(docs, 0);
+        assert_eq!(result.columns.len(), 1);
+        assert_eq!(result.columns[0].name, "_id");
+        assert_eq!(result.columns[0].data_type, "int");
+    }
 }
