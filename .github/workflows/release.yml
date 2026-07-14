@@ -124,12 +124,27 @@ jobs:
       # Cargo.toml. Tauri's sidecar convention needs the binary named
       # `<name>-<target-triple>[.exe]`; `rustc -Vv`'s `host:` line gives the
       # triple for whichever platform is currently building.
+      #
+      # The placeholder touch below is load-bearing, not defensive: tauri-build
+      # (huginndb's build.rs) hard-fails ANY compile of huginndb_lib — even a
+      # bare `cargo check`, even just as a dependency of huginndb-mcp itself —
+      # if the externalBin resource for the current target triple doesn't
+      # already exist on disk (existence only; content doesn't matter yet).
+      # Since building huginndb-mcp requires compiling huginndb_lib (with the
+      # `mcp` feature) first, that's a real circular dependency: the very
+      # `cargo build -p huginndb-mcp` step meant to produce the sidecar can't
+      # even start on a clean checkout without something already at that path.
+      # `rm` before the final `cp` (not overwriting in place) matters too —
+      # `cp` onto an existing file keeps that file's mode, so overwriting the
+      # placeholder in place would silently ship a non-executable sidecar.
       - name: Build and stage the huginndb-mcp sidecar
         shell: bash
         run: |
-          cargo build --release -p huginndb-mcp --manifest-path src-tauri/Cargo.toml
           triple="$(rustc -Vv | sed -n 's/^host: //p')"
           mkdir -p src-tauri/binaries
+          touch "src-tauri/binaries/huginndb-mcp-${triple}.exe" "src-tauri/binaries/huginndb-mcp-${triple}"
+          cargo build --release -p huginndb-mcp --manifest-path src-tauri/Cargo.toml
+          rm -f "src-tauri/binaries/huginndb-mcp-${triple}.exe" "src-tauri/binaries/huginndb-mcp-${triple}"
           if [ -f src-tauri/target/release/huginndb-mcp.exe ]; then
             cp src-tauri/target/release/huginndb-mcp.exe "src-tauri/binaries/huginndb-mcp-${triple}.exe"
           else
