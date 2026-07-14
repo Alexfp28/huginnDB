@@ -474,6 +474,42 @@ pub fn database_view_id(parent_id: &str, database: &str) -> String {
     format!("{parent_id}::db::{database}")
 }
 
+/// Resolve (or open) the synthetic per-database Mongo pool for `parent_id`
+/// bound to `database` — the Mongo half of [`open_database_view`], pulled out
+/// as a free function because it needs neither an `AppHandle`/`Window` nor
+/// re-authentication: a single `mongodb::Client` reaches every database in
+/// the cluster, so this only clones it and re-tags the target database.
+/// Callable from a headless context (the MCP server), unlike the rest of
+/// `open_database_view`, which logs to the Console panel and re-resolves
+/// credentials for the SQL drivers.
+pub async fn resolve_mongo_database_view(
+    state: &AppState,
+    parent_id: &str,
+    database: &str,
+) -> AppResult<String> {
+    let child_id = database_view_id(parent_id, database);
+    if state.connections.read().get(&child_id).is_some() {
+        return Ok(child_id);
+    }
+    let parent_pool = state.connections.read().get(parent_id);
+    let Some(crate::state::DbPool::Mongo(conn)) = parent_pool else {
+        return Err(AppError::NotConnected(parent_id.to_string()));
+    };
+    let child_pool = crate::state::DbPool::Mongo(crate::state::MongoConn {
+        client: conn.client.clone(),
+        database: Some(database.to_string()),
+    });
+    state.connections.write().insert(
+        child_id.clone(),
+        ActivePool {
+            pool: child_pool,
+            _ssh: None,
+            _keepalive: None,
+        },
+    );
+    Ok(child_id)
+}
+
 /// Open a secondary pool for `parent_id` bound to `database`, and register
 /// it under `<parent_id>::db::<database>` so the existing commands can
 /// address it like a regular connection.
@@ -521,24 +557,13 @@ pub async fn open_database_view(
     // target database — no new connection, no re-auth, no second tunnel. The
     // child carries no SSH handle of its own; it depends on the parent's tunnel
     // staying alive, and `disconnect` sweeps children before the parent drops.
+    // This needs no `AppHandle`/`Window` (unlike the SQL path below), so it's
+    // pulled into a free function the headless MCP server can share — the MCP
+    // has no equivalent of the desktop's "expand a database in the explorer"
+    // gesture otherwise, leaving Mongo tools with no way to target a specific
+    // database on a connection with none bound.
     if matches!(parent.driver, Driver::Mongo) {
-        let parent_pool = state.connections.read().get(&parent_id);
-        if let Some(crate::state::DbPool::Mongo(conn)) = parent_pool {
-            let child_pool = crate::state::DbPool::Mongo(crate::state::MongoConn {
-                client: conn.client.clone(),
-                database: Some(database.clone()),
-            });
-            state.connections.write().insert(
-                child_id.clone(),
-                ActivePool {
-                    pool: child_pool,
-                    _ssh: None,
-                    _keepalive: None,
-                },
-            );
-            return Ok(child_id);
-        }
-        return Err(AppError::NotConnected(parent_id));
+        return resolve_mongo_database_view(&state, &parent_id, &database).await;
     }
 
     // Clone the parent profile and substitute the database. The child uses
@@ -996,4 +1021,66 @@ pub fn take_window_startup_intent(
     label: String,
 ) -> AppResult<Option<StartupArgs>> {
     Ok(state.window_startup_intents.write().remove(&label))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::MongoConn;
+
+    async fn mongo_client() -> mongodb::Client {
+        // `ClientOptions::parse` + `Client::with_options` only parse/validate
+        // and spawn the driver's background monitor tasks — no reachable
+        // server is required, so this is safe to construct in a unit test
+        // (mirrors `db/mongo/mod.rs`'s real connection setup).
+        let options = mongodb::options::ClientOptions::parse("mongodb://127.0.0.1:1")
+            .await
+            .expect("valid connection string");
+        mongodb::Client::with_options(options).expect("client construction is lazy")
+    }
+
+    #[tokio::test]
+    async fn resolve_mongo_database_view_creates_and_reuses_child_pool() {
+        let state = AppState::new();
+        let client = mongo_client().await;
+        state.connections.write().insert(
+            "parent".to_string(),
+            ActivePool {
+                pool: crate::state::DbPool::Mongo(MongoConn {
+                    client: client.clone(),
+                    database: None,
+                }),
+                _ssh: None,
+                _keepalive: None,
+            },
+        );
+
+        let child_id = resolve_mongo_database_view(&state, "parent", "mydb")
+            .await
+            .unwrap();
+        assert_eq!(child_id, "parent::db::mydb");
+        match state.connections.read().get(&child_id) {
+            Some(crate::state::DbPool::Mongo(conn)) => {
+                assert_eq!(conn.database.as_deref(), Some("mydb"));
+            }
+            _ => panic!("expected a Mongo child pool"),
+        }
+
+        // Idempotent: calling again for the same database returns the same
+        // id without erroring (and without needing the parent pool again).
+        state.connections.write().remove("parent");
+        let again = resolve_mongo_database_view(&state, "parent", "mydb")
+            .await
+            .unwrap();
+        assert_eq!(again, child_id);
+    }
+
+    #[tokio::test]
+    async fn resolve_mongo_database_view_errors_without_a_parent_pool() {
+        let state = AppState::new();
+        let err = resolve_mongo_database_view(&state, "missing", "mydb")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::NotConnected(_)));
+    }
 }
