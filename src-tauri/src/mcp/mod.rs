@@ -269,7 +269,7 @@ impl Huginn {
             .cloned()
             .ok_or_else(|| crate::error::AppError::NotFound(format!("profile {id}")))?;
 
-        let password = crate::keychain::require_password(&profile.keyring_account())?;
+        let password = crate::commands::connection::resolve_password(&profile)?;
         let ssh_secret = match profile.ssh_keyring_account() {
             Some(account) => crate::keychain::get_password(&account)?,
             None => None,
