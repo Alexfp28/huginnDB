@@ -70,7 +70,11 @@ fn log_connection(
 ///
 /// SQLite profiles never store a password (the database is a local file),
 /// so we short-circuit with the empty string for them.
-fn resolve_password(profile: &ConnectionProfile) -> AppResult<String> {
+///
+/// `pub(crate)` so `crate::mcp` can share this driver-aware resolution
+/// instead of calling `keychain::require_password` directly — see the MCP
+/// module's `ensure_connected` for why that divergence was a bug.
+pub(crate) fn resolve_password(profile: &ConnectionProfile) -> AppResult<String> {
     if matches!(profile.driver, Driver::Sqlite) {
         return Ok(String::new());
     }

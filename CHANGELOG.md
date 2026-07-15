@@ -22,6 +22,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `NSIS_HOOK_PREINSTALL` installer hook (`src-tauri/windows/hooks.nsi`) now
   force-closes the sidecar before any files are copied; the MCP client just
   respawns it the next time it needs the connector.
+- **`huginndb-mcp` rejected SQLite and password-less MongoDB connections with
+  "no stored password for keychain account ...::".** The desktop app's
+  `resolve_password` helper already knows SQLite never stores a password
+  (there's nothing to authenticate — it's a local file) and that MongoDB's
+  is optional (it may be embedded in the connection URI, or the server may
+  allow unauthenticated access), falling back to an empty string in both
+  cases. The MCP server's `ensure_connected` never reused that helper — it
+  called `keychain::require_password` directly, so any SQLite or bare-URI
+  MongoDB connection exposed to an MCP client failed every tool call with a
+  spurious "missing credential" error, even though nothing was actually
+  missing. It now calls the same `resolve_password` the desktop app uses.
 
 ## [1.8.0] — 2026-07-14
 

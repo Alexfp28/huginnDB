@@ -26,6 +26,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   (`src-tauri/windows/hooks.nsi`) cierra ahora el sidecar por la fuerza antes
   de copiar ningún archivo; el cliente MCP simplemente lo vuelve a lanzar la
   próxima vez que lo necesite.
+- **`huginndb-mcp` rechazaba conexiones SQLite y MongoDB sin contraseña con
+  "no stored password for keychain account ...::".** El helper
+  `resolve_password` de la app de escritorio ya sabe que SQLite nunca
+  guarda contraseña (no hay nada que autenticar — es un archivo local) y que
+  en MongoDB es opcional (puede venir embebida en el URI de conexión, o el
+  servidor puede permitir acceso sin autenticación), devolviendo una cadena
+  vacía en ambos casos. El `ensure_connected` del servidor MCP nunca
+  reutilizaba ese helper — llamaba directamente a
+  `keychain::require_password`, así que cualquier conexión SQLite o MongoDB
+  con URI sin credenciales expuesta a un cliente MCP fallaba en cada llamada
+  con un error de "credencial ausente" que no era real. Ahora usa el mismo
+  `resolve_password` que la app de escritorio.
 
 ## [1.8.0] — 2026-07-14
 
