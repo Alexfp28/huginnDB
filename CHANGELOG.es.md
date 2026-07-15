@@ -8,6 +8,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Corregido
+
+- **Actualizar en Windows mientras un cliente MCP tenía abierto el sidecar
+  `huginndb-mcp` podía fallar con un error de permisos que no era tal.** El
+  instalador NSIS se mantiene en el modo de instalación por defecto de Tauri
+  (`currentUser`, escribe bajo `%LOCALAPPDATA%`, sin necesitar elevación) y
+  cierra correctamente `huginndb.exe` si está en ejecución antes de
+  sobrescribirlo — pero no tenía forma de saber que `huginndb-mcp.exe`
+  existe, ya que ese proceso lo arranca de forma independiente el cliente MCP
+  externo que lo tenga configurado (Claude Desktop, Claude Code…), nunca la
+  propia HuginnDB. Si un cliente lo mantenía abierto durante una actualización
+  desde la app, Windows bloqueaba el archivo y la sobrescritura fallaba con
+  `ERROR_SHARING_VIOLATION`, mostrado al usuario como un error genérico de
+  acceso denegado aunque no faltaban permisos de administrador reales. Un
+  nuevo hook de instalación `NSIS_HOOK_PREINSTALL`
+  (`src-tauri/windows/hooks.nsi`) cierra ahora el sidecar por la fuerza antes
+  de copiar ningún archivo; el cliente MCP simplemente lo vuelve a lanzar la
+  próxima vez que lo necesite.
+
 ## [1.8.0] — 2026-07-14
 
 ### Corregido
