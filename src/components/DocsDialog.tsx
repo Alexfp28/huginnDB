@@ -10,7 +10,7 @@
 
 import { BookOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { DOCS, getDoc } from "@/lib/docs";
+import { DOCS, getDoc, getDocBody } from "@/lib/docs";
 import { useDocsDialog } from "@/stores/docsDialog";
 import { Markdown } from "@/components/Markdown";
 import { cn } from "@/lib/utils";
@@ -98,7 +98,7 @@ export function DocsDialog() {
                     {t("docs.updated", { date: activeDate })}
                   </div>
                 )}
-                <Markdown source={active.body} />
+                <Markdown source={getDocBody(active, i18n.language)} />
               </>
             ) : (
               <p className="text-sm text-muted-foreground">{t("docs.empty")}</p>

@@ -9,11 +9,12 @@
  * client's job, never this app's.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Copy } from "lucide-react";
+import { Copy, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { api } from "@/lib/tauri";
 import { useDocsDialog } from "@/stores/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
@@ -43,6 +44,7 @@ export function McpSection() {
   const [info, setInfo] = useState<McpConnectorInfo | null>(null);
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState("");
 
   useEffect(() => {
     void api
@@ -55,11 +57,33 @@ export function McpSection() {
       .catch(() => setProfiles([]));
   }, []);
 
+  const filteredProfiles = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return profiles;
+    return profiles.filter((p) => p.name.toLowerCase().includes(q));
+  }, [profiles, filter]);
+
   function toggle(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  }
+
+  const allFilteredSelected =
+    filteredProfiles.length > 0 &&
+    filteredProfiles.every((p) => selected.has(p.id));
+
+  function toggleAllFiltered() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        for (const p of filteredProfiles) next.delete(p.id);
+      } else {
+        for (const p of filteredProfiles) next.add(p.id);
+      }
       return next;
     });
   }
@@ -111,30 +135,84 @@ export function McpSection() {
       </div>
 
       <div>
-        <div className="mb-1 text-[11px] uppercase tracking-wider text-muted-foreground">
-          {t("settings.mcp.connectionsLabel")}
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            {t("settings.mcp.connectionsLabel")}
+          </span>
+          {profiles.length > 0 && (
+            <span className="text-[11px] text-muted-foreground">
+              {t("settings.mcp.selectedCount", {
+                selected: selected.size,
+                total: profiles.length,
+              })}
+            </span>
+          )}
         </div>
+
         {profiles.length === 0 ? (
           <p className="text-[12px] text-muted-foreground">
             {t("settings.mcp.noConnections")}
           </p>
         ) : (
-          <div className="divide-y divide-border/60 rounded-md border border-border">
-            {profiles.map((p) => (
-              <label
-                key={p.id}
-                className="flex cursor-pointer items-center gap-2 px-3 py-2"
-              >
-                <input
-                  type="checkbox"
-                  className="accent-brand"
-                  checked={selected.has(p.id)}
-                  onChange={() => toggle(p.id)}
+          <>
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  inputSize="xs"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  placeholder={t("settings.mcp.filterPlaceholder")}
+                  className="pl-6 pr-6"
                 />
-                <span className="text-xs">{p.name}</span>
-              </label>
-            ))}
-          </div>
+                {filter && (
+                  <button
+                    type="button"
+                    onClick={() => setFilter("")}
+                    aria-label={t("common.clear")}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 px-2 text-[11px]"
+                disabled={filteredProfiles.length === 0}
+                onClick={toggleAllFiltered}
+              >
+                {allFilteredSelected
+                  ? t("settings.mcp.deselectAll")
+                  : t("settings.mcp.selectAll")}
+              </Button>
+            </div>
+
+            <div className="max-h-48 divide-y divide-border/60 overflow-y-auto rounded-md border border-border">
+              {filteredProfiles.length === 0 ? (
+                <p className="px-3 py-2 text-[12px] text-muted-foreground">
+                  {t("settings.mcp.noMatches", { query: filter })}
+                </p>
+              ) : (
+                filteredProfiles.map((p) => (
+                  <label
+                    key={p.id}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-accent/50"
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-brand"
+                      checked={selected.has(p.id)}
+                      onChange={() => toggle(p.id)}
+                    />
+                    <span className="truncate text-xs">{p.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </>
         )}
       </div>
 

@@ -638,12 +638,17 @@
       "closeDialog": "Cerrar el diálogo o popover activo"
     },
     "mcp": {
-      "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Codex, …) mediante el Model Context Protocol — solo lectura, opt-in por conexión.",
+      "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — solo lectura, opt-in por conexión.",
       "binaryLabel": "Binario del conector",
       "available": "Instalado y listo.",
       "unavailable": "No encontrado — esta build no viene de un release empaquetado, así que el conector no está incluido.",
       "connectionsLabel": "Conexiones a exponer",
       "noConnections": "Aún no hay conexiones guardadas — añade una primero.",
+      "filterPlaceholder": "Filtrar conexiones…",
+      "selectAll": "Seleccionar todas",
+      "deselectAll": "Deseleccionar todas",
+      "selectedCount": "{{selected}} de {{total}} seleccionadas",
+      "noMatches": "Ninguna conexión coincide con “{{query}}”.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / otros clientes (JSON)",
       "selectHint": "Selecciona al menos una conexión arriba.",
@@ -771,9 +776,14 @@
     "errorPrefix": "Error al comprobar:",
     "toastTitle": "Nueva versión disponible: {{version}}",
     "toastDescription": "Descárgala e instálala desde dentro de la app — se reiniciará automáticamente al terminar.",
+    "readyTitle": "Actualización lista para instalar: {{version}}",
+    "readyDescription": "Descargada en segundo plano — reinicia para aplicarla.",
+    "restartNow": "Reiniciar ahora",
     "install": "Instalar y reiniciar",
     "later": "Más tarde",
-    "tooltipUpdateAvailable": "Hay una actualización disponible ({{version}})"
+    "tooltipUpdateAvailable": "Hay una actualización disponible ({{version}})",
+    "mcpSidecarWarning": "Una herramienta de IA (Claude Code, Cursor, …) tiene ahora mismo el conector MCP en ejecución. Si continúas, se cerrará para instalar la actualización — la herramienta lo volverá a abrir sola la próxima vez que lo necesite.\n\n¿Continuar con la actualización?",
+    "errorPermission": "Fallo al actualizar: Windows no concedió permiso para instalarla. Vuelve a intentarlo y acepta el aviso de administrador, o instala la actualización manualmente desde la página de releases de GitHub."
   },
   "docs": {
     "menuEntry": "Documentación",

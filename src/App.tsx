@@ -277,11 +277,14 @@ export default function App() {
     setLanguage(language);
   }, [language]);
 
-  // One-shot update check on launch. Failures inside the store are
-  // swallowed and surfaced only inside Settings → About; we never block
-  // boot or show an error toast.
+  // Update check on launch, plus a recurring background check so an
+  // instance that's never closed still catches up on a release published
+  // while it was running (see stores/update.ts). Failures inside the store
+  // are swallowed and surfaced only inside Settings → About; we never
+  // block boot or show an error toast.
   useEffect(() => {
     void useUpdateStore.getState().checkOnLaunch();
+    useUpdateStore.getState().startPeriodicChecks();
   }, []);
 
   // One-shot "What's new" presentation: on the first launch after an update

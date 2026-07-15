@@ -638,12 +638,17 @@
       "closeDialog": "Close the active dialog or popover"
     },
     "mcp": {
-      "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Codex, …) over the Model Context Protocol — read-only, opt-in per connection.",
+      "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — read-only, opt-in per connection.",
       "binaryLabel": "Connector binary",
       "available": "Installed and ready.",
       "unavailable": "Not found — this build wasn't installed from a packaged release, so the connector isn't bundled.",
       "connectionsLabel": "Connections to expose",
       "noConnections": "No saved connections yet — add one first.",
+      "filterPlaceholder": "Filter connections…",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all",
+      "selectedCount": "{{selected}} of {{total}} selected",
+      "noMatches": "No connections match “{{query}}”.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / other clients (JSON)",
       "selectHint": "Select at least one connection above.",
@@ -771,9 +776,14 @@
     "errorPrefix": "Check failed:",
     "toastTitle": "New version available: {{version}}",
     "toastDescription": "Download and install it from inside the app — it will relaunch automatically when done.",
+    "readyTitle": "Update ready to install: {{version}}",
+    "readyDescription": "Downloaded in the background — restart to apply it.",
+    "restartNow": "Restart now",
     "install": "Install and relaunch",
     "later": "Later",
-    "tooltipUpdateAvailable": "An update is available ({{version}})"
+    "tooltipUpdateAvailable": "An update is available ({{version}})",
+    "mcpSidecarWarning": "An AI tool (Claude Code, Cursor, …) currently has the MCP connector running. Continuing will close it to install the update — the tool will reopen it automatically the next time it's needed.\n\nContinue with the update?",
+    "errorPermission": "Update failed: Windows didn't grant permission to install it. Try again and accept the admin prompt, or install the update manually from the GitHub releases page."
   },
   "docs": {
     "menuEntry": "Documentation",

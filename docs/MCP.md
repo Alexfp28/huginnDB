@@ -3,9 +3,15 @@
 `huginndb-mcp` is a headless [Model Context Protocol](https://modelcontextprotocol.io)
 server that exposes the databases HuginnDB already knows about — the profiles in
 `profiles.json`, with passwords read from the OS keychain — to an MCP client such
-as Claude Code, Claude Desktop, or Cursor. The assistant can then inspect the
-*actual* state of your databases (schema, sample rows, row counts, server
-version, privileges) instead of guessing.
+as Claude Code, Claude Desktop, Cursor, Antigravity, or Codex. The assistant can
+then inspect the *actual* state of your databases (schema, sample rows, row
+counts, server version, privileges) instead of guessing.
+
+Because it's a standard stdio MCP server with no client-specific code, **any**
+spec-compliant MCP client can drive it — the sections below cover the ones
+with their own config quirks worth documenting; anything else that speaks MCP
+(an editor's built-in agent, a custom harness, …) works the same way once you
+point it at the binary.
 
 It is a **separate, read-only process**. It does not share the running desktop
 app's open connections; it opens its own pools lazily, on demand, and only for
@@ -94,6 +100,51 @@ macOS). Add the server and **restart the app**:
 ```
 
 On Windows, double the backslashes in the JSON path (`\\`).
+
+### Cursor
+
+Cursor reads MCP servers from a `mcp.json` with the same `mcpServers` shape as
+Claude Desktop — either `.cursor/mcp.json` in a project root (scoped to that
+project) or `~/.cursor/mcp.json` (global, every project):
+
+```json
+{
+  "mcpServers": {
+    "huginndb": {
+      "command": "/absolute/path/to/huginndb-mcp",
+      "args": ["--connections", "<profile-id>"]
+    }
+  }
+}
+```
+
+You can also add it from Cursor's Settings → MCP UI ("Add new global MCP
+server") if you'd rather not hand-edit the file. Either way, the JSON snippet
+Settings → MCP generates in the app pastes in as-is.
+
+### Antigravity (Google)
+
+Antigravity — Google's Gemini-powered agentic IDE — uses the same
+`mcpServers`/`command`/`args` shape. Rather than hunting for the config file
+(its location has moved between Antigravity releases), add the server from
+the UI: **Agent panel → "…" menu → MCP Servers → Manage MCP Servers → View
+raw config**, then paste:
+
+```json
+{
+  "mcpServers": {
+    "huginndb": {
+      "command": "/absolute/path/to/huginndb-mcp",
+      "args": ["--connections", "<profile-id>"]
+    }
+  }
+}
+```
+
+Save and hit refresh in the Installed MCP Servers list. (Antigravity's one
+real divergence from Cursor/Claude Desktop is remote HTTP servers, which use
+`serverUrl` instead of `command`/`args` — doesn't apply here, since
+`huginndb-mcp` is a local stdio process.)
 
 ### Codex CLI
 

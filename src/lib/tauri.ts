@@ -488,4 +488,11 @@ export const api = {
 
   /** Resolve the bundled `huginndb-mcp` sidecar's path (Settings → MCP). */
   getMcpConnectorInfo: () => invoke<McpConnectorInfo>("get_mcp_connector_info"),
+
+  /**
+   * Best-effort check for whether an external MCP client currently has the
+   * `huginndb-mcp` sidecar running. Used before an update install, which
+   * force-kills the sidecar to overwrite its binary — see `stores/update.ts`.
+   */
+  isMcpSidecarRunning: () => invoke<boolean>("is_mcp_sidecar_running"),
 };
