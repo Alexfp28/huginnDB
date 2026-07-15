@@ -638,12 +638,17 @@
       "closeDialog": "Close the active dialog or popover"
     },
     "mcp": {
-      "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Codex, …) over the Model Context Protocol — read-only, opt-in per connection.",
+      "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — read-only, opt-in per connection.",
       "binaryLabel": "Connector binary",
       "available": "Installed and ready.",
       "unavailable": "Not found — this build wasn't installed from a packaged release, so the connector isn't bundled.",
       "connectionsLabel": "Connections to expose",
       "noConnections": "No saved connections yet — add one first.",
+      "filterPlaceholder": "Filter connections…",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all",
+      "selectedCount": "{{selected}} of {{total}} selected",
+      "noMatches": "No connections match “{{query}}”.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / other clients (JSON)",
       "selectHint": "Select at least one connection above.",

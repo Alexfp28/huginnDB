@@ -6,6 +6,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Documented Cursor and Antigravity as MCP clients, and improved the
+  Settings → MCP connections list.** `huginndb-mcp` is a plain stdio MCP
+  server with no client-specific code, so it already worked with any
+  spec-compliant client — Cursor and Google's Antigravity IDE included — the
+  gap was that `docs/MCP.md` only spelled out Claude Code, Claude Desktop,
+  and Codex, leaving users of other agentic IDEs to guess at config file
+  locations and JSON shapes. Added dedicated sections for both: Cursor's
+  `.cursor/mcp.json` (project) / `~/.cursor/mcp.json` (global), and
+  Antigravity's UI-driven "Manage MCP Servers → View raw config" flow — both
+  documented as using the exact same `mcpServers`/`command`/`args` shape the
+  app's Settings → MCP panel already generates, so the existing JSON snippet
+  pastes in as-is. Separately, the connections list in Settings → MCP now has
+  a name filter and a "select all / deselect all" button (scoped to the
+  currently filtered rows) plus a live `n of m selected` count — the flat
+  checkbox list didn't scale past a handful of saved connections.
+- **`docs/MCP.md` now has a maintained Spanish translation
+  (`docs/MCP.es.md`).** The in-app Documentation viewer (Help → Documentation)
+  bundled the MCP guide in English only, regardless of the user's chosen UI
+  language — inconsistent with the rest of the app, which already ships full
+  Spanish strings and a Spanish `CHANGELOG.es.md`. `src/lib/docs.ts` now keeps
+  a per-language `bodies` map per doc entry (English always present) and
+  `getDocBody` falls back to English when a translation is missing, mirroring
+  `getReleases` in `lib/changelog.ts` — the same "English authoritative,
+  Spanish may lag" contract used for the changelog.
+
 ## [1.8.1] — 2026-07-15
 
 ### Fixed

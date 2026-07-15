@@ -8,6 +8,38 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Añadido
+
+- **Se documentan Cursor y Antigravity como clientes MCP, y se mejora la
+  lista de conexiones de Ajustes → MCP.** `huginndb-mcp` es un servidor MCP
+  estándar sobre stdio sin código específico por cliente, así que ya
+  funcionaba con cualquier cliente compatible con la especificación —
+  incluidos Cursor y el IDE Antigravity de Google — pero `docs/MCP.md` solo
+  detallaba Claude Code, Claude Desktop y Codex, dejando a quienes usan otros
+  IDEs agénticos adivinando la ubicación del archivo de configuración y el
+  formato JSON. Se añaden secciones dedicadas para ambos: el
+  `.cursor/mcp.json` (de proyecto) / `~/.cursor/mcp.json` (global) de Cursor,
+  y el flujo de Antigravity desde la UI ("Manage MCP Servers → View raw
+  config") — ambos documentados con la misma forma
+  `mcpServers`/`command`/`args` que ya genera el panel de Ajustes → MCP de la
+  app, así que el snippet JSON existente se pega tal cual. Por separado, la
+  lista de conexiones en Ajustes → MCP ahora tiene un filtro por nombre y un
+  botón "seleccionar todas / deseleccionar todas" (limitado a las filas
+  filtradas en cada momento), más un contador en vivo de "n de m
+  seleccionadas" — la lista plana de checkboxes no escalaba bien pasado un
+  puñado de conexiones guardadas.
+- **`docs/MCP.md` tiene ahora una traducción al español mantenida
+  (`docs/MCP.es.md`).** El visor de documentación integrado (Ayuda →
+  Documentación) incluía la guía de MCP solo en inglés, sin importar el
+  idioma de la UI elegido por el usuario — inconsistente con el resto de la
+  app, que ya distribuye cadenas en español completas y un
+  `CHANGELOG.es.md`. `src/lib/docs.ts` mantiene ahora un mapa `bodies` por
+  idioma en cada entrada de documento (el inglés siempre presente) y
+  `getDocBody` recurre al inglés cuando falta una traducción, siguiendo el
+  mismo patrón que `getReleases` en `lib/changelog.ts` — el mismo contrato de
+  "inglés autoritativo, el español puede ir por detrás" que ya usa el
+  changelog.
+
 ## [1.8.1] — 2026-07-15
 
 ### Corregido
