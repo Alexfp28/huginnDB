@@ -48,7 +48,10 @@ export function UpdatesCard({ currentVersion }: Props) {
 
   const isChecking = status === "checking";
   const isDownloading = status === "downloading";
-  const hasUpdate = status === "available" && availableVersion !== null;
+  const isReadyToRestart = status === "readyToRestart";
+  const hasUpdate =
+    (status === "available" || isDownloading || isReadyToRestart) &&
+    availableVersion !== null;
   const hasError = status === "error" && error !== null;
   // Only show the up-to-date reassurance when we're truly settled — not
   // mid-check, mid-download, or while bubbling an error.
@@ -122,7 +125,9 @@ export function UpdatesCard({ currentVersion }: Props) {
               )}
               {isDownloading
                 ? t("update.downloading")
-                : t("update.installAndRelaunch")}
+                : isReadyToRestart
+                  ? t("update.restartNow")
+                  : t("update.installAndRelaunch")}
             </Button>
             <a
               href="https://github.com/Alexfp28/huginnDB/releases"

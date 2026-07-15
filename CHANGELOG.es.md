@@ -10,6 +10,30 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **El auto-actualizador ahora se pone al día con releases publicados
+  mientras la app sigue abierta, en vez de comprobar solo al arrancar.**
+  `checkOnLaunch` era el único disparador — una instancia que nadie cierra
+  nunca (un equipo compartido, un puesto que no se reinicia) podía quedarse
+  en la versión anterior indefinidamente por muchos releases que se
+  publicaran, porque nunca faltaba publicar, faltaba que la app volviera a
+  preguntar. Un nuevo `startPeriodicChecks` (`src/stores/update.ts`) repite
+  la misma comprobación cada 4 horas mientras la app siga en ejecución, así
+  que una instancia de larga duración acaba enterándose sola. Junto con
+  esto, la descarga del instalador ahora empieza en silencio en cuanto se
+  detecta una actualización (`startBackgroundDownload`), así que cuando
+  alguien repara en el aviso, instalar es instantáneo en vez de esperar una
+  descarga. Lo único que esto deliberadamente NO automatiza es el propio
+  `install()` — el paso que sobrescribe archivos, mata a la fuerza el
+  sidecar `huginndb-mcp` (gotcha #23) y puede pedir elevación a Windows —
+  que solo se ejecuta tras un clic explícito en "Instalar" / "Reiniciar
+  ahora", nunca sin supervisión. Un nuevo estado `readyToRestart` distingue
+  "descargada, a un clic de terminar" de "todavía descargando" tanto en el
+  banner superior como en Ajustes → Acerca de. Como instalar mata el
+  sidecar de MCP, `installAndRelaunch` también comprueba si sigue en
+  ejecución (un nuevo comando de Tauri `is_mcp_sidecar_running` — un
+  `tasklist`/`pgrep` según plataforma, sin dependencia nueva) y, si es así,
+  pide confirmación al usuario antes de cortar de golpe una conexión que un
+  cliente de IA podría estar usando en ese momento.
 - **Se documentan Cursor y Antigravity como clientes MCP, y se mejora la
   lista de conexiones de Ajustes → MCP.** `huginndb-mcp` es un servidor MCP
   estándar sobre stdio sin código específico por cliente, así que ya

@@ -22,6 +22,7 @@ interface Props {
 
 export function UpdateBanner({ version }: Props) {
   const { t } = useTranslation();
+  const status = useUpdateStore((s) => s.status);
   // Local "mounted" state drives the slide-in transition. We let the
   // browser commit the off-screen state on the first frame and then
   // toggle to `true`, which the Tailwind transition picks up.
@@ -39,6 +40,20 @@ export function UpdateBanner({ version }: Props) {
     useUpdateStore.getState().dismiss();
   };
 
+  // Once the background download has finished, installing is instant (no
+  // wait, no progress) — the copy and button reflect that instead of
+  // implying there's still something to download.
+  const readyToRestart = status === "readyToRestart";
+  const title = readyToRestart
+    ? t("update.readyTitle", { version })
+    : t("update.toastTitle", { version });
+  const description = readyToRestart
+    ? t("update.readyDescription")
+    : t("update.toastDescription");
+  const installLabel = readyToRestart
+    ? t("update.restartNow")
+    : t("update.install");
+
   return (
     <div
       role="status"
@@ -55,10 +70,10 @@ export function UpdateBanner({ version }: Props) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-foreground">
-            {t("update.toastTitle", { version })}
+            {title}
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            {t("update.toastDescription")}
+            {description}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -66,7 +81,7 @@ export function UpdateBanner({ version }: Props) {
             {t("update.later")}
           </Button>
           <Button size="sm" onClick={install}>
-            {t("update.install")}
+            {installLabel}
           </Button>
           <button
             aria-label={t("common.close")}

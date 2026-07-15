@@ -776,9 +776,14 @@
     "errorPrefix": "Check failed:",
     "toastTitle": "New version available: {{version}}",
     "toastDescription": "Download and install it from inside the app — it will relaunch automatically when done.",
+    "readyTitle": "Update ready to install: {{version}}",
+    "readyDescription": "Downloaded in the background — restart to apply it.",
+    "restartNow": "Restart now",
     "install": "Install and relaunch",
     "later": "Later",
-    "tooltipUpdateAvailable": "An update is available ({{version}})"
+    "tooltipUpdateAvailable": "An update is available ({{version}})",
+    "mcpSidecarWarning": "An AI tool (Claude Code, Cursor, …) currently has the MCP connector running. Continuing will close it to install the update — the tool will reopen it automatically the next time it's needed.\n\nContinue with the update?",
+    "errorPermission": "Update failed: Windows didn't grant permission to install it. Try again and accept the admin prompt, or install the update manually from the GitHub releases page."
   },
   "docs": {
     "menuEntry": "Documentation",

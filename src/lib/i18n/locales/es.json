@@ -776,9 +776,14 @@
     "errorPrefix": "Error al comprobar:",
     "toastTitle": "Nueva versión disponible: {{version}}",
     "toastDescription": "Descárgala e instálala desde dentro de la app — se reiniciará automáticamente al terminar.",
+    "readyTitle": "Actualización lista para instalar: {{version}}",
+    "readyDescription": "Descargada en segundo plano — reinicia para aplicarla.",
+    "restartNow": "Reiniciar ahora",
     "install": "Instalar y reiniciar",
     "later": "Más tarde",
-    "tooltipUpdateAvailable": "Hay una actualización disponible ({{version}})"
+    "tooltipUpdateAvailable": "Hay una actualización disponible ({{version}})",
+    "mcpSidecarWarning": "Una herramienta de IA (Claude Code, Cursor, …) tiene ahora mismo el conector MCP en ejecución. Si continúas, se cerrará para instalar la actualización — la herramienta lo volverá a abrir sola la próxima vez que lo necesite.\n\n¿Continuar con la actualización?",
+    "errorPermission": "Fallo al actualizar: Windows no concedió permiso para instalarla. Vuelve a intentarlo y acepta el aviso de administrador, o instala la actualización manualmente desde la página de releases de GitHub."
   },
   "docs": {
     "menuEntry": "Documentación",

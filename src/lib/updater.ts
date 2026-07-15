@@ -7,13 +7,19 @@
  * `check()` resolves to `null` when the running version is already
  * the latest; otherwise it returns an `Update` object that exposes
  * `download`, `install`, and `downloadAndInstall`.
+ *
+ * `download` and `install` are exposed separately (not just the combined
+ * `downloadAndInstall`) so the update store can fetch the installer
+ * silently in the background while the app keeps running, and only apply
+ * it — the part that actually touches files on disk and may prompt for
+ * elevation — once the user explicitly confirms a restart.
  */
 
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { check, type Update, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
 
-/** Callback shape used by {@link downloadAndInstall} to report progress. */
+/** Callback shape used to report download progress. */
 export type ProgressCallback = (
   downloaded: number,
   contentLength: number | null,
@@ -27,13 +33,11 @@ export async function checkForUpdate(): Promise<Update | null> {
   return check();
 }
 
-export async function downloadAndInstall(
-  update: Update,
-  onProgress?: ProgressCallback,
-): Promise<void> {
+/** Wraps a plugin download-event handler with running-total bookkeeping. */
+function trackProgress(onProgress?: ProgressCallback) {
   let downloaded = 0;
   let contentLength: number | null = null;
-  await update.downloadAndInstall((evt) => {
+  return (evt: DownloadEvent) => {
     switch (evt.event) {
       case "Started":
         contentLength = evt.data.contentLength ?? null;
@@ -47,7 +51,25 @@ export async function downloadAndInstall(
         onProgress?.(contentLength ?? downloaded, contentLength);
         break;
     }
-  });
+  };
+}
+
+/** Fetches the installer to a temp location. Does not touch installed files. */
+export async function downloadUpdate(
+  update: Update,
+  onProgress?: ProgressCallback,
+): Promise<void> {
+  await update.download(trackProgress(onProgress));
+}
+
+/**
+ * Applies an already-downloaded installer. On Windows this is the step that
+ * force-kills the `huginndb-mcp` sidecar (see `windows/hooks.nsi`) and may
+ * prompt for elevation — only call this after explicit user confirmation to
+ * restart, never as part of a silent background check.
+ */
+export async function installUpdate(update: Update): Promise<void> {
+  await update.install();
 }
 
 export async function relaunchApp(): Promise<void> {

@@ -8,6 +8,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The self-updater now catches up on releases published while the app
+  stays open, instead of only checking on launch.** `checkOnLaunch` used to
+  be the only trigger — an instance nobody ever closes (a shared machine, a
+  workstation that's never rebooted) could sit on the previous version
+  indefinitely no matter how many releases were published, since publishing
+  was never the missing piece — the app just never asked again. A new
+  `startPeriodicChecks` (`src/stores/update.ts`) re-runs the same check every
+  4 hours for the lifetime of the running app, so a long-lived instance
+  eventually notices on its own. Paired with that: the installer download
+  now starts silently in the background the moment an update is detected
+  (`startBackgroundDownload`), so by the time anyone actually notices the
+  banner, installing is instant instead of waiting on a fresh download. The
+  one thing this deliberately does **not** automate is `install()` itself —
+  the step that overwrites files, force-kills the `huginndb-mcp` sidecar
+  (gotcha #23), and can prompt Windows for elevation — which only ever runs
+  off an explicit "Install" / "Restart now" click, never unattended. A new
+  `readyToRestart` status distinguishes "downloaded, one click from done"
+  from "still fetching" in both the top banner and Settings → About.
+  Because installing force-kills the MCP sidecar, `installAndRelaunch` also
+  checks whether it's currently running (a new `is_mcp_sidecar_running`
+  Tauri command — a `tasklist`/`pgrep` shell-out, no new dependency) and, if
+  so, confirms with the user first instead of silently yanking a connection
+  an AI client might be mid-use of.
 - **Documented Cursor and Antigravity as MCP clients, and improved the
   Settings → MCP connections list.** `huginndb-mcp` is a plain stdio MCP
   server with no client-specific code, so it already worked with any
