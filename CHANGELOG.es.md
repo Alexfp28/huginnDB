@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.8.1] — 2026-07-15
+
 ### Corregido
 
 - **Actualizar en Windows mientras un cliente MCP tenía abierto el sidecar
