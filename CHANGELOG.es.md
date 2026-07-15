@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.8.2] — 2026-07-15
+
 ### Añadido
 
 - **El auto-actualizador ahora se pone al día con releases publicados
