@@ -220,7 +220,6 @@
     "filterInDb": "Filter in {{db}}…",
     "filterScopedTo": "Searching in {{db}} only",
     "noMatches": "No tables match the filter.",
-    "warming": "Caching schema… {{done}}/{{total}} databases",
     "context": {
       "open": "Open in tab",
       "newQueryHere": "New query here",

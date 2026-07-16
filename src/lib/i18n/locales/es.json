@@ -220,7 +220,6 @@
     "filterInDb": "Filtrar en {{db}}…",
     "filterScopedTo": "Buscando solo en {{db}}",
     "noMatches": "Ninguna tabla coincide con el filtro.",
-    "warming": "Cacheando esquema… {{done}}/{{total}} bases",
     "context": {
       "open": "Abrir en pestaña",
       "newQueryHere": "Nueva query aquí",

@@ -602,8 +602,6 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[parentId]);
   const refresh = useSchema((s) => s.refresh);
-  const warmDatabases = useSchema((s) => s.warmDatabases);
-  const warm = useSchema((s) => s.warm[parentId]);
   const toggleNode = useSchema((s) => s.toggleNode);
   // CREATE DATABASE is server-level DDL, only meaningful for Postgres/MySQL —
   // SQLite never reaches multi-DB mode at all, and MongoDB creates databases
@@ -666,26 +664,21 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
     if (!cs || (!cs.initialized && !cs.loading)) refresh(parentId);
   }, [parentId, cs, refresh]);
 
-  // Warm the whole server in the background as soon as the parent's
-  // database list is known. This populates every child's table cache
-  // ahead of time so the filter below reads from memory and matches
-  // instantly, instead of fanning out fetches on the first keystroke.
-  // `warmDatabases` guards against re-entry and skips already-cached
-  // databases, so re-running this effect (cs changes as children land)
-  // is cheap and idempotent.
-  useEffect(() => {
-    if (cs?.initialized && !cs.error) warmDatabases(parentId, visibleDatabases);
-  }, [parentId, cs?.initialized, cs?.error, warmDatabases, visibleDatabases]);
+  // No eager warm on connect: with many databases (a server with 19+ is
+  // common) precaching every child's table list made the initial load
+  // noticeably slow, and the DataGrip-style visible-databases selector (#64)
+  // plus lazy expand already give the user control over what actually loads.
+  // Databases now load only when expanded, or on demand while searching
+  // (below). The first cross-database search is therefore "cold" — an
+  // acceptable trade for an instant connect.
 
-  // On-demand prefetch — kept as a fallback for databases the background
-  // warm hasn't reached yet (large servers, or a search fired moments
-  // after connecting). While the user is searching, walk every database
-  // we haven't loaded yet, open the synthetic child connection, and pull
-  // its table list into the store. We mark a db as "in-flight" the
-  // moment we start so concurrent renders don't schedule it twice.
-  // Failures are swallowed — the matching computation just won't include
-  // that DB until the user retries. Limit to needle length >= 2 to avoid
-  // a full fan-out on a single typed character.
+  // On-demand prefetch while searching: walk every database we haven't loaded
+  // yet, open the synthetic child connection, and pull its table list into the
+  // store so the cross-database match set fills in. We mark a db as
+  // "in-flight" the moment we start so concurrent renders don't schedule it
+  // twice. Failures are swallowed — the matching computation just won't include
+  // that DB until the user retries. Limit to needle length >= 2 to avoid a full
+  // fan-out on a single typed character, and scope to the active/visible set.
   const inFlightPrefetch = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (debouncedNeedle.length < 2 || !cs) return;
@@ -870,12 +863,6 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
           }
           className="h-7 text-xs"
         />
-        {warm?.active && (
-          <div className="mt-1 flex items-center gap-1.5 text-[11px] italic text-muted-foreground">
-            <RefreshCw className="h-3 w-3 animate-spin" />
-            {t("schema.warming", { done: warm.done, total: warm.total })}
-          </div>
-        )}
         {activeDatabaseName && filterActive && (
           <div className="mt-1 text-[11px] text-muted-foreground">
             {t("schema.filterScopedTo", { db: activeDatabaseName })}

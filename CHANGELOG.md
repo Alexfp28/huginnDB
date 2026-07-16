@@ -50,6 +50,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the data-grid filter is gone — the tab title already carries that identity.
   Secondary windows are covered by the capability config (`win-*`), which also
   gives them the window permissions they need in general.
+- **Connecting to a many-database server is now instant — the explorer no
+  longer eagerly caches every database's tables on connect.** The multi-DB
+  explorer used to warm the table list of *every* database in the background
+  right after connecting, so a connection with 19+ databases sat visibly
+  "Caching schema… n/m" for a moment before settling. That eager warm was only
+  ever a search optimization, and it is now redundant with the visible-databases
+  selector (#64) and the active-database scope: databases load lazily when
+  expanded, and the cross-database search still fans out on demand the first
+  time you search. Net effect: connect is immediate regardless of how many
+  databases the server has; the only trade is that the first cross-database
+  search after connecting is served cold.
 
 ## [1.8.2] — 2026-07-15
 
