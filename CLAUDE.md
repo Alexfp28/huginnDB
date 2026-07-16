@@ -5,9 +5,9 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 ## Identity
 
 - **HuginnDB** — desktop database manager, Tauri 2 (Rust backend) + React + TypeScript frontend.
-- Targets PostgreSQL, MySQL, SQLite. Inspired by HeidiSQL but minimal-UI / keyboard-first / Monaco-everywhere.
+- Targets PostgreSQL, MySQL, SQLite, **and MongoDB**. Inspired by HeidiSQL but minimal-UI / keyboard-first / Monaco-everywhere.
 - Public repo: <https://github.com/Alexfp28/huginnDB>.
-- License: MIT. Status: **1.0.0** (stable; SemVer applies from here).
+- License: MIT. Status: **1.8.x** (stable; SemVer applies). MongoDB support and the headless MCP connector (`huginndb-mcp`) landed across the 1.5–1.8 line.
 
 ## Maintainer / collaboration notes
 
@@ -26,7 +26,7 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 | State       | Zustand (with `persist` for theme / history / saved)     |
 | Data grid   | TanStack Table v8                                        |
 | Editor      | Monaco — **self-hosted, no CDN** (`src/lib/monaco-setup.ts`) |
-| DB drivers  | `sqlx` 0.8 with `postgres`, `mysql`, `sqlite` features   |
+| DB drivers  | `sqlx` 0.8 (`postgres`, `mysql`, `sqlite`) + `mongodb` 3 (`bson-3`) |
 | Credentials | `keyring` crate (Windows Credential Manager / libsecret) |
 | Package mgr | **pnpm only**. Never suggest `npm` or `yarn`.            |
 

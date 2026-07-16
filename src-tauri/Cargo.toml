@@ -8,7 +8,7 @@ resolver = "2"
 
 [package]
 name = "huginndb"
-version = "1.8.2"
+version = "1.8.3"
 description = "HuginnDB — minimal desktop database manager"
 authors = ["HuginnDB contributors"]
 edition = "2021"
@@ -56,6 +56,12 @@ mongodb = { version = "3", default-features = false, features = [
     "bson-3",
     "compat-3-3-0",
 ] }
+# Same `bson` already pulled in by `mongodb` (3.x), pinned here only to turn on
+# its `serde_json-1` feature — this enables the canonical Extended JSON
+# serializer (`Bson::into_canonical_extjson`) and parser (`Bson::try_from::<
+# serde_json::Value>`) used by the MongoDB collection import/export (#65). No
+# new crate enters the tree: both `bson` and `serde_json` are already deps.
+bson = { version = "3", features = ["serde_json-1"] }
 keyring = { version = "3", features = [
     "windows-native",
     "apple-native",

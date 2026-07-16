@@ -183,6 +183,12 @@ export const useUpdateStore = create<UpdateState>()(
       _downloadPromise: null,
 
       checkOnLaunch: async () => {
+        // Skip the automatic launch check in development: a `tauri dev` build
+        // carries the in-repo version (e.g. 1.8.0 while 1.8.3 is in progress),
+        // so it would always report the latest *release* as an update and nag
+        // on every reload — and "install" would replace the installed app, not
+        // the dev build. The manual check (Settings → About) still works.
+        if (import.meta.env.DEV) return;
         await runCheck(get, set);
       },
 
@@ -195,6 +201,10 @@ export const useUpdateStore = create<UpdateState>()(
       },
 
       startPeriodicChecks: () => {
+        // Same rationale as `checkOnLaunch`: a dev build carries the in-repo
+        // version and would nag against the latest release on every timer tick.
+        // The manual check (`checkManually`) still works in dev.
+        if (import.meta.env.DEV) return;
         if (periodicTimer) return;
         periodicTimer = setInterval(() => {
           void runCheck(get, set);

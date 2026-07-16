@@ -139,6 +139,12 @@ export const api = {
   dropDatabase: (connectionId: string, name: string) =>
     invoke<void>("drop_database", { connectionId, name }),
 
+  /** Create a MongoDB collection on the database `connectionId` is scoped to
+   *  (#61). MongoDB-only — the backend rejects the SQL drivers, which create
+   *  tables through the structure editor instead. */
+  createCollection: (connectionId: string, name: string) =>
+    invoke<void>("create_collection", { connectionId, name }),
+
   listTables: (connectionId: string, database?: string) =>
     invoke<TableInfo[]>("list_tables", { connectionId, database }),
 
@@ -424,6 +430,17 @@ export const api = {
    */
   readTextFile: (filePath: string) =>
     invoke<string>("read_text_file", { filePath }),
+
+  /** Export a MongoDB collection's documents to a user-chosen `.json` file as
+   *  canonical Extended JSON (#65). The save dialog opens on the Rust side;
+   *  returns the written path. Rejects if the user cancels. */
+  exportCollection: (connectionId: string, collection: string) =>
+    invoke<string>("export_collection", { connectionId, collection }),
+
+  /** Import documents from `filePath` (JSON array / object / JSONL) into a
+   *  MongoDB collection (#65). Returns the number of inserted documents. */
+  importCollection: (connectionId: string, collection: string, filePath: string) =>
+    invoke<number>("import_collection", { connectionId, collection, filePath }),
 
   // CLI args ---------------------------------------------------------------
 

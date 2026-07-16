@@ -80,6 +80,7 @@ mod tests {
             auth_source: None,
             ephemeral,
             group: None,
+            visible_databases: None,
         }
     }
 

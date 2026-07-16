@@ -6,6 +6,64 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.8.3] — 2026-07-16
+
+### Added
+
+- **Create a MongoDB collection from the explorer (#61).** MongoDB creates a
+  collection implicitly on first write, so there was no way to materialize an
+  empty collection from the UI — you had to insert a document first. A "New
+  collection" entry now sits in the MongoDB database context menu (and a "+"
+  button in the single-database toolbar, mirroring the Postgres/MySQL "New
+  database" affordance), issuing an explicit `create` command via a new
+  `create_collection` backend command so the collection appears in the tree
+  before any document exists, matching MongoDB Compass. The name is validated
+  (non-empty, no reserved `system.` prefix); non-Mongo drivers are rejected
+  (they create tables through the structure editor).
+- **Choose which databases a connection shows, DataGrip-style (#64).** A
+  multi-database connection listed *every* database on the server and warmed
+  all of them in the background — noisy and slow on servers with dozens of
+  databases. A new checklist (the list-checks button in the multi-DB explorer
+  header) lets you pick the subset you actually work with; the explorer then
+  renders only those and, crucially, scopes the background prefetch to them so
+  connecting to a big server no longer fans out across everything. The choice
+  persists per connection (`visible_databases` on the profile; `null` = show
+  all, so newly-created databases keep appearing automatically). Applies to
+  Postgres/MySQL and MongoDB clusters alike.
+- **Import and export MongoDB collections as JSON (#65).** The whole-database
+  `.sql` export never supported MongoDB. Each collection now has "Export
+  collection (JSON)…" / "Import JSON…" in its context menu, using **canonical
+  MongoDB Extended JSON** so `ObjectId`/`Date`/`Decimal128`/… round-trip with
+  their types intact (unlike the display form the grid shows). Export streams
+  straight from the cursor to the file; import accepts a JSON array, a single
+  object, or newline-delimited JSON (mongoexport's default) and `insert_many`s
+  the batch after a destructive-action confirmation.
+
+### Changed
+
+- **The OS window title now reflects the active connection and table (#57,
+  #59).** Every window was titled a static "HuginnDB", making multiple windows
+  impossible to tell apart from the taskbar / Alt-Tab. The title now shows
+  `<profile> · <database>.<table> — HuginnDB` for the active table tab (falling
+  back to `<profile> · <database>` for other tabs, and plain "HuginnDB" when
+  nothing is connected), and table tabs themselves are labelled `database.table`
+  instead of just the table name, so the database and table are always shown
+  together. The redundant `schema › table` breadcrumb that used to sit next to
+  the data-grid filter is gone — the tab title already carries that identity.
+  Secondary windows are covered by the capability config (`win-*`), which also
+  gives them the window permissions they need in general.
+- **Connecting to a many-database server is now instant — the explorer no
+  longer eagerly caches every database's tables on connect.** The multi-DB
+  explorer used to warm the table list of *every* database in the background
+  right after connecting, so a connection with 19+ databases sat visibly
+  "Caching schema… n/m" for a moment before settling. That eager warm was only
+  ever a search optimization, and it is now redundant with the visible-databases
+  selector (#64) and the active-database scope: databases load lazily when
+  expanded, and the cross-database search still fans out on demand the first
+  time you search. Net effect: connect is immediate regardless of how many
+  databases the server has; the only trade is that the first cross-database
+  search after connecting is served cold.
+
 ## [1.8.2] — 2026-07-15
 
 ### Added

@@ -79,6 +79,11 @@ export interface ConnectionProfile {
    *  means ungrouped. Purely a display grouping — matched by string
    *  equality in the frontend, no separate group registry. */
   group?: string | null;
+  /** DataGrip-style subset of databases to show for a multi-DB connection
+   *  (#64). `null`/absent = show all. When set, the multi-DB explorer renders
+   *  and warms only these databases. Frontend-only display/perf concern; the
+   *  backend stores it opaquely. */
+  visible_databases?: string[] | null;
 }
 
 /** Database / schema row in the schema explorer. */

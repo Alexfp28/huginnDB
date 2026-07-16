@@ -28,6 +28,7 @@ import {
   Table as TableIcon,
 } from "lucide-react";
 import { useConnections } from "@/stores/connections";
+import { tableTabTitle } from "@/lib/connectionLabel";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
@@ -140,7 +141,7 @@ export function CommandPalette() {
           run: () => {
             useTabs.getState().open({
               kind: "table",
-              title: tbl.name,
+              title: tableTabTitle(profiles, selected, tbl.name),
               connectionId: selected,
               schema: tbl.schema,
               table: tbl.name,

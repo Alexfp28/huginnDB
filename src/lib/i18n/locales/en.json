@@ -220,7 +220,6 @@
     "filterInDb": "Filter in {{db}}…",
     "filterScopedTo": "Searching in {{db}} only",
     "noMatches": "No tables match the filter.",
-    "warming": "Caching schema… {{done}}/{{total}} databases",
     "context": {
       "open": "Open in tab",
       "newQueryHere": "New query here",
@@ -257,6 +256,22 @@
       "failed": "Could not create database: {{message}}",
       "createdSingleDb": "Database \"{{name}}\" created. This connection is scoped to a single database — open a new connection (or a multi-database one) to browse into it."
     },
+    "createCollection": {
+      "title": "New collection",
+      "description": "Create a new collection in this MongoDB database.",
+      "namePlaceholder": "Collection name",
+      "submit": "Create",
+      "creating": "Creating…",
+      "created": "Collection \"{{name}}\" created.",
+      "failed": "Could not create collection: {{message}}"
+    },
+    "selectDatabases": {
+      "title": "Databases to show",
+      "description": "Pick which databases appear in the explorer for this connection. Hidden databases are also skipped when prefetching, which speeds up connecting to servers with many databases.",
+      "count": "{{selected}} of {{total}} selected",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all"
+    },
     "dropDatabase": {
       "confirm": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server. This cannot be undone."
     },
@@ -270,6 +285,16 @@
       "confirm": "Run {{count}} statement(s) from this file against the active connection? This can modify or delete data and cannot be undone.",
       "success": "Import finished — {{count}} statement(s) ran.",
       "failed": "Import stopped at statement {{index}}: {{message}}"
+    },
+    "exportCollection": {
+      "title": "Export collection (JSON)…",
+      "success": "Collection exported to {{path}}"
+    },
+    "importCollection": {
+      "title": "Import JSON…",
+      "pickTitle": "Import JSON file",
+      "confirm": "Insert the documents from this file into \"{{collection}}\"? Existing documents with the same _id will cause the import to stop.",
+      "success": "Import finished — {{count}} document(s) inserted."
     },
     "security": "Security"
   },

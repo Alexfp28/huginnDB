@@ -8,6 +8,65 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.8.3] — 2026-07-16
+
+### Añadido
+
+- **Crear una colección de MongoDB desde el explorador (#61).** MongoDB crea
+  la colección de forma implícita en la primera escritura, así que no había
+  manera de materializar una colección vacía desde la interfaz — tenías que
+  insertar un documento antes. Ahora hay una entrada "Nueva colección" en el
+  menú contextual de la base de datos MongoDB (y un botón "+" en la barra de la
+  base de datos, igual que el "Nueva base de datos" de Postgres/MySQL), que
+  emite un comando `create` explícito mediante un nuevo comando de backend
+  `create_collection`, de forma que la colección aparece en el árbol antes de
+  que exista ningún documento, como en MongoDB Compass. El nombre se valida
+  (no vacío, sin el prefijo reservado `system.`); los drivers no-Mongo se
+  rechazan (crean tablas a través del editor de estructura).
+- **Elegir qué bases de datos muestra una conexión, al estilo DataGrip
+  (#64).** Una conexión multi-base listaba *todas* las bases del servidor y
+  precargaba sus tablas en segundo plano — ruidoso y lento en servidores con
+  decenas de bases. Una nueva lista de selección (el botón de casillas en la
+  cabecera del explorador multi-base) permite elegir el subconjunto con el que
+  realmente trabajas; el explorador muestra solo esas. La elección se guarda
+  por conexión (`visible_databases` en el perfil; `null` = mostrar todas, de
+  modo que las bases nuevas siguen apareciendo). Aplica a Postgres/MySQL y a
+  clústeres MongoDB por igual.
+- **Importar y exportar colecciones de MongoDB como JSON (#65).** La
+  exportación de base de datos completa (`.sql`) nunca soportó MongoDB. Ahora
+  cada colección tiene "Exportar colección (JSON)…" / "Importar JSON…" en su
+  menú contextual, usando **Extended JSON canónico de MongoDB**, de modo que
+  `ObjectId`/`Date`/`Decimal128`/… conservan su tipo en el viaje de ida y
+  vuelta (a diferencia de la forma de visualización que muestra la rejilla). La
+  exportación transmite directamente desde el cursor al fichero; la importación
+  acepta un array JSON, un único objeto, o JSON por líneas (el formato por
+  defecto de mongoexport) e inserta el lote tras una confirmación destructiva.
+
+### Cambiado
+
+- **El título de la ventana del sistema ahora refleja la conexión y la tabla
+  activas (#57, #59).** Cada ventana se titulaba con un "HuginnDB" fijo, lo que
+  hacía imposible distinguir varias ventanas desde la barra de tareas / Alt-Tab.
+  El título muestra ahora `<perfil> · <base>.<tabla> — HuginnDB` para la pestaña
+  de tabla activa (cayendo a `<perfil> · <base>` en otras pestañas, y a
+  "HuginnDB" a secas cuando no hay conexión), y las pestañas de tabla se
+  etiquetan `base.tabla` en vez de solo el nombre de la tabla, así la base y la
+  tabla se ven siempre juntas. Se ha quitado el breadcrumb redundante
+  `esquema › tabla` que aparecía junto al filtro de la rejilla — el título de la
+  pestaña ya lleva esa identidad. Las ventanas secundarias quedan cubiertas por
+  la configuración de capacidades (`win-*`).
+- **Conectar a un servidor con muchas bases es ahora instantáneo — el
+  explorador ya no precachea las tablas de todas las bases al conectar.** El
+  explorador multi-base precargaba en segundo plano la lista de tablas de
+  *cada* base justo tras conectar, así que una conexión con 19+ bases se quedaba
+  un momento en "Cacheando esquema… n/m" antes de asentarse. Esa precarga solo
+  era una optimización de búsqueda y ahora es redundante con el selector de
+  bases visibles (#64) y el ámbito de base activa: las bases se cargan de forma
+  perezosa al expandirlas, y la búsqueda entre bases sigue haciendo el fan-out
+  bajo demanda la primera vez que buscas. Efecto neto: conectar es inmediato
+  independientemente de cuántas bases tenga el servidor; el único coste es que
+  la primera búsqueda entre bases tras conectar se sirve "en frío".
+
 ## [1.8.2] — 2026-07-15
 
 ### Añadido

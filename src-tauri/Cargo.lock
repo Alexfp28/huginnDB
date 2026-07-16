@@ -586,6 +586,7 @@ dependencies = [
  "rand 0.9.4",
  "serde",
  "serde_bytes",
+ "serde_json",
  "simdutf8",
  "thiserror 2.0.18",
  "time",
@@ -2537,12 +2538,13 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
 name = "huginndb"
-version = "1.8.2"
+version = "1.8.3"
 dependencies = [
  "aes-gcm 0.10.3",
  "anyhow",
  "async-trait",
  "base64 0.22.1",
+ "bson",
  "chrono",
  "dirs 5.0.1",
  "keyring",
@@ -2575,7 +2577,7 @@ dependencies = [
 
 [[package]]
 name = "huginndb-mcp"
-version = "1.8.2"
+version = "1.8.3"
 dependencies = [
  "anyhow",
  "huginndb",

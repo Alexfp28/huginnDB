@@ -32,6 +32,7 @@ import {
   useUpdateStore,
 } from "@/stores/update";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { WindowTitleSync } from "@/components/WindowTitleSync";
 import { getCurrentVersion } from "@/lib/updater";
 import { useWhatsNew } from "@/stores/whatsNew";
 import { WhatsNewDialog } from "@/components/WhatsNewDialog";
@@ -788,6 +789,7 @@ export default function App() {
       <FeedbackDialog />
       <WhatsNewDialog />
       <DocsDialog />
+      <WindowTitleSync />
       <Toaster
         position="bottom-right"
         theme={activeTheme.mode === "dark" ? "dark" : "light"}
