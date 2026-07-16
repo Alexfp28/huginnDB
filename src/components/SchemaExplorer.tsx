@@ -37,6 +37,7 @@ import {
   Eye,
   KeyRound,
   LayoutList,
+  ListChecks,
   ShieldCheck,
   Upload,
 } from "lucide-react";
@@ -44,6 +45,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useSchema, tableKey } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { useConnections } from "@/stores/connections";
+import { tableTabTitle } from "@/lib/connectionLabel";
 import { usePreferences } from "@/stores/preferences";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
@@ -278,6 +280,11 @@ function SingleDbExplorer({
   // can't add a sibling database on the same server.
   const canCreateDatabase = driver === "postgres" || driver === "mysql";
   const [createDbOpen, setCreateDbOpen] = useState(false);
+  // MongoDB has no CREATE DATABASE, but it does have an explicit
+  // create-collection (#61) — offered here so a single-DB Mongo profile (or
+  // a per-database view) can add an empty collection without inserting first.
+  const canCreateCollection = driver === "mongodb";
+  const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
 
   useEffect(() => {
     // Fire refresh only when no successful fetch has happened yet AND no
@@ -359,26 +366,42 @@ function SingleDbExplorer({
                 <Plus className="h-3.5 w-3.5" />
               </Button>
             )}
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => void exportDatabaseWithToast(connectionId, t)}
-              title={t("schema.exportDatabase.title")}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() =>
-                void importSqlFile(connectionId, t).then((ran) => {
-                  if (ran) refresh(connectionId);
-                })
-              }
-              title={t("schema.importSql.title")}
-            >
-              <Upload className="h-3.5 w-3.5" />
-            </Button>
+            {canCreateCollection && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setCreateCollectionOpen(true)}
+                title={t("schema.createCollection.title")}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {/* Whole-database .sql export/import is SQL-only; MongoDB uses the
+                per-collection JSON export/import in the collection menu (#65). */}
+            {!canCreateCollection && (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => void exportDatabaseWithToast(connectionId, t)}
+                  title={t("schema.exportDatabase.title")}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() =>
+                    void importSqlFile(connectionId, t).then((ran) => {
+                      if (ran) refresh(connectionId);
+                    })
+                  }
+                  title={t("schema.importSql.title")}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
             <Button
               size="icon"
               variant="ghost"
@@ -413,6 +436,17 @@ function SingleDbExplorer({
             // unlike the multi-DB toolbar's "+", where the new node
             // appearing in the tree IS the confirmation.
             toast.success(t("schema.createDatabase.createdSingleDb", { name }));
+          }}
+        />
+      )}
+      {createCollectionOpen && (
+        <CreateCollectionDialog
+          connectionId={connectionId}
+          onClose={() => setCreateCollectionOpen(false)}
+          onDone={(name) => {
+            setCreateCollectionOpen(false);
+            refresh(connectionId);
+            toast.success(t("schema.createCollection.created", { name }));
           }}
         />
       )}
@@ -574,11 +608,26 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   // CREATE DATABASE is server-level DDL, only meaningful for Postgres/MySQL —
   // SQLite never reaches multi-DB mode at all, and MongoDB creates databases
   // implicitly on first write (see `create_database`'s doc comment).
-  const driver = useConnections((s) =>
-    s.profiles.find((p) => p.id === parentId)?.driver,
+  // The whole profile: we need the driver AND the visible-databases subset
+  // (#64). `find` returns the existing object ref (stable until `profiles` is
+  // replaced), so this is a safe selector (gotcha #1 forbids fresh arrays/
+  // objects, not existing refs).
+  const profile = useConnections((s) =>
+    s.profiles.find((p) => p.id === parentId),
   );
+  const driver = profile?.driver;
   const canCreateDatabase = driver === "postgres" || driver === "mysql";
   const [createDbOpen, setCreateDbOpen] = useState(false);
+  // DataGrip-style visible-databases subset. `null`/empty = show all.
+  const visibleDatabases = profile?.visible_databases ?? null;
+  const visibleSet = useMemo(
+    () =>
+      visibleDatabases && visibleDatabases.length > 0
+        ? new Set(visibleDatabases)
+        : null,
+    [visibleDatabases],
+  );
+  const [dbPickerOpen, setDbPickerOpen] = useState(false);
   // Subscribe to the whole map so `matchingDbs` reactively recomputes
   // as each prefetch lands. The membership check is cheap (Map lookup
   // per database) so the broader subscription is fine here.
@@ -625,8 +674,8 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   // databases, so re-running this effect (cs changes as children land)
   // is cheap and idempotent.
   useEffect(() => {
-    if (cs?.initialized && !cs.error) warmDatabases(parentId);
-  }, [parentId, cs?.initialized, cs?.error, warmDatabases]);
+    if (cs?.initialized && !cs.error) warmDatabases(parentId, visibleDatabases);
+  }, [parentId, cs?.initialized, cs?.error, warmDatabases, visibleDatabases]);
 
   // On-demand prefetch — kept as a fallback for databases the background
   // warm hasn't reached yet (large servers, or a search fired moments
@@ -642,9 +691,11 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
     if (debouncedNeedle.length < 2 || !cs) return;
     // When a database is active, only prefetch that one — avoids a full
     // fan-out across every database on large servers during scoped searches.
-    const dbsToWarm = activeDatabaseName
-      ? cs.databases.filter((db) => db.name === activeDatabaseName)
-      : cs.databases;
+    const dbsToWarm = (
+      activeDatabaseName
+        ? cs.databases.filter((db) => db.name === activeDatabaseName)
+        : cs.databases
+    ).filter((db) => !visibleSet || visibleSet.has(db.name));
     for (const db of dbsToWarm) {
       const childId = `${parentId}::db::${db.name}`;
       const childCs = byConnection[childId];
@@ -662,7 +713,15 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
           inFlightPrefetch.current.delete(childId);
         });
     }
-  }, [debouncedNeedle, cs, byConnection, parentId, refresh, activeDatabaseName]);
+  }, [
+    debouncedNeedle,
+    cs,
+    byConnection,
+    parentId,
+    refresh,
+    activeDatabaseName,
+    visibleSet,
+  ]);
 
   const filterActive = debouncedNeedle.length > 0;
 
@@ -749,6 +808,21 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
           <Button
             size="icon"
             variant="ghost"
+            onClick={() => setDbPickerOpen(true)}
+            title={t("schema.selectDatabases.title")}
+          >
+            <ListChecks
+              className={cn(
+                "h-3.5 w-3.5",
+                // Brand-tint the icon when a subset is active so it's obvious
+                // some databases are hidden.
+                visibleSet ? "text-brand" : undefined,
+              )}
+            />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
             onClick={() => openSecurityTab(parentId, t("security.title"))}
             title={t("security.title")}
           >
@@ -775,6 +849,14 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
             setCreateDbOpen(false);
             refresh(parentId);
           }}
+        />
+      )}
+      {dbPickerOpen && (
+        <DatabaseVisibilityDialog
+          profileId={parentId}
+          databases={cs.databases.map((db) => db.name)}
+          selected={visibleDatabases}
+          onClose={() => setDbPickerOpen(false)}
         />
       )}
       <div className="px-3 pb-2">
@@ -810,6 +892,7 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
           </div>
         )}
         {cs.databases
+          .filter((db) => !visibleSet || visibleSet.has(db.name))
           .filter((db) => !matchingDbs || matchingDbs.has(db.name))
           .map((db) => {
             const match = matchingDbs?.get(db.name);
@@ -823,6 +906,7 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
                 key={db.name}
                 parentId={parentId}
                 dbName={db.name}
+                driver={driver}
                 canDrop={canCreateDatabase}
                 expanded={cs.expanded.has(`db:${db.name}`)}
                 onToggle={() => toggleNode(parentId, `db:${db.name}`)}
@@ -850,6 +934,7 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
 function DatabaseRoot({
   parentId,
   dbName,
+  driver,
   canDrop,
   expanded,
   onToggle,
@@ -863,6 +948,8 @@ function DatabaseRoot({
 }: {
   parentId: string;
   dbName: string;
+  /** Parent connection's driver — gates the Mongo-only "New collection" entry. */
+  driver: Driver | undefined;
   /** Whether `DROP DATABASE` is offered (Postgres/MySQL only). */
   canDrop: boolean;
   expanded: boolean;
@@ -888,6 +975,11 @@ function DatabaseRoot({
   const [childId, setChildId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+  /** The `<parent>::db::<db>` view id the create-collection dialog targets;
+   *  non-null while the dialog is open (#61). */
+  const [createCollectionId, setCreateCollectionId] = useState<string | null>(
+    null,
+  );
 
   // "New query here": open a query tab scoped to *this* database. We must run
   // it against the synthetic `<parentId>::db::<db>` pool, so if the subtree was
@@ -956,6 +1048,23 @@ function DatabaseRoot({
       }
     }
     if (await importSqlFile(id, t)) await useSchema.getState().refresh(id);
+  };
+
+  // "New collection" (MongoDB): lazily resolve this database's synthetic view
+  // id (same pattern as the handlers above) and open the create dialog scoped
+  // to it. `create_collection` needs a pool bound to this specific database.
+  const createCollectionHere = async () => {
+    let id = childId;
+    if (!id) {
+      try {
+        id = await api.openDatabaseView(parentId, dbName);
+        setChildId(id);
+      } catch (e) {
+        setError(String(e));
+        return;
+      }
+    }
+    setCreateCollectionId(id);
   };
 
   // Drop this database (Postgres/MySQL). Irreversible, so it's gated behind
@@ -1039,16 +1148,27 @@ function DatabaseRoot({
           <ContextMenuItem onSelect={() => void openQueryHere()}>
             {t("schema.context.newQueryHere")}
           </ContextMenuItem>
+          {driver === "mongodb" && (
+            <ContextMenuItem onSelect={() => void createCollectionHere()}>
+              {t("schema.createCollection.title")}
+            </ContextMenuItem>
+          )}
           <ContextMenuItem onSelect={() => void openSecurityHere()}>
             {t("security.title")}
           </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={() => void exportThisDatabase()}>
-            {t("schema.exportDatabase.title")}
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={() => void importSqlHere()}>
-            {t("schema.importSql.title")}
-          </ContextMenuItem>
+          {/* Whole-database .sql export/import is SQL-only; MongoDB databases
+              use the per-collection JSON export/import instead (#65). */}
+          {driver !== "mongodb" && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={() => void exportThisDatabase()}>
+                {t("schema.exportDatabase.title")}
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={() => void importSqlHere()}>
+                {t("schema.importSql.title")}
+              </ContextMenuItem>
+            </>
+          )}
           {canDrop && (
             <>
               <ContextMenuSeparator />
@@ -1062,6 +1182,18 @@ function DatabaseRoot({
           )}
         </ContextMenuContent>
       </ContextMenu>
+      {createCollectionId && (
+        <CreateCollectionDialog
+          connectionId={createCollectionId}
+          onClose={() => setCreateCollectionId(null)}
+          onDone={(name) => {
+            const id = createCollectionId;
+            setCreateCollectionId(null);
+            if (id) void useSchema.getState().refresh(id);
+            toast.success(t("schema.createCollection.created", { name }));
+          }}
+        />
+      )}
       {effectiveExpanded && (
         <div className="ml-3 border-l border-border/40">
           {error && (
@@ -1261,6 +1393,44 @@ function TableRow({
     void navigator.clipboard.writeText(`SELECT * FROM ${qualified};`);
   };
 
+  const isMongo = actions.driver === "mongodb";
+
+  // MongoDB per-collection JSON export/import (#65). The save dialog is opened
+  // backend-side (like the SQL "Export database"); import picks the file here,
+  // confirms, then hands the path to the backend which parses + inserts.
+  const exportCollectionJson = async () => {
+    try {
+      const path = await api.exportCollection(connectionId, t.name);
+      toast.success(ct("schema.exportCollection.success", { path }));
+    } catch (e) {
+      const message = String(e);
+      if (!message.includes("export cancelled")) toast.error(message);
+    }
+  };
+  const importCollectionJson = async () => {
+    const picked = await openFileDialog({
+      multiple: false,
+      directory: false,
+      title: ct("schema.importCollection.pickTitle"),
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (typeof picked !== "string" || !picked) return;
+    if (
+      !confirmDestructive(
+        ct("schema.importCollection.confirm", { collection: t.name }),
+      )
+    ) {
+      return;
+    }
+    try {
+      const count = await api.importCollection(connectionId, t.name, picked);
+      toast.success(ct("schema.importCollection.success", { count }));
+      actions.refresh();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -1318,7 +1488,11 @@ function TableRow({
                   e.stopPropagation();
                   actions.openTab({
                     kind: "table",
-                    title: t.name,
+                    title: tableTabTitle(
+                      useConnections.getState().profiles,
+                      connectionId,
+                      t.name,
+                    ),
                     connectionId,
                     schema: t.schema,
                     table: t.name,
@@ -1401,7 +1575,11 @@ function TableRow({
           onSelect={() =>
             actions.openTab({
               kind: "table",
-              title: t.name,
+              title: tableTabTitle(
+                useConnections.getState().profiles,
+                connectionId,
+                t.name,
+              ),
               connectionId,
               schema: t.schema,
               table: t.name,
@@ -1419,8 +1597,28 @@ function TableRow({
         <ContextMenuItem onSelect={() => actions.refresh()}>
           {ct("schema.context.refresh")}
         </ContextMenuItem>
+        {/* MongoDB collections: JSON data import/export + drop. No SQL DDL
+            (structure editing is read-only / rename is unsupported for Mongo). */}
+        {isMongo && !isView && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => void exportCollectionJson()}>
+              {ct("schema.exportCollection.title")}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => void importCollectionJson()}>
+              {ct("schema.importCollection.title")}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onSelect={() => actions.onDrop(t)}
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+            >
+              {ct("schema.context.drop")}
+            </ContextMenuItem>
+          </>
+        )}
         {/* Views fall through to read-only; we only expose DDL on base tables. */}
-        {!isView && (
+        {!isMongo && !isView && (
           <>
             <ContextMenuSeparator />
             <ContextMenuItem
@@ -1624,6 +1822,197 @@ function CreateDatabaseDialog({
             {submitting
               ? t("schema.createDatabase.creating")
               : t("schema.createDatabase.submit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Modal for creating a MongoDB collection (#61) — the collection analogue of
+ *  `CreateDatabaseDialog`. Reached from the Mongo database context menu and the
+ *  single-DB Mongo toolbar. `connectionId` must already be scoped to the target
+ *  database (a `<parent>::db::<db>` view for a cluster), so the caller resolves
+ *  it before opening this. */
+function CreateCollectionDialog({
+  connectionId,
+  onClose,
+  onDone,
+}: {
+  connectionId: string;
+  onClose: () => void;
+  /** Fired with the created collection's name so the caller can refresh the
+   *  tree and/or toast success. */
+  onDone: (name: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.createCollection(connectionId, trimmed);
+      onDone(trimmed);
+    } catch (e) {
+      setError(String(e));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("schema.createCollection.title")}</DialogTitle>
+          <DialogDescription>
+            {t("schema.createCollection.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("schema.createCollection.namePlaceholder")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+        />
+        {error && (
+          <div className="text-xs text-destructive">
+            {t("schema.createCollection.failed", { message: error })}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            {t("common.cancel")}
+          </Button>
+          <Button onClick={submit} disabled={submitting || !name.trim()}>
+            {submitting
+              ? t("schema.createCollection.creating")
+              : t("schema.createCollection.submit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** DataGrip-style "choose which databases to show" picker (#64). Persists the
+ *  subset on the profile (`visible_databases`); "all selected" stores `null`
+ *  so newly-created databases keep appearing automatically. Save is disabled
+ *  with nothing selected — an empty subset would hide the whole tree, which is
+ *  never what the user wants. */
+function DatabaseVisibilityDialog({
+  profileId,
+  databases,
+  selected,
+  onClose,
+}: {
+  profileId: string;
+  /** Every database name currently known for the connection. */
+  databases: string[];
+  /** The persisted subset, or null when all are shown. */
+  selected: string[] | null;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [sel, setSel] = useState<Set<string>>(
+    () => new Set(selected ?? databases),
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const allSelected = sel.size === databases.length;
+
+  const toggle = (name: string) => {
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+  const toggleAll = () =>
+    setSel(allSelected ? new Set() : new Set(databases));
+
+  const submit = async () => {
+    if (sel.size === 0) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const chosen = databases.filter((n) => sel.has(n));
+      // "All" → null so future databases stay visible; a proper subset is
+      // stored verbatim.
+      const value = chosen.length === databases.length ? null : chosen;
+      const profile = useConnections
+        .getState()
+        .profiles.find((p) => p.id === profileId);
+      if (profile) {
+        await useConnections.getState().save({
+          ...profile,
+          visible_databases: value,
+        });
+      }
+      onClose();
+    } catch (e) {
+      setError(String(e));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("schema.selectDatabases.title")}</DialogTitle>
+          <DialogDescription>
+            {t("schema.selectDatabases.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center justify-between pb-1">
+          <span className="text-xs text-muted-foreground">
+            {t("schema.selectDatabases.count", {
+              selected: sel.size,
+              total: databases.length,
+            })}
+          </span>
+          <button
+            onClick={toggleAll}
+            className="text-xs text-primary underline-offset-2 hover:underline"
+          >
+            {allSelected
+              ? t("schema.selectDatabases.deselectAll")
+              : t("schema.selectDatabases.selectAll")}
+          </button>
+        </div>
+        <div className="max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border">
+          {databases.map((name) => (
+            <label
+              key={name}
+              className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/50"
+            >
+              <input
+                type="checkbox"
+                checked={sel.has(name)}
+                onChange={() => toggle(name)}
+                className="h-3.5 w-3.5 rounded accent-primary"
+              />
+              <span className="flex-1 truncate text-xs">{name}</span>
+            </label>
+          ))}
+        </div>
+        {error && <div className="text-xs text-destructive">{error}</div>}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            {t("common.cancel")}
+          </Button>
+          <Button onClick={submit} disabled={submitting || sel.size === 0}>
+            {t("common.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

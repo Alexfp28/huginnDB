@@ -257,6 +257,22 @@
       "failed": "No se pudo crear la base de datos: {{message}}",
       "createdSingleDb": "Base de datos \"{{name}}\" creada. Esta conexión está limitada a una sola base de datos — abre una conexión nueva (o una en modo multi-base) para explorarla."
     },
+    "createCollection": {
+      "title": "Nueva colección",
+      "description": "Crea una nueva colección en esta base de datos MongoDB.",
+      "namePlaceholder": "Nombre de la colección",
+      "submit": "Crear",
+      "creating": "Creando…",
+      "created": "Colección \"{{name}}\" creada.",
+      "failed": "No se pudo crear la colección: {{message}}"
+    },
+    "selectDatabases": {
+      "title": "Bases de datos a mostrar",
+      "description": "Elige qué bases de datos aparecen en el explorador de esta conexión. Las ocultas también se omiten al precargar, lo que acelera la conexión a servidores con muchas bases.",
+      "count": "{{selected}} de {{total}} seleccionadas",
+      "selectAll": "Seleccionar todas",
+      "deselectAll": "Deseleccionar todas"
+    },
     "dropDatabase": {
       "confirm": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor. No se puede deshacer."
     },
@@ -270,6 +286,16 @@
       "confirm": "¿Ejecutar {{count}} sentencia(s) de este fichero contra la conexión activa? Esto puede modificar o borrar datos y no se puede deshacer.",
       "success": "Importación terminada — se ejecutaron {{count}} sentencia(s).",
       "failed": "Importación detenida en la sentencia {{index}}: {{message}}"
+    },
+    "exportCollection": {
+      "title": "Exportar colección (JSON)…",
+      "success": "Colección exportada a {{path}}"
+    },
+    "importCollection": {
+      "title": "Importar JSON…",
+      "pickTitle": "Importar fichero JSON",
+      "confirm": "¿Insertar los documentos de este fichero en \"{{collection}}\"? Si existen documentos con el mismo _id la importación se detendrá.",
+      "success": "Importación terminada — se insertaron {{count}} documento(s)."
     },
     "security": "Seguridad"
   },

@@ -2,9 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capabilities for the HuginnDB app window",
-  "windows": ["main"],
+  "windows": ["main", "win-*"],
   "permissions": [
     "core:default",
+    "core:window:allow-set-title",
     "dialog:default",
     "window-state:default",
     "updater:default",

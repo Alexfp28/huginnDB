@@ -60,7 +60,11 @@ interface SchemaState {
    * already running for this parent. Failures per database are swallowed —
    * the database's own subtree surfaces the error when expanded.
    */
-  warmDatabases: (parentId: string, concurrency?: number) => Promise<void>;
+  warmDatabases: (
+    parentId: string,
+    visible?: string[] | null,
+    concurrency?: number,
+  ) => Promise<void>;
   /** Toggle a tree-node key in the `expanded` set. */
   toggleNode: (connectionId: string, key: string) => void;
   /** Populate `columns[tableKey(schema, table)]`. */
@@ -162,17 +166,21 @@ export const useSchema = create<SchemaState>((set, get) => ({
       }));
     }
   },
-  warmDatabases: async (parentId, concurrency = 5) => {
+  warmDatabases: async (parentId, visible = null, concurrency = 5) => {
     if (warmingParents.has(parentId)) return;
     const parent = get().byConnection[parentId];
     if (!parent || !parent.initialized) return;
 
     // Snapshot the databases still missing from the cache. The on-demand
     // prefetch may grab some of these while we run, so each worker re-checks
-    // before fetching to avoid a redundant round-trip.
+    // before fetching to avoid a redundant round-trip. When the connection has
+    // a DataGrip-style visible-databases subset (#64), warm only those — the
+    // whole point is to skip fanning out across every database on the server.
+    const visibleSet = visible && visible.length > 0 ? new Set(visible) : null;
     const queue = parent.databases
       .map((db) => ({ db: db.name, childId: childConnectionId(parentId, db.name) }))
-      .filter(({ childId }) => {
+      .filter(({ db, childId }) => {
+        if (visibleSet && !visibleSet.has(db)) return false;
         const c = get().byConnection[childId];
         return !(c?.initialized || c?.loading);
       });

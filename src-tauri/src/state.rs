@@ -91,6 +91,13 @@ pub struct ConnectionProfile {
     /// registry, just equality-matched on this string in the frontend.
     #[serde(default)]
     pub group: Option<String>,
+    /// DataGrip-style subset of databases to show for a multi-DB connection
+    /// (#64). `None` (or absent) means "show all" — the historical behaviour;
+    /// `Some(names)` restricts the multi-DB explorer to those databases and
+    /// scopes the background warm to them. Purely a frontend display/perf
+    /// concern; the backend stores it opaquely and never acts on it.
+    #[serde(default)]
+    pub visible_databases: Option<Vec<String>>,
 }
 
 /// How the client decides whether to trust the SSH server's host key.

@@ -277,6 +277,54 @@ pub async fn drop_database(
     Ok(())
 }
 
+/// Create a MongoDB collection on the database `connection_id` is scoped to (#61).
+///
+/// MongoDB creates a collection implicitly on first write, so there was no way
+/// to materialize an empty collection from the UI — this issues an explicit
+/// `create` command (via the driver's `create_collection`) so it shows up in
+/// the explorer before any document is inserted, matching MongoDB Compass.
+///
+/// MongoDB-only by design: the SQL drivers have their table-creation path
+/// through the structure editor (`preview_structure_change`/`apply_structure_change`,
+/// gotcha #16), so a non-Mongo pool is rejected here rather than silently doing
+/// nothing. `connection_id` may be a synthetic `<parent>::db::<db>` view id —
+/// `resolve_db` reads the database the Mongo pool is bound to either way.
+///
+/// `name` is validated (non-empty, no `system.` prefix which MongoDB reserves
+/// for internal namespaces) before the wire command. This isn't a
+/// SQL-injection surface — the name is a `create` command argument, never
+/// string-interpolated into a query — but rejecting reserved/empty names up
+/// front gives a clean error instead of a cryptic server-side one.
+#[tauri::command]
+pub async fn create_collection(
+    state: State<'_, AppState>,
+    connection_id: String,
+    name: String,
+) -> AppResult<()> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::InvalidInput(
+            "collection name cannot be empty".into(),
+        ));
+    }
+    if trimmed.starts_with("system.") {
+        return Err(AppError::InvalidInput(
+            "collection names starting with 'system.' are reserved by MongoDB".into(),
+        ));
+    }
+    let pool = pool_for(state.inner(), &connection_id)?;
+    match &pool {
+        DbPool::Mongo(conn) => {
+            let db = crate::db::mongo::schema::resolve_db(conn)?;
+            db.create_collection(trimmed).await?;
+            Ok(())
+        }
+        _ => Err(AppError::InvalidInput(
+            "creating a collection is only supported for MongoDB; use the structure editor to create a table".into(),
+        )),
+    }
+}
+
 /// List user-visible tables and views, with approximate row counts where available.
 ///
 /// Row counts are sourced from engine statistics catalogs in a single query to

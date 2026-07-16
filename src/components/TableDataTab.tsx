@@ -36,6 +36,7 @@ import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { useFilterHistory } from "@/stores/filterHistory";
 import { useConnections } from "@/stores/connections";
+import { tableTabTitle } from "@/lib/connectionLabel";
 import { useGridSelection } from "@/stores/gridSelection";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences";
 import type {
@@ -473,7 +474,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     if (!col?.referenced_table || !col.referenced_column) return;
     useTabs.getState().open({
       kind: "table",
-      title: col.referenced_table,
+      title: tableTabTitle(
+        useConnections.getState().profiles,
+        connectionId,
+        col.referenced_table,
+      ),
       connectionId,
       schema: col.referenced_schema ?? undefined,
       table: col.referenced_table,
@@ -629,35 +634,21 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     pkColumns.length > 0 &&
     (result === null || pkColumnIndices.every((i) => i >= 0));
 
-  // Compact breadcrumb (schema › table), reused by the merged toolbar and the
-  // initial-load skeleton. The table name is the emphasised element.
-  const breadcrumb = (
-    <span className="flex min-w-0 items-center gap-1">
-      {schema && (
-        <>
-          <span className="truncate text-muted-foreground">{schema}</span>
-          <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
-        </>
-      )}
-      <span className="truncate font-medium text-foreground">{table}</span>
-    </span>
-  );
-
   // Leading toolbar content folded into the grid's own toolbar (via DataGrid's
   // `toolbarLeading`) so a table tab shows ONE bar instead of two stacked ones.
+  // The schema › table breadcrumb used to live here, but the tab title already
+  // shows `database.table` (#57) — repeating it next to the filter was pure
+  // redundancy, so the leading area is now just the refresh action.
   const leadingToolbar = (
-    <>
-      {breadcrumb}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={fetchData}
-        disabled={loading}
-        title={t("tableData.refresh")}
-      >
-        <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-      </Button>
-    </>
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={fetchData}
+      disabled={loading}
+      title={t("tableData.refresh")}
+    >
+      <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+    </Button>
   );
 
   return (
@@ -726,14 +717,14 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             toolbarLeading={leadingToolbar}
           />
         ) : (
-          // Initial load (no rows yet): breadcrumb + shimmer skeleton rows,
-          // so the tab shows its identity and reads as "fetching" rather than
-          // a bare "loading…" line. Refetch-with-stale-rows is handled by the
-          // grid's own dim overlay (the `loading` prop above).
+          // Initial load (no rows yet): a shimmer skeleton that reads as
+          // "fetching". The tab title carries the table's identity (#57), so
+          // this strip is just the loading indicator. Refetch-with-stale-rows
+          // is handled by the grid's own dim overlay (the `loading` prop above).
           <div className="flex h-full flex-col">
-            <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
-              {breadcrumb}
-              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+            <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+              {t("schema.loading")}
             </div>
             <div className="flex-1 space-y-1.5 p-3" aria-hidden>
               {Array.from({ length: 10 }).map((_, i) => (
