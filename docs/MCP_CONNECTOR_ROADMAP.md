@@ -167,7 +167,12 @@ needs no client-config edits to change.
 | `browse_table` | `fetch_table_data_inner` | paginated/filtered browse without writing SQL |
 | `server_version` | `schema::server_version_inner` | |
 | `list_users` / `list_privileges` | `schema::*_inner` | permission context |
-| *(opt-in)* `insert_row` / `update_cell` / `delete_rows` / `execute_write` | respective `_inner` | only with `--allow-writes` |
+| `insert_row` / `update_cell` / `delete_rows` | respective `_inner` | require the connection's write policy ≥ `data` (see Phase 4) |
+
+> As shipped (1.9.0), writes are gated by the per-connection `mcp_write` policy,
+> **not** a global `--allow-writes`; DDL goes through `run_query` at the `full`
+> tier rather than a dedicated `execute_write` tool. See the Phase 4 section
+> above and `docs/MCP.md`.
 
 ## Client configuration (target UX)
 
@@ -176,7 +181,7 @@ needs no client-config edits to change.
   "mcpServers": {
     "huginndb": {
       "command": "huginndb-mcp",
-      "args": ["--allow-writes=false", "--connections", "<profile-id>"]
+      "args": ["--connections", "<profile-id>"]
     }
   }
 }

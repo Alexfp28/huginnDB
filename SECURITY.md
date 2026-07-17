@@ -33,6 +33,7 @@ HuginnDB is a desktop application; the threat model is primarily a malicious or 
 - All database I/O happens in the Rust process. The frontend cannot open arbitrary network sockets.
 - The CSP for the Tauri webview is currently disabled (`csp: null` in `tauri.conf.json`) because Monaco needs to load worker scripts. The workers are self-hosted (no CDN dependency) — see `src/lib/monaco-setup.ts`. Tightening the CSP further is tracked as a roadmap item.
 - Identifier quoting (`src-tauri/src/db/sql.rs::quote_ident`) is safe against catalog-sourced identifiers. It is **not** intended as a sanitiser for arbitrary user input; arbitrary user input goes through bound parameters (`$1`/`?`).
+- The headless MCP connector (`huginndb-mcp`) exposes databases to an external AI client. It is **opt-in per connection** (`--connections`) and **read-only by default**: writes require a per-connection write policy (`read-only` / `data` / `full`) set in Settings → MCP, re-read on every write attempt. Whole-table `UPDATE`/`DELETE` (no `WHERE`) are refused, `--read-only` forces read-only globally, and every write is recorded to `mcp-audit.log`. Since the connector cannot prompt, per-action approval stays with the MCP client. See `docs/MCP.md`.
 
 ## Known caveats
 
