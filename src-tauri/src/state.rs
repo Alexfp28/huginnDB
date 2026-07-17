@@ -63,6 +63,30 @@ impl Default for McpWritePolicy {
     }
 }
 
+impl McpWritePolicy {
+    /// Whether a statement of the given tier is permitted under this policy.
+    /// `ReadOnly` admits only reads; `Data` adds row-level DML; `Full` adds
+    /// DDL. The ordering is strict — a lower tier never admits a higher one.
+    pub fn allows(self, class: crate::db::sql::StmtClass) -> bool {
+        use crate::db::sql::StmtClass;
+        match self {
+            McpWritePolicy::ReadOnly => class == StmtClass::Read,
+            McpWritePolicy::Data => matches!(class, StmtClass::Read | StmtClass::DataWrite),
+            McpWritePolicy::Full => true,
+        }
+    }
+
+    /// Lowercased wire label (`read-only` / `data` / `full`) for error
+    /// messages and logs.
+    pub fn label(self) -> &'static str {
+        match self {
+            McpWritePolicy::ReadOnly => "read-only",
+            McpWritePolicy::Data => "data",
+            McpWritePolicy::Full => "full",
+        }
+    }
+}
+
 /// User-defined connection profile stored on disk.
 ///
 /// Only contains non-sensitive metadata; the matching password is kept in
