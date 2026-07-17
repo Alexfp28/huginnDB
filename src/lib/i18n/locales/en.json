@@ -663,7 +663,7 @@
       "closeDialog": "Close the active dialog or popover"
     },
     "mcp": {
-      "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — read-only, opt-in per connection.",
+      "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",
       "binaryLabel": "Connector binary",
       "available": "Installed and ready.",
       "unavailable": "Not found — this build wasn't installed from a packaged release, so the connector isn't bundled.",
@@ -674,6 +674,14 @@
       "deselectAll": "Deselect all",
       "selectedCount": "{{selected}} of {{total}} selected",
       "noMatches": "No connections match “{{query}}”.",
+      "writePolicyLabel": "Write access",
+      "level": {
+        "read-only": "Read-only",
+        "data": "Data (INSERT/UPDATE/DELETE)",
+        "full": "Full (+ schema changes)"
+      },
+      "writePolicyHint": "Write access is per connection. “Read-only” allows only reads; “Data” allows row changes (INSERT/UPDATE/DELETE); “Full” also allows schema changes (CREATE/DROP/ALTER). Changes take effect without restarting the AI client. The client still asks you to approve each action, and every write is recorded in mcp-audit.log next to your profiles.",
+      "writePolicySaveError": "Couldn't save the write policy.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / other clients (JSON)",
       "selectHint": "Select at least one connection above.",

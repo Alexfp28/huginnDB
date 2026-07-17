@@ -130,10 +130,29 @@ write-mode ships.
    table into the model's context.
 5. Document the client config in `docs/MCP.md`.
 
-### Phase 4 (optional) — write-mode (~+0.5–1 d)
+### Phase 4 — write-mode with a per-connection permission model (1.9.0)
 
-`insert_row` / `update_cell` / `delete_rows` / an `execute_write` tool, gated
-behind `--allow-writes`. Recommended to defer past v1.
+Shipped as a **per-connection write policy**, not a single global
+`--allow-writes` bool. Each profile carries `mcp_write: read-only | data |
+full` (default `read-only`), set in Settings → MCP and saved to
+`profiles.json`. The sidecar re-reads it fresh on every write attempt, so a
+level change in the app takes effect without restarting the MCP client.
+
+- **Classifier** (`db/sql.rs`): `classify()` → `StmtClass::{Read, DataWrite,
+  Ddl}`; `read-only` admits Read, `data` adds DataWrite, `full` adds Ddl.
+  Whole-table `UPDATE`/`DELETE` (no `WHERE`) refused outright.
+- **Tools:** `insert_row` / `update_cell` / `delete_rows` (require ≥ `data`);
+  DDL reachable through `run_query` at `full`. A dedicated structure-editor
+  tool was deferred (making the model synthesise a full `TableStructure` DTO is
+  worse than emitting `ALTER TABLE`).
+- **Trust model:** the headless sidecar can't prompt, so per-action approval
+  stays with the MCP client; HuginnDB owns *policy* + an **audit log**
+  (`mcp-audit.log`, every write). A `--read-only` global kill-switch forces
+  read-only regardless of saved policy. `--allow-writes` is deprecated/inert.
+
+Rejected the original sketch (`execute_write` gated behind a global
+`--allow-writes`) — a per-connection policy managed in the app is safer and
+needs no client-config edits to change.
 
 ## Proposed MCP tool surface
 

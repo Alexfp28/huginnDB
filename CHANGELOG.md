@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **MCP connector write-mode, with a per-connection permission model.** The
+  headless `huginndb-mcp` connector, read-only since 1.7.0, can now perform
+  writes — governed per connection, not by a single global switch. Each
+  connection carries a **write policy** set in Settings → MCP:
+  - `read-only` (default) — only reads succeed;
+  - `data` — adds row-level DML (`INSERT`/`UPDATE`/`DELETE`) via `run_query`
+    plus the new `insert_row` / `update_cell` / `delete_rows` tools;
+  - `full` — also allows DDL (`CREATE`/`DROP`/`ALTER`/…) via `run_query`.
+
+  The policy is re-read from `profiles.json` on every write attempt, so
+  changing a connection's level takes effect without restarting the AI client.
+  Because the sidecar is a headless process that can't show a prompt, the
+  per-action approval stays with the MCP client, and HuginnDB records every
+  write (success or failure) to `mcp-audit.log` alongside your profiles. A
+  whole-table `UPDATE`/`DELETE` with no `WHERE` is refused outright, and a new
+  `--read-only` flag forces every connection read-only regardless of its saved
+  policy. The old `--allow-writes` flag is deprecated and inert. See
+  [`docs/MCP.md`](docs/MCP.md).
+
 ## [1.8.3] — 2026-07-16
 
 ### Added
