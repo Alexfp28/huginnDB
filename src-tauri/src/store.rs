@@ -81,6 +81,7 @@ mod tests {
             ephemeral,
             group: None,
             visible_databases: None,
+            mcp_write: Default::default(),
         }
     }
 

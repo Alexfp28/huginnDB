@@ -201,6 +201,11 @@ export const api = {
   dropTable: (connectionId: string, schema: string | undefined, table: string) =>
     invoke<void>("drop_table", { connectionId, schema, table }),
 
+  /** Empty a table — remove every row but keep the table (#69). `TRUNCATE`
+   *  on Postgres/MySQL, `DELETE FROM` on SQLite, `deleteMany({})` on MongoDB. */
+  emptyTable: (connectionId: string, schema: string | undefined, table: string) =>
+    invoke<void>("empty_table", { connectionId, schema, table }),
+
   /** `ALTER TABLE … RENAME TO` (or `RENAME TABLE` on MySQL) for a
    *  catalog-sourced (schema, table) pair. */
   renameTable: (

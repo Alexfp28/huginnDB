@@ -273,6 +273,7 @@ function SingleDbExplorer({
 
   const [renameTarget, setRenameTarget] = useState<TableInfo | null>(null);
   const [dropTarget, setDropTarget] = useState<TableInfo | null>(null);
+  const [emptyTarget, setEmptyTarget] = useState<TableInfo | null>(null);
   // Same rationale as `MultiDbExplorer`'s "+" button (see `create_database`'s
   // doc comment): server-level DDL, Postgres/MySQL only. Offered here too —
   // a profile scoped to one specific database is at least as common as
@@ -345,6 +346,25 @@ function SingleDbExplorer({
     refresh: () => refresh(connectionId),
     onRename: (tbl) => setRenameTarget(tbl),
     onDrop: (tbl) => setDropTarget(tbl),
+    onEmpty: (tbl) => {
+      // "Don't ask again" (#69): when the user has silenced the prompt, empty
+      // straight away; otherwise route through the confirmation dialog. This
+      // is a dedicated preference, not the global `confirmDestructive`, so
+      // opting out here never weakens other destructive confirmations.
+      if (usePreferences.getState().prefs.ui.confirmEmptyTable) {
+        setEmptyTarget(tbl);
+        return;
+      }
+      void (async () => {
+        try {
+          await api.emptyTable(connectionId, tbl.schema, tbl.name);
+          toast.success(t("schema.empty.emptied", { name: tbl.name }));
+          refresh(connectionId);
+        } catch (e) {
+          toast.error(String(e));
+        }
+      })();
+    },
     driver,
   };
 
@@ -582,6 +602,17 @@ function SingleDbExplorer({
           onClose={() => setDropTarget(null)}
           onDone={() => {
             setDropTarget(null);
+            refresh(connectionId);
+          }}
+        />
+      )}
+      {emptyTarget && (
+        <EmptyTableDialog
+          connectionId={connectionId}
+          target={emptyTarget}
+          onClose={() => setEmptyTarget(null)}
+          onDone={() => {
+            setEmptyTarget(null);
             refresh(connectionId);
           }}
         />
@@ -1215,6 +1246,7 @@ interface TableActions {
   refresh: () => void;
   onRename: (table: TableInfo) => void;
   onDrop: (table: TableInfo) => void;
+  onEmpty: (table: TableInfo) => void;
   driver: Driver | undefined;
 }
 
@@ -1596,6 +1628,9 @@ function TableRow({
               {ct("schema.importCollection.title")}
             </ContextMenuItem>
             <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => actions.onEmpty(t)}>
+              {ct("schema.context.empty")}
+            </ContextMenuItem>
             <ContextMenuItem
               onSelect={() => actions.onDrop(t)}
               className="text-destructive focus:bg-destructive/10 focus:text-destructive"
@@ -1624,6 +1659,9 @@ function TableRow({
             </ContextMenuItem>
             <ContextMenuItem onSelect={() => actions.onRename(t)}>
               {ct("schema.context.rename")}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => actions.onEmpty(t)}>
+              {ct("schema.context.empty")}
             </ContextMenuItem>
             <ContextMenuItem
               onSelect={() => actions.onDrop(t)}
@@ -2060,6 +2098,80 @@ function DropTableDialog({
             disabled={submitting}
           >
             {submitting ? t("schema.drop.dropping") : t("schema.drop.submit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Confirmation for emptying a table (#69). Unlike the always-on DROP dialog,
+ *  this carries a "don't ask again" checkbox that flips the dedicated
+ *  `ui.confirmEmptyTable` preference off, so a power user who empties log
+ *  tables often can silence just this prompt. */
+function EmptyTableDialog({
+  connectionId,
+  target,
+  onClose,
+  onDone,
+}: {
+  connectionId: string;
+  target: TableInfo;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const updateUi = usePreferences((s) => s.updateUi);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dontAsk, setDontAsk] = useState(false);
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.emptyTable(connectionId, target.schema, target.name);
+      if (dontAsk) updateUi({ confirmEmptyTable: false });
+      toast.success(t("schema.empty.emptied", { name: target.name }));
+      onDone();
+    } catch (e) {
+      setError(String(e));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("schema.empty.title", { name: target.name })}</DialogTitle>
+          <DialogDescription>{t("schema.empty.description")}</DialogDescription>
+        </DialogHeader>
+        {error && (
+          <div className="text-xs text-destructive">
+            {t("schema.empty.failed", { message: error })}
+          </div>
+        )}
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            className="accent-brand"
+            checked={dontAsk}
+            onChange={(e) => setDontAsk(e.target.checked)}
+          />
+          {t("schema.empty.dontAskAgain")}
+        </label>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            variant="destructive"
+            autoFocus
+            onClick={submit}
+            disabled={submitting}
+          >
+            {submitting ? t("schema.empty.emptying") : t("schema.empty.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>
