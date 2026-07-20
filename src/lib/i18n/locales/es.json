@@ -838,6 +838,19 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_9_0": {
+        "tagline": "Tus herramientas de IA ya pueden escribir en tus bases de datos — de forma segura, bajo tus condiciones, conexión a conexión.",
+        "items": {
+          "mcpWrite": {
+            "title": "Modo escritura del conector MCP",
+            "body": "El conector huginndb-mcp, hasta ahora de solo lectura, puede insertar, actualizar y borrar filas — y cambiar el esquema — desde tu herramienta de IA. Nuevas herramientas insert_row, update_cell y delete_rows, además de escrituras vía run_query."
+          },
+          "mcpPolicy": {
+            "title": "Nivel de escritura por conexión, con log de auditoría",
+            "body": "Cada conexión es de solo lectura por defecto; súbela a «datos» o «completo» en Ajustes → MCP, por conexión, y el cambio surte efecto al instante. Un UPDATE/DELETE sin WHERE sobre toda la tabla se rechaza, y cada escritura queda registrada en mcp-audit.log."
+          }
+        }
+      },
       "1_8_0": {
         "tagline": "MongoDB se pone al día: las conexiones multi-base y el conector MCP ganan paridad real con los drivers SQL.",
         "items": {

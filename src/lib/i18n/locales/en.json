@@ -838,6 +838,19 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_9_0": {
+        "tagline": "Your AI tools can now write to your databases — safely, on your terms, one connection at a time.",
+        "items": {
+          "mcpWrite": {
+            "title": "MCP connector write-mode",
+            "body": "The huginndb-mcp connector, read-only until now, can insert, update and delete rows — and change schema — through your AI tool. New insert_row, update_cell and delete_rows tools, plus writes via run_query."
+          },
+          "mcpPolicy": {
+            "title": "Per-connection write policy, with an audit log",
+            "body": "Each connection is read-only by default; raise it to 'data' or 'full' in Settings → MCP, per connection, with changes taking effect immediately. Whole-table UPDATE/DELETE without WHERE are refused, and every write is recorded in mcp-audit.log."
+          }
+        }
+      },
       "1_8_0": {
         "tagline": "MongoDB catches up: multi-database connections and the MCP connector both get real driver parity.",
         "items": {
