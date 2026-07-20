@@ -84,7 +84,18 @@ export interface ConnectionProfile {
    *  and warms only these databases. Frontend-only display/perf concern; the
    *  backend stores it opaquely. */
   visible_databases?: string[] | null;
+  /** How far the headless MCP connector (`huginndb-mcp`) may write to this
+   *  connection (1.9.0). `"read-only"` (default / absent) = reads only;
+   *  `"data"` = INSERT/UPDATE/DELETE + structured write tools; `"full"` = adds
+   *  DDL. The sidecar re-reads this from `profiles.json` on every write, so a
+   *  change here takes effect without restarting the MCP client. Mirrors
+   *  `McpWritePolicy` in Rust. */
+  mcp_write?: McpWritePolicy;
 }
+
+/** How far the MCP connector may write to a connection. Mirrors
+ *  `McpWritePolicy` in Rust (serde kebab-case). */
+export type McpWritePolicy = "read-only" | "data" | "full";
 
 /** Database / schema row in the schema explorer. */
 export interface DatabaseInfo {

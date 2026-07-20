@@ -673,7 +673,7 @@
       "closeDialog": "Cerrar el diálogo o popover activo"
     },
     "mcp": {
-      "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — solo lectura, opt-in por conexión.",
+      "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",
       "binaryLabel": "Binario del conector",
       "available": "Instalado y listo.",
       "unavailable": "No encontrado — esta build no viene de un release empaquetado, así que el conector no está incluido.",
@@ -684,6 +684,14 @@
       "deselectAll": "Deseleccionar todas",
       "selectedCount": "{{selected}} de {{total}} seleccionadas",
       "noMatches": "Ninguna conexión coincide con “{{query}}”.",
+      "writePolicyLabel": "Acceso de escritura",
+      "level": {
+        "read-only": "Solo lectura",
+        "data": "Datos (INSERT/UPDATE/DELETE)",
+        "full": "Completo (+ cambios de esquema)"
+      },
+      "writePolicyHint": "El acceso de escritura es por conexión. «Solo lectura» permite solo lecturas; «Datos» permite cambios de filas (INSERT/UPDATE/DELETE); «Completo» permite además cambios de esquema (CREATE/DROP/ALTER). Los cambios surten efecto sin reiniciar el cliente de IA. El cliente sigue pidiéndote aprobación de cada acción, y toda escritura queda registrada en mcp-audit.log junto a tus perfiles.",
+      "writePolicySaveError": "No se pudo guardar el nivel de escritura.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / otros clientes (JSON)",
       "selectHint": "Selecciona al menos una conexión arriba.",
@@ -840,6 +848,19 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_9_0": {
+        "tagline": "Tus herramientas de IA ya pueden escribir en tus bases de datos — de forma segura, bajo tus condiciones, conexión a conexión.",
+        "items": {
+          "mcpWrite": {
+            "title": "Modo escritura del conector MCP",
+            "body": "El conector huginndb-mcp, hasta ahora de solo lectura, puede insertar, actualizar y borrar filas — y cambiar el esquema — desde tu herramienta de IA. Nuevas herramientas insert_row, update_cell y delete_rows, además de escrituras vía run_query."
+          },
+          "mcpPolicy": {
+            "title": "Nivel de escritura por conexión, con log de auditoría",
+            "body": "Cada conexión es de solo lectura por defecto; súbela a «datos» o «completo» en Ajustes → MCP, por conexión, y el cambio surte efecto al instante. Un UPDATE/DELETE sin WHERE sobre toda la tabla se rechaza, y cada escritura queda registrada en mcp-audit.log."
+          }
+        }
+      },
       "1_8_0": {
         "tagline": "MongoDB se pone al día: las conexiones multi-base y el conector MCP ganan paridad real con los drivers SQL.",
         "items": {
