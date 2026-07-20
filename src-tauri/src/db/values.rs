@@ -93,17 +93,23 @@ pub fn mysql_value(row: &sqlx::mysql::MySqlRow, idx: usize) -> Value {
     }
     let name = raw.type_info().name().to_uppercase();
 
-    // Boolean-ish types must be checked *before* the generic `INT` branch:
-    // `"TINYINT(1)"` contains the substring `"INT"`, so ordering this after
-    // the `contains("INT")` check below would shadow it and decode booleans
-    // as plain integers (the bool branch would be dead code).
-    if name == "BOOL" || name == "TINYINT(1)" {
-        return row
-            .try_get::<bool, _>(idx)
-            .map(|v| json!(v))
-            .unwrap_or(Value::Null);
-    }
-    if name.contains("INT") {
+    // A MySQL `TINYINT(1)` / `BOOL` / `BOOLEAN` column is reported by sqlx as
+    // the type name **`"BOOLEAN"`** — see sqlx's `ColumnType::name`
+    // (`ColumnType::Tiny if max_size == Some(1) => "BOOLEAN"`); a plain
+    // `TINYINT` stays `"TINYINT"`, and the display width is never part of the
+    // name (so it is *not* `"TINYINT(1)"`). The earlier `name == "BOOL" ||
+    // name == "TINYINT(1)"` guard therefore never matched, and because
+    // `"BOOLEAN"` does not contain the substring `"INT"` the value skipped the
+    // integer branch below and fell through to the `String` fallback — which
+    // is type-incompatible with a `TINYINT`, so every boolean cell decoded to
+    // `Value::Null` and rendered as "NULL" in the grid (issue #68).
+    //
+    // Route `"BOOLEAN"` through the same signed/unsigned integer decoder as the
+    // other integer widths (it is physically a `TINYINT`, and a `TINYINT(1)`
+    // can legally hold any small int like 2 or -1, so decoding it as a Rust
+    // `bool` would both lose that value and misrepresent it). This yields the
+    // stored 0/1 (matching HeidiSQL) instead of NULL.
+    if name.contains("INT") || name == "BOOLEAN" {
         // Width/sign fallback. sqlx maps each MySQL integer width to a
         // *specific* Rust type and its `Decode` impl refuses a mismatched
         // target: a `TINYINT` column decodes as `i8`, `TINYINT UNSIGNED` as

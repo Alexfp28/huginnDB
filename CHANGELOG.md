@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **MySQL boolean columns showed `NULL` instead of their value (#68).** A
+  `TINYINT(1)` / `BOOL` / `BOOLEAN` column is reported by the driver under the
+  type name `BOOLEAN`, which the value decoder didn't recognise as an integer —
+  so every boolean cell fell through to a text decode that isn't valid for the
+  column and collapsed to `NULL`. Boolean columns now render their stored value
+  (`0` / `1`), like any other integer.
+
 ## [1.8.3] — 2026-07-16
 
 ### Added

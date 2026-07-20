@@ -8,6 +8,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Corregido
+
+- **Las columnas booleanas de MySQL mostraban `NULL` en vez de su valor (#68).**
+  Una columna `TINYINT(1)` / `BOOL` / `BOOLEAN` la reporta el driver con el
+  nombre de tipo `BOOLEAN`, que el decodificador de valores no reconocía como
+  entero — así que cada celda booleana caía a una decodificación de texto no
+  válida para la columna y colapsaba a `NULL`. Las columnas booleanas ahora
+  muestran su valor almacenado (`0` / `1`), como cualquier otro entero.
+
 ## [1.8.3] — 2026-07-16
 
 ### Añadido
