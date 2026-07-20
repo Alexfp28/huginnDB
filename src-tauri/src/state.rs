@@ -63,6 +63,12 @@ impl Default for McpWritePolicy {
     }
 }
 
+// These helpers are consumed only by the headless MCP connector's enforcement
+// path (`crate::mcp`), which is gated behind the `mcp` feature. Without the
+// gate they'd be flagged dead-code in a normal `pnpm tauri:build` (the enum and
+// its `Default` are still used — they're the persisted `ConnectionProfile`
+// field — but nothing calls `allows`/`label` there).
+#[cfg(feature = "mcp")]
 impl McpWritePolicy {
     /// Whether a statement of the given tier is permitted under this policy.
     /// `ReadOnly` admits only reads; `Data` adds row-level DML; `Full` adds

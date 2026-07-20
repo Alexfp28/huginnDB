@@ -38,6 +38,12 @@ pub fn is_read_only(sql: &str) -> bool {
 /// connector's per-connection enforcement against [`crate::state::McpWritePolicy`]:
 /// a `read-only` connection admits only [`StmtClass::Read`], `data` admits
 /// [`StmtClass::DataWrite`] as well, and `full` admits [`StmtClass::Ddl`] too.
+///
+/// This classifier (and its siblings below) is consumed only by the `mcp`
+/// feature's enforcement path, but its unit tests run under the default
+/// feature set, so it stays compiled unconditionally and only silences the
+/// dead-code lint when `mcp` is off.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StmtClass {
     /// `SELECT` / `WITH` / `SHOW` / `EXPLAIN` / `PRAGMA` — reads nothing back
@@ -57,6 +63,7 @@ pub enum StmtClass {
 /// with DDL rather than DML on purpose: it is an irreversible whole-table
 /// operation, so it belongs behind the strictest (`full`) tier, not the
 /// row-level `data` tier.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub fn is_ddl(sql: &str) -> bool {
     let head = sql.trim_start().to_ascii_lowercase();
     const DDL_PREFIXES: [&str; 8] = [
@@ -70,6 +77,7 @@ pub fn is_ddl(sql: &str) -> bool {
 /// is treated as row-level DML — the conservative default, since an
 /// unrecognised non-read statement must not slip in under a read-only or
 /// data-only policy.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub fn classify(sql: &str) -> StmtClass {
     if is_read_only(sql) {
         StmtClass::Read
@@ -92,6 +100,7 @@ pub fn classify(sql: &str) -> StmtClass {
 /// a comment is a tolerated blind spot — single AI-authored statements rarely
 /// carry comments, and this is a guard-rail layered on top of the tier check,
 /// not the primary authorisation.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub fn is_unfiltered_write(sql: &str) -> bool {
     let head = sql.trim_start().to_ascii_lowercase();
     if !(head.starts_with("update") || head.starts_with("delete")) {
@@ -103,6 +112,7 @@ pub fn is_unfiltered_write(sql: &str) -> bool {
 /// True if `word` appears in `haystack_lower` (already lowercased) delimited by
 /// non-identifier characters on both sides — a poor-man's tokeniser good enough
 /// to spot SQL keywords without a full parser.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 fn contains_word(haystack_lower: &str, word: &str) -> bool {
     haystack_lower
         .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
