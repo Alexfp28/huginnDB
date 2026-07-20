@@ -397,7 +397,31 @@
     "deleteRowBodyLead": "About to delete from",
     "deleteBodyWhere": "where",
     "deleteBodyTrail": ". This cannot be undone.",
-    "delete": "Delete"
+    "delete": "Delete",
+    "filter": {
+      "title": "Advanced filter",
+      "description": "Filter rows by one or more columns. All conditions must match (AND).",
+      "empty": "No conditions yet — add one below.",
+      "addRow": "Add condition",
+      "removeRow": "Remove condition",
+      "clearAll": "Clear all",
+      "apply": "Apply",
+      "valuePlaceholder": "Value",
+      "op": {
+        "eq": "equals",
+        "ne": "not equals",
+        "contains": "contains",
+        "not_contains": "does not contain",
+        "starts_with": "starts with",
+        "ends_with": "ends with",
+        "gt": "greater than",
+        "gte": "greater or equal",
+        "lt": "less than",
+        "lte": "less or equal",
+        "is_null": "is null",
+        "is_not_null": "is not null"
+      }
+    }
   },
   "structure": {
     "loading": "Loading structure…",

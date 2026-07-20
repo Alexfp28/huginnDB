@@ -25,6 +25,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Added
 
+- **Advanced per-column filter (#66).** A new filter button in the data-grid
+  toolbar opens a builder where you add conditions per column — column →
+  operator → value — all combined with AND and applied server-side. Operators
+  are type-aware: text columns offer contains / does-not-contain / starts-with
+  / ends-with, numeric and date columns offer ordered comparisons
+  (>, ≥, <, ≤), and every column offers equals / not-equals / is-null /
+  is-not-null. Works across Postgres, MySQL, SQLite (SQL `LIKE`/comparisons)
+  and MongoDB (regex / `$gt`…`$lt`). The button shows a badge with the active
+  condition count.
+
 - **Empty a table from the schema explorer (#69).** A new "Empty table" entry
   in a table's (or MongoDB collection's) context menu removes every row while
   keeping the table and its structure — handy for tables used as logs. It uses

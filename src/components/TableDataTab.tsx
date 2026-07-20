@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  ListFilter,
   Loader2,
   RefreshCw,
   ZoomIn,
@@ -49,6 +50,7 @@ import type {
   SortSpec,
 } from "@/types";
 import { DataGrid } from "@/components/DataGrid";
+import { AdvancedFilterDialog } from "@/components/AdvancedFilterDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -204,6 +206,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const [sort, setSort] = useState<SortSpec[]>([]);
   /** Free-text search bound to the toolbar input (uncommitted draft). */
   const [filter, setFilter] = useState("");
+  /** Advanced per-column filter builder dialog (#66). */
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   /** What was actually committed via Enter — drives the backend fetch. */
   const [appliedFilter, setAppliedFilter] = useState("");
   // Seed filters from the tab's `initialFilters` (set by FK "go to referenced
@@ -640,15 +644,35 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // shows `database.table` (#57) — repeating it next to the filter was pure
   // redundancy, so the leading area is now just the refresh action.
   const leadingToolbar = (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={fetchData}
-      disabled={loading}
-      title={t("tableData.refresh")}
-    >
-      <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-    </Button>
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={fetchData}
+        disabled={loading}
+        title={t("tableData.refresh")}
+      >
+        <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setAdvancedOpen(true)}
+        title={t("tableData.filter.title")}
+        // Brand-tint the icon while filters are active so it reads as "on"
+        // and doubles as an at-a-glance indicator, with the count as a badge.
+        className="relative"
+      >
+        <ListFilter
+          className={`h-3.5 w-3.5 ${serverFilters.length ? "text-brand" : ""}`}
+        />
+        {serverFilters.length > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold text-white">
+            {serverFilters.length}
+          </span>
+        )}
+      </Button>
+    </>
   );
 
   return (
@@ -859,6 +883,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {advancedOpen && (
+        <AdvancedFilterDialog
+          columns={cols ?? []}
+          initial={serverFilters}
+          onApply={(filters) => {
+            setServerFilters(filters);
+            setOffset(0);
+          }}
+          onClose={() => setAdvancedOpen(false)}
+        />
+      )}
     </div>
   );
 }

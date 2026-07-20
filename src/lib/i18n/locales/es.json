@@ -397,7 +397,31 @@
     "deleteRowBodyLead": "Vas a eliminar de",
     "deleteBodyWhere": "donde",
     "deleteBodyTrail": ". Esto no se puede deshacer.",
-    "delete": "Eliminar"
+    "delete": "Eliminar",
+    "filter": {
+      "title": "Filtro avanzado",
+      "description": "Filtra filas por una o más columnas. Todas las condiciones deben cumplirse (AND).",
+      "empty": "Aún no hay condiciones — añade una abajo.",
+      "addRow": "Añadir condición",
+      "removeRow": "Quitar condición",
+      "clearAll": "Limpiar todo",
+      "apply": "Aplicar",
+      "valuePlaceholder": "Valor",
+      "op": {
+        "eq": "igual a",
+        "ne": "distinto de",
+        "contains": "contiene",
+        "not_contains": "no contiene",
+        "starts_with": "empieza por",
+        "ends_with": "termina en",
+        "gt": "mayor que",
+        "gte": "mayor o igual",
+        "lt": "menor que",
+        "lte": "menor o igual",
+        "is_null": "es nulo",
+        "is_not_null": "no es nulo"
+      }
+    }
   },
   "structure": {
     "loading": "Cargando estructura…",

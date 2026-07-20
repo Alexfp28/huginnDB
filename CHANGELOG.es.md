@@ -27,6 +27,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Añadido
 
+- **Filtro avanzado por columna (#66).** Un nuevo botón de filtro en la barra
+  de la cuadrícula abre un constructor donde añades condiciones por columna —
+  columna → operador → valor — combinadas con AND y aplicadas en el servidor.
+  Los operadores dependen del tipo: las columnas de texto ofrecen contiene /
+  no contiene / empieza por / termina en, las numéricas y de fecha ofrecen
+  comparaciones (>, ≥, <, ≤), y todas ofrecen igual / distinto / es nulo / no
+  es nulo. Funciona en Postgres, MySQL, SQLite (`LIKE`/comparaciones SQL) y
+  MongoDB (regex / `$gt`…`$lt`). El botón muestra un contador de condiciones
+  activas.
+
 - **Vaciar una tabla desde el explorador de esquema (#69).** Una nueva entrada
   «Vaciar tabla» en el menú contextual de una tabla (o colección de MongoDB)
   elimina todas las filas conservando la tabla y su estructura — útil para

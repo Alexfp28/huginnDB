@@ -276,6 +276,14 @@ interface SelectedCell {
 const FILTER_LABEL: Record<ColumnFilter["op"], string> = {
   eq: "=",
   ne: "<>",
+  contains: "⊇",
+  not_contains: "⊉",
+  starts_with: "^…",
+  ends_with: "…$",
+  gt: ">",
+  gte: "≥",
+  lt: "<",
+  lte: "≤",
   is_null: "IS NULL",
   is_not_null: "IS NOT NULL",
 };
