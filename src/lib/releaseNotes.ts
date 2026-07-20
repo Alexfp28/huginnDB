@@ -26,6 +26,7 @@ import {
   HardDrive,
   ListTree,
   Palette,
+  Pencil,
   Plug,
   ShieldCheck,
   SquareTerminal,
@@ -62,6 +63,23 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.9.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_9_0.tagline",
+    highlights: [
+      {
+        icon: Pencil,
+        titleKey: "whatsNew.releases.1_9_0.items.mcpWrite.title",
+        bodyKey: "whatsNew.releases.1_9_0.items.mcpWrite.body",
+      },
+      {
+        icon: ShieldCheck,
+        titleKey: "whatsNew.releases.1_9_0.items.mcpPolicy.title",
+        bodyKey: "whatsNew.releases.1_9_0.items.mcpPolicy.body",
+      },
+    ],
+  },
   {
     version: "1.8.0",
     major: true,

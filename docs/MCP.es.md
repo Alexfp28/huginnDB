@@ -18,10 +18,13 @@ configuración que merece la pena documentar; cualquier otro que hable MCP (el
 agente integrado de un editor, un harness a medida, …) funciona igual en
 cuanto le indiques la ruta al binario.
 
-Es un proceso **separado y de solo lectura**. No comparte las conexiones
-abiertas de la app de escritorio en ejecución; abre sus propios *pools* de
-forma perezosa, bajo demanda, y solo para las conexiones que expongas
-explícitamente.
+Es un proceso **separado**. No comparte las conexiones abiertas de la app de
+escritorio en ejecución; abre sus propios *pools* de forma perezosa, bajo
+demanda, y solo para las conexiones que expongas explícitamente. Cada conexión
+expuesta tiene un **nivel de escritura** — `read-only` (por defecto), `data` o
+`full` — configurado por conexión en **Ajustes → MCP**; las lecturas siempre
+funcionan, y las escrituras solo se ejecutan si el nivel de esa conexión lo
+permite. Ver [Seguridad](#seguridad).
 
 Consulta [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md) para el
 razonamiento de diseño (en inglés).
@@ -185,7 +188,8 @@ Codex.
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(ninguna)* | IDs de perfil a los que el servidor puede acceder. **Opt-in**: sin ninguno configurado, no se expone nada. |
 | `--max-rows <n>` | `1000` | Límite superior de filas devueltas por una llamada a `run_query` / `browse_table`, para que una llamada no vuelque una tabla entera en el contexto del modelo. |
-| `--allow-writes[=true\|false]` | `false` | Reservado. La v1 es solo lectura: `run_query` rechaza cualquier sentencia que no sea de lectura y no se registra ninguna herramienta de escritura. |
+| `--read-only[=true\|false]` | `false` | Kill-switch global: fuerza **todas** las conexiones a solo lectura sin importar su nivel de escritura guardado. Una forma rápida de exponer el conector en modo garantizado-seguro sin tocar ningún perfil. |
+| `--allow-writes` | — | **Obsoleto e ignorado.** Las escrituras ahora se gobiernan por conexión mediante el nivel de escritura configurado en Ajustes → MCP (ver [Seguridad](#seguridad)); este flag ya no concede nada y solo imprime un aviso de obsolescencia. |
 
 Los flags aceptan tanto `--flag valor` como `--flag=valor`.
 
@@ -198,10 +202,16 @@ Los flags aceptan tanto `--flag valor` como `--flag=valor`.
 | `list_tables` | Tablas y vistas, con recuentos de filas y tamaños aproximados. |
 | `describe_table` | Estructura completa: columnas, tipos, nulabilidad, PK, FKs, índices. |
 | `list_indexes` | Índices de una tabla y las columnas que cubre cada uno. |
-| `run_query` | Ejecuta una única sentencia **de solo lectura** (SQL para Postgres/MySQL/SQLite, estilo mongosh para MongoDB). |
+| `run_query` | Ejecuta una única sentencia (SQL para Postgres/MySQL/SQLite, estilo mongosh para MongoDB). Las lecturas siempre funcionan; las escrituras requieren que el nivel de la conexión lo permita (`data` para DML, `full` para DDL). |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
 | `server_version` | El motor y la versión conectados. |
 | `list_users` / `list_privileges` | Usuarios/roles del servidor y sus permisos. |
+| `insert_row` *(escritura)* | Inserta una fila (valores como texto; valores por defecto de la BD para columnas omitidas). Requiere `data` o `full`. |
+| `update_cell` *(escritura)* | Actualiza una columna de la única fila identificada por su clave primaria completa. Requiere `data` o `full`. |
+| `delete_rows` *(escritura)* | Borra una o más filas, cada una identificada por su clave primaria completa. Requiere `data` o `full`. |
+
+`list_connections` informa del nivel de escritura efectivo de cada conexión,
+para que el asistente sepa de antemano qué puede hacer.
 
 ## MongoDB: apuntar a una base de datos en una conexión multi-base
 
@@ -225,19 +235,45 @@ conexión son baratas. Una conexión de una sola base de datos (con
 
 ## Seguridad
 
-- **Solo lectura.** `run_query` rechaza cualquier cosa que no sea una
-  sentencia `SELECT` / `WITH` / `SHOW` / `EXPLAIN` / `PRAGMA` para drivers
-  SQL, o un `find`/`aggregate`/`countDocuments`/`distinct` para MongoDB (el
-  mismo clasificador de operaciones que usa el editor de consultas de
-  escritorio — no una simple coincidencia de palabras clave SQL, así que las
-  lecturas de mongosh no se confunden con escrituras). No existen
-  herramientas de insert/update/delete en la v1.
+- **Escrituras controladas por conexión.** Cada conexión expuesta tiene un
+  nivel de escritura, configurado en **Ajustes → MCP** y guardado en
+  `profiles.json`:
+  - **`read-only`** (por defecto) — solo lecturas. `run_query` acepta
+    `SELECT` / `WITH` / `SHOW` / `EXPLAIN` / `PRAGMA` (SQL) o
+    `find`/`aggregate`/`countDocuments`/`distinct` (MongoDB), clasificado con
+    el mismo clasificador de operaciones que usa el editor de consultas de
+    escritorio — no una simple coincidencia de palabras clave SQL, así que las
+    lecturas de mongosh no se confunden con escrituras. Toda herramienta de
+    escritura se rechaza.
+  - **`data`** — añade DML a nivel de fila: `INSERT`/`UPDATE`/`DELETE` vía
+    `run_query`, más las herramientas `insert_row` / `update_cell` /
+    `delete_rows`. Sin cambios de esquema.
+  - **`full`** — añade DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) vía
+    `run_query`.
+
+  El nivel se relee de disco en **cada intento de escritura**, así que
+  cambiarlo en la app surte efecto sin reiniciar el cliente de IA.
+- **La aprobación la da el cliente.** El conector es un proceso headless que
+  lanza tu cliente MCP; no puede mostrar un prompt. La aprobación por acción
+  («¿permitir esta herramienta?») la pide el cliente (Claude Code / Desktop /
+  Cursor la piden). El papel del conector es la *política* (qué se permite) y
+  la *auditoría*.
+- **Log de auditoría.** Cada escritura (éxito o fallo) añade una línea a
+  `mcp-audit.log`, en el mismo directorio de configuración que `profiles.json`.
+  Las lecturas no se registran, así que el fichero es un registro limpio de las
+  operaciones que cambian estado.
+- **Guarda anti-tabla-entera.** Un `UPDATE`/`DELETE` sin `WHERE` en `run_query`
+  se rechaza de plano, en cualquier nivel — añade un predicado explícito
+  (`WHERE 1=1` si de verdad quieres todas las filas).
+- **Kill-switch global.** `--read-only` fuerza todas las conexiones a solo
+  lectura sin importar su nivel guardado.
 - **Exposición opt-in.** Solo los IDs de perfil que pases a `--connections`
   son alcanzables; cualquier otra llamada a una conexión no nombrada se
   rechaza.
 - **Sin texto plano nuevo.** Las contraseñas se leen del llavero del sistema
   en el momento de conectar, igual que la app de escritorio. El conector
-  nunca las registra ni las persiste.
+  nunca las registra ni las persiste (el log de auditoría registra sentencias
+  y recuentos de filas, nunca credenciales).
 - **Límite de filas.** `--max-rows` acota cada conjunto de resultados.
 
 ## Drivers soportados

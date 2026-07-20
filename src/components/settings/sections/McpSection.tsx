@@ -18,7 +18,13 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/tauri";
 import { useDocsDialog } from "@/stores/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
-import type { ConnectionProfile, McpConnectorInfo } from "@/types";
+import type {
+  ConnectionProfile,
+  McpConnectorInfo,
+  McpWritePolicy,
+} from "@/types";
+
+const WRITE_LEVELS: McpWritePolicy[] = ["read-only", "data", "full"];
 
 function CopyButton({ text }: { text: string }) {
   const { t } = useTranslation();
@@ -70,6 +76,26 @@ export function McpSection() {
       else next.add(id);
       return next;
     });
+  }
+
+  /**
+   * Persist a connection's MCP write policy. Saves with no password so the
+   * keychain entry is untouched (see `api.saveProfile`); the sidecar re-reads
+   * this from `profiles.json` on its next write attempt, so no client restart
+   * is needed. On failure we resync from disk rather than leave optimistic
+   * state that never actually landed.
+   */
+  async function setWritePolicy(id: string, level: McpWritePolicy) {
+    const profile = profiles.find((p) => p.id === id);
+    if (!profile) return;
+    const updated = { ...profile, mcp_write: level };
+    setProfiles((prev) => prev.map((p) => (p.id === id ? updated : p)));
+    try {
+      await api.saveProfile(updated);
+    } catch {
+      toast.error(t("settings.mcp.writePolicySaveError"));
+      void api.listProfiles().then(setProfiles).catch(() => {});
+    }
   }
 
   const allFilteredSelected =
@@ -197,21 +223,44 @@ export function McpSection() {
                 </p>
               ) : (
                 filteredProfiles.map((p) => (
-                  <label
+                  <div
                     key={p.id}
-                    className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-accent/50"
+                    className="flex items-center gap-2 px-3 py-2 hover:bg-accent/50"
                   >
-                    <input
-                      type="checkbox"
-                      className="accent-brand"
-                      checked={selected.has(p.id)}
-                      onChange={() => toggle(p.id)}
-                    />
-                    <span className="truncate text-xs">{p.name}</span>
-                  </label>
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="accent-brand"
+                        checked={selected.has(p.id)}
+                        onChange={() => toggle(p.id)}
+                      />
+                      <span className="truncate text-xs">{p.name}</span>
+                    </label>
+                    <select
+                      value={p.mcp_write ?? "read-only"}
+                      onChange={(e) =>
+                        void setWritePolicy(
+                          p.id,
+                          e.target.value as McpWritePolicy,
+                        )
+                      }
+                      aria-label={t("settings.mcp.writePolicyLabel")}
+                      title={t("settings.mcp.writePolicyLabel")}
+                      className="h-6 shrink-0 rounded border border-border bg-background px-1.5 text-[11px]"
+                    >
+                      {WRITE_LEVELS.map((lvl) => (
+                        <option key={lvl} value={lvl}>
+                          {t(`settings.mcp.level.${lvl}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 ))
               )}
             </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              {t("settings.mcp.writePolicyHint")}
+            </p>
           </>
         )}
       </div>
