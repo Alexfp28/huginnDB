@@ -302,9 +302,23 @@ export interface AppTab {
 /**
  * Comparison operator for `ColumnFilter`. Mirrors the closed set the
  * backend accepts in `fetch_table_data`. `is_null` / `is_not_null` ignore
- * the `value` field.
+ * the `value` field; every other op consumes it. The `contains` family is
+ * substring/prefix/suffix `LIKE`; `gt`/`gte`/`lt`/`lte` are ordered
+ * comparisons (offered for numeric/date columns).
  */
-export type FilterOp = "eq" | "ne" | "is_null" | "is_not_null";
+export type FilterOp =
+  | "eq"
+  | "ne"
+  | "contains"
+  | "not_contains"
+  | "starts_with"
+  | "ends_with"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "is_null"
+  | "is_not_null";
 
 /** A single column-level predicate AND-composed in `fetch_table_data`. */
 export interface ColumnFilter {

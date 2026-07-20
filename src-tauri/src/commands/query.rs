@@ -147,13 +147,30 @@ macro_rules! try_sql_sink {
 /// Comparison operator accepted by [`ColumnFilter`].
 ///
 /// The set is intentionally closed so we can map each variant to a fixed
-/// SQL fragment without going through user-supplied strings. `Eq` / `Ne`
-/// take a bound value; `IsNull` / `IsNotNull` do not.
+/// SQL fragment without going through user-supplied strings. All variants
+/// except `IsNull` / `IsNotNull` consume the filter's bound `value`; the
+/// frontend advanced-filter builder (#66) only *offers* the type-appropriate
+/// subset per column, but the backend accepts any op on any column and lets
+/// the driver coerce the textual literal.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FilterOp {
     Eq,
     Ne,
+    /// `LIKE %v%` (case-insensitive via `ILIKE` on Postgres).
+    Contains,
+    /// `NOT LIKE %v%`.
+    NotContains,
+    /// `LIKE v%`.
+    StartsWith,
+    /// `LIKE %v`.
+    EndsWith,
+    /// `>` / `>=` / `<` / `<=` — numeric/date comparisons; the value is bound
+    /// and the driver casts it to the column type.
+    Gt,
+    Gte,
+    Lt,
+    Lte,
     IsNull,
     IsNotNull,
 }
@@ -760,40 +777,84 @@ fn build_filter_clause(
     let mut parts: Vec<String> = Vec::new();
     let mut next_placeholder: usize = 1;
 
+    // Next positional placeholder as a driver-appropriate string (`$N` on
+    // Postgres, `?` elsewhere), advancing the counter.
+    let placeholder = |next: &mut usize| -> String {
+        let ph = if pg {
+            format!("${next}")
+        } else {
+            "?".to_string()
+        };
+        *next += 1;
+        ph
+    };
+    let like_kw = if pg { "ILIKE" } else { "LIKE" };
+    let cast_to = if pg_or_sqlite { "TEXT" } else { "CHAR" };
+    let escape = like_escape_clause(!pg_or_sqlite);
+
     for f in filters {
         let col = quote_ident(pg_or_sqlite, &f.column);
         match f.op {
             FilterOp::IsNull => parts.push(format!("{col} IS NULL")),
             FilterOp::IsNotNull => parts.push(format!("{col} IS NOT NULL")),
-            FilterOp::Eq | FilterOp::Ne => {
-                let sym = if f.op == FilterOp::Eq { "=" } else { "<>" };
-                let ph = if pg {
-                    format!("${next_placeholder}")
-                } else {
-                    "?".to_string()
+            FilterOp::Eq
+            | FilterOp::Ne
+            | FilterOp::Gt
+            | FilterOp::Gte
+            | FilterOp::Lt
+            | FilterOp::Lte => {
+                let sym = match f.op {
+                    FilterOp::Eq => "=",
+                    FilterOp::Ne => "<>",
+                    FilterOp::Gt => ">",
+                    FilterOp::Gte => ">=",
+                    FilterOp::Lt => "<",
+                    _ => "<=",
                 };
-                next_placeholder += 1;
+                let ph = placeholder(&mut next_placeholder);
                 parts.push(format!("{col} {sym} {ph}"));
                 binds.push(json_to_string(&f.value));
+            }
+            FilterOp::Contains
+            | FilterOp::NotContains
+            | FilterOp::StartsWith
+            | FilterOp::EndsWith => {
+                // Substring / prefix / suffix match. Cast the column to text so
+                // the pattern match works on non-text columns too, and escape
+                // the user value's LIKE metacharacters before wrapping it in
+                // the position wildcards.
+                let raw = json_to_string(&f.value).unwrap_or_default();
+                let escaped = escape_like(&raw);
+                let (pattern, kw) = match f.op {
+                    FilterOp::Contains => (format!("%{escaped}%"), like_kw),
+                    FilterOp::NotContains => (format!("%{escaped}%"), "NOT LIKE"),
+                    FilterOp::StartsWith => (format!("{escaped}%"), like_kw),
+                    _ => (format!("%{escaped}"), like_kw),
+                };
+                // `NOT LIKE` has no case-insensitive keyword form; on Postgres
+                // fold both sides to lower() so "not contains" stays
+                // case-insensitive like the positive matches.
+                let ph = placeholder(&mut next_placeholder);
+                if pg && matches!(f.op, FilterOp::NotContains) {
+                    parts.push(format!(
+                        "lower(CAST({col} AS {cast_to})) NOT LIKE lower({ph}){escape}"
+                    ));
+                } else {
+                    parts.push(format!("CAST({col} AS {cast_to}) {kw} {ph}{escape}"));
+                }
+                binds.push(Some(pattern));
             }
         }
     }
 
     if let Some(q) = search {
         if !q.is_empty() && !search_columns.is_empty() {
+            // Reuses the `like_kw` / `cast_to` / `escape` bindings hoisted above.
             let pattern = format!("%{}%", escape_like(q));
-            let like_kw = if pg { "ILIKE" } else { "LIKE" };
-            let cast_to = if pg_or_sqlite { "TEXT" } else { "CHAR" };
-            let escape = like_escape_clause(!pg_or_sqlite);
             let mut or_parts: Vec<String> = Vec::new();
             for col in search_columns {
                 let qcol = quote_ident(pg_or_sqlite, col);
-                let ph = if pg {
-                    format!("${next_placeholder}")
-                } else {
-                    "?".to_string()
-                };
-                next_placeholder += 1;
+                let ph = placeholder(&mut next_placeholder);
                 or_parts.push(format!("CAST({qcol} AS {cast_to}) {like_kw} {ph}{escape}"));
                 binds.push(Some(pattern.clone()));
             }
@@ -2024,5 +2085,84 @@ fn qualified_table(pool: &DbPool, schema: Option<&str>, table: &str) -> String {
         // MongoDB never builds SQL-qualified names; commands dispatch to the
         // mongo module before reaching here.
         DbPool::Mongo(_) => table.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn f(column: &str, op: FilterOp, value: serde_json::Value) -> ColumnFilter {
+        ColumnFilter {
+            column: column.into(),
+            op,
+            value,
+        }
+    }
+
+    #[test]
+    fn advanced_ops_build_expected_postgres_sql() {
+        let filters = vec![
+            f("name", FilterOp::Contains, json!("ab")),
+            f("age", FilterOp::Gt, json!(5)),
+            f("code", FilterOp::StartsWith, json!("x")),
+        ];
+        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        // Postgres: ILIKE for contains/starts_with, TEXT cast, $N placeholders.
+        assert!(
+            clause.contains(r#"CAST("name" AS TEXT) ILIKE $1 ESCAPE"#),
+            "{clause}"
+        );
+        assert!(clause.contains(r#""age" > $2"#), "{clause}");
+        assert!(
+            clause.contains(r#"CAST("code" AS TEXT) ILIKE $3 ESCAPE"#),
+            "{clause}"
+        );
+        assert_eq!(
+            binds,
+            vec![
+                Some("%ab%".to_string()),
+                Some("5".to_string()),
+                Some("x%".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn advanced_ops_build_expected_mysql_sql() {
+        let filters = vec![
+            f("name", FilterOp::EndsWith, json!("z")),
+            f("qty", FilterOp::Lte, json!(10)),
+            f("note", FilterOp::NotContains, json!("skip")),
+        ];
+        let (clause, binds) = build_filter_clause(false, false, &filters, None, &[]);
+        // MySQL: LIKE / NOT LIKE, CHAR cast, `?` placeholders, doubled escape.
+        assert!(clause.contains("CAST(`name` AS CHAR) LIKE ?"), "{clause}");
+        assert!(clause.contains("`qty` <= ?"), "{clause}");
+        assert!(
+            clause.contains("CAST(`note` AS CHAR) NOT LIKE ?"),
+            "{clause}"
+        );
+        assert_eq!(
+            binds,
+            vec![
+                Some("%z".to_string()),
+                Some("10".to_string()),
+                Some("%skip%".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn null_ops_take_no_bind() {
+        let filters = vec![
+            f("a", FilterOp::IsNull, json!(null)),
+            f("b", FilterOp::IsNotNull, json!(null)),
+        ];
+        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(clause.contains(r#""a" IS NULL"#), "{clause}");
+        assert!(clause.contains(r#""b" IS NOT NULL"#), "{clause}");
+        assert!(binds.is_empty());
     }
 }

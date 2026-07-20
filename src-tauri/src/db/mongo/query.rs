@@ -286,6 +286,14 @@ fn build_filter(
     let mut clauses: Vec<Document> = Vec::new();
 
     for f in filters {
+        // Raw string form of the value, for the regex (substring/prefix/suffix)
+        // operators — those match text, so an ObjectId-aware conversion isn't
+        // wanted here.
+        let raw = match &f.value {
+            serde_json::Value::Null => String::new(),
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
         let clause = match f.op {
             FilterOp::IsNull => doc! { &f.column: { "$eq": Bson::Null } },
             FilterOp::IsNotNull => doc! { &f.column: { "$ne": Bson::Null } },
@@ -296,6 +304,22 @@ fn build_filter(
             FilterOp::Ne => {
                 let v = field_value(&f.column, &f.value);
                 doc! { &f.column: { "$ne": v } }
+            }
+            FilterOp::Gt => doc! { &f.column: { "$gt": field_value(&f.column, &f.value) } },
+            FilterOp::Gte => doc! { &f.column: { "$gte": field_value(&f.column, &f.value) } },
+            FilterOp::Lt => doc! { &f.column: { "$lt": field_value(&f.column, &f.value) } },
+            FilterOp::Lte => doc! { &f.column: { "$lte": field_value(&f.column, &f.value) } },
+            FilterOp::Contains => {
+                doc! { &f.column: { "$regex": regex_escape(&raw), "$options": "i" } }
+            }
+            FilterOp::NotContains => {
+                doc! { &f.column: { "$not": { "$regex": regex_escape(&raw), "$options": "i" } } }
+            }
+            FilterOp::StartsWith => {
+                doc! { &f.column: { "$regex": format!("^{}", regex_escape(&raw)), "$options": "i" } }
+            }
+            FilterOp::EndsWith => {
+                doc! { &f.column: { "$regex": format!("{}$", regex_escape(&raw)), "$options": "i" } }
             }
         };
         clauses.push(clause);
