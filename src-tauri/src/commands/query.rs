@@ -68,29 +68,14 @@ fn build_sql_entry(
     entry
 }
 
-/// Emit a SQL log entry to a specific window after a statement finished.
-/// Used by the GUI-only command handlers (batch, cell edits) that hold an
-/// [`AppHandle`] and a window label. The MCP-exposed data path uses
-/// [`log_sql_sink`] instead.
-#[allow(clippy::too_many_arguments)]
-fn log_sql(
-    app: &AppHandle,
-    window_label: &str,
-    connection_id: &str,
-    driver: &str,
-    sql: &str,
-    start: Instant,
-    rows_affected: Option<u64>,
-    error: Option<&str>,
-) {
-    let entry = build_sql_entry(connection_id, driver, sql, start, rows_affected, error);
-    log_bus::emit(app, window_label, entry);
-}
-
-/// Emit a SQL log entry through a [`LogSink`]. Used by the Tauri-independent
-/// data path ([`execute_with_state`], [`fetch_table_data_inner`]) so the same
-/// code can run under the GUI (a `TauriSink`) or the headless MCP binary (a
-/// `NoopSink`).
+/// Emit a SQL log entry through a [`LogSink`] after a statement finished.
+///
+/// This is the single logging path for every DB command: the GUI's
+/// `#[tauri::command]` wrappers build a [`log_bus::TauriSink`] (window-scoped
+/// Console emission) and the headless `huginndb-mcp` binary passes its own
+/// sink, so the shared `_inner` cores ([`execute_with_state`],
+/// [`fetch_table_data_inner`], [`update_cell_inner`], …) stay
+/// Tauri-independent.
 fn log_sql_sink(
     sink: &dyn LogSink,
     connection_id: &str,
@@ -104,9 +89,9 @@ fn log_sql_sink(
     sink.log(entry);
 }
 
-/// Unwrap a `Result<_, sqlx::Error>` produced by a SQL call and, on
-/// failure, emit a SQL log entry plus early-return the error from the
-/// enclosing command — analogous to `?` with an extra side-effect.
+/// Unwrap a `Result<_, sqlx::Error>` produced by a SQL call and, on failure,
+/// emit a SQL log entry through the [`LogSink`] plus early-return the error
+/// from the enclosing command — analogous to `?` with an extra side-effect.
 ///
 /// We use a macro (rather than an `async fn` helper) for two reasons:
 ///
@@ -115,22 +100,6 @@ fn log_sql_sink(
 ///    (`pg_value` vs `mysql_value` vs `sqlite_value`).
 /// 2. `return Err(...)` from inside an async closure would not exit the
 ///    outer function; a macro expands inline and does.
-macro_rules! try_sql {
-    ($app:expr, $window:expr, $cid:expr, $driver:expr, $sql:expr, $start:expr, $res:expr) => {
-        match $res {
-            Ok(v) => v,
-            Err(e) => {
-                let msg = e.to_string();
-                log_sql($app, $window, $cid, $driver, $sql, $start, None, Some(&msg));
-                return Err(e.into());
-            }
-        }
-    };
-}
-
-/// [`try_sql!`] variant for the sink-based data path: logs the failure
-/// through a [`LogSink`] rather than to a specific window. See
-/// [`execute_with_state`] / [`fetch_table_data_inner`].
 macro_rules! try_sql_sink {
     ($sink:expr, $cid:expr, $driver:expr, $sql:expr, $start:expr, $res:expr) => {
         match $res {
@@ -524,8 +493,20 @@ pub async fn execute_batch(
     connection_id: String,
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
-    let window_label = window.label();
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let sink = log_bus::TauriSink::new(&app, window.label());
+    execute_batch_inner(&sink, state.inner(), connection_id, statements).await
+}
+
+/// Tauri-independent core of [`execute_batch`], shared with the headless MCP
+/// write path. Takes a borrowed [`AppState`] and a [`LogSink`] instead of a
+/// Tauri `State`/`AppHandle`.
+pub(crate) async fn execute_batch_inner(
+    sink: &dyn LogSink,
+    state: &AppState,
+    connection_id: String,
+    statements: Vec<String>,
+) -> AppResult<BatchResult> {
+    let pool = pool_for(state, &connection_id)?;
     let driver = driver_str(&pool);
 
     if let DbPool::Mongo(conn) = &pool {
@@ -554,16 +535,7 @@ pub async fn execute_batch(
                             let (columns, data) = $decode(&rows);
                             let ra = data.len() as u64;
                             total_affected += ra;
-                            log_sql(
-                                &app,
-                                window_label,
-                                &connection_id,
-                                driver,
-                                sql,
-                                start,
-                                Some(ra),
-                                None,
-                            );
+                            log_sql_sink(sink, &connection_id, driver, sql, start, Some(ra), None);
                             last_result = Some(QueryResult {
                                 columns,
                                 rows: data,
@@ -581,9 +553,8 @@ pub async fn execute_batch(
                         }
                         Err(e) => {
                             let msg = e.to_string();
-                            log_sql(
-                                &app,
-                                window_label,
+                            log_sql_sink(
+                                sink,
                                 &connection_id,
                                 driver,
                                 sql,
@@ -614,16 +585,7 @@ pub async fn execute_batch(
                         Ok(r) => {
                             let ra = r.rows_affected();
                             total_affected += ra;
-                            log_sql(
-                                &app,
-                                window_label,
-                                &connection_id,
-                                driver,
-                                sql,
-                                start,
-                                Some(ra),
-                                None,
-                            );
+                            log_sql_sink(sink, &connection_id, driver, sql, start, Some(ra), None);
                             outcomes.push(StmtOutcome {
                                 index,
                                 preview: stmt_preview(sql),
@@ -634,9 +596,8 @@ pub async fn execute_batch(
                         }
                         Err(e) => {
                             let msg = e.to_string();
-                            log_sql(
-                                &app,
-                                window_label,
+                            log_sql_sink(
+                                sink,
                                 &connection_id,
                                 driver,
                                 sql,
@@ -662,9 +623,8 @@ pub async fn execute_batch(
     let acquire_start = Instant::now();
     match &pool {
         DbPool::Postgres(p) => {
-            let mut conn = try_sql!(
-                &app,
-                window_label,
+            let mut conn = try_sql_sink!(
+                sink,
                 &connection_id,
                 driver,
                 "(batch)",
@@ -674,9 +634,8 @@ pub async fn execute_batch(
             drive!(conn, pg_result);
         }
         DbPool::Mysql(p) => {
-            let mut conn = try_sql!(
-                &app,
-                window_label,
+            let mut conn = try_sql_sink!(
+                sink,
                 &connection_id,
                 driver,
                 "(batch)",
@@ -686,9 +645,8 @@ pub async fn execute_batch(
             drive!(conn, mysql_result);
         }
         DbPool::Sqlite(p) => {
-            let mut conn = try_sql!(
-                &app,
-                window_label,
+            let mut conn = try_sql_sink!(
+                sink,
                 &connection_id,
                 driver,
                 "(batch)",
@@ -1171,7 +1129,38 @@ pub async fn update_cell(
     value: Option<String>,
     column_type: Option<String>,
 ) -> AppResult<u64> {
-    let window_label = window.label();
+    let sink = log_bus::TauriSink::new(&app, window.label());
+    update_cell_inner(
+        &sink,
+        state.inner(),
+        connection_id,
+        schema,
+        table,
+        pk_columns,
+        pk_values,
+        column,
+        value,
+        column_type,
+    )
+    .await
+}
+
+/// Tauri-independent core of [`update_cell`], shared with the headless MCP
+/// `update_cell` write tool. Takes a borrowed [`AppState`] and a [`LogSink`]
+/// (a `TauriSink` in the GUI) instead of a Tauri `State`/`AppHandle`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn update_cell_inner(
+    sink: &dyn LogSink,
+    state: &AppState,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+    pk_columns: Vec<String>,
+    pk_values: Vec<Value>,
+    column: String,
+    value: Option<String>,
+    column_type: Option<String>,
+) -> AppResult<u64> {
     if pk_columns.is_empty() {
         return Err(AppError::InvalidInput(
             "update_cell: no primary-key columns supplied".into(),
@@ -1185,7 +1174,7 @@ pub async fn update_cell(
         )));
     }
 
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = pool_for(state, &connection_id)?;
     let driver = driver_str(&pool);
 
     // MongoDB: update one field of the document addressed by `_id` ($set). The
@@ -1204,9 +1193,8 @@ pub async fn update_cell(
         )
         .await;
         match &res {
-            Ok(n) => log_sql(
-                &app,
-                window_label,
+            Ok(n) => log_sql_sink(
+                sink,
                 &connection_id,
                 driver,
                 "(mongo update)",
@@ -1214,9 +1202,8 @@ pub async fn update_cell(
                 Some(*n),
                 None,
             ),
-            Err(e) => log_sql(
-                &app,
-                window_label,
+            Err(e) => log_sql_sink(
+                sink,
                 &connection_id,
                 driver,
                 "(mongo update)",
@@ -1275,19 +1262,14 @@ pub async fn update_cell(
     // rather than silently binding a MySQL BIT column as plain text (issue #15).
     let catalog_bit_cast = is_mysql
         && column_type.is_none()
-        && list_columns_inner(
-            state.inner(),
-            &connection_id,
-            schema_for_catalog,
-            table.clone(),
-        )
-        .await
-        .map(|cols| {
-            cols.iter().any(|c| {
-                c.name == column && c.data_type.trim().to_ascii_uppercase().starts_with("BIT")
+        && list_columns_inner(state, &connection_id, schema_for_catalog, table.clone())
+            .await
+            .map(|cols| {
+                cols.iter().any(|c| {
+                    c.name == column && c.data_type.trim().to_ascii_uppercase().starts_with("BIT")
+                })
             })
-        })
-        .unwrap_or(false);
+            .unwrap_or(false);
     let bit_cast = is_mysql
         && (column_type
             .as_deref()
@@ -1377,10 +1359,9 @@ pub async fn update_cell(
         }
     }
     .await;
-    let affected = try_sql!(&app, window_label, &connection_id, driver, &sql, start, res);
-    log_sql(
-        &app,
-        window_label,
+    let affected = try_sql_sink!(sink, &connection_id, driver, &sql, start, res);
+    log_sql_sink(
+        sink,
         &connection_id,
         driver,
         &sql,
@@ -1432,7 +1413,6 @@ fn json_to_string(v: &Value) -> Option<String> {
 /// Returns the number of rows actually deleted; that should equal
 /// `pk_value_rows.len()` when every key existed, and less if any did not.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn delete_rows(
     app: AppHandle,
     window: tauri::Window,
@@ -1443,7 +1423,30 @@ pub async fn delete_rows(
     pk_columns: Vec<String>,
     pk_value_rows: Vec<Vec<Value>>,
 ) -> AppResult<u64> {
-    let window_label = window.label();
+    let sink = log_bus::TauriSink::new(&app, window.label());
+    delete_rows_inner(
+        &sink,
+        state.inner(),
+        connection_id,
+        schema,
+        table,
+        pk_columns,
+        pk_value_rows,
+    )
+    .await
+}
+
+/// Tauri-independent core of [`delete_rows`], shared with the headless MCP
+/// `delete_rows` write tool.
+pub(crate) async fn delete_rows_inner(
+    sink: &dyn LogSink,
+    state: &AppState,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+    pk_columns: Vec<String>,
+    pk_value_rows: Vec<Vec<Value>>,
+) -> AppResult<u64> {
     if pk_columns.is_empty() {
         return Err(AppError::InvalidInput(
             "delete_rows: no primary-key columns supplied".into(),
@@ -1462,7 +1465,7 @@ pub async fn delete_rows(
         }
     }
 
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = pool_for(state, &connection_id)?;
     let driver = driver_str(&pool);
 
     // MongoDB: delete by `_id` ({_id: {$in: [...]}}). Each pk tuple is a single
@@ -1475,9 +1478,8 @@ pub async fn delete_rows(
             .collect();
         let res = crate::db::mongo::query::delete_rows(conn, &table, &ids).await;
         match &res {
-            Ok(n) => log_sql(
-                &app,
-                window_label,
+            Ok(n) => log_sql_sink(
+                sink,
                 &connection_id,
                 driver,
                 "(mongo delete)",
@@ -1485,9 +1487,8 @@ pub async fn delete_rows(
                 Some(*n),
                 None,
             ),
-            Err(e) => log_sql(
-                &app,
-                window_label,
+            Err(e) => log_sql_sink(
+                sink,
                 &connection_id,
                 driver,
                 "(mongo delete)",
@@ -1537,9 +1538,8 @@ pub async fn delete_rows(
         .collect();
 
     let start = Instant::now();
-    let affected = try_sql!(
-        &app,
-        window_label,
+    let affected = try_sql_sink!(
+        sink,
         &connection_id,
         driver,
         &sql,
@@ -1569,9 +1569,8 @@ pub async fn delete_rows(
             DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
         }
     );
-    log_sql(
-        &app,
-        window_label,
+    log_sql_sink(
+        sink,
         &connection_id,
         driver,
         &sql,
@@ -1593,7 +1592,6 @@ pub async fn delete_rows(
 /// frontend. MySQL/SQLite return the last insert id when available; if
 /// neither path applies the response is `null`.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn insert_row(
     app: AppHandle,
     window: tauri::Window,
@@ -1604,13 +1602,37 @@ pub async fn insert_row(
     pk_column: Option<String>,
     values: Vec<RowValue>,
 ) -> AppResult<Value> {
-    let window_label = window.label();
+    let sink = log_bus::TauriSink::new(&app, window.label());
+    insert_row_inner(
+        &sink,
+        state.inner(),
+        connection_id,
+        schema,
+        table,
+        pk_column,
+        values,
+    )
+    .await
+}
+
+/// Tauri-independent core of [`insert_row`], shared with the headless MCP
+/// `insert_row` write tool.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn insert_row_inner(
+    sink: &dyn LogSink,
+    state: &AppState,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+    pk_column: Option<String>,
+    values: Vec<RowValue>,
+) -> AppResult<Value> {
     if values.is_empty() {
         return Err(AppError::InvalidInput(
             "insert_row: no columns supplied".into(),
         ));
     }
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = pool_for(state, &connection_id)?;
     let driver = driver_str(&pool);
 
     // MongoDB: insert one document built from the column/value pairs; returns
@@ -1619,9 +1641,8 @@ pub async fn insert_row(
         let start = Instant::now();
         let res = crate::db::mongo::query::insert_row(conn, &table, &values).await;
         match &res {
-            Ok(_) => log_sql(
-                &app,
-                window_label,
+            Ok(_) => log_sql_sink(
+                sink,
                 &connection_id,
                 driver,
                 "(mongo insert)",
@@ -1629,9 +1650,8 @@ pub async fn insert_row(
                 Some(1),
                 None,
             ),
-            Err(e) => log_sql(
-                &app,
-                window_label,
+            Err(e) => log_sql_sink(
+                sink,
                 &connection_id,
                 driver,
                 "(mongo insert)",
@@ -1666,7 +1686,7 @@ pub async fn insert_row(
     // the common case (frontend metadata present) skips this entirely.
     let catalog_bit_columns: std::collections::HashSet<String> =
         if is_mysql && values.iter().any(|v| v.column_type.is_none()) {
-            list_columns_inner(state.inner(), &connection_id, schema.clone(), table.clone())
+            list_columns_inner(state, &connection_id, schema.clone(), table.clone())
                 .await
                 .map(|cols| {
                     cols.into_iter()
@@ -1772,25 +1792,8 @@ pub async fn insert_row(
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
 
-    let (rows, returned) = try_sql!(
-        &app,
-        window_label,
-        &connection_id,
-        driver,
-        &sql_used,
-        start,
-        outcome
-    );
-    log_sql(
-        &app,
-        window_label,
-        &connection_id,
-        driver,
-        &sql_used,
-        start,
-        rows,
-        None,
-    );
+    let (rows, returned) = try_sql_sink!(sink, &connection_id, driver, &sql_used, start, outcome);
+    log_sql_sink(sink, &connection_id, driver, &sql_used, start, rows, None);
     Ok(returned)
 }
 

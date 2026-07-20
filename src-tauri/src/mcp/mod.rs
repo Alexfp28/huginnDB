@@ -9,12 +9,20 @@
 //!
 //! * **Reuses the desktop backend wholesale.** Every tool delegates to the
 //!   same `_inner` data-path functions the Tauri commands call
-//!   ([`crate::commands`]); the MCP surface adds no new SQL. A [`NoopSink`]
-//!   stands in for the GUI's Console log.
-//! * **Read-only by default (v1).** `run_query` rejects anything
-//!   [`crate::db::sql::is_read_only`] doesn't recognise unless `--allow-writes`
-//!   is passed — and no write tools are registered regardless, so v1 is
-//!   read-only end to end.
+//!   ([`crate::commands`]); the MCP surface adds no new SQL. Reads go through a
+//!   [`NoopSink`]; writes go through an [`AuditSink`] that appends to
+//!   `mcp-audit.log`.
+//! * **Writes gated by a per-connection policy.** Each exposed connection
+//!   carries a saved [`McpWritePolicy`] (`read-only` / `data` / `full`,
+//!   default `read-only`), edited in the app's Settings → MCP and persisted in
+//!   `profiles.json`. The sidecar re-reads it **fresh from disk on every write
+//!   attempt** ([`Huginn::write_policy`]), so changing a connection's level in
+//!   the app takes effect without restarting the MCP client. `run_query`
+//!   classifies each statement ([`crate::db::sql::classify`]) and the
+//!   structured write tools (`insert_row` / `update_cell` / `delete_rows`)
+//!   require at least `data`; DDL requires `full`. A global `--read-only`
+//!   kill-switch forces read-only regardless of saved policy. (The old
+//!   `--allow-writes` flag is deprecated and inert.)
 //! * **Opt-in per profile.** Nothing is reachable until the user names a
 //!   profile id via `--connections id1,id2`. An empty allowlist exposes
 //!   nothing.
@@ -36,9 +44,10 @@ use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabiliti
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt};
 use serde::Deserialize;
 
+use crate::db::sql::StmtClass;
 use crate::error::AppResult;
-use crate::log_bus::NoopSink;
-use crate::state::{ActivePool, AppState};
+use crate::log_bus::{LogEntry, LogSink, NoopSink};
+use crate::state::{ActivePool, AppState, McpWritePolicy};
 
 /// Default cap on rows returned by a single `run_query` / `browse_table` call.
 const DEFAULT_MAX_ROWS: i64 = 1000;
@@ -48,21 +57,30 @@ struct Config {
     /// Profile ids the client is allowed to reach. Opt-in: empty means
     /// nothing is exposed.
     allowed: HashSet<String>,
-    /// Whether non-read-only SQL is permitted through `run_query`. v1 leaves
-    /// this `false`; even when `true` no dedicated write tools are registered.
-    allow_writes: bool,
+    /// Global read-only kill-switch (`--read-only`). When set, every
+    /// connection is forced to [`McpWritePolicy::ReadOnly`] regardless of its
+    /// saved per-connection policy — a way to expose the sidecar in a
+    /// guaranteed-safe mode without editing any profile. Default `false`
+    /// (the per-connection policy governs).
+    read_only: bool,
     /// Upper bound on rows returned per call.
     max_rows: i64,
+    /// Whether the deprecated `--allow-writes` flag was seen, so `serve` can
+    /// emit a one-time deprecation notice. It no longer grants anything — the
+    /// per-connection [`McpWritePolicy`] (Settings → MCP) is the sole authority.
+    saw_allow_writes: bool,
 }
 
 impl Config {
-    /// Parse `--connections a,b,c`, `--allow-writes[=true|false]`, and
-    /// `--max-rows N` from `argv` (program name at index 0). Accepts both
-    /// `--flag value` and `--flag=value`, mirroring the desktop CLI parser.
+    /// Parse `--connections a,b,c`, `--read-only`, `--max-rows N`, and the
+    /// deprecated `--allow-writes` from `argv` (program name at index 0).
+    /// Accepts both `--flag value` and `--flag=value`, mirroring the desktop
+    /// CLI parser.
     fn from_args(argv: &[String]) -> Self {
         let mut allowed = HashSet::new();
-        let mut allow_writes = false;
+        let mut read_only = false;
         let mut max_rows = DEFAULT_MAX_ROWS;
+        let mut saw_allow_writes = false;
 
         let args: Vec<String> = argv.iter().skip(1).cloned().collect();
         let mut iter = args.iter().peekable();
@@ -83,13 +101,18 @@ impl Config {
                         }
                     }
                 }
+                "--read-only" | "--readonly" => {
+                    // Bare `--read-only` means true; `--read-only=false` is
+                    // honoured for explicit config files.
+                    read_only =
+                        !matches!(inline.as_deref(), Some("false") | Some("0") | Some("no"));
+                }
                 "--allow-writes" => {
-                    // Bare `--allow-writes` means true; `--allow-writes=false`
-                    // is honoured for explicit config files.
-                    allow_writes = match inline.as_deref() {
-                        None | Some("true") | Some("1") | Some("yes") => true,
-                        _ => false,
-                    };
+                    // Deprecated and inert: writes are now governed per
+                    // connection by the saved `McpWritePolicy`. Consume any
+                    // attached value so it isn't mis-parsed as a positional.
+                    let _ = inline;
+                    saw_allow_writes = true;
                 }
                 "--max-rows" => {
                     if let Some(v) = value(&mut iter).and_then(|v| v.parse::<i64>().ok()) {
@@ -104,8 +127,9 @@ impl Config {
 
         Config {
             allowed,
-            allow_writes,
+            read_only,
             max_rows,
+            saw_allow_writes,
         }
     }
 }
@@ -213,6 +237,77 @@ mod args {
         /// User/role as returned by `list_users` (MySQL: `user@host`).
         pub user: String,
     }
+
+    /// One column/value pair for `insert_row`. Mirrors the desktop
+    /// `RowValue` (values travel as text; the driver casts to the column
+    /// type). Split out with its own `JsonSchema` so the tool advertises a
+    /// schema — the command-layer `RowValue` derives only `Deserialize`.
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct RowValueArg {
+        /// Column name.
+        pub column: String,
+        /// Value as text; `null` writes a SQL `NULL`. Omitted columns fall
+        /// back to their database default.
+        #[serde(default)]
+        pub value: Option<String>,
+        /// Optional raw column type (e.g. `"BIT"`) so drivers that need
+        /// special binding get it right; safe to omit.
+        #[serde(default)]
+        pub column_type: Option<String>,
+    }
+
+    /// Arguments for the `insert_row` write tool.
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct InsertRow {
+        pub connection_id: String,
+        /// Schema / namespace (see [`Table::schema`]; MongoDB database name).
+        #[serde(default)]
+        pub schema: Option<String>,
+        pub table: String,
+        /// PK column to recover the generated id via `RETURNING` (Postgres);
+        /// MySQL/SQLite report the last insert id automatically.
+        #[serde(default)]
+        pub pk_column: Option<String>,
+        /// Columns to populate.
+        pub values: Vec<RowValueArg>,
+    }
+
+    /// Arguments for the `update_cell` write tool — updates one column of the
+    /// single row addressed by the full primary key.
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct UpdateCell {
+        pub connection_id: String,
+        #[serde(default)]
+        pub schema: Option<String>,
+        pub table: String,
+        /// Ordered PK column names (composite keys supported).
+        pub pk_columns: Vec<String>,
+        /// PK values parallel to `pk_columns`, identifying the one row.
+        pub pk_values: Vec<serde_json::Value>,
+        /// Column to update.
+        pub column: String,
+        /// New value as text; `null` sets SQL `NULL`.
+        #[serde(default)]
+        pub value: Option<String>,
+        /// Optional raw column type (e.g. `"BIT"`); safe to omit.
+        #[serde(default)]
+        pub column_type: Option<String>,
+    }
+
+    /// Arguments for the `delete_rows` write tool. Each entry in
+    /// `pk_value_rows` is one full-PK tuple, parallel to `pk_columns`.
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct DeleteRows {
+        pub connection_id: String,
+        #[serde(default)]
+        pub schema: Option<String>,
+        pub table: String,
+        /// Ordered PK column names (composite keys supported).
+        pub pk_columns: Vec<String>,
+        /// One PK-value tuple per row to delete, each parallel to
+        /// `pk_columns`.
+        pub pk_value_rows: Vec<Vec<serde_json::Value>>,
+    }
 }
 
 /// The MCP server. `Clone` (cheap — everything is behind `Arc`) as required by
@@ -234,6 +329,68 @@ fn ok_json<T: serde::Serialize>(value: &T) -> Result<CallToolResult, ErrorData> 
 /// Map a backend [`crate::error::AppError`] onto an MCP error.
 fn to_err(e: crate::error::AppError) -> ErrorData {
     ErrorData::internal_error(e.to_string(), None)
+}
+
+/// File name of the append-only audit log for MCP writes.
+const AUDIT_FILE: &str = "mcp-audit.log";
+
+/// Resolve the audit-log path: `<config-dir>/HuginnDB/mcp-audit.log`, the same
+/// directory `profiles.json` lives in. Returns `None` if no config dir is
+/// available (audit then silently degrades to no-op — it must never fail a
+/// write).
+fn audit_log_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|base| base.join("HuginnDB").join(AUDIT_FILE))
+}
+
+/// [`LogSink`] that appends a line to `mcp-audit.log` for every write the
+/// sidecar performs (both successes and failures — the shared `_inner` cores
+/// emit a [`LogEntry`] on each path). Reads use a [`NoopSink`] instead, so the
+/// audit log is a clean record of state-changing operations only.
+///
+/// Since the sidecar can't show an interactive permission prompt (it's a
+/// headless process the MCP client spawns), this log — plus the per-action
+/// approval the MCP client itself asks for — is the accountability mechanism:
+/// the user can see exactly which writes ran, against which connection, and
+/// what they touched. Emission is fire-and-forget: any I/O error is swallowed
+/// so it can never fail the originating DB operation.
+struct AuditSink {
+    path: Option<std::path::PathBuf>,
+}
+
+impl AuditSink {
+    fn new() -> Self {
+        Self {
+            path: audit_log_path(),
+        }
+    }
+}
+
+impl LogSink for AuditSink {
+    fn log(&self, entry: LogEntry) {
+        use std::io::Write;
+        let Some(path) = &self.path else { return };
+        let outcome = match (&entry.error, entry.rows_affected) {
+            (Some(err), _) => format!("ERROR {err}"),
+            (None, Some(n)) => format!("rows={n}"),
+            (None, None) => "ok".to_string(),
+        };
+        let line = format!(
+            "{} conn={} driver={} {} sql={}\n",
+            entry.timestamp_ms,
+            entry.connection_id.as_deref().unwrap_or("-"),
+            entry.driver.as_deref().unwrap_or("-"),
+            outcome,
+            entry.sql.as_deref().unwrap_or("-"),
+        );
+        // Best-effort append; ignore any failure (see the struct doc).
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
 }
 
 #[tool_router]
@@ -325,9 +482,58 @@ impl Huginn {
         }
     }
 
+    /// The write policy in force for `connection_id`, read **fresh from
+    /// `profiles.json`** so a change made in the desktop app (Settings → MCP)
+    /// takes effect without restarting the MCP client. Falls back to the
+    /// in-memory profile loaded at startup if the disk re-read fails, and to
+    /// [`McpWritePolicy::ReadOnly`] if the profile is unknown. The global
+    /// `--read-only` kill-switch overrides everything.
+    fn write_policy(&self, connection_id: &str) -> McpWritePolicy {
+        if self.config.read_only {
+            return McpWritePolicy::ReadOnly;
+        }
+        crate::store::load_profiles()
+            .ok()
+            .and_then(|ps| ps.into_iter().find(|p| p.id == connection_id))
+            .map(|p| p.mcp_write)
+            .or_else(|| {
+                self.state
+                    .profiles
+                    .read()
+                    .iter()
+                    .find(|p| p.id == connection_id)
+                    .map(|p| p.mcp_write)
+            })
+            .unwrap_or_default()
+    }
+
+    /// Enforce that `connection_id`'s policy admits a statement of tier
+    /// `class`, returning an MCP error naming the current level otherwise.
+    fn require_class(&self, connection_id: &str, class: StmtClass) -> Result<(), ErrorData> {
+        let policy = self.write_policy(connection_id);
+        if policy.allows(class) {
+            return Ok(());
+        }
+        let needed = match class {
+            StmtClass::Read => "read-only",
+            StmtClass::DataWrite => "data",
+            StmtClass::Ddl => "full",
+        };
+        Err(ErrorData::invalid_params(
+            format!(
+                "connection {connection_id:?} has MCP write policy {:?}, which does not permit \
+                 this operation (needs at least {needed:?}). Raise the connection's level in \
+                 HuginnDB → Settings → MCP.",
+                policy.label()
+            ),
+            None,
+        ))
+    }
+
     #[tool(description = "List the databases this server is allowed to reach \
-                          (profile id, name, driver, host, database, and \
-                          whether a pool is currently open).")]
+                          (profile id, name, driver, host, database, whether a \
+                          pool is currently open, and the MCP write policy in \
+                          force: read-only / data / full).")]
     async fn list_connections(&self) -> Result<CallToolResult, ErrorData> {
         #[derive(serde::Serialize)]
         struct Conn {
@@ -337,15 +543,27 @@ impl Huginn {
             host: String,
             database: String,
             active: bool,
+            /// Effective write policy (`read-only` / `data` / `full`), read
+            /// fresh so it reflects the current Settings → MCP choice and the
+            /// global `--read-only` kill-switch.
+            write_policy: &'static str,
         }
         let active: HashSet<String> = self.state.connections.read().ids().into_iter().collect();
-        let conns: Vec<Conn> = self
+        // Collect the allowed ids first, then resolve each policy through
+        // `write_policy` (which re-reads profiles.json) without holding the
+        // `profiles` read-lock across the call.
+        let ids: Vec<crate::state::ConnectionProfile> = self
             .state
             .profiles
             .read()
             .iter()
             .filter(|p| self.config.allowed.contains(&p.id))
+            .cloned()
+            .collect();
+        let conns: Vec<Conn> = ids
+            .into_iter()
             .map(|p| Conn {
+                write_policy: self.write_policy(&p.id).label(),
                 id: p.id.clone(),
                 name: p.name.clone(),
                 driver: format!("{:?}", p.driver).to_lowercase(),
@@ -426,21 +644,21 @@ impl Huginn {
         let target = self
             .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
             .await?;
-        let out = crate::commands::schema::list_indexes_inner(
-            &self.state,
-            &target,
-            a.schema,
-            a.table,
-        )
-        .await
-        .map_err(to_err)?;
+        let out =
+            crate::commands::schema::list_indexes_inner(&self.state, &target, a.schema, a.table)
+                .await
+                .map_err(to_err)?;
         ok_json(&out)
     }
 
-    #[tool(description = "Run a single read-only statement: SQL (SELECT / WITH / \
-                          SHOW / EXPLAIN / PRAGMA) for Postgres/MySQL/SQLite, or a \
-                          mongosh-style read (find/aggregate/countDocuments/distinct) \
-                          for MongoDB. Rows are capped by the server's --max-rows.")]
+    #[tool(description = "Run a single statement. Reads (SELECT / WITH / SHOW / \
+                          EXPLAIN / PRAGMA for SQL; find/aggregate/countDocuments/\
+                          distinct for MongoDB) always work. Writes require the \
+                          connection's MCP write policy to allow them: row-level \
+                          DML (INSERT/UPDATE/DELETE) needs 'data', schema changes \
+                          (CREATE/DROP/ALTER/…) need 'full'. Whole-table \
+                          UPDATE/DELETE with no WHERE are refused. Rows are capped \
+                          by the server's --max-rows.")]
     async fn run_query(
         &self,
         Parameters(a): Parameters<args::Query>,
@@ -452,38 +670,55 @@ impl Huginn {
             .resolve_mongo_target(&a.connection_id, a.database.as_deref())
             .await?;
 
-        // The read-only check is driver-aware: plain-SQL keyword matching
-        // (`db::sql::is_read_only`) never recognises mongosh syntax
-        // (`db.coll.find({...})` starts with none of select/with/show/
-        // explain/pragma), so every MongoDB statement used to be rejected
-        // here regardless of `--allow-writes`. `MongoOp::is_read()` is the
-        // same classifier the desktop query editor already relies on (see
-        // `commands::query::execute_with_state`, which dispatches Mongo
-        // *before* the generic gate for this exact reason).
+        // Classify the statement into its required tier. The classifier is
+        // driver-aware: plain-SQL keyword matching (`db::sql::classify`) never
+        // recognises mongosh syntax (`db.coll.find({...})` starts with none of
+        // select/with/show/explain/pragma), so MongoDB is classified via
+        // `MongoOp::is_read()` — the same classifier the desktop query editor
+        // relies on. Mongo has no DDL path through this parser (only
+        // collection-level read/write ops), so a Mongo write is always
+        // `DataWrite`.
         let is_mongo = matches!(
             self.state.connections.read().get(&target),
             Some(crate::state::DbPool::Mongo(_))
         );
-        let read_only = if is_mongo {
-            crate::db::mongo::shell::parse(&a.sql)
+        let class = if is_mongo {
+            if crate::db::mongo::shell::parse(&a.sql)
                 .map_err(to_err)?
                 .op
                 .is_read()
+            {
+                StmtClass::Read
+            } else {
+                StmtClass::DataWrite
+            }
         } else {
-            crate::db::sql::is_read_only(&a.sql)
+            crate::db::sql::classify(&a.sql)
         };
-        if !self.config.allow_writes && !read_only {
+
+        // Refuse whole-table UPDATE/DELETE outright (SQL drivers), regardless
+        // of tier — a classic AI footgun; the user can add `WHERE 1=1` to opt in.
+        if !is_mongo && crate::db::sql::is_unfiltered_write(&a.sql) {
             return Err(ErrorData::invalid_params(
-                "run_query only accepts read-only statements — SELECT/WITH/SHOW/\
-                 EXPLAIN/PRAGMA for SQL drivers, or find/aggregate/countDocuments/\
-                 distinct for MongoDB; this server runs read-only"
+                "run_query refused a whole-table UPDATE/DELETE (no WHERE clause). \
+                 Add a WHERE predicate — use `WHERE 1=1` if you really mean every row."
                     .to_string(),
                 None,
             ));
         }
 
+        self.require_class(&target, class)?;
+
+        // Reads are not audited; writes append to mcp-audit.log.
+        let audit = AuditSink::new();
+        let noop = NoopSink;
+        let sink: &dyn LogSink = if class == StmtClass::Read {
+            &noop
+        } else {
+            &audit
+        };
         let mut result =
-            crate::commands::query::execute_with_state(&NoopSink, &self.state, &target, &a.sql)
+            crate::commands::query::execute_with_state(sink, &self.state, &target, &a.sql)
                 .await
                 .map_err(to_err)?;
         truncate_rows(&mut result, self.config.max_rows);
@@ -569,6 +804,110 @@ impl Huginn {
                 .map_err(to_err)?;
         ok_json(&out)
     }
+
+    #[tool(
+        description = "Insert one row into a table. Requires the connection's \
+                          MCP write policy to be 'data' or 'full'. Values travel \
+                          as text and are cast to each column's type; omitted \
+                          columns take their database default. Returns the \
+                          generated primary key when available."
+    )]
+    async fn insert_row(
+        &self,
+        Parameters(a): Parameters<args::InsertRow>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
+        self.require_class(&target, StmtClass::DataWrite)?;
+        let values = a
+            .values
+            .into_iter()
+            .map(|v| crate::commands::query::RowValue {
+                column: v.column,
+                value: v.value,
+                column_type: v.column_type,
+            })
+            .collect();
+        let out = crate::commands::query::insert_row_inner(
+            &AuditSink::new(),
+            &self.state,
+            target,
+            a.schema,
+            a.table,
+            a.pk_column,
+            values,
+        )
+        .await
+        .map_err(to_err)?;
+        ok_json(&out)
+    }
+
+    #[tool(description = "Update one column of the single row addressed by its \
+                          full primary key. Requires the connection's MCP write \
+                          policy to be 'data' or 'full'. Refuses to touch more \
+                          than one row (an incomplete composite key is an error, \
+                          not a silent multi-row update).")]
+    async fn update_cell(
+        &self,
+        Parameters(a): Parameters<args::UpdateCell>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
+        self.require_class(&target, StmtClass::DataWrite)?;
+        let out = crate::commands::query::update_cell_inner(
+            &AuditSink::new(),
+            &self.state,
+            target,
+            a.schema,
+            a.table,
+            a.pk_columns,
+            a.pk_values,
+            a.column,
+            a.value,
+            a.column_type,
+        )
+        .await
+        .map_err(to_err)?;
+        ok_json(&out)
+    }
+
+    #[tool(description = "Delete one or more rows, each addressed by its full \
+                          primary key. Requires the connection's MCP write \
+                          policy to be 'data' or 'full'. Only rows whose full \
+                          key matches a supplied tuple are removed. Returns the \
+                          number of rows deleted.")]
+    async fn delete_rows(
+        &self,
+        Parameters(a): Parameters<args::DeleteRows>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
+        self.require_class(&target, StmtClass::DataWrite)?;
+        let out = crate::commands::query::delete_rows_inner(
+            &AuditSink::new(),
+            &self.state,
+            target,
+            a.schema,
+            a.table,
+            a.pk_columns,
+            a.pk_value_rows,
+        )
+        .await
+        .map_err(to_err)?;
+        ok_json(&out)
+    }
 }
 
 /// Truncate a query result to at most `max` rows, flagging the trim in
@@ -596,9 +935,14 @@ impl ServerHandler for Huginn {
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(
-                "Read-only access to the databases configured in HuginnDB. Call \
-                 list_connections first to see which connection ids are available, \
-                 then pass a connection_id to the other tools.",
+                "Access to the databases configured in HuginnDB. Call \
+                 list_connections first to see which connection ids are available \
+                 (each shows its write policy), then pass a connection_id to the \
+                 other tools. Reads always work; writes (run_query DML/DDL, \
+                 insert_row, update_cell, delete_rows) only succeed when the \
+                 connection's policy permits them — 'data' for row changes, \
+                 'full' for schema changes — and every write is recorded in the \
+                 app's MCP audit log.",
             )
     }
 }
@@ -614,6 +958,12 @@ pub async fn serve() -> anyhow::Result<()> {
 
     // A one-line startup banner on stderr (stdout is the JSON-RPC channel and
     // must stay clean). Helps confirm which connections were exposed.
+    if config.saw_allow_writes {
+        eprintln!(
+            "[huginndb-mcp] note: --allow-writes is deprecated and ignored. Writes are now \
+             governed per connection by the write policy set in HuginnDB → Settings → MCP."
+        );
+    }
     if config.allowed.is_empty() {
         eprintln!(
             "[huginndb-mcp] no connections exposed — pass --connections <profile-id>[,<id>...]"
@@ -622,13 +972,17 @@ pub async fn serve() -> anyhow::Result<()> {
         let mut ids: Vec<&String> = config.allowed.iter().collect();
         ids.sort();
         eprintln!(
-            "[huginndb-mcp] exposing {} connection(s): {} (writes: {}, max-rows: {})",
+            "[huginndb-mcp] exposing {} connection(s): {} (write policy: per-connection{}, max-rows: {})",
             ids.len(),
             ids.iter()
                 .map(|s| s.as_str())
                 .collect::<Vec<_>>()
                 .join(", "),
-            config.allow_writes,
+            if config.read_only {
+                ", forced read-only via --read-only"
+            } else {
+                ""
+            },
             config.max_rows,
         );
     }
@@ -657,30 +1011,120 @@ mod tests {
     fn config_defaults_expose_nothing() {
         let c = Config::from_args(&args(&[]));
         assert!(c.allowed.is_empty(), "opt-in: no connections by default");
-        assert!(!c.allow_writes);
+        assert!(!c.read_only);
+        assert!(!c.saw_allow_writes);
         assert_eq!(c.max_rows, DEFAULT_MAX_ROWS);
     }
 
     #[test]
-    fn config_parses_connections_writes_and_max_rows() {
+    fn config_parses_connections_read_only_and_max_rows() {
         let c = Config::from_args(&args(&[
             "--connections",
             "alpha, beta ,gamma",
-            "--allow-writes",
+            "--read-only",
             "--max-rows=50",
         ]));
         assert!(c.allowed.contains("alpha"));
         assert!(c.allowed.contains("beta"));
         assert!(c.allowed.contains("gamma"));
         assert_eq!(c.allowed.len(), 3);
-        assert!(c.allow_writes);
+        assert!(c.read_only);
         assert_eq!(c.max_rows, 50);
     }
 
     #[test]
-    fn config_allow_writes_false_is_honoured() {
-        let c = Config::from_args(&args(&["--allow-writes=false"]));
-        assert!(!c.allow_writes);
+    fn config_read_only_false_is_honoured() {
+        let c = Config::from_args(&args(&["--read-only=false"]));
+        assert!(!c.read_only);
+    }
+
+    #[test]
+    fn config_allow_writes_is_deprecated_and_inert() {
+        // The flag is recognised only so `serve` can warn; it grants nothing.
+        let c = Config::from_args(&args(&["--allow-writes"]));
+        assert!(c.saw_allow_writes);
+        assert!(!c.read_only, "deprecated flag must not affect policy");
+    }
+
+    #[test]
+    fn write_policy_maps_tiers_correctly() {
+        use crate::state::McpWritePolicy::*;
+        assert!(ReadOnly.allows(StmtClass::Read));
+        assert!(!ReadOnly.allows(StmtClass::DataWrite));
+        assert!(!ReadOnly.allows(StmtClass::Ddl));
+        assert!(Data.allows(StmtClass::Read));
+        assert!(Data.allows(StmtClass::DataWrite));
+        assert!(!Data.allows(StmtClass::Ddl));
+        assert!(Full.allows(StmtClass::Read));
+        assert!(Full.allows(StmtClass::DataWrite));
+        assert!(Full.allows(StmtClass::Ddl));
+    }
+
+    /// Build a `Huginn` around an in-memory profile carrying `policy`, exposed
+    /// to the server. `write_policy` re-reads `profiles.json` first, but the
+    /// synthetic id is not on disk, so it falls back to this in-memory profile
+    /// — letting us exercise `require_class` without touching real state.
+    fn huginn_with_policy(id: &str, policy: McpWritePolicy, read_only: bool) -> Huginn {
+        let state = AppState::new();
+        state
+            .profiles
+            .write()
+            .push(crate::state::ConnectionProfile {
+                id: id.to_string(),
+                name: id.to_string(),
+                driver: crate::state::Driver::Sqlite,
+                host: String::new(),
+                port: 0,
+                database: String::new(),
+                username: String::new(),
+                ssl: false,
+                ssh_tunnel: None,
+                connection_string: None,
+                auth_source: None,
+                ephemeral: false,
+                group: None,
+                visible_databases: None,
+                mcp_write: policy,
+            });
+        let mut allowed = HashSet::new();
+        allowed.insert(id.to_string());
+        Huginn::new(
+            Arc::new(state),
+            Arc::new(Config {
+                allowed,
+                read_only,
+                max_rows: DEFAULT_MAX_ROWS,
+                saw_allow_writes: false,
+            }),
+        )
+    }
+
+    #[test]
+    fn require_class_enforces_per_connection_policy() {
+        let ro = huginn_with_policy("t-ro", McpWritePolicy::ReadOnly, false);
+        assert!(ro.require_class("t-ro", StmtClass::Read).is_ok());
+        assert!(ro.require_class("t-ro", StmtClass::DataWrite).is_err());
+        assert!(ro.require_class("t-ro", StmtClass::Ddl).is_err());
+
+        let data = huginn_with_policy("t-data", McpWritePolicy::Data, false);
+        assert!(data.require_class("t-data", StmtClass::Read).is_ok());
+        assert!(data.require_class("t-data", StmtClass::DataWrite).is_ok());
+        assert!(data.require_class("t-data", StmtClass::Ddl).is_err());
+
+        let full = huginn_with_policy("t-full", McpWritePolicy::Full, false);
+        assert!(full.require_class("t-full", StmtClass::DataWrite).is_ok());
+        assert!(full.require_class("t-full", StmtClass::Ddl).is_ok());
+    }
+
+    #[test]
+    fn read_only_kill_switch_overrides_full_policy() {
+        // Even a `full` connection is forced read-only when --read-only is set.
+        let killed = huginn_with_policy("t-kill", McpWritePolicy::Full, true);
+        assert!(killed.require_class("t-kill", StmtClass::Read).is_ok());
+        assert!(killed
+            .require_class("t-kill", StmtClass::DataWrite)
+            .is_err());
+        assert!(killed.require_class("t-kill", StmtClass::Ddl).is_err());
     }
 
     /// Exercises the exact classifier `run_query` uses to gate MongoDB

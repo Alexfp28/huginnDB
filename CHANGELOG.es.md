@@ -16,6 +16,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   entero — así que cada celda booleana caía a una decodificación de texto no
   válida para la columna y colapsaba a `NULL`. Las columnas booleanas ahora
   muestran su valor almacenado (`0` / `1`), como cualquier otro entero.
+  
+### Añadido
+
+- **Modo escritura del conector MCP, con un modelo de permisos por conexión.**
+  El conector headless `huginndb-mcp`, de solo lectura desde la 1.7.0, ya puede
+  realizar escrituras — gobernadas por conexión, no por un único interruptor
+  global. Cada conexión tiene un **nivel de escritura** configurado en Ajustes
+  → MCP:
+  - `read-only` (por defecto) — solo lecturas;
+  - `data` — añade DML a nivel de fila (`INSERT`/`UPDATE`/`DELETE`) vía
+    `run_query` y las nuevas herramientas `insert_row` / `update_cell` /
+    `delete_rows`;
+  - `full` — permite además DDL (`CREATE`/`DROP`/`ALTER`/…) vía `run_query`.
+
+  El nivel se relee de `profiles.json` en cada intento de escritura, así que
+  cambiarlo surte efecto sin reiniciar el cliente de IA. Como el sidecar es un
+  proceso headless que no puede mostrar un prompt, la aprobación por acción la
+  da el cliente MCP, y HuginnDB registra cada escritura (éxito o fallo) en
+  `mcp-audit.log` junto a tus perfiles. Un `UPDATE`/`DELETE` sin `WHERE` sobre
+  toda la tabla se rechaza de plano, y un nuevo flag `--read-only` fuerza todas
+  las conexiones a solo lectura sin importar su nivel guardado. El antiguo flag
+  `--allow-writes` queda obsoleto e inerte. Ver [`docs/MCP.es.md`](docs/MCP.es.md).
 
 ## [1.8.3] — 2026-07-16
 
