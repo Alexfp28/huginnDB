@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Console logs leaked across windows (#50).** With a second window open (the
+  "New window" action), every window's Console showed every other window's
+  SQL and connection entries. The backend already targeted log events at the
+  originating window, but the frontend listener wasn't scoped, so Tauri
+  delivered all of them to every window. Each window's Console now shows only
+  its own activity; genuinely global notices (like a shared connection dropping)
+  still reach every window.
+  
+- **MySQL boolean columns showed `NULL` instead of their value (#68).** A
+  `TINYINT(1)` / `BOOL` / `BOOLEAN` column is reported by the driver under the
+  type name `BOOLEAN`, which the value decoder didn't recognise as an integer —
+  so every boolean cell fell through to a text decode that isn't valid for the
+  column and collapsed to `NULL`. Boolean columns now render their stored value
+  (`0` / `1`), like any other integer.
+  
 ### Added
 
 - **Advanced per-column filter (#66).** A new filter button in the data-grid
@@ -17,6 +34,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   is-not-null. Works across Postgres, MySQL, SQLite (SQL `LIKE`/comparisons)
   and MongoDB (regex / `$gt`…`$lt`). The button shows a badge with the active
   condition count.
+
+- **Empty a table from the schema explorer (#69).** A new "Empty table" entry
+  in a table's (or MongoDB collection's) context menu removes every row while
+  keeping the table and its structure — handy for tables used as logs. It uses
+  `TRUNCATE` on Postgres/MySQL, `DELETE FROM` on SQLite, and `deleteMany({})`
+  on MongoDB. A confirmation dialog guards the action and carries a "don't ask
+  again" checkbox backed by a dedicated `confirmEmptyTable` preference, so
+  silencing it never weakens other destructive confirmations.
+
+- **MCP connector write-mode, with a per-connection permission model.** The
+  headless `huginndb-mcp` connector, read-only since 1.7.0, can now perform
+  writes — governed per connection, not by a single global switch. Each
+  connection carries a **write policy** set in Settings → MCP:
+  - `read-only` (default) — only reads succeed;
+  - `data` — adds row-level DML (`INSERT`/`UPDATE`/`DELETE`) via `run_query`
+    plus the new `insert_row` / `update_cell` / `delete_rows` tools;
+  - `full` — also allows DDL (`CREATE`/`DROP`/`ALTER`/…) via `run_query`.
+
+  The policy is re-read from `profiles.json` on every write attempt, so
+  changing a connection's level takes effect without restarting the AI client.
+  Because the sidecar is a headless process that can't show a prompt, the
+  per-action approval stays with the MCP client, and HuginnDB records every
+  write (success or failure) to `mcp-audit.log` alongside your profiles. A
+  whole-table `UPDATE`/`DELETE` with no `WHERE` is refused outright, and a new
+  `--read-only` flag forces every connection read-only regardless of its saved
+  policy. The old `--allow-writes` flag is deprecated and inert. See
+  [`docs/MCP.md`](docs/MCP.md).
 
 ## [1.8.3] — 2026-07-16
 

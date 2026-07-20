@@ -56,6 +56,7 @@ const DEFAULT_PREFS: Preferences = {
   },
   ui: {
     confirmDestructive: true,
+    confirmEmptyTable: true,
     queryHistoryLimit: 50,
     restoreTabsOnOpen: true,
     schemaTableMetric: "none",

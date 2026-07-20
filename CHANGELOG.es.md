@@ -8,6 +8,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Corregido
+
+- **Los logs de la consola se filtraban entre ventanas (#50).** Con una segunda
+  ventana abierta (acción «Nueva ventana»), la consola de cada ventana mostraba
+  las entradas SQL y de conexión de todas las demás. El backend ya dirigía los
+  eventos de log a la ventana de origen, pero el listener del frontend no estaba
+  acotado, así que Tauri los entregaba a todas las ventanas. Ahora la consola de
+  cada ventana muestra solo su propia actividad; los avisos realmente globales
+  (como la caída de una conexión compartida) siguen llegando a todas.
+  
+- **Las columnas booleanas de MySQL mostraban `NULL` en vez de su valor (#68).**
+  Una columna `TINYINT(1)` / `BOOL` / `BOOLEAN` la reporta el driver con el
+  nombre de tipo `BOOLEAN`, que el decodificador de valores no reconocía como
+  entero — así que cada celda booleana caía a una decodificación de texto no
+  válida para la columna y colapsaba a `NULL`. Las columnas booleanas ahora
+  muestran su valor almacenado (`0` / `1`), como cualquier otro entero.
+  
 ### Añadido
 
 - **Filtro avanzado por columna (#66).** Un nuevo botón de filtro en la barra
@@ -19,6 +36,35 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   es nulo. Funciona en Postgres, MySQL, SQLite (`LIKE`/comparaciones SQL) y
   MongoDB (regex / `$gt`…`$lt`). El botón muestra un contador de condiciones
   activas.
+
+- **Vaciar una tabla desde el explorador de esquema (#69).** Una nueva entrada
+  «Vaciar tabla» en el menú contextual de una tabla (o colección de MongoDB)
+  elimina todas las filas conservando la tabla y su estructura — útil para
+  tablas usadas como log. Usa `TRUNCATE` en Postgres/MySQL, `DELETE FROM` en
+  SQLite y `deleteMany({})` en MongoDB. Un diálogo de confirmación protege la
+  acción e incluye una casilla «no volver a preguntar» respaldada por una
+  preferencia dedicada `confirmEmptyTable`, para que silenciarla no debilite
+  otras confirmaciones destructivas.
+
+- **Modo escritura del conector MCP, con un modelo de permisos por conexión.**
+  El conector headless `huginndb-mcp`, de solo lectura desde la 1.7.0, ya puede
+  realizar escrituras — gobernadas por conexión, no por un único interruptor
+  global. Cada conexión tiene un **nivel de escritura** configurado en Ajustes
+  → MCP:
+  - `read-only` (por defecto) — solo lecturas;
+  - `data` — añade DML a nivel de fila (`INSERT`/`UPDATE`/`DELETE`) vía
+    `run_query` y las nuevas herramientas `insert_row` / `update_cell` /
+    `delete_rows`;
+  - `full` — permite además DDL (`CREATE`/`DROP`/`ALTER`/…) vía `run_query`.
+
+  El nivel se relee de `profiles.json` en cada intento de escritura, así que
+  cambiarlo surte efecto sin reiniciar el cliente de IA. Como el sidecar es un
+  proceso headless que no puede mostrar un prompt, la aprobación por acción la
+  da el cliente MCP, y HuginnDB registra cada escritura (éxito o fallo) en
+  `mcp-audit.log` junto a tus perfiles. Un `UPDATE`/`DELETE` sin `WHERE` sobre
+  toda la tabla se rechaza de plano, y un nuevo flag `--read-only` fuerza todas
+  las conexiones a solo lectura sin importar su nivel guardado. El antiguo flag
+  `--allow-writes` queda obsoleto e inerte. Ver [`docs/MCP.es.md`](docs/MCP.es.md).
 
 ## [1.8.3] — 2026-07-16
 

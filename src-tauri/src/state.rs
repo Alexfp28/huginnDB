@@ -34,6 +34,65 @@ pub enum Driver {
     Mongo,
 }
 
+/// How far the headless MCP connector (`huginndb-mcp`) may go when writing to
+/// this connection. Per-connection policy — the sidecar reads it fresh from
+/// `profiles.json` on every write attempt, so changing it in the app takes
+/// effect without restarting the MCP client.
+///
+/// * `ReadOnly` (default) — reads only; every write tool and any non-read-only
+///   `run_query` is refused.
+/// * `Data` — row-level DML: `INSERT`/`UPDATE`/`DELETE` (and their Mongo
+///   equivalents), plus the structured write tools. No schema changes.
+/// * `Full` — adds DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) and the
+///   structure-editor tool.
+///
+/// This is metadata-only from the backend's perspective (like
+/// [`ConnectionProfile::visible_databases`]); the desktop app never acts on
+/// it — only the sidecar's enforcement path does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum McpWritePolicy {
+    ReadOnly,
+    Data,
+    Full,
+}
+
+impl Default for McpWritePolicy {
+    fn default() -> Self {
+        Self::ReadOnly
+    }
+}
+
+// These helpers are consumed only by the headless MCP connector's enforcement
+// path (`crate::mcp`), which is gated behind the `mcp` feature. Without the
+// gate they'd be flagged dead-code in a normal `pnpm tauri:build` (the enum and
+// its `Default` are still used — they're the persisted `ConnectionProfile`
+// field — but nothing calls `allows`/`label` there).
+#[cfg(feature = "mcp")]
+impl McpWritePolicy {
+    /// Whether a statement of the given tier is permitted under this policy.
+    /// `ReadOnly` admits only reads; `Data` adds row-level DML; `Full` adds
+    /// DDL. The ordering is strict — a lower tier never admits a higher one.
+    pub fn allows(self, class: crate::db::sql::StmtClass) -> bool {
+        use crate::db::sql::StmtClass;
+        match self {
+            McpWritePolicy::ReadOnly => class == StmtClass::Read,
+            McpWritePolicy::Data => matches!(class, StmtClass::Read | StmtClass::DataWrite),
+            McpWritePolicy::Full => true,
+        }
+    }
+
+    /// Lowercased wire label (`read-only` / `data` / `full`) for error
+    /// messages and logs.
+    pub fn label(self) -> &'static str {
+        match self {
+            McpWritePolicy::ReadOnly => "read-only",
+            McpWritePolicy::Data => "data",
+            McpWritePolicy::Full => "full",
+        }
+    }
+}
+
 /// User-defined connection profile stored on disk.
 ///
 /// Only contains non-sensitive metadata; the matching password is kept in
@@ -98,6 +157,13 @@ pub struct ConnectionProfile {
     /// concern; the backend stores it opaquely and never acts on it.
     #[serde(default)]
     pub visible_databases: Option<Vec<String>>,
+    /// How far the MCP connector may write to this connection (#1.9.0). Absent
+    /// / `None` on older profiles is treated as [`McpWritePolicy::ReadOnly`] —
+    /// the safe default, so an upgrade never silently grants write access.
+    /// Only the headless sidecar's enforcement path reads this; the desktop
+    /// app stores it opaquely. See [`McpWritePolicy`].
+    #[serde(default)]
+    pub mcp_write: McpWritePolicy,
 }
 
 /// How the client decides whether to trust the SSH server's host key.

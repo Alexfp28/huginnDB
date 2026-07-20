@@ -484,7 +484,18 @@ pub async fn apply_structure_change(
     state: State<'_, AppState>,
     args: StructureChangeArgs,
 ) -> AppResult<()> {
-    let pool = pool_for(state.inner(), &args.connection_id)?;
+    apply_structure_change_inner(state.inner(), args).await
+}
+
+/// Tauri-independent core of [`apply_structure_change`], shared with the
+/// headless MCP `apply_structure_change` write tool (gated to the `full`
+/// per-connection write policy). Takes a borrowed [`AppState`] instead of a
+/// Tauri `State`; emits no Console log (the GUI command never did either).
+pub(crate) async fn apply_structure_change_inner(
+    state: &AppState,
+    args: StructureChangeArgs,
+) -> AppResult<()> {
+    let pool = pool_for(state, &args.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "structure editing is not supported on MongoDB in this version".into(),
