@@ -229,6 +229,7 @@
       "editStructure": "Edit structure…",
       "newTable": "New table…",
       "rename": "Rename…",
+      "empty": "Empty table…",
       "drop": "Drop table…",
       "dropDatabase": "Drop database…"
     },
@@ -246,6 +247,15 @@
       "submit": "Drop table",
       "dropping": "Dropping…",
       "failed": "Drop failed: {{message}}"
+    },
+    "empty": {
+      "title": "Empty table {{name}}?",
+      "description": "This removes every row but keeps the table and its structure. This cannot be undone.",
+      "submit": "Empty table",
+      "emptying": "Emptying…",
+      "emptied": "Emptied {{name}}.",
+      "failed": "Empty failed: {{message}}",
+      "dontAskAgain": "Don't ask again when emptying a table"
     },
     "createDatabase": {
       "title": "New database",

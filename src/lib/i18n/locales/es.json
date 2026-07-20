@@ -229,6 +229,7 @@
       "editStructure": "Editar estructura…",
       "newTable": "Nueva tabla…",
       "rename": "Renombrar…",
+      "empty": "Vaciar tabla…",
       "drop": "Eliminar tabla…",
       "dropDatabase": "Eliminar base de datos…"
     },
@@ -246,6 +247,15 @@
       "submit": "Eliminar tabla",
       "dropping": "Eliminando…",
       "failed": "Error al eliminar: {{message}}"
+    },
+    "empty": {
+      "title": "¿Vaciar tabla {{name}}?",
+      "description": "Esto elimina todas las filas pero conserva la tabla y su estructura. No se puede deshacer.",
+      "submit": "Vaciar tabla",
+      "emptying": "Vaciando…",
+      "emptied": "Tabla {{name}} vaciada.",
+      "failed": "Error al vaciar: {{message}}",
+      "dontAskAgain": "No volver a preguntar al vaciar una tabla"
     },
     "createDatabase": {
       "title": "Nueva base de datos",

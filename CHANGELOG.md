@@ -17,6 +17,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Added
 
+- **Empty a table from the schema explorer (#69).** A new "Empty table" entry
+  in a table's (or MongoDB collection's) context menu removes every row while
+  keeping the table and its structure — handy for tables used as logs. It uses
+  `TRUNCATE` on Postgres/MySQL, `DELETE FROM` on SQLite, and `deleteMany({})`
+  on MongoDB. A confirmation dialog guards the action and carries a "don't ask
+  again" checkbox backed by a dedicated `confirmEmptyTable` preference, so
+  silencing it never weakens other destructive confirmations.
+
 - **MCP connector write-mode, with a per-connection permission model.** The
   headless `huginndb-mcp` connector, read-only since 1.7.0, can now perform
   writes — governed per connection, not by a single global switch. Each

@@ -19,6 +19,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Añadido
 
+- **Vaciar una tabla desde el explorador de esquema (#69).** Una nueva entrada
+  «Vaciar tabla» en el menú contextual de una tabla (o colección de MongoDB)
+  elimina todas las filas conservando la tabla y su estructura — útil para
+  tablas usadas como log. Usa `TRUNCATE` en Postgres/MySQL, `DELETE FROM` en
+  SQLite y `deleteMany({})` en MongoDB. Un diálogo de confirmación protege la
+  acción e incluye una casilla «no volver a preguntar» respaldada por una
+  preferencia dedicada `confirmEmptyTable`, para que silenciarla no debilite
+  otras confirmaciones destructivas.
+
 - **Modo escritura del conector MCP, con un modelo de permisos por conexión.**
   El conector headless `huginndb-mcp`, de solo lectura desde la 1.7.0, ya puede
   realizar escrituras — gobernadas por conexión, no por un único interruptor
