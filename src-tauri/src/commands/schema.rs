@@ -913,6 +913,65 @@ pub async fn drop_table(
     Ok(())
 }
 
+/// Empty a table — remove every row while keeping the table itself (#69).
+///
+/// Postgres/MySQL use `TRUNCATE TABLE` (fast, non-logged); SQLite has no
+/// `TRUNCATE`, so a plain `DELETE FROM` clears it. MongoDB deletes every
+/// document (`delete_many({})`) rather than dropping the collection. Same
+/// catalog-sourced identifier guarantees as [`drop_table`] — `schema`/`table`
+/// come from the schema explorer, never free-form input, so [`quote_ident`]
+/// is used per the `SECURITY.md` rule.
+#[tauri::command]
+pub async fn empty_table(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<()> {
+    let pool = pool_for(state.inner(), &connection_id)?;
+    if let DbPool::Mongo(conn) = &pool {
+        let db = crate::db::mongo::schema::resolve_db(conn)?;
+        db.collection::<mongodb::bson::Document>(&table)
+            .delete_many(mongodb::bson::Document::new())
+            .await?;
+        return Ok(());
+    }
+    let qt = match (&pool, schema) {
+        (DbPool::Postgres(_), Some(s)) => {
+            format!("{}.{}", quote_ident(true, &s), quote_ident(true, &table))
+        }
+        (DbPool::Postgres(_), None) => format!(
+            "{}.{}",
+            quote_ident(true, "public"),
+            quote_ident(true, &table)
+        ),
+        (DbPool::Mysql(_), Some(s)) => {
+            format!("{}.{}", quote_ident(false, &s), quote_ident(false, &table))
+        }
+        (DbPool::Mysql(_), None) => quote_ident(false, &table),
+        (DbPool::Sqlite(_), _) => quote_ident(true, &table),
+        (DbPool::Mongo(_), _) => unreachable!("mongo dispatched above"),
+    };
+    // SQLite has no TRUNCATE; DELETE FROM with no WHERE clears the table.
+    let sql = match &pool {
+        DbPool::Sqlite(_) => format!("DELETE FROM {qt}"),
+        _ => format!("TRUNCATE TABLE {qt}"),
+    };
+    match pool {
+        DbPool::Postgres(p) => {
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Mysql(p) => {
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Sqlite(p) => {
+            sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+    }
+    Ok(())
+}
+
 /// Rename a table. Same identifier-source guarantees as [`drop_table`].
 ///
 /// MySQL uses `RENAME TABLE old TO new`; Postgres and SQLite both accept

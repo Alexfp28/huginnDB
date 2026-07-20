@@ -401,6 +401,10 @@ export type AppLanguage = "en" | "es";
 
 export interface UiPrefs {
   confirmDestructive: boolean;
+  /** Whether the schema-explorer "Empty table" action (#69) confirms first.
+   *  Separate from `confirmDestructive` so its "don't ask again" checkbox only
+   *  silences the empty-table prompt. */
+  confirmEmptyTable: boolean;
   queryHistoryLimit: number;
   restoreTabsOnOpen: boolean;
   schemaTableMetric: SchemaTableMetric;

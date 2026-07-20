@@ -81,6 +81,11 @@ pub struct GridPrefs {
 #[serde(default, rename_all = "camelCase")]
 pub struct UiPrefs {
     pub confirm_destructive: bool,
+    /// Whether emptying a table (the schema-explorer "Empty table" action,
+    /// #69) asks for confirmation first. Separate from `confirm_destructive`
+    /// so the "don't ask again" checkbox in that dialog only silences the
+    /// empty-table prompt, not every destructive confirmation. Default `true`.
+    pub confirm_empty_table: bool,
     pub query_history_limit: u32,
     pub restore_tabs_on_open: bool,
     /// Schema-tree metric column. One of "none" | "row-count" | "size".
@@ -169,6 +174,7 @@ impl Default for UiPrefs {
     fn default() -> Self {
         Self {
             confirm_destructive: true,
+            confirm_empty_table: true,
             query_history_limit: 50,
             restore_tabs_on_open: true,
             schema_table_metric: "none".into(),

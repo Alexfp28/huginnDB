@@ -355,6 +355,7 @@ pub fn run() {
             commands::schema::list_columns,
             commands::schema::list_indexes,
             commands::schema::drop_table,
+            commands::schema::empty_table,
             commands::schema::rename_table,
             commands::schema::server_version,
             commands::schema::list_users,
