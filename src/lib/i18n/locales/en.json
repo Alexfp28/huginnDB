@@ -882,6 +882,10 @@
           "mcpPolicy": {
             "title": "Per-connection write policy, with an audit log",
             "body": "Each connection is read-only by default; raise it to 'data' or 'full' in Settings → MCP, per connection, with changes taking effect immediately. Whole-table UPDATE/DELETE without WHERE are refused, and every write is recorded in mcp-audit.log."
+          },
+          "advancedFilter": {
+            "title": "Advanced per-column filter",
+            "body": "A new filter button in the table toolbar opens a builder: add conditions per column (contains, starts/ends with, >, <, equals, is null…), all combined with AND and applied on the server. Type-aware, and works across PostgreSQL, MySQL, SQLite and MongoDB."
           }
         }
       },

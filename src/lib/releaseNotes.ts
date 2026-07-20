@@ -24,6 +24,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Bot,
   HardDrive,
+  ListFilter,
   ListTree,
   Palette,
   Pencil,
@@ -77,6 +78,11 @@ export const RELEASE_NOTES: ReleaseNote[] = [
         icon: ShieldCheck,
         titleKey: "whatsNew.releases.1_9_0.items.mcpPolicy.title",
         bodyKey: "whatsNew.releases.1_9_0.items.mcpPolicy.body",
+      },
+      {
+        icon: ListFilter,
+        titleKey: "whatsNew.releases.1_9_0.items.advancedFilter.title",
+        bodyKey: "whatsNew.releases.1_9_0.items.advancedFilter.body",
       },
     ],
   },

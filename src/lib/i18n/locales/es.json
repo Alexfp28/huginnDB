@@ -882,6 +882,10 @@
           "mcpPolicy": {
             "title": "Nivel de escritura por conexión, con log de auditoría",
             "body": "Cada conexión es de solo lectura por defecto; súbela a «datos» o «completo» en Ajustes → MCP, por conexión, y el cambio surte efecto al instante. Un UPDATE/DELETE sin WHERE sobre toda la tabla se rechaza, y cada escritura queda registrada en mcp-audit.log."
+          },
+          "advancedFilter": {
+            "title": "Filtro avanzado por columna",
+            "body": "Un nuevo botón de filtro en la barra de la tabla abre un constructor: añade condiciones por columna (contiene, empieza/termina en, >, <, igual, es nulo…), combinadas con AND y aplicadas en el servidor. Respeta el tipo del campo y funciona en PostgreSQL, MySQL, SQLite y MongoDB."
           }
         }
       },
