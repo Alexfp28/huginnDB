@@ -8,6 +8,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Corregido
+
+- **Los logs de la consola se filtraban entre ventanas (#50).** Con una segunda
+  ventana abierta (acción «Nueva ventana»), la consola de cada ventana mostraba
+  las entradas SQL y de conexión de todas las demás. El backend ya dirigía los
+  eventos de log a la ventana de origen, pero el listener del frontend no estaba
+  acotado, así que Tauri los entregaba a todas las ventanas. Ahora la consola de
+  cada ventana muestra solo su propia actividad; los avisos realmente globales
+  (como la caída de una conexión compartida) siguen llegando a todas.
+
 ## [1.8.3] — 2026-07-16
 
 ### Añadido

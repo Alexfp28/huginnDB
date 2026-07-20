@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Console logs leaked across windows (#50).** With a second window open (the
+  "New window" action), every window's Console showed every other window's
+  SQL and connection entries. The backend already targeted log events at the
+  originating window, but the frontend listener wasn't scoped, so Tauri
+  delivered all of them to every window. Each window's Console now shows only
+  its own activity; genuinely global notices (like a shared connection dropping)
+  still reach every window.
+
 ## [1.8.3] — 2026-07-16
 
 ### Added
