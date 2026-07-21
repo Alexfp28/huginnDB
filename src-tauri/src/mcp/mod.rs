@@ -238,11 +238,50 @@ mod args {
         pub user: String,
     }
 
+    /// Hand-written schema for a PK scalar value: a JSON string, number,
+    /// boolean or null. `serde_json::Value`'s derived schema is the bare
+    /// boolean `true` ("matches anything") — valid JSON Schema, but some MCP
+    /// clients' `tools/list` ingestion assumes every (sub-)schema node is an
+    /// object and chokes on it, silently dropping every tool for that
+    /// session (see CHANGELOG / issue #83). This constrains the advertised
+    /// shape to what a PK value actually is without touching the Rust type
+    /// (still `serde_json::Value` end-to-end, so deserialization/handlers
+    /// are unaffected).
+    fn pk_scalar_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": ["string", "number", "boolean", "null"]
+        })
+    }
+
+    fn pk_values_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let item = pk_scalar_schema(generator);
+        schemars::json_schema!({
+            "type": "array",
+            "items": item
+        })
+    }
+
+    fn pk_value_rows_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let item = pk_values_schema(generator);
+        schemars::json_schema!({
+            "type": "array",
+            "items": item
+        })
+    }
+
     /// One column/value pair for `insert_row`. Mirrors the desktop
     /// `RowValue` (values travel as text; the driver casts to the column
     /// type). Split out with its own `JsonSchema` so the tool advertises a
     /// schema — the command-layer `RowValue` derives only `Deserialize`.
+    ///
+    /// `#[schemars(inline)]`: without it, schemars hoists this struct into a
+    /// root-level `$defs` entry and references it via `$ref` from
+    /// `InsertRow.values`'s `items` — the first `$ref`/`$defs` shape in this
+    /// server's `tools/list` output, and (per issue #83) a shape some MCP
+    /// clients' schema ingestion doesn't expect. Inlining keeps the object
+    /// schema written directly where it's used.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    #[schemars(inline)]
     pub struct RowValueArg {
         /// Column name.
         pub column: String,
@@ -283,6 +322,7 @@ mod args {
         /// Ordered PK column names (composite keys supported).
         pub pk_columns: Vec<String>,
         /// PK values parallel to `pk_columns`, identifying the one row.
+        #[schemars(schema_with = "pk_values_schema")]
         pub pk_values: Vec<serde_json::Value>,
         /// Column to update.
         pub column: String,
@@ -306,6 +346,7 @@ mod args {
         pub pk_columns: Vec<String>,
         /// One PK-value tuple per row to delete, each parallel to
         /// `pk_columns`.
+        #[schemars(schema_with = "pk_value_rows_schema")]
         pub pk_value_rows: Vec<Vec<serde_json::Value>>,
     }
 }
@@ -1263,5 +1304,40 @@ mod tests {
         assert_eq!(page.rows.len(), 3);
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Regression test for issue #83: the write tools' input schemas must
+    /// stay free of `$ref`/`$defs` and bare-boolean subschemas, since at
+    /// least one MCP client's `tools/list` ingestion chokes on those shapes
+    /// and silently drops every tool for the session — even though the
+    /// server itself considers the schema valid (rmcp only checks the root
+    /// is `type: object`).
+    #[test]
+    fn write_tool_schemas_avoid_ref_and_bare_boolean_subschemas() {
+        let tools = Huginn::tool_router().list_all();
+        for name in ["insert_row", "update_cell", "delete_rows"] {
+            let tool = tools
+                .iter()
+                .find(|t| t.name == name)
+                .unwrap_or_else(|| panic!("tool {name} missing from tool_router"));
+            assert_eq!(
+                tool.input_schema.get("type").and_then(|v| v.as_str()),
+                Some("object"),
+                "{name}: root schema must stay type:object (rmcp's own invariant)"
+            );
+            let raw = serde_json::to_string(tool.input_schema.as_ref()).unwrap();
+            assert!(
+                !raw.contains("\"$ref\""),
+                "{name}: schema must not use $ref: {raw}"
+            );
+            assert!(
+                !raw.contains("\"$defs\""),
+                "{name}: schema must not use $defs: {raw}"
+            );
+            assert!(
+                !raw.contains("\"items\":true") && !raw.contains("\"items\": true"),
+                "{name}: schema must not have a bare-boolean items subschema: {raw}"
+            );
+        }
     }
 }
