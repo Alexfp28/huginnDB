@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-07-20
+
 ### Corregido
 
 - **Los logs de la consola se filtraban entre ventanas (#50).** Con una segunda
