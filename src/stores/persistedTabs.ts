@@ -27,6 +27,16 @@
  * disconnects, and reconnects in quick succession, we re-hydrate from
  * disk on the second connect — staleness between in-memory and disk
  * is bounded by the debounce window.
+ *
+ *   • On window close (main window only) →
+ *       `flushAllTabState()` (wired from `App.tsx`'s `onCloseRequested`
+ *       handler) synchronously saves every still-active connection,
+ *       bypassing the debounce. Before this existed, only an explicit
+ *       `disconnect()` ever flushed synchronously — a normal window close
+ *       (let alone a crash) could lose up to `SAVE_DEBOUNCE_MS` of trailing
+ *       tab/layout edits, including split-panel geometry that only
+ *       `scheduleSaveActive()` (wired to the inner dockview's
+ *       `onDidLayoutChange` in `TabbedArea.tsx`) schedules a save for.
  */
 
 import type { ConnectionTabState, PersistedTab, AppTab } from "@/types";
@@ -108,6 +118,16 @@ function scheduleSave(connectionId: string) {
         console.error(`[persistedTabs] save failed for ${connectionId}:`, err);
       });
   }, SAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Schedule a debounced save for every currently-tracked connection. Used by
+ * the inner dockview's `onDidLayoutChange` (a pure split/float/resize
+ * gesture touches no tab or schema state, so nothing else would schedule a
+ * save for it) — see `TabbedArea.tsx`.
+ */
+export function scheduleSaveActive() {
+  for (const connectionId of active.keys()) scheduleSave(connectionId);
 }
 
 /**
@@ -256,4 +276,30 @@ export async function flushTabState(connectionId: string): Promise<void> {
   entry.unsubTabs();
   entry.unsubSchema();
   active.delete(connectionId);
+}
+
+/**
+ * Save every currently-tracked connection's snapshot to disk right now,
+ * unconditionally (unlike `flushTabState`, this does not require a pending
+ * debounce timer — the window is closing, so whatever the current in-memory
+ * state is must reach disk). Subscriptions are left attached; the window is
+ * going away, not the connection.
+ *
+ * Saves run sequentially, not `Promise.all` — `save_tab_state` writes each
+ * connection through a fixed `.json.tmp` path before renaming, and two
+ * concurrent saves would race on that same temp file.
+ */
+export async function flushAllTabState(): Promise<void> {
+  for (const connectionId of active.keys()) {
+    const entry = active.get(connectionId);
+    if (entry?.timer) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    try {
+      await api.saveTabState(connectionId, snapshotFor(connectionId));
+    } catch (err) {
+      console.error(`[persistedTabs] flush-all failed for ${connectionId}:`, err);
+    }
+  }
 }

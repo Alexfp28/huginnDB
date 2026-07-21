@@ -805,7 +805,8 @@
     "database": "Database",
     "defaultDatabase": "(default)",
     "batchOk": "{{count}} statements · {{rows}} rows affected",
-    "batchFailed": "Stopped at statement {{index}} of {{total}}"
+    "batchFailed": "Stopped at statement {{index}} of {{total}}",
+    "rowsAffected": "{{rows}} rows affected · {{ms}} ms"
   },
   "saved": {
     "connectFirst": "Connect to a database first.",

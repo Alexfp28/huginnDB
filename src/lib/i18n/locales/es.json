@@ -805,7 +805,8 @@
     "database": "Base de datos",
     "defaultDatabase": "(por defecto)",
     "batchOk": "{{count}} sentencias · {{rows}} filas afectadas",
-    "batchFailed": "Detenido en la sentencia {{index}} de {{total}}"
+    "batchFailed": "Detenido en la sentencia {{index}} de {{total}}",
+    "rowsAffected": "{{rows}} filas afectadas · {{ms}} ms"
   },
   "saved": {
     "connectFirst": "Conéctate primero a una base de datos.",

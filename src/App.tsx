@@ -65,6 +65,7 @@ import { startCliConnectBridge } from "@/lib/cli-connect-bridge";
 import { startConnectionHealthBridge } from "@/lib/connection-health-bridge";
 import { startConnectionSyncBridge } from "@/lib/connection-sync-bridge";
 import { startPrefsSyncBridge } from "@/lib/prefs-sync-bridge";
+import { flushAllTabState } from "@/stores/persistedTabs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CliConnectChoiceDialog } from "@/components/CliConnectChoiceDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
@@ -505,6 +506,43 @@ export default function App() {
       if (cancelled) fn();
       else unlisten = fn;
     })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Flush every active connection's tab/layout state to disk before the
+  // window actually closes (issue #80). Without this, only an explicit
+  // "disconnect" ever flushed synchronously — a normal window close (let
+  // alone anything more abrupt) could lose up to the debounce window's
+  // worth of trailing tab/layout edits, including split-panel geometry.
+  // Main-window-only: secondary ("New window") instances never touch
+  // `tab_state.json` (see CLAUDE.md gotcha #8).
+  useEffect(() => {
+    if (getCurrentWindow().label !== "main") return;
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    let closing = false;
+    void getCurrentWindow()
+      .onCloseRequested(async (event) => {
+        if (closing) return;
+        event.preventDefault();
+        closing = true;
+        try {
+          await flushAllTabState();
+        } catch (err) {
+          console.error("[persistedTabs] flush-on-close failed:", err);
+        }
+        // `destroy()`, not `close()` — `close()` re-emits close-requested
+        // and would loop back into this same handler.
+        await getCurrentWindow().destroy();
+      })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      });
     return () => {
       cancelled = true;
       unlisten?.();

@@ -68,6 +68,7 @@ import {
   clearInnerDockviewApi,
   consumePendingInternalLayout,
 } from "@/lib/dockview";
+import { scheduleSaveActive } from "@/stores/persistedTabs";
 import { cn } from "@/lib/utils";
 import type { TabAccentStyle } from "@/types";
 
@@ -656,6 +657,12 @@ export function TabbedArea(_props: Props) {
     event.api.onDidActivePanelChange((panel) => {
       if (panel) useTabs.getState().setActive(panel.id);
     });
+
+    // A pure split/float/resize gesture touches no tab or schema state, so
+    // nothing else schedules a save for it — without this, split geometry
+    // could go unpersisted until an unrelated tab edit happened to trigger
+    // one (see issue #80).
+    event.api.onDidLayoutChange(() => scheduleSaveActive());
   };
 
   // Clear the inner-dockview singleton on unmount so a stale handle from a

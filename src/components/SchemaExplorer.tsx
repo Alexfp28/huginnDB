@@ -921,7 +921,7 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
             const autoExpand = !!match?.byTable;
             return (
               <DatabaseRoot
-                key={db.name}
+                key={`${parentId}::${db.name}`}
                 parentId={parentId}
                 dbName={db.name}
                 driver={driver}
