@@ -22,7 +22,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   so every boolean cell fell through to a text decode that isn't valid for the
   column and collapsed to `NULL`. Boolean columns now render their stored value
   (`0` / `1`), like any other integer.
-  
+
+- **Running a single INSERT/UPDATE/DELETE showed no feedback (#82).** The
+  query editor's single-statement path (`Ctrl+Enter`) rendered a columns-less
+  DML result straight into `DataGrid`, which has nothing to draw for it — the
+  results panel just looked empty, with no error and no row count. Only the
+  multi-statement batch path ever showed a "rows affected" summary. A DML
+  result (no columns) now shows a small "N rows affected · Xms" banner
+  instead, on every SQL driver — this wasn't actually MySQL-specific, just
+  more likely to be noticed there.
+
+- **The MCP connector's write tools could make new client sessions see zero
+  tools (#83).** The write-mode tools added for `insert_row`, `update_cell`
+  and `delete_rows` introduced JSON-schema shapes never used before in this
+  server's `tools/list` output: a nested struct hoisted into `$defs`/`$ref`,
+  and PK-value fields whose per-item schema was the bare boolean `true`
+  (schemars' representation of "any JSON value"). Both are valid JSON Schema,
+  but an MCP client whose `tools/list` ingestion assumes every schema node is
+  a plain object can throw on them — and if that ingestion wraps the whole
+  tool list in one try/catch, a single malformed-for-that-client schema
+  silently drops all 12 tools for the session, while the server's own log
+  (which only reflects what it sent) looks perfectly healthy. The three
+  tools' schemas are now inlined and hand-constrained to
+  `string | number | boolean | null`, with a regression test asserting no
+  `$ref`/`$defs`/bare-boolean subschema ever reappears.
+
+- **Expanding a same-named database under a different connection could leak
+  the previous connection's data (#76).** The multi-database schema tree
+  keyed its `DatabaseRoot` nodes by database name alone; because nothing
+  remounts that tree when the active connection changes, React reused the
+  same component instance — and its locally-cached pool id — for two
+  different connections that both happened to expose a database with the
+  same name (e.g. a `shop` database on both a MySQL and a MongoDB profile).
+  The second connection's node kept rendering the first connection's tables.
+  The node is now keyed by connection + database name together, so switching
+  connections always gets a fresh instance.
+
+- **Window/split layout and in-progress tab edits could be lost on close
+  (#80).** No window-close hook ever flushed the debounced tab/layout state
+  to disk, and a pure split/float/resize gesture didn't schedule a save at
+  all (only a tab or schema change did) — so a normal window close, not just
+  a crash, could drop the last ~600ms of edits, including split-panel
+  geometry set up moments earlier. Closing the main window now flushes every
+  active connection's tab state synchronously first, and layout changes
+  schedule a save the same way tab changes already did.
+
 ### Added
 
 - **Advanced per-column filter (#66).** A new filter button in the data-grid
