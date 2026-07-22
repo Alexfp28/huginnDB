@@ -720,12 +720,17 @@
       "duplicateLabel": "Duplicate as custom"
     },
     "shortcuts": {
-      "roadmap": "Customising shortcuts is on the roadmap. The bindings below are the current built-in defaults.",
       "openSettings": "Open Settings",
+      "toggleCommandPalette": "Open command palette",
+      "toggleTabSwitcher": "Switch between open tabs",
+      "refreshData": "Refresh data",
+      "refreshHint": "Ctrl/Cmd+R also always refreshes.",
       "runQuery": "Run query in active editor",
-      "focusSearch": "Focus the table search input",
-      "commitSearch": "Commit search / filter in the data grid",
-      "closeDialog": "Close the active dialog or popover"
+      "expandSelectedCell": "Expand selected cell",
+      "pressKey": "Press a key…",
+      "resetToDefault": "Reset to default",
+      "resetAll": "Reset all shortcuts",
+      "conflict": "Already used by {{action}}. Choose a different key."
     },
     "mcp": {
       "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",

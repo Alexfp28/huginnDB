@@ -412,6 +412,13 @@ export interface Preferences {
   editor: EditorPrefs;
   grid: GridPrefs;
   ui: UiPrefs;
+  /**
+   * User-rebound keyboard shortcuts, keyed by action id to a combo string
+   * (e.g. `"Ctrl+K"`, `"Space"`). A missing entry means "use that action's
+   * default" — see `ACTIONS`/`getBinding` in `src/lib/keybindings.ts`, the
+   * single source of truth for default combos.
+   */
+  keybindings: Record<string, string>;
 }
 
 export interface EditorPrefs {

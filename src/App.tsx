@@ -43,6 +43,7 @@ import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
 import { usePreferences } from "@/stores/preferences";
+import { getBinding, matchesBinding } from "@/lib/keybindings";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useTranslation } from "react-i18next";
 import { setLanguage } from "@/lib/i18n";
@@ -621,36 +622,57 @@ export default function App() {
   // entry for 0.4.0. Sonner stays available for short-lived toasts
   // (errors, copy-success confirmations, etc.).
 
-  // Global Ctrl/Cmd+, opens preferences; Ctrl/Cmd+K toggles the command
-  // palette. Attached to `window` so they fire regardless of focus inside the
-  // panel layout — except inside Monaco, which swallows Ctrl+K; the editor
-  // registers its own command for that case (see QueryEditorTab, gotcha #9).
+  // Global shortcuts, attached to `window` so they fire regardless of focus
+  // inside the panel layout — except inside Monaco, which swallows all of
+  // these; the editor registers its own redispatch for that case (see
+  // QueryEditorTab/ViewEditorTab, gotcha #9). All four are user-rebindable
+  // (issue #75) via `matchesBinding` against the live `keybindings` pref.
   const togglePalette = useCommandPalette((s) => s.toggle);
   const toggleSwitcher = useTabSwitcher((s) => s.toggle);
+  const openSettingsCombo = usePreferences((s) =>
+    getBinding(s.prefs.keybindings, "openSettings"),
+  );
+  const paletteCombo = usePreferences((s) =>
+    getBinding(s.prefs.keybindings, "toggleCommandPalette"),
+  );
+  const switcherCombo = usePreferences((s) =>
+    getBinding(s.prefs.keybindings, "toggleTabSwitcher"),
+  );
+  const refreshCombo = usePreferences((s) =>
+    getBinding(s.prefs.keybindings, "refreshData"),
+  );
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+      if (e.isComposing) return;
+      if (matchesBinding(e, openSettingsCombo)) {
         e.preventDefault();
         openSettings();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+        return;
+      }
+      if (matchesBinding(e, paletteCombo)) {
         e.preventDefault();
         togglePalette();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
-        // Quick-switch between open tabs. Monaco swallows this inside its
-        // focus area, so QueryEditorTab registers an editor-scoped command
-        // too (gotcha #9).
+        return;
+      }
+      if (matchesBinding(e, switcherCombo)) {
         e.preventDefault();
         toggleSwitcher();
-      } else if (
+        return;
+      }
+      // `Ctrl/Cmd+R` is a permanent alias on top of the rebindable
+      // `refreshData` combo (default F5) — always intercepting the native
+      // WebView reload is a safety necessity, not a preference, so it can't
+      // be rebound away.
+      if (
         !e.repeat &&
-        (e.key === "F5" || ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")))
+        (matchesBinding(e, refreshCombo) ||
+          ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")))
       ) {
-        // F5 / Ctrl+R (Cmd+R on macOS) would otherwise reload the whole
-        // WebView like a browser tab. Redirect it to the same "refresh"
-        // action already offered as a button: the active table tab's data
-        // if one is open, otherwise the schema tree (database + table list)
-        // for the selected connection — same target the explorer's own
-        // refresh button hits in both single-DB and multi-DB mode.
+        // Redirect to the same "refresh" action already offered as a
+        // button: the active table tab's data if one is open, otherwise the
+        // schema tree (database + table list) for the selected connection —
+        // same target the explorer's own refresh button hits in both
+        // single-DB and multi-DB mode.
         e.preventDefault();
         const activeTab = useTabs
           .getState()
@@ -663,7 +685,16 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openSettings, togglePalette, toggleSwitcher, selected]);
+  }, [
+    openSettings,
+    togglePalette,
+    toggleSwitcher,
+    selected,
+    openSettingsCombo,
+    paletteCombo,
+    switcherCombo,
+    refreshCombo,
+  ]);
 
   // Stable derived breadcrumb metadata; both inputs are reference-stable
   // store values, so this satisfies the Zustand selector invariant.

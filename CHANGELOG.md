@@ -88,6 +88,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   (they use a combobox / `<select>` instead), so paste is a deliberate
   no-op there for now; copy still works on every column type.
 
+- **Keyboard shortcuts are now customizable from Settings → Shortcuts
+  (#75), unblocking the hotkey half of #78.** Issue #78 asked for a hotkey
+  alternative to the expand-icon added above, since the icon's low contrast
+  makes it easy to miss — but explicitly deferred that to #75 first. Six
+  actions are now rebindable: `openSettings` (Ctrl/Cmd+,),
+  `toggleCommandPalette` (Ctrl/Cmd+K), `toggleTabSwitcher` (Ctrl/Cmd+P),
+  `refreshData` (F5 — Ctrl/Cmd+R remains a permanent, non-rebindable alias,
+  since suppressing the WebView's native reload is a safety necessity, not
+  a preference), `runQuery` (Ctrl+Enter), and the new `expandSelectedCell`
+  (default `Space`, mirroring macOS Quick Look — confirmed unbound in
+  `handleGridKeyDown` today, so it lands with zero collision). Overrides
+  persist through `prefs.json` as a new `keybindings` map (action id →
+  combo string), following the exact pattern already used by `grid`/`editor`/
+  `ui` prefs — an empty map is a fully valid state, since the frontend's new
+  `ACTIONS` table in `lib/keybindings.ts` is the single source of truth for
+  defaults. `App.tsx`'s global `keydown` listener and `DataGrid`'s
+  `handleGridKeyDown` now match against the live binding via a shared
+  `matchesBinding` helper instead of hardcoded `e.key`/`e.ctrlKey` checks —
+  which incidentally fixes a latent bug where `Ctrl+Shift+K` was
+  indistinguishable from plain `Ctrl+K` (no branch checked `shiftKey`).
+  Monaco's `editor.addCommand`, used for `runQuery`/`toggleCommandPalette`/
+  `toggleTabSwitcher` inside the SQL and view editors, resolves a fixed
+  keybinding bitmask once at registration time with no way to re-check a
+  live combo — so those three moved to `editor.onKeyDown`
+  (`registerEditorActionRedispatch` in the new `lib/monacoKeybindings.ts`),
+  which reads the current binding from the store on every keystroke. The
+  Settings UI (`ShortcutsSection`/new `ShortcutRow`) replaces the old
+  read-only placeholder: clicking a row enters a "press a key…" capture
+  mode (Escape always cancels rather than becoming the binding), a rebind
+  that collides with another action's combo is rejected inline instead of
+  silently swapping or unbinding anything, and each row plus a "Reset all"
+  button can restore the default. `expandSelectedCell` reuses the exact
+  same `resolveTargetCell()`/`openHeavyEditor()` pair the expand icon's
+  click handler already calls, so the icon and the hotkey converge on one
+  escalation path. Also bumped both expand icons'
+  (`DataGrid`/`CellInput`) contrast from `text-muted-foreground/50` to
+  `/80` so the icon added in #78 doesn't require a hover to notice.
+
 ### Fixed
 
 - **MySQL spatial columns (`POINT`, `MULTIPOINT`, …) were misclassified as

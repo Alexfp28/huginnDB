@@ -42,6 +42,8 @@ import { resolveMonacoTheme } from "@/lib/monaco-themes";
 import { useQueryHistory } from "@/stores/queryHistory";
 import { useCommandPalette } from "@/components/CommandPalette";
 import { useTabSwitcher } from "@/components/TabSwitcher";
+import { formatComboForDisplay, getBinding } from "@/lib/keybindings";
+import { registerEditorActionRedispatch } from "@/lib/monacoKeybindings";
 import type { BatchResult, DatabaseInfo, QueryResult } from "@/types";
 import { DataGrid } from "@/components/DataGrid";
 import { Button } from "@/components/ui/button";
@@ -126,9 +128,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const [databases, setDatabases] = useState<DatabaseInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  // Modifier-key label for the Run button's shortcut chip (⌘ on macOS, Ctrl
-  // elsewhere). Matches the Ctrl+Enter command bound in `handleMount`.
-  const runHint = /Mac/i.test(navigator.userAgent) ? "⌘↵" : "Ctrl↵";
+  // Shortcut chip on the Run button — reflects the user's current binding
+  // for `runQuery` (see `handleMount`, which dispatches the same combo).
+  const runQueryCombo = usePreferences((s) =>
+    getBinding(s.prefs.keybindings, "runQuery"),
+  );
+  const runHint = formatComboForDisplay(runQueryCombo);
   const [showHistory, setShowHistory] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [filter, setFilter] = useState("");
@@ -146,15 +151,23 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     } | null;
     onDidChangeModelContent: (fn: () => void) => { dispose: () => void };
     addCommand: (keybinding: number, handler: () => void) => string | null;
+    onKeyDown: (
+      fn: (e: { browserEvent: KeyboardEvent }) => void,
+    ) => { dispose: () => void };
   } | null>(null);
 
   /** Disposer returned by `registerSqlEditor`; removes this editor's entry
    *  from the shared provider registry on unmount. */
   const sqlEditorDisposeRef = useRef<(() => void) | null>(null);
+  /** Disposer for the customizable-shortcuts redispatch registered in
+   *  `handleMount` (see `registerEditorActionRedispatch`). */
+  const editorShortcutsDisposeRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     return () => {
       sqlEditorDisposeRef.current?.();
       sqlEditorDisposeRef.current = null;
+      editorShortcutsDisposeRef.current?.();
+      editorShortcutsDisposeRef.current = null;
     };
   }, []);
 
@@ -381,33 +394,27 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       if (m) setEditorStats({ lines: m.getLineCount(), chars: m.getValueLength() });
     });
 
-    // Ctrl/Cmd + Enter → run the full buffer (batch when it holds several
-    // statements). Bound through Monaco's command system so the editor's own
-    // keybinding layer doesn't swallow the event (the previous window-level
-    // listener was racing Monaco and the run only fired when the editor was
-    // not focused — i.e. never, when the user actually needed it).
-    editor?.addCommand(
-      // KeyMod.CtrlCmd | KeyCode.Enter — using the Monaco enum
-      // values directly avoids importing them at compile time.
-      monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-      () => {
-        runDefaultRef.current();
-      },
-    );
-
-    // Ctrl/Cmd+K toggles the command palette. Monaco swallows the keystroke
-    // inside its focus area, so the window-level listener in App never sees
-    // it — register the editor-scoped command too (gotcha #9). `addCommand`
-    // IS per-editor, so this one is correctly bound here.
-    editor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
-      useCommandPalette.getState().toggle();
-    });
-
-    // Ctrl/Cmd+P quick-switches between open tabs. Monaco swallows it inside
-    // its focus area too, so register the editor-scoped command (gotcha #9).
-    editor?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
-      useTabSwitcher.getState().toggle();
-    });
+    // runQuery / toggleCommandPalette / toggleTabSwitcher are all
+    // user-rebindable (issue #75), so they can't use Monaco's `addCommand`
+    // (a fixed keybinding bitmask resolved once, with no way to re-check a
+    // live combo) — `registerEditorActionRedispatch` uses `onKeyDown`
+    // instead, reading the current binding from the store on every
+    // keystroke. Monaco swallows all three inside its focus area otherwise,
+    // which is why they need an editor-scoped listener at all (gotcha #9).
+    if (editor) {
+      editorShortcutsDisposeRef.current?.();
+      editorShortcutsDisposeRef.current = registerEditorActionRedispatch(editor, [
+        { id: "runQuery", run: () => runDefaultRef.current() },
+        {
+          id: "toggleCommandPalette",
+          run: () => useCommandPalette.getState().toggle(),
+        },
+        {
+          id: "toggleTabSwitcher",
+          run: () => useTabSwitcher.getState().toggle(),
+        },
+      ]);
+    }
 
     // The SQL completion + per-statement "▶ Run" CodeLens providers are
     // GLOBAL to the language, so they're installed exactly once for the

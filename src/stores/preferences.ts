@@ -68,6 +68,7 @@ const DEFAULT_PREFS: Preferences = {
     tabAccentStyle: "cap",
     connectionGroupExpandMode: "remember",
   },
+  keybindings: {},
 };
 
 interface PreferencesState {
@@ -77,6 +78,7 @@ interface PreferencesState {
   updateEditor: (patch: Partial<EditorPrefs>) => void;
   updateGrid: (patch: Partial<GridPrefs>) => void;
   updateUi: (patch: Partial<UiPrefs>) => void;
+  updateKeybindings: (patch: Record<string, string>) => void;
   resetAll: () => void;
   /**
    * Adopt a snapshot that's already persisted elsewhere — the cross-window
@@ -201,6 +203,17 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     });
   },
 
+  updateKeybindings(patch) {
+    set((s) => {
+      const next: Preferences = {
+        ...s.prefs,
+        keybindings: { ...s.prefs.keybindings, ...patch },
+      };
+      scheduleSave(next);
+      return { prefs: next };
+    });
+  },
+
   resetAll() {
     set({ prefs: DEFAULT_PREFS });
     scheduleSave(DEFAULT_PREFS);
@@ -217,3 +230,4 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
 export const selectEditorPrefs = (s: PreferencesState) => s.prefs.editor;
 export const selectGridPrefs = (s: PreferencesState) => s.prefs.grid;
 export const selectUiPrefs = (s: PreferencesState) => s.prefs.ui;
+export const selectKeybindings = (s: PreferencesState) => s.prefs.keybindings;

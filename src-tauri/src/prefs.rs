@@ -32,6 +32,13 @@ pub struct Preferences {
     pub editor: EditorPrefs,
     pub grid: GridPrefs,
     pub ui: UiPrefs,
+    /// User-rebound keyboard shortcuts, keyed by action id (e.g.
+    /// `"openSettings"`, `"expandSelectedCell"`) to a combo string (e.g.
+    /// `"Ctrl+K"`, `"Space"`). Missing entries fall back to that action's
+    /// default combo — the frontend's `ACTIONS` table in
+    /// `src/lib/keybindings.ts` is the single source of truth for defaults,
+    /// so an empty map here is a perfectly valid, fully-functional state.
+    pub keybindings: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,6 +142,7 @@ impl Default for Preferences {
             editor: EditorPrefs::default(),
             grid: GridPrefs::default(),
             ui: UiPrefs::default(),
+            keybindings: HashMap::new(),
         }
     }
 }
@@ -256,6 +264,7 @@ mod tests {
             parsed.ui.schema_table_metric,
             original.ui.schema_table_metric
         );
+        assert!(parsed.keybindings.is_empty());
     }
 
     #[test]

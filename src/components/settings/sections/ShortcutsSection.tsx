@@ -1,40 +1,76 @@
 /**
- * Read-only listing of the keyboard shortcuts the app already binds.
- * Customisation is intentionally deferred — flagged here so users know it
- * is on the roadmap, not missing by oversight.
+ * Editable keyboard-shortcut list (issue #75). Each row can be rebound by
+ * clicking it and pressing a new combo; conflicts with another action's
+ * binding block the save and surface an inline error instead of silently
+ * swapping or unbinding anything.
  */
 
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-
-/** Combo strings stay locale-independent (key labels are universal). */
-const SHORTCUTS: { combo: string; i18nKey: string }[] = [
-  { combo: "Ctrl/Cmd + ,", i18nKey: "settings.shortcuts.openSettings" },
-  { combo: "Ctrl/Cmd + Enter", i18nKey: "settings.shortcuts.runQuery" },
-  { combo: "Ctrl/Cmd + F", i18nKey: "settings.shortcuts.focusSearch" },
-  { combo: "Enter", i18nKey: "settings.shortcuts.commitSearch" },
-  { combo: "Esc", i18nKey: "settings.shortcuts.closeDialog" },
-];
+import { Button } from "@/components/ui/button";
+import { usePreferences, selectKeybindings } from "@/stores/preferences";
+import { ACTIONS, getBinding, type ActionId } from "@/lib/keybindings";
+import { ShortcutRow } from "./ShortcutRow";
 
 export function ShortcutsSection() {
   const { t } = useTranslation();
+  const keybindings = usePreferences(selectKeybindings);
+  const updateKeybindings = usePreferences((s) => s.updateKeybindings);
+  const [capturingId, setCapturingId] = useState<ActionId | null>(null);
+  const [conflictMsg, setConflictMsg] = useState<string | null>(null);
 
   return (
     <div className="space-y-3">
-      <div className="rounded-md border border-dashed border-border bg-card/40 px-3 py-2 text-[11px] text-muted-foreground">
-        {t("settings.shortcuts.roadmap")}
+      <div className="flex justify-end">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            updateKeybindings(
+              Object.fromEntries(ACTIONS.map((a) => [a.id, a.defaultCombo])),
+            );
+            setCapturingId(null);
+          }}
+        >
+          {t("settings.shortcuts.resetAll")}
+        </Button>
       </div>
-      <div className="divide-y divide-border/60 rounded-md border border-border">
-        {SHORTCUTS.map((s) => (
-          <div
-            key={s.combo}
-            className="flex items-center justify-between gap-4 px-3 py-2"
-          >
-            <span className="text-sm">{t(s.i18nKey)}</span>
-            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-              {s.combo}
-            </kbd>
-          </div>
-        ))}
+      <div className="space-y-1">
+        {ACTIONS.map((action) => {
+          const combo = getBinding(keybindings, action.id);
+          return (
+            <ShortcutRow
+              key={action.id}
+              action={action}
+              combo={combo}
+              isDefault={combo === action.defaultCombo}
+              isCapturing={capturingId === action.id}
+              conflictMsg={capturingId === action.id ? conflictMsg : null}
+              onStartCapture={() => {
+                setCapturingId(action.id);
+                setConflictMsg(null);
+              }}
+              onCancelCapture={() => setCapturingId(null)}
+              onCaptured={(next) => {
+                const conflict = ACTIONS.find(
+                  (a) =>
+                    a.id !== action.id && getBinding(keybindings, a.id) === next,
+                );
+                if (conflict) {
+                  setConflictMsg(
+                    t("settings.shortcuts.conflict", {
+                      action: t(conflict.labelKey),
+                    }),
+                  );
+                  return;
+                }
+                updateKeybindings({ [action.id]: next });
+                setCapturingId(null);
+              }}
+              onReset={() => updateKeybindings({ [action.id]: action.defaultCombo })}
+            />
+          );
+        })}
       </div>
     </div>
   );

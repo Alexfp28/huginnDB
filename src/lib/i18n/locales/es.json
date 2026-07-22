@@ -720,12 +720,17 @@
       "duplicateLabel": "Duplicar como personalizado"
     },
     "shortcuts": {
-      "roadmap": "La personalización de atajos está en la hoja de ruta. Estos son los atajos integrados por defecto.",
       "openSettings": "Abrir Preferencias",
+      "toggleCommandPalette": "Abrir la paleta de comandos",
+      "toggleTabSwitcher": "Cambiar entre pestañas abiertas",
+      "refreshData": "Refrescar datos",
+      "refreshHint": "Ctrl/Cmd+R también refresca siempre.",
       "runQuery": "Ejecutar query en el editor activo",
-      "focusSearch": "Enfocar el buscador de la tabla",
-      "commitSearch": "Aplicar búsqueda / filtro en la tabla",
-      "closeDialog": "Cerrar el diálogo o popover activo"
+      "expandSelectedCell": "Expandir celda seleccionada",
+      "pressKey": "Pulsa una tecla…",
+      "resetToDefault": "Restablecer por defecto",
+      "resetAll": "Restablecer todos los atajos",
+      "conflict": "Ya usado por {{action}}. Elige otra tecla."
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",

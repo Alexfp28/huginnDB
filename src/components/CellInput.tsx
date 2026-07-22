@@ -89,7 +89,7 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
             tabIndex={-1}
             title={expandTitle}
             disabled={disabled}
-            className="shrink-0 rounded px-1 text-muted-foreground/50 hover:text-foreground"
+            className="shrink-0 rounded px-1 text-muted-foreground/80 hover:text-foreground"
             // Keep focus on the input so blur-commit doesn't fire before we
             // hand the current value off to the modal editor.
             onMouseDown={(e) => e.preventDefault()}

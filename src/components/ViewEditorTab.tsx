@@ -38,6 +38,9 @@ import {
   ensureSqlProviders,
   registerSqlEditor,
 } from "@/lib/monacoSql";
+import { registerEditorActionRedispatch } from "@/lib/monacoKeybindings";
+import { useCommandPalette } from "@/components/CommandPalette";
+import { useTabSwitcher } from "@/components/TabSwitcher";
 import type { QueryResult, StructureMode, ViewDefinition } from "@/types";
 
 interface Props {
@@ -94,10 +97,15 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
   /** Disposer returned by `registerSqlEditor`; removes this editor's entry
    *  from the shared provider registry on unmount. */
   const sqlEditorDisposeRef = useRef<(() => void) | null>(null);
+  /** Disposer for the customizable-shortcuts redispatch registered in
+   *  `handleMount` (see `registerEditorActionRedispatch`). */
+  const editorShortcutsDisposeRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     return () => {
       sqlEditorDisposeRef.current?.();
       sqlEditorDisposeRef.current = null;
+      editorShortcutsDisposeRef.current?.();
+      editorShortcutsDisposeRef.current = null;
     };
   }, []);
 
@@ -237,6 +245,9 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
     const editor = _editor as {
       addCommand: (keybinding: number, handler: () => void) => string | null;
       getModel: () => { uri: { toString: () => string } } | null;
+      onKeyDown: (
+        fn: (e: { browserEvent: KeyboardEvent }) => void,
+      ) => { dispose: () => void };
     };
     ensureSqlProviders(monaco);
     const uri = editor.getModel?.()?.uri.toString();
@@ -250,10 +261,26 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
     }
     // Ctrl+Enter forces an immediate preview refresh, bypassing the 400ms
     // debounce — bound through Monaco's command system since it swallows
-    // the keypress inside its focus area (gotcha #9).
+    // the keypress inside its focus area (gotcha #9). Not one of the
+    // customizable actions (issue #75), so it stays a fixed `addCommand`.
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       runBothPreviewsRef.current();
     });
+
+    // toggleCommandPalette / toggleTabSwitcher ARE customizable and Monaco
+    // swallows them here too (gotcha #9) — same onKeyDown-based redispatch
+    // as QueryEditorTab.
+    editorShortcutsDisposeRef.current?.();
+    editorShortcutsDisposeRef.current = registerEditorActionRedispatch(editor, [
+      {
+        id: "toggleCommandPalette",
+        run: () => useCommandPalette.getState().toggle(),
+      },
+      {
+        id: "toggleTabSwitcher",
+        run: () => useTabSwitcher.getState().toggle(),
+      },
+    ]);
   }
 
   if (loading) {

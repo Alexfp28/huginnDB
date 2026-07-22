@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/dropdown";
 import { cn, formatBitValue, isBitType, isNumericType } from "@/lib/utils";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences";
+import { formatComboForDisplay, getBinding, matchesBinding } from "@/lib/keybindings";
 import type {
   CellValue,
   ColumnFilter,
@@ -633,6 +634,13 @@ export function DataGrid({
   const rowHeight = usePreferences((s) => selectGridPrefs(s).rowHeight);
   const updateGrid = usePreferences((s) => s.updateGrid);
 
+  /** User-rebindable combo for the "expand selected cell" hotkey (issue
+   *  #78/#75). Subscribed as a primitive — `getBinding` returns a string,
+   *  which Zustand compares by value, so this stays reference-stable. */
+  const expandCellCombo = usePreferences((s) =>
+    getBinding(s.prefs.keybindings, "expandSelectedCell"),
+  );
+
   /**
    * Persisted column widths are keyed by table (`tableKey`), since widths
    * are inherently per-schema. Ad-hoc query result grids (no `tableName` —
@@ -926,8 +934,8 @@ export function DataGrid({
                 <button
                   type="button"
                   tabIndex={-1}
-                  title={t("dataGrid.expandEditor")}
-                  className="ml-auto shrink-0 rounded px-1 text-muted-foreground/50 hover:text-foreground"
+                  title={`${t("dataGrid.expandEditor")} (${formatComboForDisplay(expandCellCombo)})`}
+                  className="ml-auto shrink-0 rounded px-1 text-muted-foreground/80 hover:text-foreground"
                   onMouseDown={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
                   onClick={(e) => {
@@ -958,6 +966,7 @@ export function DataGrid({
       fkEditCell,
       inlineEdit,
       selectedCell,
+      expandCellCombo,
       columnInfoByName,
       columnIndexByName,
       connectionId,
@@ -1126,7 +1135,13 @@ export function DataGrid({
       !e.altKey &&
       !e.shiftKey &&
       (key === "c" || key === "v");
-    if ((e.ctrlKey || e.metaKey || e.altKey) && !isCopyPasteChord) return;
+    const isExpandChord = matchesBinding(e, expandCellCombo);
+    if (
+      (e.ctrlKey || e.metaKey || e.altKey) &&
+      !isCopyPasteChord &&
+      !isExpandChord
+    )
+      return;
     if (inlineEdit || fkEditCell) return;
     const target = e.target as HTMLElement;
     if (target.closest("input, textarea, select, [contenteditable='true']")) {
@@ -1135,6 +1150,19 @@ export function DataGrid({
     if (isCopyPasteChord) {
       e.preventDefault();
       handleCopyPasteChord(key as "c" | "v");
+      return;
+    }
+    if (isExpandChord) {
+      e.preventDefault();
+      const cell = resolveTargetCell();
+      if (cell) {
+        const isBit = bitColNames.has(cell.column.name);
+        const rawDisplay =
+          isBit && typeof cell.value === "number"
+            ? formatBitValue(cell.value, bitDisplay)
+            : formatValue(cell.value);
+        openHeavyEditor(cell.rowValues, cell.column, rawDisplay);
+      }
       return;
     }
     const rows = table.getRowModel().rows;
