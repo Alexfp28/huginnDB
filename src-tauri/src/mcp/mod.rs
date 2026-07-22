@@ -748,7 +748,13 @@ impl Huginn {
             ));
         }
 
-        self.require_class(&target, class)?;
+        // Policy is a property of the *profile* (`ConnectionProfile::mcp_write`),
+        // not of the resolved pool: for Mongo, `target` may be the synthetic
+        // per-database id `<connection_id>::db::<name>` (see
+        // `resolve_mongo_target`), which is never a key in `profiles.json` — a
+        // `write_policy` lookup against it would always miss and silently fall
+        // back to `ReadOnly`, regardless of the connection's real setting.
+        self.require_class(&a.connection_id, class)?;
 
         // Reads are not audited; writes append to mcp-audit.log.
         let audit = AuditSink::new();
@@ -863,7 +869,9 @@ impl Huginn {
         let target = self
             .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
             .await?;
-        self.require_class(&target, StmtClass::DataWrite)?;
+        // See the comment in `run_query`: policy is checked against the real
+        // profile id, not the resolved (possibly synthetic per-database) target.
+        self.require_class(&a.connection_id, StmtClass::DataWrite)?;
         let values = a
             .values
             .into_iter()
@@ -902,7 +910,9 @@ impl Huginn {
         let target = self
             .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
             .await?;
-        self.require_class(&target, StmtClass::DataWrite)?;
+        // See the comment in `run_query`: policy is checked against the real
+        // profile id, not the resolved (possibly synthetic per-database) target.
+        self.require_class(&a.connection_id, StmtClass::DataWrite)?;
         let out = crate::commands::query::update_cell_inner(
             &AuditSink::new(),
             &self.state,
@@ -935,7 +945,9 @@ impl Huginn {
         let target = self
             .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
             .await?;
-        self.require_class(&target, StmtClass::DataWrite)?;
+        // See the comment in `run_query`: policy is checked against the real
+        // profile id, not the resolved (possibly synthetic per-database) target.
+        self.require_class(&a.connection_id, StmtClass::DataWrite)?;
         let out = crate::commands::query::delete_rows_inner(
             &AuditSink::new(),
             &self.state,
@@ -1166,6 +1178,62 @@ mod tests {
             .require_class("t-kill", StmtClass::DataWrite)
             .is_err());
         assert!(killed.require_class("t-kill", StmtClass::Ddl).is_err());
+    }
+
+    async fn mongo_client() -> mongodb::Client {
+        // Parsing + `with_options` only validate and spawn the driver's
+        // background monitor tasks — no reachable server is required.
+        let options = mongodb::options::ClientOptions::parse("mongodb://127.0.0.1:1")
+            .await
+            .expect("valid connection string");
+        mongodb::Client::with_options(options).expect("client construction is lazy")
+    }
+
+    /// Regression test for the bug reported against a real `data`-policy Mongo
+    /// connection: `write_policy` must be checked against the *profile* id
+    /// (`a.connection_id`), never against `resolve_mongo_target`'s resolved
+    /// pool id. For a multi-database Mongo connection (empty top-level
+    /// `database`, `list_connections`' `database: ""`), a table/query call
+    /// naming a `schema`/`database` resolves to the synthetic per-database id
+    /// `<connection_id>::db::<name>` (`database_view_id`) — which is never a
+    /// key in `profiles.json`. Checking the policy against that id used to
+    /// make `write_policy` miss the lookup and silently fall back to
+    /// `ReadOnly`, blocking every write on a `data`/`full` connection the
+    /// moment the caller named a specific database.
+    #[tokio::test]
+    async fn write_policy_is_checked_against_the_real_connection_not_the_mongo_db_binding() {
+        let huginn = huginn_with_policy("mongo-conn", McpWritePolicy::Data, false);
+        let client = mongo_client().await;
+        huginn.state.connections.write().insert(
+            "mongo-conn".to_string(),
+            ActivePool {
+                pool: DbPool::Mongo(crate::state::MongoConn {
+                    client,
+                    database: None,
+                }),
+                _ssh: None,
+                _keepalive: None,
+            },
+        );
+
+        let target = huginn
+            .resolve_mongo_target("mongo-conn", Some("iMesPyme"))
+            .await
+            .unwrap();
+        assert_eq!(target, "mongo-conn::db::iMesPyme");
+
+        // The bug: `require_class(&target, ...)` would find no profile named
+        // `"mongo-conn::db::iMesPyme"` and default to ReadOnly.
+        assert!(
+            huginn.require_class(&target, StmtClass::DataWrite).is_err(),
+            "sanity check: the synthetic id is never a profile id"
+        );
+
+        // The fix: callers gate on the real connection id, which does carry
+        // the connection's actual `data` policy.
+        assert!(huginn
+            .require_class("mongo-conn", StmtClass::DataWrite)
+            .is_ok());
     }
 
     /// Exercises the exact classifier `run_query` uses to gate MongoDB

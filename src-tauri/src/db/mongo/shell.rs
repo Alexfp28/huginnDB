@@ -51,11 +51,11 @@ pub enum MongoOp {
     },
     UpdateOne {
         filter: Document,
-        update: Document,
+        update: UpdateSpec,
     },
     UpdateMany {
         filter: Document,
-        update: Document,
+        update: UpdateSpec,
     },
     ReplaceOne {
         filter: Document,
@@ -88,6 +88,28 @@ impl MongoOp {
 pub struct ParsedCommand {
     pub collection: String,
     pub op: MongoOp,
+}
+
+/// The `update` argument of `updateOne`/`updateMany`: either a plain
+/// modification document (`{ $set: {...} }`, operator expressions only) or an
+/// aggregation-pipeline update (`[ { $set: {...} }, … ]`) — valid in native
+/// MongoDB since 4.2 and mirrored here as
+/// [`mongodb::options::UpdateModifications`]'s two variants, kept as our own
+/// plain-BSON type (like [`MongoOp::Aggregate`]'s `Vec<Document>`) so the
+/// parser doesn't need to depend on driver option types.
+#[derive(Debug, Clone, PartialEq)]
+pub enum UpdateSpec {
+    Document(Document),
+    Pipeline(Vec<Document>),
+}
+
+impl From<UpdateSpec> for mongodb::options::UpdateModifications {
+    fn from(spec: UpdateSpec) -> Self {
+        match spec {
+            UpdateSpec::Document(d) => Self::Document(d),
+            UpdateSpec::Pipeline(p) => Self::Pipeline(p),
+        }
+    }
 }
 
 /// Parse one `mongosh`-style statement.
@@ -191,6 +213,29 @@ fn build_op(
         }
     };
 
+    // The `update` argument of updateOne/updateMany: a document
+    // (`{$set: {...}}`) or, since MongoDB 4.2, an aggregation pipeline
+    // (`[{$set: {...}}, …]`) — see `UpdateSpec`.
+    let take_update_spec = |args: &mut Vec<Bson>, what: &str| -> AppResult<UpdateSpec> {
+        match args.get(1) {
+            Some(Bson::Document(d)) => Ok(UpdateSpec::Document(d.clone())),
+            Some(Bson::Array(items)) => items
+                .iter()
+                .map(|b| match b {
+                    Bson::Document(d) => Ok(d.clone()),
+                    _ => Err(AppError::InvalidInput(format!(
+                        "{what}: pipeline stages must be documents"
+                    ))),
+                })
+                .collect::<AppResult<Vec<_>>>()
+                .map(UpdateSpec::Pipeline),
+            Some(_) => Err(AppError::InvalidInput(format!(
+                "{what}: argument 2 must be a document or an aggregation pipeline array"
+            ))),
+            None => Ok(UpdateSpec::Document(Document::new())),
+        }
+    };
+
     match method {
         "find" | "findOne" => {
             let filter = take_doc(&mut args, 0, method)?;
@@ -266,7 +311,7 @@ fn build_op(
         }
         "updateOne" | "updateMany" => {
             let filter = take_doc(&mut args, 0, method)?;
-            let update = take_doc(&mut args, 1, method)?;
+            let update = take_update_spec(&mut args, method)?;
             if method == "updateOne" {
                 Ok(MongoOp::UpdateOne { filter, update })
             } else {
@@ -744,9 +789,26 @@ mod tests {
         match cmd.op {
             MongoOp::UpdateOne { filter, update } => {
                 assert_eq!(filter, doc! {"_id": 1});
-                assert_eq!(update, doc! {"$set": {"name": "y"}});
+                assert_eq!(update, UpdateSpec::Document(doc! {"$set": {"name": "y"}}));
             }
             other => panic!("expected UpdateOne, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_update_many_with_aggregation_pipeline() {
+        let cmd =
+            parse("db.users.updateMany({active: true}, [{$set: {name: {$toUpper: '$name'}}}])")
+                .unwrap();
+        match cmd.op {
+            MongoOp::UpdateMany { filter, update } => {
+                assert_eq!(filter, doc! {"active": true});
+                assert_eq!(
+                    update,
+                    UpdateSpec::Pipeline(vec![doc! {"$set": {"name": {"$toUpper": "$name"}}}])
+                );
+            }
+            other => panic!("expected UpdateMany, got {other:?}"),
         }
     }
 
