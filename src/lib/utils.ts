@@ -55,7 +55,10 @@ export function formatCount(n: number): string {
 export function isNumericType(dataType: string): boolean {
   const t = dataType.toLowerCase();
   return (
-    t.includes("int") ||
+    // "point"/"multipoint" (MySQL spatial types) contain the substring
+    // "int" by accident — exclude them so those columns don't lose
+    // text-match operators to a false numeric classification.
+    (t.includes("int") && !t.includes("point")) ||
     t.includes("float") ||
     t.includes("double") ||
     t.includes("decimal") ||

@@ -140,6 +140,8 @@ pub enum FilterOp {
     Gte,
     Lt,
     Lte,
+    /// `BETWEEN v1 AND v2` (inclusive). Consumes both `value` and `value2`.
+    Between,
     IsNull,
     IsNotNull,
 }
@@ -157,6 +159,10 @@ pub struct ColumnFilter {
     /// through [`json_to_string`] for `Eq` / `Ne`.
     #[serde(default)]
     pub value: Value,
+    /// Second bound value, only consumed by `Between` (the range's upper
+    /// bound). Ignored by every other op.
+    #[serde(default)]
+    pub value2: Value,
 }
 
 /// One level of an `ORDER BY` clause built by [`fetch_table_data`].
@@ -773,6 +779,13 @@ fn build_filter_clause(
                 let ph = placeholder(&mut next_placeholder);
                 parts.push(format!("{col} {sym} {ph}"));
                 binds.push(json_to_string(&f.value));
+            }
+            FilterOp::Between => {
+                let ph1 = placeholder(&mut next_placeholder);
+                let ph2 = placeholder(&mut next_placeholder);
+                parts.push(format!("{col} BETWEEN {ph1} AND {ph2}"));
+                binds.push(json_to_string(&f.value));
+                binds.push(json_to_string(&f.value2));
             }
             FilterOp::Contains
             | FilterOp::NotContains
@@ -2120,6 +2133,16 @@ mod filter_tests {
             column: column.into(),
             op,
             value,
+            value2: json!(null),
+        }
+    }
+
+    fn between(column: &str, value: serde_json::Value, value2: serde_json::Value) -> ColumnFilter {
+        ColumnFilter {
+            column: column.into(),
+            op: FilterOp::Between,
+            value,
+            value2,
         }
     }
 
@@ -2173,6 +2196,28 @@ mod filter_tests {
                 Some("10".to_string()),
                 Some("%skip%".to_string()),
             ]
+        );
+    }
+
+    #[test]
+    fn between_builds_expected_postgres_sql() {
+        let filters = vec![between("age", json!(18), json!(65))];
+        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(clause.contains(r#""age" BETWEEN $1 AND $2"#), "{clause}");
+        assert_eq!(
+            binds,
+            vec![Some("18".to_string()), Some("65".to_string())]
+        );
+    }
+
+    #[test]
+    fn between_builds_expected_mysql_and_sqlite_sql() {
+        let filters = vec![between("age", json!(18), json!(65))];
+        let (clause, binds) = build_filter_clause(false, false, &filters, None, &[]);
+        assert!(clause.contains("`age` BETWEEN ? AND ?"), "{clause}");
+        assert_eq!(
+            binds,
+            vec![Some("18".to_string()), Some("65".to_string())]
         );
     }
 

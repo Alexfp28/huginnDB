@@ -421,6 +421,8 @@
       "clearAll": "Limpiar todo",
       "apply": "Aplicar",
       "valuePlaceholder": "Valor",
+      "fromPlaceholder": "Desde",
+      "toPlaceholder": "Hasta",
       "op": {
         "eq": "igual a",
         "ne": "distinto de",
@@ -432,6 +434,7 @@
         "gte": "mayor o igual",
         "lt": "menor que",
         "lte": "menor o igual",
+        "between": "entre",
         "is_null": "es nulo",
         "is_not_null": "no es nulo"
       }

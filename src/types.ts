@@ -344,8 +344,9 @@ export interface AppTab {
  * Comparison operator for `ColumnFilter`. Mirrors the closed set the
  * backend accepts in `fetch_table_data`. `is_null` / `is_not_null` ignore
  * the `value` field; every other op consumes it. The `contains` family is
- * substring/prefix/suffix `LIKE`; `gt`/`gte`/`lt`/`lte` are ordered
- * comparisons (offered for numeric/date columns).
+ * substring/prefix/suffix `LIKE`; `gt`/`gte`/`lt`/`lte`/`between` are ordered
+ * comparisons (offered for numeric/date columns) — `between` additionally
+ * consumes `value2` as the inclusive upper bound.
  */
 export type FilterOp =
   | "eq"
@@ -358,6 +359,7 @@ export type FilterOp =
   | "gte"
   | "lt"
   | "lte"
+  | "between"
   | "is_null"
   | "is_not_null";
 
@@ -366,6 +368,8 @@ export interface ColumnFilter {
   column: string;
   op: FilterOp;
   value?: CellValue;
+  /** Range upper bound, only used by `"between"`. */
+  value2?: CellValue;
 }
 
 /** One column/value pair used when building an INSERT. */
