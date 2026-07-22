@@ -55,6 +55,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   dialog offers it alongside `gt`/`gte`/`lt`/`lte` for numeric/date columns
   and renders a second "to" input when selected.
 
+- **A single click now shows a direct "expand" icon on the selected cell,
+  so its full value can be viewed without first double-clicking into edit
+  mode (#78).** Previously the only way to view a long cell's untruncated
+  content was to double-click, which for an editable cell also entered
+  inline-edit mode — an unwanted side effect when the user only wanted to
+  *read* the value. The `DataGrid` cell renderer's plain (non-editing)
+  branch now checks whether the cell matches `selectedCell` (set on plain
+  single click, compared by the same `rowValues`/`row.original` referential
+  identity used everywhere else in the grid — see gotcha #7) and, if so,
+  renders a small `Maximize2` button next to the value. Clicking it calls
+  the existing `openHeavyEditor`, unchanged, so it already honours the
+  user's `cellEditorMode` preference (modal vs. docked side panel) exactly
+  like the inline editor's own expand button and the cell-preview panel's
+  fullscreen button do. The icon appears uniformly for text, FK and BIT
+  columns, and for read-only query results — it is purely a value viewer,
+  never an editor, so no column type needs excluding.
+
+- **Ctrl+C / Ctrl+V now work on the selected data-grid cell (#79).**
+  `handleGridKeyDown` used to deliberately ignore every Ctrl/Cmd-modified
+  key chord (to avoid interfering with the browser's own copy/paste), which
+  meant Ctrl+C over a cell copied nothing, since a `<td>` has no native text
+  selection to copy from. Ctrl+C and Ctrl+V are now special-cased ahead of
+  that blanket guard: Ctrl+C copies the raw value of the mouse-selected cell
+  (falling back to the keyboard-navigated active cell when nothing has been
+  clicked) via the same `copyToClipboard` helper the right-click "Copy"
+  context-menu item already uses. Ctrl+V reads `navigator.clipboard`, and
+  seeds `inlineEdit` with the pasted text instead of the cell's current
+  value — reusing the exact same `CellInput` commit/cancel flow as a normal
+  double-click edit, so Enter/blur saves the pasted value and Escape
+  discards it. FK and BIT columns have no free-text control to paste into
+  (they use a combobox / `<select>` instead), so paste is a deliberate
+  no-op there for now; copy still works on every column type.
+
 ### Fixed
 
 - **MySQL spatial columns (`POINT`, `MULTIPOINT`, …) were misclassified as
