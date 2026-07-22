@@ -36,6 +36,7 @@ import {
   ChevronDown,
   KeyRound,
   Loader2,
+  Maximize2,
   Plus,
   X,
 } from "lucide-react";
@@ -900,6 +901,12 @@ export function DataGrid({
               ? `${rawDisplay.slice(0, truncateLongTextAt)}…`
               : rawDisplay;
           const isNumeric = numericColNames.has(col.name);
+          // Selected-but-not-editing: offer a direct "expand" affordance so
+          // the full value can be viewed (modal / side panel per
+          // `cellEditorMode`) without first entering inline edit (issue #78).
+          const isSelected =
+            selectedCell?.rowValues === rowValues &&
+            selectedCell.column.name === col.name;
           return (
             <div className="flex min-w-0 items-center gap-1">
               <span
@@ -915,6 +922,22 @@ export function DataGrid({
                   display
                 )}
               </span>
+              {isSelected && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  title={t("dataGrid.expandEditor")}
+                  className="ml-auto shrink-0 rounded px-1 text-muted-foreground/50 hover:text-foreground"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openHeavyEditor(rowValues, col, rawDisplay);
+                  }}
+                >
+                  <Maximize2 className="h-3 w-3" />
+                </button>
+              )}
             </div>
           );
         },
@@ -934,6 +957,7 @@ export function DataGrid({
       onSortChange,
       fkEditCell,
       inlineEdit,
+      selectedCell,
       columnInfoByName,
       columnIndexByName,
       connectionId,
@@ -1025,19 +1049,92 @@ export function DataGrid({
     openModalEditor(rowValues, column, fmt ?? "");
   }
 
+  /** Resolves the cell a Ctrl+C/Ctrl+V chord should act on: the mouse-selected
+   *  cell (carries its value already) or, as a keyboard-only fallback, the
+   *  active cell resolved the same way the Enter handler below does. */
+  function resolveTargetCell(): {
+    rowValues: CellValue[];
+    column: ColumnMeta;
+    value: CellValue;
+  } | null {
+    if (selectedCell) {
+      return {
+        rowValues: selectedCell.rowValues,
+        column: selectedCell.column,
+        value: selectedCell.value,
+      };
+    }
+    if (activeCell) {
+      const rows = table.getRowModel().rows;
+      const row = rows[activeCell.r];
+      const cell = row?.getVisibleCells()[activeCell.c];
+      const bi = cell ? (columnIndexByName.get(cell.column.id) ?? -1) : -1;
+      if (row && bi >= 0) {
+        const rowValues = row.original as CellValue[];
+        return { rowValues, column: result.columns[bi], value: rowValues[bi] };
+      }
+    }
+    return null;
+  }
+
+  /** Ctrl+C copies the raw value (same as the context menu's "Copy"); Ctrl+V
+   *  seeds `inlineEdit` with the pasted text so it flows through the existing
+   *  commit/cancel path unchanged. FK/BIT columns have no free-text control to
+   *  paste into, so paste is a no-op there (issue #79). */
+  function handleCopyPasteChord(key: "c" | "v") {
+    const cell = resolveTargetCell();
+    if (!cell) return;
+    if (key === "c") {
+      copyToClipboard(formatValue(cell.value));
+      return;
+    }
+    if (!editable || !onCellSave) return;
+    const info = columnInfoByName.get(cell.column.name);
+    if (info?.referenced_table || bitColNames.has(cell.column.name)) return;
+    navigator.clipboard
+      .readText()
+      .then((text) => {
+        const cur = cell.rowValues[columnIndexByName.get(cell.column.name) ?? -1];
+        const original =
+          cur === null || cur === undefined ? null : formatValue(cur);
+        setInlineEdit({
+          rowValues: cell.rowValues,
+          column: cell.column,
+          value: text,
+          original,
+        });
+      })
+      .catch(() => {
+        // Clipboard read denied/unsupported in this webview — silent no-op,
+        // matching copyToClipboard's own silent-failure convention below.
+      });
+  }
+
   /**
    * Grid-level keyboard navigation, bound to the (focusable) scroll container.
    * Moves the inset-ring active cell with the arrows / Home / End, opens the
    * editor on Enter, clears on Escape. The ring never animates its movement:
    * this fires on every keypress, so motion would read as lag (see the
    * keyboard-action rule). Guards: skip when an inline editor is open or focus
-   * is inside a form control, and never swallow modified chords (Ctrl+C etc.).
+   * is inside a form control. Ctrl+C/Ctrl+V are the only modified chords this
+   * handles itself; every other modified chord is left alone for the browser.
    */
   function handleGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const key = e.key.toLowerCase();
+    const isCopyPasteChord =
+      (e.ctrlKey || e.metaKey) &&
+      !e.altKey &&
+      !e.shiftKey &&
+      (key === "c" || key === "v");
+    if ((e.ctrlKey || e.metaKey || e.altKey) && !isCopyPasteChord) return;
     if (inlineEdit || fkEditCell) return;
     const target = e.target as HTMLElement;
     if (target.closest("input, textarea, select, [contenteditable='true']")) {
+      return;
+    }
+    if (isCopyPasteChord) {
+      e.preventDefault();
+      handleCopyPasteChord(key as "c" | "v");
       return;
     }
     const rows = table.getRowModel().rows;
