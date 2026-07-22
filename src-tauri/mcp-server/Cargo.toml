@@ -1,6 +1,6 @@
 [package]
 name = "huginndb-mcp"
-version = "1.9.0"
+version = "1.9.1"
 description = "HuginnDB headless MCP (Model Context Protocol) connector"
 authors = ["HuginnDB contributors"]
 edition = "2021"

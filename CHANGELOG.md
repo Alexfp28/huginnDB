@@ -6,24 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-## [1.9.0] — 2026-07-20
+## [1.9.1] — 2026-07-22
 
 ### Fixed
-
-- **Console logs leaked across windows (#50).** With a second window open (the
-  "New window" action), every window's Console showed every other window's
-  SQL and connection entries. The backend already targeted log events at the
-  originating window, but the frontend listener wasn't scoped, so Tauri
-  delivered all of them to every window. Each window's Console now shows only
-  its own activity; genuinely global notices (like a shared connection dropping)
-  still reach every window.
-  
-- **MySQL boolean columns showed `NULL` instead of their value (#68).** A
-  `TINYINT(1)` / `BOOL` / `BOOLEAN` column is reported by the driver under the
-  type name `BOOLEAN`, which the value decoder didn't recognise as an integer —
-  so every boolean cell fell through to a text decode that isn't valid for the
-  column and collapsed to `NULL`. Boolean columns now render their stored value
-  (`0` / `1`), like any other integer.
 
 - **Running a single INSERT/UPDATE/DELETE showed no feedback (#82).** The
   query editor's single-statement path (`Ctrl+Enter`) rendered a columns-less
@@ -68,6 +53,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   geometry set up moments earlier. Closing the main window now flushes every
   active connection's tab state synchronously first, and layout changes
   schedule a save the same way tab changes already did.
+
+## [1.9.0] — 2026-07-20
+
+### Fixed
+
+- **Console logs leaked across windows (#50).** With a second window open (the
+  "New window" action), every window's Console showed every other window's
+  SQL and connection entries. The backend already targeted log events at the
+  originating window, but the frontend listener wasn't scoped, so Tauri
+  delivered all of them to every window. Each window's Console now shows only
+  its own activity; genuinely global notices (like a shared connection dropping)
+  still reach every window.
+
+- **MySQL boolean columns showed `NULL` instead of their value (#68).** A
+  `TINYINT(1)` / `BOOL` / `BOOLEAN` column is reported by the driver under the
+  type name `BOOLEAN`, which the value decoder didn't recognise as an integer —
+  so every boolean cell fell through to a text decode that isn't valid for the
+  column and collapsed to `NULL`. Boolean columns now render their stored value
+  (`0` / `1`), like any other integer.
 
 ### Added
 

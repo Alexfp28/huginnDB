@@ -8,6 +8,60 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.9.1] — 2026-07-22
+
+### Corregido
+
+- **Ejecutar un único INSERT/UPDATE/DELETE no mostraba ningún resultado (#82).**
+  La ruta de sentencia única del editor de consultas (`Ctrl+Enter`) enviaba un
+  resultado DML sin columnas directamente a `DataGrid`, que no tiene nada que
+  dibujar para ese caso — el panel de resultados simplemente parecía vacío, sin
+  error ni recuento de filas. Solo la ruta de lote multi-sentencia mostraba un
+  resumen de «filas afectadas». Ahora un resultado DML (sin columnas) muestra
+  un pequeño aviso «N filas afectadas · Xms» en su lugar, en todos los drivers
+  SQL — esto no era específico de MySQL, solo más probable de notar ahí.
+
+- **Las herramientas de escritura del conector MCP podían hacer que nuevas
+  sesiones cliente vieran cero herramientas (#83).** Las herramientas de modo
+  escritura añadidas para `insert_row`, `update_cell` y `delete_rows`
+  introdujeron formas de JSON-schema nunca usadas antes en la salida
+  `tools/list` de este servidor: una estructura anidada elevada a `$defs`/`$ref`,
+  y campos de valor de PK cuyo esquema por elemento era el booleano desnudo
+  `true` (la representación de schemars para «cualquier valor JSON»). Ambas son
+  JSON Schema válido, pero un cliente MCP cuya ingestión de `tools/list` asume
+  que cada nodo de esquema es un objeto plano puede lanzar una excepción con
+  ellas — y si esa ingestión envuelve toda la lista de herramientas en un único
+  try/catch, un solo esquema mal formado para ese cliente descarta
+  silenciosamente las 12 herramientas de la sesión, mientras que el propio log
+  del servidor (que solo refleja lo que envió) parece perfectamente sano. Los
+  esquemas de las tres herramientas ahora están en línea y restringidos a mano
+  a `string | number | boolean | null`, con una prueba de regresión que
+  verifica que ningún subesquema `$ref`/`$defs`/booleano desnudo vuelva a
+  aparecer.
+
+- **Expandir una base de datos con el mismo nombre bajo una conexión distinta
+  podía filtrar los datos de la conexión anterior (#76).** El árbol de esquema
+  multi-base de datos indexaba sus nodos `DatabaseRoot` solo por el nombre de
+  la base de datos; como nada vuelve a montar ese árbol cuando cambia la
+  conexión activa, React reutilizaba la misma instancia de componente — y su
+  id de pool cacheado localmente — para dos conexiones distintas que ambas
+  exponían una base de datos con el mismo nombre (por ejemplo, una base
+  `shop` tanto en un perfil MySQL como en uno de MongoDB). El nodo de la
+  segunda conexión seguía mostrando las tablas de la primera. El nodo ahora se
+  indexa por conexión + nombre de base de datos juntos, así que cambiar de
+  conexión siempre obtiene una instancia nueva.
+
+- **La disposición de ventana/paneles y las ediciones de pestañas en curso
+  podían perderse al cerrar (#80).** Ningún hook de cierre de ventana llegaba
+  a volcar a disco el estado de pestañas/disposición con debounce, y un simple
+  gesto de dividir/flotar/redimensionar no programaba un guardado en absoluto
+  (solo lo hacía un cambio de pestaña o de esquema) — así que un cierre normal
+  de ventana, no solo un cuelgue, podía perder los últimos ~600ms de cambios,
+  incluida la geometría de paneles divididos configurada momentos antes.
+  Cerrar la ventana principal ahora vuelca de forma síncrona el estado de
+  pestañas de cada conexión activa primero, y los cambios de disposición
+  programan un guardado igual que ya lo hacían los cambios de pestaña.
+
 ## [1.9.0] — 2026-07-20
 
 ### Corregido
