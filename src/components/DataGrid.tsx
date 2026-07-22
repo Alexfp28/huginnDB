@@ -284,6 +284,7 @@ const FILTER_LABEL: Record<ColumnFilter["op"], string> = {
   gte: "≥",
   lt: "<",
   lte: "≤",
+  between: "↔",
   is_null: "IS NULL",
   is_not_null: "IS NOT NULL",
 };
