@@ -6,7 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **A `between` operator in the Advanced Filter, unifying range filtering across
+  every driver (#81).** The advanced-filter builder already offered
+  `contains`/`not_contains`/`starts_with`/`ends_with` consistently on Postgres,
+  MySQL, SQLite and MongoDB (verified while investigating this issue — MySQL's
+  `contains` was already working via the shared `CAST(col AS CHAR) LIKE`
+  path), but no operator existed to filter an inclusive range in one
+  condition; a user had to stack a `gt`/`gte` row and a `lt`/`lte` row instead.
+  `FilterOp::Between` is now a single shared variant consumed by
+  `build_filter_clause` (SQL: `col BETWEEN ? AND ?` / `BETWEEN $N AND $N+1`)
+  and Mongo's `build_filter` (`{ $gte, $lte }`), backed by a new `value2`
+  field on `ColumnFilter` (added on both the Rust struct and its TypeScript
+  mirror — a value dropped silently by serde otherwise, see gotcha #14). The
+  dialog offers it alongside `gt`/`gte`/`lt`/`lte` for numeric/date columns
+  and renders a second "to" input when selected.
+
 ### Fixed
+
+- **MySQL spatial columns (`POINT`, `MULTIPOINT`, …) were misclassified as
+  numeric by the Advanced Filter**, because `isNumericType`'s substring check
+  for `"int"` also matches inside the word `"point"`. Those columns lost
+  `contains`/`starts_with`/`ends_with` and gained meaningless `>`/`<`
+  comparisons. Found while auditing operator unification for #81; fixed by
+  excluding the `"point"` substring from the `"int"` check.
 
 - **The MCP connector's write tools could be forced into read-only for a
   MongoDB database they had explicit `data`/`full` access to.** Reported by a

@@ -95,7 +95,7 @@ function opsForColumn(dataType: string | undefined): FilterOp[] {
     ops.push("contains", "not_contains", "starts_with", "ends_with");
   }
   if (numeric || date) {
-    ops.push("gt", "gte", "lt", "lte");
+    ops.push("gt", "gte", "lt", "lte", "between");
   }
   ops.push("is_null", "is_not_null");
   return ops;
@@ -107,6 +107,8 @@ interface DraftRow {
   column: string;
   op: FilterOp;
   value: string;
+  /** Range upper bound, only used when `op === "between"`. */
+  value2: string;
 }
 
 let nextKey = 1;
@@ -130,6 +132,7 @@ export function AdvancedFilterDialog({
       column: f.column,
       op: f.op,
       value: f.value == null ? "" : String(f.value),
+      value2: f.value2 == null ? "" : String(f.value2),
     })),
   );
 
@@ -144,7 +147,7 @@ export function AdvancedFilterDialog({
     const firstCol = columnNames[0] ?? "";
     setRows((prev) => [
       ...prev,
-      { key: nextKey++, column: firstCol, op: "eq", value: "" },
+      { key: nextKey++, column: firstCol, op: "eq", value: "", value2: "" },
     ]);
   };
 
@@ -172,12 +175,17 @@ export function AdvancedFilterDialog({
       .filter((r) => r.column)
       .map((r) => {
         const valueless = VALUELESS_OPS.includes(r.op);
+        const dataType = typeByColumn.get(r.column);
         return {
           column: r.column,
           op: r.op,
           value: valueless
             ? undefined
-            : coerceFilterValue(r.value, r.op, typeByColumn.get(r.column)),
+            : coerceFilterValue(r.value, r.op, dataType),
+          value2:
+            r.op === "between"
+              ? coerceFilterValue(r.value2, r.op, dataType)
+              : undefined,
         };
       });
     onApply(filters);
@@ -239,16 +247,42 @@ export function AdvancedFilterDialog({
                     </SelectContent>
                   </Select>
 
-                  <Input
-                    inputSize="xs"
-                    className="flex-1"
-                    value={r.value}
-                    disabled={valueless}
-                    placeholder={
-                      valueless ? "—" : t("tableData.filter.valuePlaceholder")
-                    }
-                    onChange={(e) => patchRow(r.key, { value: e.target.value })}
-                  />
+                  {r.op === "between" ? (
+                    <>
+                      <Input
+                        inputSize="xs"
+                        className="flex-1"
+                        value={r.value}
+                        placeholder={t("tableData.filter.fromPlaceholder")}
+                        onChange={(e) =>
+                          patchRow(r.key, { value: e.target.value })
+                        }
+                      />
+                      <span className="text-muted-foreground">–</span>
+                      <Input
+                        inputSize="xs"
+                        className="flex-1"
+                        value={r.value2}
+                        placeholder={t("tableData.filter.toPlaceholder")}
+                        onChange={(e) =>
+                          patchRow(r.key, { value2: e.target.value })
+                        }
+                      />
+                    </>
+                  ) : (
+                    <Input
+                      inputSize="xs"
+                      className="flex-1"
+                      value={r.value}
+                      disabled={valueless}
+                      placeholder={
+                        valueless ? "—" : t("tableData.filter.valuePlaceholder")
+                      }
+                      onChange={(e) =>
+                        patchRow(r.key, { value: e.target.value })
+                      }
+                    />
+                  )}
 
                   <Button
                     type="button"

@@ -387,6 +387,12 @@ fn build_filter(
             FilterOp::EndsWith => {
                 doc! { &f.column: { "$regex": format!("{}$", regex_escape(&raw)), "$options": "i" } }
             }
+            FilterOp::Between => doc! {
+                &f.column: {
+                    "$gte": field_value(&f.column, &f.value),
+                    "$lte": field_value(&f.column, &f.value2),
+                }
+            },
         };
         clauses.push(clause);
     }
@@ -601,6 +607,7 @@ mod tests {
             column: "atnId".to_string(),
             op: FilterOp::Eq,
             value: serde_json::json!(183),
+            value2: serde_json::Value::Null,
         }];
         let order = vec![SortSpec {
             column: "atnId".to_string(),
@@ -612,6 +619,20 @@ mod tests {
         assert!(s.contains(".sort("));
         assert!(s.contains(".skip(100)"));
         assert!(s.contains(".limit(50)"));
+    }
+
+    #[test]
+    fn between_builds_gte_lte_document() {
+        let filters = vec![ColumnFilter {
+            column: "age".to_string(),
+            op: FilterOp::Between,
+            value: serde_json::json!(18),
+            value2: serde_json::json!(65),
+        }];
+        let filter = build_filter(&filters, None, &[]);
+        let age = filter.get_document("age").unwrap();
+        assert_eq!(age.get_i32("$gte").unwrap(), 18);
+        assert_eq!(age.get_i32("$lte").unwrap(), 65);
     }
 
     #[test]

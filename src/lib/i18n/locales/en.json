@@ -407,6 +407,8 @@
       "clearAll": "Clear all",
       "apply": "Apply",
       "valuePlaceholder": "Value",
+      "fromPlaceholder": "From",
+      "toPlaceholder": "To",
       "op": {
         "eq": "equals",
         "ne": "not equals",
@@ -418,6 +420,7 @@
         "gte": "greater or equal",
         "lt": "less than",
         "lte": "less or equal",
+        "between": "between",
         "is_null": "is null",
         "is_not_null": "is not null"
       }
