@@ -195,11 +195,15 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
             Ok(affected_result(n, ms()))
         }
         MongoOp::UpdateOne { filter, update } => {
-            let r = coll.update_one(filter, update).await?;
+            let r = coll
+                .update_one(filter, mongodb::options::UpdateModifications::from(update))
+                .await?;
             Ok(affected_result(r.modified_count, ms()))
         }
         MongoOp::UpdateMany { filter, update } => {
-            let r = coll.update_many(filter, update).await?;
+            let r = coll
+                .update_many(filter, mongodb::options::UpdateModifications::from(update))
+                .await?;
             Ok(affected_result(r.modified_count, ms()))
         }
         MongoOp::ReplaceOne {

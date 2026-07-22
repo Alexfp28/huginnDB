@@ -6,6 +6,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **The MCP connector's write tools could be forced into read-only for a
+  MongoDB database they had explicit `data`/`full` access to.** Reported by a
+  user hitting `has MCP write policy "read-only"` on `update_cell` against a
+  connection whose Settings → MCP level was actually `data`. The write gate
+  (`Huginn::require_class`) was checking the policy against
+  `resolve_mongo_target`'s *resolved* pool id rather than the real profile id.
+  For a multi-database Mongo connection (empty top-level `database` — the
+  common case, since HuginnDB doesn't require picking one at connect time), a
+  tool call naming a `schema`/`database` resolves to the synthetic
+  per-database id `<connection_id>::db::<name>` so it can address the right
+  live pool — but that synthetic id is never a key in `profiles.json`, so the
+  policy lookup silently missed and fell back to the default `ReadOnly`,
+  regardless of what the connection was actually configured to. `run_query`,
+  `insert_row`, `update_cell` and `delete_rows` now gate on `a.connection_id`
+  (the real profile id) instead of the resolved target; the resolved target
+  is still used, as before, to find the right pool. Added a regression test
+  reproducing the exact scenario (a `data`-policy Mongo connection with no
+  default database, addressed via `schema`).
+
+- **`updateMany`/`updateOne` rejected an aggregation-pipeline update
+  (`db.coll.updateMany(filter, [{ $set: {...} }])`)** with `argument 2 must be
+  a document`, even though the underlying `mongodb` driver has supported
+  pipeline-style updates since server 4.2. The mongosh-style parser
+  (`db/mongo/shell.rs`) only ever built a plain `Document` for the `update`
+  argument. It now accepts either shape — a new `UpdateSpec` enum
+  (`Document` | `Pipeline`) mirroring `mongodb::options::UpdateModifications`
+  — so pipeline updates (e.g. `$replaceAll`/`$toUpper`/computed field values
+  that reference other fields) work through `run_query` the same as they do
+  in `mongosh`.
+
 ## [1.9.1] — 2026-07-22
 
 ### Fixed
