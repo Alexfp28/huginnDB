@@ -8,6 +8,91 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.9.1] — 2026-07-22
+
+### Corregido
+
+- **Ejecutar un único INSERT/UPDATE/DELETE no mostraba ningún resultado (#82).**
+  La ruta de sentencia única del editor de consultas (`Ctrl+Enter`) enviaba un
+  resultado DML sin columnas directamente a `DataGrid`, que no tiene nada que
+  dibujar para ese caso — el panel de resultados simplemente parecía vacío, sin
+  error ni recuento de filas. Solo la ruta de lote multi-sentencia mostraba un
+  resumen de «filas afectadas». Ahora un resultado DML (sin columnas) muestra
+  un pequeño aviso «N filas afectadas · Xms» en su lugar, en todos los drivers
+  SQL — esto no era específico de MySQL, solo más probable de notar ahí.
+
+- **Las herramientas de escritura del conector MCP podían hacer que nuevas
+  sesiones cliente vieran cero herramientas (#83).** Las herramientas de modo
+  escritura añadidas para `insert_row`, `update_cell` y `delete_rows`
+  introdujeron formas de JSON-schema nunca usadas antes en la salida
+  `tools/list` de este servidor: una estructura anidada elevada a `$defs`/`$ref`,
+  y campos de valor de PK cuyo esquema por elemento era el booleano desnudo
+  `true` (la representación de schemars para «cualquier valor JSON»). Ambas son
+  JSON Schema válido, pero un cliente MCP cuya ingestión de `tools/list` asume
+  que cada nodo de esquema es un objeto plano puede lanzar una excepción con
+  ellas — y si esa ingestión envuelve toda la lista de herramientas en un único
+  try/catch, un solo esquema mal formado para ese cliente descarta
+  silenciosamente las 12 herramientas de la sesión, mientras que el propio log
+  del servidor (que solo refleja lo que envió) parece perfectamente sano. Los
+  esquemas de las tres herramientas ahora están en línea y restringidos a mano
+  a `string | number | boolean | null`, con una prueba de regresión que
+  verifica que ningún subesquema `$ref`/`$defs`/booleano desnudo vuelva a
+  aparecer.
+
+- **Expandir una base de datos con el mismo nombre bajo una conexión distinta
+  podía filtrar los datos de la conexión anterior (#76).** El árbol de esquema
+  multi-base de datos indexaba sus nodos `DatabaseRoot` solo por el nombre de
+  la base de datos; como nada vuelve a montar ese árbol cuando cambia la
+  conexión activa, React reutilizaba la misma instancia de componente — y su
+  id de pool cacheado localmente — para dos conexiones distintas que ambas
+  exponían una base de datos con el mismo nombre (por ejemplo, una base
+  `shop` tanto en un perfil MySQL como en uno de MongoDB). El nodo de la
+  segunda conexión seguía mostrando las tablas de la primera. El nodo ahora se
+  indexa por conexión + nombre de base de datos juntos, así que cambiar de
+  conexión siempre obtiene una instancia nueva.
+
+- **La disposición de ventana/paneles y las ediciones de pestañas en curso
+  podían perderse al cerrar (#80).** Ningún hook de cierre de ventana llegaba
+  a volcar a disco el estado de pestañas/disposición con debounce, y un simple
+  gesto de dividir/flotar/redimensionar no programaba un guardado en absoluto
+  (solo lo hacía un cambio de pestaña o de esquema) — así que un cierre normal
+  de ventana, no solo un cuelgue, podía perder los últimos ~600ms de cambios,
+  incluida la geometría de paneles divididos configurada momentos antes.
+  Cerrar la ventana principal ahora vuelca de forma síncrona el estado de
+  pestañas de cada conexión activa primero, y los cambios de disposición
+  programan un guardado igual que ya lo hacían los cambios de pestaña.
+
+- **La actividad de MongoDB nunca llegaba a la consola.** Tanto explorar una
+  colección (`fetch_table_data`) como ejecutar un lote multi-sentencia de
+  mongosh (`execute_batch`) delegaban directamente en el módulo del driver
+  de Mongo sin llegar a construir nunca una entrada de log — a diferencia de
+  la ruta de sentencia única y de insertar/actualizar/eliminar, que ya
+  registraban correctamente. Todos los demás drivers registraban cada
+  lectura y escritura; MongoDB solo registraba escrituras emitidas de una en
+  una. Ahora explorar una colección registra una línea reconstruida
+  `db.<colección>.find(filtro).sort().skip().limit()` (no hay una sentencia
+  literal que repetir, como sí la hay cuando el usuario la escribe a mano), y
+  cada sentencia de un lote de mongosh se registra individualmente, igual
+  que en la ruta de lote SQL.
+
+- **El constructor de filtro avanzado devolvía silenciosamente cero
+  resultados en MongoDB al filtrar un campo numérico (o booleano).** El chip
+  «Filtrar por este valor» del menú contextual envía el valor de la celda ya
+  tipado (por ejemplo, el número JS `183`), pero el campo de valor del
+  diálogo de filtro avanzado es una casilla de texto plano — siempre enviaba
+  el texto introducido como una cadena JSON. Postgres/MySQL/SQLite no lo
+  notan: el tipo de un parámetro sin tipar se infiere de la columna con la
+  que se compara, así que un texto `"183"` sigue coincidiendo con una
+  columna `integer`. La igualdad de MongoDB, en cambio, es de tipo BSON
+  exacto, y un `string` `"183"` nunca coincide con un `int32` 183
+  almacenado — así que el mismo filtro que funcionaba desde el menú
+  contextual devolvía cero filas desde el diálogo. El diálogo ahora convierte
+  el valor introducido a número/booleano según el tipo de la columna antes
+  de aplicar el filtro (los operadores de coincidencia de subcadena —
+  contiene/empieza por/termina en — conservan el texto tal cual, ya que
+  esos siempre son una coincidencia de texto/regex independientemente del
+  tipo de columna).
+
 ## [1.9.0] — 2026-07-20
 
 ### Corregido

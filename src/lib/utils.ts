@@ -47,6 +47,8 @@ export function formatCount(n: number): string {
  * - Postgres: `integer`, `bigint`, `numeric`, `real`, `double precision`, etc.
  * - MySQL: `int(11)`, `float`, `decimal(10,2)`, etc.
  * - SQLite: `INT`, `REAL`, `NUMERIC`, etc. (case-insensitive affinity names).
+ * - MongoDB: `int`, `long` (int64), `double`, `decimal128` (see
+ *   `bson_type_name`).
  *
  * @param dataType - The `data_type` string from `ColumnMeta`.
  */
@@ -61,6 +63,7 @@ export function isNumericType(dataType: string): boolean {
     t.includes("real") ||
     t.includes("money") ||
     t.includes("serial") ||
+    t === "long" ||
     t === "number"
   );
 }
@@ -72,6 +75,16 @@ export function isNumericType(dataType: string): boolean {
  */
 export function isBitType(dataType: string): boolean {
   return /^bit\b/i.test(dataType.trim());
+}
+
+/**
+ * True for a boolean-ish column type: Postgres/MongoDB `boolean`/`bool`, or
+ * MySQL's `BOOLEAN` display name for `TINYINT(1)` (see the MySQL boolean
+ * decode note in `CLAUDE.md`).
+ */
+export function isBooleanType(dataType: string): boolean {
+  const t = dataType.toLowerCase();
+  return t === "bool" || t === "boolean";
 }
 
 /**

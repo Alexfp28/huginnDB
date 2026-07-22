@@ -11,6 +11,7 @@ use crate::commands::query::{
     BatchResult, ColumnFilter, ColumnMeta, FilterOp, QueryResult, RowValue, SortSpec, StmtOutcome,
 };
 use crate::error::AppResult;
+use crate::log_bus::{LogEntry, LogKind, LogSink};
 use crate::state::MongoConn;
 use mongodb::bson::{doc, Bson, Document};
 use serde_json::Value;
@@ -221,7 +222,12 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
 
 /// Run a batch of `mongosh` statements sequentially (one [`StmtOutcome`] each,
 /// stopping at the first failure — mirrors the SQL batch contract).
-pub async fn execute_batch(conn: &MongoConn, statements: &[String]) -> AppResult<BatchResult> {
+pub async fn execute_batch(
+    conn: &MongoConn,
+    statements: &[String],
+    sink: &dyn LogSink,
+    connection_id: &str,
+) -> AppResult<BatchResult> {
     let mut outcomes = Vec::new();
     let mut last_result = None;
     let mut total_affected = 0u64;
@@ -232,9 +238,18 @@ pub async fn execute_batch(conn: &MongoConn, statements: &[String]) -> AppResult
             continue;
         }
         let is_read = shell::parse(stmt).map(|c| c.op.is_read()).unwrap_or(false);
+        let start = Instant::now();
         match execute(conn, stmt).await {
             Ok(result) => {
                 total_affected += result.rows_affected;
+                sink.log(
+                    LogEntry::new(LogKind::Sql)
+                        .connection_id(connection_id)
+                        .driver("mongodb")
+                        .sql(stmt)
+                        .duration_ms(start.elapsed().as_millis() as u64)
+                        .rows_affected(result.rows_affected),
+                );
                 outcomes.push(StmtOutcome {
                     index,
                     preview: stmt_preview(stmt),
@@ -247,6 +262,14 @@ pub async fn execute_batch(conn: &MongoConn, statements: &[String]) -> AppResult
                 }
             }
             Err(e) => {
+                sink.log(
+                    LogEntry::new(LogKind::Sql)
+                        .connection_id(connection_id)
+                        .driver("mongodb")
+                        .sql(stmt)
+                        .duration_ms(start.elapsed().as_millis() as u64)
+                        .error(e.to_string()),
+                );
                 outcomes.push(StmtOutcome {
                     index,
                     preview: stmt_preview(stmt),
@@ -274,6 +297,45 @@ fn stmt_preview(s: &str) -> String {
     } else {
         one_line
     }
+}
+
+/// Build a mongosh-style `db.<collection>.find(...)` string describing a
+/// collection-browse request, for the Console log. `fetch_collection_data`
+/// has no single "statement" of its own the way a hand-typed shell command
+/// does, so this rebuilds the same filter `find` would run — purely for
+/// display, not reused to actually query — to give the Console the same
+/// "what ran" record the SQL drivers and the mongo shell tab already get.
+pub(crate) fn describe_find(
+    collection: &str,
+    filters: &[ColumnFilter],
+    search: Option<&str>,
+    search_columns: &[String],
+    order: &[SortSpec],
+    limit: i64,
+    offset: i64,
+) -> String {
+    let filter = build_filter(filters, search, search_columns);
+    let mut s = format!(
+        "db.{collection}.find({})",
+        Bson::Document(filter).into_canonical_extjson()
+    );
+    if !order.is_empty() {
+        let mut sort_doc = Document::new();
+        for o in order {
+            sort_doc.insert(o.column.clone(), if o.desc { -1 } else { 1 });
+        }
+        s.push_str(&format!(
+            ".sort({})",
+            Bson::Document(sort_doc).into_canonical_extjson()
+        ));
+    }
+    if offset > 0 {
+        s.push_str(&format!(".skip({offset})"));
+    }
+    if limit > 0 {
+        s.push_str(&format!(".limit({limit})"));
+    }
+    s
 }
 
 /// Build a Mongo filter document from the grid's column filters + free-text
@@ -527,5 +589,30 @@ mod tests {
         assert_eq!(result.columns.len(), 1);
         assert_eq!(result.columns[0].name, "_id");
         assert_eq!(result.columns[0].data_type, "int");
+    }
+
+    #[test]
+    fn describe_find_builds_a_readable_mongosh_style_string() {
+        let filters = vec![ColumnFilter {
+            column: "atnId".to_string(),
+            op: FilterOp::Eq,
+            value: serde_json::json!(183),
+        }];
+        let order = vec![SortSpec {
+            column: "atnId".to_string(),
+            desc: true,
+        }];
+        let s = describe_find("events", &filters, None, &[], &order, 50, 100);
+        assert!(s.starts_with("db.events.find("));
+        assert!(s.contains("\"atnId\""));
+        assert!(s.contains(".sort("));
+        assert!(s.contains(".skip(100)"));
+        assert!(s.contains(".limit(50)"));
+    }
+
+    #[test]
+    fn describe_find_omits_skip_and_limit_when_zero() {
+        let s = describe_find("events", &[], None, &[], &[], 0, 0);
+        assert_eq!(s, "db.events.find({})");
     }
 }

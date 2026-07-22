@@ -6,24 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-## [1.9.0] — 2026-07-20
+## [1.9.1] — 2026-07-22
 
 ### Fixed
-
-- **Console logs leaked across windows (#50).** With a second window open (the
-  "New window" action), every window's Console showed every other window's
-  SQL and connection entries. The backend already targeted log events at the
-  originating window, but the frontend listener wasn't scoped, so Tauri
-  delivered all of them to every window. Each window's Console now shows only
-  its own activity; genuinely global notices (like a shared connection dropping)
-  still reach every window.
-  
-- **MySQL boolean columns showed `NULL` instead of their value (#68).** A
-  `TINYINT(1)` / `BOOL` / `BOOLEAN` column is reported by the driver under the
-  type name `BOOLEAN`, which the value decoder didn't recognise as an integer —
-  so every boolean cell fell through to a text decode that isn't valid for the
-  column and collapsed to `NULL`. Boolean columns now render their stored value
-  (`0` / `1`), like any other integer.
 
 - **Running a single INSERT/UPDATE/DELETE showed no feedback (#82).** The
   query editor's single-statement path (`Ctrl+Enter`) rendered a columns-less
@@ -68,6 +53,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   geometry set up moments earlier. Closing the main window now flushes every
   active connection's tab state synchronously first, and layout changes
   schedule a save the same way tab changes already did.
+
+- **MongoDB activity never reached the Console.** Browsing a collection
+  (`fetch_table_data`) and running a multi-statement mongosh batch
+  (`execute_batch`) both delegated straight to the Mongo driver module
+  without ever building a log entry — unlike the single-statement path,
+  insert/update/delete, which already logged correctly. Every other driver
+  logged every read and write; MongoDB only logged writes issued one
+  statement at a time. Collection browsing now logs a reconstructed
+  `db.<collection>.find(filter).sort().skip().limit()` line (there's no
+  literal statement to echo the way a hand-typed one has), and each
+  statement in a mongosh batch logs individually, same as the SQL batch path.
+
+- **The advanced filter builder silently returned nothing on MongoDB when
+  filtering a numeric (or boolean) field.** The right-click "Filter by this
+  value" chip sends the cell's already-typed value (e.g. the JS number
+  `183`), but the advanced-filter dialog's value input is a plain text box —
+  it always sent the typed-in text as a JSON string. Postgres/MySQL/SQLite
+  don't notice: an unbound parameter's type is inferred from the column it's
+  compared against, so a text `"183"` still matches an `integer` column.
+  MongoDB's equality is exact-BSON-type, though, and a `string` `"183"`
+  never matches a stored `int32` 183 — so the identical filter that worked
+  from the context menu returned zero rows from the dialog. The dialog now
+  coerces the typed value to a number/boolean based on the column's type
+  before applying the filter (substring-match operators — contains/starts
+  with/ends with — keep the raw text, since those are always a text/regex
+  match regardless of column type).
+
+## [1.9.0] — 2026-07-20
+
+### Fixed
+
+- **Console logs leaked across windows (#50).** With a second window open (the
+  "New window" action), every window's Console showed every other window's
+  SQL and connection entries. The backend already targeted log events at the
+  originating window, but the frontend listener wasn't scoped, so Tauri
+  delivered all of them to every window. Each window's Console now shows only
+  its own activity; genuinely global notices (like a shared connection dropping)
+  still reach every window.
+
+- **MySQL boolean columns showed `NULL` instead of their value (#68).** A
+  `TINYINT(1)` / `BOOL` / `BOOLEAN` column is reported by the driver under the
+  type name `BOOLEAN`, which the value decoder didn't recognise as an integer —
+  so every boolean cell fell through to a text decode that isn't valid for the
+  column and collapsed to `NULL`. Boolean columns now render their stored value
+  (`0` / `1`), like any other integer.
 
 ### Added
 
