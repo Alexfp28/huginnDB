@@ -19,6 +19,7 @@ import { create } from "zustand";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useTranslation } from "react-i18next";
 import {
+  Eye,
   Hammer,
   Pin,
   PinOff,
@@ -52,6 +53,7 @@ const KIND_ICON: Record<TabKind, React.ReactNode> = {
   table: <TableIcon className="h-4 w-4" />,
   query: <SquareTerminal className="h-4 w-4" />,
   structure: <Hammer className="h-4 w-4" />,
+  view: <Eye className="h-4 w-4" />,
   security: <ShieldCheck className="h-4 w-4" />,
 };
 

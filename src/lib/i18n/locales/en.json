@@ -231,7 +231,11 @@
       "rename": "Rename…",
       "empty": "Empty table…",
       "drop": "Drop table…",
-      "dropDatabase": "Drop database…"
+      "dropDatabase": "Drop database…",
+      "editView": "Edit view…",
+      "newView": "New view…",
+      "renameView": "Rename view…",
+      "dropView": "Drop view…"
     },
     "rename": {
       "title": "Rename table",
@@ -246,6 +250,16 @@
       "description": "This permanently removes the table and all of its data. This cannot be undone.",
       "submit": "Drop table",
       "dropping": "Dropping…",
+      "failed": "Drop failed: {{message}}"
+    },
+    "renameView": {
+      "title": "Rename view",
+      "description": "Rename {{name}} to:",
+      "failed": "Rename failed: {{message}}"
+    },
+    "dropView": {
+      "title": "Drop view {{name}}?",
+      "description": "This permanently removes the view definition. The underlying tables and their data are unaffected. This cannot be undone.",
       "failed": "Drop failed: {{message}}"
     },
     "empty": {
@@ -465,10 +479,24 @@
     },
     "readOnlyMongo": "Read-only (MongoDB)"
   },
+  "view": {
+    "loading": "Loading view…",
+    "viewName": "View",
+    "viewNamePlaceholder": "view_name",
+    "apply": "Apply",
+    "applying": "Applying…",
+    "applyFailed": "Apply failed: {{message}}",
+    "refresh": "Reload definition from server",
+    "ddlPreview": "DDL preview",
+    "dropRecreateNote": "drops & recreates (no data loss — views hold none)",
+    "previewTitle": "Live preview",
+    "previewEmptyQuery": "Write a SELECT to see a live preview of the view's columns and rows."
+  },
   "tabs": {
     "queryFileName": "query.sql",
     "tableFallback": "Table",
     "structureSuffix": "structure",
+    "viewSuffix": "view",
     "closeTab": "Close tab",
     "closeOthers": "Close other tabs",
     "closeToRight": "Close tabs to the right",

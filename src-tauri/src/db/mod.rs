@@ -17,3 +17,4 @@ pub mod pool;
 pub mod sql;
 pub mod ssh;
 pub mod values;
+pub mod view_ddl;

@@ -39,6 +39,8 @@ import type {
   TableInfo,
   TableStructure,
   UserInfo,
+  ViewDefinition,
+  ViewPreview,
 } from "@/types";
 
 export const api = {
@@ -221,6 +223,48 @@ export const api = {
    */
   serverVersion: (connectionId: string) =>
     invoke<string>("server_version", { connectionId }),
+
+  // View editor ------------------------------------------------------------
+
+  /** Read a view's definition (schema/name + the SELECT body, with any
+   *  driver-specific `CREATE VIEW ... AS` wrapper already stripped). */
+  getViewDefinition: (
+    connectionId: string,
+    schema: string | undefined,
+    view: string,
+  ) =>
+    invoke<ViewDefinition>("get_view_definition", {
+      connectionId,
+      schema,
+      view,
+    }),
+
+  /** Generate (but do not run) the DDL to take `original` → `desired`.
+   *  `original: null` means "create a new view". */
+  previewViewChange: (args: {
+    connectionId: string;
+    original: ViewDefinition | null;
+    desired: ViewDefinition;
+  }) => invoke<ViewPreview>("preview_view_change", { args }),
+
+  /** Execute the DDL to take `original` → `desired`. */
+  applyViewChange: (args: {
+    connectionId: string;
+    original: ViewDefinition | null;
+    desired: ViewDefinition;
+  }) => invoke<void>("apply_view_change", { args }),
+
+  /** Rename a view (`ALTER VIEW … RENAME TO` / `RENAME TABLE`, driver-aware). */
+  renameView: (
+    connectionId: string,
+    schema: string | undefined,
+    view: string,
+    newName: string,
+  ) => invoke<void>("rename_view", { connectionId, schema, view, newName }),
+
+  /** `DROP VIEW` for a catalog-sourced (schema, view) pair. */
+  dropView: (connectionId: string, schema: string | undefined, view: string) =>
+    invoke<void>("drop_view", { connectionId, schema, view }),
 
   // Query execution ------------------------------------------------------
 

@@ -274,6 +274,10 @@ function SingleDbExplorer({
   const [renameTarget, setRenameTarget] = useState<TableInfo | null>(null);
   const [dropTarget, setDropTarget] = useState<TableInfo | null>(null);
   const [emptyTarget, setEmptyTarget] = useState<TableInfo | null>(null);
+  const [renameViewTarget, setRenameViewTarget] = useState<TableInfo | null>(
+    null,
+  );
+  const [dropViewTarget, setDropViewTarget] = useState<TableInfo | null>(null);
   // Same rationale as `MultiDbExplorer`'s "+" button (see `create_database`'s
   // doc comment): server-level DDL, Postgres/MySQL only. Offered here too —
   // a profile scoped to one specific database is at least as common as
@@ -365,6 +369,8 @@ function SingleDbExplorer({
         }
       })();
     },
+    onRenameView: (tbl) => setRenameViewTarget(tbl),
+    onDropView: (tbl) => setDropViewTarget(tbl),
     driver,
   };
 
@@ -613,6 +619,28 @@ function SingleDbExplorer({
           onClose={() => setEmptyTarget(null)}
           onDone={() => {
             setEmptyTarget(null);
+            refresh(connectionId);
+          }}
+        />
+      )}
+      {renameViewTarget && (
+        <RenameViewDialog
+          connectionId={connectionId}
+          target={renameViewTarget}
+          onClose={() => setRenameViewTarget(null)}
+          onDone={() => {
+            setRenameViewTarget(null);
+            refresh(connectionId);
+          }}
+        />
+      )}
+      {dropViewTarget && (
+        <DropViewDialog
+          connectionId={connectionId}
+          target={dropViewTarget}
+          onClose={() => setDropViewTarget(null)}
+          onDone={() => {
+            setDropViewTarget(null);
             refresh(connectionId);
           }}
         />
@@ -1247,6 +1275,8 @@ interface TableActions {
   onRename: (table: TableInfo) => void;
   onDrop: (table: TableInfo) => void;
   onEmpty: (table: TableInfo) => void;
+  onRenameView: (view: TableInfo) => void;
+  onDropView: (view: TableInfo) => void;
   driver: Driver | undefined;
 }
 
@@ -1685,6 +1715,52 @@ function TableRow({
             </ContextMenuItem>
           </>
         )}
+        {/* Views: no column/index/FK editing (a view has none of its own),
+            but the definition itself is editable — see issue #86. MongoDB
+            views are read-only aggregation pipelines, so excluded here too
+            (same reasoning as the table-DDL guard above). */}
+        {!isMongo && isView && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onSelect={() =>
+                actions.openTab({
+                  kind: "view",
+                  viewMode: "edit",
+                  title: `${t.name} (${ct("tabs.viewSuffix")})`,
+                  connectionId,
+                  schema: t.schema,
+                  view: t.name,
+                })
+              }
+            >
+              {ct("schema.context.editView")}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => actions.onRenameView(t)}>
+              {ct("schema.context.renameView")}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() => actions.onDropView(t)}
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+            >
+              {ct("schema.context.dropView")}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onSelect={() =>
+                actions.openTab({
+                  kind: "view",
+                  viewMode: "new",
+                  title: ct("schema.context.newView"),
+                  connectionId,
+                  schema: t.schema,
+                })
+              }
+            >
+              {ct("schema.context.newView")}
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -1776,6 +1852,144 @@ function RenameTableDialog({
             }
           >
             {submitting ? t("schema.rename.renaming") : t("schema.rename.submit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Same shape as {@link RenameTableDialog} but for a view — calls
+ *  `renameView` instead of `renameTable`. Kept as a separate component
+ *  rather than parametrizing the table one, since the latter is tightly
+ *  coupled to the table API call. */
+function RenameViewDialog({
+  connectionId,
+  target,
+  onClose,
+  onDone,
+}: {
+  connectionId: string;
+  target: TableInfo;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const [newName, setNewName] = useState(target.name);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === target.name) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.renameView(connectionId, target.schema, target.name, trimmed);
+      onDone();
+    } catch (e) {
+      setError(String(e));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("schema.renameView.title")}</DialogTitle>
+          <DialogDescription>
+            {t("schema.renameView.description", { name: target.name })}
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          autoFocus
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder={t("schema.rename.newName")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+        />
+        {error && (
+          <div className="text-xs text-destructive">
+            {t("schema.renameView.failed", { message: error })}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            onClick={submit}
+            disabled={
+              submitting ||
+              !newName.trim() ||
+              newName.trim() === target.name
+            }
+          >
+            {submitting ? t("schema.rename.renaming") : t("schema.rename.submit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Same shape as {@link DropTableDialog} but for a view — calls `dropView`
+ *  instead of `dropTable`. A view holds no data of its own, so unlike
+ *  `EmptyTableDialog`'s preference-gated confirmation, this always confirms
+ *  (dropping a view definition is not something to skip confirming). */
+function DropViewDialog({
+  connectionId,
+  target,
+  onClose,
+  onDone,
+}: {
+  connectionId: string;
+  target: TableInfo;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.dropView(connectionId, target.schema, target.name);
+      onDone();
+    } catch (e) {
+      setError(String(e));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("schema.dropView.title", { name: target.name })}</DialogTitle>
+          <DialogDescription>{t("schema.dropView.description")}</DialogDescription>
+        </DialogHeader>
+        {error && (
+          <div className="text-xs text-destructive">
+            {t("schema.dropView.failed", { message: error })}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            variant="destructive"
+            autoFocus
+            onClick={submit}
+            disabled={submitting}
+          >
+            {submitting ? t("schema.drop.dropping") : t("schema.drop.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

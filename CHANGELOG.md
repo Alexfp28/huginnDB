@@ -6,6 +6,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Views can now be created, edited, renamed and dropped from the schema
+  explorer (#86).** Until now a view showed up in the tree read-only —
+  its context menu offered only Open / Copy name / Copy SELECT / Refresh,
+  with every DDL action explicitly gated off (`!isView` in
+  `SchemaExplorer.tsx`), and the backend had no query to even read a view's
+  definition (`pg_get_viewdef` / `information_schema.views` /
+  `sqlite_master.sql` were never called). The only way to touch a view was
+  to hand-write `CREATE OR REPLACE VIEW` in the query editor — exactly the
+  HeidiSQL-style raw-SQL experience the maintainer wanted to avoid,
+  especially for views with several JOINs where it's hard to tell what
+  columns/rows the definition actually produces just by reading the SQL.
+  Rather than build a full visual join/query builder (roadmap item 9,
+  explicitly low priority), the new "Edit view…" tab pairs a full-size
+  Monaco SQL editor for the view body — with the same schema-aware
+  autocomplete as the query editor — with a live, debounced "preview
+  results" grid that runs the current draft (wrapped in a `LIMIT`-ed outer
+  `SELECT`) so the actual columns and rows a JOIN produces are visible
+  while typing, plus a read-only DDL pane (same pattern as the table
+  structure editor) showing the exact statements Apply will run. New
+  backend module `db/view_ddl.rs` builds driver-aware DDL from a diffed
+  `ViewDefinition`: `CREATE OR REPLACE VIEW` on Postgres/MySQL (with an
+  explicit `ALTER VIEW … RENAME TO` / `RENAME TABLE` first when the name
+  changed), and always drop+recreate on SQLite (no `CREATE OR REPLACE
+  VIEW` / `ALTER VIEW` there) — informational only in the UI, since a view
+  holds no data of its own to lose. Five new Tauri commands
+  (`get_view_definition`, `preview_view_change`, `apply_view_change`,
+  `rename_view`, `drop_view`) mirror the existing
+  `get_table_structure`/`preview_structure_change`/`apply_structure_change`
+  shape. MongoDB is excluded in this version, same as table-structure
+  editing — its "views" are read-only aggregation-pipeline collections
+  with a fundamentally different edit model (`collMod`/`createView`).
+
 ### Fixed
 
 - **The MCP connector's write tools could be forced into read-only for a
