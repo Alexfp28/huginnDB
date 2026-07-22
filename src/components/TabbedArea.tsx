@@ -61,6 +61,7 @@ import { resolveConnectionLabel } from "@/lib/connectionLabel";
 import { TableDataTab } from "@/components/TableDataTab";
 import { QueryEditorTab } from "@/components/QueryEditorTab";
 import { StructureEditorTab } from "@/components/StructureEditorTab";
+import { ViewEditorTab } from "@/components/ViewEditorTab";
 import { SecurityTab } from "@/components/SecurityTab";
 import {
   huginnDockviewThemeInner,
@@ -91,6 +92,13 @@ interface StructurePanelParams {
   connectionId: string;
   schema?: string;
   table?: string;
+  mode: "new" | "edit";
+}
+interface ViewPanelParams {
+  tabId: string;
+  connectionId: string;
+  schema?: string;
+  view?: string;
   mode: "new" | "edit";
 }
 
@@ -138,10 +146,24 @@ function StructurePanel(props: IDockviewPanelProps<StructurePanelParams>) {
   );
 }
 
+function ViewPanel(props: IDockviewPanelProps<ViewPanelParams>) {
+  const { tabId, connectionId, schema, view, mode } = props.params;
+  return (
+    <ViewEditorTab
+      tabId={tabId}
+      connectionId={connectionId}
+      schema={schema}
+      view={view}
+      mode={mode}
+    />
+  );
+}
+
 const INNER_COMPONENTS = {
   table: TablePanel,
   query: QueryPanel,
   structure: StructurePanel,
+  view: ViewPanel,
   security: SecurityPanel,
 };
 
@@ -694,6 +716,14 @@ export function TabbedArea(_props: Props) {
           schema: tab.schema,
           table: tab.table,
           mode: tab.structureMode ?? "edit",
+        };
+      } else if (tab.kind === "view") {
+        params = {
+          tabId: tab.id,
+          connectionId: tab.connectionId,
+          schema: tab.schema,
+          view: tab.view,
+          mode: tab.viewMode ?? "edit",
         };
       } else {
         params = { tabId: tab.id, connectionId: tab.connectionId };

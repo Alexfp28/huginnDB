@@ -233,6 +233,29 @@ export interface StructurePreview {
   rebuild: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// View editor — mirror of the Rust DTOs in
+// src-tauri/src/db/view_ddl.rs / src-tauri/src/commands/view.rs.
+// ---------------------------------------------------------------------------
+
+export interface ViewDefinition {
+  schema?: string | null;
+  name: string;
+  /** The view body only (a `SELECT ...` statement), never the surrounding
+   *  `CREATE VIEW ... AS`. */
+  query: string;
+}
+
+export interface ViewPreview {
+  statements: string[];
+  /** True when applying redefines the view via drop+recreate rather than
+   *  `CREATE OR REPLACE VIEW` (always the case on SQLite, which has neither
+   *  `CREATE OR REPLACE VIEW` nor `ALTER VIEW`). Informational only — a view
+   *  holds no data of its own, so unlike the SQLite table rebuild this isn't
+   *  gated behind a destructive-confirmation dialog. */
+  dropAndRecreate: boolean;
+}
+
 /** Column descriptor in a `QueryResult`. */
 export interface ColumnMeta {
   name: string;
@@ -275,9 +298,11 @@ export interface BatchResult {
 }
 
 /** Tabs in the main workspace can host either table data or a query editor. */
-export type TabKind = "table" | "query" | "structure" | "security";
+export type TabKind = "table" | "query" | "structure" | "security" | "view";
 
-/** New-table vs edit-existing for a structure tab. */
+/** New-table vs edit-existing for a structure tab. Reused as-is for view
+ *  tabs ("new" view vs "edit" an existing one) — same semantics, no need
+ *  for a parallel `ViewMode` type. */
 export type StructureMode = "new" | "edit";
 
 export interface AppTab {
@@ -287,6 +312,11 @@ export interface AppTab {
   connectionId: string;
   schema?: string;
   table?: string;
+  /** For `kind: "view"` tabs: the view name being edited; absent when
+   *  `viewMode` is `"new"`. */
+  view?: string;
+  /** For view tabs: whether we're creating a new view or editing one. */
+  viewMode?: StructureMode;
   /** User-assigned tab colour (hex, e.g. `#ef4444`). Undefined = no colour.
    *  Purely cosmetic; persisted per connection. */
   color?: string;

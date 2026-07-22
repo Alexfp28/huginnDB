@@ -231,7 +231,11 @@
       "rename": "Renombrar…",
       "empty": "Vaciar tabla…",
       "drop": "Eliminar tabla…",
-      "dropDatabase": "Eliminar base de datos…"
+      "dropDatabase": "Eliminar base de datos…",
+      "editView": "Editar vista…",
+      "newView": "Nueva vista…",
+      "renameView": "Renombrar vista…",
+      "dropView": "Eliminar vista…"
     },
     "rename": {
       "title": "Renombrar tabla",
@@ -246,6 +250,16 @@
       "description": "Esto elimina la tabla y todos sus datos de forma permanente. No se puede deshacer.",
       "submit": "Eliminar tabla",
       "dropping": "Eliminando…",
+      "failed": "Error al eliminar: {{message}}"
+    },
+    "renameView": {
+      "title": "Renombrar vista",
+      "description": "Renombrar {{name}} a:",
+      "failed": "Error al renombrar: {{message}}"
+    },
+    "dropView": {
+      "title": "¿Eliminar vista {{name}}?",
+      "description": "Esto elimina la definición de la vista de forma permanente. Las tablas subyacentes y sus datos no se ven afectados. No se puede deshacer.",
       "failed": "Error al eliminar: {{message}}"
     },
     "empty": {
@@ -468,10 +482,24 @@
     },
     "readOnlyMongo": "Solo lectura (MongoDB)"
   },
+  "view": {
+    "loading": "Cargando vista…",
+    "viewName": "Vista",
+    "viewNamePlaceholder": "nombre_vista",
+    "apply": "Aplicar",
+    "applying": "Aplicando…",
+    "applyFailed": "Error al aplicar: {{message}}",
+    "refresh": "Recargar definición del servidor",
+    "ddlPreview": "Vista previa DDL",
+    "dropRecreateNote": "elimina y recrea (sin pérdida de datos — las vistas no tienen)",
+    "previewTitle": "Vista previa en vivo",
+    "previewEmptyQuery": "Escribe un SELECT para ver una vista previa en vivo de las columnas y filas."
+  },
   "tabs": {
     "queryFileName": "query.sql",
     "tableFallback": "Tabla",
     "structureSuffix": "estructura",
+    "viewSuffix": "vista",
     "closeTab": "Cerrar pestaña",
     "closeOthers": "Cerrar las demás",
     "closeToRight": "Cerrar las de la derecha",
