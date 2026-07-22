@@ -527,7 +527,8 @@ pub(crate) async fn execute_batch_inner(
     let driver = driver_str(&pool);
 
     if let DbPool::Mongo(conn) = &pool {
-        return crate::db::mongo::query::execute_batch(conn, &statements).await;
+        return crate::db::mongo::query::execute_batch(conn, &statements, sink, &connection_id)
+            .await;
     }
 
     let mut outcomes: Vec<StmtOutcome> = Vec::with_capacity(statements.len());
@@ -904,18 +905,36 @@ pub(crate) async fn fetch_table_data_inner(
     if let DbPool::Mongo(conn) = &pool {
         let f = filters.clone().unwrap_or_default();
         let sc = search_columns.clone().unwrap_or_default();
-        return crate::db::mongo::query::fetch_collection_data(
-            conn,
-            &table,
-            limit,
-            offset,
-            &order,
-            &f,
-            search.as_deref().filter(|s| !s.is_empty()),
-            &sc,
-            want_count,
+        let search_ref = search.as_deref().filter(|s| !s.is_empty());
+        let start = Instant::now();
+        let result = crate::db::mongo::query::fetch_collection_data(
+            conn, &table, limit, offset, &order, &f, search_ref, &sc, want_count,
         )
         .await;
+        let sql_text = crate::db::mongo::query::describe_find(
+            &table, &f, search_ref, &sc, &order, limit, offset,
+        );
+        match &result {
+            Ok(r) => log_sql_sink(
+                sink,
+                &connection_id,
+                "mongodb",
+                &sql_text,
+                start,
+                Some(r.rows.len() as u64),
+                None,
+            ),
+            Err(e) => log_sql_sink(
+                sink,
+                &connection_id,
+                "mongodb",
+                &sql_text,
+                start,
+                None,
+                Some(&e.to_string()),
+            ),
+        }
+        return result;
     }
 
     let driver = driver_str(&pool);

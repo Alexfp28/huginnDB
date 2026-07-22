@@ -62,6 +62,37 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   pestañas de cada conexión activa primero, y los cambios de disposición
   programan un guardado igual que ya lo hacían los cambios de pestaña.
 
+- **La actividad de MongoDB nunca llegaba a la consola.** Tanto explorar una
+  colección (`fetch_table_data`) como ejecutar un lote multi-sentencia de
+  mongosh (`execute_batch`) delegaban directamente en el módulo del driver
+  de Mongo sin llegar a construir nunca una entrada de log — a diferencia de
+  la ruta de sentencia única y de insertar/actualizar/eliminar, que ya
+  registraban correctamente. Todos los demás drivers registraban cada
+  lectura y escritura; MongoDB solo registraba escrituras emitidas de una en
+  una. Ahora explorar una colección registra una línea reconstruida
+  `db.<colección>.find(filtro).sort().skip().limit()` (no hay una sentencia
+  literal que repetir, como sí la hay cuando el usuario la escribe a mano), y
+  cada sentencia de un lote de mongosh se registra individualmente, igual
+  que en la ruta de lote SQL.
+
+- **El constructor de filtro avanzado devolvía silenciosamente cero
+  resultados en MongoDB al filtrar un campo numérico (o booleano).** El chip
+  «Filtrar por este valor» del menú contextual envía el valor de la celda ya
+  tipado (por ejemplo, el número JS `183`), pero el campo de valor del
+  diálogo de filtro avanzado es una casilla de texto plano — siempre enviaba
+  el texto introducido como una cadena JSON. Postgres/MySQL/SQLite no lo
+  notan: el tipo de un parámetro sin tipar se infiere de la columna con la
+  que se compara, así que un texto `"183"` sigue coincidiendo con una
+  columna `integer`. La igualdad de MongoDB, en cambio, es de tipo BSON
+  exacto, y un `string` `"183"` nunca coincide con un `int32` 183
+  almacenado — así que el mismo filtro que funcionaba desde el menú
+  contextual devolvía cero filas desde el diálogo. El diálogo ahora convierte
+  el valor introducido a número/booleano según el tipo de la columna antes
+  de aplicar el filtro (los operadores de coincidencia de subcadena —
+  contiene/empieza por/termina en — conservan el texto tal cual, ya que
+  esos siempre son una coincidencia de texto/regex independientemente del
+  tipo de columna).
+
 ## [1.9.0] — 2026-07-20
 
 ### Corregido

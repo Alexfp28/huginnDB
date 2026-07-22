@@ -34,11 +34,49 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { isNumericType } from "@/lib/utils";
-import type { ColumnInfo, ColumnFilter, FilterOp } from "@/types";
+import { isBooleanType, isNumericType } from "@/lib/utils";
+import type { CellValue, ColumnInfo, ColumnFilter, FilterOp } from "@/types";
 
 /** Operators that don't consume a value. */
 const VALUELESS_OPS: FilterOp[] = ["is_null", "is_not_null"];
+
+/** Operators that match as text/regex regardless of the column's type — the
+ *  raw string is always right for these, so they're excluded from the
+ *  type-coercion below. */
+const TEXT_MATCH_OPS: FilterOp[] = [
+  "contains",
+  "not_contains",
+  "starts_with",
+  "ends_with",
+];
+
+/**
+ * Coerce the draft row's raw text input into a properly-typed value for
+ * equality/ordering operators, mirroring what the right-click "Filter by
+ * this value" chip already sends (the cell's already-typed value, e.g. a
+ * JS number). Without this, every advanced-filter value left this dialog as
+ * a plain string — harmless for the SQL drivers (Postgres/MySQL/SQLite
+ * infer the bound parameter's type from the column it's compared against),
+ * but MongoDB's equality is exact-BSON-type: a `string` "183" never matches
+ * a stored `int32` 183, so the same filter that worked from the context
+ * menu silently returned nothing from this dialog.
+ */
+function coerceFilterValue(
+  raw: string,
+  op: FilterOp,
+  dataType: string | undefined,
+): CellValue {
+  if (!dataType || TEXT_MATCH_OPS.includes(op)) return raw;
+  if (isNumericType(dataType)) {
+    const n = Number(raw);
+    if (raw.trim() !== "" && Number.isFinite(n)) return n;
+  } else if (isBooleanType(dataType)) {
+    const t = raw.trim().toLowerCase();
+    if (t === "true" || t === "1") return true;
+    if (t === "false" || t === "0") return false;
+  }
+  return raw;
+}
 
 /** True for date/time-ish column types (used to offer ordered comparisons). */
 function isDateType(dataType: string): boolean {
@@ -137,7 +175,9 @@ export function AdvancedFilterDialog({
         return {
           column: r.column,
           op: r.op,
-          value: valueless ? undefined : r.value,
+          value: valueless
+            ? undefined
+            : coerceFilterValue(r.value, r.op, typeByColumn.get(r.column)),
         };
       });
     onApply(filters);

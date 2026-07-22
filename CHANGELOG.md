@@ -54,6 +54,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   active connection's tab state synchronously first, and layout changes
   schedule a save the same way tab changes already did.
 
+- **MongoDB activity never reached the Console.** Browsing a collection
+  (`fetch_table_data`) and running a multi-statement mongosh batch
+  (`execute_batch`) both delegated straight to the Mongo driver module
+  without ever building a log entry — unlike the single-statement path,
+  insert/update/delete, which already logged correctly. Every other driver
+  logged every read and write; MongoDB only logged writes issued one
+  statement at a time. Collection browsing now logs a reconstructed
+  `db.<collection>.find(filter).sort().skip().limit()` line (there's no
+  literal statement to echo the way a hand-typed one has), and each
+  statement in a mongosh batch logs individually, same as the SQL batch path.
+
+- **The advanced filter builder silently returned nothing on MongoDB when
+  filtering a numeric (or boolean) field.** The right-click "Filter by this
+  value" chip sends the cell's already-typed value (e.g. the JS number
+  `183`), but the advanced-filter dialog's value input is a plain text box —
+  it always sent the typed-in text as a JSON string. Postgres/MySQL/SQLite
+  don't notice: an unbound parameter's type is inferred from the column it's
+  compared against, so a text `"183"` still matches an `integer` column.
+  MongoDB's equality is exact-BSON-type, though, and a `string` `"183"`
+  never matches a stored `int32` 183 — so the identical filter that worked
+  from the context menu returned zero rows from the dialog. The dialog now
+  coerces the typed value to a number/boolean based on the column's type
+  before applying the filter (substring-match operators — contains/starts
+  with/ends with — keep the raw text, since those are always a text/regex
+  match regardless of column type).
+
 ## [1.9.0] — 2026-07-20
 
 ### Fixed
