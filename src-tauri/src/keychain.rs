@@ -17,6 +17,12 @@ use keyring::Entry;
 /// All HuginnDB credentials share this service so they show up grouped in
 /// platform credential managers and can be cleanly removed if a user
 /// uninstalls the application.
+///
+/// Intentionally **not** build-aware (unlike [`crate::app_identity::APP_DIR`],
+/// which isolates the on-disk state of a canary build): a canary shares this
+/// service with the stable install on purpose, so it can dogfood against the
+/// production connection passwords without the user re-entering them. See the
+/// `crate::app_identity` module docs.
 pub const SERVICE: &str = "io.huginndb.app";
 
 /// Build a keyring `Entry` for `account` under the HuginnDB service.

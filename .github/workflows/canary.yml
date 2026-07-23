@@ -1,0 +1,151 @@
+name: canary
+
+# Rolling "canary" channel — builds a pre-release of HuginnDB from ANY branch
+# or commit, WITHOUT cutting a real release tag, so the maintainer can dogfood
+# an in-progress change against production connection profiles before promoting
+# it to a stable release.
+#
+# What makes it safe to run next to the stable install:
+#   * `--features canary` isolates the app's on-disk state into a separate
+#     `HuginnDB-Canary` config directory (see src-tauri/src/app_identity.rs),
+#     so destructive on-disk migrations never touch production state.
+#   * `--config src-tauri/tauri.canary.conf.json` gives it a separate bundle
+#     identifier (`io.huginndb.canary`), product name, and its own updater feed.
+#   * The OS keychain service is deliberately NOT isolated (see keychain.rs),
+#     so the canary reuses the passwords the stable build already stored.
+#
+# Manual only. Pick the branch to build in the Actions UI (or override via the
+# `ref` input) and, optionally, the target version the change is headed for.
+# Each run REPLACES the single rolling `canary` release, so the updater feed at
+#   https://github.com/Alexfp28/huginnDB/releases/download/canary/latest.json
+# always points at the newest canary build. Installed canary apps pick it up on
+# next launch exactly like the stable updater — but on their own channel.
+#
+# Uses the same signing keypair as the stable release (see release.yml); the
+# public key in tauri.conf.json is inherited by the canary config, so canary
+# updater artifacts verify with the same key.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or commit SHA to build (defaults to the branch this run was started from)"
+        required: false
+        default: ""
+      version:
+        description: "Target version the change is headed for, e.g. 1.10.1 (defaults to the version in tauri.conf.json). The build is stamped <version>-canary.<run_number>."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Match the stable release platform (see release.yml for why
+          # windows-2022 is pinned rather than windows-latest).
+          - platform: windows-2022
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Build the branch/commit the maintainer asked for; fall back to
+          # whatever branch this dispatch was started from.
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Stamp an ephemeral prerelease version so the canary updater feed always
+      # advances. base = the `version` input, or the current tauri.conf.json
+      # version when omitted; final = <base>-canary.<run_number>. Because it
+      # carries a prerelease suffix it sorts BELOW the equivalent stable version
+      # (e.g. 1.10.1-canary.7 < 1.10.1), so a canary build never outranks a real
+      # release even if their base versions match. Injected into the canary
+      # config overlay (which Tauri merges over the base config at build time).
+      - name: Compute and stamp canary version
+        id: ver
+        shell: bash
+        run: |
+          base="${{ github.event.inputs.version }}"
+          if [ -z "$base" ]; then
+            base="$(jq -r .version src-tauri/tauri.conf.json)"
+          fi
+          canary="${base}-canary.${{ github.run_number }}"
+          echo "canary=$canary" >> "$GITHUB_OUTPUT"
+          tmp="$(mktemp)"
+          jq --arg v "$canary" '.version = $v' src-tauri/tauri.canary.conf.json > "$tmp"
+          mv "$tmp" src-tauri/tauri.canary.conf.json
+          echo "Canary version: $canary"
+
+      # Stage the huginndb-mcp sidecar exactly as the stable release does — the
+      # canary bundle inherits `bundle.externalBin`, and tauri-build's build.rs
+      # hard-fails without the sidecar file present for the target triple. See
+      # release.yml + CLAUDE.md gotcha #22 for why the touch/rm/cp dance is
+      # load-bearing. The sidecar itself is built stable (its only APP_DIR use
+      # is the MCP audit-log path); isolating it too isn't worth the feature
+      # passthrough, see docs/CANARY.md.
+      - name: Build and stage the huginndb-mcp sidecar
+        shell: bash
+        run: |
+          triple="$(rustc -Vv | sed -n 's/^host: //p')"
+          mkdir -p src-tauri/binaries
+          touch "src-tauri/binaries/huginndb-mcp-${triple}.exe" "src-tauri/binaries/huginndb-mcp-${triple}"
+          cargo build --release -p huginndb-mcp --manifest-path src-tauri/Cargo.toml
+          rm -f "src-tauri/binaries/huginndb-mcp-${triple}.exe" "src-tauri/binaries/huginndb-mcp-${triple}"
+          if [ -f src-tauri/target/release/huginndb-mcp.exe ]; then
+            cp src-tauri/target/release/huginndb-mcp.exe "src-tauri/binaries/huginndb-mcp-${triple}.exe"
+          else
+            cp src-tauri/target/release/huginndb-mcp "src-tauri/binaries/huginndb-mcp-${triple}"
+          fi
+
+      # Wipe the previous rolling canary release + tag so the channel holds only
+      # the newest build's assets (installer filenames carry the version, so
+      # without this they would accumulate on the release forever). tauri-action
+      # below recreates the `canary` tag at the checked-out commit.
+      - name: Remove previous canary release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete canary --yes --cleanup-tag --repo "${{ github.repository }}" || true
+
+      - name: Build and publish canary release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: canary
+          releaseName: "HuginnDB Canary ${{ steps.ver.outputs.canary }}"
+          releaseBody: |
+            Rolling **canary** channel — a pre-release build for testing an in-progress change against production profiles before it ships in a stable release. Installs side-by-side with the stable HuginnDB (separate identifier + isolated on-disk state, shared OS keychain).
+
+            Not intended for general use. This release is replaced on every canary build.
+          releaseDraft: false
+          prerelease: true
+          args: --config src-tauri/tauri.canary.conf.json --features canary ${{ matrix.args }}

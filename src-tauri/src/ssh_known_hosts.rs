@@ -29,7 +29,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 const FILE: &str = "known_hosts.json";
-const APP_DIR: &str = "HuginnDB";
+/// Aliased from [`crate::app_identity`] so a `canary` build isolates its state.
+const APP_DIR: &str = crate::app_identity::APP_DIR;
 
 /// On-disk shape of the host-key store.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

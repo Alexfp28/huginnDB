@@ -380,7 +380,8 @@ const AUDIT_FILE: &str = "mcp-audit.log";
 /// available (audit then silently degrades to no-op — it must never fail a
 /// write).
 fn audit_log_path() -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|base| base.join("HuginnDB").join(AUDIT_FILE))
+    dirs::config_dir()
+        .map(|base| base.join(crate::app_identity::APP_DIR).join(AUDIT_FILE))
 }
 
 /// [`LogSink`] that appends a line to `mcp-audit.log` for every write the
