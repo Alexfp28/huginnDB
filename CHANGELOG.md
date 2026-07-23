@@ -165,6 +165,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   that reference other fields) work through `run_query` the same as they do
   in `mongosh`.
 
+### Security
+
+- **Manually verified the MCP connector's write-policy gate end-to-end
+  against a real profile set, using an actual AI client (Claude Code driving
+  `huginndb-mcp`) rather than a unit test.** `list_connections` was called
+  first, read-only (no state touched): of every exposed connection —
+  production databases and real client sandboxes included — exactly one
+  (an internal ITBacking test server) carried `mcp_write: "data"`; every
+  other connection sat at the safe `read-only` default, exactly as
+  `McpWritePolicy::default()` (`state.rs`) guarantees for any profile that
+  never had a level explicitly raised in Settings → MCP. An `insert_row`
+  call was then attempted against that one `data`-policy connection, on a
+  connection-less config table (no customer data, no foreign keys) — the
+  lowest-risk target available — as a full round-trip check (insert, verify,
+  update, delete, leaving no residue). The write never reached
+  `Huginn::require_class`: Claude Code's own tool-permission layer (the
+  client driving the MCP session, not code in this repo) intercepted the
+  call and withheld it pending explicit user authorization, even though the
+  server-side policy would have allowed it. This confirms the two gates are
+  independent and both intact — a permissive per-connection `mcp_write`
+  policy is necessary but not sufficient; the calling AI client's own
+  action-approval prompt is a second, separate backstop, not a
+  redundant/interchangeable one. No code changes resulted; this is a release
+  checklist entry, not a fix.
+
 ## [1.9.1] — 2026-07-22
 
 ### Fixed
