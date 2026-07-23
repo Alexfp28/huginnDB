@@ -909,6 +909,27 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_10_0": {
+        "tagline": "View editing lands in the schema explorer, alongside fully customizable keyboard shortcuts and quicker grid actions.",
+        "items": {
+          "viewsEditor": {
+            "title": "Views can now be created, edited and dropped",
+            "body": "The schema explorer's new \"Edit view…\" tab pairs a full Monaco SQL editor with a live preview grid and a read-only DDL pane — no more hand-writing CREATE OR REPLACE VIEW."
+          },
+          "betweenFilter": {
+            "title": "A `between` operator in the Advanced Filter",
+            "body": "Filter an inclusive range in a single condition — on PostgreSQL, MySQL, SQLite and MongoDB — instead of stacking a >= row and a <= row."
+          },
+          "shortcuts": {
+            "title": "Customizable keyboard shortcuts",
+            "body": "Settings → Shortcuts lets you rebind six actions — open settings, command palette, tab switcher, refresh, run query and the new expand-cell shortcut — with collision checks and a reset-all button."
+          },
+          "gridQuickActions": {
+            "title": "Faster data-grid actions",
+            "body": "Click a selected cell to reveal an expand icon for a quick full-value view, and use Ctrl+C / Ctrl+V to copy and paste cell values directly — no more double-clicking just to read."
+          }
+        }
+      },
       "1_9_0": {
         "tagline": "Your AI tools can now write to your databases — safely, on your terms, one connection at a time.",
         "items": {
