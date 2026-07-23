@@ -17,7 +17,7 @@ import { useFilterHistory } from "@/stores/filterHistory";
 import {
   flushTabState,
   hydrateTabState,
-  persistActiveConnections,
+  persistLaunchState,
 } from "@/stores/persistedTabs";
 import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
@@ -111,11 +111,11 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     await api.connect(id, password, sshSecret);
     get().markConnected(id);
 
-    // Persist the updated live-connection set opportunistically so an abrupt
-    // close (crash, kill) still leaves the launch flow something to
-    // auto-reconnect. The definitive write happens on graceful close.
-    // No-op outside the main window (see `persistActiveConnections`).
-    persistActiveConnections(Array.from(get().active));
+    // Persist the updated launch state opportunistically so an abrupt close
+    // (crash, kill) still leaves the launch flow something to auto-reconnect
+    // and refocus. The definitive write happens on graceful close. No-op
+    // outside the main window (see `persistLaunchState`).
+    void persistLaunchState(Array.from(get().active));
 
     // Rehydrate the persisted workspace (open tabs + schema-tree
     // expansion) before we kick off the version probe, so the user sees
@@ -151,8 +151,8 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     await flushTabState(id);
     await api.disconnect(id);
     get().markDisconnected(id);
-    // Keep the persisted live-connection set in sync (see `connect`).
-    persistActiveConnections(Array.from(get().active));
+    // Keep the persisted launch state in sync (see `connect`).
+    void persistLaunchState(Array.from(get().active));
   },
   markDisconnected: (id) => {
     // An explicit disconnect isn't a "lost" connection — clear any stale
