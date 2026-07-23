@@ -30,7 +30,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 const TAB_STATE_FILE: &str = "tab_state.json";
-const APP_DIR: &str = "HuginnDB";
+/// Aliased from [`crate::app_identity`] so a `canary` build isolates its state.
+const APP_DIR: &str = crate::app_identity::APP_DIR;
 
 /// Soft cap on how many connections are remembered. Older entries (by
 /// `last_opened`) get pruned at save time.

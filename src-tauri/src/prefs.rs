@@ -20,8 +20,9 @@ use std::path::PathBuf;
 const PREFS_FILE: &str = "prefs.json";
 
 /// Application directory within the platform's config base. Matches the
-/// directory used by [`crate::store`].
-const APP_DIR: &str = "HuginnDB";
+/// directory used by [`crate::store`]; aliased from [`crate::app_identity`]
+/// so a `canary` build isolates its state.
+const APP_DIR: &str = crate::app_identity::APP_DIR;
 
 /// Top-level preferences blob. Bumped on incompatible schema changes; the
 /// `#[serde(default)]` everywhere means older files keep loading.

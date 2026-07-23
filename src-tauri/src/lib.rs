@@ -15,6 +15,7 @@
 //! * [`store`]     — on-disk persistence for non-sensitive profile metadata.
 //! * [`error`]     — common error type, serialised to the frontend.
 
+mod app_identity;
 mod commands;
 mod db;
 mod error;

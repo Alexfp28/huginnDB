@@ -114,3 +114,10 @@ custom-protocol = ["tauri/custom-protocol"]
 # sibling `mcp-server` crate. Off by default: `pnpm tauri:build` / a plain
 # `cargo build` here produce only the desktop app.
 mcp = ["dep:rmcp", "dep:schemars", "dep:anyhow"]
+# Canary build: isolates the on-disk state directory into `HuginnDB-Canary`
+# (see src/app_identity.rs) so a pre-release can be dogfooded side-by-side with
+# the stable install without risking production state. Pure compile-time
+# switch — no extra dependencies. Paired at build time with
+# `tauri.canary.conf.json` (separate bundle identifier + updater feed). The OS
+# keychain service is deliberately NOT split by this feature (see keychain.rs).
+canary = []

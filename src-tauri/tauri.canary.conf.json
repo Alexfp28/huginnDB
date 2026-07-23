@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "HuginnDB Canary",
+  "identifier": "io.huginndb.canary",
+  "app": {
+    "windows": [
+      {
+        "title": "HuginnDB Canary",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "decorations": true,
+        "transparent": false,
+        "resizable": true,
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Alexfp28/huginnDB/releases/download/canary/latest.json"
+      ]
+    }
+  }
+}

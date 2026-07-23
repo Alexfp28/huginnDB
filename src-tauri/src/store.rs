@@ -18,7 +18,10 @@ use std::path::PathBuf;
 const PROFILES_FILE: &str = "profiles.json";
 
 /// Application directory within the platform's config base.
-const APP_DIR: &str = "HuginnDB";
+///
+/// Aliased from [`crate::app_identity`] so a `canary` build isolates its
+/// state into a separate directory (see that module).
+const APP_DIR: &str = crate::app_identity::APP_DIR;
 
 /// Resolve (and create on demand) the path where profiles live.
 fn profiles_path() -> AppResult<PathBuf> {

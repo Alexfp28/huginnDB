@@ -19,6 +19,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   is persisted on graceful close and opportunistically on each
   connect/disconnect, so even an abrupt exit leaves something to restore.
 
+- **Canary build channel.** A new opt-in pre-release channel lets a change be
+  dogfooded against real production connection profiles *before* it ships in a
+  stable release — no full release required. A canary build (compiled with the
+  new `canary` Cargo feature, paired with `src-tauri/tauri.canary.conf.json`)
+  installs side-by-side with the stable app: it has its own bundle identifier
+  (`io.huginndb.canary`), product name ("HuginnDB Canary"), and a separate
+  auto-updater feed, and it isolates all of its on-disk state into a dedicated
+  `HuginnDB-Canary` config directory. That isolation means a canary can safely
+  exercise destructive, one-way on-disk migrations without ever touching the
+  stable install's `profiles.json` / `tab_state.json` / `prefs.json`. The OS
+  keychain service is deliberately *shared*, so the canary reuses the passwords
+  the stable build already stored rather than forcing them to be re-entered.
+  Builds are produced by a manual `canary` GitHub Actions workflow from any
+  branch or commit and published to a single rolling `canary` release; see
+  `docs/CANARY.md`.
+
 ### Changed
 
 - **The workspace pane layout is now session-level, not per-connection.**
