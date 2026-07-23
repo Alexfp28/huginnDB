@@ -123,22 +123,38 @@ pub fn save_workspace_layout(
     Ok(())
 }
 
-/// Return the connection ids that were live in the main window when it last
-/// closed, so the launch flow can auto-reconnect them (gated on the
-/// `reconnectOnLaunch` preference).
-#[tauri::command]
-pub fn get_active_connections(state: State<'_, AppState>) -> AppResult<Vec<String>> {
-    Ok(state.tab_state.read().active_connections.clone())
+/// The main window's launch-restore state: which connections were live at
+/// last close, plus which one was focused and which tab was active. Restored
+/// on the next launch after auto-reconnect (gated on `reconnectOnLaunch`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchState {
+    pub active_connections: Vec<String>,
+    pub selected_connection_id: Option<String>,
+    pub active_tab_id: Option<String>,
 }
 
-/// Record which connections are currently live in the main window, so the
-/// next launch can restore them. Written on window close (and opportunistically
-/// as the active set changes) — see `src/stores/persistedTabs.ts`.
+/// Return the persisted launch-restore state.
 #[tauri::command]
-pub fn save_active_connections(state: State<'_, AppState>, ids: Vec<String>) -> AppResult<()> {
+pub fn get_launch_state(state: State<'_, AppState>) -> AppResult<LaunchState> {
+    let guard = state.tab_state.read();
+    Ok(LaunchState {
+        active_connections: guard.active_connections.clone(),
+        selected_connection_id: guard.selected_connection_id.clone(),
+        active_tab_id: guard.active_tab_id.clone(),
+    })
+}
+
+/// Record the launch-restore state (live connections, focused connection,
+/// active tab) so the next launch can restore it. Written on window close and
+/// opportunistically on connect/disconnect — see `src/stores/persistedTabs.ts`.
+#[tauri::command]
+pub fn save_launch_state(state: State<'_, AppState>, launch_state: LaunchState) -> AppResult<()> {
     let snapshot = {
         let mut guard = state.tab_state.write();
-        guard.active_connections = ids;
+        guard.active_connections = launch_state.active_connections;
+        guard.selected_connection_id = launch_state.selected_connection_id;
+        guard.active_tab_id = launch_state.active_tab_id;
         guard.clone()
     };
     tab_state::save_tab_state(&snapshot)?;

@@ -71,6 +71,7 @@ import { startPrefsSyncBridge } from "@/lib/prefs-sync-bridge";
 import {
   flushAllTabState,
   hydrateWorkspaceLayout,
+  persistLaunchState,
 } from "@/stores/persistedTabs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CliConnectChoiceDialog } from "@/components/CliConnectChoiceDialog";
@@ -273,48 +274,72 @@ export default function App() {
     refreshConnections();
   }, [refreshConnections]);
 
-  // Launch restore (main window only): reapply the session-level workspace
-  // layout, then — if the `reconnectOnLaunch` preference is on — reconnect to
-  // the connections that were live when the app last closed. Reconnect uses
-  // the secrets already in the OS keychain (connect() falls back to them when
-  // no password is passed); a connection whose secret is missing or whose
-  // host is unreachable simply fails its own promise and is skipped, never
-  // blocking boot. Ids already active (e.g. opened by a CLI intent that raced
-  // this effect) are filtered out to avoid a double connect. Runs once.
+  // Launch restore (main window only, `reconnectOnLaunch` on): reconnect to
+  // the connections that were live at last close, then restore focus + the
+  // session workspace layout. Order is load-bearing: the layout `fromJSON`
+  // must run AFTER the reconnected tabs are in `useTabs`, or the TabbedArea
+  // reconciler would delete the panels it just built (see
+  // `hydrateWorkspaceLayout`). Reconnect uses the OS-keychain secrets
+  // (connect() falls back to them); a connection whose secret is missing or
+  // whose host is unreachable fails its own promise and is skipped, never
+  // blocking boot. Ids already active (e.g. from a racing CLI intent) are
+  // filtered out to avoid a double connect. Runs once.
   const launchRestoreDone = useRef(false);
   useEffect(() => {
     if (launchRestoreDone.current) return;
     if (getCurrentWindow().label !== "main") return;
     launchRestoreDone.current = true;
     void (async () => {
-      // Stash the persisted geometry for TabbedArea to consume when it mounts
-      // (gated on `restoreTabsOnOpen` inside the call).
-      await hydrateWorkspaceLayout();
-
       if (!usePreferences.getState().prefs.ui.reconnectOnLaunch) return;
-      let ids: string[];
+      let launchState: Awaited<ReturnType<typeof api.getLaunchState>>;
       try {
-        ids = await api.getActiveConnections();
+        launchState = await api.getLaunchState();
       } catch (e) {
-        console.error("[launch] failed to read active connections", e);
+        console.error("[launch] failed to read launch state", e);
         return;
       }
-      if (ids.length === 0) return;
-      // The boot-time refresh may not have resolved yet; ensure the profile
-      // list is loaded so we only reconnect ids that still exist.
-      await refreshConnections();
-      const loaded = useConnections.getState().profiles;
-      const alreadyActive = useConnections.getState().active;
-      const toConnect = ids.filter(
-        (id) => loaded.some((p) => p.id === id) && !alreadyActive.has(id),
-      );
-      await Promise.allSettled(
-        toConnect.map((id) =>
-          connectProfile(id).catch((e) => {
-            console.warn(`[launch] auto-reconnect failed for ${id}`, e);
-          }),
-        ),
-      );
+      if (launchState.activeConnections.length > 0) {
+        // The boot-time refresh may not have resolved yet; ensure the profile
+        // list is loaded so we only reconnect ids that still exist.
+        await refreshConnections();
+        const loaded = useConnections.getState().profiles;
+        const alreadyActive = useConnections.getState().active;
+        const toConnect = launchState.activeConnections.filter(
+          (id) => loaded.some((p) => p.id === id) && !alreadyActive.has(id),
+        );
+        // connect() awaits hydrateTabState, so once all settle every
+        // reconnected connection's tabs are in `useTabs`.
+        await Promise.allSettled(
+          toConnect.map((id) =>
+            connectProfile(id).catch((e) => {
+              console.warn(`[launch] auto-reconnect failed for ${id}`, e);
+            }),
+          ),
+        );
+      }
+
+      // Restore the session layout now that the tabs are present.
+      if (useTabs.getState().tabs.length > 0) {
+        await hydrateWorkspaceLayout();
+      }
+
+      // Restore focus: the schema-explorer/status-bar connection and the
+      // globally-active tab. Done after reconnect so it isn't clobbered by the
+      // nondeterministic order pools finish opening (the App auto-select
+      // effect otherwise picks whichever connected first).
+      const nowActive = useConnections.getState().active;
+      if (
+        launchState.selectedConnectionId &&
+        nowActive.has(launchState.selectedConnectionId)
+      ) {
+        setSelected(launchState.selectedConnectionId);
+      }
+      if (
+        launchState.activeTabId &&
+        useTabs.getState().tabs.some((t) => t.id === launchState.activeTabId)
+      ) {
+        useTabs.getState().setActive(launchState.activeTabId);
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -591,13 +616,12 @@ export default function App() {
         event.preventDefault();
         closing = true;
         try {
-          // Record which connections are live so the next launch can
-          // auto-reconnect them, then flush tabs + the session layout.
-          await api.saveActiveConnections(
-            Array.from(useConnections.getState().active),
-          );
+          // Record the launch state (live connections, focused connection,
+          // active tab) so the next launch restores it, then flush tabs + the
+          // session layout. Awaited — the window destroys right after.
+          await persistLaunchState(Array.from(useConnections.getState().active));
         } catch (err) {
-          console.error("[connections] save-active-on-close failed:", err);
+          console.error("[connections] save-launch-state-on-close failed:", err);
         }
         try {
           await flushAllTabState();

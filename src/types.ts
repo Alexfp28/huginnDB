@@ -544,6 +544,18 @@ export interface ConnectionTabState {
  */
 export type WorkspaceLayout = unknown | null;
 
+/**
+ * The main window's launch-restore state: which connections were live at last
+ * close, which one the schema explorer / status bar was focused on, and which
+ * tab was globally active. Restored after auto-reconnect so the workspace
+ * comes back the way it was left, independent of reconnect order.
+ */
+export interface LaunchState {
+  activeConnections: string[];
+  selectedConnectionId: string | null;
+  activeTabId: string | null;
+}
+
 export interface PersistedTab {
   id: string;
   kind: TabKind;

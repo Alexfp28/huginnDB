@@ -49,6 +49,7 @@ import { api } from "@/lib/tauri";
 import i18n from "@/lib/i18n";
 import { useTabs } from "@/stores/tabs";
 import { useSchema } from "@/stores/schema";
+import { useUi } from "@/stores/ui";
 import { usePreferences } from "@/stores/preferences";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -164,13 +165,27 @@ export function scheduleSaveActive() {
   }, SAVE_DEBOUNCE_MS);
 }
 
-/** Persist the set of connections currently live in this (main) window, so
- *  the next launch can auto-reconnect them. Best-effort; fire-and-forget. */
-export function persistActiveConnections(ids: string[]): void {
-  if (!isMainWindow()) return;
-  void api.saveActiveConnections(ids).catch((err) => {
-    console.error("[persistedTabs] active-connections save failed:", err);
-  });
+/**
+ * Persist the launch-restore state: the connections currently live in this
+ * (main) window (passed in by the caller to avoid importing `useConnections`
+ * and creating an import cycle), plus the focused connection (`useUi`) and the
+ * globally-active tab (`useTabs`). Best-effort; fire-and-forget. The
+ * definitive write happens on graceful close; connect/disconnect calls keep it
+ * roughly fresh for an abrupt exit.
+ */
+export function persistLaunchState(
+  activeConnectionIds: string[],
+): Promise<void> {
+  if (!isMainWindow()) return Promise.resolve();
+  return api
+    .saveLaunchState({
+      activeConnections: activeConnectionIds,
+      selectedConnectionId: useUi.getState().selectedConnectionId,
+      activeTabId: useTabs.getState().activeId,
+    })
+    .catch((err) => {
+      console.error("[persistedTabs] launch-state save failed:", err);
+    });
 }
 
 /**
@@ -250,14 +265,19 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
 }
 
 /**
- * Restore the session-level inner-dockview geometry once at launch. Reads the
- * top-level `workspaceLayout` blob and hands it to the inner dockview: if it
- * is already mounted, apply `fromJSON` directly; otherwise stash it for
- * `TabbedArea.onReady` to consume when it mounts. `fromJSON` is the
- * authoritative panel+geometry rebuild (gotcha #10); the TabbedArea
- * reconciler then converges as each connection hydrates its tabs (orphan
- * panels removed, any missing tab added tabbed). Main-window-only and gated
- * on `restoreTabsOnOpen`, matching `hydrateTabState`.
+ * Restore the session-level inner-dockview geometry once at launch, AFTER the
+ * launch flow has populated `useTabs` (i.e. after auto-reconnect settles).
+ * Ordering matters: `fromJSON` recreates panels from the stored params, but
+ * the TabbedArea reconciler removes any panel whose tab isn't in `useTabs` —
+ * so if this ran with an empty tab store (as it did in the first cut), the
+ * reconciler would immediately delete the geometry `fromJSON` had just built.
+ * Called with the tabs already present, `fromJSON` is stable and no later
+ * reconciler pass nukes it.
+ *
+ * `fromJSON` is authoritative (gotcha #10). After it we prune panels for tabs
+ * that never came back (a connection that failed to reconnect), matching the
+ * reconciler's own removal step, so a half-restored session doesn't leave dead
+ * panels around. Main-window-only and gated on `restoreTabsOnOpen`.
  */
 export async function hydrateWorkspaceLayout(): Promise<void> {
   if (!isMainWindow()) return;
@@ -268,15 +288,22 @@ export async function hydrateWorkspaceLayout(): Promise<void> {
     setPendingInternalLayout(layout);
     const innerApi = getInnerDockviewApi();
     if (innerApi) {
-      // Already mounted — consume the pending blob ourselves so onReady
-      // (which won't fire again) doesn't leave it dangling.
+      // Already mounted (the common case — TabbedArea mounts at boot). Consume
+      // the pending blob ourselves so a future onReady can't replay a stale
+      // one, apply it, and prune orphans.
       setPendingInternalLayout(null);
       try {
         innerApi.fromJSON(layout as Parameters<typeof innerApi.fromJSON>[0]);
+        const live = new Set(useTabs.getState().tabs.map((t) => t.id));
+        for (const panel of innerApi.panels) {
+          if (!live.has(panel.id)) innerApi.removePanel(panel);
+        }
       } catch (err) {
         console.warn("[persistedTabs] workspace layout restore failed:", err);
       }
     }
+    // If not mounted yet, the blob stays pending: `TabbedArea.onReady` replays
+    // it and its reconciler effect (tabs already present) prunes/adds to match.
   } catch (err) {
     console.error("[persistedTabs] workspace layout hydrate failed:", err);
   }

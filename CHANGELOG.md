@@ -15,9 +15,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   reconnect to each host by hand (and, because of the layout bug below, in
   the *right order*) to get your workspace back. Connections whose password
   isn't stored, or whose host is unreachable, are skipped without blocking
-  startup; the toggle lets you opt out entirely. The set of live connections
-  is persisted on graceful close and opportunistically on each
-  connect/disconnect, so even an abrupt exit leaves something to restore.
+  startup; the toggle lets you opt out entirely. The launch state — which
+  connections were live, which one was focused, and which tab was active — is
+  persisted on graceful close and opportunistically on each
+  connect/disconnect, so the workspace comes back the way you left it (same
+  connection in focus, same tab, same pane layout) regardless of the order the
+  pools happen to reopen, and even an abrupt exit leaves something to restore.
 
 - **Canary build channel.** A new opt-in pre-release channel lets a change be
   dogfooded against real production connection profiles *before* it ships in a

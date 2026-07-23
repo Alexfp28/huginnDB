@@ -70,6 +70,15 @@ pub struct PersistedTabState {
     /// `reconnectOnLaunch` preference). Stale ids (profile since deleted)
     /// are harmless — the reconnect step skips any id with no profile.
     pub active_connections: Vec<String>,
+    /// The connection the schema explorer / status bar was focused on at last
+    /// close (`useUi.selectedConnectionId`). Restored after auto-reconnect so
+    /// the same connection is in focus, instead of whichever pool happened to
+    /// open first. `None` if nothing was selected.
+    pub selected_connection_id: Option<String>,
+    /// The globally-active tab id at last close (`useTabs.activeId`). Restored
+    /// after auto-reconnect so the same tab body is shown. `None` if no tab
+    /// was open.
+    pub active_tab_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +127,8 @@ impl Default for PersistedTabState {
             connections: HashMap::new(),
             internal_layout: None,
             active_connections: Vec::new(),
+            selected_connection_id: None,
+            active_tab_id: None,
         }
     }
 }
@@ -170,6 +181,10 @@ struct RawState {
     internal_layout: Option<serde_json::Value>,
     /// v3 (auto-reconnect-on-launch onward).
     active_connections: Vec<String>,
+    /// v3 (launch-focus restore onward).
+    selected_connection_id: Option<String>,
+    /// v3 (launch-focus restore onward).
+    active_tab_id: Option<String>,
 }
 
 /// Just enough of the removed v2 `Workspace` shape to migrate it — we don't
@@ -186,6 +201,8 @@ impl RawState {
     /// migrating v1/v2 → v3 in the process.
     fn into_state(self) -> PersistedTabState {
         let active_connections = self.active_connections;
+        let selected_connection_id = self.selected_connection_id;
+        let active_tab_id = self.active_tab_id;
         let top_level_layout = self.internal_layout;
 
         // v2: discard every workspace except the active one (or the first,
@@ -215,6 +232,8 @@ impl RawState {
             connections,
             internal_layout,
             active_connections,
+            selected_connection_id,
+            active_tab_id,
         }
     }
 }
@@ -451,11 +470,28 @@ mod tests {
     }
 
     #[test]
-    fn active_connections_round_trip() {
-        let blob = r#"{ "version": 3, "activeConnections": ["a", "b"] }"#;
+    fn launch_state_round_trips() {
+        let blob = r#"{
+            "version": 3,
+            "activeConnections": ["a", "b"],
+            "selectedConnectionId": "a",
+            "activeTabId": "tab-1"
+        }"#;
         let raw: RawState = serde_json::from_str(blob).unwrap();
         let state = raw.into_state();
         assert_eq!(state.active_connections, vec!["a", "b"]);
+        assert_eq!(state.selected_connection_id.as_deref(), Some("a"));
+        assert_eq!(state.active_tab_id.as_deref(), Some("tab-1"));
+    }
+
+    #[test]
+    fn launch_state_absent_defaults_to_none() {
+        let blob = r#"{ "version": 3 }"#;
+        let raw: RawState = serde_json::from_str(blob).unwrap();
+        let state = raw.into_state();
+        assert!(state.active_connections.is_empty());
+        assert!(state.selected_connection_id.is_none());
+        assert!(state.active_tab_id.is_none());
     }
 }
 

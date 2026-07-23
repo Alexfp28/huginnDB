@@ -43,6 +43,7 @@ import type {
   ViewDefinition,
   ViewPreview,
   WorkspaceLayout,
+  LaunchState,
 } from "@/types";
 
 export const api = {
@@ -417,15 +418,14 @@ export const api = {
   saveWorkspaceLayout: (layout: WorkspaceLayout) =>
     invoke<void>("save_workspace_layout", { layout }),
 
-  /** Connection ids that were live in the main window at last close, for
-   *  auto-reconnect on launch. */
-  getActiveConnections: () =>
-    invoke<string[]>("get_active_connections"),
+  /** The main window's launch-restore state (live connections, focused
+   *  connection, active tab) for auto-reconnect + focus restore on launch. */
+  getLaunchState: () =>
+    invoke<LaunchState>("get_launch_state"),
 
-  /** Record which connections are currently live so the next launch can
-   *  restore them. */
-  saveActiveConnections: (ids: string[]) =>
-    invoke<void>("save_active_connections", { ids }),
+  /** Persist the launch-restore state so the next launch can restore it. */
+  saveLaunchState: (launchState: LaunchState) =>
+    invoke<void>("save_launch_state", { launchState }),
 
   // Multi-window -----------------------------------------------------------
 
