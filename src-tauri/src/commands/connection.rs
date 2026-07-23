@@ -1012,6 +1012,14 @@ pub async fn open_new_window(app: AppHandle, intent: Option<StartupArgs>) -> App
         .title("HuginnDB")
         .inner_size(1400.0, 900.0)
         .min_inner_size(900.0, 600.0)
+        // Mirror the main window's `dragDropEnabled: false` (tauri.conf.json).
+        // The main window is declared statically with that flag; a window built
+        // here would otherwise default to Tauri 2's OS-level drag-drop handler
+        // being ENABLED, which swallows the HTML5 drag events dockview relies on
+        // — so panels can't be rearranged and dragging shows the "not-allowed"
+        // cursor. Disabling the native handler lets dockview's own DnD through,
+        // matching the main window exactly.
+        .disable_drag_drop_handler()
         .build()?;
     Ok(label)
 }
