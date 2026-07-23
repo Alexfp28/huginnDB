@@ -59,6 +59,7 @@ const DEFAULT_PREFS: Preferences = {
     confirmEmptyTable: true,
     queryHistoryLimit: 50,
     restoreTabsOnOpen: true,
+    reconnectOnLaunch: true,
     schemaTableMetric: "none",
     language: "en",
     cellEditorMode: "modal",

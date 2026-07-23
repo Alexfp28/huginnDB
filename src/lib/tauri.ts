@@ -41,6 +41,7 @@ import type {
   UserInfo,
   ViewDefinition,
   ViewPreview,
+  WorkspaceLayout,
 } from "@/types";
 
 export const api = {
@@ -405,6 +406,25 @@ export const api = {
   /** Drop the persisted tab state for a connection. */
   clearTabState: (connectionId: string) =>
     invoke<void>("clear_tab_state", { connectionId }),
+
+  /** Read the session-level inner-dockview geometry (or `null` for the
+   *  default tabbed layout). Main-window-only, like the tab-state calls. */
+  getWorkspaceLayout: () =>
+    invoke<WorkspaceLayout>("get_workspace_layout"),
+
+  /** Persist the session-level inner-dockview geometry (`null` clears it). */
+  saveWorkspaceLayout: (layout: WorkspaceLayout) =>
+    invoke<void>("save_workspace_layout", { layout }),
+
+  /** Connection ids that were live in the main window at last close, for
+   *  auto-reconnect on launch. */
+  getActiveConnections: () =>
+    invoke<string[]>("get_active_connections"),
+
+  /** Record which connections are currently live so the next launch can
+   *  restore them. */
+  saveActiveConnections: (ids: string[]) =>
+    invoke<void>("save_active_connections", { ids }),
 
   // Multi-window -----------------------------------------------------------
 

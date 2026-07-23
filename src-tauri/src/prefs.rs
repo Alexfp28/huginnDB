@@ -95,6 +95,14 @@ pub struct UiPrefs {
     pub confirm_empty_table: bool,
     pub query_history_limit: u32,
     pub restore_tabs_on_open: bool,
+    /// Whether the main window reconnects, on launch, to the connections that
+    /// were live when it last closed (their ids are persisted in
+    /// `tab_state.json`). Reconnect uses the secrets already in the OS
+    /// keychain; a connection whose secret isn't there (or whose host is
+    /// unreachable) is skipped without blocking startup. Default `true`.
+    /// Independent of `restore_tabs_on_open`, which governs whether a
+    /// connection's tabs/layout come back *once* it is connected.
+    pub reconnect_on_launch: bool,
     /// Schema-tree metric column. One of "none" | "row-count" | "size".
     /// Stringly-typed so the frontend `ViewMenu` enum stays the source of
     /// truth; the backend doesn't interpret the value.
@@ -185,6 +193,7 @@ impl Default for UiPrefs {
             confirm_empty_table: true,
             query_history_limit: 50,
             restore_tabs_on_open: true,
+            reconnect_on_launch: true,
             schema_table_metric: "none".into(),
             language: "en".into(),
             cell_editor_mode: "modal".into(),

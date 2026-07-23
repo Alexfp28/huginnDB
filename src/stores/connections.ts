@@ -14,7 +14,11 @@
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
 import { useFilterHistory } from "@/stores/filterHistory";
-import { flushTabState, hydrateTabState } from "@/stores/persistedTabs";
+import {
+  flushTabState,
+  hydrateTabState,
+  persistActiveConnections,
+} from "@/stores/persistedTabs";
 import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
@@ -107,6 +111,12 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     await api.connect(id, password, sshSecret);
     get().markConnected(id);
 
+    // Persist the updated live-connection set opportunistically so an abrupt
+    // close (crash, kill) still leaves the launch flow something to
+    // auto-reconnect. The definitive write happens on graceful close.
+    // No-op outside the main window (see `persistActiveConnections`).
+    persistActiveConnections(Array.from(get().active));
+
     // Rehydrate the persisted workspace (open tabs + schema-tree
     // expansion) before we kick off the version probe, so the user sees
     // their previous layout immediately on reconnect. The call honours
@@ -141,6 +151,8 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     await flushTabState(id);
     await api.disconnect(id);
     get().markDisconnected(id);
+    // Keep the persisted live-connection set in sync (see `connect`).
+    persistActiveConnections(Array.from(get().active));
   },
   markDisconnected: (id) => {
     // An explicit disconnect isn't a "lost" connection — clear any stale

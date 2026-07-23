@@ -628,6 +628,10 @@
         "label": "Restaurar pestañas al abrir una conexión",
         "desc": "Reabrir las pestañas SQL y de datos que tenías abiertas la última vez que usaste esta conexión."
       },
+      "reconnectOnLaunch": {
+        "label": "Reconectar al iniciar",
+        "desc": "Al arrancar la aplicación, reconectar automáticamente a las conexiones que estaban abiertas la última vez que la cerraste. Usa las credenciales guardadas en el llavero del sistema; se omiten las conexiones cuya contraseña no esté almacenada."
+      },
       "queryHistoryLimit": {
         "label": "Tamaño del historial de queries",
         "desc": "Número máximo de queries recientes guardadas en el historial."
