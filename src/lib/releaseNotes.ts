@@ -23,7 +23,10 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,
+  Copy,
+  Eye,
   HardDrive,
+  Keyboard,
   ListFilter,
   ListTree,
   Palette,
@@ -64,6 +67,33 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.10.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_10_0.tagline",
+    highlights: [
+      {
+        icon: Eye,
+        titleKey: "whatsNew.releases.1_10_0.items.viewsEditor.title",
+        bodyKey: "whatsNew.releases.1_10_0.items.viewsEditor.body",
+      },
+      {
+        icon: ListFilter,
+        titleKey: "whatsNew.releases.1_10_0.items.betweenFilter.title",
+        bodyKey: "whatsNew.releases.1_10_0.items.betweenFilter.body",
+      },
+      {
+        icon: Keyboard,
+        titleKey: "whatsNew.releases.1_10_0.items.shortcuts.title",
+        bodyKey: "whatsNew.releases.1_10_0.items.shortcuts.body",
+      },
+      {
+        icon: Copy,
+        titleKey: "whatsNew.releases.1_10_0.items.gridQuickActions.title",
+        bodyKey: "whatsNew.releases.1_10_0.items.gridQuickActions.body",
+      },
+    ],
+  },
   {
     version: "1.9.0",
     major: true,

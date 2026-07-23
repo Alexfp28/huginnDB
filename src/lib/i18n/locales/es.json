@@ -909,6 +909,27 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_10_0": {
+        "tagline": "La edición de vistas llega al explorador de esquema, junto a atajos de teclado totalmente personalizables y acciones de rejilla más rápidas.",
+        "items": {
+          "viewsEditor": {
+            "title": "Las vistas ya se pueden crear, editar y eliminar",
+            "body": "La nueva pestaña «Editar vista…» del explorador combina un editor Monaco completo con una rejilla de previsualización en vivo y un panel de DDL de solo lectura — sin necesidad de escribir a mano CREATE OR REPLACE VIEW."
+          },
+          "betweenFilter": {
+            "title": "Nuevo operador «between» en el Filtro avanzado",
+            "body": "Filtra un rango inclusivo en una sola condición — en PostgreSQL, MySQL, SQLite y MongoDB — en vez de apilar una fila >= y otra <=."
+          },
+          "shortcuts": {
+            "title": "Atajos de teclado personalizables",
+            "body": "Ajustes → Atajos permite reasignar seis acciones — ajustes, paleta de comandos, cambio de pestañas, refrescar, ejecutar consulta y el nuevo atajo de expandir celda — con detección de colisiones y un botón de restablecer todo."
+          },
+          "gridQuickActions": {
+            "title": "Acciones más rápidas en la rejilla de datos",
+            "body": "Un icono de expandir aparece al hacer clic en una celda seleccionada para ver su valor completo, y ahora Ctrl+C / Ctrl+V copian y pegan el valor de la celda directamente — sin necesidad de doble clic solo para leer."
+          }
+        }
+      },
       "1_9_0": {
         "tagline": "Tus herramientas de IA ya pueden escribir en tus bases de datos — de forma segura, bajo tus condiciones, conexión a conexión.",
         "items": {

@@ -8,6 +8,211 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-07-23
+
+### Añadido
+
+- **Las vistas ya se pueden crear, editar, renombrar y eliminar desde el
+  explorador de esquema (#86).** Hasta ahora una vista aparecía en el árbol
+  en modo solo lectura — su menú contextual solo ofrecía Abrir / Copiar
+  nombre / Copiar SELECT / Refrescar, con toda acción DDL explícitamente
+  bloqueada (`!isView` en `SchemaExplorer.tsx`), y el backend ni siquiera
+  tenía una consulta para leer la definición de una vista (`pg_get_viewdef`
+  / `information_schema.views` / `sqlite_master.sql` nunca se llamaban). La
+  única forma de tocar una vista era escribir a mano `CREATE OR REPLACE
+  VIEW` en el editor de consultas — exactamente la experiencia de SQL en
+  crudo al estilo HeidiSQL que el mantenedor quería evitar, sobre todo en
+  vistas con varios JOIN donde es difícil saber qué columnas/filas produce
+  realmente la definición solo leyendo el SQL. En vez de construir un
+  constructor visual de consultas/joins completo (punto 9 del roadmap,
+  explícitamente de baja prioridad), la nueva pestaña «Editar vista…»
+  combina un editor Monaco a tamaño completo para el cuerpo de la vista —
+  con el mismo autocompletado consciente del esquema que el editor de
+  consultas — con una rejilla de «previsualización de resultados» en vivo
+  y con debounce que ejecuta el borrador actual (envuelto en un `SELECT`
+  externo con `LIMIT`) para que las columnas y filas reales que produce un
+  JOIN sean visibles mientras se escribe, más un panel de DDL de solo
+  lectura (mismo patrón que el editor de estructura de tabla) que muestra
+  las sentencias exactas que ejecutará Aplicar. Cinco nuevos comandos de
+  Tauri (`get_view_definition`, `preview_view_change`, `apply_view_change`,
+  `rename_view`, `drop_view`) siguen la misma forma que los ya existentes
+  `get_table_structure`/`preview_structure_change`/`apply_structure_change`.
+  MongoDB queda excluido en esta versión, igual que la edición de
+  estructura de tabla — sus «vistas» son colecciones de agregación de solo
+  lectura con un modelo de edición fundamentalmente distinto
+  (`collMod`/`createView`).
+
+- **Un operador `between` en el Filtro avanzado, unificando el filtrado por
+  rango en todos los drivers (#81).** El constructor de filtro avanzado ya
+  ofrecía `contains`/`not_contains`/`starts_with`/`ends_with` de forma
+  consistente en Postgres, MySQL, SQLite y MongoDB (verificado al investigar
+  este issue — el `contains` de MySQL ya funcionaba vía la ruta compartida
+  `CAST(col AS CHAR) LIKE`), pero no existía ningún operador para filtrar un
+  rango inclusivo en una sola condición; el usuario tenía que apilar una fila
+  `gt`/`gte` y otra `lt`/`lte`. `FilterOp::Between` es ahora una única
+  variante compartida consumida por `build_filter_clause` (SQL: `col BETWEEN
+  ? AND ?` / `BETWEEN $N AND $N+1`) y por `build_filter` de Mongo (`{ $gte,
+  $lte }`), respaldada por un nuevo campo `value2` en `ColumnFilter`
+  (añadido tanto en el struct de Rust como en su espejo de TypeScript — un
+  valor que serde descartaría en silencio si no, ver gotcha #14). El diálogo
+  lo ofrece junto a `gt`/`gte`/`lt`/`lte` para columnas numéricas/de fecha y
+  muestra un segundo input «hasta» al seleccionarlo.
+
+- **Un clic ahora muestra un icono directo de «expandir» sobre la celda
+  seleccionada, para ver su valor completo sin tener que hacer antes
+  doble clic y entrar en modo edición (#78).** Antes la única forma de ver
+  el contenido completo de una celda larga era hacer doble clic, lo que en
+  una celda editable también entraba en modo edición inline — un efecto
+  secundario no deseado cuando el usuario solo quería *leer* el valor. La
+  rama plana (sin edición) del renderizador de celdas de `DataGrid` ahora
+  comprueba si la celda coincide con `selectedCell` (fijado con un clic
+  simple, comparado por la misma identidad referencial
+  `rowValues`/`row.original` que se usa en el resto de la rejilla — ver
+  gotcha #7) y, si es así, dibuja un pequeño botón `Maximize2` junto al
+  valor. Al pulsarlo llama al ya existente `openHeavyEditor`, sin cambios,
+  así que ya respeta la preferencia `cellEditorMode` del usuario (modal vs.
+  panel lateral acoplado) igual que el propio botón de expandir del editor
+  inline y el botón de pantalla completa del panel de previsualización de
+  celda. El icono aparece de forma uniforme en columnas de texto, FK y BIT,
+  y en resultados de consulta de solo lectura — es puramente un visor de
+  valores, nunca un editor, así que no hace falta excluir ningún tipo de
+  columna.
+
+- **Ctrl+C / Ctrl+V ahora funcionan sobre la celda seleccionada de la
+  rejilla de datos (#79).** `handleGridKeyDown` ignoraba deliberadamente
+  cualquier combinación con Ctrl/Cmd (para no interferir con el copiar/pegar
+  nativo del navegador), lo que hacía que Ctrl+C sobre una celda no copiara
+  nada, ya que un `<td>` no tiene selección de texto nativa que copiar.
+  Ctrl+C y Ctrl+V ahora tienen un caso especial antes de ese bloqueo
+  general: Ctrl+C copia el valor en crudo de la celda seleccionada con el
+  ratón (recurriendo a la celda activa navegada con teclado si no se ha
+  clicado ninguna) mediante el mismo helper `copyToClipboard` que ya usa el
+  «Copiar» del menú contextual de clic derecho. Ctrl+V lee
+  `navigator.clipboard` y siembra `inlineEdit` con el texto pegado en vez
+  del valor actual de la celda — reutilizando exactamente el mismo flujo de
+  confirmar/cancelar de `CellInput` que una edición normal por doble clic,
+  así que Enter/blur guarda el valor pegado y Escape lo descarta. Las
+  columnas FK y BIT no tienen un control de texto libre en el que pegar
+  (usan un combobox / `<select>`), así que pegar es, por ahora, un no-op
+  deliberado ahí; copiar sigue funcionando en todos los tipos de columna.
+
+- **Los atajos de teclado ya se pueden personalizar desde Ajustes → Atajos
+  (#75), desbloqueando la mitad «atajo de teclado» del #78.** El issue #78
+  pedía una alternativa por atajo al icono de expandir añadido arriba, ya
+  que el bajo contraste del icono hace fácil pasarlo por alto — pero eso se
+  dejó explícitamente para el #75. Ahora hay seis acciones reasignables:
+  `openSettings` (Ctrl/Cmd+,), `toggleCommandPalette` (Ctrl/Cmd+K),
+  `toggleTabSwitcher` (Ctrl/Cmd+P), `refreshData` (F5 — Ctrl/Cmd+R se
+  mantiene como alias permanente no reasignable, ya que suprimir la
+  recarga nativa del WebView es una necesidad de seguridad, no una
+  preferencia), `runQuery` (Ctrl+Enter), y el nuevo `expandSelectedCell`
+  (por defecto `Espacio`, imitando el Quick Look de macOS — confirmado sin
+  usar en `handleGridKeyDown` hasta ahora, así que llega sin colisión
+  alguna). Los cambios persisten en `prefs.json` como un nuevo mapa
+  `keybindings` (id de acción → combinación), siguiendo el mismo patrón ya
+  usado por las preferencias `grid`/`editor`/`ui` — un mapa vacío es un
+  estado totalmente válido, ya que la nueva tabla `ACTIONS` de
+  `lib/keybindings.ts` en el frontend es la única fuente de verdad para los
+  valores por defecto. El listener global `keydown` de `App.tsx` y el
+  `handleGridKeyDown` de `DataGrid` ahora comparan contra el atajo activo
+  mediante un helper compartido `matchesBinding` en vez de comprobaciones
+  fijas de `e.key`/`e.ctrlKey` — lo que de paso corrige un bug latente
+  donde `Ctrl+Shift+K` era indistinguible de un simple `Ctrl+K` (ninguna
+  rama comprobaba `shiftKey`). El `editor.addCommand` de Monaco, usado para
+  `runQuery`/`toggleCommandPalette`/`toggleTabSwitcher` dentro de los
+  editores de SQL y de vista, resuelve una máscara de atajo fija una sola
+  vez al registrarse, sin forma de volver a comprobar una combinación en
+  vivo — así que esos tres pasaron a `editor.onKeyDown`
+  (`registerEditorActionRedispatch` en el nuevo `lib/monacoKeybindings.ts`),
+  que lee el atajo activo desde el store en cada pulsación. La UI de
+  Ajustes (`ShortcutsSection`/nuevo `ShortcutRow`) sustituye el antiguo
+  marcador de posición de solo lectura: al hacer clic en una fila entra en
+  modo captura «pulsa una tecla…» (Escape siempre cancela en vez de
+  convertirse en el atajo), una reasignación que choca con la combinación
+  de otra acción se rechaza en el sitio en vez de intercambiar o
+  desvincular nada en silencio, y cada fila más un botón «Restablecer
+  todo» pueden volver al valor por defecto. `expandSelectedCell` reutiliza
+  exactamente el mismo par `resolveTargetCell()`/`openHeavyEditor()` que ya
+  llama el manejador de clic del icono de expandir, así que el icono y el
+  atajo convergen en una única ruta de escalado. También se subió el
+  contraste de ambos iconos de expandir (`DataGrid`/`CellInput`) de
+  `text-muted-foreground/50` a `/80` para que el icono añadido en el #78
+  no necesite hover para notarse.
+
+### Corregido
+
+- **Las columnas espaciales de MySQL (`POINT`, `MULTIPOINT`, …) se
+  clasificaban erróneamente como numéricas en el Filtro avanzado**, porque
+  la comprobación de subcadena `"int"` de `isNumericType` también coincide
+  dentro de la palabra `"point"`. Esas columnas perdían
+  `contains`/`starts_with`/`ends_with` y ganaban comparaciones `>`/`<` sin
+  sentido. Encontrado al auditar la unificación de operadores para el #81;
+  corregido excluyendo la subcadena `"point"` de la comprobación de
+  `"int"`.
+
+- **Las herramientas de escritura del conector MCP podían quedar forzadas
+  a solo lectura para una base de datos MongoDB sobre la que tenían acceso
+  explícito `data`/`full`.** Reportado por un usuario que recibía `has MCP
+  write policy "read-only"` en `update_cell` contra una conexión cuyo nivel
+  en Ajustes → MCP era en realidad `data`. La comprobación de escritura
+  (`Huginn::require_class`) verificaba la política contra el id de pool
+  *resuelto* de `resolve_mongo_target` en vez del id de perfil real. En una
+  conexión Mongo multi-base de datos (con `database` de nivel superior
+  vacío — el caso habitual, ya que HuginnDB no obliga a elegir una base de
+  datos al conectar), una llamada de herramienta que nombra un
+  `schema`/`database` se resuelve al id sintético por base de datos
+  `<connection_id>::db::<name>` para poder dirigirse al pool correcto en
+  vivo — pero ese id sintético nunca es una clave en `profiles.json`, así
+  que la búsqueda de política fallaba en silencio y caía al valor por
+  defecto `ReadOnly`, sin importar cómo estuviera configurada realmente la
+  conexión. `run_query`, `insert_row`, `update_cell` y `delete_rows` ahora
+  verifican contra `a.connection_id` (el id de perfil real) en vez del
+  destino resuelto; el destino resuelto se sigue usando, como antes, para
+  encontrar el pool correcto. Se añadió una prueba de regresión que
+  reproduce el escenario exacto (una conexión Mongo con política `data` y
+  sin base de datos por defecto, direccionada vía `schema`).
+
+- **`updateMany`/`updateOne` rechazaban una actualización con pipeline de
+  agregación (`db.coll.updateMany(filtro, [{ $set: {...} }])`)** con
+  `argument 2 must be a document`, aun cuando el driver `mongodb`
+  subyacente soporta actualizaciones estilo pipeline desde el servidor
+  4.2. El parser al estilo mongosh (`db/mongo/shell.rs`) solo construía un
+  `Document` plano para el argumento `update`. Ahora acepta ambas formas —
+  un nuevo enum `UpdateSpec` (`Document` | `Pipeline`) que refleja
+  `mongodb::options::UpdateModifications` — así que las actualizaciones
+  con pipeline (por ejemplo, `$replaceAll`/`$toUpper`/valores de campo
+  calculados que referencian otros campos) funcionan a través de
+  `run_query` igual que en `mongosh`.
+
+### Seguridad
+
+- **Verificación manual de extremo a extremo de la política de escritura
+  del conector MCP contra un conjunto real de perfiles, usando un cliente
+  de IA real (Claude Code operando `huginndb-mcp`) en vez de una prueba
+  unitaria.** Primero se llamó a `list_connections`, de solo lectura (sin
+  tocar ningún estado): de cada conexión expuesta — incluidas bases de
+  datos de producción y sandboxes reales de clientes — exactamente una (un
+  servidor de pruebas interno de ITBacking) tenía `mcp_write: "data"`;
+  todas las demás conexiones estaban en el valor por defecto seguro
+  `read-only`, tal como garantiza `McpWritePolicy::default()`
+  (`state.rs`) para cualquier perfil al que nunca se le subió el nivel
+  explícitamente en Ajustes → MCP. Después se intentó una llamada
+  `insert_row` contra esa única conexión con política `data`, sobre una
+  tabla de configuración sin relación con datos de clientes (sin datos de
+  cliente, sin claves foráneas) — el objetivo de menor riesgo disponible —
+  como comprobación completa de ida y vuelta (insertar, verificar,
+  actualizar, borrar, sin dejar residuo). La escritura nunca llegó a
+  `Huginn::require_class`: la propia capa de permisos de herramientas de
+  Claude Code (el cliente que conduce la sesión MCP, no código de este
+  repositorio) interceptó la llamada y la retuvo pendiente de autorización
+  explícita del usuario, aunque la política del lado del servidor la
+  habría permitido. Esto confirma que las dos barreras son independientes
+  y ambas están intactas — una política `mcp_write` permisiva por conexión
+  es necesaria pero no suficiente; el propio aviso de aprobación de
+  acciones del cliente de IA que llama es una segunda barrera separada, no
+  una intercambiable/redundante. No hubo cambios de código; esto es una
+  entrada de checklist de release, no una corrección.
+
 ## [1.9.1] — 2026-07-22
 
 ### Corregido

@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-07-23
+
 ### Added
 
 - **Views can now be created, edited, renamed and dropped from the schema
