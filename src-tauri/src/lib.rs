@@ -400,6 +400,7 @@ pub fn run() {
             commands::feedback::mailto_report_url,
             commands::mcp::get_mcp_connector_info,
             commands::mcp::is_mcp_sidecar_running,
+            commands::app::get_app_flavor,
         ])
         .run(tauri::generate_context!())
         .expect("error while running HuginnDB");

@@ -21,6 +21,12 @@
     "copy": "Copy",
     "errorPanelCrashed": "Something went wrong rendering this panel."
   },
+  "sandbox": {
+    "badge": "CANARY",
+    "ribbon": "SANDBOX · {{product}} — pre-release build, isolated from your stable install",
+    "ribbonDetail": "State: {{dir}}",
+    "tooltip": "You are running the canary sandbox build. Its on-disk state is isolated in {{dir}}; it shares the OS keychain with the stable install."
+  },
   "panels": {
     "schema": "Schema",
     "saved": "Saved",

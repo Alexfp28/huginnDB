@@ -21,21 +21,27 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTabs } from "@/stores/tabs";
 import { useConnections } from "@/stores/connections";
 import { useUi } from "@/stores/ui";
+import { useAppFlavor } from "@/stores/appFlavor";
 import {
   resolveConnectionLabel,
   resolveConnectionParts,
 } from "@/lib/connectionLabel";
-
-const APP_NAME = "HuginnDB";
 
 export function WindowTitleSync() {
   const tabs = useTabs((s) => s.tabs);
   const activeId = useTabs((s) => s.activeId);
   const profiles = useConnections((s) => s.profiles);
   const selectedConnectionId = useUi((s) => s.selectedConnectionId);
+  // Flavor-aware app name: the canary build must read "HuginnDB Canary" in the
+  // taskbar / Alt-Tab entry too, otherwise it is indistinguishable from the
+  // stable install from outside the window. Defaults to "HuginnDB" until the
+  // flavor resolves. This is why the OS title set by tauri.canary.conf.json
+  // couldn't stand on its own — this effect used to overwrite it every render.
+  const appName = useAppFlavor((s) => s.productName);
 
   useEffect(() => {
     const activeTab = tabs.find((t) => t.id === activeId);
+    const APP_NAME = appName;
     let title = APP_NAME;
 
     if (activeTab?.table) {
@@ -63,7 +69,7 @@ export function WindowTitleSync() {
       .catch(() => {
         // Capability-scoped IPC; never let a title update break the UI.
       });
-  }, [tabs, activeId, profiles, selectedConnectionId]);
+  }, [tabs, activeId, profiles, selectedConnectionId, appName]);
 
   return null;
 }

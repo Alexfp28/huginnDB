@@ -35,6 +35,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   branch or commit and published to a single rolling `canary` release; see
   `docs/CANARY.md`.
 
+- **Sandbox indicator for the canary build.** Because the canary shares the UI
+  bundle (and the OS keychain) with the stable app, once you were *inside* the
+  window the two were indistinguishable — easy to mistake the sandbox for your
+  real install. The canary build now makes its identity unmistakable: a
+  persistent amber "SANDBOX · HuginnDB Canary" ribbon pinned above the header
+  (with the isolated state dir called out), a "CANARY" badge next to the
+  header brand, a flavor-aware OS window title ("HuginnDB Canary" in the
+  taskbar / Alt-Tab, which the frontend previously overwrote back to
+  "HuginnDB"), and an About panel that shows the canary product name and its
+  real `HuginnDB-Canary` state paths. The stable build is visually unchanged.
+  A new `get_app_flavor` command exposes the compile-time `canary` feature to
+  the frontend, since the two builds ship an identical JS bundle.
+
 ### Changed
 
 - **The workspace pane layout is now session-level, not per-connection.**
