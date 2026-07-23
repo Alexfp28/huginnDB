@@ -21,6 +21,12 @@
     "copy": "Copiar",
     "errorPanelCrashed": "Algo falló al renderizar este panel."
   },
+  "sandbox": {
+    "badge": "CANARY",
+    "ribbon": "SANDBOX · {{product}} — build de pre-lanzamiento, aislado de tu instalación estable",
+    "ribbonDetail": "Estado: {{dir}}",
+    "tooltip": "Estás ejecutando el build canary de sandbox. Su estado en disco está aislado en {{dir}}; comparte el llavero del sistema con la instalación estable."
+  },
   "panels": {
     "schema": "Esquema",
     "saved": "Guardadas",

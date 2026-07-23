@@ -90,6 +90,25 @@ git tag v1.10.1 && git push origin main v1.10.1
    like the stable updater, but isolated to the canary channel.
 3. Point it at your production profiles (see the note above) and test away.
 
+### Telling the sandbox apart from stable
+
+The canary shares the React bundle and the OS keychain with the stable app, so
+once you are inside the window the two would otherwise look identical. The
+canary build makes its identity unmistakable:
+
+- A persistent amber **SANDBOX · HuginnDB Canary** ribbon pinned above the
+  header (it also names the isolated `HuginnDB-Canary` state dir).
+- A **CANARY** badge next to the brand in the header breadcrumb.
+- A flavor-aware OS window title (**HuginnDB Canary** in the taskbar and
+  Alt-Tab switcher), so it is tellable apart from outside the window too.
+- The **About** panel shows the canary product name and the real
+  `HuginnDB-Canary` prefs paths.
+
+None of this appears in the stable build. The frontend learns which flavor it
+is running via the `get_app_flavor` command (`commands::app`), which reports
+the compile-time `canary` Cargo feature — the JS bundle itself is identical
+across flavors, so a runtime query is the only signal available.
+
 ## Building locally
 
 You can also build a canary bundle without CI:

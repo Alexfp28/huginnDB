@@ -33,6 +33,7 @@ import {
 } from "@/stores/update";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { WindowTitleSync } from "@/components/WindowTitleSync";
+import { SandboxRibbon } from "@/components/SandboxRibbon";
 import { getCurrentVersion } from "@/lib/updater";
 import { useWhatsNew } from "@/stores/whatsNew";
 import { WhatsNewDialog } from "@/components/WhatsNewDialog";
@@ -42,6 +43,7 @@ import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
+import { useAppFlavor } from "@/stores/appFlavor";
 import { usePreferences } from "@/stores/preferences";
 import { getBinding, matchesBinding } from "@/lib/keybindings";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
@@ -252,6 +254,7 @@ export default function App() {
     [cliLog, connectProfile, refreshConnections, refreshSchema, setSelected],
   );
   const activeTheme = useThemeStore(selectActiveTheme);
+  const canaryFlavor = useAppFlavor((s) => s.canary);
   const setMode = useThemeStore((s) => s.setActiveMode);
   const hydratePreferences = usePreferences((s) => s.hydrate);
   const language = usePreferences((s) => s.prefs.ui.language);
@@ -337,6 +340,13 @@ export default function App() {
   useEffect(() => {
     void useUpdateStore.getState().checkOnLaunch();
     useUpdateStore.getState().startPeriodicChecks();
+  }, []);
+
+  // Resolve the build flavor (stable vs canary sandbox) once. Runs in EVERY
+  // window — each has its own chrome, and the sandbox ribbon must show in
+  // secondary windows too. Idempotent and failure-tolerant (see the store).
+  useEffect(() => {
+    void useAppFlavor.getState().load();
   }, []);
 
   // One-shot "What's new" presentation: on the first launch after an update
@@ -784,6 +794,7 @@ export default function App() {
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+        <SandboxRibbon />
         <header className="relative flex h-9 items-center border-b border-border px-2">
           {/* Left — File + Window + View + Help menus */}
           <FileMenu selectedConnectionId={selected} onSelect={setSelected} />
@@ -798,6 +809,11 @@ export default function App() {
               <span className="font-semibold tracking-tight">
                 {t("common.brand")}
               </span>
+              {canaryFlavor && (
+                <span className="rounded-sm bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wider text-amber-950 dark:bg-amber-500 dark:text-black">
+                  {t("sandbox.badge")}
+                </span>
+              )}
               {selectedProfile && (
                 <>
                   <span className="text-muted-foreground/40">·</span>

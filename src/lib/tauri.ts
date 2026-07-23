@@ -26,6 +26,7 @@ import type {
   FkOptionsPage,
   IssueOutcome,
   ImportAnalysis,
+  AppFlavor,
   McpConnectorInfo,
   ImportResult,
   IndexInfo,
@@ -581,4 +582,14 @@ export const api = {
    * force-kills the sidecar to overwrite its binary — see `stores/update.ts`.
    */
   isMcpSidecarRunning: () => invoke<boolean>("is_mcp_sidecar_running"),
+
+  // App flavor -------------------------------------------------------------
+
+  /**
+   * Report whether this build is the stable or the isolated `canary` sandbox
+   * build. Resolved from a compile-time `cfg` on the backend — the frontend
+   * bundle is identical across flavors, so runtime IPC is the only signal.
+   * Drives the sandbox indicator (see `stores/appFlavor.ts`).
+   */
+  getAppFlavor: () => invoke<AppFlavor>("get_app_flavor"),
 };

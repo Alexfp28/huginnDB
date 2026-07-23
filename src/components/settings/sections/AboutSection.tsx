@@ -11,15 +11,21 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useUpdateStore } from "@/stores/update";
+import { useAppFlavor } from "@/stores/appFlavor";
 import { getCurrentVersion } from "@/lib/updater";
 import { UpdatesCard } from "./UpdatesCard";
 import { PatchNotesCard } from "./PatchNotesCard";
 
-const PREFS_PATHS: { os: string; path: string }[] = [
-  { os: "Windows", path: "%APPDATA%\\HuginnDB\\prefs.json" },
-  { os: "Linux", path: "$XDG_CONFIG_HOME/HuginnDB/prefs.json" },
-  { os: "macOS", path: "~/Library/Application Support/HuginnDB/prefs.json" },
-];
+/** Build the per-OS prefs paths for a given state dir. The canary build lives
+ *  under "HuginnDB-Canary", so hardcoding "HuginnDB" here would have shown the
+ *  wrong (stable) location in the sandbox — another way the two looked alike. */
+function prefsPaths(stateDir: string): { os: string; path: string }[] {
+  return [
+    { os: "Windows", path: `%APPDATA%\\${stateDir}\\prefs.json` },
+    { os: "Linux", path: `$XDG_CONFIG_HOME/${stateDir}/prefs.json` },
+    { os: "macOS", path: `~/Library/Application Support/${stateDir}/prefs.json` },
+  ];
+}
 
 /**
  * Resolve the running app version. Prefers whatever the update store
@@ -53,12 +59,15 @@ function useResolvedVersion(): string {
 export function AboutSection() {
   const { t } = useTranslation();
   const currentVersion = useResolvedVersion();
+  const productName = useAppFlavor((s) => s.productName);
+  const stateDir = useAppFlavor((s) => s.stateDir);
+  const prefsLocations = prefsPaths(stateDir);
 
   return (
     <div className="space-y-4 text-sm">
       <div className="rounded-md border border-border bg-card/40 p-3">
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-          HuginnDB
+          {productName}
         </div>
         <div className="mt-1 font-mono text-base">{currentVersion}</div>
         <div className="mt-2 text-[12px] text-muted-foreground">
@@ -85,7 +94,7 @@ export function AboutSection() {
           {t("settings.about.prefsLocation")}
         </div>
         <div className="divide-y divide-border/60 rounded-md border border-border">
-          {PREFS_PATHS.map((p) => (
+          {prefsLocations.map((p) => (
             <div
               key={p.os}
               className="flex items-center justify-between gap-4 px-3 py-2"

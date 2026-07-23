@@ -676,6 +676,19 @@ export interface McpConnectorInfo {
   available: boolean;
 }
 
+/** Build flavor of the running app, from `get_app_flavor`. The React bundle is
+ *  identical between stable and canary, so this is the only way the frontend
+ *  can tell it is running inside the isolated sandbox (canary) build. Drives
+ *  the sandbox indicator (ribbon + window title + badge). */
+export interface AppFlavor {
+  /** True when this is the `--features canary` sandbox build. */
+  canary: boolean;
+  /** Product name for this flavor: "HuginnDB Canary" or "HuginnDB". */
+  productName: string;
+  /** Isolated on-disk state dir name ("HuginnDB-Canary" or "HuginnDB"). */
+  stateDir: string;
+}
+
 /** Result of `submit_issue`: `created` is true when filed via the API
  *  (the URL is the created issue), false when it's a pre-filled URL to open. */
 export interface IssueOutcome {
