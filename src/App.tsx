@@ -66,7 +66,10 @@ import { startCliConnectBridge } from "@/lib/cli-connect-bridge";
 import { startConnectionHealthBridge } from "@/lib/connection-health-bridge";
 import { startConnectionSyncBridge } from "@/lib/connection-sync-bridge";
 import { startPrefsSyncBridge } from "@/lib/prefs-sync-bridge";
-import { flushAllTabState } from "@/stores/persistedTabs";
+import {
+  flushAllTabState,
+  hydrateWorkspaceLayout,
+} from "@/stores/persistedTabs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CliConnectChoiceDialog } from "@/components/CliConnectChoiceDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
@@ -266,6 +269,52 @@ export default function App() {
   useEffect(() => {
     refreshConnections();
   }, [refreshConnections]);
+
+  // Launch restore (main window only): reapply the session-level workspace
+  // layout, then — if the `reconnectOnLaunch` preference is on — reconnect to
+  // the connections that were live when the app last closed. Reconnect uses
+  // the secrets already in the OS keychain (connect() falls back to them when
+  // no password is passed); a connection whose secret is missing or whose
+  // host is unreachable simply fails its own promise and is skipped, never
+  // blocking boot. Ids already active (e.g. opened by a CLI intent that raced
+  // this effect) are filtered out to avoid a double connect. Runs once.
+  const launchRestoreDone = useRef(false);
+  useEffect(() => {
+    if (launchRestoreDone.current) return;
+    if (getCurrentWindow().label !== "main") return;
+    launchRestoreDone.current = true;
+    void (async () => {
+      // Stash the persisted geometry for TabbedArea to consume when it mounts
+      // (gated on `restoreTabsOnOpen` inside the call).
+      await hydrateWorkspaceLayout();
+
+      if (!usePreferences.getState().prefs.ui.reconnectOnLaunch) return;
+      let ids: string[];
+      try {
+        ids = await api.getActiveConnections();
+      } catch (e) {
+        console.error("[launch] failed to read active connections", e);
+        return;
+      }
+      if (ids.length === 0) return;
+      // The boot-time refresh may not have resolved yet; ensure the profile
+      // list is loaded so we only reconnect ids that still exist.
+      await refreshConnections();
+      const loaded = useConnections.getState().profiles;
+      const alreadyActive = useConnections.getState().active;
+      const toConnect = ids.filter(
+        (id) => loaded.some((p) => p.id === id) && !alreadyActive.has(id),
+      );
+      await Promise.allSettled(
+        toConnect.map((id) =>
+          connectProfile(id).catch((e) => {
+            console.warn(`[launch] auto-reconnect failed for ${id}`, e);
+          }),
+        ),
+      );
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Hydrate preferences from disk before the user can interact with the
   // settings UI. Failures fall back to defaults inside the store itself,
@@ -531,6 +580,15 @@ export default function App() {
         if (closing) return;
         event.preventDefault();
         closing = true;
+        try {
+          // Record which connections are live so the next launch can
+          // auto-reconnect them, then flush tabs + the session layout.
+          await api.saveActiveConnections(
+            Array.from(useConnections.getState().active),
+          );
+        } catch (err) {
+          console.error("[connections] save-active-on-close failed:", err);
+        }
         try {
           await flushAllTabState();
         } catch (err) {

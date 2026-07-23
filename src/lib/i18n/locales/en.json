@@ -628,6 +628,10 @@
         "label": "Restore tabs when opening a connection",
         "desc": "Reopen the SQL and data tabs you had open the last time you used this connection."
       },
+      "reconnectOnLaunch": {
+        "label": "Reconnect on launch",
+        "desc": "When the app starts, automatically reconnect to the connections that were open when you last closed it. Uses the credentials saved in your OS keychain; connections whose password isn't stored are skipped."
+      },
       "queryHistoryLimit": {
         "label": "Query history size",
         "desc": "Maximum number of recent queries kept in the history panel."

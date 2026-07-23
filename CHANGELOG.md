@@ -6,6 +6,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Reconnect on launch.** A new General preference (default on) makes the
+  main window automatically reconnect, at startup, to the connections that
+  were live when it was last closed — using the credentials already in the
+  OS keychain. Previously the app opened disconnected and you had to
+  reconnect to each host by hand (and, because of the layout bug below, in
+  the *right order*) to get your workspace back. Connections whose password
+  isn't stored, or whose host is unreachable, are skipped without blocking
+  startup; the toggle lets you opt out entirely. The set of live connections
+  is persisted on graceful close and opportunistically on each
+  connect/disconnect, so even an abrupt exit leaves something to restore.
+
+### Changed
+
+- **The workspace pane layout is now session-level, not per-connection.**
+  The inner-dockview split/float geometry (how you've arranged the open
+  table/query tabs) used to be stored redundantly under *every* connection
+  in `tab_state.json`, even though a single inner dockview hosts all
+  connections' tabs at once. On restore, whichever connection you happened
+  to connect to first won — so the layout only came back if you reconnected
+  in a specific order. It's now stored once at the top level of
+  `tab_state.json` and restored a single time at launch, independent of
+  connection order. Existing per-connection layouts are migrated
+  automatically on first load after upgrading (the most-recently-used one is
+  promoted to the session layout), so nobody loses their arrangement.
+
+### Fixed
+
+- **Secondary windows ("New window") can now rearrange their panels.**
+  Dragging a panel in a window opened via the Window menu always showed the
+  "not-allowed" cursor: the window was built without the main window's
+  `dragDropEnabled: false` setting, so Tauri's OS-level drag-drop handler
+  stayed on and swallowed the HTML5 drag events dockview relies on. The
+  secondary-window builder now disables that native handler, matching the
+  main window exactly.
+
 ## [1.10.0] — 2026-07-23
 
 ### Added

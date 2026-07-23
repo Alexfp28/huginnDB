@@ -95,3 +95,52 @@ pub fn clear_tab_state(state: State<'_, AppState>, connection_id: String) -> App
     tab_state::save_tab_state(&snapshot)?;
     Ok(())
 }
+
+/// Return the session-level inner-dockview geometry, or `None` for the
+/// default tabbed layout. Session-level rather than per-connection: the
+/// inner dockview is a single shared instance hosting every connection's
+/// tabs, so its geometry belongs to the session (see
+/// `tab_state::PersistedTabState::internal_layout`). Main-window-only, same
+/// as the per-connection tab-state calls.
+#[tauri::command]
+pub fn get_workspace_layout(state: State<'_, AppState>) -> AppResult<Option<serde_json::Value>> {
+    Ok(state.tab_state.read().internal_layout.clone())
+}
+
+/// Persist the session-level inner-dockview geometry (or `None` to clear it
+/// back to the default tabbed layout) and write the full blob to disk.
+#[tauri::command]
+pub fn save_workspace_layout(
+    state: State<'_, AppState>,
+    layout: Option<serde_json::Value>,
+) -> AppResult<()> {
+    let snapshot = {
+        let mut guard = state.tab_state.write();
+        guard.internal_layout = layout;
+        guard.clone()
+    };
+    tab_state::save_tab_state(&snapshot)?;
+    Ok(())
+}
+
+/// Return the connection ids that were live in the main window when it last
+/// closed, so the launch flow can auto-reconnect them (gated on the
+/// `reconnectOnLaunch` preference).
+#[tauri::command]
+pub fn get_active_connections(state: State<'_, AppState>) -> AppResult<Vec<String>> {
+    Ok(state.tab_state.read().active_connections.clone())
+}
+
+/// Record which connections are currently live in the main window, so the
+/// next launch can restore them. Written on window close (and opportunistically
+/// as the active set changes) — see `src/stores/persistedTabs.ts`.
+#[tauri::command]
+pub fn save_active_connections(state: State<'_, AppState>, ids: Vec<String>) -> AppResult<()> {
+    let snapshot = {
+        let mut guard = state.tab_state.write();
+        guard.active_connections = ids;
+        guard.clone()
+    };
+    tab_state::save_tab_state(&snapshot)?;
+    Ok(())
+}

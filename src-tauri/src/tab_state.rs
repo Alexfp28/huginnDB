@@ -51,6 +51,24 @@ pub const MAX_QUERY_BYTES: usize = 64 * 1024;
 pub struct PersistedTabState {
     pub version: u32,
     pub connections: HashMap<String, ConnectionTabState>,
+    /// Session-level inner-dockview geometry (the workspace's split/float
+    /// arrangement). Opaque dockview `toJSON()` blob; the backend never
+    /// interprets it.
+    ///
+    /// This is deliberately **top-level**, not per-connection: the inner
+    /// dockview is a single shared instance that hosts tabs from *every*
+    /// open connection at once, so its geometry is a property of the
+    /// session, not of any one connection. It used to live inside each
+    /// `ConnectionTabState` (see that field's note), which duplicated the
+    /// same blob under every connection and made restore order-dependent —
+    /// whichever connection hydrated first won. `None`/absent means the
+    /// default tabbed layout.
+    pub internal_layout: Option<serde_json::Value>,
+    /// Connection ids that were live in the main window when it last closed.
+    /// Used to auto-reconnect them on the next launch (gated on the
+    /// `reconnectOnLaunch` preference). Stale ids (profile since deleted)
+    /// are harmless — the reconnect step skips any id with no profile.
+    pub active_connections: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,14 +79,13 @@ pub struct ConnectionTabState {
     pub expanded_schema_nodes: Vec<String>,
     /// Unix timestamp (seconds) of the last save. Drives LRU pruning.
     pub last_opened: i64,
-    /// Opaque dockview `toJSON()` blob describing the workspace's inner
-    /// split/float geometry. The backend never interprets it — it round-trips
-    /// as a raw JSON value so the frontend can restore the exact pane layout.
-    ///
-    /// This MUST be a declared field: `save_tab_state` deserializes the IPC
-    /// payload into this strongly-typed struct, and `#[serde(default)]` with
-    /// no catch-all silently drops any undeclared key, so a "frontend-only"
-    /// field would never reach disk.
+    /// **Deprecated.** Legacy per-connection copy of the inner-dockview
+    /// geometry. As of the session-level layout refactor the geometry lives
+    /// in [`PersistedTabState::internal_layout`] instead; the frontend no
+    /// longer writes this field. It is kept declared only so that (a) old
+    /// blobs still deserialise, and (b) [`RawState::into_state`] can hoist a
+    /// legacy value up to the top level on first load after upgrading. New
+    /// saves always leave it `None`.
     pub internal_layout: Option<serde_json::Value>,
 }
 
@@ -98,6 +115,8 @@ impl Default for PersistedTabState {
         Self {
             version: CURRENT_VERSION,
             connections: HashMap::new(),
+            internal_layout: None,
+            active_connections: Vec::new(),
         }
     }
 }
@@ -146,6 +165,10 @@ struct RawState {
     workspaces: Vec<RawWorkspace>,
     /// v2 only.
     active_workspace_id: Option<String>,
+    /// v3 (session-level layout refactor onward).
+    internal_layout: Option<serde_json::Value>,
+    /// v3 (auto-reconnect-on-launch onward).
+    active_connections: Vec<String>,
 }
 
 /// Just enough of the removed v2 `Workspace` shape to migrate it — we don't
@@ -161,27 +184,52 @@ impl RawState {
     /// Resolve the raw blob into a fully-shaped `PersistedTabState`,
     /// migrating v1/v2 → v3 in the process.
     fn into_state(self) -> PersistedTabState {
+        let active_connections = self.active_connections;
+        let top_level_layout = self.internal_layout;
+
         // v2: discard every workspace except the active one (or the first,
         // if the active id is stale/absent).
-        if !self.workspaces.is_empty() {
+        let connections = if !self.workspaces.is_empty() {
             let active = self
                 .active_workspace_id
                 .as_ref()
                 .and_then(|id| self.workspaces.iter().find(|w| &w.id == id))
                 .or_else(|| self.workspaces.first());
-            let connections = active.map(|w| w.connections.clone()).unwrap_or_default();
-            return PersistedTabState {
-                version: CURRENT_VERSION,
-                connections,
-            };
-        }
+            active.map(|w| w.connections.clone()).unwrap_or_default()
+        } else {
+            // v1 or v3: already flat.
+            self.connections
+        };
 
-        // v1 or v3: already flat, just bump the version.
+        // The inner-dockview geometry used to live per-connection (the same
+        // blob duplicated under every connection). On the first load after
+        // upgrading, the top-level field is absent, so hoist the geometry
+        // from the most-recently-opened connection that still carries one —
+        // that best reflects the session the user last saw. New saves write
+        // the top-level field and leave the per-connection copies `None`.
+        let internal_layout = top_level_layout.or_else(|| hoist_legacy_layout(&connections));
+
         PersistedTabState {
             version: CURRENT_VERSION,
-            connections: self.connections,
+            connections,
+            internal_layout,
+            active_connections,
         }
     }
+}
+
+/// Pick the inner-dockview geometry to promote to the top level from a set of
+/// legacy per-connection blobs: the one belonging to the connection with the
+/// highest `last_opened` that actually carries a layout. Returns `None` when
+/// no connection has a legacy layout (the common case for fresh blobs).
+fn hoist_legacy_layout(
+    connections: &HashMap<String, ConnectionTabState>,
+) -> Option<serde_json::Value> {
+    connections
+        .values()
+        .filter(|c| c.internal_layout.is_some())
+        .max_by_key(|c| c.last_opened)
+        .and_then(|c| c.internal_layout.clone())
 }
 
 impl PersistedTabState {
@@ -358,6 +406,55 @@ mod tests {
         let raw: RawState = serde_json::from_str(empty).unwrap();
         let state = raw.into_state();
         assert!(state.connections.is_empty());
+        assert!(state.internal_layout.is_none());
+        assert!(state.active_connections.is_empty());
+    }
+
+    #[test]
+    fn legacy_per_connection_layout_hoisted_from_most_recent() {
+        // No top-level `internalLayout`; two connections each carry a legacy
+        // per-connection one. The newer connection's layout wins.
+        let blob = r#"{
+            "version": 3,
+            "connections": {
+                "old": { "tabs": [], "lastOpened": 10, "internalLayout": {"pick": "old"} },
+                "new": { "tabs": [], "lastOpened": 20, "internalLayout": {"pick": "new"} }
+            }
+        }"#;
+        let raw: RawState = serde_json::from_str(blob).unwrap();
+        let state = raw.into_state();
+        assert_eq!(
+            state.internal_layout,
+            Some(serde_json::json!({ "pick": "new" }))
+        );
+    }
+
+    #[test]
+    fn top_level_layout_wins_over_legacy_per_connection() {
+        // A blob written by the new code path: top-level layout present, and a
+        // stale legacy per-connection copy still on disk. The top-level one is
+        // authoritative and must not be overwritten by the hoist.
+        let blob = r#"{
+            "version": 3,
+            "internalLayout": {"pick": "top"},
+            "connections": {
+                "c": { "tabs": [], "lastOpened": 99, "internalLayout": {"pick": "legacy"} }
+            }
+        }"#;
+        let raw: RawState = serde_json::from_str(blob).unwrap();
+        let state = raw.into_state();
+        assert_eq!(
+            state.internal_layout,
+            Some(serde_json::json!({ "pick": "top" }))
+        );
+    }
+
+    #[test]
+    fn active_connections_round_trip() {
+        let blob = r#"{ "version": 3, "activeConnections": ["a", "b"] }"#;
+        let raw: RawState = serde_json::from_str(blob).unwrap();
+        let state = raw.into_state();
+        assert_eq!(state.active_connections, vec!["a", "b"]);
     }
 }
 

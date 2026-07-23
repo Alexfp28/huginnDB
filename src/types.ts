@@ -473,6 +473,12 @@ export interface UiPrefs {
   confirmEmptyTable: boolean;
   queryHistoryLimit: number;
   restoreTabsOnOpen: boolean;
+  /** Whether the main window reconnects, on launch, to the connections that
+   *  were live when it last closed. Uses the OS-keychain secrets; a
+   *  connection whose secret is missing or whose host is unreachable is
+   *  skipped without blocking startup. Independent of `restoreTabsOnOpen`,
+   *  which governs whether tabs/layout come back once connected. */
+  reconnectOnLaunch: boolean;
   schemaTableMetric: SchemaTableMetric;
   language: AppLanguage;
   /** Default surface for the heavyweight cell editor when escalated from an
@@ -522,13 +528,21 @@ export interface ConnectionTabState {
   /** Unix seconds; refreshed each save. Drives LRU pruning. */
   lastOpened: number;
   /**
-   * Opaque dockview `toJSON()` blob for the workspace's inner split/float
-   * geometry. Restored via `fromJSON` on hydrate so a two-pane (or floating)
-   * layout comes back the way the user left it. `null`/absent means the
-   * default tabbed layout (the common case). The backend stores it verbatim.
+   * @deprecated The inner-dockview geometry is now session-level, not
+   * per-connection — see `WorkspaceLayout` / `api.getWorkspaceLayout`. The
+   * backend hoists any legacy value here up to the top level on first load
+   * after upgrading and never writes it again; the frontend no longer reads
+   * or sends it. Kept only so old blobs still type-check.
    */
   internalLayout?: unknown | null;
 }
+
+/**
+ * Session-level inner-dockview geometry (the workspace's split/float
+ * arrangement), shared across every connection's tabs. Opaque dockview
+ * `toJSON()` blob; `null` means the default tabbed layout.
+ */
+export type WorkspaceLayout = unknown | null;
 
 export interface PersistedTab {
   id: string;

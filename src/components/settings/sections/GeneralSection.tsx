@@ -112,6 +112,16 @@ export function GeneralSection() {
       </PrefRow>
 
       <PrefRow
+        label={t("settings.general.reconnectOnLaunch.label")}
+        description={t("settings.general.reconnectOnLaunch.desc")}
+      >
+        <Switch
+          checked={ui.reconnectOnLaunch}
+          onCheckedChange={(v) => updateUi({ reconnectOnLaunch: v })}
+        />
+      </PrefRow>
+
+      <PrefRow
         label={t("settings.general.cellEditorMode.label")}
         description={t("settings.general.cellEditorMode.desc")}
       >

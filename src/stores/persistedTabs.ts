@@ -30,13 +30,18 @@
  *
  *   • On window close (main window only) →
  *       `flushAllTabState()` (wired from `App.tsx`'s `onCloseRequested`
- *       handler) synchronously saves every still-active connection,
- *       bypassing the debounce. Before this existed, only an explicit
- *       `disconnect()` ever flushed synchronously — a normal window close
- *       (let alone a crash) could lose up to `SAVE_DEBOUNCE_MS` of trailing
- *       tab/layout edits, including split-panel geometry that only
- *       `scheduleSaveActive()` (wired to the inner dockview's
- *       `onDidLayoutChange` in `TabbedArea.tsx`) schedules a save for.
+ *       handler) synchronously saves every still-active connection plus the
+ *       session-level workspace layout, bypassing the debounce. Before this
+ *       existed, only an explicit `disconnect()` ever flushed synchronously —
+ *       a normal window close (let alone a crash) could lose up to
+ *       `SAVE_DEBOUNCE_MS` of trailing tab/layout edits.
+ *
+ * The inner-dockview split/float geometry is NOT per connection: one inner
+ * dockview hosts every open connection's tabs, so its geometry is a
+ * session-level artifact persisted once (top-level `workspaceLayout` in
+ * `tab_state.json`) via `scheduleSaveActive` → `saveWorkspaceLayoutNow`, and
+ * restored once at launch via `hydrateWorkspaceLayout`. It used to be
+ * duplicated under every connection, which made restore order-dependent.
  */
 
 import type { ConnectionTabState, PersistedTab, AppTab } from "@/types";
@@ -85,24 +90,16 @@ function snapshotFor(connectionId: string): ConnectionTabState {
     ? Array.from(schemaSlice.expanded)
     : [];
 
-  // Capture the inner dockview geometry only when the user has actually
-  // split or floated panels (more than one group). For the common single
-  // tabbed group we leave `internalLayout` undefined so the snapshot stays
-  // lean and the default tabbed restore path is used. The blob is geometry
-  // only (group tree + sizes + panel ids/params), a few KB — no panel
-  // content is duplicated.
-  const innerApi = getInnerDockviewApi();
-  const internalLayout =
-    innerApi && innerApi.groups.length > 1
-      ? (innerApi.toJSON() as unknown)
-      : undefined;
-
+  // Note: the inner-dockview geometry is NOT captured here anymore. It is a
+  // session-level artifact (one shared inner dockview hosts every
+  // connection's tabs), so it is persisted once via `saveWorkspaceLayoutNow`
+  // into the top-level `workspaceLayout`, not duplicated under each
+  // connection — see the module header and `saveWorkspaceLayoutNow`.
   return {
     tabs,
     activeTabId: activeId,
     expandedSchemaNodes,
     lastOpened: Math.floor(Date.now() / 1000),
-    internalLayout,
   };
 }
 
@@ -120,14 +117,60 @@ function scheduleSave(connectionId: string) {
   }, SAVE_DEBOUNCE_MS);
 }
 
+/** True only in the main window — the sole owner of `tab_state.json`
+ *  (gotcha #8). Secondary "New window" instances are ephemeral. */
+function isMainWindow(): boolean {
+  return getCurrentWindow().label === "main";
+}
+
+// --- Session-level workspace layout -----------------------------------------
+// The inner dockview's split/float geometry is shared across every open
+// connection (one inner dockview hosts them all), so it is persisted once at
+// the top level of `tab_state.json` rather than duplicated per connection.
+
+let layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Capture the current inner-dockview geometry and write it to disk now.
+ *  Writes `null` (default tabbed layout) unless the user has actually split
+ *  or floated panels (>1 group) — keeping the blob lean and the common case
+ *  on the fast default-restore path. Main-window-only and best-effort. */
+async function saveWorkspaceLayoutNow(): Promise<void> {
+  if (!isMainWindow()) return;
+  const innerApi = getInnerDockviewApi();
+  const layout =
+    innerApi && innerApi.groups.length > 1
+      ? (innerApi.toJSON() as unknown)
+      : null;
+  try {
+    await api.saveWorkspaceLayout(layout);
+  } catch (err) {
+    console.error("[persistedTabs] workspace layout save failed:", err);
+  }
+}
+
 /**
- * Schedule a debounced save for every currently-tracked connection. Used by
- * the inner dockview's `onDidLayoutChange` (a pure split/float/resize
- * gesture touches no tab or schema state, so nothing else would schedule a
- * save for it) — see `TabbedArea.tsx`.
+ * Debounced save of the session-level inner-dockview geometry. Wired to the
+ * inner dockview's `onDidLayoutChange` (a pure split/float/resize gesture
+ * touches no tab or schema state, so nothing else would schedule a save for
+ * it) — see `TabbedArea.tsx`. Named `scheduleSaveActive` for historical
+ * reasons; it now saves one session-level blob, not one per connection.
  */
 export function scheduleSaveActive() {
-  for (const connectionId of active.keys()) scheduleSave(connectionId);
+  if (!isMainWindow()) return;
+  if (layoutSaveTimer) clearTimeout(layoutSaveTimer);
+  layoutSaveTimer = setTimeout(() => {
+    layoutSaveTimer = null;
+    void saveWorkspaceLayoutNow();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+/** Persist the set of connections currently live in this (main) window, so
+ *  the next launch can auto-reconnect them. Best-effort; fire-and-forget. */
+export function persistActiveConnections(ids: string[]): void {
+  if (!isMainWindow()) return;
+  void api.saveActiveConnections(ids).catch((err) => {
+    console.error("[persistedTabs] active-connections save failed:", err);
+  });
 }
 
 /**
@@ -188,45 +231,54 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
         restored.some((t) => t.id === state.activeTabId)
           ? state.activeTabId
           : (restored[restored.length - 1]?.id ?? tabsStore.activeId);
-      // Hand the saved split/float geometry to the inner dockview. If it is
-      // already mounted (e.g. switching workspace without remounting
-      // TabbedArea), apply it directly after the store update; otherwise
-      // stash it for `TabbedArea.onReady` to consume once it mounts. Either
-      // way `fromJSON` is the authoritative panel+geometry rebuild and the
-      // TabbedArea reconciler converges any divergence (orphans removed,
-      // missing tabs added tabbed).
-      const layout = state.internalLayout ?? null;
-      setPendingInternalLayout(layout);
 
+      // The inner-dockview geometry is no longer restored here — it is
+      // session-level, applied once via `hydrateWorkspaceLayout` (called from
+      // the launch flow), not per connection. The TabbedArea reconciler adds
+      // this connection's tabs into whatever geometry is already in place.
       tabsStore.replaceAll(nextTabs, nextActive);
 
       useSchema
         .getState()
         .replaceExpanded(connectionId, new Set(state.expandedSchemaNodes));
-
-      if (layout) {
-        const innerApi = getInnerDockviewApi();
-        if (innerApi) {
-          // Already mounted — consume the pending blob ourselves so onReady
-          // (which won't fire again) doesn't leave it dangling.
-          setPendingInternalLayout(null);
-          try {
-            innerApi.fromJSON(
-              layout as Parameters<typeof innerApi.fromJSON>[0],
-            );
-          } catch (err) {
-            console.warn(
-              `[persistedTabs] inner layout restore failed for ${connectionId}:`,
-              err,
-            );
-          }
-        }
-      }
     }
   } catch (err) {
     console.error(`[persistedTabs] hydrate failed for ${connectionId}:`, err);
   } finally {
     attachSubscriptions(connectionId);
+  }
+}
+
+/**
+ * Restore the session-level inner-dockview geometry once at launch. Reads the
+ * top-level `workspaceLayout` blob and hands it to the inner dockview: if it
+ * is already mounted, apply `fromJSON` directly; otherwise stash it for
+ * `TabbedArea.onReady` to consume when it mounts. `fromJSON` is the
+ * authoritative panel+geometry rebuild (gotcha #10); the TabbedArea
+ * reconciler then converges as each connection hydrates its tabs (orphan
+ * panels removed, any missing tab added tabbed). Main-window-only and gated
+ * on `restoreTabsOnOpen`, matching `hydrateTabState`.
+ */
+export async function hydrateWorkspaceLayout(): Promise<void> {
+  if (!isMainWindow()) return;
+  if (!usePreferences.getState().prefs.ui.restoreTabsOnOpen) return;
+  try {
+    const layout = (await api.getWorkspaceLayout()) ?? null;
+    if (!layout) return;
+    setPendingInternalLayout(layout);
+    const innerApi = getInnerDockviewApi();
+    if (innerApi) {
+      // Already mounted — consume the pending blob ourselves so onReady
+      // (which won't fire again) doesn't leave it dangling.
+      setPendingInternalLayout(null);
+      try {
+        innerApi.fromJSON(layout as Parameters<typeof innerApi.fromJSON>[0]);
+      } catch (err) {
+        console.warn("[persistedTabs] workspace layout restore failed:", err);
+      }
+    }
+  } catch (err) {
+    console.error("[persistedTabs] workspace layout hydrate failed:", err);
   }
 }
 
@@ -302,4 +354,12 @@ export async function flushAllTabState(): Promise<void> {
       console.error(`[persistedTabs] flush-all failed for ${connectionId}:`, err);
     }
   }
+  // The session-level inner-dockview geometry is debounced separately
+  // (`scheduleSaveActive`); cancel any pending timer and write it now so a
+  // trailing split/resize gesture isn't lost on close.
+  if (layoutSaveTimer) {
+    clearTimeout(layoutSaveTimer);
+    layoutSaveTimer = null;
+  }
+  await saveWorkspaceLayoutNow();
 }
