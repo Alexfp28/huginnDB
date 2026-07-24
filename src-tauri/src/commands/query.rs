@@ -221,6 +221,27 @@ pub struct ColumnMeta {
     pub data_type: String,
 }
 
+/// Result of [`count_table_rows`]: the row total for the current predicate
+/// plus whether it is an engine-provided *estimate* (fast, approximate)
+/// rather than an exact `COUNT(*)`.
+///
+/// The count is served separately from the data page (see
+/// [`fetch_table_data`], which the GUI now always calls with
+/// `with_count = false`) so the grid can paint its first rows immediately —
+/// on a multi-million-row table the exact `COUNT(*)` used to gate that first
+/// paint. When the whole table is browsed (no filters, no search) we skip the
+/// count entirely and return the planner/catalog estimate, which is O(1);
+/// any predicate forces an exact count (still off the render's critical path).
+#[derive(Debug, Serialize)]
+pub struct CountResult {
+    pub total: u64,
+    /// `true` when `total` came from a statistics estimate (`reltuples` on
+    /// Postgres, `information_schema.TABLE_ROWS` on MySQL,
+    /// `estimatedDocumentCount` on MongoDB) instead of an exact count. The
+    /// frontend renders an estimate as `~N`.
+    pub estimated: bool,
+}
+
 /// Per-statement outcome inside a [`BatchResult`].
 ///
 /// `preview` is a single-line, length-capped echo of the statement (so the
@@ -975,25 +996,7 @@ pub(crate) async fn fetch_table_data_inner(
     let (where_clause, where_binds) =
         build_filter_clause(pg, pg_or_sqlite, &filters, search_ref, &search_columns);
 
-    let qt = match &pool {
-        DbPool::Postgres(_) => {
-            let schema = schema.clone().unwrap_or_else(|| "public".into());
-            format!(
-                "{}.{}",
-                quote_ident(true, &schema),
-                quote_ident(true, &table)
-            )
-        }
-        DbPool::Mysql(_) => {
-            if let Some(s) = &schema {
-                format!("{}.{}", quote_ident(false, s), quote_ident(false, &table))
-            } else {
-                quote_ident(false, &table)
-            }
-        }
-        DbPool::Sqlite(_) => quote_ident(true, &table),
-        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-    };
+    let qt = qualified_table(&pool, schema.as_deref(), &table);
 
     // LIMIT/OFFSET stay inline (they are integers we already parsed),
     // so the filter binds are the only binds in the statement.
@@ -1189,6 +1192,264 @@ pub(crate) async fn fetch_table_data_inner(
         elapsed_ms,
         total,
     })
+}
+
+/// Count the rows of `schema.table` for the current predicate.
+///
+/// Split out of [`fetch_table_data`] so the count never gates the data
+/// page's first paint (see [`CountResult`]). When the whole table is browsed
+/// (no filters, no search) it returns the engine's O(1) statistics estimate;
+/// with any predicate it runs an exact `COUNT(*)` — still off the render's
+/// critical path because the frontend fires it as a separate request.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn count_table_rows(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+    filters: Option<Vec<ColumnFilter>>,
+    search: Option<String>,
+    search_columns: Option<Vec<String>>,
+) -> AppResult<CountResult> {
+    let sink = log_bus::TauriSink::new(&app, window.label());
+    count_table_rows_inner(
+        &sink,
+        state.inner(),
+        connection_id,
+        schema,
+        table,
+        filters,
+        search,
+        search_columns,
+    )
+    .await
+}
+
+/// Tauri-independent core of [`count_table_rows`].
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn count_table_rows_inner(
+    sink: &dyn LogSink,
+    state: &AppState,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+    filters: Option<Vec<ColumnFilter>>,
+    search: Option<String>,
+    search_columns: Option<Vec<String>>,
+) -> AppResult<CountResult> {
+    let pool = pool_for(state, &connection_id)?;
+    let driver = driver_str(&pool);
+
+    let filters = filters.unwrap_or_default();
+    let search_columns = search_columns.unwrap_or_default();
+    let search_ref = search.as_deref().filter(|s| !s.is_empty());
+    // "Unfiltered" == the whole relation: no column filters AND no committed
+    // search. Only then may we serve the fast catalog estimate; any predicate
+    // forces an exact count of the matching subset.
+    let unfiltered = filters.is_empty() && search_ref.is_none();
+
+    // MongoDB: estimatedDocumentCount (O(1) metadata read) when unfiltered,
+    // exact countDocuments over the filter otherwise.
+    if let DbPool::Mongo(conn) = &pool {
+        let start = Instant::now();
+        let res = crate::db::mongo::query::count_collection(
+            conn,
+            &table,
+            &filters,
+            search_ref,
+            &search_columns,
+            unfiltered,
+        )
+        .await;
+        let label = if unfiltered {
+            "(mongo estimatedDocumentCount)"
+        } else {
+            "(mongo countDocuments)"
+        };
+        match &res {
+            Ok(c) => log_sql_sink(
+                sink,
+                &connection_id,
+                driver,
+                label,
+                start,
+                Some(c.total),
+                None,
+            ),
+            Err(e) => log_sql_sink(
+                sink,
+                &connection_id,
+                driver,
+                label,
+                start,
+                None,
+                Some(&e.to_string()),
+            ),
+        }
+        return res;
+    }
+
+    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
+    let pg = matches!(&pool, DbPool::Postgres(_));
+
+    // Whole-table browse: try the engine estimate first. `try_estimate`
+    // returns `None` when no usable estimate exists (SQLite always; a
+    // never-analyzed Postgres/MySQL table) so we fall through to an exact
+    // count rather than reporting a bogus `~0`.
+    if unfiltered {
+        if let Some(total) = try_estimate(
+            sink,
+            &pool,
+            driver,
+            &connection_id,
+            schema.as_deref(),
+            &table,
+        )
+        .await
+        {
+            return Ok(CountResult {
+                total,
+                estimated: true,
+            });
+        }
+    }
+
+    // Exact count: predicate present, or no estimate available.
+    let (where_clause, where_binds) =
+        build_filter_clause(pg, pg_or_sqlite, &filters, search_ref, &search_columns);
+    let qt = qualified_table(&pool, schema.as_deref(), &table);
+    let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
+
+    let start = Instant::now();
+    let raw_count: Option<i64> = try_sql_sink!(
+        sink,
+        &connection_id,
+        driver,
+        &count_sql,
+        start,
+        match &pool {
+            DbPool::Postgres(p) => {
+                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+                for b in &where_binds {
+                    q = q.bind(b);
+                }
+                q.fetch_optional(p).await
+            }
+            DbPool::Mysql(p) => {
+                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+                for b in &where_binds {
+                    q = q.bind(b);
+                }
+                q.fetch_optional(p).await
+            }
+            DbPool::Sqlite(p) => {
+                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+                for b in &where_binds {
+                    q = q.bind(b);
+                }
+                q.fetch_optional(p).await
+            }
+            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        }
+    );
+    let total = raw_count.unwrap_or(0).max(0) as u64;
+    log_sql_sink(
+        sink,
+        &connection_id,
+        driver,
+        &count_sql,
+        start,
+        Some(total),
+        None,
+    );
+    Ok(CountResult {
+        total,
+        estimated: false,
+    })
+}
+
+/// Fast, approximate whole-table row count read from engine statistics.
+///
+/// Returns `None` when no usable estimate exists so the caller falls back to
+/// an exact `COUNT(*)`:
+///
+/// * **Postgres** — `pg_class.reltuples` (the planner's row estimate).
+///   `-1` means "never analyzed" on PG 14+, and older PG reports `0` for the
+///   same state, so we treat any non-positive value as "no estimate".
+/// * **MySQL** — `information_schema.TABLES.TABLE_ROWS`, cast to signed so
+///   sqlx decodes the `BIGINT UNSIGNED` column as `i64`. This is InnoDB's
+///   estimate (exact for MyISAM); `NULL`/`0` (views, or stale stats on a
+///   freshly-created table) is treated as "no estimate".
+/// * **SQLite** — always `None`: there is no cheap, reliable row estimate,
+///   and the file is local so an exact `COUNT(*)` is acceptable.
+///
+/// A driver error (or a missing relation) also degrades to `None` rather than
+/// failing the whole request; the exact-count fallback surfaces any real
+/// error to the user with the actual failing SQL.
+async fn try_estimate(
+    sink: &dyn LogSink,
+    pool: &DbPool,
+    driver: &str,
+    connection_id: &str,
+    schema: Option<&str>,
+    table: &str,
+) -> Option<u64> {
+    match pool {
+        DbPool::Postgres(p) => {
+            // `::regclass` resolves the (optionally schema-qualified) quoted
+            // name to the relation's OID, so the estimate is bound to the same
+            // table the data query reads.
+            let schema = schema.unwrap_or("public");
+            let regclass = format!("{}.{}", quote_ident(true, schema), quote_ident(true, table));
+            let sql = "SELECT reltuples::bigint FROM pg_class WHERE oid = $1::regclass";
+            let start = Instant::now();
+            let est: Option<i64> = sqlx::query_scalar::<_, i64>(sql)
+                .bind(&regclass)
+                .fetch_optional(p)
+                .await
+                .unwrap_or(None);
+            log_sql_sink(
+                sink,
+                connection_id,
+                driver,
+                sql,
+                start,
+                est.map(|v| v.max(0) as u64),
+                None,
+            );
+            est.filter(|&v| v > 0).map(|v| v as u64)
+        }
+        DbPool::Mysql(p) => {
+            let sql = "SELECT CAST(TABLE_ROWS AS SIGNED) FROM information_schema.TABLES \
+                       WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) AND TABLE_NAME = ?";
+            let start = Instant::now();
+            let est: Option<i64> = sqlx::query_scalar::<_, Option<i64>>(sql)
+                .bind(schema)
+                .bind(table)
+                .fetch_optional(p)
+                .await
+                .unwrap_or(None)
+                .flatten();
+            log_sql_sink(
+                sink,
+                connection_id,
+                driver,
+                sql,
+                start,
+                est.map(|v| v.max(0) as u64),
+                None,
+            );
+            // 0 is ambiguous (genuinely empty vs stale stats on a new InnoDB
+            // table) — confirm it with an exact count rather than showing ~0.
+            est.filter(|&v| v > 0).map(|v| v as u64)
+        }
+        // No cheap estimate; caller does an exact COUNT(*).
+        DbPool::Sqlite(_) => None,
+        DbPool::Mongo(_) => None,
+    }
 }
 
 /// Update one column of one row in `schema.table`, addressed by the
@@ -2204,10 +2465,7 @@ mod filter_tests {
         let filters = vec![between("age", json!(18), json!(65))];
         let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
         assert!(clause.contains(r#""age" BETWEEN $1 AND $2"#), "{clause}");
-        assert_eq!(
-            binds,
-            vec![Some("18".to_string()), Some("65".to_string())]
-        );
+        assert_eq!(binds, vec![Some("18".to_string()), Some("65".to_string())]);
     }
 
     #[test]
@@ -2215,10 +2473,7 @@ mod filter_tests {
         let filters = vec![between("age", json!(18), json!(65))];
         let (clause, binds) = build_filter_clause(false, false, &filters, None, &[]);
         assert!(clause.contains("`age` BETWEEN ? AND ?"), "{clause}");
-        assert_eq!(
-            binds,
-            vec![Some("18".to_string()), Some("65".to_string())]
-        );
+        assert_eq!(binds, vec![Some("18".to_string()), Some("65".to_string())]);
     }
 
     #[test]

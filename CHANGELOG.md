@@ -70,6 +70,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The row-count no longer blocks the first rows from appearing, and a
+  whole-table count is now an instant estimate.** Opening a table/collection
+  used to compute the data page *and* an exact `COUNT(*)` (`count_documents`
+  on MongoDB) in a single round trip, returning nothing to the grid until
+  both finished. On a multi-million-row table the count dominated, so the
+  first paint waited seconds on a query whose 100 rows were already in hand —
+  exactly the "Compass feels faster" report in issue #77. The count is now a
+  separate request (`count_table_rows`) fired alongside the data fetch: rows
+  render as soon as the `SELECT`/`find` returns, and the footer fills in
+  "/ N" when the count arrives (paging still works in the meantime). For a
+  whole-table browse (no filters, no search) the total comes from the
+  engine's O(1) statistics — `pg_class.reltuples` on Postgres,
+  `information_schema.TABLE_ROWS` on MySQL, `estimatedDocumentCount` on
+  MongoDB — and is shown as an approximate `~N` (hover for the tooltip). A
+  never-analysed table (or SQLite, which has no cheap estimate) falls back to
+  an exact count. Any active filter/search forces an exact count of the
+  matching subset, but it still runs off the render's critical path. The
+  headless `huginndb-mcp` `browse_table` tool is unchanged (it keeps the
+  inline exact count).
+
 - **Table-tab toolbar re-laid-out for a cleaner filter cluster.** The top
   toolbar of a table/collection tab previously crowded four different concerns
   into its left edge — the reload button, the advanced-filter button, the

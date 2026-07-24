@@ -274,8 +274,19 @@ export interface QueryResult {
   rows: CellValue[][];
   rows_affected: number;
   elapsed_ms: number;
-  /** Only populated by `fetch_table_data`. */
+  /** Only populated by `fetch_table_data` when called with `withCount: true`.
+   *  The table-data browser fetches the total separately via
+   *  {@link CountResult} so the count never blocks the first row render. */
   total: number | null;
+}
+
+/** Row total for the table-data browser, fetched separately from the data
+ *  page (see `count_table_rows`). `estimated` is `true` when the total is a
+ *  fast engine statistics estimate (whole-table browse) rather than an exact
+ *  `COUNT(*)`; the footer renders an estimate as `~N`. */
+export interface CountResult {
+  total: number;
+  estimated: boolean;
 }
 
 /** Outcome of one statement inside a {@link BatchResult}. */

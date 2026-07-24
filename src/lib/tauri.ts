@@ -34,6 +34,7 @@ import type {
   Preferences,
   PrivilegeInfo,
   QueryResult,
+  CountResult,
   RowValue,
   SortSpec,
   StartupArgs,
@@ -306,10 +307,27 @@ export const api = {
     filters?: ColumnFilter[];
     search?: string;
     searchColumns?: string[];
-    /** Run the `COUNT(*)` companion. Pass `false` when only the sort/page
-     *  changed and the caller reuses its cached total (defaults to true). */
+    /** Run the `COUNT(*)` companion. The GUI always passes `false` (the total
+     *  is fetched out-of-band via `countTableRows` so it never gates the first
+     *  row render); the headless MCP `browse_table` tool still uses the inline
+     *  count. Defaults to `true` on the backend when omitted. */
     withCount?: boolean;
   }) => invoke<QueryResult>("fetch_table_data", args),
+
+  /**
+   * Row total for the table-data browser, fetched separately from the data
+   * page so an exact `COUNT(*)` on a huge table never blocks the first rows
+   * from painting. With no filters/search the backend returns a fast engine
+   * estimate (`estimated: true`); any predicate forces an exact count.
+   */
+  countTableRows: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    filters?: ColumnFilter[];
+    search?: string;
+    searchColumns?: string[];
+  }) => invoke<CountResult>("count_table_rows", args),
 
   /**
    * UPDATE one column of one row addressed by its (possibly composite)
