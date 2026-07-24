@@ -65,6 +65,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   automatically on first load after upgrading (the most-recently-used one is
   promoted to the session layout), so nobody loses their arrangement.
 
+- **"Float in new window" now opens a real, independent OS window.** A tab's
+  "Sacar a ventana flotante" action used to call dockview's
+  `addFloatingGroup`, which only detaches the panel *within* the inner
+  workspace's own bounds — the floating panel could be dragged around, but
+  never past the edges of the workspace pane it came from, which defeated the
+  point when you wanted, say, the cell editor free of the table view
+  entirely. It now opens a bare, native `WebviewWindow` (`open_tab_window`,
+  rendered by the new `DetachedTabWindow` root) that hosts just that one
+  tab — no sidebar, no other tabs, no menus — and can be moved anywhere on
+  the desktop like any other window. The tab is removed from the main
+  window's workspace the moment it's popped out, so closing the detached
+  window is simply the tab's close: there's no state to reconcile back.
+  Applies to every tab kind (table, query, structure, view, security). Like
+  "New window", these windows are ephemeral — they don't touch
+  `tab_state.json` and aren't restored across restarts.
+
 ### Fixed
 
 - **Double-clicking a cell's text no longer fails to enter inline-edit

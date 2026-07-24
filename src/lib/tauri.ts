@@ -13,6 +13,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AppTab,
   CellValue,
   ColumnFilter,
   ColumnInfo,
@@ -439,6 +440,18 @@ export const api = {
    *  `openNewWindow`. Call once on boot alongside `getStartupArgs`. */
   takeWindowStartupIntent: (label: string) =>
     invoke<StartupArgs | null>("take_window_startup_intent", { label }),
+
+  /** Pop `tab` out into its own bare, native OS window (titled `title`) —
+   *  the "sacar como ventana flotante" action. Returns the new window's
+   *  label. The caller is responsible for removing the tab from its own
+   *  `useTabs` right after — see `DetachedTabWindow` for the other half. */
+  openTabWindow: (tab: AppTab, title: string) =>
+    invoke<string>("open_tab_window", { tab, title }),
+
+  /** Drain the tab payload stashed for this window's label by
+   *  `openTabWindow`. Call once on boot. */
+  takeDetachedTabIntent: (label: string) =>
+    invoke<AppTab | null>("take_detached_tab_intent", { label }),
 
   // Import / Export --------------------------------------------------------
 

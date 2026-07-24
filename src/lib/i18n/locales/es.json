@@ -523,7 +523,8 @@
     "newQuery": "Nueva query",
     "newQueryTooltip": "Nueva query (usa la conexión activa)",
     "emptyOpenSomething": "Abre una tabla desde el explorador de esquemas o crea una nueva pestaña de query.",
-    "emptyConnectFirst": "Selecciona o crea una conexión para empezar."
+    "emptyConnectFirst": "Selecciona o crea una conexión para empezar.",
+    "detachedUnavailable": "Esta pestaña ya no está disponible."
   },
   "tabSwitcher": {
     "title": "Cambiar de pestaña",

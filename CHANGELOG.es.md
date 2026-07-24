@@ -58,6 +58,26 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   quedaba con los eventos HTML5 drag de los que depende dockview. El
   constructor de la ventana secundaria ahora desactiva ese gestor nativo,
   igual que la ventana principal.
+  
+### Cambiado
+
+- **«Sacar a ventana flotante» ahora abre una ventana del sistema operativo
+  real e independiente.** La acción de una pestaña llamaba antes a
+  `addFloatingGroup` de dockview, que solo separa el panel *dentro* de los
+  límites del propio espacio de trabajo interno — el panel flotante se podía
+  arrastrar, pero nunca más allá de los bordes del panel de workspace del que
+  salía, lo cual frustraba el propósito cuando lo que se quería era, por
+  ejemplo, tener el editor de celda completamente fuera de la vista de la
+  tabla. Ahora abre una `WebviewWindow` nativa y desnuda (`open_tab_window`,
+  renderizada por la nueva raíz `DetachedTabWindow`) que aloja únicamente esa
+  pestaña — sin barra lateral, sin otras pestañas, sin menús — y se puede
+  mover a cualquier parte del escritorio como cualquier otra ventana. La
+  pestaña se elimina del workspace de la ventana principal en el momento en
+  que se saca, así que cerrar la ventana flotante es simplemente el cierre de
+  la pestaña: no queda ningún estado que reconciliar de vuelta. Aplica a
+  todos los tipos de pestaña (tabla, query, estructura, vista, seguridad).
+  Igual que «Nueva ventana», estas ventanas son efímeras — no tocan
+  `tab_state.json` ni se restauran entre reinicios.
 
 ## [1.10.0] — 2026-07-23
 

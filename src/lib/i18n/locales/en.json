@@ -523,7 +523,8 @@
     "newQuery": "New query",
     "newQueryTooltip": "New query (uses current connection)",
     "emptyOpenSomething": "Open a table from the schema explorer, or create a new query tab.",
-    "emptyConnectFirst": "Select or create a connection to begin."
+    "emptyConnectFirst": "Select or create a connection to begin.",
+    "detachedUnavailable": "This tab is no longer available."
   },
   "tabSwitcher": {
     "title": "Switch tab",
