@@ -28,6 +28,8 @@ import {
   ListFilter,
   Loader2,
   RefreshCw,
+  Rows3,
+  Table2,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -244,6 +246,15 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    */
   const rowHeight = usePreferences((s) => selectGridPrefs(s).rowHeight);
   const updateGrid = usePreferences((s) => s.updateGrid);
+  /**
+   * MongoDB-only "table" vs "list" toggle (a single global preference, not
+   * per-collection — see `GridPrefs.documentViewMode`). Every other driver
+   * always renders as a table; the toolbar toggle below is hidden for them.
+   */
+  const documentViewMode = usePreferences(
+    (s) => selectGridPrefs(s).documentViewMode,
+  );
+  const isMongo = driver === "mongodb";
   const zoomRows = useCallback(
     (delta: number) =>
       updateGrid({ rowHeight: Math.min(40, Math.max(14, rowHeight + delta)) }),
@@ -672,6 +683,32 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           </span>
         )}
       </Button>
+      {isMongo && (
+        <div className="flex items-center overflow-hidden rounded-md border border-border">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => updateGrid({ documentViewMode: "table" })}
+            title={t("dataGrid.viewModeTable")}
+            className={`h-7 w-7 rounded-none ${
+              documentViewMode === "table" ? "bg-accent text-brand" : ""
+            }`}
+          >
+            <Table2 className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => updateGrid({ documentViewMode: "list" })}
+            title={t("dataGrid.viewModeList")}
+            className={`h-7 w-7 rounded-none ${
+              documentViewMode === "list" ? "bg-accent text-brand" : ""
+            }`}
+          >
+            <Rows3 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
     </>
   );
 
@@ -739,6 +776,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onDraftCancel={onDraftCancel}
             loading={loading}
             toolbarLeading={leadingToolbar}
+            viewMode={isMongo ? documentViewMode : "table"}
           />
         ) : (
           // Initial load (no rows yet): a shimmer skeleton that reads as

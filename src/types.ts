@@ -456,6 +456,10 @@ export interface GridPrefs {
    *  column name (see `tableKey` in `stores/schema.ts`). Ad-hoc query result
    *  grids resize in-session only and never write here. */
   columnWidths: Record<string, Record<string, number>>;
+  /** How MongoDB collection results render. A single global toggle (not
+   *  per-collection); every other driver ignores it and always renders as a
+   *  table. */
+  documentViewMode: "table" | "list";
 }
 
 /** Schema-tree metric column. Source of truth for the enum is the frontend. */

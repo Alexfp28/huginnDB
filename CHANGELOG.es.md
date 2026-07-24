@@ -8,6 +8,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Añadido
+
+- **Vista de lista para MongoDB.** Las pestañas de colección de una conexión
+  `mongodb` ahora ofrecen un selector tabla/lista en la barra de
+  herramientas (solo visible para ese driver — el resto siguen mostrándose
+  siempre como tabla). El modo lista renderiza cada documento como una
+  tarjeta con una línea `campo: valor` por columna de primer nivel en vez de
+  una columna por campo, que era el problema real: un documento con muchos
+  campos, o con un valor de objeto/array anidado, obligaba a hacer scroll
+  horizontal constante en modo tabla y aplanaba el valor anidado en un JSON
+  de una sola línea difícil de leer. El modo lista imprime los
+  objetos/arrays anidados con sangría en vez de aplanarlos. Es
+  deliberadamente de solo lectura en esta primera versión — sin edición
+  inline de celdas, sin fila de borrador para insertar/duplicar —, ya que
+  ambas necesitan la UI de fila editable de la tabla; "Copiar como JSON" y
+  "Eliminar" por fila sí funcionan directamente desde la tarjeta, porque
+  ninguna de las dos la necesita. El modo elegido es una preferencia global
+  (`grid.documentViewMode` en `prefs.json`, también expuesta en Ajustes →
+  Cuadrícula), no por colección — al mismo nivel que `rowHeight` o
+  `bitDisplay` —, así que cambiarlo una vez aplica a todas las colecciones
+  MongoDB que abras después.
+  
 ### Corregido
 
 - **Hacer doble clic sobre el texto de una celda a veces ya no entraba en

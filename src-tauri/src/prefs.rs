@@ -83,6 +83,12 @@ pub struct GridPrefs {
     /// tiny (a `u16` each), so unlike `tab_state.json`'s query bodies this
     /// isn't pruned; even thousands of tables/columns stay a small blob.
     pub column_widths: HashMap<String, HashMap<String, u16>>,
+    /// How MongoDB collection results render: one of "table" | "list". A
+    /// single global toggle (not per-collection) — the frontend only shows
+    /// the switcher for `driver === "mongodb"` and ignores this value for
+    /// every other driver, which always renders as a table regardless.
+    /// Stringly-typed; the frontend owns the enum.
+    pub document_view_mode: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,6 +189,7 @@ impl Default for GridPrefs {
             cell_preview: true,
             bit_display: "true_false".into(),
             column_widths: HashMap::new(),
+            document_view_mode: "table".into(),
         }
     }
 }

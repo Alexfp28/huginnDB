@@ -169,6 +169,30 @@ export function GridSection() {
       </PrefRow>
 
       <PrefRow
+        label={t("settings.grid.documentViewMode.label")}
+        description={t("settings.grid.documentViewMode.desc")}
+      >
+        <Select
+          value={grid.documentViewMode}
+          onValueChange={(v) =>
+            updateGrid({ documentViewMode: v as GridPrefs["documentViewMode"] })
+          }
+        >
+          <SelectTrigger className="h-8 w-44 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="table" className="text-xs">
+              {t("settings.grid.documentViewMode.table")}
+            </SelectItem>
+            <SelectItem value="list" className="text-xs">
+              {t("settings.grid.documentViewMode.list")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </PrefRow>
+
+      <PrefRow
         label={t("settings.grid.schemaMetric.label")}
         description={t("settings.grid.schemaMetric.desc")}
       >

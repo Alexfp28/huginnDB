@@ -34,10 +34,12 @@ import {
   ArrowUp,
   ArrowUpDown,
   ChevronDown,
+  Copy,
   KeyRound,
   Loader2,
   Maximize2,
   Plus,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -240,12 +242,39 @@ interface Props {
    * skeleton placeholder instead.
    */
   loading?: boolean;
+  /**
+   * Row layout: "table" (default) is the regular column grid; "list" renders
+   * each row as a read-only card with one `field: value` line per column —
+   * built for MongoDB documents, where a wide/nested shape makes the table
+   * layout scroll horizontally and flattens nested values into unreadable
+   * single-line JSON. Only `TableDataTab` ever passes "list", and only for
+   * `driver === "mongodb"`; every other caller keeps the default.
+   *
+   * List mode is deliberately read-only: no inline cell editing, no FK
+   * overlay, no draft-row insert/duplicate UI (all of that is table-specific
+   * rendering). Per-row Copy (as JSON) and Delete still work since they
+   * don't need the editable-row UI; Duplicate and Insert are hidden in this
+   * mode for the same reason.
+   */
+  viewMode?: "table" | "list";
 }
 
 /** Render a cell value as a plain string for display and search. */
 function formatValue(v: CellValue): string {
   if (v === null || v === undefined) return "";
   if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+/**
+ * Render a field's value for the MongoDB "list" view. Unlike `formatValue`
+ * (a single-line table cell), nested objects/arrays are pretty-printed —
+ * the whole point of the list view is reading a wide/nested document
+ * without flattening it into one unreadable line.
+ */
+function formatListValue(v: CellValue): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "object") return JSON.stringify(v, null, 2);
   return String(v);
 }
 
@@ -326,6 +355,7 @@ export function DataGrid({
   onDraftCancel,
   toolbarLeading,
   loading,
+  viewMode = "table",
 }: Props) {
   const { t } = useTranslation();
   const draftRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -1360,7 +1390,7 @@ export function DataGrid({
             </>
           )}
         </span>
-        {onInsertRow && (
+        {onInsertRow && viewMode !== "list" && (
           <button
             className="flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
             onClick={onInsertRow}
@@ -1396,10 +1426,84 @@ export function DataGrid({
         // it (below). The active-cell ring is the visible focus affordance, so
         // the container's own outline is suppressed.
         tabIndex={0}
-        onKeyDown={handleGridKeyDown}
+        onKeyDown={viewMode === "list" ? undefined : handleGridKeyDown}
         // Close the cell preview when clicking outside the table cells.
         onClick={() => setSelectedCell(null)}
       >
+        {viewMode === "list" ? (
+          <div className="divide-y divide-border/60">
+            {visibleRows.map((rowValues, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "group/doc px-3 py-2",
+                  zebraStripes && i % 2 === 1 && "bg-muted/30",
+                )}
+              >
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="shrink-0 tabular-nums text-3xs text-muted-foreground">
+                    {i + 1}
+                  </span>
+                  <span className="text-3xs uppercase text-muted-foreground/50">
+                    {t("dataGrid.fieldsCount", { count: result.columns.length })}
+                  </span>
+                  <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 group-hover/doc:opacity-100">
+                    <button
+                      type="button"
+                      className="rounded p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                      title={t("dataGrid.ctxCopy")}
+                      onClick={() =>
+                        copyToClipboard(rowToJson(rowValues, result.columns))
+                      }
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                    {onDeleteRow && (
+                      <button
+                        type="button"
+                        className="rounded p-1 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
+                        title={t("dataGrid.ctxDeleteRow")}
+                        onClick={() => onDeleteRow(rowValues)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <div
+                  className="space-y-0.5 pl-4"
+                  style={{ fontSize: cellStyle.fontSize }}
+                >
+                  {result.columns.map((col, ci) => {
+                    const v = rowValues[ci];
+                    return (
+                      <div key={col.name} className="flex gap-2 font-mono leading-relaxed">
+                        <span className="shrink-0 font-semibold text-foreground/90">
+                          {col.name}:
+                        </span>
+                        {v === null ? (
+                          <span className="italic text-muted-foreground">
+                            {nullDisplay}
+                          </span>
+                        ) : (
+                          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-muted-foreground">
+                            {formatListValue(v)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {visibleRows.length === 0 && !draftRow && (
+              <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                No rows
+              </div>
+            )}
+          </div>
+        ) : (
+        <>
         {/* `select-none`: row range-select via Shift+Click otherwise also
             drags a native text selection across the rows (issue #30). Inline
             cell-edit inputs keep their own selection (form controls override
@@ -1944,6 +2048,8 @@ export function DataGrid({
             )}
           </tbody>
         </table>
+        </>
+        )}
         </div>
         {/* Refetch overlay: dims the (stale) rows and shows a spinner so a
             reload doesn't look frozen. pointer-events-none keeps the stale
@@ -1957,7 +2063,9 @@ export function DataGrid({
           </div>
         )}
         {/* Live resize guideline (see `columnResizeMode: "onEnd"` above). */}
-        <ResizeGuideline table={table} scrollRef={scrollRef} />
+        {viewMode !== "list" && (
+          <ResizeGuideline table={table} scrollRef={scrollRef} />
+        )}
       </div>
 
       {/* Compact cell preview panel — gated by the `cellPreview` grid pref.
