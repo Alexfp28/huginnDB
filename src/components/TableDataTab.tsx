@@ -732,35 +732,114 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     </>
   );
 
-  // Trailing (right-aligned) toolbar content: the MongoDB table/list view
-  // toggle. Non-Mongo drivers always render as a table, so the toggle is
-  // omitted for them (the slot collapses to nothing).
-  const trailingToolbar = isMongo ? (
-    <div className="flex items-center overflow-hidden rounded-md border border-border">
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => updateGrid({ documentViewMode: "table" })}
-        title={t("dataGrid.viewModeTable")}
-        className={`h-7 w-7 rounded-none ${
-          documentViewMode === "table" ? "bg-accent text-brand" : ""
-        }`}
+  // Trailing (right-aligned) toolbar content, folded into the grid's single
+  // toolbar so a table tab has ONE bar (the old bottom status strip is gone).
+  // Left→right: human-format pagination range (`1–100 de 19759`, replacing the
+  // grid's redundant "N rows of M" count — hence `showRowCount={false}` below),
+  // prev/next page buttons, the page-size selector, the row-zoom −/+ pair, and
+  // finally the MongoDB table/list view toggle (Mongo-only). DataGrid appends
+  // the elapsed-time readout after this slot.
+  const trailingToolbar = (
+    <>
+      <span
+        className="tabular-nums text-muted-foreground"
+        title={totalEstimated ? t("tableData.approxTotal") : undefined}
       >
-        <Table2 className="h-3.5 w-3.5" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => updateGrid({ documentViewMode: "list" })}
-        title={t("dataGrid.viewModeList")}
-        className={`h-7 w-7 rounded-none ${
-          documentViewMode === "list" ? "bg-accent text-brand" : ""
-        }`}
+        {(offset + 1).toLocaleString()}–
+        {Math.min(offset + pageSize, total ?? offset + pageSize).toLocaleString()}
+        {total !== null && (
+          <>
+            {" "}
+            {t("dataGrid.of")}{" "}
+            <span className="font-medium text-foreground">
+              {totalEstimated ? "~" : ""}
+              {total.toLocaleString()}
+            </span>
+          </>
+        )}
+      </span>
+      <div className="flex items-center">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setOffset(Math.max(0, offset - pageSize))}
+          disabled={!canPrev || loading}
+          title={t("tableData.prevPage")}
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setOffset(offset + pageSize)}
+          disabled={!canNext || loading}
+          title={t("tableData.nextPage")}
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <select
+        value={pageSize}
+        onChange={(e) => {
+          setOffset(0);
+          setPageSize(Number(e.target.value));
+        }}
+        className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
       >
-        <Rows3 className="h-3.5 w-3.5" />
-      </Button>
-    </div>
-  ) : undefined;
+        {pageSizeOptions.map((n) => (
+          <option key={n} value={n}>
+            {t("tableData.perPage", { count: n })}
+          </option>
+        ))}
+      </select>
+      <div className="flex items-center">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => zoomRows(-2)}
+          disabled={rowHeight <= 14}
+          title={t("dataGrid.zoomOut")}
+        >
+          <ZoomOut className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => zoomRows(2)}
+          disabled={rowHeight >= 40}
+          title={t("dataGrid.zoomIn")}
+        >
+          <ZoomIn className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      {isMongo && (
+        <div className="flex items-center overflow-hidden rounded-md border border-border">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => updateGrid({ documentViewMode: "table" })}
+            title={t("dataGrid.viewModeTable")}
+            className={`h-7 w-7 rounded-none ${
+              documentViewMode === "table" ? "bg-accent text-brand" : ""
+            }`}
+          >
+            <Table2 className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => updateGrid({ documentViewMode: "list" })}
+            title={t("dataGrid.viewModeList")}
+            className={`h-7 w-7 rounded-none ${
+              documentViewMode === "list" ? "bg-accent text-brand" : ""
+            }`}
+          >
+            <Rows3 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -827,6 +906,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             loading={loading}
             toolbarLeading={leadingToolbar}
             toolbarTrailing={trailingToolbar}
+            showRowCount={false}
             viewMode={isMongo ? documentViewMode : "table"}
           />
         ) : (
@@ -850,74 +930,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           </div>
         )}
       </div>
-
-      {/* Footer status strip: zoom (left) + pagination (right). Moved out of
-          the top toolbar so the top shows a single merged bar. */}
-      {result && (
-        <div className="flex items-center gap-2 border-t border-border bg-background px-3 py-1 text-xs">
-          <div className="flex items-center">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => zoomRows(-2)}
-              disabled={rowHeight <= 14}
-              title={t("dataGrid.zoomOut")}
-            >
-              <ZoomOut className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => zoomRows(2)}
-              disabled={rowHeight >= 40}
-              title={t("dataGrid.zoomIn")}
-            >
-              <ZoomIn className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setOffset(Math.max(0, offset - pageSize))}
-              disabled={!canPrev || loading}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <span
-              className="tabular-nums text-muted-foreground"
-              title={totalEstimated ? t("tableData.approxTotal") : undefined}
-            >
-              {(offset + 1).toLocaleString()}–
-              {Math.min(offset + pageSize, (total ?? offset + pageSize)).toLocaleString()}
-              {total !== null &&
-                ` / ${totalEstimated ? "~" : ""}${total.toLocaleString()}`}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setOffset(offset + pageSize)}
-              disabled={!canNext || loading}
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setOffset(0);
-                setPageSize(Number(e.target.value));
-              }}
-              className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
-            >
-              {pageSizeOptions.map((n) => (
-                <option key={n} value={n}>
-                  {t("tableData.perPage", { count: n })}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
 
       {/* Confirm-delete dialog */}
       <Dialog

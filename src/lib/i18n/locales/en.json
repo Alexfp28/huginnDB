@@ -414,6 +414,8 @@
     "refresh": "Refresh",
     "perPage": "{{count}}/page",
     "approxTotal": "Approximate total (engine estimate). Filter or search for the exact count.",
+    "prevPage": "Previous page",
+    "nextPage": "Next page",
     "loading": "Loading…",
     "deleteRowTitle": "Delete row?",
     "deleteRowsTitle": "Delete {{count}} rows?",
