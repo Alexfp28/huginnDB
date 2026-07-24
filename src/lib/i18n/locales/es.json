@@ -413,6 +413,7 @@
   "tableData": {
     "refresh": "Actualizar",
     "perPage": "{{count}}/página",
+    "approxTotal": "Total aproximado (estimación del motor). Filtra o busca para obtener el recuento exacto.",
     "prevPage": "Página anterior",
     "nextPage": "Página siguiente",
     "loading": "Cargando…",

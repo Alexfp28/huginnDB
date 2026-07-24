@@ -8,7 +8,8 @@
 //! affected-document count in `rows_affected` and carry no rows.
 
 use crate::commands::query::{
-    BatchResult, ColumnFilter, ColumnMeta, FilterOp, QueryResult, RowValue, SortSpec, StmtOutcome,
+    BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp, QueryResult, RowValue, SortSpec,
+    StmtOutcome,
 };
 use crate::error::AppResult;
 use crate::log_bus::{LogEntry, LogKind, LogSink};
@@ -486,6 +487,41 @@ pub async fn fetch_collection_data(
     let mut result = docs_to_result(docs, start.elapsed().as_millis() as u64);
     result.total = total;
     Ok(result)
+}
+
+/// Count documents for the browse footer, served independently of the data
+/// page (the MongoDB analogue of the SQL `count_table_rows`).
+///
+/// When `unfiltered` (whole collection) this uses `estimatedDocumentCount`,
+/// which reads collection metadata in O(1) — the key difference from
+/// [`fetch_collection_data`]'s inline `count_documents`, which scans the whole
+/// collection and is exactly what made opening a multi-million-document
+/// collection feel slow. With any predicate an exact `count_documents` over
+/// the filter is unavoidable, but it no longer blocks the first render.
+pub async fn count_collection(
+    conn: &MongoConn,
+    collection: &str,
+    filters: &[ColumnFilter],
+    search: Option<&str>,
+    search_columns: &[String],
+    unfiltered: bool,
+) -> AppResult<CountResult> {
+    let db = resolve_db(conn)?;
+    let coll = db.collection::<Document>(collection);
+    if unfiltered {
+        let total = coll.estimated_document_count().await?;
+        Ok(CountResult {
+            total,
+            estimated: true,
+        })
+    } else {
+        let filter = build_filter(filters, search, search_columns);
+        let total = coll.count_documents(filter).await?;
+        Ok(CountResult {
+            total,
+            estimated: false,
+        })
+    }
 }
 
 /// Update one field of one document addressed by `_id` (`$set`).

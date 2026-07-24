@@ -184,6 +184,12 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+  // Row total for the pagination footer, fetched out-of-band from the data
+  // page (see `refreshCount`) so an exact `COUNT(*)` never gates the first
+  // rows. `null` while the count is in flight (footer shows the range without
+  // "/ N"); `totalEstimated` flags a fast engine estimate, rendered as `~N`.
+  const [total, setTotal] = useState<number | null>(null);
+  const [totalEstimated, setTotalEstimated] = useState(false);
   // Seed the page size from the user's `defaultPageSize` preference. Lazy
   // initialiser: prefs are hydrated before the UI mounts, and the value is a
   // per-tab starting point the dropdown can override — so we deliberately do
@@ -316,12 +322,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     [cols],
   );
 
-  // Cached row count + the predicate it was computed for. The total only
-  // changes when the filter/search changes, so sort/offset/page changes reuse
-  // it and skip the `COUNT(*)` companion — one fewer round trip per
-  // interaction on large tables (see fetch_table_data `with_count`).
-  const cachedTotalRef = useRef<number | null>(null);
-  const countKeyRef = useRef<string | null>(null);
+  // Signature (connection + relation + predicate) the current total was
+  // computed for. The count depends only on the WHERE predicate, so
+  // sort/offset/page changes reuse it and never re-count; the count request is
+  // deduped on this key (StrictMode remount + transient dep-identity changes).
+  const countInflightRef = useRef<string | null>(null);
 
   // `searchColumns` is derived from `cols`, which loads asynchronously after
   // mount. Listing it in `fetchData`'s deps recreated the callback the instant
@@ -356,12 +361,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     inflightKeyRef.current = reqKey;
     setLoading(true);
     setError(null);
-    // The count depends only on the WHERE predicate (filters + committed
-    // search), not on sort/offset/pageSize.
-    const countKey = JSON.stringify({ f: serverFilters, s: appliedFilter });
-    const withCount =
-      countKey !== countKeyRef.current || cachedTotalRef.current === null;
     try {
+      // Always `withCount: false` — the total is fetched separately by
+      // `refreshCount` so the exact `COUNT(*)` never blocks these rows from
+      // painting (issue #77).
       const r = await api.fetchTableData({
         connectionId,
         schema,
@@ -372,16 +375,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         filters: serverFilters.length ? serverFilters : undefined,
         search: appliedFilter || undefined,
         searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
-        withCount,
+        withCount: false,
       });
-      if (withCount) {
-        cachedTotalRef.current = r.total;
-        countKeyRef.current = countKey;
-      } else {
-        // Backend returned total=null (count skipped); restore the cached one
-        // so the pagination footer stays accurate.
-        r.total = cachedTotalRef.current;
-      }
       setResult(r);
     } catch (e) {
       setError(String(e));
@@ -401,6 +396,42 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     appliedFilter,
   ]);
 
+  // Fetch the row total independently of the data page. Keyed only on the
+  // predicate (filters + committed search) — not on sort/offset/pageSize — so
+  // paging and re-sorting reuse the total and never re-count. With no
+  // predicate the backend returns a fast engine estimate (rendered `~N`); any
+  // filter/search forces an exact count, but it still runs off the data
+  // page's critical path so rows appear first.
+  const refreshCount = useCallback(async () => {
+    const countKey = JSON.stringify({
+      connectionId,
+      schema,
+      table,
+      f: serverFilters,
+      s: appliedFilter,
+    });
+    if (countInflightRef.current === countKey) return;
+    countInflightRef.current = countKey;
+    setTotal(null);
+    try {
+      const c = await api.countTableRows({
+        connectionId,
+        schema,
+        table,
+        filters: serverFilters.length ? serverFilters : undefined,
+        search: appliedFilter || undefined,
+        searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
+      });
+      setTotal(c.total);
+      setTotalEstimated(c.estimated);
+    } catch {
+      // Non-fatal: the grid pages fine without a total. Leave it null; the
+      // footer shows the current range without "/ N".
+    } finally {
+      if (countInflightRef.current === countKey) countInflightRef.current = null;
+    }
+  }, [connectionId, schema, table, serverFilters, appliedFilter]);
+
   useEffect(() => {
     if (!cols) loadColumns(connectionId, schema, table);
   }, [cols, connectionId, schema, table, loadColumns]);
@@ -408,6 +439,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    refreshCount();
+  }, [refreshCount]);
 
   // Registered so the global F5 / Ctrl+R interceptor (App.tsx) can reload
   // this tab's data when it's the active one, instead of the WebView's
@@ -639,9 +674,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     }
   }
 
-  const total = result?.total ?? null;
   const canPrev = offset > 0;
-  const canNext = total !== null && offset + pageSize < total;
+  // With an *exact* total, stop at the last page. Otherwise — count still in
+  // flight, failed, or only an *estimate* (which can undershoot the real row
+  // count on stale stats, and must not strand the user before the true end) —
+  // fall back to "there might be more" whenever the current page came back
+  // full. A short page then naturally disables Next at the real end.
+  const canNext =
+    total !== null && !totalEstimated
+      ? offset + pageSize < total
+      : (result?.rows.length ?? 0) >= pageSize;
   // Editable iff the table has at least one PK column AND every PK
   // column is present in the result set (otherwise we couldn't build a
   // safe WHERE clause).
@@ -699,7 +741,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // the elapsed-time readout after this slot.
   const trailingToolbar = (
     <>
-      <span className="tabular-nums text-muted-foreground">
+      <span
+        className="tabular-nums text-muted-foreground"
+        title={totalEstimated ? t("tableData.approxTotal") : undefined}
+      >
         {(offset + 1).toLocaleString()}–
         {Math.min(offset + pageSize, total ?? offset + pageSize).toLocaleString()}
         {total !== null && (
@@ -707,6 +752,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             {" "}
             {t("dataGrid.of")}{" "}
             <span className="font-medium text-foreground">
+              {totalEstimated ? "~" : ""}
               {total.toLocaleString()}
             </span>
           </>
