@@ -405,6 +405,14 @@ pub struct AppState {
     /// drained exactly once by `take_window_startup_intent` when that
     /// window's frontend boots.
     pub window_startup_intents: Arc<RwLock<HashMap<String, StartupArgs>>>,
+    /// Serialized `AppTab` payload for a freshly-opened detached-tab window
+    /// (the "pop out to a real OS window" action), keyed by its Tauri window
+    /// label. Kept as an opaque `serde_json::Value` — the shape is owned by
+    /// the frontend's `AppTab` type and this state never inspects it (see
+    /// CLAUDE.md gotcha #14 on why a typed intermediate would silently drop
+    /// fields). Populated by `open_tab_window` and drained exactly once by
+    /// `take_detached_tab_intent` when that window's frontend boots.
+    pub detached_tab_intents: Arc<RwLock<HashMap<String, serde_json::Value>>>,
 }
 
 impl AppState {
@@ -435,6 +443,7 @@ impl AppState {
             startup_args,
             pending_cli_connect: Arc::new(RwLock::new(None)),
             window_startup_intents: Arc::new(RwLock::new(HashMap::new())),
+            detached_tab_intents: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }

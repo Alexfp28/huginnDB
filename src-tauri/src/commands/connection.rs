@@ -1035,6 +1035,54 @@ pub fn take_window_startup_intent(
     Ok(state.window_startup_intents.write().remove(&label))
 }
 
+/// Pop a single workspace tab out into its own bare OS window (the "sacar
+/// como ventana flotante" action) — a real, independently movable/resizable
+/// native window rather than dockview's `addFloatingGroup`, which stays
+/// confined to the inner workspace's own bounds. `tab` is the serialized
+/// `AppTab` the frontend was displaying; it's carried opaquely (see
+/// `AppState::detached_tab_intents`) and handed back verbatim to the new
+/// window's frontend, which renders just that one panel — no sidebar, no
+/// tab strip, no menus. The connection pool it needs is already open in the
+/// shared backend `AppState`, so no reconnect happens here.
+///
+/// Like `open_new_window`, this window is ephemeral: closing it does not
+/// hand anything back to the caller. The caller removes the tab from its own
+/// `useTabs` immediately after this call returns, so "close the OS window"
+/// and "close the tab" are simply the same moment from two different
+/// windows' point of view — no cross-window signal is needed.
+#[tauri::command]
+pub async fn open_tab_window(
+    app: AppHandle,
+    tab: serde_json::Value,
+    title: String,
+) -> AppResult<String> {
+    let label = format!("tabwin-{}", Uuid::new_v4());
+    app.state::<AppState>()
+        .detached_tab_intents
+        .write()
+        .insert(label.clone(), tab);
+    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+        .title(title)
+        .inner_size(1000.0, 700.0)
+        .min_inner_size(480.0, 320.0)
+        // See `open_new_window` above for why this matters even for a window
+        // with no dockview instance of its own — the data grid's own drag
+        // interactions rely on the same native HTML5 DnD path.
+        .disable_drag_drop_handler()
+        .build()?;
+    Ok(label)
+}
+
+/// Drain the tab payload stashed for `label` by [`open_tab_window`]. Called
+/// once by the detached window's frontend on boot.
+#[tauri::command]
+pub fn take_detached_tab_intent(
+    state: State<'_, AppState>,
+    label: String,
+) -> AppResult<Option<serde_json::Value>> {
+    Ok(state.detached_tab_intents.write().remove(&label))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
