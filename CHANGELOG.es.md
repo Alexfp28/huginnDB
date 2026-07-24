@@ -29,7 +29,91 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   Cuadrícula), no por colección — al mismo nivel que `rowHeight` o
   `bitDisplay` —, así que cambiarlo una vez aplica a todas las colecciones
   MongoDB que abras después.
-  
+
+- **Reconectar al iniciar.** Una nueva preferencia en General (activada por
+  defecto) hace que la ventana principal se reconecte automáticamente, al
+  arrancar, a las conexiones que estaban activas la última vez que se cerró
+  — usando las credenciales ya guardadas en el llavero del sistema. Antes la
+  app arrancaba desconectada y había que reconectar cada host a mano (y, por
+  el bug de disposición descrito más abajo, en el *orden correcto*) para
+  recuperar el espacio de trabajo. Las conexiones cuya contraseña no está
+  guardada, o cuyo host es inalcanzable, se omiten sin bloquear el arranque;
+  el interruptor permite desactivar la función por completo. El estado de
+  arranque — qué conexiones estaban activas, cuál tenía el foco y qué
+  pestaña estaba activa — se guarda al cerrar de forma ordenada y,
+  oportunistamente, en cada conexión/desconexión, así que el espacio de
+  trabajo vuelve tal como se dejó (misma conexión en foco, misma pestaña,
+  misma disposición de paneles) sin importar el orden en que los pools se
+  reabran, e incluso un cierre brusco deja algo que restaurar.
+
+- **Canal de compilación canary.** Un nuevo canal de pre-lanzamiento opt-in
+  permite dogfoodear un cambio contra perfiles de conexión reales de
+  producción *antes* de que se publique en un release estable — sin
+  necesidad de un release completo. Una compilación canary (compilada con la
+  nueva feature de Cargo `canary`, junto con
+  `src-tauri/tauri.canary.conf.json`) se instala en paralelo con la app
+  estable: tiene su propio identificador de bundle (`io.huginndb.canary`),
+  nombre de producto ("HuginnDB Canary") y un feed de auto-actualización
+  separado, y aísla todo su estado en disco en un directorio de
+  configuración dedicado `HuginnDB-Canary`. Ese aislamiento permite que un
+  canary ejecute con seguridad migraciones destructivas y de un solo sentido
+  en disco sin tocar nunca `profiles.json` / `tab_state.json` / `prefs.json`
+  de la instalación estable. El servicio de llavero del SO se comparte
+  deliberadamente, así que el canary reutiliza las contraseñas que ya guardó
+  la compilación estable en vez de forzar a reintroducirlas. Las
+  compilaciones se generan mediante un workflow manual de GitHub Actions
+  `canary` desde cualquier rama o commit y se publican en un único release
+  `canary` rodante; ver `docs/CANARY.md`.
+
+- **Indicador de sandbox para la compilación canary.** Como el canary
+  comparte el bundle de UI (y el llavero del SO) con la app estable, una vez
+  *dentro* de la ventana las dos eran indistinguibles — fácil confundir el
+  sandbox con la instalación real. La compilación canary ahora deja su
+  identidad inconfundible: una cinta ámbar persistente "SANDBOX · HuginnDB
+  Canary" fijada sobre la cabecera (mencionando el directorio de estado
+  aislado), una insignia "CANARY" junto a la marca de la cabecera, un título
+  de ventana del SO consciente del sabor de compilación ("HuginnDB Canary"
+  en la barra de tareas / Alt-Tab, que el frontend antes sobrescribía de
+  vuelta a "HuginnDB"), y un panel Acerca de que muestra el nombre de
+  producto canary y sus rutas de estado reales `HuginnDB-Canary`. La
+  compilación estable no cambia visualmente. Un nuevo comando
+  `get_app_flavor` expone al frontend la feature de compilación `canary` en
+  tiempo de compilación, ya que las dos compilaciones distribuyen un bundle
+  JS idéntico.
+
+### Cambiado
+
+- **La disposición del panel de trabajo ahora es de nivel de sesión, no por
+  conexión.** La geometría de división/flotación del dockview interno (cómo
+  se organizan las pestañas de tabla/consulta abiertas) se guardaba antes de
+  forma redundante bajo *cada* conexión en `tab_state.json`, aunque un único
+  dockview interno aloja las pestañas de todas las conexiones a la vez. Al
+  restaurar, ganaba la conexión a la que te conectaras primero — así que la
+  disposición solo volvía si te reconectabas en un orden concreto. Ahora se
+  guarda una sola vez en el nivel superior de `tab_state.json` y se restaura
+  una única vez al arrancar, independientemente del orden de conexión. Las
+  disposiciones por conexión existentes se migran automáticamente en la
+  primera carga tras actualizar (la usada más recientemente se promueve a la
+  disposición de sesión), así que nadie pierde su distribución.
+
+- **«Sacar a ventana flotante» ahora abre una ventana del sistema operativo
+  real e independiente.** La acción de una pestaña llamaba antes a
+  `addFloatingGroup` de dockview, que solo separa el panel *dentro* de los
+  límites del propio espacio de trabajo interno — el panel flotante se podía
+  arrastrar, pero nunca más allá de los bordes del panel de workspace del que
+  salía, lo cual frustraba el propósito cuando lo que se quería era, por
+  ejemplo, tener el editor de celda completamente fuera de la vista de la
+  tabla. Ahora abre una `WebviewWindow` nativa y desnuda (`open_tab_window`,
+  renderizada por la nueva raíz `DetachedTabWindow`) que aloja únicamente esa
+  pestaña — sin barra lateral, sin otras pestañas, sin menús — y se puede
+  mover a cualquier parte del escritorio como cualquier otra ventana. La
+  pestaña se elimina del workspace de la ventana principal en el momento en
+  que se saca, así que cerrar la ventana flotante es simplemente el cierre de
+  la pestaña: no queda ningún estado que reconciliar de vuelta. Aplica a
+  todos los tipos de pestaña (tabla, query, estructura, vista, seguridad).
+  Igual que «Nueva ventana», estas ventanas son efímeras — no tocan
+  `tab_state.json` ni se restauran entre reinicios.
+
 ### Corregido
 
 - **Hacer doble clic sobre el texto de una celda a veces ya no entraba en
@@ -80,26 +164,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   quedaba con los eventos HTML5 drag de los que depende dockview. El
   constructor de la ventana secundaria ahora desactiva ese gestor nativo,
   igual que la ventana principal.
-  
-### Cambiado
-
-- **«Sacar a ventana flotante» ahora abre una ventana del sistema operativo
-  real e independiente.** La acción de una pestaña llamaba antes a
-  `addFloatingGroup` de dockview, que solo separa el panel *dentro* de los
-  límites del propio espacio de trabajo interno — el panel flotante se podía
-  arrastrar, pero nunca más allá de los bordes del panel de workspace del que
-  salía, lo cual frustraba el propósito cuando lo que se quería era, por
-  ejemplo, tener el editor de celda completamente fuera de la vista de la
-  tabla. Ahora abre una `WebviewWindow` nativa y desnuda (`open_tab_window`,
-  renderizada por la nueva raíz `DetachedTabWindow`) que aloja únicamente esa
-  pestaña — sin barra lateral, sin otras pestañas, sin menús — y se puede
-  mover a cualquier parte del escritorio como cualquier otra ventana. La
-  pestaña se elimina del workspace de la ventana principal en el momento en
-  que se saca, así que cerrar la ventana flotante es simplemente el cierre de
-  la pestaña: no queda ningún estado que reconciliar de vuelta. Aplica a
-  todos los tipos de pestaña (tabla, query, estructura, vista, seguridad).
-  Igual que «Nueva ventana», estas ventanas son efímeras — no tocan
-  `tab_state.json` ni se restauran entre reinicios.
 
 ## [1.10.0] — 2026-07-23
 
@@ -823,6 +887,290 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   ya en vuelo se descarta — así que abrir una tabla lanza exactamente un
   COUNT + SELECT, tanto en desarrollo como en producción.
 
+## [1.6.0] — 2026-07-08
+
+### Añadido
+
+- **Interruptor legible de mostrar/ocultar en todos los campos de
+  contraseña.** WebView2 dibuja un ojo nativo de revelar contraseña que no
+  se puede tematizar y se renderiza casi negro — prácticamente invisible en
+  superficies oscuras. Ahora está oculto en toda la app y sustituido por un
+  interruptor `PasswordInput` tematizado (de apagado a color de primer
+  plano al pasar el ratón, etiqueta bilingüe). Se aplica a todos los campos
+  secretos: contraseña de conexión, contraseña/passphrase de SSH, las
+  passphrases de exportación e importación, el prompt de contraseña al
+  conectar y el token de GitHub del diálogo de feedback.
+
+- **Renovación de la gestión de pestañas.** Con muchas pestañas abiertas era
+  difícil saber qué tenías abierto o saltar a una tabla concreta. Cuatro
+  novedades lo resuelven:
+  - **Conmutador rápido de pestañas abiertas (Ctrl/Cmd+P).** Un overlay
+    centrado en el teclado que lista las pestañas *actualmente abiertas* en
+    todas las conexiones, agrupadas primero las fijadas y luego por
+    `conexión · base de datos`. Busca por nombre, navega con las flechas,
+    Enter salta (y apunta el espacio de trabajo a la conexión de esa
+    pestaña), y cada fila fija/desfija o cierra en línea (Suprimir cierra la
+    resaltada). Distinto de la paleta de comandos (Ctrl+K), que abre cosas
+    *nuevas*.
+  - **Marcadores de tabla abierta en el árbol de esquema.** Toda tabla que
+    está abierta en una pestaña muestra ahora un punto suave de marca en el
+    árbol — no solo la activa — así que puedes ver de un vistazo qué tienes
+    ya abierto mientras navegas.
+  - **Botón conmutador en la barra de pestañas** con un contador en vivo de
+    pestañas abiertas, que además sirve de acceso al desbordamiento cuando
+    no caben todas.
+  - **La pestaña activa siempre se desplaza a la vista.** Abrir una tabla
+    cuando la barra ya estaba llena dejaba la nueva pestaña (activa)
+    recortada detrás de los controles de desbordamiento ∨ / conmutador / "+"
+    — dockview desplaza la pestaña activa a la vista, pero lo hace antes de
+    que nuestro contenido de pestaña personalizado haya maquetado, así que
+    la nueva pestaña quedaba oculta. La pestaña activa ahora se desplaza
+    completamente a la vista en cuanto su contenido se pinta.
+  - **Fijado + cierre masivo más completo.** Las pestañas se pueden fijar
+    (⋮ / clic derecho, o desde el conmutador) para sobrevivir a «cerrar
+    otras / todas / a la derecha»; las pestañas fijadas llevan un marcador
+    de pin y se agrupan primero en el conmutador. Los menús de pestaña
+    ganaron «Cerrar pestañas a la derecha» y «Cerrar otras en esta
+    conexión». Los pines persisten por conexión entre reinicios.
+- **Presentación de «Novedades» tras una actualización.** El primer arranque
+  tras una actualización que sube la app a un release marcado `major` ahora
+  muestra un diálogo curado e iconificado de puntos destacados (la
+  contrapartida directa del changelog exhaustivo en Ajustes → Acerca de). El
+  contenido es un catálogo empaquetado y redactado a mano en
+  `src/lib/releaseNotes.ts` con copy bilingüe en i18n; el marcador de
+  «visto» se persiste en `localStorage` (reflejando el store de
+  actualizaciones) así que se dispara exactamente una vez por release
+  `major`, solo en la ventana principal. Accesible en cualquier momento
+  desde Ayuda → «Novedades». Al cortar un release `major`, añade su entrada
+  (coincidiendo exactamente con la versión del manifiesto) y márcala como
+  `major`.
+- **Botón de ejecutar visible en el editor de consultas (renovación de
+  UI/UX, fase 2).** La acción principal del editor no tenía ningún botón —
+  era solo Ctrl+Enter y un CodeLens por sentencia, con un «Ejecutar todo»
+  que aparecía condicionalmente. Un botón Ejecutar relleno con el color de
+  marca ahora encabeza la barra de herramientas con un chip de atajo
+  Ctrl/⌘+Enter, ejecuta todo el búfer (enrutando al ejecutor por lotes
+  cuando contiene más de una sentencia) y muestra un spinner mientras se
+  ejecuta. Guardar / historial quedan relegados detrás de un separador.
+- **Rediseño del árbol de esquema (renovación de UI/UX, fase 1).** El árbol
+  de base de datos/tabla de la izquierda ganó jerarquía y orientación claras.
+  La tabla actualmente abierta se marca ahora en el árbol — un lavado suave
+  de color de marca más un riel de marca de 2px con inset, controlado por la
+  pestaña activa — así que siempre puedes ver «dónde estás». El nombre de la
+  tabla es el elemento más destacado de su fila (primer plano / peso medio)
+  frente a las etiquetas de sección y filas de columna, que son apagadas; los
+  tipos de dato de columna están codificados por color (numérico ámbar /
+  booleano verde / el resto apagado, reutilizando los tonos semánticos de la
+  rejilla), y las columnas de una tabla cargan detrás de un esqueleto
+  shimmer en vez de una línea en cursiva de «cargando…». La sangría de
+  columnas sigue una escalera consistente de 12px por nivel (esquema →
+  sección → tabla) con una línea continua de profundidad que baja desde el
+  chevron de cada tabla abierta, y las insignias de métricas de tabla usan
+  cifras tabulares. La confirmación de «base de datos creada» en modo
+  single-database es ahora un toast tematizado en vez de un `alert()` nativo.
+- **Navegación por teclado en la rejilla de datos (renovación de UI/UX, fase
+  1).** La rejilla era solo de ratón, en contradicción con la identidad
+  keyboard-first de la app. Las celdas ahora llevan una «celda activa»
+  navegable por teclado marcada con un anillo `brand` con inset: las flechas
+  la mueven, Inicio / Fin saltan a la primera / última columna de la fila,
+  Enter abre el editor de celda (inline / combobox de FK / modal, mismo
+  enrutado que el doble clic) y Escape la limpia. Hacer clic en una celda
+  siembra la celda activa para que el teclado continúe desde ahí, y la celda
+  activa se desplaza a la vista según se mueve (al instante — el indicador
+  nunca anima, ya que sigue cada pulsación de tecla).
+- **Casillas de selección de fila visibles en la rejilla de datos (renovación
+  de UI/UX, fase 1).** La selección multi-fila ya funcionaba vía
+  Ctrl/Cmd-clic y Mayús-clic, pero no había ninguna señal visible — el
+  margen `#` solo mostraba el número de fila, así que la función era
+  indescubrible. El margen ahora dibuja una casilla de seleccionar-todo de
+  tres estados en la cabecera (marcada / indeterminada / vacía sobre las
+  filas visibles) y una casilla por fila que aparece al pasar el ratón por
+  la fila y se mantiene mientras la fila está seleccionada. Ambas se apoyan
+  en el conjunto de selección existente indexado por PK (sobrevive a
+  ordenar / filtrar / recargar) y se tiñen con el token `brand`; los números
+  de fila ahora usan `tabular-nums`.
+- **Exportar e importar bases de datos completas (#34), marcado Beta.** No
+  había forma de sacar una base de datos de HuginnDB (o volver a meterla)
+  salvo escribiendo un script a mano. «Exportar base de datos…» (menú
+  contextual del explorador multi-base, o un botón de barra de herramientas
+  en una conexión single-DB) vuelca esquema + datos a un único fichero `.sql`
+  portable para Postgres, MySQL o SQLite. Postgres/MySQL escriben en tres
+  fases — `CREATE TABLE` a secas, luego todos los datos, luego
+  `ALTER TABLE ADD CONSTRAINT` (FK) + `CREATE INDEX` — así que un volcado de
+  base de datos completa nunca necesita un orden topológico de dependencias
+  entre tablas ni privilegios elevados (por ejemplo, el
+  `session_replication_role` de Postgres, solo para superusuario). SQLite en
+  cambio vuelca su catálogo tal cual desde `sqlite_master` (más fiel que
+  reconstruir el DDL — conserva las restricciones `CHECK`, etc.) entre
+  `PRAGMA foreign_keys=OFF/ON`. «Importar .sql…» elige un fichero y lo
+  ejecuta a través del ejecutor de lotes de consultas *ya existente* (la
+  misma ruta `splitSql` + `execute_batch` que ya usa el editor de consultas)
+  en vez de una segunda vía de ejecución, protegido tras la confirmación de
+  acción destructiva. Marcado Beta en la UI — verificado hasta ahora solo
+  por comprobación de tipos y `cargo check`, aún no probado de extremo a
+  extremo contra un servidor real en los tres drivers.
+- **Color de pestaña libre, y un estilo de acento seleccionable (#35).** El
+  selector de color de pestaña solo ofrecía seis muestras fijas; ahora hay
+  también un input de color nativo junto a ellas para cualquier valor hex.
+  Por separado, el acento de la pestaña activa / color personalizado estaba
+  fijado a una franja superior de 2px — una nueva preferencia en Ajustes →
+  Rejilla → «Estilo de acento de pestaña» (`cap` / `rail` / `boxed`) lo
+  cambia en su lugar a un riel izquierdo o un aspecto de superficie elevada,
+  y un color de pestaña personalizado ahora sigue el borde que use el estilo
+  elegido en vez de dibujarse siempre encima.
+
+### Cambiado
+
+- **Tooltips tematizados (renovación de UI/UX, fase 3).** Se añadió un
+  wrapper de conveniencia `SimpleTooltip` sobre el primitivo Tooltip
+  tematizado y se migró el chrome de la app fuera del `title=""` nativo para
+  que sus tooltips combinen con el tema de la app en vez del predeterminado
+  del SO: los botones de la cabecera (cambio de tema, preferencias), todas
+  las señales de la barra de estado (paleta de comandos, historial de
+  consultas, conmutadores de densidad y tema, el conmutador de conexiones) y
+  las pestañas del espacio de trabajo (etiqueta, acciones ⋮, cerrar, nueva
+  consulta +). Los disparadores de menú/contexto se envuelven en el propio
+  trigger para que el tooltip se dispare al pasar el ratón mientras el menú
+  sigue abriéndose al clic. El único caso que se deja deliberadamente en
+  `title=""` nativo es un tooltip que vive *dentro* de contenido de menú
+  abierto (el reconectar/desconectar de las filas de conexión, las muestras
+  de color de pestaña): un tooltip de Radix ahí choca con el propio manejo
+  de hover/portal del menú, y un tooltip nativo del SO no lo hace.
+- **Estado de conexión más claro (renovación de UI/UX, fase 3).** Una
+  conexión perdida — posiblemente la señal operativa más importante — era
+  un punto rojo de 6px más un icono rojo críptico. Las filas perdidas en el
+  conmutador de conexiones de la barra de estado ahora reciben un lavado de
+  fila destructivo y un botón «Reconectar» explícito y con etiqueta; los
+  puntos indicadores de en-vivo/perdida son un poco más grandes, los
+  botones de acción de fila tienen un área de clic real, y un intento de
+  conexión fallido muestra un toast en vez de un `alert()` nativo. Las
+  estadísticas de la barra de estado (número de filas, tiempo transcurrido,
+  selección) suben sus números al primer plano con cifras tabulares.
+- **Acciones de pestaña accesibles + peso de la pestaña activa (renovación
+  de UI/UX, fase 3).** Los botones de cerrar (×) y acciones (⋮) de las
+  pestañas del espacio de trabajo solo se revelaban al pasar el ratón,
+  dejándolos inalcanzables por teclado; ahora también aparecen con el foco
+  de teclado (focus-within / focus-visible). La etiqueta de la pestaña
+  activa gana peso medio para combinar con la franja superior de marca +
+  superficie elevada que ya lleva.
+- **Marco de diálogo distintivo (renovación de UI/UX, fase 3).** Todo
+  diálogo llevaba una `shadow-lg` plana con una entrada de solo fundido y un
+  glifo de cerrar pelado y de baja opacidad. `DialogContent` ahora escala
+  desde el centro (zoom, el movimiento correcto para un modal centrado),
+  usa la escala de elevación compartida (`shadow-elevation-4`), y su botón
+  de cerrar es un control con padding real y fondo al pasar el ratón en vez
+  de una X sin área de clic al 70% de opacidad.
+- **Control segmentado compartido + limpieza de consola/estructura
+  (renovación de UI/UX, fase 2).** Un nuevo primitivo `Segmented` (radiogroup
+  navegable por teclado con estilo de una sola tira de píldora con el
+  segmento activo elevado) sustituye a las variantes hechas a mano: el
+  conmutador de bug/feature del diálogo de feedback (dos botones completos) y
+  las pestañas de sección del editor de estructura (botones planos sin
+  ningún lenguaje de pestaña activa). El filtro de log de la consola ahora
+  usa el `Input` compartido (tamaño pequeño) en vez de una caja de búsqueda
+  hecha a mano, y sus casillas de tipo se tiñen con `accent-brand`.
+- **Encuadre insignia del CellEditor (renovación de UI/UX, fase 2).** El
+  editor de celda Monaco — la «función estrella» de la app — parecía un
+  diálogo genérico. Ahora tiene un riel de cabecera con título: el nombre de
+  columna, una insignia de tipo de contenido teñida con `brand`
+  (JSON/XML/SQL/TEXT) y píldoras de recuento de caracteres/bytes, con los
+  controles de panel/pantalla completa agrupados a la derecha. Ctrl/⌘+S y
+  Ctrl/⌘+Enter guardan desde dentro del editor (vinculados vía Monaco para
+  que no se traguen) con el atajo mostrado en el pie, la insignia de
+  validez JSON es ahora un chip compacto con el mensaje del parser en su
+  tooltip en vez de volcado en línea, y el frágil hack `mr-8` para esquivar
+  el botón de cerrar se sustituye por padding de cabecera reservado.
+- **Pulido de la paleta de comandos (renovación de UI/UX, fase 2).** La
+  superficie insignia keyboard-first ganó las señales que le faltaban: una
+  leyenda de pie persistente (↑↓ navegar · ↵ ejecutar · esc cerrar), un ↵ al
+  final de la fila activa, un acento de borde izquierdo `brand` + icono
+  teñido de marca en la fila activa, contadores de grupo en las cabeceras de
+  sección, y un estado vacío iconificado. La fila resaltada ahora se
+  desplaza a la vista durante la navegación con flechas (antes podía salirse
+  de la pantalla), y un intento de conexión fallido muestra un toast en vez
+  de un `alert()` nativo.
+- **Chrome unificado del navegador de tablas (renovación de UI/UX, fase 1).**
+  Una pestaña de tabla apilaba antes dos barras de herramientas casi
+  idénticas. El breadcrumb de la barra superior (esquema › tabla) y el
+  refrescar ahora se pliegan en la propia barra de herramientas de la
+  rejilla de datos para que haya una sola barra, y la paginación + el zoom
+  de fila pasan a una franja de estado de pie con cifras tabulares. La
+  primera carga de una tabla muestra un esqueleto shimmer (con el
+  breadcrumb) en vez de una línea pelada de «cargando…», y una recarga
+  atenúa las filas obsoletas detrás de un spinner en vez de parecer
+  congelada. El botón de confirmación de borrar fila ahora usa el estilo
+  destructivo (rojo), igual que el diálogo de eliminar tabla.
+- **Pulido de legibilidad de la rejilla de datos (renovación de UI/UX, fase
+  1).** Las cabeceras de columna ahora muestran un glifo de orden
+  persistente que se ilumina al pasar el ratón (era un icono casi invisible
+  al 30% de opacidad), y toda la celda de cabecera gana un fondo al pasar
+  el ratón para que la posibilidad de ordenar sea descubrible; el indicador
+  de orden activo está alineado a la derecha y teñido con `brand`. Las
+  lecturas numéricas — el número de filas, el rango de paginación y el
+  tiempo transcurrido de la consulta — usan cifras tabulares para que dejen
+  de cambiar de ancho al variar, los recuentos de fila/total se enfatizan
+  en primer plano, y el tiempo transcurrido se vuelve ámbar y luego rojo
+  solo cuando una consulta es lenta.
+- **Acentos semánticos de dato tokenizados (`--pk` / `--fk` /
+  `--numeric`).** Los iconos de llave de clave primaria/foránea y los
+  valores numéricos de celda estaban fijados a `amber-400` / `sky-400` en
+  la rejilla y el árbol de esquema, ignorando el tema activo. Ahora son
+  tokens de tema (curados por cada tema integrado; más oscuros en temas
+  claros para que los numéricos sigan siendo legibles en blanco) aplicados
+  en DataGrid y SchemaExplorer. Se dejan fuera del editor de color de
+  Apariencia por ser acentos de sistema de nicho.
+- **Fundamento del sistema de diseño (renovación de UI/UX, fase 0).**
+  Primera pasada de un rediseño de interfaz más amplio hacia un aspecto de
+  herramienta de desarrollo moderna y densa. Sin funciones nuevas — esto es
+  la base sobre la que se construye el resto de la renovación:
+  - Dos nuevos tokens semánticos de tema, `--success` y `--warning`,
+    distintos de `brand` (el único acento «en vivo / haz esto» de la app) y
+    `destructive` (errores). Cada tema integrado fija sus propios valores
+    curados y ambos son editables en Ajustes → Apariencia como cualquier
+    otro color. Esto sustituye a los literales fijos `emerald-*` /
+    `amber-*` / `blue-500` / `red-500` que estaban esparcidos por ~12
+    componentes e ignoraban por completo el tema activo — así que los temas
+    personalizados ahora recolorean las señales de estado de conexión,
+    válido/inválido, advertencia y error. `applyTheme` también limpia
+    cualquier token que un tema personalizado (preexistente) no defina, para
+    que se aplique el valor por defecto de la hoja de estilos en vez de
+    dejar un valor inline obsoleto del tema anteriormente activo.
+  - Se unificó el indicador de «esta conexión está viva» en el token
+    `brand`; antes se renderizaba esmeralda en el menú Archivo pero brand en
+    el conmutador de la barra de estado para el mismo estado exacto.
+  - Se añadió una escala de elevación (`shadow-elevation-1…4`, basada en
+    `--foreground` para que se lea bien tanto en temas claros como oscuros)
+    y una escala de micro-tipografía tokenizada (`text-2xs` / `text-3xs`,
+    con un suelo de legibilidad de 10px) para sustituir los valores ad-hoc
+    `text-[9px/10px/11px]`.
+  - Anillo de foco de teclado más fuerte y consistente (`ring-2` + offset)
+    en botones, inputs y selects, sustituyendo el anillo a ras casi invisible
+    de 1px.
+  - Las etiquetas de campo de formulario ahora usan por defecto
+    `text-foreground` en vez de gris apagado, dando a todo diálogo una
+    jerarquía real de etiqueta/valor.
+  - `Input` ganó variantes de densidad (`inputSize` default/sm/xs) y un
+    nuevo primitivo compartido `Textarea` sustituye a los campos multilínea
+    hechos a mano en los diálogos de feedback y guardar consulta.
+  - Se definió una pila de fuente sans-serif real para la UI (Inter primero,
+    cayendo a la fuente de UI de la plataforma) en vez de depender del
+    predeterminado pelado del sistema.
+
+### Corregido
+
+- **Los nombres de tabla largos ya no fuerzan scroll horizontal en el árbol
+  de esquema (#33).** La etiqueta de nombre de tabla tenía `truncate` pero,
+  como hijo flex sin `min-w-0`, nunca llegaba a encogerse por debajo del
+  ancho de su contenido (los elementos flex por defecto tienen
+  `min-width: auto`) — así que un nombre largo empujaba fuera la insignia
+  de recuento de filas/tamaño y el árbol hacía scroll horizontal en vez de
+  usar puntos suspensivos.
+- **El menú de clic derecho de la pestaña ahora coincide con su menú ⋮
+  (#36).** Los dos se mantenían a mano por separado y habían divergido: el
+  clic derecho no tenía Dividir a la derecha/abajo, Flotar panel, ni las
+  muestras de color que el menú ⋮ ya tenía. Ambos muestran ahora las mismas
+  acciones en el mismo orden.
+
 ## [1.5.1] — 2026-07-07
 
 ### Añadido
@@ -1107,6 +1455,73 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   autenticación sin contraseña/de confianza); un fallo de autenticación
   real sigue mostrándose igual que en una conexión de perfil guardado.
 
+## [1.3.0] — 2026-07-01
+
+### Añadido
+
+- **Alternativa «No tengo cuenta de GitHub» en el reportador de
+  incidencias.** Las dos rutas existentes (creación por API con un PAT
+  guardado, o la página del navegador `issues/new` precargada sin uno)
+  siguen aterrizando en GitHub, lo cual es un callejón sin salida para un
+  usuario sin cuenta — la página del navegador solo muestra un muro de
+  login. Un nuevo enlace en el pie del diálogo construye en su lugar una
+  URL `mailto:` (con el mismo asunto y cuerpo prefijados por título/tipo,
+  incluyendo el bloque de diagnóstico si está activado) y la abre mediante
+  el plugin `opener`, delegando el envío en la app de correo por defecto
+  del usuario — HuginnDB nunca toca SMTP ni guarda una credencial de envío
+  de correo. La codificación por porcentaje está hecha a mano (el conjunto
+  "unreserved" de RFC 3986) en vez de reutilizar `query_pairs_mut` de
+  `url`, que es `application/x-www-form-urlencoded` y convertiría los
+  espacios en caracteres `+` literales en el cuerpo — técnicamente
+  inválido en una consulta `mailto:` y que varios clientes de correo
+  muestran tal cual. El destinatario es la dirección `contact@shion.es`
+  del proyecto, mantenida separada de los hermanos de GitHub de la ruta
+  mailto para que un reporte perdido no se confunda con una divulgación de
+  seguridad. Requiere ampliar la capacidad `opener:allow-open-url`, antes
+  limitada solo a `github.com`, para permitir también `mailto:*`.
+
+- **«Ir a la fila referenciada» en celdas de clave foránea (al estilo
+  IDE).** En el navegador de datos, **Ctrl/Cmd+clic** sobre una celda cuya
+  columna es una clave foránea de una sola columna ahora salta
+  directamente al registro maestro referenciado — abriendo (o enfocando)
+  la tabla padre pre-filtrada a ese valor, igual que «ir a la definición»
+  en un editor. La misma acción está disponible desde el menú contextual
+  de clic derecho de la celda («Ir a la fila referenciada»), y las celdas
+  navegables por FK ganan un sutil subrayado al pasar el ratón. Reutiliza
+  los metadatos de FK que ya devuelve `list_columns` (`referenced_schema`
+  / `referenced_table` / `referenced_column`) — ninguna consulta nueva al
+  backend. La tabla destino recibe el filtro a través de un nuevo
+  `initialFilters` transitorio en la pestaña; volver a navegar a una tabla
+  ya abierta lo vuelve a aplicar en vez de no hacer nada en silencio.
+- **«Nueva consulta aquí» sobre una base de datos (explorador
+  multi-base).** Hacer clic derecho sobre un nodo de base de datos en el
+  explorador multi-base ahora ofrece _Nueva consulta aquí_, abriendo una
+  pestaña de consulta ya limitada a esa base. Se ejecuta contra la misma
+  conexión sintética por base de datos que usa el explorador, así que la
+  consulta apunta a la base en la que se hizo clic sin tener antes que
+  expandirla ni cambiar el ámbito activo.
+
+### Corregido
+
+- **El reportador de incidencias integrado ahora sí abre el navegador.**
+  Enviar un reporte (o seguir el enlace «ver incidencia») dependía de
+  `window.open`, que es un no-op dentro del WebView de Tauri — al hacer
+  clic no pasaba nada. Abrir URLs ahora pasa por el plugin
+  `tauri-plugin-opener` y aterriza en el navegador por defecto del
+  sistema. La nueva capacidad está limitada a `github.com`, el único host
+  al que enlaza el reportador. Añade la dependencia `tauri-plugin-opener`.
+- **Un `INSERT`/`UPDATE` escrito a mano con valores `BIT`/enteros ya no da
+  error en MySQL.** Las sentencias ad-hoc del editor SQL se enviaban por
+  el protocolo preparado (binario), que rechaza o maneja mal una familia
+  de sentencias que un cliente CLI ejecuta sin problema — los recurrentes
+  errores de literal `BIT`/entero. El editor no vincula parámetros, así
+  que no hay nada que preparar: las sentencias que no son `SELECT` ahora
+  pasan por el protocolo de consulta simple **sin preparar**
+  (`sqlx::raw_sql`) tanto en la ruta de sentencia única como en la de
+  lote, así que lo que escribes se parsea exactamente igual que lo haría
+  el propio cliente del servidor. La decodificación de `SELECT` no
+  cambia.
+
 ## [1.2.0] — 2026-06-18
 
 ### Añadido
@@ -1248,8 +1663,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     Atlas desde la CLI). Una cadena de conexión implica el driver de MongoDB
     cuando se omite `--driver`, y MongoDB se ofrece ahora en el selector de driver
     ad-hoc.
-
- - **Cerrar pestañas en bloque desde el menú de pestañas.** Hacer clic derecho en
+- **Cerrar pestañas en bloque desde el menú de pestañas.** Hacer clic derecho en
   una pestaña del espacio de trabajo (o el menú `⋮` de la pestaña) ofrece ahora
   **Cerrar otras pestañas** y **Cerrar todas las pestañas** además de **Cerrar
   pestaña**, de modo que un espacio de trabajo lleno de tablas/consultas abiertas
@@ -1527,6 +1941,37 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `LONGTEXT` podía aparecer como un volcado hexadecimal (HeidiSQL lo mostraba como
   texto). El decodificador prueba ahora primero una decodificación `String` UTF-8
   y solo recurre a hex para bytes genuinamente no-UTF-8.
+
+- **El túnel SSH se rompía cuando el puerto local configurado ya estaba en
+  uso.** Si otro proceso (por ejemplo, un segundo túnel abierto a mano por
+  el usuario) ocupaba el `local_port` fijado, el bind fallaba con
+  `AddrInUse` y la conexión daba error. El túnel ahora recurre a un puerto
+  efímero asignado por el SO y sigue funcionando; el pool sigue el puerto
+  realmente vinculado y el perfil guardado se deja intacto.
+
+- **Los campos del formulario de túnel SSH desbordaban el diálogo.** Al
+  reconfigurar un túnel existente, los valores largos (en especial la ruta
+  de la clave privada) empujaban los inputs y el botón "Examinar" fuera del
+  borde del diálogo. Se añadieron restricciones `min-w-0`/`flex-1`/`shrink-0`
+  para que los campos se encojan dentro del diálogo en vez de desbordarse.
+
+- **Escritura de columnas `BIT` de MySQL — ruta `insert_row`.** `RowValue`
+  ahora lleva un campo opcional `column_type`. Cuando el frontend construye
+  el payload de INSERT de la fila borrador, rellena `columnType` a partir de
+  `result.columns`, y el backend construye placeholders
+  `CAST(? AS UNSIGNED)` para cada columna `BIT` de MySQL en vez de un `?`
+  plano. Antes, vincular una cadena como `"1"` a una columna `BIT`
+  guardaba el byte ASCII `0x31` (49) en vez del entero 1 — para columnas
+  `BIT(n)` anchas esto escribía silenciosamente el valor incorrecto cada
+  vez.
+
+- **Escritura de columnas `BIT` de MySQL — ruta `update_cell`.** Se añadió
+  un preprocesado `normalize_bit_value` para que la cadena entregada a
+  `CAST(? AS UNSIGNED)` sea siempre una cadena de dígitos. Sin esto, si el
+  editor de celda producía `"true"` o `"false"` (por ejemplo, tras escribir
+  esas palabras en el editor Monaco), MySQL evaluaba
+  `CAST('true' AS UNSIGNED)` como 0 sin importar el valor de bit
+  pretendido.
 
 ## [1.0.3] — 2026-06-03
 
