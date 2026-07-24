@@ -413,6 +413,8 @@
   "tableData": {
     "refresh": "Actualizar",
     "perPage": "{{count}}/página",
+    "prevPage": "Página anterior",
+    "nextPage": "Página siguiente",
     "loading": "Cargando…",
     "deleteRowTitle": "¿Eliminar fila?",
     "deleteRowsTitle": "¿Eliminar {{count}} filas?",

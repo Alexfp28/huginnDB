@@ -244,6 +244,14 @@ interface Props {
    */
   toolbarTrailing?: ReactNode;
   /**
+   * Whether to render the built-in "N rows of M" count in the toolbar
+   * (default true). TableDataTab sets this false because its trailing slot
+   * already shows a human-format pagination range (`1–100 of 19759`), which
+   * makes the row count redundant; query/view result tabs keep it, since it's
+   * their only row-total indicator (they don't paginate).
+   */
+  showRowCount?: boolean;
+  /**
    * When true, dims the grid body and shows a spinner overlay — used while a
    * refetch is in flight but stale rows are still on screen, so the grid
    * doesn't look frozen. Initial load (no rows yet) is handled by the caller's
@@ -363,6 +371,7 @@ export function DataGrid({
   onDraftCancel,
   toolbarLeading,
   toolbarTrailing,
+  showRowCount = true,
   loading,
   viewMode = "table",
 }: Props) {
@@ -1348,9 +1357,11 @@ export function DataGrid({
     // `relative` allows CellPreview to be positioned absolute within this container.
     <div className="relative flex h-full flex-col">
       {/* Toolbar layout: leading actions (refresh · advanced filter) · growing
-          search box · filter chips  ——  then, right-aligned via the row-count's
-          `ml-auto`: row count · insert · trailing slot (view toggle) · elapsed
-          time. The search box flex-grows (capped) so it's the visual anchor. */}
+          search box · Insert · filter chips  ——  then, right-aligned via the
+          cluster's `ml-auto`: optional row count · trailing slot (pagination ·
+          zoom · view toggle from TableDataTab) · elapsed time. The search box
+          flex-grows (capped) so it's the visual anchor, and Insert sits right
+          beside it as the other primary action. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs">
         {toolbarLeading}
         {toolbarLeading && (
@@ -1362,6 +1373,16 @@ export function DataGrid({
           onSubmit={onGlobalFilterSubmit}
           history={searchHistory ?? []}
         />
+        {onInsertRow && viewMode !== "list" && (
+          <button
+            className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
+            onClick={onInsertRow}
+            title={t("dataGrid.insertNewRow")}
+          >
+            <Plus className="h-3 w-3" />
+            {t("dataGrid.insert")}
+          </button>
+        )}
         {serverFilters?.map((f, i) => (
           <span
             key={`${f.column}-${f.op}-${i}`}
@@ -1386,49 +1407,45 @@ export function DataGrid({
             </button>
           </span>
         ))}
-        {/* Right-aligned display cluster: row count, insert, optional view
-            toggle, elapsed time. `ml-auto` here opens the gap between the
-            growing search box (+ filter chips) on the left and this group. */}
-        <span className="ml-auto tabular-nums text-muted-foreground">
-          <span className="font-medium text-foreground">
-            {visibleRows.length.toLocaleString()}
-          </span>{" "}
-          {t("dataGrid.rows")}
-          {result.total !== null && result.total !== undefined && (
-            <>
-              {" "}
-              {t("dataGrid.of")}{" "}
+        {/* Right-aligned display cluster. `ml-auto` opens the gap between the
+            growing search box (+ Insert + filter chips) on the left and this
+            group. Contents: optional row count (query/view tabs) · trailing
+            slot (TableDataTab's pagination + zoom + view toggle) · elapsed
+            time. Wrapped so the whole group wraps as a unit on narrow panes. */}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {showRowCount && (
+            <span className="tabular-nums text-muted-foreground">
               <span className="font-medium text-foreground">
-                {result.total.toLocaleString()}
-              </span>
-            </>
+                {visibleRows.length.toLocaleString()}
+              </span>{" "}
+              {t("dataGrid.rows")}
+              {result.total !== null && result.total !== undefined && (
+                <>
+                  {" "}
+                  {t("dataGrid.of")}{" "}
+                  <span className="font-medium text-foreground">
+                    {result.total.toLocaleString()}
+                  </span>
+                </>
+              )}
+            </span>
           )}
-        </span>
-        {onInsertRow && viewMode !== "list" && (
-          <button
-            className="flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
-            onClick={onInsertRow}
-            title={t("dataGrid.insertNewRow")}
+          {toolbarTrailing}
+          <span
+            className={cn(
+              "tabular-nums",
+              // Draw attention only when a query is slow; fast queries stay
+              // muted (colouring every timing green/amber would be noise).
+              result.elapsed_ms > 2000
+                ? "text-destructive"
+                : result.elapsed_ms > 500
+                  ? "text-warning"
+                  : "text-muted-foreground",
+            )}
           >
-            <Plus className="h-3 w-3" />
-            {t("dataGrid.insert")}
-          </button>
-        )}
-        {toolbarTrailing}
-        <span
-          className={cn(
-            "tabular-nums",
-            // Draw attention only when a query is slow; fast queries stay
-            // muted (colouring every timing green/amber would be noise).
-            result.elapsed_ms > 2000
-              ? "text-destructive"
-              : result.elapsed_ms > 500
-                ? "text-warning"
-                : "text-muted-foreground",
-          )}
-        >
-          {result.elapsed_ms} ms
-        </span>
+            {result.elapsed_ms} ms
+          </span>
+        </div>
       </div>
 
       {/* Scrollable data table, wrapped so the refetch overlay covers only the

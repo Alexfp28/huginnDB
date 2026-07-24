@@ -70,21 +70,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
-- **Table-tab toolbar re-laid-out for a cleaner filter cluster.** The top
-  toolbar of a table/collection tab previously crowded four different concerns
-  into its left edge — the reload button, the advanced-filter button, the
-  MongoDB table/list view toggle, and a cramped fixed-width (`w-56`) search
-  box — which read as an undifferentiated pile. The bar is now split into a
-  coherent *filter* group on the left (refresh · advanced filter · search box)
-  and a *display* group pinned to the right (row count · Insert · view toggle ·
-  elapsed time). The search box is the visual anchor: it grows to fill the
-  available width (capped, with a leading magnifier icon) instead of the old
-  narrow fixed size, so filtering — the toolbar's primary action — no longer
-  feels like an afterthought. The MongoDB view toggle moved from the filter
-  cluster to the display group, since choosing table-vs-list is a display
-  concern, not a filter. No behaviour changed — same actions, same shortcuts,
-  purely a layout/affordance pass. Implemented via a new `toolbarTrailing`
-  slot on `DataGrid` mirroring the existing `toolbarLeading`.
+- **Table-tab toolbar consolidated into a single bar (MongoDB Compass-style).**
+  The top toolbar of a table/collection tab previously crowded four different
+  concerns into its left edge — the reload button, the advanced-filter button,
+  the MongoDB table/list view toggle, and a cramped fixed-width (`w-56`) search
+  box — while a *second* bottom status strip carried the row zoom and the
+  pagination controls. Worse, the row total was shown twice: "37 rows of 37"
+  top-right and "1–37 / 37" bottom-right. Everything now lives in one bar:
+  - **Left (actions):** refresh · advanced filter · the search box — which is
+    now the visual anchor, growing to fill the available width (capped, with a
+    leading magnifier icon) instead of the old narrow fixed size — and the
+    **Insert** button right beside it, since inserting is the other primary
+    action on the row set.
+  - **Right (display), pinned via `ml-auto`:** a single human-format
+    pagination range (`1–100 of 19759`, replacing the old duplicated count and
+    the slash form) · prev/next page buttons · the page-size selector · the
+    row-zoom −/+ pair (lifted up from the deleted bottom strip) · the MongoDB
+    view toggle (Mongo-only) · elapsed time.
+
+  The bottom status strip is gone entirely, giving the grid more vertical room.
+  Wired through a new `toolbarTrailing` slot on `DataGrid` (mirroring the
+  existing `toolbarLeading`) plus a `showRowCount` prop: table tabs pass
+  `false` because the pagination range supersedes the count, while query/view
+  result tabs — which don't paginate — keep the built-in "N rows of M" as their
+  only row-total indicator. No data behaviour changed; same actions, same
+  keyboard shortcuts, purely a layout/affordance pass.
 
 - **The workspace pane layout is now session-level, not per-connection.**
   The inner-dockview split/float geometry (how you've arranged the open
