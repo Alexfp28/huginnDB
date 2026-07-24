@@ -405,7 +405,10 @@
     "rows": "rows",
     "of": "of",
     "insert": "Insert",
-    "insertNewRow": "Insert new row"
+    "insertNewRow": "Insert new row",
+    "viewModeTable": "Table view",
+    "viewModeList": "List view",
+    "fieldsCount": "{{count}} fields"
   },
   "tableData": {
     "refresh": "Refresh",
@@ -715,6 +718,12 @@
         "desc": "How MySQL BIT columns are rendered in the grid.",
         "trueFalse": "true / false",
         "zeroOne": "0 / 1"
+      },
+      "documentViewMode": {
+        "label": "MongoDB document view",
+        "desc": "Default view for MongoDB collection results. Ignored by every other driver, which always shows a table.",
+        "table": "Table",
+        "list": "List"
       }
     },
     "appearance": {

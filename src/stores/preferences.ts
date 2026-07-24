@@ -53,6 +53,7 @@ const DEFAULT_PREFS: Preferences = {
     cellPreview: true,
     bitDisplay: "true_false",
     columnWidths: {},
+    documentViewMode: "table",
   },
   ui: {
     confirmDestructive: true,

@@ -8,6 +8,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **MongoDB list view.** Collection tabs for a `mongodb` connection now offer
+  a table/list toggle in the toolbar (only shown for that driver — every
+  other driver keeps rendering as a table). List mode renders each document
+  as a card with one `field: value` line per top-level column instead of one
+  column per field, which was the actual pain point: a document with many
+  fields, or with a nested object/array value, forced constant horizontal
+  scrolling in table mode and flattened the nested value into a single-line
+  JSON blob that was hard to read. List mode pretty-prints nested
+  objects/arrays with indentation instead. It's deliberately read-only for
+  this first pass — no inline cell editing, no insert/duplicate draft row —
+  since those need the table's editable-row UI; per-row "Copy as JSON" and
+  "Delete" still work directly from the card, since neither needs it. The
+  chosen mode is a single global preference (`grid.documentViewMode` in
+  `prefs.json`, also exposed in Settings → Grid), not per-collection — same
+  tier as `rowHeight` or `bitDisplay` — so switching once applies to every
+  MongoDB collection you open afterwards.
+
 - **Reconnect on launch.** A new General preference (default on) makes the
   main window automatically reconnect, at startup, to the connections that
   were live when it was last closed — using the credentials already in the

@@ -401,6 +401,9 @@
     "of": "de",
     "insert": "Insertar",
     "insertNewRow": "Insertar nueva fila",
+    "viewModeTable": "Vista de tabla",
+    "viewModeList": "Vista de lista",
+    "fieldsCount": "{{count}} campos",
     "expandEditor": "Abrir en el editor completo",
     "openInSideEditor": "Abrir en el editor lateral",
     "zoomIn": "Filas más grandes (Ctrl + +)",
@@ -715,6 +718,12 @@
         "desc": "Cómo se muestran las columnas BIT de MySQL en la cuadrícula.",
         "trueFalse": "true / false",
         "zeroOne": "0 / 1"
+      },
+      "documentViewMode": {
+        "label": "Vista de documentos MongoDB",
+        "desc": "Vista predeterminada para resultados de colecciones MongoDB. El resto de drivers la ignoran y siempre muestran una tabla.",
+        "table": "Tabla",
+        "list": "Lista"
       }
     },
     "appearance": {
