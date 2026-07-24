@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.11.0] — 2026-07-24
+
 ### Added
 
 - **MongoDB list view.** Collection tabs for a `mongodb` connection now offer
@@ -143,7 +145,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Applies to every tab kind (table, query, structure, view, security). Like
   "New window", these windows are ephemeral — they don't touch
   `tab_state.json` and aren't restored across restarts.
-
 ### Fixed
 
 - **Double-clicking a cell's text no longer fails to enter inline-edit
