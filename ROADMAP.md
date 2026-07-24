@@ -55,10 +55,26 @@ in a roadmap and now don't:
    values,query}.rs`). Still missing: integration tests against ephemeral
    Postgres/MySQL (`testcontainers-rs`), and any frontend test coverage
    (Playwright).
-6. **macOS bundle with code signing.** The build is expected to work but is
+6. **Ship Linux release artifacts.** Closer to done than it looks: the
+   bundler is already configured for `.deb`/`.AppImage`
+   (`tauri.conf.json`'s `bundle.targets`), and the release workflow
+   (`.github/workflows/release.yml`) already has the `ubuntu-22.04` matrix
+   leg and its apt build-deps (`libwebkit2gtk-4.1-dev`,
+   `libappindicator3-dev`, `librsvg2-dev`, `patchelf`) wired up — but that
+   leg is commented out ("keeps the runtime + signing surface small for
+   now"), so **no Linux binary is currently published on a GitHub
+   Release**. Building from source works fine (see README Installation);
+   there's just nothing to download. Next step is to uncomment the leg,
+   verify a real tagged build end-to-end, and add a "From a release
+   (Linux)" section to the README once artifacts exist. Only x86_64 is
+   targeted today — an `aarch64`/arm64 leg, an `rpm` bundle target, and any
+   distribution beyond raw GitHub Releases (Flatpak/Flathub, Snap, an AUR
+   package) have zero existing scaffolding and are further-out stretch
+   goals, not blocking this item.
+7. **macOS bundle with code signing.** The build is expected to work but is
    unverified, and there's no Apple Developer signing/notarization yet
    (parallels the Windows SmartScreen situation documented in the README).
-7. **Visual query builder** — low priority. Monaco is fast enough that most
+8. **Visual query builder** — low priority. Monaco is fast enough that most
    users probably don't want one; only pursue if there's real demand.
 
 Have a different priority? Open a

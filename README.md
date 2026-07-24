@@ -65,7 +65,7 @@ It's named after [Huginn](https://en.wikipedia.org/wiki/Huginn_and_Muninn), one 
 
 ## Status
 
-**Stable**, SemVer since `1.0`. The MVP is feature-complete for read/write workflows against every supported driver, and the project has been through several triage rounds of real-world usage (see `CHANGELOG.md`). Known gaps: no automated frontend tests yet, macOS builds are unverified, and Windows binaries aren't code-signed yet (see [Roadmap](#roadmap)).
+**Stable**, SemVer since `1.0`. The MVP is feature-complete for read/write workflows against every supported driver, and the project has been through several triage rounds of real-world usage (see `CHANGELOG.md`). Known gaps: no automated frontend tests yet, macOS builds are unverified, Windows binaries aren't code-signed yet, and — despite the `.deb`/`.AppImage` bundler being fully configured — the release CI doesn't currently publish Linux artifacts, so Linux users need to build from source for now (see [Roadmap](#roadmap)).
 
 ## Screenshots
 
