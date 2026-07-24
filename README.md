@@ -5,12 +5,12 @@
 **A fast, keyboard-friendly desktop database manager.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
+[![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen.svg)](#status)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db)](https://v2.tauri.app)
 [![Made with Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust)](https://www.rust-lang.org)
 [![Frontend: React + TS](https://img.shields.io/badge/React-TypeScript-3178c6?logo=typescript)](https://www.typescriptlang.org)
 
-HuginnDB is a cross-platform desktop client for **PostgreSQL**, **MySQL**, and **SQLite**. It pairs a minimalist UI with a first-class cell editor and a Monaco-powered SQL workspace — the goal is to make routine database work feel as fluid as your text editor.
+HuginnDB is a cross-platform desktop client for **PostgreSQL**, **MySQL**, **SQLite**, and **MongoDB**. It pairs a minimalist UI with a first-class cell editor and a Monaco-powered SQL workspace — the goal is to make routine database work feel as fluid as your text editor. A headless [MCP connector](docs/MCP.md) (`huginndb-mcp`) exposes the same connections to AI coding tools like Claude Code, Claude Desktop, and Cursor.
 
 </div>
 
@@ -29,6 +29,7 @@ HuginnDB is a cross-platform desktop client for **PostgreSQL**, **MySQL**, and *
   - [Connecting to a sample database](#connecting-to-a-sample-database)
   - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Architecture](#architecture)
+- [MCP connector](#mcp-connector)
 - [Security model](#security-model)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
@@ -48,18 +49,23 @@ It's named after [Huginn](https://en.wikipedia.org/wiki/Huginn_and_Muninn), one 
 
 ## Features
 
-- **Multi-driver connection manager.** PostgreSQL, MySQL, and SQLite, each with a per-driver dialog and the right defaults.
-- **Schema explorer.** Tree of databases → tables/views → columns (with type badges and primary-key indicators) and indexes.
+- **Multi-driver connection manager.** PostgreSQL, MySQL, SQLite, and MongoDB, each with a per-driver dialog and the right defaults, plus SSH tunnelling for remote hosts.
+- **Schema explorer.** Tree of databases → tables/views/collections → columns (with type badges and primary-key indicators) and indexes.
 - **Data browser.** Paginated, sortable, filterable grid built on [TanStack Table](https://tanstack.com/table). Inline cell edits are routed through the backend with PK-based safety.
 - **Expanded cell editor.** Pop any cell into a Monaco editor with auto-detected JSON / XML / SQL highlighting, format/beautify, live JSON validation, and an `F11` fullscreen toggle.
-- **SQL workspace.** Monaco-based, self-hosted (no CDN dependency), with schema-aware autocomplete, `Ctrl+Enter` to run, and a per-connection history sidebar that survives restarts.
+- **SQL workspace.** Monaco-based, self-hosted (no CDN dependency), with schema-aware autocomplete, `Ctrl+Enter` to run, per-statement "▶ Run" CodeLens, and a per-connection history sidebar that survives restarts.
+- **View editor.** Create, edit, rename, and drop views with a live preview grid and a read-only DDL pane.
+- **Table structure editor.** Visual `ALTER TABLE` — add/rename/drop columns, change types, PK/FK/index changes — previewed as the exact DDL that will run.
+- **Server-side security panel.** Read users/roles and their privileges straight from the server, for every supported driver.
+- **MCP connector.** `huginndb-mcp`, a headless stdio server, lets an AI coding assistant browse schemas, run queries, and (opt-in, per connection) write — see [`docs/MCP.md`](docs/MCP.md).
 - **Saved queries.** A local library with name, description, and tags. Open any entry into a fresh query tab.
+- **Multi-window.** Pop a connection's workspace, or even a single tab, out into its own OS window.
 - **Themes.** Five built-in presets (HuginnDB Dark, HuginnDB Light, Dim, Solarized Dark, High Contrast) plus a visual colour editor. Editing a preset forks it into a new custom theme so the originals stay pristine.
-- **Resizable layout.** Both horizontal (sidebar) and vertical (editor / results) splits are draggable.
+- **Resizable layout.** Both horizontal (sidebar) and vertical (editor / results) splits are draggable, and the arrangement is restored across restarts.
 
 ## Status
 
-**Alpha.** The MVP is feature-complete for read/write workflows against the supported drivers, but the project hasn't been hardened by real-world use yet. Expect rough edges, occasional sharp corners around exotic column types, and a roadmap that still has open questions ([Roadmap](#roadmap)).
+**Stable**, SemVer since `1.0`. The MVP is feature-complete for read/write workflows against every supported driver, and the project has been through several triage rounds of real-world usage (see `CHANGELOG.md`). Known gaps: no automated frontend tests yet, macOS builds are unverified, Windows binaries aren't code-signed yet, and — despite the `.deb`/`.AppImage` bundler being fully configured — the release CI doesn't currently publish Linux artifacts, so Linux users need to build from source for now (see [Roadmap](#roadmap)).
 
 ## Screenshots
 
@@ -122,7 +128,7 @@ pnpm tauri:dev          # dev mode with HMR
 pnpm tauri:build        # release bundle in src-tauri/target/release/bundle/
 ```
 
-The first `tauri:dev` is slow — Cargo compiles `sqlx` with three database drivers plus `keyring`, `tokio`, and friends. Plan for **5–10 minutes** on a typical laptop. Incremental rebuilds afterwards take well under 10 seconds.
+The first `tauri:dev` is slow — Cargo compiles `sqlx` with three database drivers, the `mongodb` driver, `keyring`, `tokio`, and friends, all from scratch. Plan for **5–10 minutes** on a typical laptop. Incremental rebuilds afterwards take well under 10 seconds.
 
 Release bundles land under `src-tauri/target/release/bundle/`:
 
@@ -177,11 +183,12 @@ HuginnDB is split into two cooperating processes:
 
 ```
 ┌─────────────────────────────┐         ┌──────────────────────────────┐
-│      Tauri webview          │         │       Rust backend           │
-│  React + TypeScript + Vite  │  invoke │  tauri::command handlers     │
-│  Zustand stores             │ <─────> │  sqlx (PG / MySQL / SQLite)  │
-│  TanStack Table + Monaco    │   IPC   │  keyring (OS keychain)       │
-└─────────────────────────────┘         └──────────────────────────────┘
+│      Tauri webview          │         │       Rust backend            │
+│  React + TypeScript + Vite  │  invoke │  tauri::command handlers      │
+│  Zustand stores             │ <─────> │  sqlx (PG/MySQL/SQLite)       │
+│  TanStack Table + Monaco    │   IPC   │  + mongodb driver             │
+│                             │         │  keyring (OS keychain)        │
+└─────────────────────────────┘         └────────────────────────────────┘
 ```
 
 - The **frontend** never opens a database connection. It calls `api.*` (a thin typed wrapper around Tauri's `invoke`) and renders whatever the backend returns.
@@ -199,8 +206,26 @@ For a deeper map of the code layout, read [`CONTRIBUTING.md`](CONTRIBUTING.md#pr
 - **State**: [Zustand](https://github.com/pmndrs/zustand) with `persist` middleware for theme, history, and saved queries.
 - **Data grid**: [TanStack Table v8](https://tanstack.com/table).
 - **Editor**: [Monaco](https://microsoft.github.io/monaco-editor/) (self-hosted; no CDN).
-- **Backend**: Rust, [sqlx](https://github.com/launchbadge/sqlx) (PostgreSQL, MySQL, SQLite), [keyring](https://crates.io/crates/keyring), [tokio](https://tokio.rs), [thiserror](https://crates.io/crates/thiserror).
+- **Backend**: Rust, [sqlx](https://github.com/launchbadge/sqlx) (PostgreSQL, MySQL, SQLite), the official [`mongodb`](https://crates.io/crates/mongodb) driver, [keyring](https://crates.io/crates/keyring), [tokio](https://tokio.rs), [thiserror](https://crates.io/crates/thiserror).
 - **Bundling**: Tauri bundler — `.msi` (Windows), `.deb` / `.AppImage` (Linux).
+
+## MCP connector
+
+HuginnDB ships a headless [Model Context Protocol](https://modelcontextprotocol.io) server, `huginndb-mcp`, so an AI coding assistant can work against your *actual* databases instead of guessing schema and sample data from memory. It's a separate stdio process — installed as a sidecar right next to the main app, nothing to build — that reuses the connection profiles and OS-keychain passwords you already have in HuginnDB, opening its own pools lazily and only for the connections you explicitly expose.
+
+- **Any MCP client works**: Claude Code, Claude Desktop, Cursor, Antigravity, Codex, or anything else that speaks the stdio MCP protocol.
+- **Read-only by default.** Each exposed connection has a write policy — `read-only` (default), `data`, or `full` — set per connection in **Settings → MCP**, re-read from disk on every write attempt.
+- **Tools**: `list_connections`, `list_databases`, `list_tables`, `describe_table`, `list_indexes`, `run_query`, `browse_table`, `server_version`, `list_users`/`list_privileges`, and (once a connection's policy allows it) `insert_row`/`update_cell`/`delete_rows`.
+- **Audited.** Every write attempt — success or failure — is appended to `mcp-audit.log`. Whole-table `UPDATE`/`DELETE` with no `WHERE` is refused outright, at any policy level.
+- Settings → MCP in the app shows the sidecar's resolved path and generates ready-to-paste config for your client.
+
+Quick start with Claude Code:
+
+```bash
+claude mcp add huginndb -s user -- /absolute/path/to/huginndb-mcp --connections <profile-id>
+```
+
+Full reference — client-by-client config, all flags, the tool list, and the security model — in [`docs/MCP.md`](docs/MCP.md); design rationale in [`docs/MCP_CONNECTOR_ROADMAP.md`](docs/MCP_CONNECTOR_ROADMAP.md).
 
 ## Security model
 
@@ -216,17 +241,13 @@ If you find a vulnerability, please follow [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-Roughly ordered by priority.
+The full, current roadmap — what's shipped, what's open, ordered by priority
+— lives in [`ROADMAP.md`](ROADMAP.md). Top of the open list right now:
 
-- **SSH tunnel support** — the UI fields exist; the backend implementation is the next major feature.
-- **Bulk row insert / delete** in the data browser.
-- **Schema diff and export** (DDL extraction, side-by-side compare).
-- **More drivers** — Microsoft SQL Server, ClickHouse, DuckDB.
-- **Table structure editor** — visual ALTER TABLE.
-- **Tighter CSP** for the webview.
-- **Automated tests** — integration tests against ephemeral Postgres/MySQL containers, frontend interaction tests with Playwright.
-- **macOS bundle** with code signing.
-- **Visual query builder** (low-priority — the SQL editor is fast enough that most users probably don't want a builder).
+1. Bulk row insert in the data browser (bulk delete already shipped).
+2. Schema diff and export (DDL extraction, side-by-side compare).
+3. More drivers — Microsoft SQL Server, ClickHouse, DuckDB.
+4. Tighter CSP for the webview.
 
 Have a different priority? Open a [feature request](.github/ISSUE_TEMPLATE/feature_request.md).
 
