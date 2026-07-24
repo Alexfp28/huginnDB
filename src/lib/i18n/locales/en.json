@@ -932,6 +932,31 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_11_0": {
+        "tagline": "The app reconnects on launch and opens big tables almost instantly, with a cleaner single-bar grid toolbar, a MongoDB list view and true floating windows.",
+        "items": {
+          "reconnect": {
+            "title": "Reconnect on launch",
+            "body": "A new General preference (on by default) reopens the connections that were live when you last closed the app — using the credentials already in the OS keychain — restoring the same focused connection, tab and pane layout you left behind."
+          },
+          "fastOpen": {
+            "title": "Big tables open almost instantly",
+            "body": "Rows now render as soon as the query returns instead of waiting on an exact COUNT(*); whole-table totals come from the engine's own statistics as an approximate ~N, so multi-million-row tables no longer stall on open."
+          },
+          "toolbar": {
+            "title": "A single, cleaner table toolbar",
+            "body": "The table toolbar is now one Compass-style bar — search grows to fill the width, Insert sits beside it, and pagination, zoom and elapsed time move to the right — dropping the old bottom status strip and the duplicated row count for more grid space."
+          },
+          "mongoList": {
+            "title": "MongoDB list view",
+            "body": "MongoDB collections gain a table/list toggle: list mode renders each document as a card with pretty-printed nested objects and arrays, instead of forcing endless horizontal scrolling and one-line JSON blobs in table mode."
+          },
+          "floatWindow": {
+            "title": "Float a tab into a real window",
+            "body": "\"Float in new window\" now opens a genuine, independent OS window hosting just that one tab — movable anywhere on the desktop — instead of a floating panel trapped inside the workspace pane."
+          }
+        }
+      },
       "1_10_0": {
         "tagline": "View editing lands in the schema explorer, alongside fully customizable keyboard shortcuts and quicker grid actions.",
         "items": {
