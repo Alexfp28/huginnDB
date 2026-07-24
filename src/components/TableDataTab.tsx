@@ -653,7 +653,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // `toolbarLeading`) so a table tab shows ONE bar instead of two stacked ones.
   // The schema › table breadcrumb used to live here, but the tab title already
   // shows `database.table` (#57) — repeating it next to the filter was pure
-  // redundancy, so the leading area is now just the refresh action.
+  // redundancy, so the leading area is just the two filter-related actions:
+  // refresh and the advanced-filter dialog. The MongoDB view-mode toggle used
+  // to live here too, but it's a *display* control, not a filter action — it
+  // now rides the trailing slot with the other right-aligned readouts so the
+  // filter cluster (refresh · advanced · search box) stays cohesive.
   const leadingToolbar = (
     <>
       <Button
@@ -683,34 +687,38 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           </span>
         )}
       </Button>
-      {isMongo && (
-        <div className="flex items-center overflow-hidden rounded-md border border-border">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => updateGrid({ documentViewMode: "table" })}
-            title={t("dataGrid.viewModeTable")}
-            className={`h-7 w-7 rounded-none ${
-              documentViewMode === "table" ? "bg-accent text-brand" : ""
-            }`}
-          >
-            <Table2 className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => updateGrid({ documentViewMode: "list" })}
-            title={t("dataGrid.viewModeList")}
-            className={`h-7 w-7 rounded-none ${
-              documentViewMode === "list" ? "bg-accent text-brand" : ""
-            }`}
-          >
-            <Rows3 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )}
     </>
   );
+
+  // Trailing (right-aligned) toolbar content: the MongoDB table/list view
+  // toggle. Non-Mongo drivers always render as a table, so the toggle is
+  // omitted for them (the slot collapses to nothing).
+  const trailingToolbar = isMongo ? (
+    <div className="flex items-center overflow-hidden rounded-md border border-border">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => updateGrid({ documentViewMode: "table" })}
+        title={t("dataGrid.viewModeTable")}
+        className={`h-7 w-7 rounded-none ${
+          documentViewMode === "table" ? "bg-accent text-brand" : ""
+        }`}
+      >
+        <Table2 className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => updateGrid({ documentViewMode: "list" })}
+        title={t("dataGrid.viewModeList")}
+        className={`h-7 w-7 rounded-none ${
+          documentViewMode === "list" ? "bg-accent text-brand" : ""
+        }`}
+      >
+        <Rows3 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  ) : undefined;
 
   return (
     <div className="flex h-full flex-col">
@@ -776,6 +784,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onDraftCancel={onDraftCancel}
             loading={loading}
             toolbarLeading={leadingToolbar}
+            toolbarTrailing={trailingToolbar}
             viewMode={isMongo ? documentViewMode : "table"}
           />
         ) : (

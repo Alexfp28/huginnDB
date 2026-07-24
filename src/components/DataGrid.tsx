@@ -39,6 +39,7 @@ import {
   Loader2,
   Maximize2,
   Plus,
+  Search,
   Trash2,
   X,
 } from "lucide-react";
@@ -236,6 +237,13 @@ interface Props {
    */
   toolbarLeading?: ReactNode;
   /**
+   * Optional content rendered on the TRAILING (right) side of the toolbar row,
+   * between the "Insert" button and the elapsed-time readout. TableDataTab
+   * folds its MongoDB table/list view toggle in here so it sits with the other
+   * right-aligned display controls instead of crowding the filter cluster.
+   */
+  toolbarTrailing?: ReactNode;
+  /**
    * When true, dims the grid body and shows a spinner overlay — used while a
    * refetch is in flight but stale rows are still on screen, so the grid
    * doesn't look frozen. Initial load (no rows yet) is handled by the caller's
@@ -354,6 +362,7 @@ export function DataGrid({
   onDraftCommit,
   onDraftCancel,
   toolbarLeading,
+  toolbarTrailing,
   loading,
   viewMode = "table",
 }: Props) {
@@ -1338,8 +1347,10 @@ export function DataGrid({
   return (
     // `relative` allows CellPreview to be positioned absolute within this container.
     <div className="relative flex h-full flex-col">
-      {/* Toolbar: optional leading slot (breadcrumb/refresh/zoom from a table
-          tab) + filter chips + text filter + row count + elapsed time + insert */}
+      {/* Toolbar layout: leading actions (refresh · advanced filter) · growing
+          search box · filter chips  ——  then, right-aligned via the row-count's
+          `ml-auto`: row count · insert · trailing slot (view toggle) · elapsed
+          time. The search box flex-grows (capped) so it's the visual anchor. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs">
         {toolbarLeading}
         {toolbarLeading && (
@@ -1375,7 +1386,10 @@ export function DataGrid({
             </button>
           </span>
         ))}
-        <span className="tabular-nums text-muted-foreground">
+        {/* Right-aligned display cluster: row count, insert, optional view
+            toggle, elapsed time. `ml-auto` here opens the gap between the
+            growing search box (+ filter chips) on the left and this group. */}
+        <span className="ml-auto tabular-nums text-muted-foreground">
           <span className="font-medium text-foreground">
             {visibleRows.length.toLocaleString()}
           </span>{" "}
@@ -1400,9 +1414,10 @@ export function DataGrid({
             {t("dataGrid.insert")}
           </button>
         )}
+        {toolbarTrailing}
         <span
           className={cn(
-            "ml-auto tabular-nums",
+            "tabular-nums",
             // Draw attention only when a query is slow; fast queries stay
             // muted (colouring every timing green/amber would be noise).
             result.elapsed_ms > 2000
@@ -2208,9 +2223,15 @@ function SearchInput({
   const hasHistory = history.length > 0;
   const hasValue = value.length > 0;
   return (
-    <div className="flex h-7 items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
+    <div className="flex h-7 min-w-[12rem] max-w-xl flex-1 items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
+      <span
+        className="flex shrink-0 items-center pl-2 text-muted-foreground/70"
+        aria-hidden
+      >
+        <Search className="h-3.5 w-3.5" />
+      </span>
       <input
-        className="w-56 bg-transparent px-2 text-xs focus:outline-none"
+        className="w-full min-w-0 flex-1 bg-transparent px-2 text-xs focus:outline-none"
         placeholder={t("dataGrid.filterRows")}
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
