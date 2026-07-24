@@ -770,6 +770,24 @@ export function DataGrid({
     [fkColumnNames],
   );
 
+  /**
+   * Live mirror of fkEditCell/inlineEdit/selectedCell, read by the `cell`
+   * renderers below instead of closing over the state directly. TanStack's
+   * `flexRender` treats `columnDef.cell` as a component TYPE (anything
+   * `typeof === "function"` gets rendered as `<Comp {...props} />`), so if
+   * these fast-changing values stayed in the `columns` memo's dependency
+   * array, every keystroke of an inline edit would rebuild the entire
+   * `columns` array with brand-new `cell` function references — React reads
+   * that as a different element type for every cell and unmounts + remounts
+   * the whole table body, including the input mid-edit. A freshly-mounted
+   * `autoFocus` input always plants the caret at the end, which is exactly
+   * the "cursor jumps to the end while typing" bug. Updating this ref every
+   * render (not via effect) keeps `cell` seeing live state while its own
+   * function identity — and therefore the mounted DOM — stays put.
+   */
+  const interactiveRef = useRef({ fkEditCell, inlineEdit, selectedCell });
+  interactiveRef.current = { fkEditCell, inlineEdit, selectedCell };
+
   const columns = useMemo<ColumnDef<CellValue[]>[]>(
     () =>
       result.columns.map((col, idx) => ({
@@ -836,6 +854,8 @@ export function DataGrid({
           const v = info.getValue() as CellValue;
           const rowValues = info.row.original as CellValue[];
           const colInfo = columnInfoByName.get(col.name);
+          // Read live, not from the outer closure — see `interactiveRef` above.
+          const { fkEditCell, inlineEdit, selectedCell } = interactiveRef.current;
           // FK edit identity is the row's value array (referential
           // identity from TanStack's row.original) — stable across
           // sort / filter reshuffles between activation and commit.
@@ -993,9 +1013,6 @@ export function DataGrid({
       pkNameSet,
       fkNameSet,
       onSortChange,
-      fkEditCell,
-      inlineEdit,
-      selectedCell,
       expandCellCombo,
       columnInfoByName,
       columnIndexByName,
@@ -1691,6 +1708,24 @@ export function DataGrid({
                                 inlineEdit?.rowValues === rowValues &&
                                 inlineEdit.column.name === meta.name
                               ) {
+                                return;
+                              }
+                              // Second click of a double-click, detected via the
+                              // native OS click count rather than the `dblclick`
+                              // event. Some Linux WebKitGTK builds never fire
+                              // `dblclick` when the target text has
+                              // `user-select: none` (this table sets it
+                              // globally — see the `select-none` note above),
+                              // which made double-clicking directly on a cell's
+                              // text silently fail to enter edit mode while
+                              // double-clicking the cell's padding (no text
+                              // under the pointer) worked fine. `click`'s
+                              // `detail` isn't affected by that quirk, so route
+                              // through the same path as `onDoubleClick` below
+                              // instead of falling into the single-click
+                              // selection logic.
+                              if (e.detail >= 2) {
+                                openCellEdit(rowValues, meta);
                                 return;
                               }
                               // Focus the container so keyboard nav continues

@@ -29,6 +29,77 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   Cuadrícula), no por colección — al mismo nivel que `rowHeight` o
   `bitDisplay` —, así que cambiarlo una vez aplica a todas las colecciones
   MongoDB que abras después.
+  
+### Corregido
+
+- **Hacer doble clic sobre el texto de una celda a veces ya no entraba en
+  modo edición.** Desde que llegó el icono de «expandir» (#78), una celda
+  seleccionada también dibuja un borde `ring-2 ring-inset ring-brand` sobre
+  el propio `<td>`, ocupando el borde/padding de la celda junto al valor.
+  En el webview de Linux (WebKitGTK), hacer doble clic directamente sobre el
+  texto del valor a veces no llegaba a disparar el evento nativo `dblclick`
+  — una peculiaridad conocida de WebKitGTK por la que `user-select: none`
+  (fijado en toda la tabla, ver la nota `select-none` en `DataGrid.tsx`)
+  suprime `dblclick` específicamente cuando hay texto seleccionable bajo el
+  puntero, mientras que hacer doble clic sobre el padding vacío de la celda
+  (sin ningún carácter bajo el cursor, que es lo que hacía parecer que el
+  truco era clicar «el borde») funcionaba sin problema. El manejador
+  `onClick` del `<td>` ahora también comprueba el propio `detail` del
+  evento `click` (el contador nativo de clics del SO, al que esa
+  peculiaridad no afecta): un segundo clic (`e.detail >= 2`) entra
+  directamente por `openCellEdit`, la misma ruta que ya usaba
+  `onDoubleClick` — así que el modo edición ahora se abre de forma fiable
+  sin importar en qué punto exacto de la celda caiga el doble clic.
+
+- **Escribir en una edición inline de celda ya no mandaba el cursor al
+  final del valor en cada pulsación.** El `useMemo` de `columns` en
+  `DataGrid` incluía `inlineEdit` (además de `fkEditCell`/`selectedCell`)
+  en su array de dependencias, así que cada pulsación de tecla —que
+  actualiza `inlineEdit.value`— reconstruía todo el array `columns`,
+  entregando a cada columna una función `cell` con una referencia nueva.
+  `flexRender` de TanStack trata `columnDef.cell` como un *tipo* de
+  componente (`typeof Comp === "function"` → `React.createElement(Comp,
+  props)`), así que una referencia nueva en cada render se interpreta como
+  un tipo de elemento distinto para cada celda de la rejilla — forzando un
+  desmontaje y remontaje completo de todo el cuerpo de la tabla, incluido
+  el `<input>` que estuviera en edición. Un input `autoFocus` recién
+  montado siempre coloca el cursor al final, que es exactamente lo que
+  hacía imposible mover el cursor a mitad del valor y seguir escribiendo
+  sin tener que reescribirlo entero. `fkEditCell`/`inlineEdit`/
+  `selectedCell` ahora se reflejan en un `useRef` que se actualiza en cada
+  render en lugar de ser dependencias del memo; la función `cell` de cada
+  columna lee los valores en vivo desde esa ref, así que su propia
+  identidad — y el DOM montado debajo — se mantiene estable entre
+  pulsaciones.
+
+- **Las ventanas secundarias («Nueva ventana») ahora pueden reorganizar sus
+  paneles.** Arrastrar un panel en una ventana abierta desde el menú
+  Ventana siempre mostraba el cursor de «no permitido»: la ventana se
+  creaba sin el `dragDropEnabled: false` de la ventana principal, así que
+  el gestor de arrastrar-soltar a nivel de SO de Tauri seguía activo y se
+  quedaba con los eventos HTML5 drag de los que depende dockview. El
+  constructor de la ventana secundaria ahora desactiva ese gestor nativo,
+  igual que la ventana principal.
+  
+### Cambiado
+
+- **«Sacar a ventana flotante» ahora abre una ventana del sistema operativo
+  real e independiente.** La acción de una pestaña llamaba antes a
+  `addFloatingGroup` de dockview, que solo separa el panel *dentro* de los
+  límites del propio espacio de trabajo interno — el panel flotante se podía
+  arrastrar, pero nunca más allá de los bordes del panel de workspace del que
+  salía, lo cual frustraba el propósito cuando lo que se quería era, por
+  ejemplo, tener el editor de celda completamente fuera de la vista de la
+  tabla. Ahora abre una `WebviewWindow` nativa y desnuda (`open_tab_window`,
+  renderizada por la nueva raíz `DetachedTabWindow`) que aloja únicamente esa
+  pestaña — sin barra lateral, sin otras pestañas, sin menús — y se puede
+  mover a cualquier parte del escritorio como cualquier otra ventana. La
+  pestaña se elimina del workspace de la ventana principal en el momento en
+  que se saca, así que cerrar la ventana flotante es simplemente el cierre de
+  la pestaña: no queda ningún estado que reconciliar de vuelta. Aplica a
+  todos los tipos de pestaña (tabla, query, estructura, vista, seguridad).
+  Igual que «Nueva ventana», estas ventanas son efímeras — no tocan
+  `tab_state.json` ni se restauran entre reinicios.
 
 ## [1.10.0] — 2026-07-23
 

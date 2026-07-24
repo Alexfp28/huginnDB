@@ -82,7 +82,58 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   automatically on first load after upgrading (the most-recently-used one is
   promoted to the session layout), so nobody loses their arrangement.
 
+- **"Float in new window" now opens a real, independent OS window.** A tab's
+  "Sacar a ventana flotante" action used to call dockview's
+  `addFloatingGroup`, which only detaches the panel *within* the inner
+  workspace's own bounds — the floating panel could be dragged around, but
+  never past the edges of the workspace pane it came from, which defeated the
+  point when you wanted, say, the cell editor free of the table view
+  entirely. It now opens a bare, native `WebviewWindow` (`open_tab_window`,
+  rendered by the new `DetachedTabWindow` root) that hosts just that one
+  tab — no sidebar, no other tabs, no menus — and can be moved anywhere on
+  the desktop like any other window. The tab is removed from the main
+  window's workspace the moment it's popped out, so closing the detached
+  window is simply the tab's close: there's no state to reconcile back.
+  Applies to every tab kind (table, query, structure, view, security). Like
+  "New window", these windows are ephemeral — they don't touch
+  `tab_state.json` and aren't restored across restarts.
+
 ### Fixed
+
+- **Double-clicking a cell's text no longer fails to enter inline-edit
+  mode.** Since the "expand" icon landed (#78), a selected cell also grows a
+  `ring-2 ring-inset ring-brand` border on the `<td>` itself, occupying the
+  cell's edge/padding area alongside the value. On the Linux WebKitGTK
+  webview, double-clicking directly over the value's text intermittently
+  never fired the native `dblclick` event at all — a known WebKitGTK quirk
+  where `user-select: none` (set table-wide, see `DataGrid.tsx`'s
+  `select-none` note) suppresses `dblclick` specifically when there's
+  selectable text under the pointer, while double-clicking the cell's empty
+  padding (no text glyph under the cursor, which is what made it *look*
+  like clicking "the border" was the trick) worked fine. The `<td>`'s
+  `onClick` handler now also checks the native `click` event's own
+  `detail` (the OS click count, unaffected by that quirk): a second click
+  (`e.detail >= 2`) routes straight into `openCellEdit`, the same path
+  `onDoubleClick` already used — so edit mode now opens reliably regardless
+  of exactly where in the cell the double-click lands.
+
+- **Typing into an inline cell edit no longer kicks the caret to the end
+  of the value on every keystroke.** `DataGrid`'s `columns` memo listed
+  `inlineEdit` (and `fkEditCell`/`selectedCell`) in its dependency array, so
+  every keystroke — which updates `inlineEdit.value` — rebuilt the entire
+  `columns` array, handing every column's `cell` renderer a brand-new arrow
+  function reference. TanStack's `flexRender` treats `columnDef.cell` as a
+  component *type* (`typeof Comp === "function"` → `React.createElement(Comp,
+  props)`), so a new reference each render reads to React as a different
+  element type for every cell in the grid — forcing a full unmount +
+  remount of the whole table body, including whatever `<input>` was mid-edit.
+  A freshly-mounted `autoFocus` input always plants its caret at the end,
+  which is exactly what made moving the cursor mid-value and continuing to
+  type impossible without retyping the whole thing. `fkEditCell`/
+  `inlineEdit`/`selectedCell` are now mirrored into a `useRef` updated on
+  every render instead of being memo dependencies; each column's `cell`
+  function reads the live values off that ref, so its own identity — and the
+  mounted DOM underneath it — stays stable across keystrokes.
 
 - **Secondary windows ("New window") can now rearrange their panels.**
   Dragging a panel in a window opened via the Window menu always showed the

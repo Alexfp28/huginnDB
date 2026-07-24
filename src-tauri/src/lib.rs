@@ -348,6 +348,8 @@ pub fn run() {
             commands::connection::take_pending_cli_connect,
             commands::connection::open_new_window,
             commands::connection::take_window_startup_intent,
+            commands::connection::open_tab_window,
+            commands::connection::take_detached_tab_intent,
             commands::schema::list_databases,
             commands::schema::create_database,
             commands::schema::drop_database,

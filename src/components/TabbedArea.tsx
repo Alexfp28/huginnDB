@@ -1,17 +1,22 @@
 /**
  * Editor-style workspace: a nested dockview instance whose panels are the
- * open table-data and query-editor tabs. Splitting, dragging a tab to
- * another group, and tearing one out into a floating window all come for
- * free from dockview.
+ * open table-data and query-editor tabs. Splitting and dragging a tab to
+ * another group come for free from dockview. "Float in new window"
+ * (`WorkspaceTab.detachToWindow`) is deliberately NOT dockview's
+ * `addFloatingGroup` — that keeps the floating panel confined to the inner
+ * workspace's own bounds (see CLAUDE.md's floating-window session note). It
+ * instead opens a real `WebviewWindow` via `open_tab_window` and removes the
+ * tab from this store, so it can be dragged anywhere on the desktop; see
+ * `DetachedTabWindow`.
  *
  * `useTabs` stays the single source of truth for *which* tabs exist and
  * which is active; the inner dockview is a view that we reconcile against
  * it (store → dockview for add/remove, both directions for the active
  * panel). Keeping the store authoritative means the per-connection
  * persistence in `persistedTabs.ts` — which derives its snapshot from
- * `useTabs` — keeps working untouched. The trade-off is that split/float
- * geometry lives only for the session: on restart, restored tabs come
- * back in the default tabbed arrangement.
+ * `useTabs` — keeps working untouched. The trade-off is that split geometry
+ * lives only for the session: on restart, restored tabs come back in the
+ * default tabbed arrangement.
  *
  * All tab removal flows through the store (the custom tab's close button
  * and middle-click call `useTabs.close`), so add/remove is strictly
@@ -71,6 +76,7 @@ import {
 } from "@/lib/dockview";
 import { scheduleSaveActive } from "@/stores/persistedTabs";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/tauri";
 import type { TabAccentStyle } from "@/types";
 
 interface Props {
@@ -254,6 +260,21 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const setColor = (color: string | null) =>
     useTabs.getState().setColor(id, color);
   const togglePin = () => useTabs.getState().setPinned(id, !isPinned);
+  // Pop this tab out into a real, independent OS window (see
+  // `open_tab_window` / `DetachedTabWindow`) — unlike dockview's
+  // `addFloatingGroup`, it isn't confined to the inner workspace's bounds
+  // and can be dragged anywhere on the desktop. Closing that window is the
+  // whole story for this tab, so it's removed from this window right away
+  // rather than waiting for a close signal that never comes back.
+  const detachToWindow = async () => {
+    if (!thisTab) return;
+    try {
+      await api.openTabWindow(thisTab, label);
+      useTabs.getState().close(id);
+    } catch (e) {
+      console.error("Failed to open detached tab window:", e);
+    }
+  };
   const hasOthers = tabs.length > 1;
   // Whether another tab of this connection exists (gates "close others in
   // this connection").
@@ -373,12 +394,7 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           >
             {t("tabs.splitDown")}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              const panel = props.containerApi.getPanel(id);
-              if (panel) props.containerApi.addFloatingGroup(panel);
-            }}
-          >
+          <DropdownMenuItem onClick={detachToWindow}>
             {t("tabs.floatPanel")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -488,12 +504,7 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
         >
           {t("tabs.splitDown")}
         </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() => {
-            const panel = props.containerApi.getPanel(id);
-            if (panel) props.containerApi.addFloatingGroup(panel);
-          }}
-        >
+        <ContextMenuItem onSelect={detachToWindow}>
           {t("tabs.floatPanel")}
         </ContextMenuItem>
         <ContextMenuSeparator />
