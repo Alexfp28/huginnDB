@@ -76,6 +76,17 @@ in a roadmap and now don't:
    (parallels the Windows SmartScreen situation documented in the README).
 8. **Visual query builder** — low priority. Monaco is fast enough that most
    users probably don't want one; only pursue if there's real demand.
+9. **Keyset (seek) pagination for deep table navigation** — low priority.
+   The data browser paginates with `LIMIT/OFFSET` (and `.skip()` on MongoDB),
+   which is O(offset): jumping deep into a multi-million-row table makes the
+   engine scan and discard every skipped row. A `WHERE (sort_key) > :last`
+   seek would make deep pages O(1), but it doesn't compose with "jump to page
+   N" or arbitrary multi-column sort, so it's a targeted optimisation, not a
+   drop-in replacement for the current offset model. Deferred deliberately:
+   the Unreleased row-count decoupling + whole-table estimate (issue #77)
+   already removed the *actual* first-paint stall, so the offset cost only
+   bites a user who pages very deep, which is rare in practice. Revisit only
+   if a real deep-navigation complaint appears.
 
 Have a different priority? Open a
 [feature request](.github/ISSUE_TEMPLATE/feature_request.md).
