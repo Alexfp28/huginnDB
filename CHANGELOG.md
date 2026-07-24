@@ -83,6 +83,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Double-clicking a cell's text no longer fails to enter inline-edit
+  mode.** Since the "expand" icon landed (#78), a selected cell also grows a
+  `ring-2 ring-inset ring-brand` border on the `<td>` itself, occupying the
+  cell's edge/padding area alongside the value. On the Linux WebKitGTK
+  webview, double-clicking directly over the value's text intermittently
+  never fired the native `dblclick` event at all — a known WebKitGTK quirk
+  where `user-select: none` (set table-wide, see `DataGrid.tsx`'s
+  `select-none` note) suppresses `dblclick` specifically when there's
+  selectable text under the pointer, while double-clicking the cell's empty
+  padding (no text glyph under the cursor, which is what made it *look*
+  like clicking "the border" was the trick) worked fine. The `<td>`'s
+  `onClick` handler now also checks the native `click` event's own
+  `detail` (the OS click count, unaffected by that quirk): a second click
+  (`e.detail >= 2`) routes straight into `openCellEdit`, the same path
+  `onDoubleClick` already used — so edit mode now opens reliably regardless
+  of exactly where in the cell the double-click lands.
+
+- **Typing into an inline cell edit no longer kicks the caret to the end
+  of the value on every keystroke.** `DataGrid`'s `columns` memo listed
+  `inlineEdit` (and `fkEditCell`/`selectedCell`) in its dependency array, so
+  every keystroke — which updates `inlineEdit.value` — rebuilt the entire
+  `columns` array, handing every column's `cell` renderer a brand-new arrow
+  function reference. TanStack's `flexRender` treats `columnDef.cell` as a
+  component *type* (`typeof Comp === "function"` → `React.createElement(Comp,
+  props)`), so a new reference each render reads to React as a different
+  element type for every cell in the grid — forcing a full unmount +
+  remount of the whole table body, including whatever `<input>` was mid-edit.
+  A freshly-mounted `autoFocus` input always plants its caret at the end,
+  which is exactly what made moving the cursor mid-value and continuing to
+  type impossible without retyping the whole thing. `fkEditCell`/
+  `inlineEdit`/`selectedCell` are now mirrored into a `useRef` updated on
+  every render instead of being memo dependencies; each column's `cell`
+  function reads the live values off that ref, so its own identity — and the
+  mounted DOM underneath it — stays stable across keystrokes.
+
 - **Secondary windows ("New window") can now rearrange their panels.**
   Dragging a panel in a window opened via the Window menu always showed the
   "not-allowed" cursor: the window was built without the main window's
