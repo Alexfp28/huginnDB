@@ -70,6 +70,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Table-tab toolbar re-laid-out for a cleaner filter cluster.** The top
+  toolbar of a table/collection tab previously crowded four different concerns
+  into its left edge — the reload button, the advanced-filter button, the
+  MongoDB table/list view toggle, and a cramped fixed-width (`w-56`) search
+  box — which read as an undifferentiated pile. The bar is now split into a
+  coherent *filter* group on the left (refresh · advanced filter · search box)
+  and a *display* group pinned to the right (row count · Insert · view toggle ·
+  elapsed time). The search box is the visual anchor: it grows to fill the
+  available width (capped, with a leading magnifier icon) instead of the old
+  narrow fixed size, so filtering — the toolbar's primary action — no longer
+  feels like an afterthought. The MongoDB view toggle moved from the filter
+  cluster to the display group, since choosing table-vs-list is a display
+  concern, not a filter. No behaviour changed — same actions, same shortcuts,
+  purely a layout/affordance pass. Implemented via a new `toolbarTrailing`
+  slot on `DataGrid` mirroring the existing `toolbarLeading`.
+
 - **The workspace pane layout is now session-level, not per-connection.**
   The inner-dockview split/float geometry (how you've arranged the open
   table/query tabs) used to be stored redundantly under *every* connection
