@@ -932,6 +932,31 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_11_0": {
+        "tagline": "La app se reconecta al arrancar y abre tablas grandes casi al instante, con una barra de herramientas de rejilla unificada, una vista de lista para MongoDB y ventanas flotantes reales.",
+        "items": {
+          "reconnect": {
+            "title": "Reconexión al arrancar",
+            "body": "Una nueva preferencia general (activada por defecto) reabre las conexiones que estaban activas al cerrar la app — usando las credenciales ya guardadas en el llavero del sistema — y restaura la misma conexión enfocada, pestaña y disposición de paneles que dejaste."
+          },
+          "fastOpen": {
+            "title": "Las tablas grandes se abren casi al instante",
+            "body": "Las filas se muestran en cuanto responde la consulta, sin esperar a un COUNT(*) exacto; el total de la tabla completa se obtiene de las estadísticas del motor como un ~N aproximado, así las tablas de millones de filas ya no se atascan al abrirse."
+          },
+          "toolbar": {
+            "title": "Una barra de herramientas única y más limpia",
+            "body": "La barra de la tabla es ahora una sola barra estilo Compass — la búsqueda crece para ocupar el ancho, Insertar va a su lado y la paginación, el zoom y el tiempo transcurrido pasan a la derecha — eliminando la antigua franja de estado inferior y el recuento de filas duplicado para ganar espacio de rejilla."
+          },
+          "mongoList": {
+            "title": "Vista de lista para MongoDB",
+            "body": "Las colecciones de MongoDB incorporan un conmutador tabla/lista: el modo lista muestra cada documento como una tarjeta con los objetos y arrays anidados formateados, en vez de forzar un desplazamiento horizontal interminable y volcados JSON de una sola línea en el modo tabla."
+          },
+          "floatWindow": {
+            "title": "Saca una pestaña a una ventana real",
+            "body": "«Sacar a ventana flotante» abre ahora una ventana del sistema real e independiente con esa única pestaña — que puedes mover a cualquier parte del escritorio — en lugar de un panel flotante atrapado dentro del panel del área de trabajo."
+          }
+        }
+      },
       "1_10_0": {
         "tagline": "La edición de vistas llega al explorador de esquema, junto a atajos de teclado totalmente personalizables y acciones de rejilla más rápidas.",
         "items": {

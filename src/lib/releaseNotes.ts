@@ -24,14 +24,19 @@ import type { LucideIcon } from "lucide-react";
 import {
   Bot,
   Copy,
+  ExternalLink,
   Eye,
+  Gauge,
   HardDrive,
   Keyboard,
+  LayoutList,
   ListFilter,
   ListTree,
   Palette,
+  PanelTop,
   Pencil,
   Plug,
+  Power,
   ShieldCheck,
   SquareTerminal,
   Table2,
@@ -67,6 +72,38 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.11.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_11_0.tagline",
+    highlights: [
+      {
+        icon: Power,
+        titleKey: "whatsNew.releases.1_11_0.items.reconnect.title",
+        bodyKey: "whatsNew.releases.1_11_0.items.reconnect.body",
+      },
+      {
+        icon: Gauge,
+        titleKey: "whatsNew.releases.1_11_0.items.fastOpen.title",
+        bodyKey: "whatsNew.releases.1_11_0.items.fastOpen.body",
+      },
+      {
+        icon: PanelTop,
+        titleKey: "whatsNew.releases.1_11_0.items.toolbar.title",
+        bodyKey: "whatsNew.releases.1_11_0.items.toolbar.body",
+      },
+      {
+        icon: LayoutList,
+        titleKey: "whatsNew.releases.1_11_0.items.mongoList.title",
+        bodyKey: "whatsNew.releases.1_11_0.items.mongoList.body",
+      },
+      {
+        icon: ExternalLink,
+        titleKey: "whatsNew.releases.1_11_0.items.floatWindow.title",
+        bodyKey: "whatsNew.releases.1_11_0.items.floatWindow.body",
+      },
+    ],
+  },
   {
     version: "1.10.0",
     major: true,
