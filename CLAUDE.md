@@ -7,7 +7,7 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 - **HuginnDB** — desktop database manager, Tauri 2 (Rust backend) + React + TypeScript frontend.
 - Targets PostgreSQL, MySQL, SQLite, **and MongoDB**. Inspired by HeidiSQL but minimal-UI / keyboard-first / Monaco-everywhere.
 - Public repo: <https://github.com/Alexfp28/huginnDB>.
-- License: MIT. Status: **1.8.x** (stable; SemVer applies). MongoDB support and the headless MCP connector (`huginndb-mcp`) landed across the 1.5–1.8 line.
+- License: MIT. Status: **1.10.x** (stable; SemVer applies). MongoDB support landed in 1.1.0; the headless MCP connector (`huginndb-mcp`) landed across the 1.5–1.9 line (per-connection write policy in 1.9.0).
 
 ## Maintainer / collaboration notes
 
@@ -156,20 +156,15 @@ Theme + dockview layout still live in `localStorage` (keys `huginndb.theme.v2` a
 - Released 0.5.0: workspace switcher with reorder/colour/icon, "Copy row as ▸ JSON/INSERT/UPDATE" submenu, connection-level filter in multi-DB explorer, and the fix for the cell-save row-mismatch bug under client filters.
 - Released 0.6.0 right after: Ctrl+Enter restored, per-statement "▶ Run" CodeLens, driver-aware keywords in the autocomplete (Postgres `RETURNING`, MySQL `ON DUPLICATE KEY UPDATE`, …) with tables-first sort.
 - Backend has `cargo test` coverage for the v1/v2→v3 tab-state migration and prune semantics; no frontend tests or CI yet.
-- Released 1.4.0: removed workspaces in favour of native per-window instances — "New window" in the new **Window** menu opens a blank, ephemeral secondary window; see gotcha #8 and `docs/1.4.0_ROADMAP.md`. Same cycle also split the topbar File/View menus into four (File/Window/View/Help — File had accumulated unrelated window/help actions), fixed two bugs (`open_new_window` must be an `async fn` on Windows — sync commands deadlock creating a `WebviewWindow`, a WebView2 issue — and CLI ad-hoc launches without `--password` now always attempt the connect instead of silently staying disconnected), added server-side users/permissions introspection (a "Security" panel, implemented for every driver including SQLite's explicit no-user-model empty state — `commands::schema::list_users`/`list_privileges`), and added a background connection keepalive + lost-connection reconnect UX (`src-tauri/src/keepalive.rs` — a 3-minute heartbeat per top-level connection; a failed ping flags the connection in `stores/connectionHealth.ts` and both `ConnectionList`/`StatusConnections` offer a one-click reconnect instead of the user hitting a cryptic driver error mid-query).
+- Released 1.4.0: removed workspaces in favour of native per-window instances — "New window" in the new **Window** menu opens a blank, ephemeral secondary window; see gotcha #8 and the `CHANGELOG.md` 1.4.0 entry. Same cycle also split the topbar File/View menus into four (File/Window/View/Help — File had accumulated unrelated window/help actions), fixed two bugs (`open_new_window` must be an `async fn` on Windows — sync commands deadlock creating a `WebviewWindow`, a WebView2 issue — and CLI ad-hoc launches without `--password` now always attempt the connect instead of silently staying disconnected), added server-side users/permissions introspection (a "Security" panel, implemented for every driver including SQLite's explicit no-user-model empty state — `commands::schema::list_users`/`list_privileges`), and added a background connection keepalive + lost-connection reconnect UX (`src-tauri/src/keepalive.rs` — a 3-minute heartbeat per top-level connection; a failed ping flags the connection in `stores/connectionHealth.ts` and both `ConnectionList`/`StatusConnections` offer a one-click reconnect instead of the user hitting a cryptic driver error mid-query).
 - macOS is not a primary target; build should work but unverified.
 
-## Roadmap (priority order from README)
+## Roadmap
 
-1. **SSH tunnel** — UI fields and `SshTunnel` type already exist; backend wiring is the next major feature. The user explicitly flagged this for the next alpha. Likely approach: spawn `russh` / `russh-tokio` tunnel before opening the `sqlx` pool, point the pool at `127.0.0.1:<local>`.
-2. ~~Bulk row insert / delete in the data browser.~~ Bulk delete + multi-select shipped in 1.0.2; bulk insert still open.
-3. Schema diff & export (DDL extraction, side-by-side compare).
-4. More drivers — MSSQL, ClickHouse, DuckDB. Recipe in `CONTRIBUTING.md`.
-5. ~~Table-structure editor (visual `ALTER TABLE`).~~ Shipped in 1.0.2 — see gotcha #16.
-6. Tighter CSP.
-7. Tests — `testcontainers-rs` for ephemeral Postgres/MySQL, Playwright for the frontend.
-8. macOS bundle with code signing.
-9. Visual query builder (low priority — Monaco is fast enough that most users probably won't want one).
+`ROADMAP.md` (repo root) is the single source of truth for what's shipped and
+what's open — don't duplicate its list here, it will drift. Detail-level
+roadmaps for two subsystems are tracked separately and still current:
+`docs/MONGODB_ROADMAP.md` and `docs/MCP_CONNECTOR_ROADMAP.md`.
 
 ## Explicitly out of scope (don't propose unless asked)
 
@@ -181,7 +176,7 @@ Theme + dockview layout still live in `localStorage` (keys `huginndb.theme.v2` a
 
 ## When the user asks for "the next thing"
 
-- Default to **finishing roadmap item 1 (SSH tunnel)** unless they say otherwise — they explicitly parked it for this alpha.
+- Default to the **top open item in `ROADMAP.md`** unless they say otherwise.
 - Always ask before adding new dependencies; the user prefers a small, audited tree.
 - Keep PRs / commits scoped. The user values legible history and will read the long-form commit body.
 
