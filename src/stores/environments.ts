@@ -205,6 +205,16 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       useUi.getState().setSelectedConnectionId(null);
       useTabs.getState().replaceAll([], null);
 
+      // Emptying the tab store above wakes the per-connection subscriptions and
+      // arms a save. That save would serialise the store as it is *now* —
+      // empty — and `disconnect()` below runs `flushTabState`, which writes any
+      // pending timer out immediately. The result: the good snapshot
+      // `flushAllTabState` just wrote is overwritten with nothing, the
+      // environment remembers which connections were open but none of their
+      // tabs, and returning to it reconnects to a bare workspace. Kill the
+      // timers here; the state worth keeping is already on disk.
+      cancelPendingSaves();
+
       // 3. Tear down the live pools. `disconnect()` closes each connection's
       //    tabs and drops its schema cache, which is what leaves a clean slate
       //    for the incoming environment to hydrate into.
