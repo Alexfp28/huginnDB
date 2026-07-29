@@ -1138,6 +1138,7 @@ mod tests {
                 group: None,
                 visible_databases: None,
                 mcp_write: policy,
+                origin_id: None,
             });
         let mut allowed = HashSet::new();
         allowed.insert(id.to_string());

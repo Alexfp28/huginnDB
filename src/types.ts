@@ -91,6 +91,16 @@ export interface ConnectionProfile {
    *  change here takes effect without restarting the MCP client. Mirrors
    *  `McpWritePolicy` in Rust. */
   mcp_write?: McpWritePolicy;
+  /**
+   * Set when this profile came from a shared origin (#108). Such a profile is
+   * **read-only in the UI**: it mirrors an entry in a file somebody else
+   * curates, so a local edit would be silently undone by the next sync.
+   * Duplicating it produces an ordinary local profile with no `origin_id`.
+   *
+   * `snake_case` like its neighbours here — this interface mirrors the Rust
+   * struct's serde output, which is not camelCased for profiles.
+   */
+  origin_id?: string | null;
 }
 
 /** How far the MCP connector may write to a connection. Mirrors
@@ -614,6 +624,22 @@ export interface Environment {
   color: string | null;
   icon: string | null;
   order: number;
+}
+
+/**
+ * A shared folder an environment imports connections from (#108). Mirrors
+ * `Origin` in `src-tauri/src/tab_state.rs`.
+ *
+ * `path` points at a file in the format "Export profiles…" already writes. The
+ * sync is pull-only — HuginnDB never writes back to it — and the passphrase for
+ * an encrypted file lives in this user's OS keychain, never here.
+ */
+export interface Origin {
+  id: string;
+  name: string;
+  path: string;
+  /** RFC 3339, or `null` if it has never synced. Display only. */
+  lastSyncedAt: string | null;
 }
 
 /** What `listEnvironments` returns — the list and the active id together, so a

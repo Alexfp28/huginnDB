@@ -163,6 +163,19 @@ pub struct ConnectionProfile {
     /// app stores it opaquely. See [`McpWritePolicy`].
     #[serde(default)]
     pub mcp_write: McpWritePolicy,
+    /// Id of the shared origin this profile was imported from (#108), or `None`
+    /// for a profile the user created locally.
+    ///
+    /// A profile carrying this is **read-only in the UI**: it is a copy of an
+    /// entry in a file somebody else curates, so editing it locally would be
+    /// silently undone by the next sync. To vary one, duplicate it — the copy
+    /// has no `origin_id` and is an ordinary local profile.
+    ///
+    /// The backend stores it opaquely and never acts on it beyond the sync
+    /// itself; enforcement of the read-only rule is a frontend concern, the
+    /// same split as `visible_databases`.
+    #[serde(default)]
+    pub origin_id: Option<String>,
 }
 
 /// How the client decides whether to trust the SSH server's host key.

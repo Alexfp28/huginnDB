@@ -120,6 +120,40 @@ pub struct Environment {
     /// What to restore when this environment is entered — at launch or on a
     /// switch.
     pub launch: LaunchState,
+    /// Shared connection sources this environment pulls from (#108).
+    #[serde(default)]
+    pub origins: Vec<Origin>,
+}
+
+/// A shared folder this environment imports connections from (#108).
+///
+/// "Shared folder" means a path the OS already mounts — a UNC share
+/// (`\\server\huginndb\clients\`), a mapped drive, or a synced folder. There is
+/// no protocol and no service: reading one is `std::fs::read`, and the share's
+/// ACL is the actual access control. `path` points at a **file**, in the format
+/// `export_profiles` already writes (`crate::transfer`, v1, with AES-256-GCM
+/// secrets when the publisher included passwords).
+///
+/// Strictly pull-only. HuginnDB never writes to `path`: the file belongs to
+/// whoever curates it, and a concurrent write over SMB has no transaction to
+/// protect it. The passphrase lives in *this* user's keychain, keyed by the
+/// origin id — it is never stored here, so the on-disk state stays free of
+/// secrets exactly like `profiles.json`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Origin {
+    pub id: String,
+    /// User-facing label. Unlike an environment's name this is expected to be
+    /// set at creation (the user typed a path, so they can name it), and it is
+    /// only ever display copy — nothing resolves against it.
+    pub name: String,
+    /// Absolute path to the export file. Stored verbatim, including its
+    /// platform-specific separators: a UNC path is not portable to another OS
+    /// and rewriting it would only obscure why it stopped resolving.
+    pub path: String,
+    /// RFC 3339 timestamp of the last successful sync, or `None` if it has
+    /// never completed one. Display only — the sync never diffs against it.
+    pub last_synced_at: Option<String>,
 }
 
 /// The state needed to put a session back the way the user left it: which
@@ -692,6 +726,33 @@ mod tests {
             Some(serde_json::json!({"keep": "me"}))
         );
         assert_eq!(active.launch.active_connections, vec!["c2"]);
+    }
+
+    #[test]
+    fn origins_round_trip_and_default_to_empty() {
+        // A v4 blob written before origins existed must still load, with the
+        // field defaulting rather than failing the whole parse.
+        let without = r#"{ "version": 4, "environments": [ { "id": "a" } ] }"#;
+        let raw: RawState = serde_json::from_str(without).unwrap();
+        assert!(sole_env(&raw.into_state()).origins.is_empty());
+
+        let with = r#"{
+            "version": 4,
+            "environments": [ { "id": "a", "origins": [
+                { "id": "o1", "name": "Clients",
+                  "path": "\\\\server\\huginndb\\clients.json",
+                  "lastSyncedAt": "2026-07-29T10:00:00Z" }
+            ] } ]
+        }"#;
+        let raw: RawState = serde_json::from_str(with).unwrap();
+        let state = raw.into_state();
+        let origins = &sole_env(&state).origins;
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0].path, r"\\server\huginndb\clients.json");
+        assert_eq!(
+            origins[0].last_synced_at.as_deref(),
+            Some("2026-07-29T10:00:00Z")
+        );
     }
 
     #[test]
