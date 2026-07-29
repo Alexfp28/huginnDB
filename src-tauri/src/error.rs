@@ -9,7 +9,9 @@
 use serde::Serialize;
 use thiserror::Error;
 
-/// The single error variant exposed by the backend.
+/// The error type every Tauri command returns. Each variant maps to one
+/// failure domain; the `#[error(...)]` prefix is what the user actually sees,
+/// so keep those messages actionable.
 #[derive(Debug, Error)]
 pub enum AppError {
     /// SQL driver or pool failure surfaced by `sqlx`.
@@ -44,7 +46,9 @@ pub enum AppError {
     #[error("not found: {0}")]
     NotFound(String),
 
-    /// The supplied driver name is not one of the supported backends.
+    /// The connection's driver does not support the requested operation (e.g.
+    /// view editing against MongoDB). Distinct from [`Self::InvalidInput`]:
+    /// the argument was well-formed, the *backend* can't honour it.
     #[error("unsupported driver: {0}")]
     UnsupportedDriver(String),
 

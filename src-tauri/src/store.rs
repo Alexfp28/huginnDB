@@ -5,7 +5,7 @@
 //!
 //! * Windows — `%APPDATA%\HuginnDB\profiles.json`
 //! * Linux   — `$XDG_CONFIG_HOME/HuginnDB/profiles.json`
-//!                 (or `~/.config/HuginnDB/profiles.json`)
+//!   (or `~/.config/HuginnDB/profiles.json`)
 //! * macOS   — `~/Library/Application Support/HuginnDB/profiles.json`
 //!
 //! **Passwords are never written here** — see [`crate::keychain`].

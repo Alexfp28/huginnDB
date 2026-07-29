@@ -81,7 +81,7 @@ pub struct PersistedTabState {
     pub active_tab_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ConnectionTabState {
     pub tabs: Vec<PersistedTab>,
@@ -129,18 +129,6 @@ impl Default for PersistedTabState {
             active_connections: Vec::new(),
             selected_connection_id: None,
             active_tab_id: None,
-        }
-    }
-}
-
-impl Default for ConnectionTabState {
-    fn default() -> Self {
-        Self {
-            tabs: Vec::new(),
-            active_tab_id: None,
-            expanded_schema_nodes: Vec::new(),
-            last_opened: 0,
-            internal_layout: None,
         }
     }
 }
@@ -263,16 +251,22 @@ impl PersistedTabState {
             .iter()
             .map(|(id, s)| (id.clone(), s.last_opened))
             .collect();
-        // Highest `last_opened` first; keep the head.
-        ordered.sort_by(|a, b| b.1.cmp(&a.1));
+        // Highest `last_opened` first; keep the head. The id is a tie-breaker
+        // and it is load-bearing, not cosmetic: entries sharing a timestamp —
+        // notably `0`, the default for a v1 blob and for any partially written
+        // entry — would otherwise be ordered by `HashMap` iteration, which
+        // varies per run, so *which* connections survived a prune was
+        // nondeterministic.
+        ordered.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         for (id, _) in ordered.into_iter().skip(MAX_REMEMBERED_CONNECTIONS) {
             self.connections.remove(&id);
         }
     }
 }
 
-/// Truncate oversized query bodies before persisting.
-fn normalise(state: &mut ConnectionTabState) {
+/// Truncate oversized query bodies before persisting. Command handlers call
+/// this on user-supplied state before it reaches [`save_tab_state`].
+pub(crate) fn normalise(state: &mut ConnectionTabState) {
     for tab in &mut state.tabs {
         if let Some(q) = &tab.query {
             if q.len() > MAX_QUERY_BYTES {
@@ -493,10 +487,4 @@ mod tests {
         assert!(state.selected_connection_id.is_none());
         assert!(state.active_tab_id.is_none());
     }
-}
-
-/// Re-export the normalisation hook so command handlers can call it before
-/// writing user-supplied state.
-pub fn normalise_for_save(state: &mut ConnectionTabState) {
-    normalise(state);
 }

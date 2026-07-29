@@ -30,8 +30,8 @@ fn driver_of(pool: &DbPool) -> AppResult<Driver> {
         DbPool::Postgres(_) => Ok(Driver::Postgres),
         DbPool::Mysql(_) => Ok(Driver::Mysql),
         DbPool::Sqlite(_) => Ok(Driver::Sqlite),
-        DbPool::Mongo(_) => Err(AppError::InvalidInput(
-            "view editing is not supported on MongoDB in this version".into(),
+        DbPool::Mongo(_) => Err(AppError::UnsupportedDriver(
+            "view editing is not supported on MongoDB".into(),
         )),
     }
 }

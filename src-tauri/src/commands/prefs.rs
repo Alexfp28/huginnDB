@@ -71,7 +71,7 @@ pub fn save_tab_state(
     connection_id: String,
     mut tab_state_value: ConnectionTabState,
 ) -> AppResult<()> {
-    tab_state::normalise_for_save(&mut tab_state_value);
+    tab_state::normalise(&mut tab_state_value);
     let snapshot = {
         let mut guard = state.tab_state.write();
         guard.connections.insert(connection_id, tab_state_value);

@@ -1875,6 +1875,13 @@ fn json_to_string(v: &Value) -> Option<String> {
 ///
 /// Returns the number of rows actually deleted; that should equal
 /// `pk_value_rows.len()` when every key existed, and less if any did not.
+// The argument list is the IPC surface, not a design choice: a `#[tauri::command]`
+// receives flat named arguments from `invoke`, and `app`/`window`/`state` are
+// injected by Tauri rather than passed by the caller. Collapsing these into a
+// struct would change the shape the frontend calls with for no gain here. (The
+// same allow on the `_inner` helpers below is a different matter — those are
+// plain Rust functions and genuinely want a request struct.)
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn delete_rows(
     app: AppHandle,
@@ -2054,6 +2061,8 @@ pub(crate) async fn delete_rows_inner(
 /// with `RETURNING <pk>` and the generated value is returned to the
 /// frontend. MySQL/SQLite return the last insert id when available; if
 /// neither path applies the response is `null`.
+// Flat argument list is the IPC surface — see the note on `delete_rows`.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn insert_row(
     app: AppHandle,

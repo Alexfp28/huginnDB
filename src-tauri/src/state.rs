@@ -49,18 +49,17 @@ pub enum Driver {
 /// This is metadata-only from the backend's perspective (like
 /// [`ConnectionProfile::visible_databases`]); the desktop app never acts on
 /// it — only the sidecar's enforcement path does.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum McpWritePolicy {
+    /// The default for any profile that has never opted in: an MCP client may
+    /// read but never mutate. Deliberately the `Default` so a profile
+    /// deserialised from an older `profiles.json` (which has no such field)
+    /// can never come back as writable.
+    #[default]
     ReadOnly,
     Data,
     Full,
-}
-
-impl Default for McpWritePolicy {
-    fn default() -> Self {
-        Self::ReadOnly
-    }
 }
 
 // These helpers are consumed only by the headless MCP connector's enforcement
@@ -171,18 +170,17 @@ pub struct ConnectionProfile {
 /// `AcceptNew` mirrors `ssh -o StrictHostKeyChecking=accept-new`: trust on
 /// first use, then strict afterwards. `Strict` requires a pre-existing
 /// fingerprint in `known_hosts.json`. `AcceptAny` skips verification.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum HostKeyPolicy {
     Strict,
+    /// Trust-on-first-use: an unknown host is recorded, a *changed* key is
+    /// refused. The `Default` because it is the only setting that is both
+    /// usable without a manual known-hosts step and still detects a MITM on
+    /// every subsequent connect.
+    #[default]
     AcceptNew,
     AcceptAny,
-}
-
-impl Default for HostKeyPolicy {
-    fn default() -> Self {
-        Self::AcceptNew
-    }
 }
 
 /// Authentication method used to log into the SSH server.
