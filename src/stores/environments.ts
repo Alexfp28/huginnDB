@@ -51,7 +51,11 @@ interface EnvironmentsState {
 
   load: () => Promise<void>;
   switchTo: (id: string) => Promise<void>;
-  create: (name: string) => Promise<Environment | null>;
+  create: (env: {
+    name: string;
+    color?: string | null;
+    icon?: string | null;
+  }) => Promise<Environment | null>;
   update: (env: {
     id: string;
     name: string;
@@ -227,9 +231,9 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     }
   },
 
-  create: async (name) => {
+  create: async ({ name, color = null, icon = null }) => {
     try {
-      const env = await api.saveEnvironment({ name });
+      const env = await api.saveEnvironment({ name, color, icon });
       await get().load();
       return env;
     } catch (e) {

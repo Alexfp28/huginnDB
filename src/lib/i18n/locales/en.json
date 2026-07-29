@@ -36,7 +36,10 @@
     "renameTitle": "Rename environment",
     "delete": "Delete",
     "deleteConfirm": "Delete the environment \"{{name}}\"?\n\nIts open tabs and pane layout are discarded. Your connections and their passwords are not touched.",
-    "switchFailed": "Could not switch environment: {{error}}"
+    "switchFailed": "Could not switch environment: {{error}}",
+    "color": "Colour",
+    "icon": "Icon",
+    "none": "None"
   },
   "panels": {
     "schema": "Schema",

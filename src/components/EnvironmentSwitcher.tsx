@@ -13,7 +13,19 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Layers, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  Building2,
+  Check,
+  Database,
+  FlaskConical,
+  Globe,
+  Layers,
+  Loader2,
+  Pencil,
+  Plus,
+  Server,
+  Trash2,
+} from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   DropdownMenu,
@@ -35,6 +47,53 @@ import { useEnvironments, environmentLabel } from "@/stores/environments";
 import { confirmDestructive } from "@/lib/confirmDestructive";
 import { cn } from "@/lib/utils";
 
+/**
+ * Accent colours offered for an environment. A fixed palette rather than a
+ * free colour picker: these are read at a glance as a 8px dot next to a menu
+ * label, so they have to stay distinguishable from each other and legible on
+ * both themes — a picker would let the user choose a near-background grey and
+ * quietly lose the affordance. Stored as the literal hex; the backend keeps it
+ * opaque.
+ */
+const ENV_COLORS = [
+  "#3b82f6",
+  "#22c55e",
+  "#eab308",
+  "#f97316",
+  "#ef4444",
+  "#a855f7",
+] as const;
+
+/**
+ * Icons offered for an environment, as lucide component keys. Stored by key,
+ * never as a rendered glyph, so the set can grow without touching saved data —
+ * an unknown key simply renders no icon (see `EnvIcon`).
+ */
+const ENV_ICONS = {
+  layers: Layers,
+  server: Server,
+  database: Database,
+  flask: FlaskConical,
+  building: Building2,
+  globe: Globe,
+} as const;
+
+type EnvIconKey = keyof typeof ENV_ICONS;
+
+/** Render an environment's icon, or nothing when unset/unrecognised. */
+function EnvIcon({ icon, className }: { icon: string | null; className?: string }) {
+  const Cmp = icon ? ENV_ICONS[icon as EnvIconKey] : undefined;
+  return Cmp ? <Cmp className={className} /> : null;
+}
+
+interface EnvironmentDraft {
+  /** `null` creates; an id edits that environment. */
+  id: string | null;
+  name: string;
+  color: string | null;
+  icon: string | null;
+}
+
 export function EnvironmentSwitcher() {
   const { t } = useTranslation();
   // Primitive / raw-state selectors only (gotcha #1) — the sorted list is
@@ -47,10 +106,8 @@ export function EnvironmentSwitcher() {
   const update = useEnvironments((s) => s.update);
   const remove = useEnvironments((s) => s.remove);
 
-  /** Open editor: `{ id: null }` creates, `{ id }` renames. */
-  const [editing, setEditing] = useState<{ id: string | null; name: string } | null>(
-    null,
-  );
+  /** Open editor: `{ id: null }` creates, `{ id }` edits an existing one. */
+  const [editing, setEditing] = useState<EnvironmentDraft | null>(null);
 
   const ordered = useMemo(
     () => [...environments].sort((a, b) => a.order - b.order),
@@ -71,8 +128,9 @@ export function EnvironmentSwitcher() {
   async function submitEditor() {
     if (!editing) return;
     const name = editing.name.trim();
-    if (editing.id) await update({ id: editing.id, name });
-    else if (name) await create(name);
+    const { color, icon } = editing;
+    if (editing.id) await update({ id: editing.id, name, color, icon });
+    else if (name) await create({ name, color, icon });
     setEditing(null);
   }
 
@@ -90,6 +148,13 @@ export function EnvironmentSwitcher() {
           >
             {switching ? (
               <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+            ) : active.icon ? (
+              // The active environment's own icon replaces the generic one, so
+              // the trigger is identifiable at a glance without reading it.
+              <EnvIcon
+                icon={active.icon}
+                className="h-3.5 w-3.5 shrink-0"
+                />
             ) : (
               <Layers className="h-3.5 w-3.5 shrink-0" />
             )}
@@ -121,6 +186,10 @@ export function EnvironmentSwitcher() {
                     style={{ backgroundColor: env.color }}
                   />
                 )}
+                <EnvIcon
+                  icon={env.icon}
+                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                />
                 <span className="min-w-0 flex-1 truncate">
                   {environmentLabel(env, defaultName)}
                 </span>
@@ -133,7 +202,12 @@ export function EnvironmentSwitcher() {
                     // Keep the menu open and don't trigger the row's switch.
                     e.preventDefault();
                     e.stopPropagation();
-                    setEditing({ id: env.id, name: env.name });
+                    setEditing({
+                      id: env.id,
+                      name: env.name,
+                      color: env.color,
+                      icon: env.icon,
+                    });
                   }}
                 >
                   <Pencil className="h-3 w-3" />
@@ -171,7 +245,9 @@ export function EnvironmentSwitcher() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="gap-2"
-            onSelect={() => setEditing({ id: null, name: "" })}
+            onSelect={() =>
+              setEditing({ id: null, name: "", color: null, icon: null })
+            }
           >
             <Plus className="h-3.5 w-3.5" />
             {t("environments.create")}
@@ -202,6 +278,88 @@ export function EnvironmentSwitcher() {
               if (e.key === "Enter") void submitEditor();
             }}
           />
+
+          {/* Colour — click the selected swatch again to clear it. */}
+          <div>
+            <div className="mb-1.5 text-xs text-muted-foreground">
+              {t("environments.color")}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {ENV_COLORS.map((c) => {
+                const on = editing?.color === c;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={c}
+                    aria-pressed={on}
+                    className={cn(
+                      "h-5 w-5 rounded-full ring-offset-2 ring-offset-background",
+                      on && "ring-2 ring-foreground",
+                    )}
+                    style={{ backgroundColor: c }}
+                    onClick={() =>
+                      setEditing((p) =>
+                        p ? { ...p, color: on ? null : c } : p,
+                      )
+                    }
+                  />
+                );
+              })}
+              <button
+                type="button"
+                className={cn(
+                  "ml-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent",
+                  !editing?.color && "text-foreground",
+                )}
+                onClick={() => setEditing((p) => (p ? { ...p, color: null } : p))}
+              >
+                {t("environments.none")}
+              </button>
+            </div>
+          </div>
+
+          {/* Icon — same toggle-to-clear behaviour. */}
+          <div>
+            <div className="mb-1.5 text-xs text-muted-foreground">
+              {t("environments.icon")}
+            </div>
+            <div className="flex items-center gap-1">
+              {(Object.keys(ENV_ICONS) as EnvIconKey[]).map((key) => {
+                const on = editing?.icon === key;
+                const Cmp = ENV_ICONS[key];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-label={key}
+                    aria-pressed={on}
+                    className={cn(
+                      "rounded p-1.5 hover:bg-accent",
+                      on && "bg-accent text-foreground",
+                    )}
+                    onClick={() =>
+                      setEditing((p) =>
+                        p ? { ...p, icon: on ? null : key } : p,
+                      )
+                    }
+                  >
+                    <Cmp className="h-4 w-4" />
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                className={cn(
+                  "ml-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent",
+                  !editing?.icon && "text-foreground",
+                )}
+                onClick={() => setEditing((p) => (p ? { ...p, icon: null } : p))}
+              >
+                {t("environments.none")}
+              </button>
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setEditing(null)}>
               {t("common.cancel")}
