@@ -16,7 +16,16 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+        // `max-h` + vertical scroll, not a bare `overflow-hidden`: a menu taller
+        // than the space below its trigger (the connections list with every
+        // group expanded — issue #111) used to be silently clipped with no way
+        // to reach the cut-off items. `--radix-popper-available-height` is set
+        // by Radix's `size` middleware on the floating wrapper and inherits
+        // down to this element, so the cap tracks the real gap to the viewport
+        // edge. Horizontal clipping is kept so long labels can't escape the
+        // rounded corners. Consumers that pass their own `max-h-*` still win
+        // (`cn` is tailwind-merge).
+        "z-50 max-h-[var(--radix-popper-available-height)] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
         className,
       )}
       {...props}

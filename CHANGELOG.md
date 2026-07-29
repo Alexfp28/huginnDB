@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Long menus scroll instead of being clipped.** A dropdown or context menu
+  taller than the space between its trigger and the viewport edge was cut off
+  with no way to reach the hidden entries — the shared menu primitives set
+  `overflow: hidden` and never capped their height. The most visible case was
+  the connections list in the File menu with every group folder expanded
+  (#111): the connections past the fold were simply unreachable. Both
+  primitives now cap their height at Radix's
+  `--radix-popper-available-height` (the real gap to the viewport edge,
+  recomputed on every reposition) and scroll vertically. Horizontal clipping
+  is kept, so a long connection name still can't spill past the rounded
+  corners, and any call site that already passed its own `max-h-*` keeps
+  winning over the default.
+
 ## [1.11.0] — 2026-07-24
 
 ### Added

@@ -8,6 +8,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Corregido
+
+- **Los menús largos ahora hacen scroll en vez de recortarse.** Un desplegable
+  o menú contextual más alto que el hueco entre su disparador y el borde de la
+  ventana se cortaba sin forma de llegar a las entradas ocultas: los
+  primitivos compartidos usaban `overflow: hidden` y nunca limitaban su alto.
+  El caso más visible era la lista de conexiones del menú Archivo con todas
+  las carpetas desplegadas (#111), donde las conexiones que quedaban por
+  debajo del corte eran directamente inalcanzables. Ambos primitivos limitan
+  ahora su alto a `--radix-popper-available-height` de Radix (el hueco real
+  hasta el borde de la ventana, recalculado en cada reposicionamiento) y hacen
+  scroll vertical. Se mantiene el recorte horizontal, para que un nombre de
+  conexión largo no se salga de las esquinas redondeadas, y cualquier punto de
+  uso que ya pasaba su propio `max-h-*` sigue ganando al valor por defecto.
+
 ### Añadido
 
 - **Vista de lista para MongoDB.** Las pestañas de colección de una conexión

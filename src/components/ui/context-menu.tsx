@@ -46,7 +46,7 @@ const ContextMenuSubContent = React.forwardRef<
   <ContextMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-      "z-50 min-w-[10rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+      "z-50 max-h-[var(--radix-popper-available-height)] min-w-[10rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
       className,
     )}
     {...props}
@@ -62,7 +62,9 @@ const ContextMenuContent = React.forwardRef<
     <ContextMenuPrimitive.Content
       ref={ref}
       className={cn(
-        "z-50 min-w-[10rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+        // Same capped-height + scroll treatment as `DropdownMenuContent` (see
+        // the note there): a long menu must scroll rather than be clipped.
+        "z-50 max-h-[var(--radix-popper-available-height)] min-w-[10rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
         className,
       )}
       {...props}
