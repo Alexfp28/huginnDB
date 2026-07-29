@@ -23,6 +23,7 @@ import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 import { usePreferences } from "@/stores/preferences";
 import {
+  cancelPendingSaves,
   flushAllTabState,
   hydrateWorkspaceLayout,
 } from "@/stores/persistedTabs";
@@ -161,10 +162,27 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       // 1. Flush the outgoing environment's tabs and pane geometry while the
       //    backend still points at it. Everything below writes to whichever
       //    environment is active, so this has to happen before step 4.
+      // Capture everything the outgoing environment needs remembered *before*
+      // anything is torn down. All three are gone by the time we could ask
+      // again: the teardown empties `active`, and step 2 deliberately clears
+      // focus and tabs.
       const leaving = Array.from(useConnections.getState().active);
+      const leavingSelected = useUi.getState().selectedConnectionId;
+      const leavingActiveTab = useTabs.getState().activeId;
       await flushAllTabState();
 
-      // 2. Tear down the live pools. `disconnect()` closes each connection's
+      // 2. Unpoint the UI *before* closing anything. The schema explorer
+      //    refreshes for whatever `selectedConnectionId` holds, so leaving it
+      //    aimed at a connection while its pool is being dropped races a
+      //    `list_tables` against the teardown: the call loses, the slice records
+      //    `not connected: <id>`, and because the reconnect below never
+      //    invalidates that slice the stale error stays on screen over a
+      //    connection that is now perfectly healthy. Clearing focus and tabs
+      //    first removes the race instead of papering over its result.
+      useUi.getState().setSelectedConnectionId(null);
+      useTabs.getState().replaceAll([], null);
+
+      // 3. Tear down the live pools. `disconnect()` closes each connection's
       //    tabs and drops its schema cache, which is what leaves a clean slate
       //    for the incoming environment to hydrate into.
       for (const connectionId of leaving) {
@@ -175,27 +193,31 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         }
       }
 
-      // 3. Re-record what was live, using the set captured *before* the
-      //    teardown. Each `disconnect()` persists the launch state as it goes,
-      //    so by now the outgoing environment thinks nothing was open — coming
-      //    back to it would restore an empty session. This last write wins.
+      // 4. Re-record what was live, from the values captured at the top. Each
+      //    `disconnect()` persists the launch state as it goes, so by now the
+      //    outgoing environment thinks nothing was open — coming back to it
+      //    would restore an empty session. This last write wins.
       await api.saveLaunchState({
         activeConnections: leaving,
-        selectedConnectionId: useUi.getState().selectedConnectionId,
-        activeTabId: useTabs.getState().activeId,
+        selectedConnectionId: leavingSelected,
+        activeTabId: leavingActiveTab,
       });
 
-      // 4. Hand the backend over to the incoming environment.
+      // 5. Cancel the debounced writes the teardown just armed. Removing panels
+      //    fires `onDidLayoutChange` and closing tabs wakes the per-connection
+      //    subscriptions, both of which schedule a ~600ms save. Those timers
+      //    resolve against whichever environment is active *when they fire*, so
+      //    left alone they land after step 6 and write the torn-down layout (and
+      //    stray connection entries) into the environment being entered,
+      //    clobbering its saved geometry. `flushAllTabState` above cancels the
+      //    timers pending at that moment; these are the ones armed after it.
+      cancelPendingSaves();
+
+      // 6. Hand the backend over to the incoming environment.
       await api.setActiveEnvironment(id);
       set({ activeId: id });
 
-      // 5. Clear whatever survived the teardown (tabs belonging to a connection
-      //    that failed to disconnect cleanly) so the incoming session starts
-      //    from an empty store rather than inheriting strays.
-      useTabs.getState().replaceAll([], null);
-      useUi.getState().setSelectedConnectionId(null);
-
-      // 6. Bring the incoming environment up, same sequence as launch.
+      // 7. Bring the incoming environment up, same sequence as launch.
       await get().restoreSession();
     } catch (e) {
       set({ error: String(e) });

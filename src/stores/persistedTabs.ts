@@ -354,6 +354,32 @@ function attachSubscriptions(connectionId: string) {
 }
 
 /**
+ * Drop every pending debounced save without writing it.
+ *
+ * For the environment switch (`useEnvironments.switchTo`): tearing a session
+ * down removes dockview panels and closes tabs, which arms a layout save and
+ * per-connection tab saves. Those timers resolve against whichever environment
+ * is active *when they fire*, so if the switch completes first they write the
+ * torn-down state into the environment being entered and destroy its saved
+ * geometry. The outgoing state has already been flushed by then, so there is
+ * nothing worth keeping in these timers — discarding is correct, not lossy.
+ *
+ * Subscriptions are left attached; only the queued writes are dropped.
+ */
+export function cancelPendingSaves(): void {
+  if (layoutSaveTimer) {
+    clearTimeout(layoutSaveTimer);
+    layoutSaveTimer = null;
+  }
+  for (const entry of active.values()) {
+    if (entry.timer) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+  }
+}
+
+/**
  * Flush the pending debounce (if any) and detach the per-connection
  * subscription. Called on disconnect; safe to call when nothing is
  * subscribed.
