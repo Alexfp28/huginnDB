@@ -349,6 +349,28 @@ export interface AppTab {
    * `TableDataTab` + `useTabs.open`.
    */
   initialFilters?: ColumnFilter[];
+  /**
+   * Committed view state of a `kind: "table"` tab, persisted with the tab so a
+   * restored session comes back filtered and sorted the way it was left (#112).
+   *
+   * Distinct from `initialFilters` in both direction and lifetime: that one is a
+   * transient *seed* pushed in by FK navigation, while this is the tab's current
+   * state pushed *out* by `TableDataTab` via `setViewState` whenever the user
+   * commits a change. `TableDataTab` reads it once on mount and owns the working
+   * copy from then on, so there is no write-back loop.
+   *
+   * Lives on the tab rather than inside `TableDataTab` because
+   * `persistedTabs.snapshotFor` can only see what's in this store.
+   */
+  viewState?: TabViewState;
+}
+
+/** Persisted, committed view state of a table tab (#112). */
+export interface TabViewState {
+  filters?: ColumnFilter[];
+  sort?: SortSpec[];
+  /** The *applied* free-text search, never the uncommitted toolbar draft. */
+  search?: string;
 }
 
 /**
@@ -565,8 +587,41 @@ export interface ConnectionTabState {
  * Session-level inner-dockview geometry (the workspace's split/float
  * arrangement), shared across every connection's tabs. Opaque dockview
  * `toJSON()` blob; `null` means the default tabbed layout.
+ *
+ * Scoped to the active environment on the backend side — `getWorkspaceLayout`
+ * always answers for whichever environment is current.
  */
 export type WorkspaceLayout = unknown | null;
+
+/**
+ * A named set of connections plus the session state that belongs to them.
+ * Mirrors `Environment` in `src-tauri/src/tab_state.rs` (`tab_state.json` v4).
+ *
+ * Only the presentation fields are exposed here. `connections`,
+ * `internalLayout` and `launch` live in the same on-disk struct but are owned by
+ * the session-state commands (`get/saveTabState`, `get/saveWorkspaceLayout`,
+ * `get/saveLaunchState`), which resolve against the active environment — the
+ * frontend never sends them as part of an environment payload.
+ */
+export interface Environment {
+  id: string;
+  /**
+   * Empty means "never named by the user": the backend refuses to write display
+   * copy (it would freeze one language into the user's data), so render
+   * `environmentLabel()` rather than this field directly.
+   */
+  name: string;
+  color: string | null;
+  icon: string | null;
+  order: number;
+}
+
+/** What `listEnvironments` returns — the list and the active id together, so a
+ *  switcher can't render out of step with the backend's current environment. */
+export interface EnvironmentList {
+  environments: Environment[];
+  activeEnvironmentId: string;
+}
 
 /**
  * The main window's launch-restore state: which connections were live at last
@@ -591,6 +646,17 @@ export interface PersistedTab {
   /** Whether the tab was pinned. Must round-trip through the Rust struct or
    *  serde drops it on the typed IPC boundary (gotcha #14). */
   pinned: boolean | null;
+  /**
+   * Table-tab view state, restored when the tab comes back (#112): the
+   * structured column filters, the multi-level sort, and the committed
+   * free-text search. `null` on a query tab, which has none of them.
+   *
+   * Same IPC-boundary rule as `color`/`pinned` — each field must exist on the
+   * Rust `PersistedTab` or serde drops it before it reaches disk (gotcha #14).
+   */
+  filters: ColumnFilter[] | null;
+  sort: SortSpec[] | null;
+  search: string | null;
 }
 
 /**

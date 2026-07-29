@@ -183,6 +183,24 @@ pub struct PersistedTab {
     /// Whether the tab was pinned. Same IPC-boundary rule as `color` — the
     /// field must exist on the struct or serde drops it on save.
     pub pinned: Option<bool>,
+    /// Table-tab view state (#112): the structured column filters, the
+    /// multi-level sort, and the committed free-text search. `None` on a query
+    /// tab, which has none of them.
+    ///
+    /// Stored opaquely as `serde_json::Value` rather than as
+    /// `Vec<commands::query::ColumnFilter>`: those types are `Deserialize`-only
+    /// (they are command *inputs*), and persistence needs to serialise them back
+    /// out too. Adding `Serialize` there would let a filter's internal shape leak
+    /// into the on-disk format, so this module keeps them as inert blobs — the
+    /// same treatment as `internal_layout`, and consistent with the rule that the
+    /// backend doesn't interpret view state.
+    ///
+    /// Declared here because the field would otherwise never survive: serde
+    /// silently drops unknown keys at the typed IPC boundary, so a
+    /// "frontend-only" field vanishes before it reaches disk (gotcha #14).
+    pub filters: Option<serde_json::Value>,
+    pub sort: Option<serde_json::Value>,
+    pub search: Option<String>,
 }
 
 impl Environment {
@@ -217,6 +235,9 @@ impl Default for PersistedTab {
             title: None,
             color: None,
             pinned: None,
+            filters: None,
+            sort: None,
+            search: None,
         }
     }
 }

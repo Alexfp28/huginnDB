@@ -211,20 +211,35 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * A plain header click replaces it with a single key; Ctrl/Cmd+click adds
    * (or cycles) a level. See [[applySort]].
    */
-  const [sort, setSort] = useState<SortSpec[]>([]);
+  /**
+   * View state restored with the tab (#112). Read once, at mount: from here on
+   * the `useState` values below are the working copy and this component pushes
+   * changes back out via `setViewState`, so reading it reactively would fight
+   * its own writes.
+   */
+  const restoredViewState = useRef(
+    useTabs.getState().tabs.find((t) => t.id === tabId)?.viewState,
+  ).current;
+  const [sort, setSort] = useState<SortSpec[]>(
+    () => restoredViewState?.sort ?? [],
+  );
   /** Free-text search bound to the toolbar input (uncommitted draft). */
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(() => restoredViewState?.search ?? "");
   /** Advanced per-column filter builder dialog (#66). */
   const [advancedOpen, setAdvancedOpen] = useState(false);
   /** What was actually committed via Enter — drives the backend fetch. */
-  const [appliedFilter, setAppliedFilter] = useState("");
+  const [appliedFilter, setAppliedFilter] = useState(
+    () => restoredViewState?.search ?? "",
+  );
   // Seed filters from the tab's `initialFilters` (set by FK "go to referenced
   // row" navigation) so the table lands pre-filtered to the master record.
   const tabInitialFilters = useTabs(
     (s) => s.tabs.find((t) => t.id === tabId)?.initialFilters,
   );
   const [serverFilters, setServerFilters] = useState<ColumnFilter[]>(
-    () => tabInitialFilters ?? [],
+    // FK navigation wins over the restored set: it is an explicit gesture the
+    // user just made, while the restored filters are last session's leftovers.
+    () => tabInitialFilters ?? restoredViewState?.filters ?? [],
   );
   // Re-apply when a *new* `initialFilters` array arrives — i.e. the user
   // navigated via FK into a table tab that was already open. The initial mount
@@ -238,6 +253,20 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       setOffset(0);
     }
   }, [tabInitialFilters]);
+
+  // Publish the committed view state onto the tab so it persists with it
+  // (#112). Driven off the same three values the backend fetch uses, so what is
+  // saved is always what was actually applied — never the uncommitted toolbar
+  // draft. `setViewState` skips no-op writes, which keeps this from scheduling a
+  // disk save on every unrelated re-render.
+  const setViewState = useTabs((s) => s.setViewState);
+  useEffect(() => {
+    setViewState(tabId, {
+      filters: serverFilters.length > 0 ? serverFilters : undefined,
+      sort: sort.length > 0 ? sort : undefined,
+      search: appliedFilter || undefined,
+    });
+  }, [setViewState, tabId, serverFilters, sort, appliedFilter]);
 
   const pushHistory = useFilterHistory((s) => s.push);
   const filterHistory = useFilterHistory(

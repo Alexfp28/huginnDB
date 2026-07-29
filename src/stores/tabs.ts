@@ -7,7 +7,7 @@
  */
 
 import { create } from "zustand";
-import type { AppTab } from "@/types";
+import type { AppTab, TabViewState } from "@/types";
 
 interface TabsState {
   tabs: AppTab[];
@@ -35,6 +35,12 @@ interface TabsState {
   setPinned: (id: string, pinned: boolean) => void;
   /** Update the in-memory SQL of a query tab. */
   updateQuery: (id: string, query: string) => void;
+  /**
+   * Record a table tab's committed filters / sort / search so they persist with
+   * the tab (#112). Called by `TableDataTab` on each committed change; a no-op
+   * write is skipped so it can't cause a redundant persist round.
+   */
+  setViewState: (id: string, viewState: TabViewState) => void;
   /**
    * Store the row count and elapsed time from the most recent query execution
    * in `id`. Used by the status bar to display live execution metadata.
@@ -173,6 +179,21 @@ export const useTabs = create<TabsState>((set, get) => ({
         t.id === id ? { ...t, lastQueryStats: stats } : t,
       ),
     })),
+  setViewState: (id, viewState) =>
+    set((s) => {
+      const tab = s.tabs.find((t) => t.id === id);
+      if (!tab) return s;
+      // Bail on an unchanged value. Every write to this store wakes the
+      // `persistedTabs` subscription and schedules a disk save, and
+      // `TableDataTab` calls this from effects that re-run on unrelated
+      // renders — so without this a stable filter set would keep re-saving.
+      if (JSON.stringify(tab.viewState ?? {}) === JSON.stringify(viewState)) {
+        return s;
+      }
+      return {
+        tabs: s.tabs.map((t) => (t.id === id ? { ...t, viewState } : t)),
+      };
+    }),
   replaceAll: (tabs, activeId) => set({ tabs, activeId }),
   closeForConnection: (connectionId) =>
     set((s) => {

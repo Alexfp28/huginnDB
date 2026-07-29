@@ -53,6 +53,7 @@ import { FileMenu } from "@/components/FileMenu";
 import { WindowMenu } from "@/components/WindowMenu";
 import { ViewMenu } from "@/components/ViewMenu";
 import { HelpMenu } from "@/components/HelpMenu";
+import { EnvironmentSwitcher } from "@/components/EnvironmentSwitcher";
 import { SchemaExplorer } from "@/components/SchemaExplorer";
 import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
@@ -68,11 +69,8 @@ import { startCliConnectBridge } from "@/lib/cli-connect-bridge";
 import { startConnectionHealthBridge } from "@/lib/connection-health-bridge";
 import { startConnectionSyncBridge } from "@/lib/connection-sync-bridge";
 import { startPrefsSyncBridge } from "@/lib/prefs-sync-bridge";
-import {
-  flushAllTabState,
-  hydrateWorkspaceLayout,
-  persistLaunchState,
-} from "@/stores/persistedTabs";
+import { flushAllTabState, persistLaunchState } from "@/stores/persistedTabs";
+import { useEnvironments } from "@/stores/environments";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CliConnectChoiceDialog } from "@/components/CliConnectChoiceDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
@@ -274,72 +272,26 @@ export default function App() {
     refreshConnections();
   }, [refreshConnections]);
 
-  // Launch restore (main window only, `reconnectOnLaunch` on): reconnect to
-  // the connections that were live at last close, then restore focus + the
-  // session workspace layout. Order is load-bearing: the layout `fromJSON`
-  // must run AFTER the reconnected tabs are in `useTabs`, or the TabbedArea
-  // reconciler would delete the panels it just built (see
-  // `hydrateWorkspaceLayout`). Reconnect uses the OS-keychain secrets
-  // (connect() falls back to them); a connection whose secret is missing or
-  // whose host is unreachable fails its own promise and is skipped, never
-  // blocking boot. Ids already active (e.g. from a racing CLI intent) are
-  // filtered out to avoid a double connect. Runs once.
+  // Launch restore (main window only, `reconnectOnLaunch` on): load the
+  // environment list, then bring the active environment's session up —
+  // reconnect what was live, restore the pane layout, restore focus.
+  //
+  // The sequence itself lives in `useEnvironments.restoreSession` because
+  // entering an environment at launch and entering one via the switcher are the
+  // same operation, and its ordering is load-bearing enough that two copies
+  // would eventually drift: the layout `fromJSON` must run AFTER the
+  // reconnected tabs are in `useTabs`, or the TabbedArea reconciler deletes the
+  // panels it just built (gotcha #10), and focus must come last because
+  // `connect()` never sets it and the auto-select effect below would otherwise
+  // win with whichever pool opened first. Runs once.
   const launchRestoreDone = useRef(false);
   useEffect(() => {
     if (launchRestoreDone.current) return;
     if (getCurrentWindow().label !== "main") return;
     launchRestoreDone.current = true;
     void (async () => {
-      if (!usePreferences.getState().prefs.ui.reconnectOnLaunch) return;
-      let launchState: Awaited<ReturnType<typeof api.getLaunchState>>;
-      try {
-        launchState = await api.getLaunchState();
-      } catch (e) {
-        console.error("[launch] failed to read launch state", e);
-        return;
-      }
-      if (launchState.activeConnections.length > 0) {
-        // The boot-time refresh may not have resolved yet; ensure the profile
-        // list is loaded so we only reconnect ids that still exist.
-        await refreshConnections();
-        const loaded = useConnections.getState().profiles;
-        const alreadyActive = useConnections.getState().active;
-        const toConnect = launchState.activeConnections.filter(
-          (id) => loaded.some((p) => p.id === id) && !alreadyActive.has(id),
-        );
-        // connect() awaits hydrateTabState, so once all settle every
-        // reconnected connection's tabs are in `useTabs`.
-        await Promise.allSettled(
-          toConnect.map((id) =>
-            connectProfile(id).catch((e) => {
-              console.warn(`[launch] auto-reconnect failed for ${id}`, e);
-            }),
-          ),
-        );
-      }
-
-      // Restore the session layout now that the tabs are present.
-      if (useTabs.getState().tabs.length > 0) {
-        await hydrateWorkspaceLayout();
-      }
-
-      // Restore focus: the schema-explorer/status-bar connection and the
-      // globally-active tab. Done after reconnect so it isn't clobbered by the
-      // nondeterministic order pools finish opening (the App auto-select
-      // effect otherwise picks whichever connected first).
-      const nowActive = useConnections.getState().active;
-      if (
-        launchState.selectedConnectionId &&
-        nowActive.has(launchState.selectedConnectionId)
-      ) {
-        setSelected(launchState.selectedConnectionId);
-      }
-      if (
-        launchState.activeTabId &&
-        useTabs.getState().tabs.some((t) => t.id === launchState.activeTabId)
-      ) {
-        useTabs.getState().setActive(launchState.activeTabId);
-      }
+      await useEnvironments.getState().load();
+      await useEnvironments.getState().restoreSession();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -825,6 +777,8 @@ export default function App() {
           <WindowMenu />
           <ViewMenu />
           <HelpMenu />
+          <span className="mx-1 h-4 w-px bg-border" aria-hidden />
+          <EnvironmentSwitcher />
 
           {/* Centred breadcrumb — absolutely positioned so it stays in the
               middle of the bar regardless of action button widths. */}

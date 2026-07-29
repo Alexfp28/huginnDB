@@ -10,6 +10,34 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Entornos.** Un nivel nuevo por encima de las conexiones: un entorno es un
+  conjunto con nombre de conexiones más la sesión entera que les pertenece —
+  pestañas abiertas, distribución de paneles y qué se reconecta al entrar. Un
+  selector en la barra superior cambia entre ellos y cada uno recuerda su propio
+  estado, así que un entorno por cliente (o por sede) ya no implica una ventana
+  por cliente (#109). Crear, renombrar, dar color y eliminar se hacen desde el
+  propio selector.
+
+  Las conexiones siguen siendo globales: un entorno decide cuáles están *en
+  juego*, no las posee. Eliminar uno descarta sus pestañas y su distribución, y
+  nunca toca una conexión ni una contraseña guardada — la confirmación lo dice,
+  porque «eliminar entorno» se puede leer perfectamente al contrario.
+
+  `tab_state.json` pasa a v4 para poder guardar esto. La actualización no pierde
+  nada: la sesión que tuvieras se convierte en un entorno único que la contiene
+  tal cual, de modo que el primer arranque tras actualizar se ve igual que el
+  último antes de hacerlo. Ese entorno nace sin nombre y se muestra como
+  «Predeterminado» en tu idioma, en vez de llevar un nombre en inglés escrito
+  dentro de tus datos.
+
+- **Las pestañas de tabla recuerdan sus filtros y su ordenación.** Al restaurar
+  una sesión vuelven los filtros de columna de cada pestaña, su ordenación
+  multinivel y su búsqueda confirmada, en lugar de reabrirse todas sin filtrar y
+  sin ordenar (#112). Solo se guarda lo que estaba realmente aplicado, nunca una
+  búsqueda a medio escribir. Los filtros que llegan de «Ir al registro
+  referenciado» siguen teniendo prioridad sobre los restaurados, porque son un
+  gesto explícito que acabas de hacer y no un resto de la sesión anterior.
+
 - **Filtrar por las filas seleccionadas.** Con varias filas seleccionadas en el
   navegador de datos, el clic derecho sobre una columna ofrece ahora «Filtrar
   *columna* por los N valores seleccionados» y su inversa, que aplican un `IN` /

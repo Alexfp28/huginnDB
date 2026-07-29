@@ -27,6 +27,17 @@
     "ribbonDetail": "Estado: {{dir}}",
     "tooltip": "Estás ejecutando el build canary de sandbox. Su estado en disco está aislado en {{dir}}; comparte el llavero del sistema con la instalación estable."
   },
+  "environments": {
+    "defaultName": "Predeterminado",
+    "switcherTooltip": "Entorno — las conexiones en juego y su sesión",
+    "create": "Nuevo entorno…",
+    "createTitle": "Nuevo entorno",
+    "rename": "Renombrar",
+    "renameTitle": "Renombrar entorno",
+    "delete": "Eliminar",
+    "deleteConfirm": "¿Eliminar el entorno «{{name}}»?\n\nSe descartan sus pestañas abiertas y la distribución de paneles. Tus conexiones y sus contraseñas no se tocan.",
+    "switchFailed": "No se pudo cambiar de entorno: {{error}}"
+  },
   "panels": {
     "schema": "Esquema",
     "saved": "Guardadas",

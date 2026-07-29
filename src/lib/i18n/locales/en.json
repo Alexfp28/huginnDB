@@ -27,6 +27,17 @@
     "ribbonDetail": "State: {{dir}}",
     "tooltip": "You are running the canary sandbox build. Its on-disk state is isolated in {{dir}}; it shares the OS keychain with the stable install."
   },
+  "environments": {
+    "defaultName": "Default",
+    "switcherTooltip": "Environment — the connections in play and their session",
+    "create": "New environment…",
+    "createTitle": "New environment",
+    "rename": "Rename",
+    "renameTitle": "Rename environment",
+    "delete": "Delete",
+    "deleteConfirm": "Delete the environment \"{{name}}\"?\n\nIts open tabs and pane layout are discarded. Your connections and their passwords are not touched.",
+    "switchFailed": "Could not switch environment: {{error}}"
+  },
   "panels": {
     "schema": "Schema",
     "saved": "Saved",

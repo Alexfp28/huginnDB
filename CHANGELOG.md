@@ -8,6 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Environments.** A new level above connections: an environment is a named set
+  of connections plus the whole session that belongs to them — open tabs, pane
+  layout, and what reconnects when you enter it. A switcher in the topbar moves
+  between them, and each remembers its own state, so one environment per client
+  (or per site) no longer means one window per client (#109). Creating,
+  renaming, recolouring and deleting are all in the switcher.
+
+  Connections themselves stay global: an environment decides which are *in
+  play*, it doesn't own them. Deleting one discards its tabs and layout and
+  never touches a connection or a stored password — the confirmation says so,
+  since "delete environment" could easily read the other way.
+
+  `tab_state.json` moves to v4 to hold this. The upgrade is lossless: whatever
+  session you had becomes a single environment holding it verbatim, so the first
+  launch after updating looks exactly like the last one before it. That
+  environment starts unnamed and displays as "Default" in your language rather
+  than having an English name written into your data.
+
+- **Table tabs remember their filters and sorting.** A restored session brings
+  back each table tab's column filters, its multi-level sort and its committed
+  search, instead of reopening every tab unfiltered and unsorted (#112). Only
+  what was actually applied is saved, never a half-typed search box. Filters
+  arriving from "go to referenced row" still win over a restored set, since
+  that's an explicit gesture you just made rather than last session's leftovers.
+
 - **Filter by the selected rows.** With several rows selected in the data
   browser, right-clicking a column now offers "Filter *column* by the N selected
   values" and its inverse, which push a server-side `IN` / `NOT IN` predicate

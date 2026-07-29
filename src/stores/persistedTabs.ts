@@ -85,6 +85,13 @@ function snapshotFor(connectionId: string): ConnectionTabState {
       title: t.title ?? null,
       color: t.color ?? null,
       pinned: t.pinned ?? null,
+      // Committed table-tab view state (#112). Flattened onto the persisted tab
+      // rather than nested, matching the Rust struct's three fields — each one
+      // has to be declared there or serde drops it at the IPC boundary
+      // (gotcha #14).
+      filters: t.viewState?.filters ?? null,
+      sort: t.viewState?.sort ?? null,
+      search: t.viewState?.search ?? null,
     }));
   const activeId = tabs.find((t) => t.id === tabsState.activeId)?.id ?? null;
   const expandedSchemaNodes = schemaSlice
@@ -231,6 +238,17 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
         query: p.query ?? undefined,
         color: p.color ?? undefined,
         pinned: p.pinned ?? undefined,
+        // Re-nest the flat persisted fields into `viewState` (#112). Left
+        // `undefined` when the tab carried none, so `TableDataTab` falls back to
+        // its own defaults rather than starting from empty-but-present state.
+        viewState:
+          p.filters || p.sort || p.search
+            ? {
+                filters: p.filters ?? undefined,
+                sort: p.sort ?? undefined,
+                search: p.search ?? undefined,
+              }
+            : undefined,
       }));
 
       // Merge: keep tabs from other connections, drop the previous set
