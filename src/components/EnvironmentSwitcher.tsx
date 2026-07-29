@@ -44,7 +44,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEnvironments, environmentLabel } from "@/stores/environments";
-import { confirmDestructive } from "@/lib/confirmDestructive";
+import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { cn } from "@/lib/utils";
 
 /**
@@ -235,8 +235,11 @@ export function EnvironmentSwitcher() {
                       // profiles and credentials are untouched, and the prompt
                       // says so — the word "environment" alone could easily read
                       // as "delete these connections".
+                      // Always asks, regardless of `ui.confirmDestructive`: an
+                      // environment's tabs and pane layout exist nowhere else
+                      // and can't be rebuilt from the database.
                       if (
-                        confirmDestructive(
+                        confirmIrreversible(
                           t("environments.deleteConfirm", {
                             name: environmentLabel(env, defaultName),
                           }),

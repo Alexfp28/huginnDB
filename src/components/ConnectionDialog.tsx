@@ -66,7 +66,7 @@ import { DriverBadge, driverLabel } from "@/components/DriverBadge";
 import { api } from "@/lib/tauri";
 import { buildMongoUri, parseMongoUri } from "@/lib/mongoUri";
 import { DEFAULT_PORTS } from "@/lib/constants";
-import { confirmDestructive } from "@/lib/confirmDestructive";
+import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
 import type {
@@ -396,7 +396,7 @@ export function ConnectionDialog({
   async function onBulkDelete() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    if (!window.confirm(t("connections.bulkDeleteConfirm", { count: ids.length })))
+    if (!confirmIrreversible(t("connections.bulkDeleteConfirm", { count: ids.length })))
       return;
     for (const id of ids) {
       try {
@@ -604,7 +604,7 @@ export function ConnectionDialog({
     if (!editingId) return;
     const target = profiles.find((p) => p.id === editingId);
     if (
-      !confirmDestructive(
+      !confirmIrreversible(
         t("connections.deleteConfirm", { name: target?.name ?? name }),
       )
     )
