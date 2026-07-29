@@ -87,13 +87,35 @@ jobs:
       # (e.g. 1.10.1-canary.7 < 1.10.1), so a canary build never outranks a real
       # release even if their base versions match. Injected into the canary
       # config overlay (which Tauri merges over the base config at build time).
+      # The base is validated here rather than left to the build. `tauri build`
+      # rejects a non-semver version with `tauri.conf.json > version must be a
+      # semver string` — a message that names neither this step nor the `-canary`
+      # suffix it is complaining about, and that arrives after the toolchain
+      # install and a full dependency compile. A `1.12` (no patch) or a `v1.12.0`
+      # typed into the `version` input are the two easy slips, and both used to
+      # surface that way ten minutes in.
       - name: Compute and stamp canary version
         id: ver
         shell: bash
         run: |
+          set -euo pipefail
           base="${{ github.event.inputs.version }}"
+          # Trim whitespace and a leading `v`: unambiguous slips, not worth
+          # failing a run over.
+          base="$(printf '%s' "$base" | tr -d '[:space:]')"
+          base="${base#v}"
           if [ -z "$base" ]; then
             base="$(jq -r .version src-tauri/tauri.conf.json)"
+            echo "No version input; using tauri.conf.json version: $base"
+          fi
+          # Must be a bare X.Y.Z: the `-canary.N` prerelease is appended below,
+          # and semver allows exactly one prerelease section.
+          if ! printf '%s' "$base" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Base version '$base' is not a bare MAJOR.MINOR.PATCH." \
+                 "The canary version is built as <base>-canary.<run_number>, so" \
+                 "the base cannot itself carry a prerelease or build suffix, and" \
+                 "must include the patch component (1.12.0, not 1.12)."
+            exit 1
           fi
           canary="${base}-canary.${{ github.run_number }}"
           echo "canary=$canary" >> "$GITHUB_OUTPUT"
