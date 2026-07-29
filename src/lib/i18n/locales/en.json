@@ -933,6 +933,10 @@
     "updated": "Updated {{date}}",
     "empty": "No documentation is available.",
     "entries": {
+      "environments": {
+        "title": "Environments",
+        "description": "Keep separate working sets of connections"
+      },
       "mcp": {
         "title": "MCP connector",
         "description": "Connect AI tools to your databases"

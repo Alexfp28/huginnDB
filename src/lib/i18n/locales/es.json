@@ -933,6 +933,10 @@
     "updated": "Actualizado {{date}}",
     "empty": "No hay documentación disponible.",
     "entries": {
+      "environments": {
+        "title": "Entornos",
+        "description": "Mantén conjuntos de conexiones separados"
+      },
       "mcp": {
         "title": "Conector MCP",
         "description": "Conecta herramientas de IA a tus bases de datos"
