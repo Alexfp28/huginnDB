@@ -6,7 +6,56 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Filter by the selected rows.** With several rows selected in the data
+  browser, right-clicking a column now offers "Filter *column* by the N selected
+  values" and its inverse, which push a server-side `IN` / `NOT IN` predicate
+  composing with the search box and any existing filters (#114). The list is
+  deduplicated before it becomes SQL, so selecting forty rows that share three
+  values sends three binds and the menu label advertises three, not forty. The
+  chip shows the value count with the values themselves in its tooltip. Works on
+  every driver, including MongoDB (`$in` / `$nin`, with `_id` hex strings
+  reconstructed as real ObjectIds).
+
+  `NULL` gets the care SQL's three-valued logic demands, since neither `IN` nor
+  `NOT IN` behaves intuitively around it: selecting a `NULL` row and filtering
+  *for* those values adds an explicit `IS NULL` branch, because `col IN (…)` is
+  never true for a `NULL` column and the row the user just picked would otherwise
+  vanish from its own filter; asking to *exclude* values without a `NULL` among
+  them keeps `NULL` rows visible, rather than letting `NOT IN`'s standard
+  behaviour drop rows nobody asked to exclude. Value lists are capped at 1000
+  per filter — every value is one bind, and engines have their own placeholder
+  ceilings whose failure mode is an opaque driver error.
+
+### Changed
+
+- **"Go to referenced row" moved from Ctrl/Cmd+click to Alt+click.** The FK
+  navigation accelerator shared a chord with the data grid's row multi-selection
+  and won it outright: the handler returned early on any foreign-key cell, so on
+  a table whose visible columns are mostly FKs Ctrl+click could never toggle a
+  row (#113). Selection is the more fundamental gesture and has to behave the
+  same on every column, so FK navigation got a chord of its own. The
+  context-menu entry is unchanged, and the cell tooltip advertises the new
+  chord.
+
 ### Fixed
+
+- **Ctrl/Cmd+click now reliably toggles row selection in the data grid** (#113).
+  Three independent causes, all addressed: the FK accelerator swallowed the
+  chord on foreign-key cells (see above); a multi-selected row was tinted
+  `bg-brand/20` against the single-row cursor's `bg-brand/10`, a difference most
+  panels render as identical, so a correct toggle looked like a no-op — selected
+  rows now carry a stronger tint plus an accent bar down their left edge; and a
+  table **without a primary key** got no row identity at all, which disabled
+  selection wholesale (no checkbox column, no Shift range either). Such a table
+  now falls back to whole-row identity, so selection, copy and filtering work
+  there; two byte-identical rows share an identity and select together, which is
+  the honest limit of having no key. Every mutating action (inline edit, insert,
+  duplicate, delete, bulk delete) remains gated on a real primary key exactly as
+  before. Row checkboxes also stay visible once anything is selected instead of
+  only on hover, so extending a selection no longer means hunting for the
+  affordance.
 
 - **Long menus scroll instead of being clipped.** A dropdown or context menu
   taller than the space between its trigger and the viewport edge was cut off

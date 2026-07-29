@@ -332,6 +332,8 @@ const FILTER_LABEL: Record<ColumnFilter["op"], string> = {
   lt: "<",
   lte: "≤",
   between: "↔",
+  in: "IN",
+  not_in: "NOT IN",
   is_null: "IS NULL",
   is_not_null: "IS NOT NULL",
 };
@@ -471,8 +473,14 @@ export function DataGrid({
    * Multi-row selection. Keyed by the parent-supplied stable row key
    * (PK-derived) rather than display index or array reference, so a selection
    * survives refetch / sort / client filtering (gotcha #7). Only meaningful
-   * when `getRowKey` is wired (i.e. the table has a PK); otherwise the
-   * checkbox column is hidden and bulk actions never appear.
+   * when `getRowKey` is wired; otherwise the checkbox column is hidden and
+   * bulk actions never appear — which is still the case for ad-hoc query
+   * result grids. A *table* grid always wires it: `TableDataTab` derives the
+   * key from the PK tuple when there is one and from the whole values array
+   * when there isn't, so a no-PK table keeps its selection gestures (see the
+   * note there). Selection being enabled therefore no longer implies a PK
+   * exists — destructive bulk actions gate on their own callbacks
+   * (`onBulkDelete`), which the parent withholds without one.
    */
   const selectionEnabled = !!getRowKey;
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -607,6 +615,29 @@ export function DataGrid({
   }
 
   /**
+   * The selection's values for one column, plus how many of them are actually
+   * distinct — the pair behind the "filter by the selected rows" action (#114).
+   *
+   * The distinct count is what the menu label advertises: selecting 40 rows that
+   * share 3 values builds a 3-element `IN` list (the backend dedupes), so
+   * promising "40 values" would misdescribe the filter about to be applied.
+   * NULL is counted apart from the formatted values instead of being folded in
+   * with them: `formatValue(null)` is `""`, indistinguishable from an empty
+   * string, so a column holding both would be undercounted.
+   */
+  function selectedColumnValues(colIndex: number): {
+    values: CellValue[];
+    distinct: number;
+  } {
+    const values = selectedRows.map((r) => r[colIndex] ?? null);
+    const nonNull = values.filter((v) => v !== null);
+    const distinct =
+      new Set(nonNull.map((v) => formatValue(v))).size +
+      (nonNull.length === values.length ? 0 : 1);
+    return { values, distinct };
+  }
+
+  /**
    * Header tri-state select-all state, computed over the *visible* rows that
    * have a resolvable key. `allSelected` when every selectable visible row is
    * in the set; `someSelected` drives the checkbox's indeterminate dash.
@@ -624,6 +655,8 @@ export function DataGrid({
     selectableVisibleKeys.length > 0 &&
     selectableVisibleKeys.every((k) => selectedKeys.has(k));
   const someSelected = selectedKeys.size > 0 && !allSelected;
+  /** Any row selected at all — drives the always-visible checkbox affordance. */
+  const hasSelection = selectedKeys.size > 0;
 
   /** Select-all / clear from the header checkbox. */
   function toggleSelectAll() {
@@ -1391,7 +1424,20 @@ export function DataGrid({
           >
             <span className="text-muted-foreground">{f.column}</span>
             <span className="text-muted-foreground/70">{FILTER_LABEL[f.op]}</span>
-            {f.op === "eq" || f.op === "ne" ? (
+            {f.op === "in" || f.op === "not_in" ? (
+              // A value list can be hundreds of entries long, so the chip shows
+              // the count and defers the values themselves to the tooltip.
+              <span
+                className="max-w-[10rem] truncate"
+                title={(f.values ?? [])
+                  .map((v) => (v === null || v === undefined ? "NULL" : formatValue(v)))
+                  .join(", ")}
+              >
+                {t("dataGrid.filterValueCount", {
+                  count: f.values?.length ?? 0,
+                })}
+              </span>
+            ) : f.op === "eq" || f.op === "ne" ? (
               <span className="truncate max-w-[10rem]">
                 {f.value === null || f.value === undefined
                   ? "NULL"
@@ -1640,8 +1686,15 @@ export function DataGrid({
                   key={row.id}
                   className={cn(
                     "group/row",
+                    // A multi-selected row has to be unmistakable next to the
+                    // single-row cursor highlight. These used to be `bg-brand/20`
+                    // against `bg-brand/10` — a delta most panels render as
+                    // effectively identical, so Ctrl-click toggling a single row
+                    // looked like it had done nothing (part of #113: the
+                    // selection was correct, only invisible). The stronger tint
+                    // pairs with the inset accent bar on the gutter cell below.
                     isMultiSelected
-                      ? "bg-brand/20"
+                      ? "bg-brand/30"
                       : isSelected
                         ? "bg-brand/10"
                         : zebraStripes && i % 2 === 1
@@ -1655,7 +1708,15 @@ export function DataGrid({
                   }}
                 >
                   <td
-                    className="border-b border-border/50 px-2 tabular-nums text-muted-foreground"
+                    className={cn(
+                      "border-b border-border/50 px-2 tabular-nums text-muted-foreground",
+                      // Inset accent bar marking a selected row's left edge. It
+                      // lives on the gutter cell rather than the `<tr>` because
+                      // box-shadow on a table-row box is unreliable across
+                      // engines, while a `<td>` is an ordinary box.
+                      isMultiSelected &&
+                        "shadow-[inset_3px_0_0_0_hsl(var(--brand))]",
+                    )}
                     style={{ ...cellStyle, width: 40 }}
                   >
                     {selectionEnabled && rowKey !== null ? (
@@ -1670,14 +1731,21 @@ export function DataGrid({
                           aria-label={t("dataGrid.selectRow")}
                           className={cn(
                             "accent-brand cursor-pointer align-middle",
-                            isMultiSelected
+                            // Every checkbox stays visible while *any* row is
+                            // selected, not just the selected ones: once the
+                            // user is in a selecting mood the affordance for
+                            // extending the set shouldn't require hunting for it
+                            // on hover (#113 — the gesture was undiscoverable).
+                            isMultiSelected || hasSelection
                               ? "inline-block"
                               : "hidden group-hover/row:inline-block",
                           )}
                         />
                         <span
                           className={
-                            isMultiSelected ? "hidden" : "group-hover/row:hidden"
+                            isMultiSelected || hasSelection
+                              ? "hidden"
+                              : "group-hover/row:hidden"
                           }
                         >
                           {i + 1}
@@ -1764,13 +1832,20 @@ export function DataGrid({
                               // from here, and mark this cell active.
                               scrollRef.current?.focus({ preventScroll: true });
                               setActiveCell({ r: i, c: cIdx });
-                              // Ctrl/Cmd+click on a single-column FK cell is the
-                              // "go to referenced row" accelerator (IDE-style).
-                              // It takes precedence over the multi-selection
-                              // toggle that the same chord drives on non-FK
-                              // cells, but never over Shift-range selection.
+                              // Alt+click on a single-column FK cell is the "go
+                              // to referenced row" accelerator. It used to be
+                              // Ctrl/Cmd+click, which collided head-on with the
+                              // OS-style multi-selection toggle on the very same
+                              // chord: this branch returned early, so on a table
+                              // whose visible columns are mostly FKs Ctrl+click
+                              // could never select a row — the reported "Shift
+                              // works, Ctrl doesn't" of #113. Selection is the
+                              // more fundamental gesture and it has to behave
+                              // identically on every column, so FK nav moved to
+                              // a chord of its own. The context-menu entry ("go
+                              // to referenced row") is unchanged.
                               if (
-                                (e.ctrlKey || e.metaKey) &&
+                                e.altKey &&
                                 !e.shiftKey &&
                                 onNavigateFk &&
                                 columnInfoByName.get(meta.name)
@@ -1786,7 +1861,12 @@ export function DataGrid({
                               // OS-style multi-selection; a plain click also
                               // opens the cell preview below.
                               applyRowSelectionClick(rowKey, e);
-                              if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                              if (
+                                !e.ctrlKey &&
+                                !e.metaKey &&
+                                !e.shiftKey &&
+                                !e.altKey
+                              ) {
                                 setSelectedCell({
                                   rowValues,
                                   colIndex: colIdx,
@@ -1875,6 +1955,43 @@ export function DataGrid({
                                   </ContextMenuItem>
                                 </ContextMenuSubContent>
                               </ContextMenuSub>
+                              {onAddFilter && (
+                                <>
+                                  <ContextMenuSeparator />
+                                  <ContextMenuItem
+                                    onSelect={() =>
+                                      onAddFilter({
+                                        column: meta.name,
+                                        op: "in",
+                                        values: selectedColumnValues(colIdx)
+                                          .values,
+                                      })
+                                    }
+                                  >
+                                    {t("dataGrid.ctxFilterInSelected", {
+                                      column: meta.name,
+                                      count:
+                                        selectedColumnValues(colIdx).distinct,
+                                    })}
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    onSelect={() =>
+                                      onAddFilter({
+                                        column: meta.name,
+                                        op: "not_in",
+                                        values: selectedColumnValues(colIdx)
+                                          .values,
+                                      })
+                                    }
+                                  >
+                                    {t("dataGrid.ctxFilterNotInSelected", {
+                                      column: meta.name,
+                                      count:
+                                        selectedColumnValues(colIdx).distinct,
+                                    })}
+                                  </ContextMenuItem>
+                                </>
+                              )}
                               {onBulkDelete && (
                                 <>
                                   <ContextMenuSeparator />

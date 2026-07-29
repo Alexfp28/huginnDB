@@ -357,7 +357,8 @@ export interface AppTab {
  * the `value` field; every other op consumes it. The `contains` family is
  * substring/prefix/suffix `LIKE`; `gt`/`gte`/`lt`/`lte`/`between` are ordered
  * comparisons (offered for numeric/date columns) — `between` additionally
- * consumes `value2` as the inclusive upper bound.
+ * consumes `value2` as the inclusive upper bound. `in` / `not_in` read the
+ * `values` list instead of `value`.
  */
 export type FilterOp =
   | "eq"
@@ -371,6 +372,8 @@ export type FilterOp =
   | "lt"
   | "lte"
   | "between"
+  | "in"
+  | "not_in"
   | "is_null"
   | "is_not_null";
 
@@ -381,6 +384,12 @@ export interface ColumnFilter {
   value?: CellValue;
   /** Range upper bound, only used by `"between"`. */
   value2?: CellValue;
+  /**
+   * Value list, only used by `"in"` / `"not_in"`. The backend deduplicates it,
+   * handles a `null` member through a dedicated `IS NULL` branch, and rejects
+   * lists longer than its `MAX_IN_VALUES` cap (1000).
+   */
+  values?: CellValue[];
 }
 
 /** One column/value pair used when building an INSERT. */

@@ -691,6 +691,39 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     pkColumns.length > 0 &&
     (result === null || pkColumnIndices.every((i) => i >= 0));
 
+  /**
+   * Stable identity for a grid row, derived from its payload rather than a
+   * display index (gotcha #7). Drives the grid's multi-row selection.
+   *
+   * With a usable PK the key is the PK tuple. Without one it falls back to the
+   * full values array: a no-PK table used to get no `getRowKey` at all, which
+   * switched `selectionEnabled` off in `DataGrid` and left the user with *no*
+   * selection whatsoever — no checkbox column, no Shift range, no Ctrl toggle
+   * (the third strand of #113). The fallback is honest about its limit: two
+   * byte-identical rows share a key and therefore select together, which a PK
+   * would have told apart. That's acceptable here because every gesture the
+   * fallback unlocks is read-only — copy, and the `IN` filter — while every
+   * mutating path (`editable`, insert/duplicate/delete, bulk delete) stays
+   * gated on `hasPk` at the call site below and never sees this key.
+   *
+   * `useCallback` matters beyond tidiness: `DataGrid` lists `getRowKey` in the
+   * deps of the memo that pairs every visible row with its key, so an unstable
+   * identity would recompute it on each render of a full page of rows.
+   */
+  const getRowKey = useCallback(
+    (rowValues: CellValue[]): string | null => {
+      try {
+        return JSON.stringify(hasPk ? pkValuesFromRow(rowValues) : rowValues);
+      } catch {
+        return null;
+      }
+    },
+    // `pkValuesFromRow` closes over `pkColumns`/`pkColumnIndices`; it is a plain
+    // function redeclared each render, so key off its inputs instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hasPk, pkColumns, pkColumnIndices],
+  );
+
   // Leading toolbar content folded into the grid's own toolbar (via DataGrid's
   // `toolbarLeading`) so a table tab shows ONE bar instead of two stacked ones.
   // The schema › table breadcrumb used to live here, but the tab title already
@@ -884,17 +917,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onDuplicateRow={hasPk ? onDuplicateRow : undefined}
             onDeleteRow={hasPk ? onDeleteRow : undefined}
             onBulkDelete={hasPk ? onBulkDelete : undefined}
-            getRowKey={
-              hasPk
-                ? (rowValues) => {
-                    try {
-                      return JSON.stringify(pkValuesFromRow(rowValues));
-                    } catch {
-                      return null;
-                    }
-                  }
-                : undefined
-            }
+            getRowKey={getRowKey}
             onSelectionChange={(count, total) =>
               reportSelection(tabId, count, total)
             }

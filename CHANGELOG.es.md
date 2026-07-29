@@ -8,7 +8,59 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Añadido
+
+- **Filtrar por las filas seleccionadas.** Con varias filas seleccionadas en el
+  navegador de datos, el clic derecho sobre una columna ofrece ahora «Filtrar
+  *columna* por los N valores seleccionados» y su inversa, que aplican un `IN` /
+  `NOT IN` en servidor y componen con el buscador y con los filtros que ya
+  hubiera (#114). La lista se deduplica antes de convertirse en SQL, así que
+  seleccionar cuarenta filas que comparten tres valores envía tres binds y la
+  etiqueta del menú anuncia tres, no cuarenta. El chip muestra el número de
+  valores y los valores en su tooltip. Funciona en todos los drivers, MongoDB
+  incluido (`$in` / `$nin`, reconstruyendo los `_id` en hexadecimal como
+  ObjectId reales).
+
+  `NULL` recibe el cuidado que exige la lógica de tres valores de SQL, porque ni
+  `IN` ni `NOT IN` se comportan de forma intuitiva a su alrededor: si se
+  selecciona una fila con `NULL` y se filtra *por* esos valores se añade una rama
+  `IS NULL` explícita, ya que `col IN (…)` nunca es cierto para una columna
+  `NULL` y la fila que el usuario acaba de elegir desaparecería de su propio
+  filtro; y al pedir *excluir* valores sin ningún `NULL` entre ellos, las filas
+  con `NULL` siguen visibles en lugar de que el comportamiento estándar de
+  `NOT IN` descarte filas que nadie pidió excluir. Las listas se limitan a 1000
+  valores por filtro: cada valor es un bind y los motores tienen sus propios
+  techos de placeholders, cuyo modo de fallo es un error opaco del driver.
+
+### Cambiado
+
+- **«Ir al registro referenciado» pasa de Ctrl/Cmd+clic a Alt+clic.** El atajo
+  de navegación por clave ajena compartía acorde con la multiselección de filas
+  de la rejilla y se lo llevaba siempre: el handler salía antes de tiempo en
+  cualquier celda con clave ajena, así que en una tabla cuyas columnas visibles
+  son mayoritariamente FK, Ctrl+clic no podía alternar una fila (#113). La
+  selección es el gesto más básico y debe comportarse igual en todas las
+  columnas, así que la navegación FK tiene ahora acorde propio. La entrada del
+  menú contextual no cambia, y el tooltip de la celda anuncia el nuevo acorde.
+
 ### Corregido
+
+- **Ctrl/Cmd+clic ya alterna la selección de filas de forma fiable** (#113).
+  Tres causas independientes, todas atacadas: el atajo FK se comía el acorde en
+  las celdas con clave ajena (arriba); una fila multiseleccionada se pintaba
+  `bg-brand/20` frente al `bg-brand/10` del cursor de fila única, una diferencia
+  que la mayoría de pantallas muestra como idéntica, de modo que un toggle
+  correcto parecía no hacer nada — ahora la fila seleccionada lleva un tinte más
+  fuerte y una barra de acento en su borde izquierdo; y una tabla **sin clave
+  primaria** no obtenía identidad de fila alguna, lo que desactivaba la
+  selección por completo (ni columna de checkbox ni rango con Mayús). Esa tabla
+  pasa a usar como identidad la fila entera, así que selección, copia y filtrado
+  funcionan; dos filas byte a byte idénticas comparten identidad y se
+  seleccionan juntas, que es el límite honesto de no tener clave. Toda acción
+  que modifica datos (edición en línea, insertar, duplicar, borrar, borrado
+  masivo) sigue supeditada a una clave primaria real, igual que antes. Los
+  checkboxes de fila además permanecen visibles en cuanto hay algo seleccionado
+  en lugar de aparecer solo al pasar por encima.
 
 - **Los menús largos ahora hacen scroll en vez de recortarse.** Un desplegable
   o menú contextual más alto que el hueco entre su disparador y el borde de la
