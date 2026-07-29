@@ -189,7 +189,16 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
     }
     let tab_state_snapshot = {
         let mut guard = state.tab_state.write();
-        guard.connections.remove(&id);
+        // Sweep every environment, not just the active one: the profile is gone
+        // globally, so an entry surviving elsewhere would come back as a tab
+        // pointing at a connection that no longer exists.
+        for env in &mut guard.environments {
+            env.connections.remove(&id);
+            env.launch.active_connections.retain(|c| c != &id);
+            if env.launch.selected_connection_id.as_deref() == Some(id.as_str()) {
+                env.launch.selected_connection_id = None;
+            }
+        }
         guard.clone()
     };
     crate::tab_state::save_tab_state(&tab_state_snapshot)?;

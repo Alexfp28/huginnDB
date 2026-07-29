@@ -1,12 +1,13 @@
-//! Persisted per-connection session state (open tabs, active tab,
-//! schema-tree expansion, dockview geometry).
+//! Persisted session state: environments, and per connection within each one
+//! the open tabs, active tab, schema-tree expansion and dockview geometry.
 //!
-//! The on-disk blob (`tab_state.json`) is a flat map of connection id →
-//! [`ConnectionTabState`], alongside a `version` field to drive forward
-//! migrations. There is exactly one persisted state, owned by the main
-//! window — secondary windows opened via "New window" never read or write
-//! it (see `src/stores/persistedTabs.ts`), which is what makes them
-//! ephemeral: closing them loses their tabs, same as any in-memory UI state.
+//! The on-disk blob (`tab_state.json`) is a list of [`Environment`]s plus which
+//! one is active, alongside a `version` field to drive forward migrations. There
+//! is exactly one persisted state, owned by the main window — secondary windows
+//! opened via "New window" never read or write it (see
+//! `src/stores/persistedTabs.ts`), which is what makes them ephemeral: closing
+//! them loses their tabs, same as any in-memory UI state. The active environment
+//! is main-window-owned for the same reason.
 //!
 //! ## History
 //!
@@ -15,14 +16,23 @@
 //!   map) as a stand-in for real per-window instances. Removed in v3 once
 //!   native multi-window support landed — workspaces were never anything
 //!   more than that stand-in.
-//! - **v3** (current): back to a flat `connections` map, structurally
-//!   identical to v1. On migration from v2, only the **active** workspace's
-//!   connections survive; every other workspace is discarded (confirmed
-//!   product decision — there is no "merge" semantics to preserve).
+//! - **v3**: back to a flat `connections` map, structurally identical to v1,
+//!   with the dockview geometry and the launch-restore trio hoisted to the top
+//!   level. On migration from v2, only the **active** workspace's connections
+//!   survive; every other workspace is discarded (confirmed product decision —
+//!   there is no "merge" semantics to preserve).
+//! - **v4** (current): a list of [`Environment`]s, each owning its own
+//!   `connections` map, dockview geometry and [`LaunchState`]. Any earlier blob
+//!   folds into a single unnamed environment, so an upgrade is lossless and the
+//!   user sees exactly the session they left.
 //!
-//! The `connections` map is LRU-pruned to [`MAX_REMEMBERED_CONNECTIONS`].
-//! Query bodies inside tabs are capped at [`MAX_QUERY_BYTES`]; oversized
-//! bodies are saved empty.
+//!   This is a multi-bucket top-level shape again, which v3 removed on purpose —
+//!   see [`Environment`] for why an environment is a different thing from a v2
+//!   workspace, and CLAUDE.md gotchas #8 and #10.
+//!
+//! Each environment's `connections` map is LRU-pruned to
+//! [`MAX_REMEMBERED_CONNECTIONS`] independently. Query bodies inside tabs are
+//! capped at [`MAX_QUERY_BYTES`]; oversized bodies are saved empty.
 
 use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
@@ -42,7 +52,12 @@ pub const MAX_REMEMBERED_CONNECTIONS: usize = 20;
 /// user forgot they had open is not worth the startup cost.
 pub const MAX_QUERY_BYTES: usize = 64 * 1024;
 
-/// Top-level on-disk shape, v3.
+/// Id given to the single environment a pre-v4 blob migrates into, and to the
+/// one a fresh install starts with. Deterministic rather than a fresh UUID so
+/// the migration is reproducible and testable.
+pub const DEFAULT_ENVIRONMENT_ID: &str = "default";
+
+/// Top-level on-disk shape, v4.
 ///
 /// We keep `#[serde(default)]` on every field so partial blobs (from a
 /// hand-edit or an interrupted write) deserialise without errors — bad
@@ -51,33 +66,83 @@ pub const MAX_QUERY_BYTES: usize = 64 * 1024;
 #[serde(default, rename_all = "camelCase")]
 pub struct PersistedTabState {
     pub version: u32,
+    /// Every environment the user has defined, in display order. Never empty
+    /// once loaded: [`RawState::into_state`] synthesises one from a legacy blob
+    /// and [`PersistedTabState::active_environment_mut`] recreates one if the
+    /// list is somehow emptied.
+    pub environments: Vec<Environment>,
+    /// Which environment the main window is currently in. Validated on load —
+    /// an id pointing at no environment falls back to the first.
+    pub active_environment_id: Option<String>,
+}
+
+/// One environment: a named set of connections plus the whole session state
+/// that belongs to them (open tabs, pane geometry, what to reconnect at
+/// launch).
+///
+/// This reintroduces a multi-bucket top-level shape that v3 deliberately
+/// removed, and the distinction matters. The v2 "workspaces" were a stand-in
+/// for real per-window instances, which is why native multi-window made them
+/// redundant. An environment is not that: it is an *identity* — which subset of
+/// the user's connections is in play, and (from the next phase) where those
+/// connections came from — so switching one swaps the whole working set rather
+/// than just re-arranging tabs. See CLAUDE.md gotchas #8 and #10.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Environment {
+    pub id: String,
+    /// User-assigned label. **Empty means "not named by the user"**, and the
+    /// frontend renders a localised default for it. The migrated/initial
+    /// environment is created empty on purpose: a name written here would bake
+    /// one language into the user's data forever, and the backend has no
+    /// business choosing display copy (see the language notes in CLAUDE.md).
+    pub name: String,
+    /// Cosmetic accent colour (hex) and icon id, both stored opaquely — the
+    /// backend never interprets them, matching `PersistedTab::color`.
+    pub color: Option<String>,
+    pub icon: Option<String>,
+    /// Display order in the switcher. Ties fall back to position in the vector.
+    pub order: i32,
+    /// Per-connection tab state, LRU-pruned to [`MAX_REMEMBERED_CONNECTIONS`]
+    /// *within this environment* rather than globally, so a busy environment
+    /// can't evict a quiet one's tabs.
     pub connections: HashMap<String, ConnectionTabState>,
-    /// Session-level inner-dockview geometry (the workspace's split/float
-    /// arrangement). Opaque dockview `toJSON()` blob; the backend never
-    /// interprets it.
+    /// Inner-dockview geometry (the split/float arrangement). Opaque dockview
+    /// `toJSON()` blob; the backend never interprets it.
     ///
-    /// This is deliberately **top-level**, not per-connection: the inner
-    /// dockview is a single shared instance that hosts tabs from *every*
-    /// open connection at once, so its geometry is a property of the
-    /// session, not of any one connection. It used to live inside each
-    /// `ConnectionTabState` (see that field's note), which duplicated the
-    /// same blob under every connection and made restore order-dependent —
-    /// whichever connection hydrated first won. `None`/absent means the
-    /// default tabbed layout.
+    /// Scoped to the environment, not to a connection: one inner dockview hosts
+    /// the tabs of *every* connection open at once, so its geometry is a
+    /// property of the session — and a session now belongs to an environment.
+    /// It used to live inside each `ConnectionTabState` (see that field's note),
+    /// which duplicated the same blob under every connection and made restore
+    /// order-dependent. `None`/absent means the default tabbed layout.
     pub internal_layout: Option<serde_json::Value>,
+    /// What to restore when this environment is entered — at launch or on a
+    /// switch.
+    pub launch: LaunchState,
+}
+
+/// The state needed to put a session back the way the user left it: which
+/// connections were live, which one had focus, and which tab was showing.
+///
+/// Lives here (not in `commands::prefs`, where the DTO of the same shape used
+/// to be declared) because it is persisted state; the command layer now reuses
+/// this type instead of keeping a parallel copy in sync.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LaunchState {
     /// Connection ids that were live in the main window when it last closed.
-    /// Used to auto-reconnect them on the next launch (gated on the
-    /// `reconnectOnLaunch` preference). Stale ids (profile since deleted)
-    /// are harmless — the reconnect step skips any id with no profile.
+    /// Used to auto-reconnect them (gated on the `reconnectOnLaunch`
+    /// preference). Stale ids (profile since deleted) are harmless — the
+    /// reconnect step skips any id with no profile.
     pub active_connections: Vec<String>,
-    /// The connection the schema explorer / status bar was focused on at last
-    /// close (`useUi.selectedConnectionId`). Restored after auto-reconnect so
-    /// the same connection is in focus, instead of whichever pool happened to
-    /// open first. `None` if nothing was selected.
+    /// The connection the schema explorer / status bar was focused on
+    /// (`useUi.selectedConnectionId`). Restored after auto-reconnect so the
+    /// same connection is in focus, instead of whichever pool happened to open
+    /// first. `None` if nothing was selected.
     pub selected_connection_id: Option<String>,
-    /// The globally-active tab id at last close (`useTabs.activeId`). Restored
-    /// after auto-reconnect so the same tab body is shown. `None` if no tab
-    /// was open.
+    /// The globally-active tab id (`useTabs.activeId`). Restored after
+    /// auto-reconnect so the same tab body is shown. `None` if no tab was open.
     pub active_tab_id: Option<String>,
 }
 
@@ -120,15 +185,23 @@ pub struct PersistedTab {
     pub pinned: Option<bool>,
 }
 
+impl Environment {
+    /// The environment a fresh install starts with, and the one a legacy blob is
+    /// folded into. Unnamed on purpose — see the `name` field.
+    fn initial() -> Self {
+        Self {
+            id: DEFAULT_ENVIRONMENT_ID.to_string(),
+            ..Self::default()
+        }
+    }
+}
+
 impl Default for PersistedTabState {
     fn default() -> Self {
         Self {
             version: CURRENT_VERSION,
-            connections: HashMap::new(),
-            internal_layout: None,
-            active_connections: Vec::new(),
-            selected_connection_id: None,
-            active_tab_id: None,
+            environments: vec![Environment::initial()],
+            active_environment_id: Some(DEFAULT_ENVIRONMENT_ID.to_string()),
         }
     }
 }
@@ -149,16 +222,21 @@ impl Default for PersistedTab {
 }
 
 /// Current on-disk schema version. Bumped on migrations.
-const CURRENT_VERSION: u32 = 3;
+const CURRENT_VERSION: u32 = 4;
 
 /// Raw deserialisation target used only by [`load_tab_state`]. It can
-/// represent v1 (top-level `connections`), v2 (nested `workspaces`), and v3
-/// (top-level `connections`, same as v1) shapes, letting us pick the right
-/// migration path without separate `serde_json::from_*` attempts.
+/// represent v1 (top-level `connections`), v2 (nested `workspaces`), v3
+/// (top-level `connections`, same as v1) and v4 (`environments`) shapes,
+/// letting us pick the right migration path without separate
+/// `serde_json::from_*` attempts.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct RawState {
     version: u32,
+    /// v4. Non-empty here short-circuits every legacy path below.
+    environments: Vec<Environment>,
+    /// v4.
+    active_environment_id: Option<String>,
     /// v1 and v3.
     connections: HashMap<String, ConnectionTabState>,
     /// v2 only.
@@ -186,11 +264,28 @@ struct RawWorkspace {
 
 impl RawState {
     /// Resolve the raw blob into a fully-shaped `PersistedTabState`,
-    /// migrating v1/v2 → v3 in the process.
+    /// migrating v1/v2/v3 → v4 in the process.
     fn into_state(self) -> PersistedTabState {
-        let active_connections = self.active_connections;
-        let selected_connection_id = self.selected_connection_id;
-        let active_tab_id = self.active_tab_id;
+        // v4: already in the new shape. Only the active id needs validating —
+        // an environment could have been deleted by another (older) build, or
+        // the file hand-edited.
+        if !self.environments.is_empty() {
+            let active = self
+                .active_environment_id
+                .filter(|id| self.environments.iter().any(|e| &e.id == id))
+                .or_else(|| self.environments.first().map(|e| e.id.clone()));
+            return PersistedTabState {
+                version: CURRENT_VERSION,
+                environments: self.environments,
+                active_environment_id: active,
+            };
+        }
+
+        let launch = LaunchState {
+            active_connections: self.active_connections,
+            selected_connection_id: self.selected_connection_id,
+            active_tab_id: self.active_tab_id,
+        };
         let top_level_layout = self.internal_layout;
 
         // v2: discard every workspace except the active one (or the first,
@@ -211,17 +306,21 @@ impl RawState {
         // blob duplicated under every connection). On the first load after
         // upgrading, the top-level field is absent, so hoist the geometry
         // from the most-recently-opened connection that still carries one —
-        // that best reflects the session the user last saw. New saves write
-        // the top-level field and leave the per-connection copies `None`.
+        // that best reflects the session the user last saw. New saves write it
+        // on the environment and leave the per-connection copies `None`.
         let internal_layout = top_level_layout.or_else(|| hoist_legacy_layout(&connections));
 
+        // v1/v2/v3 → a single environment holding the whole previous session.
+        // Unnamed, so the frontend labels it in the user's language.
         PersistedTabState {
             version: CURRENT_VERSION,
-            connections,
-            internal_layout,
-            active_connections,
-            selected_connection_id,
-            active_tab_id,
+            environments: vec![Environment {
+                connections,
+                internal_layout,
+                launch,
+                ..Environment::initial()
+            }],
+            active_environment_id: Some(DEFAULT_ENVIRONMENT_ID.to_string()),
         }
     }
 }
@@ -241,8 +340,54 @@ fn hoist_legacy_layout(
 }
 
 impl PersistedTabState {
-    /// Drop the oldest connections beyond [`MAX_REMEMBERED_CONNECTIONS`].
+    /// The active environment, creating one if the list is empty and repairing
+    /// a stale `active_environment_id` in passing.
+    ///
+    /// Every command that reads or writes session state goes through this, so
+    /// the invariant "there is always exactly one active environment" is
+    /// enforced in one place rather than defended at each call site.
+    pub fn active_environment_mut(&mut self) -> &mut Environment {
+        if self.environments.is_empty() {
+            self.environments.push(Environment::initial());
+        }
+        let idx = self
+            .active_environment_id
+            .as_ref()
+            .and_then(|id| self.environments.iter().position(|e| &e.id == id))
+            .unwrap_or(0);
+        // Re-anchor the id: it was either absent or pointing at a deleted
+        // environment, and leaving it dangling would re-run this fallback (and
+        // possibly land elsewhere) on the next call.
+        self.active_environment_id = Some(self.environments[idx].id.clone());
+        &mut self.environments[idx]
+    }
+
+    /// Read-only counterpart. Returns `None` only for a blob that has not been
+    /// through [`RawState::into_state`] (which always leaves one environment).
+    pub fn active_environment(&self) -> Option<&Environment> {
+        self.active_environment_id
+            .as_ref()
+            .and_then(|id| self.environments.iter().find(|e| &e.id == id))
+            .or_else(|| self.environments.first())
+    }
+
+    /// Drop each environment's oldest connections beyond
+    /// [`MAX_REMEMBERED_CONNECTIONS`].
+    ///
+    /// The cap is per environment, not global: environments are meant to be
+    /// long-lived working sets, and a global cap would let a busy one silently
+    /// evict the tabs of one the user hasn't opened in a while — the opposite of
+    /// what keeping them apart is for.
     pub fn prune(&mut self) {
+        for env in &mut self.environments {
+            env.prune();
+        }
+    }
+}
+
+impl Environment {
+    /// Drop the oldest connections beyond [`MAX_REMEMBERED_CONNECTIONS`].
+    fn prune(&mut self) {
         if self.connections.len() <= MAX_REMEMBERED_CONNECTIONS {
             return;
         }
@@ -340,18 +485,80 @@ mod tests {
         }
     }
 
+    /// The single environment a migrated legacy blob produces. Panics rather
+    /// than returning an Option: every migration path must yield exactly one,
+    /// and a test asserting on the wrong count should fail loudly here.
+    fn sole_env(state: &PersistedTabState) -> &Environment {
+        assert_eq!(
+            state.environments.len(),
+            1,
+            "expected exactly one migrated environment"
+        );
+        &state.environments[0]
+    }
+
     #[test]
     fn prune_keeps_most_recent_connections() {
         let mut state = PersistedTabState::default();
         for i in 0..(MAX_REMEMBERED_CONNECTIONS as i64 + 5) {
-            state.connections.insert(format!("c{i}"), entry(i));
+            state
+                .active_environment_mut()
+                .connections
+                .insert(format!("c{i}"), entry(i));
         }
         state.prune();
-        assert_eq!(state.connections.len(), MAX_REMEMBERED_CONNECTIONS);
-        assert!(!state.connections.contains_key("c0"));
-        assert!(state
+        let env = sole_env(&state);
+        assert_eq!(env.connections.len(), MAX_REMEMBERED_CONNECTIONS);
+        assert!(!env.connections.contains_key("c0"));
+        assert!(env
             .connections
             .contains_key(&format!("c{}", MAX_REMEMBERED_CONNECTIONS as i64 + 4)));
+    }
+
+    #[test]
+    fn prune_is_per_environment_not_global() {
+        // The cap applies within each environment: a busy one must not evict a
+        // quiet one's tabs, which is the point of keeping them apart.
+        let mut state = PersistedTabState::default();
+        state.environments.push(Environment {
+            id: "second".into(),
+            ..Environment::default()
+        });
+        for env in &mut state.environments {
+            for i in 0..(MAX_REMEMBERED_CONNECTIONS as i64 + 3) {
+                env.connections.insert(format!("c{i}"), entry(i));
+            }
+        }
+        state.prune();
+        for env in &state.environments {
+            assert_eq!(env.connections.len(), MAX_REMEMBERED_CONNECTIONS);
+        }
+    }
+
+    #[test]
+    fn active_environment_mut_repairs_a_stale_active_id() {
+        let mut state = PersistedTabState {
+            active_environment_id: Some("deleted-long-ago".into()),
+            ..PersistedTabState::default()
+        };
+        let id = state.active_environment_mut().id.clone();
+        assert_eq!(id, DEFAULT_ENVIRONMENT_ID);
+        assert_eq!(
+            state.active_environment_id.as_deref(),
+            Some(DEFAULT_ENVIRONMENT_ID),
+            "the dangling id must be re-anchored, not just worked around"
+        );
+    }
+
+    #[test]
+    fn active_environment_mut_recreates_one_when_the_list_is_empty() {
+        let mut state = PersistedTabState {
+            version: CURRENT_VERSION,
+            environments: Vec::new(),
+            active_environment_id: None,
+        };
+        assert_eq!(state.active_environment_mut().id, DEFAULT_ENVIRONMENT_ID);
+        assert_eq!(state.environments.len(), 1);
     }
 
     #[test]
@@ -375,12 +582,23 @@ mod tests {
     }
 
     #[test]
-    fn v1_blob_migrates_to_v3_flat_map() {
+    fn v1_blob_migrates_into_the_default_environment() {
         let v1 = r#"{ "version": 1, "connections": { "abc": { "tabs": [] } } }"#;
         let raw: RawState = serde_json::from_str(v1).unwrap();
         let state = raw.into_state();
         assert_eq!(state.version, CURRENT_VERSION);
-        assert!(state.connections.contains_key("abc"));
+        assert_eq!(
+            state.active_environment_id.as_deref(),
+            Some(DEFAULT_ENVIRONMENT_ID)
+        );
+        let env = sole_env(&state);
+        assert_eq!(env.id, DEFAULT_ENVIRONMENT_ID);
+        assert!(
+            env.name.is_empty(),
+            "the migrated environment must stay unnamed so the frontend can \
+             localise its label"
+        );
+        assert!(env.connections.contains_key("abc"));
     }
 
     #[test]
@@ -396,8 +614,12 @@ mod tests {
         let raw: RawState = serde_json::from_str(v2).unwrap();
         let state = raw.into_state();
         assert_eq!(state.version, CURRENT_VERSION);
-        assert!(state.connections.contains_key("keep"));
-        assert!(!state.connections.contains_key("drop"));
+        // Still one environment, not one per workspace: v2 workspaces were a
+        // stand-in for windows, and 1.4.0's decision to keep only the active one
+        // stands. Environments are a different axis and are not seeded from them.
+        let env = sole_env(&state);
+        assert!(env.connections.contains_key("keep"));
+        assert!(!env.connections.contains_key("drop"));
     }
 
     #[test]
@@ -411,17 +633,80 @@ mod tests {
         }"#;
         let raw: RawState = serde_json::from_str(v2).unwrap();
         let state = raw.into_state();
-        assert!(state.connections.contains_key("keep"));
+        assert!(sole_env(&state).connections.contains_key("keep"));
     }
 
     #[test]
-    fn empty_v3_file_yields_empty_map() {
+    fn empty_v3_file_yields_one_empty_environment() {
         let empty = r#"{ "version": 3 }"#;
         let raw: RawState = serde_json::from_str(empty).unwrap();
         let state = raw.into_state();
-        assert!(state.connections.is_empty());
-        assert!(state.internal_layout.is_none());
-        assert!(state.active_connections.is_empty());
+        let env = sole_env(&state);
+        assert!(env.connections.is_empty());
+        assert!(env.internal_layout.is_none());
+        assert!(env.launch.active_connections.is_empty());
+    }
+
+    #[test]
+    fn v4_blob_round_trips_without_migration() {
+        let v4 = r#"{
+            "version": 4,
+            "activeEnvironmentId": "b",
+            "environments": [
+                { "id": "a", "name": "Clients", "order": 0,
+                  "connections": { "c1": { "tabs": [] } } },
+                { "id": "b", "name": "Internal", "order": 1,
+                  "internalLayout": {"keep": "me"},
+                  "launch": { "activeConnections": ["c2"] } }
+            ]
+        }"#;
+        let raw: RawState = serde_json::from_str(v4).unwrap();
+        let state = raw.into_state();
+        assert_eq!(state.environments.len(), 2);
+        assert_eq!(state.active_environment_id.as_deref(), Some("b"));
+        let active = state.active_environment().unwrap();
+        assert_eq!(active.name, "Internal");
+        assert_eq!(
+            active.internal_layout,
+            Some(serde_json::json!({"keep": "me"}))
+        );
+        assert_eq!(active.launch.active_connections, vec!["c2"]);
+    }
+
+    #[test]
+    fn v4_blob_with_stale_active_id_falls_back_to_the_first_environment() {
+        let v4 = r#"{
+            "version": 4,
+            "activeEnvironmentId": "deleted",
+            "environments": [ { "id": "a", "name": "Only" } ]
+        }"#;
+        let raw: RawState = serde_json::from_str(v4).unwrap();
+        let state = raw.into_state();
+        assert_eq!(state.active_environment_id.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn v3_launch_trio_moves_onto_the_environment() {
+        // The three top-level launch fields become one `launch` struct scoped to
+        // the environment, so switching environments swaps what gets reconnected.
+        let v3 = r#"{
+            "version": 3,
+            "connections": { "c": { "tabs": [] } },
+            "internalLayout": {"pick": "top"},
+            "activeConnections": ["a", "b"],
+            "selectedConnectionId": "a",
+            "activeTabId": "tab-1"
+        }"#;
+        let raw: RawState = serde_json::from_str(v3).unwrap();
+        let state = raw.into_state();
+        let env = sole_env(&state);
+        assert_eq!(env.launch.active_connections, vec!["a", "b"]);
+        assert_eq!(env.launch.selected_connection_id.as_deref(), Some("a"));
+        assert_eq!(env.launch.active_tab_id.as_deref(), Some("tab-1"));
+        assert_eq!(
+            env.internal_layout,
+            Some(serde_json::json!({"pick": "top"}))
+        );
     }
 
     #[test]
@@ -438,7 +723,7 @@ mod tests {
         let raw: RawState = serde_json::from_str(blob).unwrap();
         let state = raw.into_state();
         assert_eq!(
-            state.internal_layout,
+            sole_env(&state).internal_layout,
             Some(serde_json::json!({ "pick": "new" }))
         );
     }
@@ -458,33 +743,19 @@ mod tests {
         let raw: RawState = serde_json::from_str(blob).unwrap();
         let state = raw.into_state();
         assert_eq!(
-            state.internal_layout,
+            sole_env(&state).internal_layout,
             Some(serde_json::json!({ "pick": "top" }))
         );
     }
 
     #[test]
-    fn launch_state_round_trips() {
-        let blob = r#"{
-            "version": 3,
-            "activeConnections": ["a", "b"],
-            "selectedConnectionId": "a",
-            "activeTabId": "tab-1"
-        }"#;
-        let raw: RawState = serde_json::from_str(blob).unwrap();
-        let state = raw.into_state();
-        assert_eq!(state.active_connections, vec!["a", "b"]);
-        assert_eq!(state.selected_connection_id.as_deref(), Some("a"));
-        assert_eq!(state.active_tab_id.as_deref(), Some("tab-1"));
-    }
-
-    #[test]
-    fn launch_state_absent_defaults_to_none() {
+    fn launch_state_absent_defaults_to_empty() {
         let blob = r#"{ "version": 3 }"#;
         let raw: RawState = serde_json::from_str(blob).unwrap();
         let state = raw.into_state();
-        assert!(state.active_connections.is_empty());
-        assert!(state.selected_connection_id.is_none());
-        assert!(state.active_tab_id.is_none());
+        let launch = &sole_env(&state).launch;
+        assert!(launch.active_connections.is_empty());
+        assert!(launch.selected_connection_id.is_none());
+        assert!(launch.active_tab_id.is_none());
     }
 }
