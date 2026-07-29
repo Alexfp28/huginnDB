@@ -40,6 +40,14 @@ export function environmentLabel(env: Environment, fallback: string): string {
   return env.name.trim() || fallback;
 }
 
+/** What a newly created environment copies from the one being left. */
+export interface ReplicateOptions {
+  /** Reopen the same connections, each with the tabs it had. */
+  connections: boolean;
+  /** Reuse the split/float pane geometry. */
+  layout: boolean;
+}
+
 interface EnvironmentsState {
   environments: Environment[];
   /** Active environment id, or `null` before the first `load()` resolves. */
@@ -56,6 +64,17 @@ interface EnvironmentsState {
     color?: string | null;
     icon?: string | null;
   }) => Promise<Environment | null>;
+  /**
+   * Create an environment, enter it, and optionally seed it from the one being
+   * left — the connections that were open (with their tabs) and/or the pane
+   * geometry.
+   */
+  createAndEnter: (
+    env: { name: string; color?: string | null; icon?: string | null },
+    replicate: ReplicateOptions,
+  ) => Promise<void>;
+  /** Last replicate choice, so the dialog reopens the way it was left. */
+  lastReplicate: ReplicateOptions;
   update: (env: {
     id: string;
     name: string;
@@ -228,6 +247,68 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       console.error("[environments] switch failed", e);
     } finally {
       set({ switching: false });
+    }
+  },
+
+  lastReplicate: { connections: true, layout: true },
+
+  createAndEnter: async (env, replicate) => {
+    set({ lastReplicate: replicate });
+    // Capture the outgoing session BEFORE anything changes. Every session-state
+    // command resolves against the *active* environment, so once we switch, the
+    // source is no longer reachable — there is no "read environment X's tabs"
+    // call, by design (see the command surface in commands/prefs.rs).
+    const sourceIds = replicate.connections
+      ? Array.from(useConnections.getState().active)
+      : [];
+    const sourceSelected = useUi.getState().selectedConnectionId;
+    let sourceTabs: [string, Awaited<ReturnType<typeof api.getTabState>>][] = [];
+    let sourceLayout: unknown = null;
+    try {
+      if (replicate.connections) {
+        sourceTabs = await Promise.all(
+          sourceIds.map(
+            async (id) =>
+              [id, await api.getTabState(id)] as [
+                string,
+                Awaited<ReturnType<typeof api.getTabState>>,
+              ],
+          ),
+        );
+      }
+      if (replicate.layout) sourceLayout = await api.getWorkspaceLayout();
+    } catch (e) {
+      console.warn("[environments] could not read the source session", e);
+    }
+
+    const created = await get().create(env);
+    if (!created) return;
+
+    // Entering first is not optional: the writes below land in whichever
+    // environment is active, so they have to happen from inside the new one.
+    // Its session is empty at this point, so this switch is cheap.
+    await get().switchTo(created.id);
+    if (get().activeId !== created.id) return; // switch failed; don't seed
+
+    try {
+      for (const [id, tabState] of sourceTabs) {
+        if (tabState) await api.saveTabState(id, tabState);
+      }
+      if (replicate.layout) await api.saveWorkspaceLayout(sourceLayout);
+      if (replicate.connections && sourceIds.length > 0) {
+        await api.saveLaunchState({
+          activeConnections: sourceIds,
+          selectedConnectionId: sourceSelected,
+          activeTabId: null,
+        });
+        // Now that the new environment has a launch state, bring it up for
+        // real. `switchTo` above already ran `restoreSession` against what was
+        // then an empty environment, so this is the pass that does the work.
+        await get().restoreSession();
+      }
+    } catch (e) {
+      set({ error: String(e) });
+      console.error("[environments] seeding the new environment failed", e);
     }
   },
 

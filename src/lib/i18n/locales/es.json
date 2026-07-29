@@ -39,7 +39,10 @@
     "switchFailed": "No se pudo cambiar de entorno: {{error}}",
     "color": "Color",
     "icon": "Icono",
-    "none": "Ninguno"
+    "none": "Ninguno",
+    "replicateFrom": "Partir de «{{name}}»",
+    "replicateConnections": "Reabrir las mismas conexiones y sus pestañas",
+    "replicateLayout": "Reutilizar la distribución de paneles"
   },
   "panels": {
     "schema": "Esquema",

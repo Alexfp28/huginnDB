@@ -39,7 +39,10 @@
     "switchFailed": "Could not switch environment: {{error}}",
     "color": "Colour",
     "icon": "Icon",
-    "none": "None"
+    "none": "None",
+    "replicateFrom": "Start from «{{name}}»",
+    "replicateConnections": "Reopen the same connections and their tabs",
+    "replicateLayout": "Reuse the pane layout"
   },
   "panels": {
     "schema": "Schema",

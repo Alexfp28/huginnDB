@@ -102,8 +102,11 @@ export function EnvironmentSwitcher() {
   const activeId = useEnvironments((s) => s.activeId);
   const switching = useEnvironments((s) => s.switching);
   const switchTo = useEnvironments((s) => s.switchTo);
-  const create = useEnvironments((s) => s.create);
+  const createAndEnter = useEnvironments((s) => s.createAndEnter);
+  const lastReplicate = useEnvironments((s) => s.lastReplicate);
   const update = useEnvironments((s) => s.update);
+  /** Seeded from the last choice each time the create dialog opens. */
+  const [replicate, setReplicate] = useState(lastReplicate);
   const remove = useEnvironments((s) => s.remove);
 
   /** Open editor: `{ id: null }` creates, `{ id }` edits an existing one. */
@@ -129,9 +132,16 @@ export function EnvironmentSwitcher() {
     if (!editing) return;
     const name = editing.name.trim();
     const { color, icon } = editing;
-    if (editing.id) await update({ id: editing.id, name, color, icon });
-    else if (name) await create({ name, color, icon });
+    if (editing.id) {
+      await update({ id: editing.id, name, color, icon });
+      setEditing(null);
+      return;
+    }
+    if (!name) return;
+    // Close first: creating replicates, switches and reconnects, which can take
+    // as long as connecting does. Leaving the dialog up over it looks hung.
     setEditing(null);
+    await createAndEnter({ name, color, icon }, replicate);
   }
 
   return (
@@ -245,9 +255,10 @@ export function EnvironmentSwitcher() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="gap-2"
-            onSelect={() =>
-              setEditing({ id: null, name: "", color: null, icon: null })
-            }
+            onSelect={() => {
+              setReplicate(lastReplicate);
+              setEditing({ id: null, name: "", color: null, icon: null });
+            }}
           >
             <Plus className="h-3.5 w-3.5" />
             {t("environments.create")}
@@ -360,6 +371,43 @@ export function EnvironmentSwitcher() {
               </button>
             </div>
           </div>
+          {/* Creating only. A new environment starts empty, which is rarely
+              what you want when you're spinning one up alongside the work you
+              already have open — these carry it over. Editing an existing
+              environment must never touch its session, so the block is absent
+              there rather than disabled. */}
+          {editing && !editing.id && (
+            <div className="space-y-1.5 rounded-md border border-border p-2.5">
+              <div className="text-xs text-muted-foreground">
+                {t("environments.replicateFrom", {
+                  name: environmentLabel(active, defaultName),
+                })}
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-brand"
+                  checked={replicate.connections}
+                  onChange={(e) =>
+                    setReplicate((r) => ({ ...r, connections: e.target.checked }))
+                  }
+                />
+                {t("environments.replicateConnections")}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="accent-brand"
+                  checked={replicate.layout}
+                  onChange={(e) =>
+                    setReplicate((r) => ({ ...r, layout: e.target.checked }))
+                  }
+                />
+                {t("environments.replicateLayout")}
+              </label>
+            </div>
+          )}
+
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setEditing(null)}>
               {t("common.cancel")}
