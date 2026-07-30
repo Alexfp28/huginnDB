@@ -1100,6 +1100,17 @@
     "pathPlaceholder": "\\\\server\\huginndb\\clients.json",
     "namePlaceholder": "Name (optional)",
     "passphrasePlaceholder": "Passphrase (only if encrypted)",
-    "passphraseHint": "Stored in your OS keychain, never on disk. Leave blank if the file was exported without passwords."
+    "passphraseHint": "Stored in your OS keychain, never on disk. Leave blank if the file was exported without passwords.",
+    "vanished": {
+      "title": "No longer published",
+      "titleNamed": "\"{{name}}\" is no longer published",
+      "body": "\"{{origin}}\" no longer offers this connection. Keep it as your own, or delete it together with its stored password.",
+      "keep": "Keep as mine",
+      "keepTooltip": "Stop tracking the origin and keep the connection locally, editable again.",
+      "retire": "Delete",
+      "retireConfirm": "Delete the connection \"{{name}}\"?\n\nIts stored password is removed from your keychain too. This cannot be undone.",
+      "mark": "\"{{origin}}\" no longer offers this connection — resolve it from the schema tree or Settings → Shared origins.",
+      "pending": "Disappeared connections"
+    }
   }
 }

@@ -35,6 +35,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
 import { DriverBadge } from "@/components/DriverBadge";
+import { VanishedOriginMark } from "@/components/VanishedOriginNotice";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { driverMismatchHint } from "@/lib/driver";
 import { bucketByGroup, cn } from "@/lib/utils";
@@ -169,6 +170,7 @@ export function StatusConnections() {
             {versions[p.id]}
           </span>
         )}
+        <VanishedOriginMark profileId={p.id} />
         <DriverBadge driver={p.driver} />
         {isLost ? (
           // Explicit labelled affordance rather than a cryptic red icon.
@@ -213,6 +215,7 @@ export function StatusConnections() {
       >
         <Plug className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="flex-1 truncate text-xs">{p.name}</span>
+        <VanishedOriginMark profileId={p.id} />
         <DriverBadge driver={p.driver} />
       </DropdownMenuItem>
     );

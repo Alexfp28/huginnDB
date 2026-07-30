@@ -1100,6 +1100,17 @@
     "pathPlaceholder": "\\\\servidor\\huginndb\\clientes.json",
     "namePlaceholder": "Nombre (opcional)",
     "passphrasePlaceholder": "Passphrase (solo si está cifrado)",
-    "passphraseHint": "Se guarda en el almacén de credenciales del sistema, nunca en disco. Déjalo vacío si el fichero se exportó sin contraseñas."
+    "passphraseHint": "Se guarda en el almacén de credenciales del sistema, nunca en disco. Déjalo vacío si el fichero se exportó sin contraseñas.",
+    "vanished": {
+      "title": "Ya no se publica",
+      "titleNamed": "«{{name}}» ya no se publica",
+      "body": "«{{origin}}» ya no ofrece esta conexión. Consérvala como tuya o bórrala junto con su contraseña guardada.",
+      "keep": "Conservar como mía",
+      "keepTooltip": "Deja de seguir el origen y guarda la conexión en local, editable de nuevo.",
+      "retire": "Borrar",
+      "retireConfirm": "¿Borrar la conexión «{{name}}»?\n\nTambién se elimina su contraseña del almacén de credenciales. Esto no se puede deshacer.",
+      "mark": "«{{origin}}» ya no ofrece esta conexión: resuélvelo desde el árbol de esquema o en Ajustes → Orígenes compartidos.",
+      "pending": "Conexiones desaparecidas"
+    }
   }
 }

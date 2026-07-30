@@ -69,6 +69,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
+import { VanishedOriginNotice } from "@/components/VanishedOriginNotice";
 import { confirmDestructive } from "@/lib/confirmDestructive";
 import type { Driver, TableInfo } from "@/types";
 
@@ -198,10 +199,22 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
   const isMultiDb =
     !!profile && profile.driver !== "sqlite" && profile.database === "";
 
-  if (isMultiDb) {
-    return <MultiDbExplorer parentId={connectionId} />;
-  }
-  return <SingleDbExplorer connectionId={connectionId} title={t("schema.title")} />;
+  // The origin notice sits above whichever explorer renders (#108). Placed on
+  // this wrapper rather than inside the two explorers so single- and multi-DB
+  // mode can't drift, and above the tree because it's about the connection
+  // itself, not about anything in its schema.
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <VanishedOriginNotice profileId={connectionId} />
+      <div className="min-h-0 flex-1">
+        {isMultiDb ? (
+          <MultiDbExplorer parentId={connectionId} />
+        ) : (
+          <SingleDbExplorer connectionId={connectionId} title={t("schema.title")} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

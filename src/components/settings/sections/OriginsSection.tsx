@@ -7,11 +7,12 @@
  * disappear" has a confusing answer (you switched environment).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FolderSync, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useOriginSync } from "@/stores/originSync";
+import { VanishedOriginNotice } from "@/components/VanishedOriginNotice";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,11 @@ export function OriginsSection() {
   const syncing = useOriginSync((s) => s.syncing);
   const errors = useOriginSync((s) => s.errors);
   const syncAll = useOriginSync((s) => s.syncAll);
+  const vanished = useOriginSync((s) => s.vanished);
+
+  // Derive the id list here rather than in the selector: `Object.keys` returns a
+  // fresh array on every call and would re-render forever (gotcha #1).
+  const vanishedIds = useMemo(() => Object.keys(vanished), [vanished]);
 
   const [origins, setOrigins] = useState<Origin[]>([]);
   const [adding, setAdding] = useState(false);
@@ -138,6 +144,25 @@ export function OriginsSection() {
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* The reliable surface for a notice: a vanished connection that isn't
+          open never renders a schema tree, so the tree banner alone would leave
+          it unresolvable. */}
+      {vanishedIds.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("origins.vanished.pending")}
+          </h4>
+          {vanishedIds.map((id) => (
+            <VanishedOriginNotice
+              key={id}
+              profileId={id}
+              showConnection
+              className="mx-0 mt-2"
+            />
           ))}
         </div>
       )}
