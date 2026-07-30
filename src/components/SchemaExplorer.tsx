@@ -182,7 +182,19 @@ function ColumnSkeleton({ label }: { label: string }) {
   );
 }
 
-export function SchemaExplorer({ connectionId }: { connectionId: string }) {
+export function SchemaExplorer({
+  connectionId,
+  filter = "",
+}: {
+  connectionId: string;
+  /**
+   * Needle from the tree-level filter box (`ConnectionsTree.tsx`). The
+   * caller decides scope — it passes the live filter only for the selected
+   * connection and `""` for every other one, so this component never has to
+   * know whether it's the active target.
+   */
+  filter?: string;
+}) {
   // Multi-DB mode triggers when the parent profile has no `database` set
   // (e.g. the user wants to browse every database on the server). SQLite
   // profiles are inherently single-file, so they never enter this mode.
@@ -200,9 +212,9 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
     <div className="flex flex-col">
       <VanishedOriginNotice profileId={connectionId} />
       {isMultiDb ? (
-        <MultiDbExplorer parentId={connectionId} />
+        <MultiDbExplorer parentId={connectionId} filter={filter} />
       ) : (
-        <SingleDbExplorer connectionId={connectionId} />
+        <SingleDbExplorer connectionId={connectionId} filter={filter} />
       )}
     </div>
   );
@@ -380,24 +392,25 @@ export function ConnectionActionsMenu({
 function SingleDbExplorer({
   connectionId,
   headerLevel = "root",
-  controlledFilter,
+  filter = "",
   onTableOpen,
 }: {
   connectionId: string;
   /**
-   * `root` shows the filter box. `nested`
-   * skips the header chrome entirely — used when this subtree lives under a
-   * database node and the outer multi-DB explorer already owns the chrome.
+   * `nested` skips the schema header when there's exactly one schema to
+   * show (see `flattenSingleSchema` below) — used when this subtree lives
+   * under a database node and the outer multi-DB explorer already owns
+   * the database-level chrome.
    */
   headerLevel?: "root" | "nested";
   /**
-   * When provided, the filter is owned by a parent component (typically
-   * [[MultiDbExplorer]], which renders one filter input shared across all
-   * DBs). The local input is hidden and the local state is bypassed —
-   * propagated by the parent so every nested DB filters by the same
-   * needle, which was the whole point of the multi-DB unification.
+   * Filter needle. Always owned by an ancestor: the tree-level filter box
+   * in `ConnectionsTree.tsx` for a root explorer (via `SchemaExplorer`), or
+   * `MultiDbExplorer` for a nested one — propagated so every nested DB
+   * filters by the same needle, which was the whole point of the multi-DB
+   * unification.
    */
-  controlledFilter?: string;
+  filter?: string;
   /**
    * Optional callback fired when the user opens a table (click or context
    * menu). Used by the multi-DB parent to activate this database's scope
@@ -425,17 +438,6 @@ function SingleDbExplorer({
     }
     return undefined;
   });
-
-  // When the filter is owned by the parent we ignore the local state and
-  // hide the local input. We still declare the local state to keep the
-  // hook order stable when toggling between controlled and uncontrolled
-  // (the prop being defined/undefined doesn't change between renders in
-  // practice — a `<DatabaseRoot>` is either inside a multi-DB tree or it
-  // isn't — but defending against future restructures is cheap).
-  const [localFilter, setLocalFilter] = useState("");
-  const isControlled = controlledFilter !== undefined;
-  const filter = isControlled ? controlledFilter : localFilter;
-  const setFilter = isControlled ? () => {} : setLocalFilter;
 
   const [renameTarget, setRenameTarget] = useState<TableInfo | null>(null);
   const [dropTarget, setDropTarget] = useState<TableInfo | null>(null);
@@ -535,20 +537,10 @@ function SingleDbExplorer({
 
   return (
     <div className="flex flex-col">
-      {!isControlled && (
-        <div className="px-3 pb-2">
-          <Input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder={t("schema.filterPlaceholder")}
-            className="h-7 text-xs"
-          />
-        </div>
-      )}
       {cs.error && (
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
-      <div className="py-1 text-sm">
+      <div className="pb-1 text-sm">
         {needle && schemas.length === 0 && (
           <div className="px-3 py-2 text-xs italic text-muted-foreground">
             {t("schema.noMatches")}
@@ -585,7 +577,7 @@ function SingleDbExplorer({
                     duplicate database node (see comment above). */}
                 {!flattenSingleSchema && (
                   <button
-                    className="flex w-full items-center gap-1 px-2 py-1 hover:bg-accent/40"
+                    className="flex w-full items-center gap-1 px-2 py-1.5 hover:bg-accent/40"
                     onClick={() => toggleNode(connectionId, schemaNodeKey)}
                   >
                     {schemaOpen ? (
@@ -716,7 +708,14 @@ function SingleDbExplorer({
 // synthetic id.
 // ---------------------------------------------------------------------------
 
-function MultiDbExplorer({ parentId }: { parentId: string }) {
+function MultiDbExplorer({
+  parentId,
+  filter = "",
+}: {
+  parentId: string;
+  /** Needle from the tree-level filter box, forwarded by `SchemaExplorer`. */
+  filter?: string;
+}) {
   const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[parentId]);
   const refresh = useSchema((s) => s.refresh);
@@ -751,13 +750,6 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
   // table clicked). When set, the filter scopes to this DB only — same
   // model as HeidiSQL. null → search across all DBs (retrocompat).
   const [activeDatabaseName, setActiveDatabaseName] = useState<string | null>(null);
-
-  // Connection-level filter, shared across every database in the
-  // explorer. Lifted up here so multi-DB connections have a single
-  // search box instead of one per database — see plan A2. Each nested
-  // SingleDbExplorer receives this value via `controlledFilter` and
-  // hides its own input.
-  const [filter, setFilter] = useState("");
 
   // Debounced needle drives the prefetch fan-out and the
   // matching-database computation. Without the delay, every keystroke
@@ -899,39 +891,31 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
 
   return (
     <div className="flex flex-col">
-      <div className="px-3 pb-2">
-        <Input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder={
-            activeDatabaseName
-              ? t("schema.filterInDb", { db: activeDatabaseName })
-              : t("schema.filterPlaceholder")
-          }
-          className="h-7 text-xs"
-        />
-        {activeDatabaseName && filterActive && (
-          <div className="mt-1 text-[11px] text-muted-foreground">
-            {t("schema.filterScopedTo", { db: activeDatabaseName })}
-          </div>
-        )}
-        {/* The header's brand-tinted "select databases" icon used to be the only
-            sign that a subset was hiding databases. With the actions moved to the
-            connection's context menu that cue would have vanished silently, so it
-            is stated here instead. */}
-        {visibleSet && (
-          <div className="mt-1 text-[11px] text-muted-foreground">
-            {t("schema.selectDatabases.subsetActive", {
-              count: visibleSet.size,
-              total: cs.databases.length,
-            })}
-          </div>
-        )}
-      </div>
+      {(visibleSet || (activeDatabaseName && filterActive)) && (
+        <div className="px-3 pb-2">
+          {activeDatabaseName && filterActive && (
+            <div className="text-[11px] text-muted-foreground">
+              {t("schema.filterScopedTo", { db: activeDatabaseName })}
+            </div>
+          )}
+          {/* The header's brand-tinted "select databases" icon used to be the only
+              sign that a subset was hiding databases. With the actions moved to the
+              connection's context menu that cue would have vanished silently, so it
+              is stated here instead. */}
+          {visibleSet && (
+            <div className="text-[11px] text-muted-foreground">
+              {t("schema.selectDatabases.subsetActive", {
+                count: visibleSet.size,
+                total: cs.databases.length,
+              })}
+            </div>
+          )}
+        </div>
+      )}
       {cs.error && (
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
-      <div className="py-1 text-sm">
+      <div className="pb-1 text-sm">
         {filterActive && matchingDbs && matchingDbs.size === 0 && !prefetching && (
           <div className="px-3 py-2 text-xs italic text-muted-foreground">
             {t("schema.noMatches")}
@@ -1157,7 +1141,7 @@ function DatabaseRoot({
         <ContextMenuTrigger asChild>
           <button
             className={cn(
-              "flex w-full items-center gap-1 px-2 py-1 transition-opacity hover:bg-accent/40",
+              "flex w-full items-center gap-1 px-2 py-1.5 transition-opacity hover:bg-accent/40",
               dimmed && "opacity-50 hover:opacity-100",
             )}
             onClick={() => {
@@ -1241,7 +1225,7 @@ function DatabaseRoot({
         />
       )}
       {effectiveExpanded && (
-        <div className="ml-3 border-l border-border/40">
+        <div className="ml-3 border-l border-border/35 pl-0.5">
           {error && (
             <div className="px-3 py-1 text-[11px] text-destructive">{error}</div>
           )}
@@ -1254,7 +1238,7 @@ function DatabaseRoot({
             <SingleDbExplorer
               connectionId={childId}
               headerLevel="nested"
-              controlledFilter={filter}
+              filter={filter}
               onTableOpen={onTableOpen}
             />
           )}
@@ -1333,7 +1317,7 @@ function TableSection({
   return (
     <div>
       <button
-        className="flex w-full items-center gap-1 py-0.5 pl-5 pr-2 hover:bg-accent/30"
+        className="flex w-full items-center gap-1 py-1 pl-5 pr-2 hover:bg-accent/30"
         onClick={() => toggleNode(connectionId, sectionKey)}
       >
         {isOpen ? (
@@ -1497,7 +1481,7 @@ function TableRow({
                 toggleNode(connectionId, tableNodeKey);
                 if (!cols) loadColumns(connectionId, t.schema, t.name);
               }}
-              className="flex flex-1 items-center gap-1 py-0.5"
+              className="flex flex-1 items-center gap-1 py-1"
             >
               {tableOpen ? (
                 <ChevronDown className="h-3 w-3" />
@@ -1579,14 +1563,14 @@ function TableRow({
             <div
               className={cn(
                 "ml-8 border-l pl-3 pr-2",
-                isActive ? "border-brand/40" : "border-border/60",
+                isActive ? "border-brand/40" : "border-border/35",
               )}
             >
               {cols ? (
                 cols.map((c) => (
                   <div
                     key={c.name}
-                    className="flex items-center gap-1 py-0.5 text-2xs text-muted-foreground"
+                    className="flex items-center gap-1 py-1 text-2xs text-muted-foreground"
                   >
                     {c.is_primary_key && (
                       <KeyRound
@@ -2409,7 +2393,7 @@ function IndexesSectionHeader({
   const isOpen = expanded.has(sectionKey);
   return (
     <button
-      className="flex w-full items-center gap-1 py-0.5 pl-5 pr-2 hover:bg-accent/30"
+      className="flex w-full items-center gap-1 py-1 pl-5 pr-2 hover:bg-accent/30"
       onClick={() => toggleNode(connectionId, sectionKey)}
     >
       {isOpen ? (

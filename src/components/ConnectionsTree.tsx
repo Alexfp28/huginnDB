@@ -25,16 +25,38 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, Loader2, Plug, RotateCw, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
+  ListFilter,
+  Loader2,
+  Plug,
+  RotateCw,
+  Search,
+  X,
+} from "lucide-react";
 import { useConnections } from "@/stores/connections";
 import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
 import { useUi } from "@/stores/ui";
+import { selectUiPrefs, usePreferences } from "@/stores/preferences";
 import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
 import { connectAndWarm, disconnectAndClean } from "@/lib/connectFlow";
 import { persistLaunchState } from "@/stores/persistedTabs";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { DriverBadge } from "@/components/DriverBadge";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   ConnectionActionsMenu,
   SchemaExplorer,
@@ -60,10 +82,33 @@ export function ConnectionsTree() {
   // since "expanded" is already the default for a live connection.
   const collapsed = useUi((s) => s.collapsedConnections);
   const setConnectionCollapsed = useUi((s) => s.setConnectionCollapsed);
+  // One filter box for the whole tree (previously duplicated inside every
+  // expanded connection). It only ever scopes to `selected` — see
+  // `renderConnection` — so browsing several connections at once never
+  // hides the ones you're not searching.
+  const treeFilter = useUi((s) => s.treeFilter);
+  const setTreeFilter = useUi((s) => s.setTreeFilter);
   const groupCollapse = useConnectionGroupCollapse();
 
+  // DataGrip-style subset of connections to show, one level up from the
+  // per-connection `visible_databases` (SchemaExplorer.tsx). Lives in prefs
+  // rather than on a profile since it spans every connection, not one.
+  const visibleConnectionIds = usePreferences(selectUiPrefs).visibleConnections;
+  const visibleSet = useMemo(
+    () =>
+      visibleConnectionIds && visibleConnectionIds.length > 0
+        ? new Set(visibleConnectionIds)
+        : null,
+    [visibleConnectionIds],
+  );
+  const [visibilityPickerOpen, setVisibilityPickerOpen] = useState(false);
+
   // Reference-stable inputs, derived here rather than in the selector (gotcha #1).
-  const buckets = useMemo(() => bucketByGroup(profiles), [profiles]);
+  const visibleProfiles = useMemo(
+    () => profiles.filter((p) => !visibleSet || visibleSet.has(p.id)),
+    [profiles, visibleSet],
+  );
+  const buckets = useMemo(() => bucketByGroup(visibleProfiles), [visibleProfiles]);
 
   /** Id currently connecting, so its row can show a spinner and refuse clicks. */
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -124,7 +169,7 @@ export function ConnectionsTree() {
     if (ok) setSelected(p.id);
   }
 
-  function renderConnection(p: ConnectionProfile, indented = false) {
+  function renderConnection(p: ConnectionProfile) {
     const isActive = active.has(p.id);
     const lostError = lostConnections[p.id];
     const isLost = !!lostError;
@@ -150,8 +195,7 @@ export function ConnectionsTree() {
             }}
             title={isLost ? t("connections.lost", { message: lostError }) : p.name}
             className={cn(
-              "group flex cursor-pointer items-center gap-1 py-1 pr-2 text-sm outline-none hover:bg-accent/40 focus-visible:ring-1 focus-visible:ring-ring",
-              indented ? "pl-4" : "pl-2",
+              "group flex cursor-pointer items-center gap-2 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none hover:bg-accent/40 focus-visible:ring-1 focus-visible:ring-ring",
               isLost && "bg-destructive/10",
               !isLost && selected === p.id && "bg-brand/10",
             )}
@@ -163,18 +207,24 @@ export function ConnectionsTree() {
             ) : (
               <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             )}
-            {/* Live/idle at a glance: the dot is the same brand/destructive
-                vocabulary the status bar uses for the same three states. */}
-            <span
-              className={cn(
-                "h-1.5 w-1.5 shrink-0 rounded-full",
-                isLost
-                  ? "bg-destructive"
-                  : isActive
-                    ? "bg-brand"
-                    : "bg-muted-foreground/30",
-              )}
-            />
+            {/* Identity glyph: the driver's brand mark now leads the row —
+                something recognisable at a glance beats a plain bullet — with
+                live/idle/lost folded into a small corner dot instead of a
+                separate one. Same brand/destructive vocabulary the status bar
+                uses, just relocated onto the icon. */}
+            <span className="relative inline-flex shrink-0">
+              <DriverBadge driver={p.driver} />
+              <span
+                className={cn(
+                  "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-background",
+                  isLost
+                    ? "bg-destructive"
+                    : isActive
+                      ? "bg-brand"
+                      : "bg-muted-foreground/40",
+                )}
+              />
+            </span>
             <span
               className={cn(
                 "flex-1 truncate",
@@ -185,7 +235,6 @@ export function ConnectionsTree() {
               {p.name}
             </span>
             <VanishedOriginMark profileId={p.id} />
-            <DriverBadge driver={p.driver} />
             {isLost ? (
               <button
                 type="button"
@@ -224,10 +273,16 @@ export function ConnectionsTree() {
 
         {/* Only a live connection has a subtree to show. An expanded-but-idle row
             can't happen (disconnecting drops the override), but the guard is what
-            makes that true rather than incidental. */}
+            makes that true rather than incidental. Nesting this the same way as
+            a folder's own guide (below) is what makes the line read as one
+            continuous tree rather than a per-row accent: a connection inside a
+            folder naturally sits one guide deeper than an ungrouped one. */}
         {expanded && isActive && (
-          <div className={cn("border-l border-border/40", indented ? "ml-5" : "ml-3")}>
-            <SchemaExplorer connectionId={p.id} />
+          <div className="ml-3 border-l border-border/35 pl-0.5">
+            <SchemaExplorer
+              connectionId={p.id}
+              filter={selected === p.id ? treeFilter : ""}
+            />
           </div>
         )}
       </div>
@@ -236,17 +291,19 @@ export function ConnectionsTree() {
 
   function GroupHeader({ name, count }: { name: string; count: number }) {
     const collapsed = groupCollapse.isCollapsed(name);
+    const FolderIcon = collapsed ? Folder : FolderOpen;
     return (
       <button
         type="button"
         onClick={() => groupCollapse.toggle(name)}
-        className="flex w-full items-center gap-1 px-2 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
       >
         {collapsed ? (
           <ChevronRight className="h-3 w-3 shrink-0" />
         ) : (
           <ChevronDown className="h-3 w-3 shrink-0" />
         )}
+        <FolderIcon className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{name}</span>
         <span className="text-muted-foreground/60">({count})</span>
       </button>
@@ -263,16 +320,210 @@ export function ConnectionsTree() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto py-1">
+      <div className="shrink-0 px-2 pb-1 pt-2">
+        {/* The visibility picker acts on the whole tree, not one row, so it
+            can't live in a per-connection context menu — it gets its own
+            action above the filter box instead. */}
+        <div className="mb-1.5 flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setVisibilityPickerOpen(true)}
+            className="h-6 gap-1 px-2 text-[11px]"
+          >
+            <ListFilter className="h-3 w-3" />
+            {t("connectionsTree.selectConnections.action")}
+          </Button>
+        </div>
+        <Input
+          value={treeFilter}
+          onChange={(e) => setTreeFilter(e.target.value)}
+          placeholder={t("schema.filterPlaceholder")}
+          className="h-7 text-xs"
+        />
+        {visibleSet && (
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {t("connectionsTree.selectConnections.subsetActive", {
+              count: visibleSet.size,
+              total: profiles.length,
+            })}
+          </div>
+        )}
+        {/* Only meaningful once something is typed — an empty box needing no
+            selection at all would be a confusing thing to say up front. */}
+        {treeFilter && !selected && (
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {t("connectionsTree.filterNeedsSelection")}
+          </div>
+        )}
+      </div>
+      <div className="flex-1 overflow-y-auto py-1.5 pr-1">
+        {visibleProfiles.length === 0 && (
+          <div className="px-3 py-2 text-xs text-muted-foreground">
+            {t("connectionsTree.selectConnections.allHidden")}
+          </div>
+        )}
         {buckets.ungrouped.map((p) => renderConnection(p))}
         {buckets.groups.map(({ name, items }) => (
           <div key={name}>
             <GroupHeader name={name} count={items.length} />
-            {!groupCollapse.isCollapsed(name) &&
-              items.map((p) => renderConnection(p, true))}
+            {/* One guide per folder, nested the same way a connection's own
+                subtree line nests under it — indentation reads as depth
+                everywhere in this tree, not just here. */}
+            {!groupCollapse.isCollapsed(name) && (
+              <div className="ml-3 border-l border-border/35 pl-0.5">
+                {items.map((p) => renderConnection(p))}
+              </div>
+            )}
           </div>
         ))}
       </div>
+      {visibilityPickerOpen && (
+        <ConnectionVisibilityDialog
+          profiles={profiles}
+          selected={visibleConnectionIds ?? null}
+          onClose={() => setVisibilityPickerOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * DataGrip-style "choose which connections to show" picker, one level up
+ * from `DatabaseVisibilityDialog` (SchemaExplorer.tsx). Persisted in
+ * `prefs.ui.visibleConnections` rather than on a profile, since it spans
+ * every saved connection rather than one. "All selected" stores `null` so a
+ * newly-saved connection stays visible by default. Save is disabled with
+ * nothing selected — an empty subset would hide the whole tree, which is
+ * never what the user wants.
+ */
+function ConnectionVisibilityDialog({
+  profiles,
+  selected,
+  onClose,
+}: {
+  profiles: ConnectionProfile[];
+  /** The persisted subset of ids, or null when all are shown. */
+  selected: string[] | null;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [sel, setSel] = useState<Set<string>>(
+    () => new Set(selected ?? profiles.map((p) => p.id)),
+  );
+  const [filter, setFilter] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return profiles;
+    return profiles.filter((p) => p.name.toLowerCase().includes(q));
+  }, [profiles, filter]);
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((p) => sel.has(p.id));
+
+  const toggle = (id: string) => {
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleAllFiltered = () =>
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        for (const p of filtered) next.delete(p.id);
+      } else {
+        for (const p of filtered) next.add(p.id);
+      }
+      return next;
+    });
+
+  const submit = () => {
+    if (sel.size === 0) return;
+    const chosen = profiles.filter((p) => sel.has(p.id)).map((p) => p.id);
+    // "All" → null so a connection saved later stays visible automatically.
+    const value = chosen.length === profiles.length ? null : chosen;
+    usePreferences.getState().updateUi({ visibleConnections: value });
+    onClose();
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("connectionsTree.selectConnections.title")}</DialogTitle>
+          <DialogDescription>
+            {t("connectionsTree.selectConnections.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder={t("connectionsTree.selectConnections.filterPlaceholder")}
+              className="h-7 pl-6 text-xs"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 px-2 text-[11px]"
+            disabled={filtered.length === 0}
+            onClick={toggleAllFiltered}
+          >
+            {allFilteredSelected
+              ? t("connectionsTree.selectConnections.deselectAll")
+              : t("connectionsTree.selectConnections.selectAll")}
+          </Button>
+        </div>
+        <div className="flex items-center justify-between pb-1">
+          <span className="text-xs text-muted-foreground">
+            {t("connectionsTree.selectConnections.count", {
+              selected: sel.size,
+              total: profiles.length,
+            })}
+          </span>
+        </div>
+        <div className="max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              {t("connectionsTree.selectConnections.noMatches", { query: filter })}
+            </p>
+          ) : (
+            filtered.map((p) => (
+              <label
+                key={p.id}
+                className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/50"
+              >
+                <input
+                  type="checkbox"
+                  checked={sel.has(p.id)}
+                  onChange={() => toggle(p.id)}
+                  className="h-3.5 w-3.5 rounded accent-primary"
+                />
+                <span className="flex-1 truncate text-xs">{p.name}</span>
+                <DriverBadge driver={p.driver} />
+              </label>
+            ))
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            {t("common.cancel")}
+          </Button>
+          <Button onClick={submit} disabled={sel.size === 0}>
+            {t("common.save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

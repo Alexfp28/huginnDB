@@ -85,7 +85,20 @@
   },
   "connectionsTree": {
     "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
-    "connect": "Conectar"
+    "connect": "Conectar",
+    "filterNeedsSelection": "Selecciona una conexión para filtrar sus tablas.",
+    "selectConnections": {
+      "action": "Conexiones a mostrar",
+      "title": "Conexiones a mostrar",
+      "description": "Elige qué conexiones guardadas aparecen en el árbol. Las ocultas siguen guardadas, solo dejan de ocupar sitio en la lista.",
+      "count": "{{selected}} de {{total}} seleccionadas",
+      "subsetActive": "Mostrando {{count}} de {{total}} conexiones",
+      "selectAll": "Seleccionar todas",
+      "deselectAll": "Deseleccionar todas",
+      "filterPlaceholder": "Filtrar conexiones…",
+      "noMatches": "Ninguna conexión coincide con “{{query}}”.",
+      "allHidden": "Todas las conexiones guardadas están ocultas — usa “Conexiones a mostrar” arriba para recuperar alguna."
+    }
   },
   "workspacePicker": {
     "connectionsTab": "Conexiones",
@@ -250,7 +263,6 @@
     "sectionViews": "vistas",
     "sectionIndexes": "índices",
     "filterPlaceholder": "Filtrar tablas… (users; orders)",
-    "filterInDb": "Filtrar en {{db}}…",
     "filterScopedTo": "Buscando solo en {{db}}",
     "noMatches": "Ninguna tabla coincide con el filtro.",
     "context": {

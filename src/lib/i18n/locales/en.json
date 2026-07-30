@@ -85,7 +85,20 @@
   },
   "connectionsTree": {
     "empty": "No saved connections yet. Add one from File → New connection.",
-    "connect": "Connect"
+    "connect": "Connect",
+    "filterNeedsSelection": "Select a connection to filter its tables.",
+    "selectConnections": {
+      "action": "Connections to show",
+      "title": "Connections to show",
+      "description": "Pick which saved connections appear in the tree. Hidden connections stay saved — they just don't clutter the list.",
+      "count": "{{selected}} of {{total}} selected",
+      "subsetActive": "Showing {{count}} of {{total}} connections",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all",
+      "filterPlaceholder": "Filter connections…",
+      "noMatches": "No connections match “{{query}}”.",
+      "allHidden": "All saved connections are hidden — use “Connections to show” above to bring some back."
+    }
   },
   "workspacePicker": {
     "connectionsTab": "Connections",
@@ -250,7 +263,6 @@
     "sectionViews": "views",
     "sectionIndexes": "indexes",
     "filterPlaceholder": "Filter tables… (users; orders)",
-    "filterInDb": "Filter in {{db}}…",
     "filterScopedTo": "Searching in {{db}} only",
     "noMatches": "No tables match the filter.",
     "context": {
