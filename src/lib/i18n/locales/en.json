@@ -178,7 +178,8 @@
     "listTitle": "Saved connections",
     "emptyList": "No saved connections yet.",
     "searchPlaceholder": "Search connections…",
-    "noMatches": "No connections match your search."
+    "noMatches": "No connections match your search.",
+    "fromOrigin": "This connection comes from a shared origin, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours."
   },
   "connectPassword": {
     "title": "Password required",
