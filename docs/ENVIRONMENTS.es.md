@@ -46,6 +46,56 @@ Cada entorno recuerda las 20 conexiones más recientes de forma independiente. E
 tope es por entorno a propósito: uno global permitiría que un entorno muy usado
 desalojara sin avisar las pestañas de otro que llevabas tiempo sin abrir.
 
+## Orígenes compartidos
+
+Un entorno también puede obtener sus conexiones de otro sitio: un **origen
+compartido** es un fichero en una ruta a la que tu máquina ya llega — un recurso
+UNC, una unidad mapeada, una carpeta sincronizada — del que HuginnDB importa
+conexiones, contraseñas incluidas. La idea es que quien se incorpora a un equipo
+no configure nada a mano.
+
+Publicar uno es simplemente «Exportar perfiles…» con passphrase y dejar el
+resultado en la carpeta compartida. Consumirlo se hace en Ajustes → **Orígenes
+compartidos**: se le da la ruta, se escribe la passphrase una vez y las conexiones
+aparecen. La passphrase se queda en tu propio almacén de credenciales, una por
+origen, y nunca se escribe en disco. Los orígenes pertenecen al entorno, así que
+cada uno puede tirar de un fichero distinto.
+
+Solo va en un sentido. HuginnDB lee esa ruta y nunca escribe en ella, y una
+conexión que viene de un origen es de solo lectura: la siguiente sincronización
+desharía un cambio local de todas formas. Si necesitas una variante, duplícala; la
+copia es tuya, editable por completo y ya sin vínculo con el origen.
+
+Los orígenes se sincronizan al arrancar HuginnDB, cada pocas horas y cuando pulses
+**Sincronizar ahora**. Un cambio de metadatos (un host o un puerto que se han
+movido) de una conexión que tengas abierta espera a que la cierres: repuntar una
+conexión viva a mitad de consulta te llevaría en silencio a otro servidor.
+
+**Una sincronización nunca borra nada por su cuenta.** Si una conexión deja de
+aparecer en el fichero, recibes un aviso que se queda ahí — en el árbol de esquema
+y en Ajustes, no un diálogo que te interrumpa — con dos opciones: conservarla como
+tuya, lo que la desvincula del origen y la vuelve editable, o borrarla junto con su
+contraseña guardada. Tu decisión se recuerda. Que otra persona edite el fichero
+compartido no puede quitarte credenciales de tu máquina.
+
+Hay dos situaciones que se tratan a propósito como «esta lectura no es de fiar»: un
+fichero que no se puede leer o interpretar (recurso caído, VPN cortada, el
+publicador guardándolo justo en ese momento) no cambia absolutamente nada, y un
+fichero que ha perdido limpiamente la mitad de las conexiones de un origen de golpe
+no avisa de nada hasta que lo revises. Si no, cualquiera de los dos casos te
+enterraría en avisos de baja de conexiones que están perfectamente vivas.
+
+Conviene ser claro con la seguridad de esto, porque el cifrado puede llevar a
+engaño: cualquiera que pueda leer la carpeta **y** tenga la passphrase tiene todas
+las contraseñas de ese fichero. La passphrase tiene que llegar a la gente por otra
+vía, así que la protección que de verdad cuenta son los permisos de la carpeta.
+Trata un fichero de origen como un almacén de credenciales. `SECURITY.md` en el
+repositorio lo detalla.
+
+Quitar un origen olvida su passphrase guardada. Las conexiones que importó se
+quedan: a esas alturas ya son tuyas, y borrarlas no es algo que deba hacer quitar
+un marcador.
+
 ## Cambiar de entorno no es instantáneo
 
 Un cambio cierra todos los pools abiertos y abre los del entorno que entra. Tarda
@@ -96,6 +146,6 @@ abierta.
 - Renombrar a vacío borra tu nombre y devuelve el predeterminado localizado.
   Crear un entorno sí exige un nombre: uno nuevo sin nombre sería indistinguible
   del predeterminado.
-- Asignar un color pone un punto junto al entorno en el selector. Es cosmético;
-  nada se comporta distinto.
+- Asignar un color o un icono marca el entorno en el selector. Ambos son
+  cosméticos; nada se comporta distinto.
 - El último entorno no se puede eliminar. Siempre hay exactamente uno activo.

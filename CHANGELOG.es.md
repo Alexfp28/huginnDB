@@ -30,6 +30,51 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   «Predeterminado» en tu idioma, en vez de llevar un nombre en inglés escrito
   dentro de tus datos.
 
+- **Orígenes compartidos.** Un entorno puede importar sus conexiones desde un
+  fichero en una carpeta compartida, de modo que quien se incorpora a un equipo
+  no configura nada a mano: se apunta HuginnDB a
+  `\\servidor\huginndb\clientes.json`, se escribe la passphrase una vez y las
+  conexiones aparecen con sus contraseñas ya puestas (#108). El fichero es
+  exactamente lo que ya produce «Exportar perfiles…», así que publicar consiste en
+  que una persona exporte y deje el resultado en la carpeta. Registrar y
+  sincronizar se hace en Ajustes → Orígenes compartidos.
+
+  El sentido es estrictamente único: HuginnDB solo lee esa ruta, nunca escribe en
+  ella. Una conexión que viene de un origen es de solo lectura — editarla o
+  borrarla en local lo desharía la siguiente sincronización de todas formas — y el
+  aviso de su diálogo dice cómo saltárselo: duplícala y la copia es tuya. La
+  passphrase se guarda por origen en tu propio almacén de credenciales, nunca en
+  disco. Como leer la carpeta más la passphrase equivale a tener las contraseñas,
+  el perímetro real son los permisos de la carpeta y que la passphrase viaje fuera
+  de banda; está en `SECURITY.md`.
+
+  Los orígenes se sincronizan al arrancar, cada cuatro horas y cuando lo pidas.
+  Esa cadencia es la del actualizador y no la del keepalive a propósito: un
+  fichero de configuración curado a mano no cambia cada minuto, y veinte equipos
+  consultando un recurso SMB sin parar se nota en el servidor de ficheros.
+
+  **Una sincronización nunca borra nada por su cuenta.** Cuando una conexión deja
+  de aparecer en el fichero, se *avisa* — un aviso persistente en el árbol de
+  esquema y en Ajustes, nunca un diálogo, porque el barrido corre en segundo plano
+  y no hay garantía de que nadie esté mirando — y tú decides: conservarla como
+  tuya, lo que la desvincula del origen y la vuelve editable, o borrarla junto con
+  su contraseña guardada. La decisión se recuerda para que un barrido no vuelva a
+  preguntar. Que otra persona edite un fichero compartido no puede destruir
+  credenciales en tu máquina.
+
+  Hay tres formas de fallar contempladas de forma explícita, porque en una oficina
+  son más frecuentes que el caso para el que está pensado. Un fichero que no se
+  puede leer o interpretar — recurso caído, VPN cortada, el publicador guardando
+  sin renombrado atómico — no cambia *absolutamente nada*, ya que una lectura
+  fallida no puede confundirse con «ahora el fichero dice menos». Un fichero que
+  se lee bien pero ha perdido de golpe la mitad de las conexiones de un origen se
+  trata como poco fiable en lugar de como un borrado en lote, y no avisa de nada
+  hasta que lo revises, porque enterrar a alguien en avisos de baja de conexiones
+  que están perfectamente vivas le cuesta readoptarlas una a una. Y los cambios de
+  metadatos de una conexión con un pool abierto se retienen hasta que se cierra, y
+  entonces se aplican: mover el host o el puerto bajo una consulta en marcha
+  cambiaría el servidor bajo tus pies a mitad de sentencia.
+
 - **Las pestañas de tabla recuerdan sus filtros y su ordenación.** Al restaurar
   una sesión vuelven los filtros de columna de cada pestaña, su ordenación
   multinivel y su búsqueda confirmada, en lugar de reabrirse todas sin filtrar y

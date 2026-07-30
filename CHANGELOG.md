@@ -26,6 +26,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   environment starts unnamed and displays as "Default" in your language rather
   than having an English name written into your data.
 
+- **Shared origins.** An environment can pull its connections from a file on a
+  shared folder, so somebody joining a team configures nothing by hand: point
+  HuginnDB at `\\server\huginndb\clients.json`, enter the passphrase once, and
+  the connections appear with their passwords already in place (#108). The file
+  is exactly what "Export profiles…" already produces, so publishing is one
+  person exporting and dropping the result on the share. Registering and syncing
+  live in Settings → Shared origins.
+
+  The direction is strictly one-way: HuginnDB only ever reads that path and never
+  writes to it. A connection that came from an origin is read-only — editing or
+  deleting it locally would be undone by the next sync anyway — and the notice on
+  its dialog names the way around that: duplicate it, and the copy is yours. The
+  passphrase is stored per origin in your own OS keychain, never on disk. Because
+  reading the share plus the passphrase yields the passwords, the real perimeter
+  is the folder's permissions and the passphrase travelling out of band; see
+  `SECURITY.md`.
+
+  Origins re-sync at launch, every four hours, and on demand. That cadence is the
+  updater's tier rather than the keepalive's on purpose: a curated config file
+  doesn't change by the minute, and twenty workstations polling an SMB share
+  continuously is felt on the file server.
+
+  **A sync never deletes anything by itself.** When a connection stops appearing
+  in the file, it is *reported* — a persistent notice in the schema tree and in
+  Settings, never a dialog, since the sweep runs in the background and there is
+  nobody guaranteed to be watching — and you choose: keep it as your own, which
+  detaches it from the origin and makes it editable again, or delete it along
+  with its stored password. The decision is remembered so a poll can't ask twice.
+  Another person editing a shared file must not be able to destroy credentials on
+  your machine.
+
+  Three failure modes get explicit handling, because the ways this goes wrong in
+  an office are more common than the case it is built for. A file that can't be
+  read or parsed — share offline, VPN down, publisher mid-save without an atomic
+  rename — changes *nothing at all*, since a failed read must never be mistaken
+  for "the file now says less". A file that reads cleanly but has lost half of an
+  origin's connections at once is treated as untrustworthy rather than as a batch
+  of deletions, and reports nothing until you look, because burying someone in
+  removal notices for connections that are perfectly alive costs them a manual
+  re-adoption each. And metadata changes for a connection that currently has an
+  open pool are held back until it closes, then applied: repointing host or port
+  under a running query would change the server beneath you mid-statement.
+
 - **Table tabs remember their filters and sorting.** A restored session brings
   back each table tab's column filters, its multi-level sort and its committed
   search, instead of reopening every tab unfiltered and unsorted (#112). Only

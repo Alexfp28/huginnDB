@@ -117,6 +117,9 @@ Don't propose these unless the user asks first:
 - AI features baked into the app itself (autocomplete suggestions via LLM,
   "explain this query", etc.) — the MCP connector is the sanctioned way an AI
   tool touches HuginnDB, from the outside.
-- Cloud sync of profiles or saved queries.
+- Cloud sync of profiles or saved queries. **Shared origins** (#108, shipped) are
+  not this and don't open the door to it: a file on a path the OS already mounts,
+  curated by hand, read one way with no service, account or background upload
+  behind it. HuginnDB never writes to the share.
 - Mobile builds — Tauri's icon CLI generated iOS/Android directories during
   scaffolding, but desktop is the only target.

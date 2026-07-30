@@ -47,6 +47,52 @@ Each environment remembers the 20 most recently used connections independently.
 The cap is per environment on purpose: a global one would let a busy environment
 quietly evict the tabs of one you hadn't opened in a while.
 
+## Shared origins
+
+An environment can also get its connections from somewhere else: a **shared
+origin** is a file on a path your machine already reaches — a UNC share, a mapped
+drive, a synced folder — that HuginnDB imports connections from, passwords
+included. The point is that somebody joining a team configures nothing by hand.
+
+Publishing one is just "Export profiles…" with a passphrase, dropped on the
+share. Consuming it is Settings → **Shared origins**: give it the path, enter the
+passphrase once, and the connections appear. The passphrase is kept in your own
+keychain, per origin, and never written to disk. Origins belong to the
+environment, so each one can pull from a different file.
+
+It only ever goes one way. HuginnDB reads that path and never writes to it, and a
+connection that came from an origin is read-only — the next sync would undo a
+local edit anyway. If you need a variant, duplicate it: the copy is yours, fully
+editable, and no longer tied to the origin.
+
+Origins re-sync when you launch HuginnDB, every few hours, and whenever you press
+**Sync now**. A metadata change (a moved host or port) for a connection you
+currently have open waits until you disconnect it — repointing a live connection
+mid-query would silently move you to a different server.
+
+**A sync never deletes anything on its own.** If a connection stops appearing in
+the file, you get a standing notice — in the schema tree and in Settings, not a
+dialog interrupting you — with two choices: keep it as your own, which detaches it
+from the origin and makes it editable again, or delete it along with its stored
+password. Your choice is remembered. Someone else editing the shared file must not
+be able to remove credentials from your machine.
+
+Two situations are deliberately treated as "don't trust this read": a file that
+can't be read or parsed (share offline, VPN down, the publisher saving it right
+then) changes nothing at all, and a file that has cleanly lost half of an origin's
+connections at once reports nothing until you look into it. Both would otherwise
+bury you in removal notices for connections that are perfectly alive.
+
+Worth being clear about the security of this, because the encryption can be
+misleading: anyone who can read the share **and** has the passphrase has every
+password in that file. The passphrase has to reach people some other way, so the
+protection that actually matters is the folder's permissions. Treat an origin file
+as a credential store. `SECURITY.md` in the repository spells this out.
+
+Removing an origin forgets its stored passphrase. The connections it imported stay
+— they're already yours at that point, and deleting them isn't something removing
+a bookmark should do.
+
 ## Switching is not instantaneous
 
 A switch closes every open pool and opens the incoming environment's. It takes
@@ -93,6 +139,6 @@ Switching in the main window doesn't disturb an open secondary one.
 - Renaming to an empty name clears your name and brings the localised default
   back. Creating an environment does require a name — an unnamed new one would
   be indistinguishable from the default.
-- Assigning a colour puts a dot next to the environment in the switcher. It's
+- Assigning a colour or an icon marks the environment in the switcher. Both are
   cosmetic; nothing behaves differently.
 - The last environment can't be deleted. There is always exactly one active.
