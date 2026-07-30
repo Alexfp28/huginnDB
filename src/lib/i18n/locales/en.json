@@ -87,6 +87,11 @@
     "empty": "No saved connections yet. Add one from File → New connection.",
     "connect": "Connect"
   },
+  "workspacePicker": {
+    "connectionsTab": "Connections",
+    "environmentsTab": "Environments",
+    "searchEnvironments": "Search environments…"
+  },
   "connections": {
     "disconnectTooltip": "Disconnect",
     "deleteConfirm": "Delete connection \"{{name}}\"?",

@@ -87,6 +87,11 @@
     "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
     "connect": "Conectar"
   },
+  "workspacePicker": {
+    "connectionsTab": "Conexiones",
+    "environmentsTab": "Entornos",
+    "searchEnvironments": "Buscar entornos…"
+  },
   "connections": {
     "disconnectTooltip": "Desconectar",
     "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",

@@ -32,16 +32,27 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 - **La pantalla vacía ya sirve para empezar.** Sin pestañas abiertas, el panel
   mostraba un logo, una línea de texto y un botón «Nueva consulta» que seguía
-  deshabilitado hasta elegir una conexión en otro sitio. Ahora lleva una lista de
-  tus conexiones con buscador y carpetas: escribes, pulsas una y quedas conectado
-  y situado en ella (#110). La búsqueda también encuentra por nombre de carpeta, y
-  mientras buscas las carpetas ignoran si estaban plegadas: un resultado escondido
-  dentro de una carpeta cerrada se lee como «no hay coincidencias».
+  deshabilitado hasta elegir una conexión en otro sitio. Ahora lleva
+  `WorkspacePicker` (#110): pestañas para Conexiones y Entornos, cada una con
+  su propio buscador y una cuadrícula de tarjetas de buen tamaño — un borde del
+  color de marca, un icono (el logo del driver para una conexión; el icono
+  propio del entorno, o uno por defecto, para un entorno) y un nombre.
+  Escribes, pulsas una y quedas conectado y situado en ella.
 
-  La lista es a propósito más plana que el árbol lateral: carpetas y conexiones,
-  sin el esquema debajo. Su trabajo es elegir una conexión, no navegarla. Las
-  carpetas son las compartidas, así que plegar una aquí la pliega también en el
-  árbol, en el menú Archivo y en la barra de estado.
+  #110 pasó por dos versiones antes de esta: primero reutilizaba el aspecto
+  del árbol lateral tal cual (chevrons, sangría, estado de plegado), luego se
+  redujo a una fila de chips en línea — ambas se leían como prestadas de otro
+  sitio en vez de pensadas para una pantalla cuyo único trabajo es «elegir una
+  y seguir». Las tarjetas de aquí son deliberadamente amplias: un elemento
+  focal por tarjeta, cromado contenido (el borde es la única decoración, y
+  solo significa «se puede elegir» o «esta es la actual»). Las carpetas siguen
+  agrupando las conexiones bajo un encabezado (la búsqueda también encuentra
+  por nombre de carpeta), pero ahora solo como etiquetas — sin un estado de
+  plegado propio que mantener sincronizado con el del árbol. La pestaña de
+  Entornos cambia de entorno de verdad — el mismo `switchTo` de
+  desconectar-y-reconectar que hay detrás del selector de la barra superior —
+  y solo aparece en la ventana principal, la única donde cambiar de entorno
+  significa algo.
 
 - **Las conexiones están en el árbol de esquema.** El árbol empieza ahora un nivel
   más arriba: carpetas, dentro las conexiones, y después las bases de datos y las

@@ -69,7 +69,7 @@ const ENV_COLORS = [
  * never as a rendered glyph, so the set can grow without touching saved data —
  * an unknown key simply renders no icon (see `EnvIcon`).
  */
-const ENV_ICONS = {
+export const ENV_ICONS = {
   layers: Layers,
   server: Server,
   database: Database,
@@ -78,10 +78,10 @@ const ENV_ICONS = {
   globe: Globe,
 } as const;
 
-type EnvIconKey = keyof typeof ENV_ICONS;
+export type EnvIconKey = keyof typeof ENV_ICONS;
 
 /** Render an environment's icon, or nothing when unset/unrecognised. */
-function EnvIcon({ icon, className }: { icon: string | null; className?: string }) {
+export function EnvIcon({ icon, className }: { icon: string | null; className?: string }) {
   const Cmp = icon ? ENV_ICONS[icon as EnvIconKey] : undefined;
   return Cmp ? <Cmp className={className} /> : null;
 }

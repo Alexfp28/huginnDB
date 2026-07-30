@@ -27,17 +27,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   than having an English name written into your data.
 
 - **The empty workspace is somewhere to start.** With no tabs open, the panel
-  showed a logo, a line of text and a "New query" button that stayed disabled
-  until a connection had been picked somewhere else. It now carries a searchable,
-  folder-grouped list of your connections: type, click one, and you're connected
-  and focused on it (#110). Searching matches folder names as well as connection
-  names, and while you're searching folders ignore their collapsed state — a
-  result hidden inside a folded folder reads as "no match".
+  used to show a logo, a line of text and a "New query" button that stayed
+  disabled until a connection had been picked somewhere else. It now carries
+  `WorkspacePicker` (#110): tabs for Connections and Environments, each its own
+  search box and a grid of sizeable cards — a brand-coloured border, an icon
+  (the driver logo for a connection; the environment's own icon, or a default
+  one, for an environment), and a name. Type, click one, and you're connected
+  and focused on it.
 
-  The list is deliberately flatter than the sidebar tree: folders and
-  connections, no schema underneath. Its job is choosing a connection, not
-  browsing one. Folders are the shared ones, so folding a folder here folds it in
-  the tree, the File menu and the status bar as well.
+  #110 went through two passes before this: the sidebar tree's look reused
+  wholesale (chevrons, indentation, collapse state), then shrunk to an inline
+  row of chips — both read as borrowed from somewhere else rather than built
+  for a screen whose only job is "pick one and go". The cards here are
+  deliberately roomy: one focal element each, restrained chrome (the border is
+  the only decoration, and it only ever means "selectable" or "this is the
+  current one"). Folders still group connections under a heading (folder names
+  match the search too), but only as plain labels now — no fold state of their
+  own to keep in sync with the tree's. The Environments tab switches for real —
+  the same teardown-and-reconnect `switchTo` behind the topbar switcher — and
+  only appears in the main window, the only place switching actually means
+  something.
 
 - **Connections live in the schema tree.** The tree now starts one level higher:
   folders, then the connections inside them, then databases and tables as before

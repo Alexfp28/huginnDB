@@ -68,7 +68,7 @@ import { QueryEditorTab } from "@/components/QueryEditorTab";
 import { StructureEditorTab } from "@/components/StructureEditorTab";
 import { ViewEditorTab } from "@/components/ViewEditorTab";
 import { SecurityTab } from "@/components/SecurityTab";
-import { ConnectionPicker } from "@/components/ConnectionPicker";
+import { WorkspacePicker } from "@/components/WorkspacePicker";
 import {
   huginnDockviewThemeInner,
   registerInnerDockviewApi,
@@ -624,13 +624,14 @@ function NewTabAction(_props: IDockviewHeaderActionsProps) {
  * It used to be a logo, a line of text and a "New query" button that was
  * disabled until a connection had been picked somewhere else — the least useful
  * screen in the app at the moment you most need a way in. It now carries the
- * connection picker (#110), so the empty workspace is where you start rather
- * than something to get past.
+ * workspace picker (#110), so the empty workspace is where you start rather
+ * than something to get past. `WorkspacePicker` renders nothing of its own
+ * when there's neither a connection nor a second environment to pick from, so
+ * a fresh install still just gets the logo and the connect-first hint.
  */
 function EmptyWatermark() {
   const { t } = useTranslation();
   const connectionId = useUi((s) => s.selectedConnectionId);
-  const hasProfiles = useConnections((s) => s.profiles.length > 0);
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 overflow-y-auto p-4 text-sm text-muted-foreground">
       <img
@@ -647,9 +648,7 @@ function EmptyWatermark() {
           ? t("tabs.emptyOpenSomething")
           : t("tabs.emptyConnectFirst")}
       </div>
-      {/* Nothing to pick from on a fresh install — the picker would render its
-          own "add a connection" line under a heading that promises a list. */}
-      {hasProfiles && <ConnectionPicker className="mt-2 max-w-sm" />}
+      <WorkspacePicker className="mt-3 w-full max-w-xl" />
       {connectionId && (
         <Button
           variant="outline"
