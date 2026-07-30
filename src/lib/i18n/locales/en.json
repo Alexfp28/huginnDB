@@ -645,7 +645,8 @@
       "about": {
         "label": "About",
         "desc": "Version & paths"
-      }
+      },
+      "origins": "Origins"
     },
     "general": {
       "defaultDriver": {
@@ -1083,5 +1084,21 @@
         }
       }
     }
+  },
+  "origins": {
+    "title": "Shared origins",
+    "description": "Pull connections from a file on a shared folder. Scoped to the active environment; HuginnDB only ever reads it.",
+    "add": "Add origin…",
+    "adding": "Adding…",
+    "syncNow": "Sync now",
+    "empty": "No shared origins yet. Point one at an exported profiles file on a network share.",
+    "remove": "Remove origin",
+    "removeConfirm": "Remove the origin \"{{name}}\"?\n\nIts stored passphrase is forgotten. The connections it imported stay — they are not deleted.",
+    "lastSynced": "Last synced {{when}}",
+    "neverSynced": "Never synced",
+    "pathPlaceholder": "\\\\server\\huginndb\\clients.json",
+    "namePlaceholder": "Name (optional)",
+    "passphrasePlaceholder": "Passphrase (only if encrypted)",
+    "passphraseHint": "Stored in your OS keychain, never on disk. Leave blank if the file was exported without passwords."
   }
 }

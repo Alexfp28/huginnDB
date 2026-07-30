@@ -645,7 +645,8 @@
       "about": {
         "label": "Acerca de",
         "desc": "Versión y rutas"
-      }
+      },
+      "origins": "Orígenes"
     },
     "general": {
       "defaultDriver": {
@@ -1083,5 +1084,21 @@
         }
       }
     }
+  },
+  "origins": {
+    "title": "Orígenes compartidos",
+    "description": "Importa conexiones desde un fichero en una carpeta compartida. Es del entorno activo; HuginnDB solo lo lee, nunca escribe en él.",
+    "add": "Añadir origen…",
+    "adding": "Añadiendo…",
+    "syncNow": "Sincronizar ahora",
+    "empty": "Aún no hay orígenes. Apunta uno a un fichero de perfiles exportado en una ruta de red.",
+    "remove": "Quitar origen",
+    "removeConfirm": "¿Quitar el origen «{{name}}»?\n\nSe olvida su passphrase guardada. Las conexiones que importó se quedan: no se borran.",
+    "lastSynced": "Última sincronización: {{when}}",
+    "neverSynced": "Sin sincronizar",
+    "pathPlaceholder": "\\\\servidor\\huginndb\\clientes.json",
+    "namePlaceholder": "Nombre (opcional)",
+    "passphrasePlaceholder": "Passphrase (solo si está cifrado)",
+    "passphraseHint": "Se guarda en el almacén de credenciales del sistema, nunca en disco. Déjalo vacío si el fichero se exportó sin contraseñas."
   }
 }

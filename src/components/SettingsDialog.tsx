@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import {
   Cable,
   Cog,
+  FolderSync,
   FileText,
   Keyboard,
   Palette,
@@ -50,6 +51,7 @@ import { GridSection } from "@/components/settings/sections/GridSection";
 import { AppearanceSection } from "@/components/settings/sections/AppearanceSection";
 import { ShortcutsSection } from "@/components/settings/sections/ShortcutsSection";
 import { McpSection } from "@/components/settings/sections/McpSection";
+import { OriginsSection } from "@/components/settings/sections/OriginsSection";
 import { AboutSection } from "@/components/settings/sections/AboutSection";
 
 interface Props {
@@ -67,6 +69,7 @@ const SECTIONS: {
   { id: "grid", icon: Table2 },
   { id: "appearance", icon: Palette },
   { id: "shortcuts", icon: Keyboard },
+  { id: "origins", icon: FolderSync },
   { id: "mcp", icon: Cable },
   { id: "about", icon: Info },
 ];
@@ -152,6 +155,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             {section === "grid" && <GridSection />}
             {section === "appearance" && <AppearanceSection />}
             {section === "shortcuts" && <ShortcutsSection />}
+            {section === "origins" && <OriginsSection />}
             {section === "mcp" && <McpSection />}
             {section === "about" && <AboutSection />}
           </main>
