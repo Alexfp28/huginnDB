@@ -16,11 +16,11 @@
  * (its right-click menu is [[ConnectionActionsMenu]], defined next to the
  * dialogs it drives).
  *
- * Expansion is session state, not persisted, and defaults to "expanded when
- * connected". That is deliberate: which connections are live is already restored
- * at launch and on an environment switch, so the tree comes back looking right
- * without a second, parallel list of expanded ids that could drift out of step
- * with what is actually open.
+ * Expansion defaults to "expanded when connected" and only the user's folds are
+ * stored (`LaunchState.collapsedConnections`, per environment). Keeping the
+ * default derived rather than persisted is what stops the tree from ever claiming
+ * a row is open over a subtree that doesn't exist: a remembered fold can only
+ * ever mean "show this folded when it comes back".
  */
 
 import { useMemo, useState } from "react";
@@ -32,6 +32,7 @@ import { useSchema } from "@/stores/schema";
 import { useUi } from "@/stores/ui";
 import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
 import { connectAndWarm, disconnectAndClean } from "@/lib/connectFlow";
+import { persistLaunchState } from "@/stores/persistedTabs";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { DriverBadge } from "@/components/DriverBadge";
 import {
@@ -54,22 +55,32 @@ export function ConnectionsTree() {
   const schemaByConnection = useSchema((s) => s.byConnection);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
+  // The folded set (see `useUi`): a row follows its pool unless the user said
+  // otherwise, so only the overrides are tracked — and only the collapsing ones,
+  // since "expanded" is already the default for a live connection.
+  const collapsed = useUi((s) => s.collapsedConnections);
+  const setConnectionCollapsed = useUi((s) => s.setConnectionCollapsed);
   const groupCollapse = useConnectionGroupCollapse();
 
   // Reference-stable inputs, derived here rather than in the selector (gotcha #1).
   const buckets = useMemo(() => bucketByGroup(profiles), [profiles]);
 
-  /**
-   * Explicit user overrides only. Absence means "follow the connection": open if
-   * it has a live pool, closed otherwise — see the module note on why this isn't
-   * persisted.
-   */
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   /** Id currently connecting, so its row can show a spinner and refuse clicks. */
   const [connecting, setConnecting] = useState<string | null>(null);
 
   const isExpanded = (p: ConnectionProfile) =>
-    p.id in overrides ? overrides[p.id] : active.has(p.id);
+    active.has(p.id) && !collapsed.includes(p.id);
+
+  /**
+   * Fold or unfold, and persist it. `persistLaunchState` is otherwise only called
+   * on connect/disconnect and at graceful close, so without this a fold made just
+   * before an abrupt exit would be lost — the same "keep it roughly fresh"
+   * reasoning the connect/disconnect calls already document.
+   */
+  function setCollapsed(id: string, value: boolean) {
+    setConnectionCollapsed(id, value);
+    void persistLaunchState(Array.from(useConnections.getState().active));
+  }
 
   /**
    * A row click both focuses the connection (tabs and the query editor follow
@@ -85,23 +96,19 @@ export function ConnectionsTree() {
       setConnecting(null);
       if (!ok) return;
       setSelected(p.id);
-      setOverrides((prev) => ({ ...prev, [p.id]: true }));
+      // Connecting unfolds: the click that opened it asked to see inside.
+      setCollapsed(p.id, false);
       return;
     }
     setSelected(p.id);
-    setOverrides((prev) => ({ ...prev, [p.id]: !isExpanded(p) }));
+    setCollapsed(p.id, isExpanded(p));
   }
 
   async function handleDisconnect(p: ConnectionProfile) {
     await disconnectAndClean(p.id);
     if (selected === p.id) setSelected(null);
-    // Drop the override so the row goes back to following the connection: left
-    // pinned open, it would show an empty subtree with no explanation.
-    setOverrides((prev) => {
-      const next = { ...prev };
-      delete next[p.id];
-      return next;
-    });
+    // The fold is left in place deliberately: it can only mean "show folded when
+    // this comes back", never "open over a subtree that isn't there".
   }
 
   /** Tear the dead pool down and reopen it, mirroring the status bar's affordance. */

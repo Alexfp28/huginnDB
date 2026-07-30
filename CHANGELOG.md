@@ -48,11 +48,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   of them, exactly as before. When a subset of databases is hidden, the tree says
   so in words under the filter box instead of tinting an icon.
 
-  Which connections are expanded follows which ones are open, rather than being
-  remembered separately. Since the connections that were live are already
-  restored at launch and when you switch environment, the tree comes back looking
-  the way you left it without a second list that could drift out of step with
-  what is actually connected.
+  A connection's row is open when the connection is, and folding one is
+  remembered per environment — so the tree comes back the way you left it at
+  launch and on a switch. Only your folds are stored, never a list of what should
+  be open: a remembered fold can at worst show a row closed, whereas a remembered
+  expansion could insist a row be open over a connection that didn't come back.
 
 - **Shared origins.** An environment can pull its connections from a file on a
   shared folder, so somebody joining a team configures nothing by hand: point

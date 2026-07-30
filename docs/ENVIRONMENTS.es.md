@@ -37,7 +37,9 @@ a una conexión que ya no existe en cuanto cambiaras de entorno.
   a medio escribir no se guarda.
 - La disposición de los paneles del espacio de trabajo (divisiones y flotantes).
 - Qué conexiones estaban activas, cuál tenía el foco y qué pestaña se mostraba.
-- Qué nodos tenías desplegados en el árbol de esquema.
+- Qué nodos tenías desplegados en el árbol de esquema y qué conexiones tenías
+  plegadas en él. La fila de una conexión está abierta siempre que la conexión lo
+  esté, así que solo hace falta recordar tus pliegues.
 
 Las pestañas del editor de estructura y del editor de vistas **no** se recuerdan a
 propósito: son sesiones de edición en curso, no sitios a los que vuelves.

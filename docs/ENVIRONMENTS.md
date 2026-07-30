@@ -38,7 +38,9 @@ pointing at a connection that no longer exists the moment you switched.
   saved.
 - The split/float arrangement of the workspace panes.
 - Which connections were live, which one had focus, and which tab was showing.
-- Which nodes you had expanded in the schema tree.
+- Which nodes you had expanded in the schema tree, and which connections you had
+  folded in it. A connection's row is open whenever the connection is, so only
+  your folds need remembering.
 
 Structure-editor and view-editor tabs are deliberately **not** remembered. They
 are in-progress editing sessions, not places you return to.

@@ -687,6 +687,11 @@ export interface LaunchState {
   activeConnections: string[];
   selectedConnectionId: string | null;
   activeTabId: string | null;
+  /** Connections folded in the connections tree (#107). The *collapsed* set, not
+   *  the expanded one: a row follows its pool by default, so only an override is
+   *  worth storing, and a stale id can then only ever mean "show folded". Must be
+   *  declared in the Rust `LaunchState` too or serde drops it (gotcha #14). */
+  collapsedConnections: string[];
 }
 
 export interface PersistedTab {

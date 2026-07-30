@@ -130,6 +130,11 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       return;
     }
 
+    // Folds first, before anything reconnects: set afterwards, a row the user had
+    // folded would render open for as long as the reconnect takes and then snap
+    // shut.
+    useUi.getState().setCollapsedConnections(launch.collapsedConnections ?? []);
+
     if (launch.activeConnections.length > 0) {
       // Only reconnect ids that still have a profile, and skip anything already
       // live (a racing CLI intent, or a connection shared with the environment
@@ -192,6 +197,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       const leaving = Array.from(useConnections.getState().active);
       const leavingSelected = useUi.getState().selectedConnectionId;
       const leavingActiveTab = useTabs.getState().activeId;
+      const leavingCollapsed = useUi.getState().collapsedConnections;
       await flushAllTabState();
 
       // 2. Unpoint the UI *before* closing anything. The schema explorer
@@ -204,6 +210,10 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       //    first removes the race instead of papering over its result.
       useUi.getState().setSelectedConnectionId(null);
       useTabs.getState().replaceAll([], null);
+      // Clear the folds here, not in `restoreSession`: with `reconnectOnLaunch`
+      // off that function returns before it reads anything, and the outgoing
+      // environment's folds would carry over into the incoming one.
+      useUi.getState().setCollapsedConnections([]);
 
       // Emptying the tab store above wakes the per-connection subscriptions and
       // arms a save. That save would serialise the store as it is *now* —
@@ -234,6 +244,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         activeConnections: leaving,
         selectedConnectionId: leavingSelected,
         activeTabId: leavingActiveTab,
+        collapsedConnections: leavingCollapsed,
       });
 
       // 5. Cancel the debounced writes the teardown just armed. Removing panels
@@ -272,6 +283,11 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       ? Array.from(useConnections.getState().active)
       : [];
     const sourceSelected = useUi.getState().selectedConnectionId;
+    // Folds ride with the connections: replicating the distribution and then
+    // unfolding everything would not be the distribution the user asked to copy.
+    const sourceCollapsed = replicate.connections
+      ? useUi.getState().collapsedConnections
+      : [];
     let sourceTabs: [string, Awaited<ReturnType<typeof api.getTabState>>][] = [];
     let sourceLayout: unknown = null;
     try {
@@ -310,6 +326,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
           activeConnections: sourceIds,
           selectedConnectionId: sourceSelected,
           activeTabId: null,
+          collapsedConnections: sourceCollapsed,
         });
         // Now that the new environment has a launch state, bring it up for
         // real. `switchTo` above already ran `restoreSession` against what was

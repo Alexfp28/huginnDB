@@ -16,9 +16,43 @@ interface UiState {
   /** The connection profile currently focused in the workspace. */
   selectedConnectionId: string | null;
   setSelectedConnectionId: (id: string | null) => void;
+  /**
+   * Connections the user folded in the connections tree (#107). A row follows
+   * its pool by default — open when live — so this holds only the overrides.
+   *
+   * It lives here rather than inside `ConnectionsTree` because it is persisted:
+   * `persistLaunchState` reads it, and it is restored per environment alongside
+   * the reconnect. See `LaunchState.collapsedConnections` for why the collapsed
+   * set is the one stored.
+   */
+  collapsedConnections: string[];
+  toggleConnectionCollapsed: (id: string) => void;
+  /** Fold a connection, or unfold it (used when connecting expands a row). */
+  setConnectionCollapsed: (id: string, collapsed: boolean) => void;
+  /** Replace the whole set — restoring an environment, or clearing on the way out. */
+  setCollapsedConnections: (ids: string[]) => void;
 }
 
 export const useUi = create<UiState>((set) => ({
   selectedConnectionId: null,
   setSelectedConnectionId: (id) => set({ selectedConnectionId: id }),
+
+  collapsedConnections: [],
+  toggleConnectionCollapsed: (id) =>
+    set((s) => ({
+      collapsedConnections: s.collapsedConnections.includes(id)
+        ? s.collapsedConnections.filter((c) => c !== id)
+        : [...s.collapsedConnections, id],
+    })),
+  setConnectionCollapsed: (id, collapsed) =>
+    set((s) => {
+      const has = s.collapsedConnections.includes(id);
+      if (has === collapsed) return s;
+      return {
+        collapsedConnections: collapsed
+          ? [...s.collapsedConnections, id]
+          : s.collapsedConnections.filter((c) => c !== id),
+      };
+    }),
+  setCollapsedConnections: (ids) => set({ collapsedConnections: ids }),
 }));

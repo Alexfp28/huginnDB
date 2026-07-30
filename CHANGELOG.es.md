@@ -54,10 +54,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   ocultas, el árbol lo dice con palabras bajo el buscador en lugar de teñir un
   icono.
 
-  Qué conexiones están desplegadas sigue a cuáles están abiertas, en lugar de
-  guardarse por separado. Como las conexiones que estaban vivas ya se restauran al
-  arrancar y al cambiar de entorno, el árbol vuelve tal y como lo dejaste sin una
-  segunda lista que pueda desincronizarse de lo que de verdad está conectado.
+  La fila de una conexión está abierta cuando la conexión lo está, y si la pliegas
+  se recuerda por entorno, así que el árbol vuelve como lo dejaste al arrancar y al
+  cambiar de entorno. Solo se guardan tus pliegues, nunca una lista de lo que debe
+  estar abierto: un pliegue recordado como mucho muestra una fila cerrada, mientras
+  que un despliegue recordado podría insistir en abrir una fila sobre una conexión
+  que no ha vuelto.
 
 - **Orígenes compartidos.** Un entorno puede importar sus conexiones desde un
   fichero en una carpeta compartida, de modo que quien se incorpora a un equipo

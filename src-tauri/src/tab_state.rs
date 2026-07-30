@@ -178,6 +178,16 @@ pub struct LaunchState {
     /// The globally-active tab id (`useTabs.activeId`). Restored after
     /// auto-reconnect so the same tab body is shown. `None` if no tab was open.
     pub active_tab_id: Option<String>,
+    /// Connections the user folded in the connections tree (#107).
+    ///
+    /// Deliberately the *collapsed* set and not the expanded one. A connection's
+    /// row follows its pool by default — open when live — so the only state worth
+    /// remembering is the user having overridden that. It also makes every stale
+    /// entry harmless: an id whose profile is gone, or which failed to reconnect,
+    /// can at worst mean "show folded if it ever comes back", whereas a list of
+    /// expanded ids could claim a row should be open over a subtree that does not
+    /// exist.
+    pub collapsed_connections: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -340,6 +350,9 @@ impl RawState {
             active_connections: self.active_connections,
             selected_connection_id: self.selected_connection_id,
             active_tab_id: self.active_tab_id,
+            // Pre-v4 blobs predate the connections tree, so nothing was ever
+            // folded: the default (follow the pool) is the right migration.
+            collapsed_connections: Vec::new(),
         };
         let top_level_layout = self.internal_layout;
 
@@ -752,6 +765,46 @@ mod tests {
         assert_eq!(
             origins[0].last_synced_at.as_deref(),
             Some("2026-07-29T10:00:00Z")
+        );
+    }
+
+    #[test]
+    fn collapsed_connections_round_trip_and_default_to_empty() {
+        // The failure this guards against is gotcha #14: a field the frontend
+        // sends but the struct doesn't declare is dropped on deserialize, so it
+        // never reaches disk. Assert both directions — an older blob without the
+        // key still loads (every row follows its pool, the pre-#107 behaviour),
+        // and a blob carrying folds keeps them.
+        let without = r#"{ "version": 4, "environments": [ { "id": "a" } ] }"#;
+        let raw: RawState = serde_json::from_str(without).unwrap();
+        assert!(sole_env(&raw.into_state())
+            .launch
+            .collapsed_connections
+            .is_empty());
+
+        let with = r#"{
+            "version": 4,
+            "environments": [ { "id": "a", "launch": {
+                "activeConnections": ["c1", "c2"],
+                "collapsedConnections": ["c2"]
+            } } ]
+        }"#;
+        let raw: RawState = serde_json::from_str(with).unwrap();
+        let state = raw.into_state();
+        assert_eq!(
+            sole_env(&state).launch.collapsed_connections,
+            vec!["c2".to_string()]
+        );
+
+        // And it survives being written back out, which is the half a
+        // missing-field bug would break silently.
+        let json = serde_json::to_string(&state).unwrap();
+        let reparsed: RawState = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            sole_env(&reparsed.into_state())
+                .launch
+                .collapsed_connections,
+            vec!["c2".to_string()]
         );
     }
 
