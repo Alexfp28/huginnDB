@@ -316,6 +316,7 @@ pub fn run() {
             commands::origins::add_origin,
             commands::origins::update_origin,
             commands::origins::remove_origin,
+            commands::origins::sync_origin,
             commands::feedback::get_diagnostics,
             commands::feedback::set_github_pat,
             commands::feedback::has_github_pat,

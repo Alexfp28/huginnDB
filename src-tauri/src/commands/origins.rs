@@ -7,8 +7,8 @@
 //! the share's ACL is the actual access control.
 //!
 //! This module owns the origin *registry* (add / rename / remove, scoped to the
-//! active environment) and the keychain handling for an encrypted origin's
-//! passphrase. The sync itself lands separately.
+//! active environment), the keychain handling for an encrypted origin's
+//! passphrase, and the pull itself ([`sync_origin`]).
 //!
 //! ## Why the passphrase goes in the keychain
 //!
@@ -163,9 +163,244 @@ pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
     Ok(())
 }
 
+/// Pull an origin: refresh what it publishes, report what disappeared.
+///
+/// Three outcomes are kept strictly apart, and the separation matters more than
+/// the feature does:
+///
+/// 1. **Unreadable or unparseable** — share offline, VPN down, or the publisher
+///    mid-save without an atomic rename. Returns `Err` and touches *nothing*: no
+///    profiles, no `last_synced_at`. A failed read must never be mistaken for
+///    "the file now says less".
+/// 2. **Read cleanly, entries missing** — reported in `vanished` for the user to
+///    decide on.
+/// 3. **Read cleanly but suspiciously empty** — flagged via `suspicious` so the
+///    frontend withholds removal offers. See [`disappearance_is_trustworthy`].
+///
+/// Metadata for an existing profile is refreshed in place, except while a pool is
+/// open for it: repointing host/port under a running query changes the server
+/// beneath the user, so those land in `deferred` and apply on disconnect.
+///
+/// Never writes to the origin's path.
+#[tauri::command]
+pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSyncReport> {
+    let origin = {
+        let guard = state.tab_state.read();
+        guard
+            .active_environment()
+            .and_then(|env| env.origins.iter().find(|o| o.id == id).cloned())
+            .ok_or_else(|| AppError::InvalidInput(format!("no origin with id {id}")))?
+    };
+
+    // State 1. Any failure here returns early, before a single profile is
+    // touched.
+    let data = std::fs::read_to_string(&origin.path).map_err(|e| {
+        AppError::InvalidInput(format!("cannot read origin {:?}: {e}", origin.path))
+    })?;
+    let export: crate::transfer::ExportFile = serde_json::from_str(&data).map_err(|e| {
+        AppError::InvalidInput(format!(
+            "origin {:?} is not a HuginnDB export: {e}",
+            origin.path
+        ))
+    })?;
+
+    let passphrase = keychain::get_password(&passphrase_account(&id))?;
+    if export.meta.encrypted && passphrase.is_none() {
+        return Err(AppError::InvalidInput(
+            "this origin is encrypted but no passphrase is stored for it".into(),
+        ));
+    }
+
+    let incoming_ids: std::collections::HashSet<&str> = export
+        .profiles
+        .iter()
+        .map(|p| p.profile.id.as_str())
+        .collect();
+
+    let mut report = OriginSyncReport::default();
+    let live: Vec<String> = state.connections.read().ids();
+
+    {
+        let mut profiles = state.profiles.write();
+
+        // Local profiles this origin owns, before the merge — the denominator for
+        // the suspicion check.
+        let owned: Vec<String> = profiles
+            .iter()
+            .filter(|p| p.origin_id.as_deref() == Some(id.as_str()))
+            .map(|p| p.id.clone())
+            .collect();
+        report.vanished = owned
+            .iter()
+            .filter(|pid| !incoming_ids.contains(pid.as_str()))
+            .cloned()
+            .collect();
+        report.suspicious = !disappearance_is_trustworthy(owned.len(), report.vanished.len());
+        if report.suspicious {
+            // Say nothing actionable about a read we don't trust.
+            report.vanished.clear();
+        }
+
+        for entry in &export.profiles {
+            let mut incoming = entry.profile.clone();
+            incoming.origin_id = Some(id.clone());
+            // An origin never publishes session-only profiles.
+            incoming.ephemeral = false;
+
+            match profiles.iter_mut().find(|p| p.id == incoming.id) {
+                Some(existing) => {
+                    // Only ever refresh a profile this origin already owns. A
+                    // local profile that happens to share an id (an earlier
+                    // import, later detached) is the user's, not the file's.
+                    if existing.origin_id.as_deref() != Some(id.as_str()) {
+                        continue;
+                    }
+                    if live.iter().any(|c| c == &incoming.id) {
+                        report.deferred.push(incoming.id.clone());
+                        continue;
+                    }
+                    *existing = incoming.clone();
+                    report.updated.push(incoming.id);
+                }
+                None => {
+                    report.added.push(incoming.id.clone());
+                    profiles.push(incoming);
+                }
+            }
+        }
+
+        crate::store::save_profiles(&profiles)?;
+    }
+
+    // Secrets land in this user's own keychain, decrypted with their own stored
+    // passphrase. Best-effort per profile: a secret that fails to decrypt leaves
+    // that connection needing a password rather than failing the whole sync.
+    for entry in &export.profiles {
+        let Some(secrets) = &entry.secrets else {
+            continue;
+        };
+        if let Some(blob) = &secrets.db_password {
+            let plain = match &passphrase {
+                Some(pass) => crate::transfer::decrypt_secret(blob, pass).ok(),
+                None => Some(blob.clone()),
+            };
+            if let Some(p) = plain {
+                let _ = keychain::set_password(&entry.profile.keyring_account(), &p);
+            }
+        }
+        if let (Some(blob), Some(account)) =
+            (&secrets.ssh_secret, entry.profile.ssh_keyring_account())
+        {
+            let plain = match &passphrase {
+                Some(pass) => crate::transfer::decrypt_secret(blob, pass).ok(),
+                None => Some(blob.clone()),
+            };
+            if let Some(p) = plain {
+                let _ = keychain::set_password(&account, &p);
+            }
+        }
+    }
+
+    report.synced_at = chrono::Utc::now().to_rfc3339();
+    let snapshot = {
+        let mut guard = state.tab_state.write();
+        if let Some(o) = guard
+            .active_environment_mut()
+            .origins
+            .iter_mut()
+            .find(|o| o.id == id)
+        {
+            o.last_synced_at = Some(report.synced_at.clone());
+        }
+        guard.clone()
+    };
+    tab_state::save_tab_state(&snapshot)?;
+    Ok(report)
+}
+
+/// Below this many origin-tagged profiles, the "too many vanished at once" check
+/// is skipped — with two or three connections, losing both is plausibly a real
+/// deletion rather than a corrupt read.
+const SUSPICION_FLOOR: usize = 4;
+
+/// Fraction of an origin's profiles that has to disappear in one sync before the
+/// result is treated as untrustworthy rather than as a batch of deletions.
+const SUSPICION_RATIO: f32 = 0.5;
+
+/// Should this set of disappearances be acted on, or is the file probably not
+/// telling us the truth?
+///
+/// A publisher writing the export without an atomic rename, a share dropping
+/// mid-read, or a truncated file can all parse successfully while listing far
+/// fewer profiles than they should. Treating that as "the admin deleted 25
+/// clients" would bury the user in removal notices for connections that are
+/// perfectly alive — and the recovery (re-adopting each one) is manual.
+///
+/// Pure so the threshold is testable without a filesystem.
+fn disappearance_is_trustworthy(local_count: usize, vanished_count: usize) -> bool {
+    if vanished_count == 0 {
+        return true;
+    }
+    if local_count < SUSPICION_FLOOR {
+        return true;
+    }
+    (vanished_count as f32 / local_count as f32) < SUSPICION_RATIO
+}
+
+/// Outcome of one [`sync_origin`] run.
+///
+/// Note what is absent: nothing here deletes. Disappearances are *reported* and
+/// the user decides per connection whether to adopt it as local or retire it
+/// (#108) — another user's edit to a shared file must never destroy credentials
+/// on this machine.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OriginSyncReport {
+    /// Profile ids created by this sync.
+    pub added: Vec<String>,
+    /// Profile ids whose metadata was refreshed from the file.
+    pub updated: Vec<String>,
+    /// Ids whose metadata changed but which have a live pool, so the change is
+    /// held back rather than repointing a server under a running query.
+    pub deferred: Vec<String>,
+    /// Ids present locally under this origin but absent from the file. Reported
+    /// only; see the type-level note.
+    pub vanished: Vec<String>,
+    /// True when `vanished` was large enough relative to the origin's footprint
+    /// that the read is more likely broken than authoritative. The frontend must
+    /// not offer removals in this state.
+    pub suspicious: bool,
+    /// RFC 3339 stamp written back onto the origin on success.
+    pub synced_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_single_disappearance_is_trusted() {
+        assert!(disappearance_is_trustworthy(20, 1));
+    }
+
+    #[test]
+    fn a_wholesale_disappearance_is_not() {
+        // A truncated or half-written file looks exactly like this.
+        assert!(!disappearance_is_trustworthy(20, 20));
+        assert!(!disappearance_is_trustworthy(20, 10));
+    }
+
+    #[test]
+    fn small_origins_are_exempt_from_the_ratio() {
+        // With three connections, losing two is plausibly deliberate; the ratio
+        // alone would call it suspicious and block a legitimate cleanup.
+        assert!(disappearance_is_trustworthy(3, 2));
+    }
+
+    #[test]
+    fn no_disappearances_is_always_trusted() {
+        assert!(disappearance_is_trustworthy(0, 0));
+    }
 
     #[test]
     fn passphrase_account_cannot_collide_with_a_connection_account() {
