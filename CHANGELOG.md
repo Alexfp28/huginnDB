@@ -39,6 +39,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   everywhere. Idle connections are listed greyed out with their driver badge, and
   a lost connection keeps the reconnect button it has in the status bar.
 
+  A connection's actions moved with it. Right-clicking a connection offers
+  refresh, new database or collection, whole-database `.sql` export and import,
+  the visible-databases picker, the security panel and connect/disconnect — the
+  same set the explorer used to keep as a row of icons in its header, which would
+  otherwise have repeated under every expanded connection. What's offered still
+  depends on the driver and on whether the connection browses one database or all
+  of them, exactly as before. When a subset of databases is hidden, the tree says
+  so in words under the filter box instead of tinting an icon.
+
   Which connections are expanded follows which ones are open, rather than being
   remembered separately. Since the connections that were live are already
   restored at launch and when you switch environment, the tree comes back looking

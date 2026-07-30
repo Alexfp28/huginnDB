@@ -44,6 +44,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   su distintivo de driver, y una conexión perdida conserva el botón de reconectar
   que ya tiene en la barra de estado.
 
+  Las acciones de la conexión se han movido con ella. El clic derecho sobre una
+  conexión ofrece refrescar, nueva base de datos o colección, exportar e importar
+  la base completa en `.sql`, el selector de bases visibles, el panel de seguridad
+  y conectar/desconectar: el mismo conjunto que el explorador tenía como fila de
+  iconos en su cabecera, que de otro modo se habría repetido bajo cada conexión
+  desplegada. Lo que se ofrece sigue dependiendo del driver y de si la conexión
+  navega una base o todas, igual que antes. Cuando hay un subconjunto de bases
+  ocultas, el árbol lo dice con palabras bajo el buscador en lugar de teñir un
+  icono.
+
   Qué conexiones están desplegadas sigue a cuáles están abiertas, en lugar de
   guardarse por separado. Como las conexiones que estaban vivas ya se restauran al
   arrancar y al cambiar de entorno, el árbol vuelve tal y como lo dejaste sin una

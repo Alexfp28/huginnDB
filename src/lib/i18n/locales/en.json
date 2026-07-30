@@ -84,7 +84,8 @@
     }
   },
   "connectionsTree": {
-    "empty": "No saved connections yet. Add one from File → New connection."
+    "empty": "No saved connections yet. Add one from File → New connection.",
+    "connect": "Connect"
   },
   "connections": {
     "disconnectTooltip": "Disconnect",
@@ -320,6 +321,7 @@
       "title": "Databases to show",
       "description": "Pick which databases appear in the explorer for this connection. Hidden databases are also skipped when prefetching, which speeds up connecting to servers with many databases.",
       "count": "{{selected}} of {{total}} selected",
+      "subsetActive": "Showing {{count}} of {{total}} databases",
       "selectAll": "Select all",
       "deselectAll": "Deselect all"
     },

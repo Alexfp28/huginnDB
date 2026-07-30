@@ -30,16 +30,10 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
-  Download,
-  Plus,
-  RefreshCw,
   Table as TableIcon,
   Eye,
   KeyRound,
   LayoutList,
-  ListChecks,
-  ShieldCheck,
-  Upload,
 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useSchema, tableKey } from "@/stores/schema";
@@ -188,21 +182,7 @@ function ColumnSkeleton({ label }: { label: string }) {
   );
 }
 
-export function SchemaExplorer({
-  connectionId,
-  nested = false,
-}: {
-  connectionId: string;
-  /**
-   * Render as a subtree of something else — the connections tree (#107), where
-   * each connection row owns the chrome above it. Drops the panel-level "SCHEMA"
-   * title and, crucially, the `h-full` + `overflow-y-auto` pair: a nested
-   * explorer must grow to its content and let the outer tree do the scrolling,
-   * or every expanded connection becomes its own little scroll box.
-   */
-  nested?: boolean;
-}) {
-  const { t } = useTranslation();
+export function SchemaExplorer({ connectionId }: { connectionId: string }) {
   // Multi-DB mode triggers when the parent profile has no `database` set
   // (e.g. the user wants to browse every database on the server). SQLite
   // profiles are inherently single-file, so they never enter this mode.
@@ -217,20 +197,178 @@ export function SchemaExplorer({
   // mode can't drift, and above the tree because it's about the connection
   // itself, not about anything in its schema.
   return (
-    <div className={cn("flex min-h-0 flex-col", !nested && "h-full")}>
+    <div className="flex flex-col">
       <VanishedOriginNotice profileId={connectionId} />
-      <div className={cn(!nested && "min-h-0 flex-1")}>
-        {isMultiDb ? (
-          <MultiDbExplorer parentId={connectionId} nested={nested} />
-        ) : (
-          <SingleDbExplorer
-            connectionId={connectionId}
-            title={t("schema.title")}
-            nested={nested}
-          />
-        )}
-      </div>
+      {isMultiDb ? (
+        <MultiDbExplorer parentId={connectionId} />
+      ) : (
+        <SingleDbExplorer connectionId={connectionId} />
+      )}
     </div>
+  );
+}
+
+/**
+ * Right-click menu for a connection, wrapping whatever row represents it.
+ *
+ * These actions used to be an icon strip in the explorer's header. Once the
+ * explorer became a subtree of the connections tree (#107) that strip repeated
+ * under every expanded connection — five icons and a filter box each — so it
+ * moved here, where a connection's actions belong: on the connection.
+ *
+ * Lives in this file rather than next to the tree because everything it drives is
+ * already here: the three dialogs and the export/import/security helpers. Moving
+ * the menu out would mean exporting six internals to keep one component tidy.
+ *
+ * What's offered is driver- and mode-aware, and the distinctions are the same
+ * ones the two explorers already encoded: `CREATE DATABASE` is Postgres/MySQL
+ * only, create-collection is MongoDB's stand-in for it, whole-database `.sql`
+ * export/import needs exactly one target database (so never in multi-DB mode),
+ * and the visible-databases subset only means anything when there are several.
+ *
+ * Connect/disconnect are delegated: the tree owns what those do to focus and to
+ * its expansion overrides, and duplicating that here would let the two drift.
+ */
+export function ConnectionActionsMenu({
+  connectionId,
+  onConnect,
+  onDisconnect,
+  children,
+}: {
+  connectionId: string;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+  children: React.ReactNode;
+}) {
+  const { t } = useTranslation();
+  const profile = useConnections((s) =>
+    s.profiles.find((p) => p.id === connectionId),
+  );
+  const isActive = useConnections((s) => s.active.has(connectionId));
+  const cs = useSchema((s) => s.byConnection[connectionId]);
+  const refresh = useSchema((s) => s.refresh);
+  const [createDbOpen, setCreateDbOpen] = useState(false);
+  const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
+  const [dbPickerOpen, setDbPickerOpen] = useState(false);
+
+  const driver = profile?.driver;
+  const isMultiDb = !!profile && driver !== "sqlite" && profile.database === "";
+  const canCreateDatabase = driver === "postgres" || driver === "mysql";
+  const canCreateCollection = driver === "mongodb" && !isMultiDb;
+  const canDumpSql = driver !== "mongodb" && !isMultiDb;
+  const databases = cs?.databases ?? [];
+
+  return (
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+        <ContextMenuContent className="w-56">
+          {isActive ? (
+            <>
+              <ContextMenuItem onSelect={() => refresh(connectionId)}>
+                {t("schema.refresh")}
+              </ContextMenuItem>
+              {canCreateDatabase && (
+                <ContextMenuItem onSelect={() => setCreateDbOpen(true)}>
+                  {t("schema.createDatabase.title")}
+                </ContextMenuItem>
+              )}
+              {canCreateCollection && (
+                <ContextMenuItem onSelect={() => setCreateCollectionOpen(true)}>
+                  {t("schema.createCollection.title")}
+                </ContextMenuItem>
+              )}
+              {isMultiDb && (
+                <ContextMenuItem
+                  // Nothing to choose from until the database list has loaded.
+                  disabled={databases.length === 0}
+                  onSelect={() => setDbPickerOpen(true)}
+                >
+                  {t("schema.selectDatabases.title")}
+                </ContextMenuItem>
+              )}
+              {canDumpSql && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    onSelect={() =>
+                      void exportDatabaseWithToast(connectionId, t)
+                    }
+                  >
+                    {t("schema.exportDatabase.title")}
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onSelect={() =>
+                      void importSqlFile(connectionId, t).then((ran) => {
+                        if (ran) refresh(connectionId);
+                      })
+                    }
+                  >
+                    {t("schema.importSql.title")}
+                  </ContextMenuItem>
+                </>
+              )}
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                onSelect={() =>
+                  openSecurityTab(connectionId, t("security.title"))
+                }
+              >
+                {t("security.title")}
+              </ContextMenuItem>
+              {onDisconnect && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onSelect={onDisconnect}>
+                    {t("statusBar.disconnect")}
+                  </ContextMenuItem>
+                </>
+              )}
+            </>
+          ) : (
+            onConnect && (
+              <ContextMenuItem onSelect={onConnect}>
+                {t("connectionsTree.connect")}
+              </ContextMenuItem>
+            )
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
+
+      {createDbOpen && (
+        <CreateDatabaseDialog
+          connectionId={connectionId}
+          onClose={() => setCreateDbOpen(false)}
+          onDone={(name) => {
+            setCreateDbOpen(false);
+            refresh(connectionId);
+            // Always toast, unlike the old multi-DB toolbar button, which relied
+            // on the new node appearing in the tree as its own confirmation.
+            // Driven from a connection row, the subtree may well be collapsed.
+            toast.success(t("schema.createDatabase.createdSingleDb", { name }));
+          }}
+        />
+      )}
+      {createCollectionOpen && (
+        <CreateCollectionDialog
+          connectionId={connectionId}
+          onClose={() => setCreateCollectionOpen(false)}
+          onDone={(name) => {
+            setCreateCollectionOpen(false);
+            refresh(connectionId);
+            toast.success(t("schema.createCollection.created", { name }));
+          }}
+        />
+      )}
+      {dbPickerOpen && (
+        <DatabaseVisibilityDialog
+          profileId={connectionId}
+          databases={databases.map((db) => db.name)}
+          selected={profile?.visible_databases ?? null}
+          onClose={() => setDbPickerOpen(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -241,18 +379,13 @@ export function SchemaExplorer({
 
 function SingleDbExplorer({
   connectionId,
-  title,
   headerLevel = "root",
   controlledFilter,
   onTableOpen,
-  nested = false,
 }: {
   connectionId: string;
-  title: string;
-  /** See [[SchemaExplorer]]'s `nested`. */
-  nested?: boolean;
   /**
-   * `root` shows the standard "SCHEMA" header + refresh button. `nested`
+   * `root` shows the filter box. `nested`
    * skips the header chrome entirely — used when this subtree lives under a
    * database node and the outer multi-DB explorer already owns the chrome.
    */
@@ -311,18 +444,11 @@ function SingleDbExplorer({
     null,
   );
   const [dropViewTarget, setDropViewTarget] = useState<TableInfo | null>(null);
-  // Same rationale as `MultiDbExplorer`'s "+" button (see `create_database`'s
-  // doc comment): server-level DDL, Postgres/MySQL only. Offered here too —
-  // a profile scoped to one specific database is at least as common as
-  // multi-DB browsing, and there's no reason someone connected that way
-  // can't add a sibling database on the same server.
-  const canCreateDatabase = driver === "postgres" || driver === "mysql";
-  const [createDbOpen, setCreateDbOpen] = useState(false);
-  // MongoDB has no CREATE DATABASE, but it does have an explicit
-  // create-collection (#61) — offered here so a single-DB Mongo profile (or
-  // a per-database view) can add an empty collection without inserting first.
-  const canCreateCollection = driver === "mongodb";
-  const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
+  // Create-database / create-collection / export / import / security used to be
+  // an icon strip in this explorer's header. They are connection-level actions,
+  // so they now live on the connection row's right-click menu
+  // ([[ConnectionActionsMenu]]) — which is also where their driver conditions
+  // and their dialogs moved.
 
   useEffect(() => {
     // Fire refresh only when no successful fetch has happened yet AND no
@@ -408,117 +534,7 @@ function SingleDbExplorer({
   };
 
   return (
-    <div className={cn("flex flex-col", !nested && "h-full")}>
-      {headerLevel === "root" && (
-        <div
-          className={cn(
-            "flex items-center justify-between px-3",
-            nested ? "py-0.5" : "py-2",
-          )}
-        >
-          {/* Nested, the connection row above is the header — but the actions
-              are connection-level and have nowhere else to live, so they stay
-              and simply sit on their own (justify-between pushes them right). */}
-          {!nested && (
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {title}
-            </div>
-          )}
-          <div className="flex items-center gap-0.5">
-            {canCreateDatabase && (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setCreateDbOpen(true)}
-                title={t("schema.createDatabase.title")}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            )}
-            {canCreateCollection && (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setCreateCollectionOpen(true)}
-                title={t("schema.createCollection.title")}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            )}
-            {/* Whole-database .sql export/import is SQL-only; MongoDB uses the
-                per-collection JSON export/import in the collection menu (#65). */}
-            {!canCreateCollection && (
-              <>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => void exportDatabaseWithToast(connectionId, t)}
-                  title={t("schema.exportDatabase.title")}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() =>
-                    void importSqlFile(connectionId, t).then((ran) => {
-                      if (ran) refresh(connectionId);
-                    })
-                  }
-                  title={t("schema.importSql.title")}
-                >
-                  <Upload className="h-3.5 w-3.5" />
-                </Button>
-              </>
-            )}
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => openSecurityTab(connectionId, t("security.title"))}
-              title={t("security.title")}
-            >
-              <ShieldCheck className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => refresh(connectionId)}
-              disabled={cs.loading}
-              title={t("schema.refresh")}
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 ${cs.loading ? "animate-spin" : ""}`}
-              />
-            </Button>
-          </div>
-        </div>
-      )}
-      {createDbOpen && (
-        <CreateDatabaseDialog
-          connectionId={connectionId}
-          onClose={() => setCreateDbOpen(false)}
-          onDone={(name) => {
-            setCreateDbOpen(false);
-            refresh(connectionId);
-            // This connection is scoped to one database, so there's no
-            // visible database list here for the user to notice updated —
-            // unlike the multi-DB toolbar's "+", where the new node
-            // appearing in the tree IS the confirmation.
-            toast.success(t("schema.createDatabase.createdSingleDb", { name }));
-          }}
-        />
-      )}
-      {createCollectionOpen && (
-        <CreateCollectionDialog
-          connectionId={connectionId}
-          onClose={() => setCreateCollectionOpen(false)}
-          onDone={(name) => {
-            setCreateCollectionOpen(false);
-            refresh(connectionId);
-            toast.success(t("schema.createCollection.created", { name }));
-          }}
-        />
-      )}
+    <div className="flex flex-col">
       {!isControlled && (
         <div className="px-3 pb-2">
           <Input
@@ -532,9 +548,7 @@ function SingleDbExplorer({
       {cs.error && (
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
-      <div
-        className={cn("py-1 text-sm", !nested && "flex-1 overflow-y-auto")}
-      >
+      <div className="py-1 text-sm">
         {needle && schemas.length === 0 && (
           <div className="px-3 py-2 text-xs italic text-muted-foreground">
             {t("schema.noMatches")}
@@ -702,14 +716,7 @@ function SingleDbExplorer({
 // synthetic id.
 // ---------------------------------------------------------------------------
 
-function MultiDbExplorer({
-  parentId,
-  nested = false,
-}: {
-  parentId: string;
-  /** See [[SchemaExplorer]]'s `nested`. */
-  nested?: boolean;
-}) {
+function MultiDbExplorer({ parentId }: { parentId: string }) {
   const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[parentId]);
   const refresh = useSchema((s) => s.refresh);
@@ -726,7 +733,6 @@ function MultiDbExplorer({
   );
   const driver = profile?.driver;
   const canCreateDatabase = driver === "postgres" || driver === "mysql";
-  const [createDbOpen, setCreateDbOpen] = useState(false);
   // DataGrip-style visible-databases subset. `null`/empty = show all.
   const visibleDatabases = profile?.visible_databases ?? null;
   const visibleSet = useMemo(
@@ -736,7 +742,6 @@ function MultiDbExplorer({
         : null,
     [visibleDatabases],
   );
-  const [dbPickerOpen, setDbPickerOpen] = useState(false);
   // Subscribe to the whole map so `matchingDbs` reactively recomputes
   // as each prefetch lands. The membership check is cheap (Map lookup
   // per database) so the broader subscription is fine here.
@@ -893,83 +898,7 @@ function MultiDbExplorer({
     });
 
   return (
-    <div className={cn("flex flex-col", !nested && "h-full")}>
-      <div
-        className={cn(
-          "flex items-center justify-between px-3",
-          nested ? "py-0.5" : "py-2",
-        )}
-      >
-        {!nested && (
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {t("schema.title")}
-          </div>
-        )}
-        <div className="flex items-center gap-0.5">
-          {canCreateDatabase && (
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setCreateDbOpen(true)}
-              title={t("schema.createDatabase.title")}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => setDbPickerOpen(true)}
-            title={t("schema.selectDatabases.title")}
-          >
-            <ListChecks
-              className={cn(
-                "h-3.5 w-3.5",
-                // Brand-tint the icon when a subset is active so it's obvious
-                // some databases are hidden.
-                visibleSet ? "text-brand" : undefined,
-              )}
-            />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => openSecurityTab(parentId, t("security.title"))}
-            title={t("security.title")}
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => refresh(parentId)}
-            disabled={cs.loading}
-            title={t("schema.refresh")}
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${cs.loading ? "animate-spin" : ""}`}
-            />
-          </Button>
-        </div>
-      </div>
-      {createDbOpen && (
-        <CreateDatabaseDialog
-          connectionId={parentId}
-          onClose={() => setCreateDbOpen(false)}
-          onDone={() => {
-            setCreateDbOpen(false);
-            refresh(parentId);
-          }}
-        />
-      )}
-      {dbPickerOpen && (
-        <DatabaseVisibilityDialog
-          profileId={parentId}
-          databases={cs.databases.map((db) => db.name)}
-          selected={visibleDatabases}
-          onClose={() => setDbPickerOpen(false)}
-        />
-      )}
+    <div className="flex flex-col">
       <div className="px-3 pb-2">
         <Input
           value={filter}
@@ -986,13 +915,23 @@ function MultiDbExplorer({
             {t("schema.filterScopedTo", { db: activeDatabaseName })}
           </div>
         )}
+        {/* The header's brand-tinted "select databases" icon used to be the only
+            sign that a subset was hiding databases. With the actions moved to the
+            connection's context menu that cue would have vanished silently, so it
+            is stated here instead. */}
+        {visibleSet && (
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {t("schema.selectDatabases.subsetActive", {
+              count: visibleSet.size,
+              total: cs.databases.length,
+            })}
+          </div>
+        )}
       </div>
       {cs.error && (
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
-      <div
-        className={cn("py-1 text-sm", !nested && "flex-1 overflow-y-auto")}
-      >
+      <div className="py-1 text-sm">
         {filterActive && matchingDbs && matchingDbs.size === 0 && !prefetching && (
           <div className="px-3 py-2 text-xs italic text-muted-foreground">
             {t("schema.noMatches")}
@@ -1314,7 +1253,6 @@ function DatabaseRoot({
           {childId && (
             <SingleDbExplorer
               connectionId={childId}
-              title={dbName}
               headerLevel="nested"
               controlledFilter={filter}
               onTableOpen={onTableOpen}

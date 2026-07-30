@@ -10,9 +10,11 @@
  * Two things are reused rather than reinvented. Folders come from
  * `bucketByGroup` + `useConnectionGroupCollapse`, the same pair the File menu and
  * the status bar use, so a folded folder and the `connectionGroupExpandMode`
- * preference behave identically in all three. The subtree is
- * `SchemaExplorer nested` — the same component the panel rendered before, minus
- * its own title and scroll container.
+ * preference behave identically in all three. The subtree is the same
+ * `SchemaExplorer` the panel rendered before — it lost its panel-level title,
+ * icon strip and scroll container, since the row above it now owns all three
+ * (its right-click menu is [[ConnectionActionsMenu]], defined next to the
+ * dialogs it drives).
  *
  * Expansion is session state, not persisted, and defaults to "expanded when
  * connected". That is deliberate: which connections are live is already restored
@@ -26,12 +28,16 @@ import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, Loader2, Plug, RotateCw, X } from "lucide-react";
 import { useConnections } from "@/stores/connections";
 import { useConnectionHealth } from "@/stores/connectionHealth";
+import { useSchema } from "@/stores/schema";
 import { useUi } from "@/stores/ui";
 import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
 import { connectAndWarm, disconnectAndClean } from "@/lib/connectFlow";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { DriverBadge } from "@/components/DriverBadge";
-import { SchemaExplorer } from "@/components/SchemaExplorer";
+import {
+  ConnectionActionsMenu,
+  SchemaExplorer,
+} from "@/components/SchemaExplorer";
 import { VanishedOriginMark } from "@/components/VanishedOriginNotice";
 import type { ConnectionProfile } from "@/types";
 
@@ -40,6 +46,12 @@ export function ConnectionsTree() {
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
   const lostConnections = useConnectionHealth((s) => s.lost);
+  // Whole map, so a row can show that its schema is being fetched. The explorer's
+  // spinning refresh button carried that signal before its icon strip moved to
+  // the context menu; on the row it's visible even while the connection is
+  // collapsed. `MultiDbExplorer` already subscribes this broadly for the same
+  // reason — the lookups are cheap and the map is replaced, not mutated.
+  const schemaByConnection = useSchema((s) => s.byConnection);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
   const groupCollapse = useConnectionGroupCollapse();
@@ -110,99 +122,105 @@ export function ConnectionsTree() {
     const lostError = lostConnections[p.id];
     const isLost = !!lostError;
     const expanded = isExpanded(p);
-    const isConnecting = connecting === p.id;
+    const isBusy = connecting === p.id || !!schemaByConnection[p.id]?.loading;
 
     return (
       <div key={p.id}>
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => void handleRowClick(p)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              void handleRowClick(p);
-            }
-          }}
-          title={isLost ? t("connections.lost", { message: lostError }) : p.name}
-          className={cn(
-            "group flex cursor-pointer items-center gap-1 py-1 pr-2 text-sm outline-none hover:bg-accent/40 focus-visible:ring-1 focus-visible:ring-ring",
-            indented ? "pl-4" : "pl-2",
-            isLost && "bg-destructive/10",
-            !isLost && selected === p.id && "bg-brand/10",
-          )}
+        <ConnectionActionsMenu
+          connectionId={p.id}
+          onConnect={() => void handleRowClick(p)}
+          onDisconnect={() => void handleDisconnect(p)}
         >
-          {isConnecting ? (
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
-          ) : expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          )}
-          {/* Live/idle at a glance: the dot is the same brand/destructive
-              vocabulary the status bar uses for the same three states. */}
-          <span
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => void handleRowClick(p)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                void handleRowClick(p);
+              }
+            }}
+            title={isLost ? t("connections.lost", { message: lostError }) : p.name}
             className={cn(
-              "h-1.5 w-1.5 shrink-0 rounded-full",
-              isLost
-                ? "bg-destructive"
-                : isActive
-                  ? "bg-brand"
-                  : "bg-muted-foreground/30",
-            )}
-          />
-          <span
-            className={cn(
-              "flex-1 truncate",
-              selected === p.id && "font-semibold",
-              !isActive && "text-muted-foreground",
+              "group flex cursor-pointer items-center gap-1 py-1 pr-2 text-sm outline-none hover:bg-accent/40 focus-visible:ring-1 focus-visible:ring-ring",
+              indented ? "pl-4" : "pl-2",
+              isLost && "bg-destructive/10",
+              !isLost && selected === p.id && "bg-brand/10",
             )}
           >
-            {p.name}
-          </span>
-          <VanishedOriginMark profileId={p.id} />
-          <DriverBadge driver={p.driver} />
-          {isLost ? (
-            <button
-              type="button"
-              title={t("connections.reconnectTooltip")}
-              className="flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium text-destructive transition-colors hover:bg-destructive/20"
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleReconnect(p);
-              }}
-            >
-              <RotateCw className="h-3 w-3" />
-              {t("connections.reconnect")}
-            </button>
-          ) : isActive ? (
-            <button
-              type="button"
-              title={t("statusBar.disconnect")}
-              // Hidden until hover/focus so a long list of live connections
-              // isn't a wall of buttons, but always shown for the focused row.
+            {isBusy ? (
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+            ) : expanded ? (
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            )}
+            {/* Live/idle at a glance: the dot is the same brand/destructive
+                vocabulary the status bar uses for the same three states. */}
+            <span
               className={cn(
-                "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100",
-                selected === p.id ? "opacity-100" : "opacity-0",
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                isLost
+                  ? "bg-destructive"
+                  : isActive
+                    ? "bg-brand"
+                    : "bg-muted-foreground/30",
               )}
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleDisconnect(p);
-              }}
+            />
+            <span
+              className={cn(
+                "flex-1 truncate",
+                selected === p.id && "font-semibold",
+                !isActive && "text-muted-foreground",
+              )}
             >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          ) : (
-            <Plug className="h-3 w-3 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100" />
-          )}
-        </div>
+              {p.name}
+            </span>
+            <VanishedOriginMark profileId={p.id} />
+            <DriverBadge driver={p.driver} />
+            {isLost ? (
+              <button
+                type="button"
+                title={t("connections.reconnectTooltip")}
+                className="flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium text-destructive transition-colors hover:bg-destructive/20"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleReconnect(p);
+                }}
+              >
+                <RotateCw className="h-3 w-3" />
+                {t("connections.reconnect")}
+              </button>
+            ) : isActive ? (
+              <button
+                type="button"
+                title={t("statusBar.disconnect")}
+                // Hidden until hover/focus so a long list of live connections
+                // isn't a wall of buttons, but always shown for the focused row.
+                className={cn(
+                  "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100",
+                  selected === p.id ? "opacity-100" : "opacity-0",
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleDisconnect(p);
+                }}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <Plug className="h-3 w-3 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100" />
+            )}
+          </div>
+        </ConnectionActionsMenu>
 
         {/* Only a live connection has a subtree to show. An expanded-but-idle row
             can't happen (disconnecting drops the override), but the guard is what
             makes that true rather than incidental. */}
         {expanded && isActive && (
           <div className={cn("border-l border-border/40", indented ? "ml-5" : "ml-3")}>
-            <SchemaExplorer connectionId={p.id} nested />
+            <SchemaExplorer connectionId={p.id} />
           </div>
         )}
       </div>

@@ -84,7 +84,8 @@
     }
   },
   "connectionsTree": {
-    "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión."
+    "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
+    "connect": "Conectar"
   },
   "connections": {
     "disconnectTooltip": "Desconectar",
@@ -320,6 +321,7 @@
       "title": "Bases de datos a mostrar",
       "description": "Elige qué bases de datos aparecen en el explorador de esta conexión. Las ocultas también se omiten al precargar, lo que acelera la conexión a servidores con muchas bases.",
       "count": "{{selected}} de {{total}} seleccionadas",
+      "subsetActive": "Mostrando {{count}} de {{total}} bases de datos",
       "selectAll": "Seleccionar todas",
       "deselectAll": "Deseleccionar todas"
     },
