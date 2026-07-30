@@ -91,6 +91,7 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
 
     const errors: Record<string, string> = {};
     const found: Record<string, VanishedConnection> = {};
+    const held: string[] = [];
     let touchedProfiles = false;
 
     for (const origin of origins) {
@@ -99,9 +100,7 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
         if (report.added.length > 0 || report.updated.length > 0) {
           touchedProfiles = true;
         }
-        set((s) => ({
-          deferred: Array.from(new Set([...s.deferred, ...report.deferred])),
-        }));
+        held.push(...report.deferred);
         // `suspicious` already means the backend cleared `vanished`, so this
         // loop simply finds nothing — no special case needed here, but the
         // invariant is worth knowing when reading the report shape.
@@ -124,8 +123,14 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
 
     // Replace rather than merge: an entry that reappeared in the file (the
     // publisher restored it, or the earlier read was simply wrong) must stop
-    // being flagged without anyone having to dismiss it.
-    set({ vanished: found, errors, syncing: false });
+    // being flagged without anyone having to dismiss it. `deferred` is replaced
+    // for the same reason and one more — it used to be unioned, so an id that
+    // had since been applied stayed in the list forever and kept arming a
+    // pointless re-sync. Each sweep recomputes it from what the backend actually
+    // held back this time. An origin that failed to read contributes nothing, so
+    // its held-back ids drop out until the next successful sweep re-reports
+    // them; the trigger below and the poll both re-check, so this self-heals.
+    set({ vanished: found, deferred: held, errors, syncing: false });
     if (touchedProfiles) await useConnections.getState().refreshProfiles();
   },
 
@@ -167,12 +172,42 @@ function withoutKey<T>(map: Record<string, T>, key: string): Record<string, T> {
  * `useUpdateStore.startPeriodicChecks` documents).
  */
 let timer: ReturnType<typeof setInterval> | null = null;
+let watching = false;
 
 export function startPeriodicOriginSync(): void {
-  if (timer) return;
   if (getCurrentWindow().label !== "main") return;
+  watchDeferred();
+  if (timer) return;
   void useOriginSync.getState().syncAll();
   timer = setInterval(() => {
     void useOriginSync.getState().syncAll();
   }, SYNC_INTERVAL_MS);
+}
+
+/**
+ * Apply a held-back metadata update once its pool closes.
+ *
+ * `sync_origin` refuses to rewrite a profile that has a live connection — moving
+ * host/port under a running query would point the user at a different server
+ * mid-statement — and reports the id in `deferred` instead. Something has to
+ * notice the pool closing, or the update waits for the next four-hourly poll.
+ *
+ * Re-running the whole sweep is deliberate, rather than caching the pending
+ * profile and writing it here: the file is the truth, it may have changed again
+ * in the meantime, and a cached copy would be a second source of truth that can
+ * go stale. With the pool gone the same code path simply stops deferring.
+ */
+function watchDeferred(): void {
+  if (watching) return;
+  watching = true;
+  useConnections.subscribe((s, prev) => {
+    // `active` is replaced (never mutated) on connect/disconnect, so identity
+    // is a sound "did the set change" test.
+    if (s.active === prev.active) return;
+    const { deferred, syncing } = useOriginSync.getState();
+    if (deferred.length === 0 || syncing) return;
+    // Only a *closure* can unblock anything; a new connection can't.
+    if (deferred.every((id) => s.active.has(id))) return;
+    void useOriginSync.getState().syncAll();
+  });
 }
