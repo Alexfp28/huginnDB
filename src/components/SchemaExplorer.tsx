@@ -188,7 +188,20 @@ function ColumnSkeleton({ label }: { label: string }) {
   );
 }
 
-export function SchemaExplorer({ connectionId }: { connectionId: string }) {
+export function SchemaExplorer({
+  connectionId,
+  nested = false,
+}: {
+  connectionId: string;
+  /**
+   * Render as a subtree of something else — the connections tree (#107), where
+   * each connection row owns the chrome above it. Drops the panel-level "SCHEMA"
+   * title and, crucially, the `h-full` + `overflow-y-auto` pair: a nested
+   * explorer must grow to its content and let the outer tree do the scrolling,
+   * or every expanded connection becomes its own little scroll box.
+   */
+  nested?: boolean;
+}) {
   const { t } = useTranslation();
   // Multi-DB mode triggers when the parent profile has no `database` set
   // (e.g. the user wants to browse every database on the server). SQLite
@@ -204,13 +217,17 @@ export function SchemaExplorer({ connectionId }: { connectionId: string }) {
   // mode can't drift, and above the tree because it's about the connection
   // itself, not about anything in its schema.
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className={cn("flex min-h-0 flex-col", !nested && "h-full")}>
       <VanishedOriginNotice profileId={connectionId} />
-      <div className="min-h-0 flex-1">
+      <div className={cn(!nested && "min-h-0 flex-1")}>
         {isMultiDb ? (
-          <MultiDbExplorer parentId={connectionId} />
+          <MultiDbExplorer parentId={connectionId} nested={nested} />
         ) : (
-          <SingleDbExplorer connectionId={connectionId} title={t("schema.title")} />
+          <SingleDbExplorer
+            connectionId={connectionId}
+            title={t("schema.title")}
+            nested={nested}
+          />
         )}
       </div>
     </div>
@@ -228,9 +245,12 @@ function SingleDbExplorer({
   headerLevel = "root",
   controlledFilter,
   onTableOpen,
+  nested = false,
 }: {
   connectionId: string;
   title: string;
+  /** See [[SchemaExplorer]]'s `nested`. */
+  nested?: boolean;
   /**
    * `root` shows the standard "SCHEMA" header + refresh button. `nested`
    * skips the header chrome entirely — used when this subtree lives under a
@@ -388,12 +408,22 @@ function SingleDbExplorer({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className={cn("flex flex-col", !nested && "h-full")}>
       {headerLevel === "root" && (
-        <div className="flex items-center justify-between px-3 py-2">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {title}
-          </div>
+        <div
+          className={cn(
+            "flex items-center justify-between px-3",
+            nested ? "py-0.5" : "py-2",
+          )}
+        >
+          {/* Nested, the connection row above is the header — but the actions
+              are connection-level and have nowhere else to live, so they stay
+              and simply sit on their own (justify-between pushes them right). */}
+          {!nested && (
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {title}
+            </div>
+          )}
           <div className="flex items-center gap-0.5">
             {canCreateDatabase && (
               <Button
@@ -502,7 +532,9 @@ function SingleDbExplorer({
       {cs.error && (
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
-      <div className="flex-1 overflow-y-auto py-1 text-sm">
+      <div
+        className={cn("py-1 text-sm", !nested && "flex-1 overflow-y-auto")}
+      >
         {needle && schemas.length === 0 && (
           <div className="px-3 py-2 text-xs italic text-muted-foreground">
             {t("schema.noMatches")}
@@ -670,7 +702,14 @@ function SingleDbExplorer({
 // synthetic id.
 // ---------------------------------------------------------------------------
 
-function MultiDbExplorer({ parentId }: { parentId: string }) {
+function MultiDbExplorer({
+  parentId,
+  nested = false,
+}: {
+  parentId: string;
+  /** See [[SchemaExplorer]]'s `nested`. */
+  nested?: boolean;
+}) {
   const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[parentId]);
   const refresh = useSchema((s) => s.refresh);
@@ -854,11 +893,18 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
     });
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-3 py-2">
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("schema.title")}
-        </div>
+    <div className={cn("flex flex-col", !nested && "h-full")}>
+      <div
+        className={cn(
+          "flex items-center justify-between px-3",
+          nested ? "py-0.5" : "py-2",
+        )}
+      >
+        {!nested && (
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("schema.title")}
+          </div>
+        )}
         <div className="flex items-center gap-0.5">
           {canCreateDatabase && (
             <Button
@@ -944,7 +990,9 @@ function MultiDbExplorer({ parentId }: { parentId: string }) {
       {cs.error && (
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
-      <div className="flex-1 overflow-y-auto py-1 text-sm">
+      <div
+        className={cn("py-1 text-sm", !nested && "flex-1 overflow-y-auto")}
+      >
         {filterActive && matchingDbs && matchingDbs.size === 0 && !prefetching && (
           <div className="px-3 py-2 text-xs italic text-muted-foreground">
             {t("schema.noMatches")}

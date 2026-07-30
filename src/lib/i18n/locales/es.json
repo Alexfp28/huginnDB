@@ -83,6 +83,9 @@
       "about": "Acerca de HuginnDB"
     }
   },
+  "connectionsTree": {
+    "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión."
+  },
   "connections": {
     "disconnectTooltip": "Desconectar",
     "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",

@@ -26,6 +26,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   environment starts unnamed and displays as "Default" in your language rather
   than having an English name written into your data.
 
+- **Connections live in the schema tree.** The tree now starts one level higher:
+  folders, then the connections inside them, then databases and tables as before
+  (#107). Clicking a connection opens it and expands it in place, so browsing a
+  second server no longer means leaving the tree to pick it from a menu — a
+  folder like `SERVIDOR_PRUEBAS` with a client per row is visible and navigable
+  in one window.
+
+  Folders are the same ones the File menu and the status bar already show, and
+  they fold the same way: one shared collapse state and the same
+  **Connection group expansion** preference, so a folder you closed is closed
+  everywhere. Idle connections are listed greyed out with their driver badge, and
+  a lost connection keeps the reconnect button it has in the status bar.
+
+  Which connections are expanded follows which ones are open, rather than being
+  remembered separately. Since the connections that were live are already
+  restored at launch and when you switch environment, the tree comes back looking
+  the way you left it without a second list that could drift out of step with
+  what is actually connected.
+
 - **Shared origins.** An environment can pull its connections from a file on a
   shared folder, so somebody joining a team configures nothing by hand: point
   HuginnDB at `\\server\huginndb\clients.json`, enter the passphrase once, and

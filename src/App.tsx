@@ -54,7 +54,7 @@ import { WindowMenu } from "@/components/WindowMenu";
 import { ViewMenu } from "@/components/ViewMenu";
 import { HelpMenu } from "@/components/HelpMenu";
 import { EnvironmentSwitcher } from "@/components/EnvironmentSwitcher";
-import { SchemaExplorer } from "@/components/SchemaExplorer";
+import { ConnectionsTree } from "@/components/ConnectionsTree";
 import { TabbedArea } from "@/components/TabbedArea";
 import { StatusBar } from "@/components/StatusBar";
 import { CommandPalette, useCommandPalette } from "@/components/CommandPalette";
@@ -99,17 +99,17 @@ import { refreshTable } from "@/lib/tableRefresh";
 
 function SchemaPanel() {
   const id = useUi((s) => s.selectedConnectionId);
-  const { t } = useTranslation();
-  if (!id) {
-    return (
-      <div className="flex h-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
-        {t("common.emptyConnectDatabase")}
-      </div>
-    );
-  }
+  // The panel now starts at the connection level (#107): folders and connections
+  // are rows in the tree, and each expanded connection renders its own schema
+  // subtree. It no longer needs a selected connection to show anything, so the
+  // "connect a database" watermark is gone — an empty list says that better.
+  //
+  // The error boundary still keys on the selected connection: a subtree that
+  // throws is almost always the focused one, and resetting on a change of focus
+  // is the recovery the user expects.
   return (
-    <ConnectionErrorBoundary resetKey={id}>
-      <SchemaExplorer connectionId={id} />
+    <ConnectionErrorBoundary resetKey={id ?? undefined}>
+      <ConnectionsTree />
     </ConnectionErrorBoundary>
   );
 }

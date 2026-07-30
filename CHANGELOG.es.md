@@ -30,6 +30,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   «Predeterminado» en tu idioma, en vez de llevar un nombre en inglés escrito
   dentro de tus datos.
 
+- **Las conexiones están en el árbol de esquema.** El árbol empieza ahora un nivel
+  más arriba: carpetas, dentro las conexiones, y después las bases de datos y las
+  tablas como siempre (#107). Al pulsar una conexión se abre y se despliega ahí
+  mismo, así que consultar un segundo servidor ya no obliga a salir del árbol para
+  elegirlo en un menú: una carpeta como `SERVIDOR_PRUEBAS` con un cliente por fila
+  se ve y se navega en la misma ventana.
+
+  Las carpetas son las mismas que ya muestran el menú Archivo y la barra de
+  estado, y se pliegan igual: un único estado compartido y la misma preferencia
+  **Despliegue de grupos de conexiones**, de modo que una carpeta que cierras
+  queda cerrada en todas partes. Las conexiones inactivas aparecen atenuadas con
+  su distintivo de driver, y una conexión perdida conserva el botón de reconectar
+  que ya tiene en la barra de estado.
+
+  Qué conexiones están desplegadas sigue a cuáles están abiertas, en lugar de
+  guardarse por separado. Como las conexiones que estaban vivas ya se restauran al
+  arrancar y al cambiar de entorno, el árbol vuelve tal y como lo dejaste sin una
+  segunda lista que pueda desincronizarse de lo que de verdad está conectado.
+
 - **Orígenes compartidos.** Un entorno puede importar sus conexiones desde un
   fichero en una carpeta compartida, de modo que quien se incorpora a un equipo
   no configura nada a mano: se apunta HuginnDB a
