@@ -71,6 +71,7 @@ import { startConnectionSyncBridge } from "@/lib/connection-sync-bridge";
 import { startPrefsSyncBridge } from "@/lib/prefs-sync-bridge";
 import { flushAllTabState, persistLaunchState } from "@/stores/persistedTabs";
 import { useEnvironments } from "@/stores/environments";
+import { startPeriodicOriginSync } from "@/stores/originSync";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CliConnectChoiceDialog } from "@/components/CliConnectChoiceDialog";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
@@ -292,6 +293,9 @@ export default function App() {
     void (async () => {
       await useEnvironments.getState().load();
       await useEnvironments.getState().restoreSession();
+      // Shared origins: first sweep now, then every few hours. After the session
+      // is up so a slow or unreachable share can never delay the workspace.
+      startPeriodicOriginSync();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

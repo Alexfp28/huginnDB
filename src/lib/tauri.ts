@@ -48,6 +48,8 @@ import type {
   LaunchState,
   Environment,
   EnvironmentList,
+  Origin,
+  OriginSyncReport,
 } from "@/types";
 
 export const api = {
@@ -478,6 +480,35 @@ export const api = {
   /** Persist the switcher's display order. */
   reorderEnvironments: (ids: string[]) =>
     invoke<void>("reorder_environments", { ids }),
+
+  // Shared origins ---------------------------------------------------------
+
+  /** Origins registered in the active environment. */
+  listOrigins: () => invoke<Origin[]>("list_origins"),
+
+  /** Register a shared origin. `passphrase` only for an encrypted file; it goes
+   *  to the OS keychain, never to `tab_state.json`. */
+  addOrigin: (args: {
+    name: string;
+    path: string;
+    passphrase?: string | null;
+  }) => invoke<Origin>("add_origin", args),
+
+  /** Rename / repoint an origin. `passphrase` is tri-state: omit to keep the
+   *  stored one, `""` to clear it, a string to replace it. */
+  updateOrigin: (args: {
+    id: string;
+    name: string;
+    path: string;
+    passphrase?: string | null;
+  }) => invoke<Origin>("update_origin", args),
+
+  /** Unregister an origin. The connections it imported are left in place. */
+  removeOrigin: (id: string) => invoke<void>("remove_origin", { id }),
+
+  /** Pull an origin. Rejects (touching nothing) when the file can't be read or
+   *  parsed; never deletes — disappearances come back in `vanished`. */
+  syncOrigin: (id: string) => invoke<OriginSyncReport>("sync_origin", { id }),
 
   // Multi-window -----------------------------------------------------------
 

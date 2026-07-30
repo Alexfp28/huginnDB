@@ -642,6 +642,34 @@ export interface Origin {
   lastSyncedAt: string | null;
 }
 
+/**
+ * Outcome of one `syncOrigin` run. Mirrors `OriginSyncReport` in
+ * `src-tauri/src/commands/origins.rs`.
+ *
+ * Note what it does *not* contain: any notion of a deletion having happened. The
+ * sync only ever reports; adopting or retiring a vanished connection is the
+ * user's call (#108).
+ */
+export interface OriginSyncReport {
+  /** Profile ids created by this sync. */
+  added: string[];
+  /** Profile ids refreshed from the file. */
+  updated: string[];
+  /** Ids whose metadata changed but which have a live pool, so the change is
+   *  held back rather than repointing a server under a running query. */
+  deferred: string[];
+  /** Ids present locally under this origin but absent from the file. */
+  vanished: string[];
+  /**
+   * True when the read looked untrustworthy (a truncated or half-written file
+   * parses fine while listing far fewer profiles than it should). `vanished` is
+   * empty in that case — never offer removals when this is set.
+   */
+  suspicious: boolean;
+  /** RFC 3339 stamp of this run. */
+  syncedAt: string;
+}
+
 /** What `listEnvironments` returns — the list and the active id together, so a
  *  switcher can't render out of step with the backend's current environment. */
 export interface EnvironmentList {
