@@ -26,6 +26,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   environment starts unnamed and displays as "Default" in your language rather
   than having an English name written into your data.
 
+- **The empty workspace is somewhere to start.** With no tabs open, the panel
+  showed a logo, a line of text and a "New query" button that stayed disabled
+  until a connection had been picked somewhere else. It now carries a searchable,
+  folder-grouped list of your connections: type, click one, and you're connected
+  and focused on it (#110). Searching matches folder names as well as connection
+  names, and while you're searching folders ignore their collapsed state — a
+  result hidden inside a folded folder reads as "no match".
+
+  The list is deliberately flatter than the sidebar tree: folders and
+  connections, no schema underneath. Its job is choosing a connection, not
+  browsing one. Folders are the shared ones, so folding a folder here folds it in
+  the tree, the File menu and the status bar as well.
+
 - **Connections live in the schema tree.** The tree now starts one level higher:
   folders, then the connections inside them, then databases and tables as before
   (#107). Clicking a connection opens it and expands it in place, so browsing a

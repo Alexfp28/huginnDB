@@ -30,6 +30,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   «Predeterminado» en tu idioma, en vez de llevar un nombre en inglés escrito
   dentro de tus datos.
 
+- **La pantalla vacía ya sirve para empezar.** Sin pestañas abiertas, el panel
+  mostraba un logo, una línea de texto y un botón «Nueva consulta» que seguía
+  deshabilitado hasta elegir una conexión en otro sitio. Ahora lleva una lista de
+  tus conexiones con buscador y carpetas: escribes, pulsas una y quedas conectado
+  y situado en ella (#110). La búsqueda también encuentra por nombre de carpeta, y
+  mientras buscas las carpetas ignoran si estaban plegadas: un resultado escondido
+  dentro de una carpeta cerrada se lee como «no hay coincidencias».
+
+  La lista es a propósito más plana que el árbol lateral: carpetas y conexiones,
+  sin el esquema debajo. Su trabajo es elegir una conexión, no navegarla. Las
+  carpetas son las compartidas, así que plegar una aquí la pliega también en el
+  árbol, en el menú Archivo y en la barra de estado.
+
 - **Las conexiones están en el árbol de esquema.** El árbol empieza ahora un nivel
   más arriba: carpetas, dentro las conexiones, y después las bases de datos y las
   tablas como siempre (#107). Al pulsar una conexión se abre y se despliega ahí
