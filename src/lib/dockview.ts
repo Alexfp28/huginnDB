@@ -9,6 +9,7 @@
 
 import type { AddPanelOptions, DockviewApi, DockviewTheme } from "dockview-react";
 import i18n from "@/lib/i18n";
+import type { AppTab } from "@/types";
 
 /**
  * Custom dockview theme that defers all colours to the app's existing
@@ -178,6 +179,62 @@ export function consumePendingInternalLayout(): unknown | null {
   const v = pendingInternalLayout;
   pendingInternalLayout = null;
   return v;
+}
+
+/**
+ * Reconcile the inner dockview's panels against `tabs`: add a panel for any
+ * tab that doesn't have one yet (in the default tabbed arrangement — no
+ * `position`, so it lands in whatever group is active), and remove any panel
+ * whose tab is gone. This is `TabbedArea`'s own store→dockview reconciler
+ * effect, factored out so `persistedTabs.hydrateWorkspaceLayout` can call the
+ * exact same panel-creation logic as a recovery path.
+ *
+ * That recovery path matters because it's the one case where this can't rely
+ * on the reconciler's *own* `useEffect` to converge on its own: at launch,
+ * `fromJSON` runs inside `TabbedArea.onReady`, before the reconciler effect
+ * has ever fired for this mount — so a failed restore there is naturally
+ * cleaned up by the reconciler's first-ever run right after. During an
+ * environment switch the inner dockview is already mounted and the
+ * reconciler has already been converging tabs → panels throughout the
+ * reconnect, so a `fromJSON` failure at that point leaves nothing else
+ * scheduled to rebuild the layout — see the call site for why it invokes
+ * this directly instead of waiting on the effect.
+ */
+export function syncTabPanels(api: DockviewApi, tabs: AppTab[]): void {
+  for (const tab of tabs) {
+    if (api.getPanel(tab.id)) continue;
+    let params: Record<string, unknown>;
+    if (tab.kind === "table") {
+      params = {
+        connectionId: tab.connectionId,
+        schema: tab.schema,
+        table: tab.table,
+      };
+    } else if (tab.kind === "structure") {
+      params = {
+        tabId: tab.id,
+        connectionId: tab.connectionId,
+        schema: tab.schema,
+        table: tab.table,
+        mode: tab.structureMode ?? "edit",
+      };
+    } else if (tab.kind === "view") {
+      params = {
+        tabId: tab.id,
+        connectionId: tab.connectionId,
+        schema: tab.schema,
+        view: tab.view,
+        mode: tab.viewMode ?? "edit",
+      };
+    } else {
+      params = { tabId: tab.id, connectionId: tab.connectionId };
+    }
+    api.addPanel({ id: tab.id, component: tab.kind, params });
+  }
+  const live = new Set(tabs.map((t) => t.id));
+  for (const panel of api.panels) {
+    if (!live.has(panel.id)) api.removePanel(panel);
+  }
 }
 
 /** Restore the layout from localStorage, or build the default if no
