@@ -42,6 +42,7 @@ import { useConnections } from "@/stores/connections";
 import { tableTabTitle } from "@/lib/connectionLabel";
 import { usePreferences } from "@/stores/preferences";
 import { api } from "@/lib/tauri";
+import { openTrackedDatabaseView } from "@/stores/persistedTabs";
 import { toast } from "sonner";
 import { splitSql } from "@/lib/sqlSplit";
 import type { SchemaTableMetric } from "@/types";
@@ -1011,21 +1012,33 @@ function DatabaseRoot({
     null,
   );
 
-  // "New query here": open a query tab scoped to *this* database. We must run
-  // it against the synthetic `<parentId>::db::<db>` pool, so if the subtree was
-  // never expanded (no `childId` yet) we open the database view first to obtain
-  // that id — the same call the expand effect makes.
-  const openQueryHere = async () => {
-    let id = childId;
-    if (!id) {
-      try {
-        id = await api.openDatabaseView(parentId, dbName);
-        setChildId(id);
-      } catch (e) {
-        setError(String(e));
-        return;
-      }
+  // Resolve this database's synthetic `<parentId>::db::<db>` child id,
+  // opening the pool the first time any action here needs it — every
+  // per-database action below goes through this rather than calling
+  // `api.openDatabaseView` directly. `openTrackedDatabaseView` (not the bare
+  // `api` wrapper) is what hydrates the child's persisted tabs/schema
+  // expansion and attaches its save subscription on that first open; a table,
+  // query or security tab opened against a child id that skipped this never
+  // gets remembered — not on the next reconnect, not across an environment
+  // switch, not even across a plain app restart (see the CHANGELOG entry).
+  // Returns `null` (after setting `error`) if the open fails, so callers can
+  // just bail with `if (!id) return;`.
+  const resolveChildId = async (): Promise<string | null> => {
+    if (childId) return childId;
+    try {
+      const id = await openTrackedDatabaseView(parentId, dbName);
+      setChildId(id);
+      return id;
+    } catch (e) {
+      setError(String(e));
+      return null;
     }
+  };
+
+  // "New query here": open a query tab scoped to *this* database.
+  const openQueryHere = async () => {
+    const id = await resolveChildId();
+    if (!id) return;
     useTabs.getState().open({
       kind: "query",
       title: t("tabs.queryFileName"),
@@ -1037,46 +1050,22 @@ function DatabaseRoot({
   // "Security": same lazy-open-then-navigate pattern as `openQueryHere`,
   // scoped to this database's synthetic connection id.
   const openSecurityHere = async () => {
-    let id = childId;
-    if (!id) {
-      try {
-        id = await api.openDatabaseView(parentId, dbName);
-        setChildId(id);
-      } catch (e) {
-        setError(String(e));
-        return;
-      }
-    }
+    const id = await resolveChildId();
+    if (!id) return;
     openSecurityTab(id, t("security.title"));
   };
 
   // Export / import: same lazy-open-then-use pattern as `openQueryHere`,
   // scoped to this database's synthetic connection id.
   const exportThisDatabase = async () => {
-    let id = childId;
-    if (!id) {
-      try {
-        id = await api.openDatabaseView(parentId, dbName);
-        setChildId(id);
-      } catch (e) {
-        setError(String(e));
-        return;
-      }
-    }
+    const id = await resolveChildId();
+    if (!id) return;
     await exportDatabaseWithToast(id, t);
   };
 
   const importSqlHere = async () => {
-    let id = childId;
-    if (!id) {
-      try {
-        id = await api.openDatabaseView(parentId, dbName);
-        setChildId(id);
-      } catch (e) {
-        setError(String(e));
-        return;
-      }
-    }
+    const id = await resolveChildId();
+    if (!id) return;
     if (await importSqlFile(id, t)) await useSchema.getState().refresh(id);
   };
 
@@ -1084,16 +1073,8 @@ function DatabaseRoot({
   // id (same pattern as the handlers above) and open the create dialog scoped
   // to it. `create_collection` needs a pool bound to this specific database.
   const createCollectionHere = async () => {
-    let id = childId;
-    if (!id) {
-      try {
-        id = await api.openDatabaseView(parentId, dbName);
-        setChildId(id);
-      } catch (e) {
-        setError(String(e));
-        return;
-      }
-    }
+    const id = await resolveChildId();
+    if (!id) return;
     setCreateCollectionId(id);
   };
 
@@ -1106,9 +1087,9 @@ function DatabaseRoot({
       return;
     try {
       await api.dropDatabase(parentId, dbName);
-      const childId = `${parentId}::db::${dbName}`;
-      useTabs.getState().closeForConnection(childId);
-      useSchema.getState().drop(childId);
+      const droppedId = `${parentId}::db::${dbName}`;
+      useTabs.getState().closeForConnection(droppedId);
+      useSchema.getState().drop(droppedId);
       await useSchema.getState().refresh(parentId);
     } catch (e) {
       setError(String(e));
@@ -1128,11 +1109,7 @@ function DatabaseRoot({
     if (!effectiveExpanded || childId || opening) return;
     setOpening(true);
     setError(null);
-    api
-      .openDatabaseView(parentId, dbName)
-      .then((id) => setChildId(id))
-      .catch((e) => setError(String(e)))
-      .finally(() => setOpening(false));
+    resolveChildId().finally(() => setOpening(false));
   }, [effectiveExpanded, childId, opening, parentId, dbName]);
 
   return (

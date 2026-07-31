@@ -165,6 +165,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Tabs opened against a multi-DB "database view" (`<parent>::db::<database>`,
+  the synthetic child pool `open_database_view` opens when a server connection's
+  database node is expanded in the tree) never persisted at all** — not across
+  an environment switch, not across a reconnect, not even across a plain app
+  restart. `persistedTabs.ts`'s save/restore subscription is entirely keyed off
+  `useConnections.connect()` calling `hydrateTabState`, which only ever runs
+  for genuine top-level connection profiles. A database-view child is never
+  "connected" in that sense — `SchemaExplorer.tsx` opened one directly via
+  `api.openDatabaseView` the moment a database node was expanded (or a
+  per-database action needed it), entirely outside the top-level connection
+  lifecycle, so a table/query/security tab opened against that child id was
+  invisible to the persistence layer from the start: never saved, never
+  restored, regardless of what later happened to the session. This is why
+  switching environments appeared to keep the active connection and the
+  connection-visibility filter (both scoped to the top-level connection) while
+  silently dropping every open table on a non-default database — the exact
+  report that motivated this fix.
+
+  Every call site in `SchemaExplorer.tsx` that opens a database view now goes
+  through `persistedTabs.openTrackedDatabaseView` instead of calling
+  `api.openDatabaseView` directly: it hydrates the child's persisted tabs/
+  schema-expansion and attaches its save subscription the first time the child
+  is opened, guarded by the same `active` subscription map `attachSubscriptions`
+  already maintains rather than a separate tracking set (an earlier draft of
+  this fix used one, and it could go stale independently of the actual
+  subscription lifecycle — confirmed by a failing round-trip test before
+  switching to this design). `useConnections.markDisconnected` now also flushes
+  and tears down every child subscription under a disconnecting parent before
+  clearing its tabs/schema, found via the subscription registry itself
+  (`useTabs`/`useSchema` are not reliable indexes at that point: an environment
+  switch clears `useTabs` before disconnecting anything, and a child opened but
+  never persisted yet has no `useSchema` slice either).
+
 - **Switching environments still didn't bring back which tabs were open, which
   one had focus, or the split layout, even after the teardown/rebuild fix
   below.** That fix only covered the debounced tab/layout saves routed through

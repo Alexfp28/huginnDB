@@ -18,6 +18,7 @@ import {
   flushTabState,
   hydrateTabState,
   persistLaunchState,
+  subscribedConnectionIds,
 } from "@/stores/persistedTabs";
 import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
@@ -63,7 +64,7 @@ interface ConnectionsState {
    * that didn't initiate the disconnect still drops its own tabs/schema
    * cache for a pool that's now dead everywhere.
    */
-  markDisconnected: (id: string) => void;
+  markDisconnected: (id: string) => Promise<void>;
   /** Re-fetch just the saved-profiles list (not `active`) — used by the
    *  sync bridge after another window creates/edits/deletes/imports a
    *  profile, where a full `refresh()` would be a heavier no-op for the
@@ -150,11 +151,11 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     // pool but a still-mounted subscription.
     await flushTabState(id);
     await api.disconnect(id);
-    get().markDisconnected(id);
+    await get().markDisconnected(id);
     // Keep the persisted launch state in sync (see `connect`).
     void persistLaunchState(Array.from(get().active));
   },
-  markDisconnected: (id) => {
+  markDisconnected: async (id) => {
     // An explicit disconnect isn't a "lost" connection — clear any stale
     // flag so a later reconnect doesn't briefly show the wrong state.
     useConnectionHealth.getState().clear(id);
@@ -177,25 +178,34 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     // Multi-DB sessions register synthetic `<id>::db::<db>` child
     // connections in the backend (see `open_database_view`); the backend
     // sweeps them when the parent disconnects, but the frontend stores
-    // also keep per-child schema slices and open tabs. Drop them here so
-    // we don't leave orphaned trees / tabs pointing at dead pools. This
-    // matters just as much when the pool died via ANOTHER window's
-    // disconnect — this window's own tabs/schema for it are equally stale.
+    // also keep per-child schema slices, open tabs, and — since a table/
+    // query/security tab opened against one is now persisted via
+    // `openTrackedDatabaseView` (see `persistedTabs.ts`) — a live save
+    // subscription. Flush each child's pending tab state to disk BEFORE
+    // clearing it, same ordering and same reason as the top-level
+    // `flushTabState(id)` above: `closeForConnection` would otherwise wake
+    // the subscription with an empty tab list and save that instead of
+    // whatever the user actually had open. This matters just as much when
+    // the pool died via ANOTHER window's disconnect — this window's own
+    // tabs/schema for it are equally stale.
+    //
+    // `subscribedConnectionIds()` — not `useTabs`/`useSchema` — is what finds
+    // the children: mid environment-switch teardown `useTabs` is already
+    // empty (the switch clears it before disconnecting anything), and a
+    // child opened but never persisted yet has no `useSchema` slice either
+    // (only a restore populates one). The subscription registry is the one
+    // thing guaranteed to still list every child that was ever opened this
+    // session, regardless of whether it has tabs or a schema slice right now.
     const prefix = `${id}::db::`;
     const tabsState = useTabs.getState();
     const schemaState = useSchema.getState();
-    for (const tab of tabsState.tabs) {
-      if (tab.connectionId.startsWith(prefix)) {
-        tabsState.closeForConnection(tab.connectionId);
-        schemaState.drop(tab.connectionId);
-      }
-    }
-    // Drop any schema slice for a child that was browsed but never had a
-    // tab opened against it.
-    for (const childId of Object.keys(schemaState.byConnection)) {
-      if (childId.startsWith(prefix)) {
-        schemaState.drop(childId);
-      }
+    const childIds = subscribedConnectionIds().filter((cid) =>
+      cid.startsWith(prefix),
+    );
+    for (const childId of childIds) {
+      await flushTabState(childId);
+      tabsState.closeForConnection(childId);
+      schemaState.drop(childId);
     }
   },
   refreshProfiles: async () => {

@@ -355,6 +355,68 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
 }
 
 /**
+ * Open (or resolve, if already open) a multi-DB connection's per-database
+ * child pool, hydrating its persisted tabs/schema-expansion and attaching its
+ * save subscription the first time it's opened — the same thing `connect()`
+ * does for a top-level connection via `hydrateTabState`.
+ *
+ * A `<parentId>::db::<database>` child is never "connected" in the
+ * `useConnections`/`connect()` sense: `SchemaExplorer.tsx` opens one directly
+ * via `api.openDatabaseView` the first time a database node is expanded (or a
+ * per-database action needs it), entirely independent of the top-level
+ * connection lifecycle. Nothing about that path ever called `hydrateTabState`
+ * or `attachSubscriptions`, so a table/query/security tab opened against a
+ * child id was invisible to this module — never saved, never restored,
+ * regardless of whether the environment switched, the app restarted, or
+ * anything else. Every call site in `SchemaExplorer.tsx` that opens a
+ * database view MUST go through this instead of calling
+ * `api.openDatabaseView` directly, or its tabs silently stop persisting
+ * again.
+ *
+ * Guarded by the SAME `active` map `attachSubscriptions` populates — not a
+ * separate "have we seen this child" set. A database can be closed and
+ * reopened (or the tree re-expanded) multiple times per session without a
+ * fresh `openDatabaseView` round-trip once dockview already has the id, and
+ * re-running the restore each time would clobber whatever the user has open
+ * with the on-disk snapshot again; `active.has(id)` is true for exactly as
+ * long as that's true. It goes back to false the moment
+ * `useConnections.markDisconnected` flushes and tears the child down (see
+ * `subscribedConnectionIds`), so the *next* open — the parent reconnecting,
+ * or the same database reopened after being dropped and recreated — restores
+ * fresh from disk instead of being skipped as "already done this session". A
+ * private tracking set would drift from that lifecycle independently (and
+ * did, in an earlier version of this fix): it can only be reset by whoever
+ * remembered to call into it, whereas `active` is reset by the one thing that
+ * actually stops the subscription.
+ */
+export async function openTrackedDatabaseView(
+  parentId: string,
+  database: string,
+): Promise<string> {
+  const id = await api.openDatabaseView(parentId, database);
+  if (!active.has(id)) {
+    await hydrateTabState(id);
+  }
+  return id;
+}
+
+/**
+ * Every connection id (top-level or `<parentId>::db::<database>` child) with
+ * a live save subscription right now. Used by `useConnections.markDisconnected`
+ * to find every child connection under a disconnecting parent: by the time it
+ * runs during an environment switch, `useTabs` has already been cleared (the
+ * switch does that before tearing down connections) and a child that was
+ * opened but never had anything persisted yet has no `useSchema` slice either
+ * (`hydrateTabState` only writes one when it finds saved state to restore) —
+ * so neither store is a reliable index of "what children exist" on its own.
+ * The subscription registry always is, since `attachSubscriptions` is the one
+ * thing that puts a connection (parent or child) into it.
+ */
+export function subscribedConnectionIds(): string[] {
+  return Array.from(active.keys());
+}
+
+/**
  * Restore the session-level inner-dockview geometry once at launch, AFTER the
  * launch flow has populated `useTabs` (i.e. after auto-reconnect settles).
  * Ordering matters: `fromJSON` recreates panels from the stored params, but

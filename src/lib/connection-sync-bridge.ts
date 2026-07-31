@@ -38,7 +38,7 @@ export async function startConnectionSyncBridge(): Promise<UnlistenFn> {
   const unlistenClosed = await listen<ConnectionSyncPayload>(
     CONNECTION_CLOSED_EVENT,
     (event) => {
-      useConnections.getState().markDisconnected(event.payload.connection_id);
+      void useConnections.getState().markDisconnected(event.payload.connection_id);
     },
   );
   const unlistenProfiles = await listen(PROFILES_CHANGED_EVENT, () => {
