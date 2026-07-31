@@ -67,6 +67,50 @@ interface ActiveSubscription {
 
 const active = new Map<string, ActiveSubscription>();
 
+/**
+ * True while an environment switch is tearing down/rebuilding the session
+ * (`useEnvironments.switchTo`). While set, `scheduleSave` and
+ * `scheduleSaveActive` are no-ops instead of arming a timer.
+ *
+ * `cancelPendingSaves()` alone (the pre-existing guard, kept below) only
+ * drops timers already armed *at the moment it's called* — it does nothing
+ * about one armed a tick later. And one reliably gets armed a tick later:
+ * `switchTo`'s teardown loop calls `disconnect()` for each outgoing
+ * connection, which awaits a real backend IPC round-trip and then runs
+ * `markDisconnected` — which drops the connection's schema cache and, for a
+ * multi-DB parent, closes its children's tabs. Either can wake another
+ * still-subscribed connection's `useTabs`/`useSchema` listener mid-loop, long
+ * after the last `cancelPendingSaves()` call, and that timer fires ~600ms
+ * later against whichever environment is active by then — the *incoming*
+ * one, since `setActiveEnvironment` has since run. The result is exactly the
+ * regression `2299f40` fixed once already, just via a path that fix didn't
+ * close: a snapshot of the (still transiently empty) tab store overwrites
+ * the incoming environment's real, previously-saved tabs.
+ *
+ * A suspend flag closes every path at once, regardless of what wakes a
+ * subscription, instead of chasing individual re-arm sites one at a time.
+ */
+let saveSuspended = false;
+
+/**
+ * Block `scheduleSave`/`scheduleSaveActive` from arming new timers, and drop
+ * any already pending. Call right after the outgoing environment's own
+ * `flushAllTabState()` has written its good snapshot — anything that wakes a
+ * subscription from that point until `resumeSaves()` is not a real edit, just
+ * teardown/rebuild noise.
+ */
+export function suspendSaves(): void {
+  saveSuspended = true;
+  cancelPendingSaves();
+}
+
+/** Re-arm normal debounced saving once the incoming environment's session is
+ *  fully rebuilt. Must run even if the switch fails partway — callers use
+ *  try/finally. */
+export function resumeSaves(): void {
+  saveSuspended = false;
+}
+
 function snapshotFor(connectionId: string): ConnectionTabState {
   const tabsState = useTabs.getState();
   const schemaSlice = useSchema.getState().byConnection[connectionId];
@@ -112,6 +156,7 @@ function snapshotFor(connectionId: string): ConnectionTabState {
 }
 
 function scheduleSave(connectionId: string) {
+  if (saveSuspended) return;
   const entry = active.get(connectionId);
   if (!entry) return;
   if (entry.timer) clearTimeout(entry.timer);
@@ -165,6 +210,7 @@ async function saveWorkspaceLayoutNow(): Promise<void> {
  */
 export function scheduleSaveActive() {
   if (!isMainWindow()) return;
+  if (saveSuspended) return;
   if (layoutSaveTimer) clearTimeout(layoutSaveTimer);
   layoutSaveTimer = setTimeout(() => {
     layoutSaveTimer = null;

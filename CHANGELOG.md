@@ -165,6 +165,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Switching environments could silently wipe the tabs you'd open in the one
+  you were returning to.** `2299f40` fixed this once already for the most
+  direct case — emptying `useTabs` on the way out woke the per-connection
+  save subscriptions, and `cancelPendingSaves()` right after closed that
+  timer before it could fire against the wrong environment. What survived
+  was a second path into the same failure: `switchTo`'s teardown loop calls
+  `disconnect()` for each outgoing connection, which awaits a real backend
+  round-trip and then drops that connection's schema cache (and, for a
+  multi-DB parent, closes its children's tabs) — either of which can wake a
+  *different*, still-subscribed connection's listener partway through the
+  loop, well after the last `cancelPendingSaves()` call had already run. The
+  save that timer armed fired ~600ms later against whichever environment was
+  active by then — the one you'd just switched into — and overwrote its real,
+  previously-saved tabs with a snapshot of the transiently-emptied store.
+  `persistedTabs.ts` now exposes `suspendSaves()`/`resumeSaves()`: instead of
+  chasing each place a save could get re-armed during the teardown/rebuild
+  window, every debounced tab and workspace-layout save is blocked outright
+  from right after the outgoing environment's own flush until the incoming
+  one's session has finished rebuilding, so no source of teardown noise can
+  reach disk regardless of what wakes it.
+
 - **Driver logos in `DriverBadge` no longer sit on a hard-coded white/light
   tile regardless of the active theme.** Every bundled logo is a transparent
   SVG with no baked-in backing, so the tile now uses the theme's own

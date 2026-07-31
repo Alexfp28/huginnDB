@@ -23,9 +23,10 @@ import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 import { usePreferences } from "@/stores/preferences";
 import {
-  cancelPendingSaves,
   flushAllTabState,
   hydrateWorkspaceLayout,
+  resumeSaves,
+  suspendSaves,
 } from "@/stores/persistedTabs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Environment } from "@/types";
@@ -206,6 +207,22 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       const leavingVisible = useUi.getState().visibleConnections;
       await flushAllTabState();
 
+      // From here until `restoreSession` finishes rebuilding the incoming
+      // session, block every debounced tab/layout save outright rather than
+      // just cancelling whatever happens to be armed at a couple of check
+      // points. The outgoing environment's real state is already on disk
+      // (the flush above); anything that wakes a `useTabs`/`useSchema`
+      // subscription between here and the resume is teardown/rebuild noise —
+      // most notably `disconnect()` below, whose `markDisconnected` can wake
+      // a *different*, still-subscribed connection's listener mid-loop, well
+      // after any single `cancelPendingSaves()` call. A timer armed there
+      // fires ~600ms later against whichever environment is active by
+      // then — the incoming one — and overwrites its real tabs with a
+      // snapshot of the transiently-emptied store (see `suspendSaves`'s own
+      // comment for the full history; this is the same regression `2299f40`
+      // fixed once, via a path that fix didn't close).
+      suspendSaves();
+
       // 2. Unpoint the UI *before* closing anything. The schema explorer
       //    refreshes for whatever `selectedConnectionId` holds, so leaving it
       //    aimed at a connection while its pool is being dropped races a
@@ -226,15 +243,10 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       // after switching to another one.
       useUi.getState().setVisibleConnections(null);
 
-      // Emptying the tab store above wakes the per-connection subscriptions and
-      // arms a save. That save would serialise the store as it is *now* —
-      // empty — and `disconnect()` below runs `flushTabState`, which writes any
-      // pending timer out immediately. The result: the good snapshot
-      // `flushAllTabState` just wrote is overwritten with nothing, the
-      // environment remembers which connections were open but none of their
-      // tabs, and returning to it reconnects to a bare workspace. Kill the
-      // timers here; the state worth keeping is already on disk.
-      cancelPendingSaves();
+      // Emptying the tab store above wakes the per-connection subscriptions,
+      // but `suspendSaves()` already turned `scheduleSave` into a no-op, so
+      // nothing gets armed. (No `cancelPendingSaves()` needed here anymore —
+      // there's nothing to cancel.)
 
       // 3. Tear down the live pools. `disconnect()` closes each connection's
       //    tabs and drops its schema cache, which is what leaves a clean slate
@@ -259,26 +271,20 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         visibleConnections: leavingVisible,
       });
 
-      // 5. Cancel the debounced writes the teardown just armed. Removing panels
-      //    fires `onDidLayoutChange` and closing tabs wakes the per-connection
-      //    subscriptions, both of which schedule a ~600ms save. Those timers
-      //    resolve against whichever environment is active *when they fire*, so
-      //    left alone they land after step 6 and write the torn-down layout (and
-      //    stray connection entries) into the environment being entered,
-      //    clobbering its saved geometry. `flushAllTabState` above cancels the
-      //    timers pending at that moment; these are the ones armed after it.
-      cancelPendingSaves();
-
-      // 6. Hand the backend over to the incoming environment.
+      // 5. Hand the backend over to the incoming environment.
       await api.setActiveEnvironment(id);
       set({ activeId: id });
 
-      // 7. Bring the incoming environment up, same sequence as launch.
+      // 6. Bring the incoming environment up, same sequence as launch.
       await get().restoreSession();
     } catch (e) {
       set({ error: String(e) });
       console.error("[environments] switch failed", e);
     } finally {
+      // Re-arm debounced saving unconditionally — even on a failed switch,
+      // whatever session is on screen afterwards (outgoing or a half-built
+      // incoming one) needs its edits to start persisting again.
+      resumeSaves();
       set({ switching: false });
     }
   },
