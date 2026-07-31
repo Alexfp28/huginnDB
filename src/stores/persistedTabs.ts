@@ -55,6 +55,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   getInnerDockviewApi,
   setPendingInternalLayout,
+  syncTabPanels,
 } from "@/lib/dockview";
 
 const SAVE_DEBOUNCE_MS = 600;
@@ -89,6 +90,24 @@ const active = new Map<string, ActiveSubscription>();
  *
  * A suspend flag closes every path at once, regardless of what wakes a
  * subscription, instead of chasing individual re-arm sites one at a time.
+ *
+ * `persistLaunchState` (below) checks the same flag, for the same reason via
+ * a sibling path this flag didn't originally cover: `switchTo`'s teardown
+ * loop calls `useConnections.disconnect()` for each outgoing connection, and
+ * `disconnect()` fires `persistLaunchState` itself (fire-and-forget, never
+ * awaited by the loop) with whatever `useUi`/`useTabs` hold *at that instant*
+ * — which by then is the nulled-out focus/active-tab/folds/filter that
+ * `switchTo` step 2 already cleared, since step 2 runs before the disconnect
+ * loop. `switchTo` re-saves the *real* captured values right after the loop,
+ * but that write and the loop's fire-and-forget ones are unrelated, unawaited
+ * promises with no ordering guarantee between them — if even one straggler
+ * from the loop resolves after the real re-save (plausible: it's one
+ * `saveLaunchState` IPC round-trip per disconnected connection, racing a
+ * single corrective write), it overwrites the good launch state with nulls,
+ * and if it resolves after `setActiveEnvironment` too, it corrupts the
+ * *incoming* environment's launch state instead. Gating it on `saveSuspended`
+ * turns every one of those calls into a no-op for the same window the tab/
+ * layout saves are already blocked in.
  */
 let saveSuspended = false;
 
@@ -230,6 +249,11 @@ export function persistLaunchState(
   activeConnectionIds: string[],
 ): Promise<void> {
   if (!isMainWindow()) return Promise.resolve();
+  // See `saveSuspended`'s comment: during an environment switch this would
+  // otherwise fire once per disconnected connection, each carrying the
+  // already-cleared (null/empty) focus and tab state, racing `switchTo`'s own
+  // corrective `saveLaunchState` call with no ordering guarantee between them.
+  if (saveSuspended) return Promise.resolve();
   return api
     .saveLaunchState({
       activeConnections: activeConnectionIds,
@@ -344,6 +368,30 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
  * that never came back (a connection that failed to reconnect), matching the
  * reconciler's own removal step, so a half-restored session doesn't leave dead
  * panels around. Main-window-only and gated on `restoreTabsOnOpen`.
+ *
+ * Also called from `useEnvironments.switchTo`'s `restoreSession`, and that
+ * call site is NOT the same situation as launch even though the code path is
+ * shared. At launch, `innerApi` is reliably still null here — the App-level
+ * launch effect resolves `restoreSession()`'s first `await` before
+ * `TabbedArea`'s nested dockview has even mounted, so this falls into the
+ * "stash as pending" branch below and `TabbedArea.onReady` applies `fromJSON`
+ * before its own reconciler effect has ever run for that mount. If that
+ * `fromJSON` call throws (a corrupt/incompatible blob), the reconciler's
+ * *first-ever* run for this mount happens right after and builds the default
+ * flat layout for whatever `fromJSON` didn't manage to create — the "swallow
+ * the error" comment below is describing that recovery.
+ *
+ * On a switch, `TabbedArea` never unmounts, so there is no "first-ever"
+ * reconciler run left to lean on — it's been converging tabs → panels the
+ * whole time `restoreSession` was reconnecting, and won't run again unless
+ * `tabs` itself changes, which a layout restore doesn't do. `fromJSON` already
+ * clears the dockview before rebuilding (dockview-core's own behaviour, not
+ * something this module needs to do), so it can't collide with panels the
+ * reconciler already added — but if it throws partway through, the dockview
+ * is left genuinely empty with nothing left to repair it. `syncTabPanels`
+ * (also used by the reconciler itself) rebuilds the flat layout directly in
+ * that case, so a bad geometry blob degrades to "tabs came back, just not
+ * split" instead of an empty workspace.
  */
 export async function hydrateWorkspaceLayout(): Promise<void> {
   if (!isMainWindow()) return;
@@ -354,9 +402,9 @@ export async function hydrateWorkspaceLayout(): Promise<void> {
     setPendingInternalLayout(layout);
     const innerApi = getInnerDockviewApi();
     if (innerApi) {
-      // Already mounted (the common case — TabbedArea mounts at boot). Consume
-      // the pending blob ourselves so a future onReady can't replay a stale
-      // one, apply it, and prune orphans.
+      // Already mounted — an environment switch, not launch (see the doc
+      // comment above). Consume the pending blob ourselves so a future
+      // onReady can't replay a stale one.
       setPendingInternalLayout(null);
       try {
         innerApi.fromJSON(layout as Parameters<typeof innerApi.fromJSON>[0]);
@@ -366,6 +414,11 @@ export async function hydrateWorkspaceLayout(): Promise<void> {
         }
       } catch (err) {
         console.warn("[persistedTabs] workspace layout restore failed:", err);
+        // `fromJSON`'s own internal clear() already emptied the dockview, and
+        // nothing else is going to rebuild it (see the doc comment above) — do
+        // it ourselves so a bad/stale geometry blob degrades to "tabs came
+        // back, just not split" instead of an empty workspace.
+        syncTabPanels(innerApi, useTabs.getState().tabs);
       }
     }
     // If not mounted yet, the blob stays pending: `TabbedArea.onReady` replays

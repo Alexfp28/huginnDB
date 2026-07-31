@@ -82,6 +82,7 @@ import {
   registerInnerDockviewApi,
   clearInnerDockviewApi,
   consumePendingInternalLayout,
+  syncTabPanels,
 } from "@/lib/dockview";
 import { scheduleSaveActive } from "@/stores/persistedTabs";
 import { cn } from "@/lib/utils";
@@ -870,47 +871,13 @@ export function TabbedArea(_props: Props) {
 
   // Reconcile the dockview panels with the store: add panels for new tabs,
   // remove panels for closed ones. This is the only place panels are
-  // added/removed, so the flow is strictly store → dockview.
+  // added/removed during ordinary use, so the flow is strictly store →
+  // dockview. `hydrateWorkspaceLayout` (environment switch) also drives panel
+  // creation directly, via the same `syncTabPanels` helper — see its comment
+  // for why that path can't just wait for this effect to converge.
   useEffect(() => {
     if (!api) return;
-    for (const tab of tabs) {
-      if (api.getPanel(tab.id)) continue;
-      let params: Record<string, unknown>;
-      if (tab.kind === "table") {
-        params = {
-          connectionId: tab.connectionId,
-          schema: tab.schema,
-          table: tab.table,
-        };
-      } else if (tab.kind === "structure") {
-        params = {
-          tabId: tab.id,
-          connectionId: tab.connectionId,
-          schema: tab.schema,
-          table: tab.table,
-          mode: tab.structureMode ?? "edit",
-        };
-      } else if (tab.kind === "view") {
-        params = {
-          tabId: tab.id,
-          connectionId: tab.connectionId,
-          schema: tab.schema,
-          view: tab.view,
-          mode: tab.viewMode ?? "edit",
-        };
-      } else {
-        params = { tabId: tab.id, connectionId: tab.connectionId };
-      }
-      api.addPanel({
-        id: tab.id,
-        component: tab.kind,
-        params,
-      });
-    }
-    const live = new Set(tabs.map((t) => t.id));
-    for (const panel of api.panels) {
-      if (!live.has(panel.id)) api.removePanel(panel);
-    }
+    syncTabPanels(api, tabs);
   }, [api, tabs]);
 
   // Mirror the store's active tab into dockview (e.g. when a tab is opened

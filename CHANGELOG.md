@@ -165,6 +165,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Switching environments still didn't bring back which tabs were open, which
+  one had focus, or the split layout, even after the teardown/rebuild fix
+  below.** That fix only covered the debounced tab/layout saves routed through
+  `scheduleSave`/`scheduleSaveActive`. A sibling path wasn't covered:
+  `switchTo`'s teardown loop calls `useConnections.disconnect()` for each
+  outgoing connection, and `disconnect()` fires `persistLaunchState()` itself
+  — fire-and-forget, never awaited by the loop — capturing whatever
+  `useUi`/`useTabs` hold *at that instant*, which by then is the nulled-out
+  focus/active-tab/folds/filter state `switchTo` had already cleared before
+  the loop started. `switchTo` re-saves the real, captured-before-teardown
+  values right after the loop, but that write and the loop's fire-and-forget
+  ones are unrelated, unawaited promises with no ordering guarantee between
+  them: one straggler resolving after the real re-save silently overwrote it
+  with nulls, and if it resolved after the environment pointer had already
+  flipped, it corrupted the *incoming* environment's launch state instead —
+  which is what made the active tab and focus disappear on a switch even
+  though the underlying per-connection tab data was saved correctly.
+  `persistLaunchState()` now checks the same `saveSuspended` flag the earlier
+  fix introduced, so it's a no-op for the same window the tab/layout saves are
+  already blocked in, and the single corrective write always wins.
+
+  Separately hardened the workspace-layout restore itself for the same
+  environment-switch case: `TabbedArea`'s dockview never unmounts across a
+  switch (unlike at launch, where `fromJSON` runs before the panel reconciler
+  has ever fired for that mount and a failed restore is naturally cleaned up
+  by the reconciler's first run right after). On a switch there's no such
+  "first run" left to lean on, so a `fromJSON` failure — which leaves the
+  dockview empty, since `fromJSON` clears it before rebuilding — used to have
+  nothing left to repair it. The panel-creation logic the reconciler uses is
+  now shared (`syncTabPanels` in `src/lib/dockview.ts`) so this path can
+  rebuild the flat tabbed layout directly on a restore failure, instead of
+  leaving the workspace blank.
+
 - **Switching environments could silently wipe the tabs you'd open in the one
   you were returning to.** `2299f40` fixed this once already for the most
   direct case — emptying `useTabs` on the way out woke the per-connection
