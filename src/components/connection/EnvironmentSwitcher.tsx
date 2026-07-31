@@ -1,5 +1,8 @@
 /**
- * Topbar dropdown for switching, creating, renaming and deleting environments.
+ * Status-bar dropdown for switching, creating, renaming and deleting
+ * environments. Lives in the bottom-left corner, next to `StatusConnections`,
+ * so both "what's in play" controls sit together rather than splitting one
+ * into the topbar and one into the status bar.
  *
  * Rendered only in the main window: an environment scopes `tab_state.json`,
  * which secondary "New window" instances never touch (gotcha #8), so offering
@@ -11,7 +14,7 @@
  * leaving the user clicking again mid-teardown.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Building2,
@@ -81,9 +84,17 @@ export const ENV_ICONS = {
 export type EnvIconKey = keyof typeof ENV_ICONS;
 
 /** Render an environment's icon, or nothing when unset/unrecognised. */
-export function EnvIcon({ icon, className }: { icon: string | null; className?: string }) {
+export function EnvIcon({
+  icon,
+  className,
+  style,
+}: {
+  icon: string | null;
+  className?: string;
+  style?: CSSProperties;
+}) {
   const Cmp = icon ? ENV_ICONS[icon as EnvIconKey] : undefined;
-  return Cmp ? <Cmp className={className} /> : null;
+  return Cmp ? <Cmp className={className} style={style} /> : null;
 }
 
 interface EnvironmentDraft {
@@ -149,31 +160,39 @@ export function EnvironmentSwitcher() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
+            type="button"
             disabled={switching}
             className={cn(
-              "flex h-6 max-w-[14rem] items-center gap-1.5 rounded px-2 text-xs",
-              "hover:bg-accent disabled:opacity-60",
+              "flex max-w-[10rem] items-center gap-1.5 rounded-sm px-1 py-0.5 outline-none transition-colors",
+              "hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60",
             )}
             title={t("environments.switcherTooltip")}
           >
             {switching ? (
-              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
             ) : active.icon ? (
               // The active environment's own icon replaces the generic one, so
               // the trigger is identifiable at a glance without reading it.
               <EnvIcon
                 icon={active.icon}
-                className="h-3.5 w-3.5 shrink-0"
+                className="h-3 w-3 shrink-0"
+                style={active.color ? { color: active.color } : undefined}
                 />
             ) : (
-              <Layers className="h-3.5 w-3.5 shrink-0" />
+              <Layers
+                className="h-3 w-3 shrink-0"
+                style={active.color ? { color: active.color } : undefined}
+              />
             )}
-            <span className="truncate">
+            <span
+              className="truncate"
+              style={active.color ? { color: active.color } : undefined}
+            >
               {environmentLabel(active, defaultName)}
             </span>
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuContent side="top" align="start" className="w-64">
           {ordered.map((env) => {
             const isActive = env.id === activeId;
             return (
@@ -199,8 +218,12 @@ export function EnvironmentSwitcher() {
                 <EnvIcon
                   icon={env.icon}
                   className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                  style={env.color ? { color: env.color } : undefined}
                 />
-                <span className="min-w-0 flex-1 truncate">
+                <span
+                  className="min-w-0 flex-1 truncate"
+                  style={env.color ? { color: env.color } : undefined}
+                >
                   {environmentLabel(env, defaultName)}
                 </span>
                 <span

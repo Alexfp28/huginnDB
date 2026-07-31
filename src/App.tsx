@@ -53,7 +53,6 @@ import { FileMenu } from "@/components/menus/FileMenu";
 import { WindowMenu } from "@/components/menus/WindowMenu";
 import { ViewMenu } from "@/components/menus/ViewMenu";
 import { HelpMenu } from "@/components/menus/HelpMenu";
-import { EnvironmentSwitcher } from "@/components/connection/EnvironmentSwitcher";
 import { ConnectionsTree } from "@/components/connection/ConnectionsTree";
 import { TabbedArea } from "@/components/shell/TabbedArea";
 import { StatusBar } from "@/components/shell/StatusBar";
@@ -781,8 +780,6 @@ export default function App() {
           <WindowMenu />
           <ViewMenu />
           <HelpMenu />
-          <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-          <EnvironmentSwitcher />
 
           {/* Centred breadcrumb — absolutely positioned so it stays in the
               middle of the bar regardless of action button widths. */}

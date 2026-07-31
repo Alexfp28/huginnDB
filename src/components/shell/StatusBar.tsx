@@ -18,6 +18,7 @@ import { usePreferences, selectGridPrefs } from "@/stores/preferences";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
 import { useUi } from "@/stores/ui";
 import { StatusConnections } from "@/components/connection/StatusConnections";
+import { EnvironmentSwitcher } from "@/components/connection/EnvironmentSwitcher";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -64,6 +65,8 @@ export function StatusBar() {
     <div className="flex h-7 items-center justify-between border-t border-border bg-card/60 px-2 text-[11px] text-muted-foreground">
       {/* Left — connections + query/selection stats */}
       <div className="flex items-center gap-2">
+        <EnvironmentSwitcher />
+        <Sep />
         <StatusConnections />
 
         {selection && selection.count > 0 ? (
