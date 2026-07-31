@@ -57,6 +57,8 @@ import {
 } from "dockview-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTabs } from "@/stores/tabs";
+import { useStoreWithEqualityFn } from "zustand/traditional";
+import type { AppTab } from "@/types";
 import { useUi } from "@/stores/ui";
 import { usePreferences } from "@/stores/preferences";
 import { useConnections } from "@/stores/connections";
@@ -214,10 +216,46 @@ function accentBoxShadow(style: TabAccentStyle, color: string): string {
   }
 }
 
+/**
+ * Custom equality for `WorkspaceTab`'s `tabs` subscription: only the fields
+ * this component's render actually depends on (id/connectionId/kind/title
+ * for the label + collision check, color/pinned for the accent + pin icon).
+ * `useTabs` mutates `tabs` immutably on EVERY store action — including
+ * `setViewState`, which `TableDataTab` fires on nearly every filter/sort/
+ * search change — so a bare reference-equality subscription re-rendered
+ * every open tab's header on every keystroke-driven query elsewhere, not
+ * just on tab open/close/rename. Comparing by these fields instead means a
+ * `viewState`/`lastQueryStats`/`initialFilters` change on some other tab no
+ * longer touches this one.
+ */
+function tabsRelevantEqual(a: AppTab[], b: AppTab[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.id !== y.id ||
+      x.connectionId !== y.connectionId ||
+      x.kind !== y.kind ||
+      x.title !== y.title ||
+      x.color !== y.color ||
+      x.pinned !== y.pinned
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const { t } = useTranslation();
   const id = props.api.id;
-  const tabs = useTabs((s) => s.tabs);
+  const tabs = useStoreWithEqualityFn(
+    useTabs,
+    (s) => s.tabs,
+    tabsRelevantEqual,
+  );
   // Derive active state from the store (the source of truth), NOT from
   // `props.api.isActive`: dockview does not re-render this custom tab on an
   // active-panel change, so reading `isActive` at render time goes stale and

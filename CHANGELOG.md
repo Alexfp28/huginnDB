@@ -188,6 +188,69 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   corners, and any call site that already passed its own `max-h-*` keeps
   winning over the default.
 
+- **MySQL (and Postgres) table browsing got measurably slower after the
+  row-count split in 1.11.0 (issue #77), even on tables far smaller than the
+  MongoDB collections that same change was meant to speed up.** Splitting the
+  count off the data page turned every table open / filter change into *two*
+  concurrent backend requests (`fetch_table_data` + `count_table_rows`)
+  instead of one. MongoDB's driver defaults to a ~100-connection pool, so the
+  doubled concurrency was free; MySQL and Postgres pools cap at
+  `MAX_CONNECTIONS_SERVER = 5` (`pool.rs`, deliberately small for "a couple of
+  in-flight queries at once"), so with more than a couple of tabs open the
+  pool saturated and later requests queued for a free connection — read as
+  "MySQL got slower", when profiling the count query itself (MySQL
+  `information_schema.TABLE_ROWS`) showed single-digit millisecond times.
+  `TableDataTab` now sequences the two: `refreshCount` waits for the sibling
+  `fetchData` call to release its connection before requesting one of its own,
+  restoring one-connection-in-flight-per-tab without reintroducing the
+  original issue #77 regression (the data page still renders the instant
+  `fetchTableData` resolves — `refreshCount` just no longer races it for a
+  connection).
+
+### Performance
+
+- **Clicking a row/cell in the data grid re-rendered every visible row, not
+  just the one(s) that changed — cost that scaled with total visible cells
+  (rows × columns), which is why a 15-column table felt sluggish to click
+  through while a 5-column one didn't at the same row count.** Every
+  interactive grid state (`selectedRowIndex`, `activeCell`, `selectedCell`,
+  `inlineEdit`, `fkEditCell`) lived in `DataGrid` itself, so a single click
+  re-ran the whole render body — every row, every cell, each wrapping its own
+  `<ContextMenu>` — with no `React.memo` boundary anywhere to stop it. Each
+  row's rendering now lives in its own `GridRow`, wrapped in `React.memo` and
+  fed only state already narrowed to "does this concern THIS row" (is this
+  row selected, is the active cell one of mine, is the inline editor mine).
+  Every other row's props come back unchanged, so React skips re-rendering
+  them entirely — a click now costs O(columns) for the one or two rows it
+  actually affects, not O(rows × columns) for the whole page. `DataGrid`'s
+  own locally-declared helpers (`openCellEdit`, `copyToClipboard`, …), which
+  are recreated on every one of its renders, are threaded through a
+  `callbacksRef` (the same live-ref pattern the `columns` cell definitions
+  already used for `fkEditCell`/`inlineEdit`/`selectedCell`) so their
+  identity churn can't itself defeat the new memoization.
+
+- **Opening a table with 10+ other tabs already open on the same connection
+  took ~1900ms instead of ~1ms — not because anything re-fetched, but because
+  loading it re-rendered every other open tab too.** `TableDataTab` subscribed
+  to the *entire* per-connection `columns` map
+  (`s.byConnection[connectionId]?.columns`) instead of just its own table's
+  entry, and `loadColumns` (`stores/schema.ts`) writes a new map reference on
+  every table load — any table, any tab. With dockview keeping every opened
+  tab's `TableDataTab` (and its `DataGrid`) mounted for the tab's lifetime,
+  loading table #11 forced a full re-render pass across the 10 already-open,
+  already-loaded tabs too, even though none of them actually refetched (their
+  own cached entry was untouched). `TableDataTab` now subscribes to
+  `columns[tableKey]` directly, so a sibling tab's first load no longer
+  touches it. A related but smaller contributor in the same family:
+  `WorkspaceTab` (the tab-header component, one instance per open tab)
+  subscribed to the *whole* tabs array, so **any** tab mutation — including
+  `setViewState`, which fires on nearly every filter/sort/search edit —
+  re-rendered every tab's header, not just the one that changed; it now
+  compares tabs by the handful of fields its render actually reads
+  (id/connectionId/kind/title/color/pinned) via `zustand/traditional`'s
+  `useStoreWithEqualityFn`, so unrelated tabs' `viewState` churn no longer
+  touches it either.
+
 ## [1.11.0] — 2026-07-24
 
 ### Added

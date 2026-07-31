@@ -161,7 +161,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // disconnect) so the status bar never reads a stale count.
   useEffect(() => () => clearSelection(tabId), [tabId, clearSelection]);
   const loadColumns = useSchema((s) => s.loadColumns);
-  const columnsBySchema = useSchema((s) => s.byConnection[connectionId]?.columns);
   // Resolve the driver for this connection — needed by the DataGrid so
   // its "Copy as SQL …" snippets use the right identifier quoting
   // (backticks for MySQL, double quotes for PG/SQLite). Multi-DB
@@ -178,7 +177,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     return undefined;
   });
   const tableKey = `${schema ?? ""}.${table}`;
-  const cols = columnsBySchema?.[tableKey];
+  // Subscribe to THIS tab's own column entry, not the whole per-connection
+  // `columns` map. `loadColumns` (schema.ts) writes a new map reference on
+  // every table load (any table, any tab), so subscribing to the map made
+  // every already-open table tab on the connection re-render whenever a
+  // sibling tab loaded its columns — harmless on its own (this entry stays
+  // reference-stable so the effect below still no-ops), but with several
+  // tabs open on the same connection each one paid a full re-render for
+  // every unrelated tab's first load, which is what made opening tab N+1
+  // feel like it was reloading everything instead of just the new table.
+  const cols = useSchema((s) => s.byConnection[connectionId]?.columns[tableKey]);
 
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -375,6 +383,23 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // params still go through.
   const inflightKeyRef = useRef<string | null>(null);
 
+  // The most recently dispatched `fetchData()` call, so `refreshCount` (below)
+  // can wait for it to release its pooled connection before asking for one of
+  // its own. `fetchTableData` and `countTableRows` used to fire as two
+  // genuinely concurrent requests on every table open / predicate change —
+  // fine for MongoDB's ~100-connection default pool, but MySQL/Postgres cap
+  // at `MAX_CONNECTIONS_SERVER = 5` (`pool.rs`), sized for "a couple of
+  // in-flight queries at once". Doubling the concurrent connection demand per
+  // open tab saturated that pool with more than a couple of tabs open, which
+  // read as "MySQL got slower" even on small tables — a pool-contention
+  // regression, not a per-query one (confirmed by profiling: the MySQL
+  // estimate query itself runs in single-digit ms). Sequencing restores the
+  // pre-regression "1 connection in flight per tab" behaviour without giving
+  // up the original point of the split — the data page still renders the
+  // moment `fetchTableData` resolves, `refreshCount` just no longer races it
+  // for a connection.
+  const fetchPromiseRef = useRef<Promise<void> | null>(null);
+
   const fetchData = useCallback(async () => {
     const reqKey = JSON.stringify({
       connectionId,
@@ -442,6 +467,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     if (countInflightRef.current === countKey) return;
     countInflightRef.current = countKey;
     setTotal(null);
+    // Let the sibling data fetch (if any) release its pooled connection
+    // first — see `fetchPromiseRef`'s comment above `fetchData`. A failed
+    // data fetch shouldn't block the count from trying anyway.
+    await fetchPromiseRef.current?.catch(() => {});
     try {
       const c = await api.countTableRows({
         connectionId,
@@ -466,7 +495,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   }, [cols, connectionId, schema, table, loadColumns]);
 
   useEffect(() => {
-    fetchData();
+    // Stash the promise before `refreshCount`'s effect (declared next, runs
+    // right after this one within the same commit) reads it.
+    fetchPromiseRef.current = fetchData();
   }, [fetchData]);
 
   useEffect(() => {
