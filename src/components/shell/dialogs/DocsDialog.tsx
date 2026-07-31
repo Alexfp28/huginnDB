@@ -12,7 +12,7 @@ import { BookOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { DOCS, getDoc, getDocBody } from "@/lib/docs";
 import { useDocsDialog } from "@/stores/docsDialog";
-import { Markdown } from "@/components/Markdown";
+import { Markdown } from "@/components/shell/Markdown";
 import { cn } from "@/lib/utils";
 import {
   Dialog,

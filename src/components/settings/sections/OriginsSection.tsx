@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import { FolderSync, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useOriginSync } from "@/stores/originSync";
-import { VanishedOriginNotice } from "@/components/VanishedOriginNotice";
+import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

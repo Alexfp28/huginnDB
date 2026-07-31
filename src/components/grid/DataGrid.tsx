@@ -62,10 +62,10 @@ import type {
   QueryResult,
   SortSpec,
 } from "@/types";
-import { BitInput } from "@/components/BitInput";
-import { CellEditor } from "@/components/CellEditor";
-import { CellInput } from "@/components/CellInput";
-import { CellPreview } from "@/components/CellPreview";
+import { BitInput } from "@/components/grid/BitInput";
+import { CellEditor } from "@/components/grid/dialogs/CellEditor";
+import { CellInput } from "@/components/grid/CellInput";
+import { CellPreview } from "@/components/grid/CellPreview";
 import { FkCombobox } from "@/components/ui/fk-combobox";
 import {
   ContextMenu,

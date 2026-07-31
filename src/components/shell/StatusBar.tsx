@@ -17,7 +17,7 @@ import { useGridSelection } from "@/stores/gridSelection";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
 import { useUi } from "@/stores/ui";
-import { StatusConnections } from "@/components/StatusConnections";
+import { StatusConnections } from "@/components/connection/StatusConnections";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -109,7 +109,7 @@ export function StatusBar() {
           <button
             type="button"
             onClick={() => {
-              import("@/components/CommandPalette").then((m) =>
+              import("@/components/shell/CommandPalette").then((m) =>
                 m.useCommandPalette.getState().toggle(),
               );
             }}

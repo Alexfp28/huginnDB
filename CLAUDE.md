@@ -34,8 +34,10 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 
 ```
 src/                       frontend
-  components/              feature components (flat, ~13 files)
+  components/              feature components, grouped by domain (each domain gets an optional
+                           dialogs/ subfolder for its modal-only components — see gotcha #28)
     ui/                    shadcn primitives
+    common/, connection/, schema/, query/, grid/, menus/, shell/, settings/
   stores/                  Zustand stores (one per domain)
   lib/                     tauri wrapper, themes, constants, monaco-setup
   types.ts                 shared TS types mirroring Rust DTOs
@@ -118,6 +120,8 @@ These bit us during the first sessions. Don't repeat them.
     - **`useEnvironments.switchTo` order is load-bearing** (`src/stores/environments.ts`): flush the outgoing session while the backend still points at it → disconnect every pool → **re-save the outgoing `launch` state from the set captured *before* the teardown** → `set_active_environment` → clear the tab store → `restoreSession()`. That third step is not redundant: `useConnections.disconnect` persists the launch state as it goes, so after the loop the outgoing environment believes nothing was open and returning to it would restore an empty session. The last write wins, and it has to be ours.
     - `restoreSession()` is shared with the `App.tsx` launch effect on purpose — entering an environment is one operation, and its ordering (reconnect → layout → focus, gotchas #8 and #10) is too subtle to maintain in two places.
 
+28. **`src/components/` is grouped by domain, each with an optional `dialogs/` subfolder — this reverses the earlier "flat layout is fine" call.** That call was made at ~13 files; by the time it was revisited the directory held 46. The split is two axes: functional domain (`connection/`, `schema/`, `query/`, `grid/`, `menus/`, `shell/`, plus `settings/` and the pre-existing `ui/`), and within a domain, whether the component's main export is a single-purpose modal (`dialogs/`) or not (tabs, trees, panels, bars stay at the domain root). `common/` is reserved for the two components that are genuinely cross-domain leaves (`DriverBadge`: used by ad-hoc/connection-CRUD/tree/status-bar/workspace-picker; `VanishedOriginNotice`: used by the tree, status bar, and the settings Origins section) — don't add to it casually; a component used by 2+ call sites *within the same domain* just lives in that domain, not in `common/`. `CellEditor.tsx` is the one deliberately borderline case: it's dual-mode (a modal by default export, plus `CellEditorBody` re-exported for `SideEditorPanel`'s docked usage) and was filed under `grid/dialogs/` because the modal is its primary reason to exist. Every internal cross-import in `components/` — and `App.tsx`'s ~22 direct imports — already used the `@/components/...` alias (never relative) before this move, so relocating a file never required touching that file's own imports, only the imports *of* it; that invariant is why the move was a mechanical rename + specifier rewrite with zero logic changes, and it's worth preserving going forward (don't introduce relative cross-file imports at the `components/` top level, even between siblings in the same domain folder — keep using the alias, matching everything outside `settings/sections/`, which is the one pre-existing exception).
+
 ## Workflow
 
 ```powershell
@@ -174,7 +178,6 @@ roadmaps for two subsystems are tracked separately and still current:
 
 ## Explicitly out of scope (don't propose unless asked)
 
-- Reorganising components into per-feature folders. Flat layout is fine at this size.
 - Adding a linter beyond the existing `tsc --noEmit` + `cargo fmt` / `cargo clippy` advice in CONTRIBUTING.
 - AI features (autocomplete suggestions via LLM, "explain this query", etc.).
 - Cloud sync of profiles or saved queries.

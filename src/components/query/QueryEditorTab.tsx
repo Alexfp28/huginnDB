@@ -40,12 +40,12 @@ import { useTabs } from "@/stores/tabs";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco-themes";
 import { useQueryHistory } from "@/stores/queryHistory";
-import { useCommandPalette } from "@/components/CommandPalette";
-import { useTabSwitcher } from "@/components/TabSwitcher";
+import { useCommandPalette } from "@/components/shell/CommandPalette";
+import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { formatComboForDisplay, getBinding } from "@/lib/keybindings";
 import { registerEditorActionRedispatch } from "@/lib/monacoKeybindings";
 import type { BatchResult, DatabaseInfo, QueryResult } from "@/types";
-import { DataGrid } from "@/components/DataGrid";
+import { DataGrid } from "@/components/grid/DataGrid";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -54,7 +54,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SaveQueryDialog } from "@/components/SaveQueryDialog";
+import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { splitSql } from "@/lib/sqlSplit";
 import { keywordsFor } from "@/lib/sqlKeywords";
 import { buildCompletions } from "@/lib/sqlCompletions";

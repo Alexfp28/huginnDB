@@ -33,8 +33,8 @@ import { connectAndWarm } from "@/lib/connectFlow";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { DriverBadge, driverLabel } from "@/components/DriverBadge";
-import { EnvIcon } from "@/components/EnvironmentSwitcher";
+import { DriverBadge, driverLabel } from "@/components/common/DriverBadge";
+import { EnvIcon } from "@/components/connection/EnvironmentSwitcher";
 import type { ConnectionProfile, Environment } from "@/types";
 
 /**
@@ -120,6 +120,21 @@ function ConnectionsPane() {
   const active = useConnections((s) => s.active);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
+  // Same per-environment subset `ConnectionsTree` applies (`useUi.visibleConnections`):
+  // recommending a connection the active environment's filter hides would make
+  // the filter pointless the moment the workspace is empty.
+  const visibleConnectionIds = useUi((s) => s.visibleConnections);
+  const visibleSet = useMemo(
+    () =>
+      visibleConnectionIds && visibleConnectionIds.length > 0
+        ? new Set(visibleConnectionIds)
+        : null,
+    [visibleConnectionIds],
+  );
+  const visibleProfiles = useMemo(
+    () => profiles.filter((p) => !visibleSet || visibleSet.has(p.id)),
+    [profiles, visibleSet],
+  );
 
   const [query, setQuery] = useState("");
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -128,13 +143,13 @@ function ConnectionsPane() {
   const matches = useMemo(
     () =>
       needle
-        ? profiles.filter(
+        ? visibleProfiles.filter(
             (p) =>
               p.name.toLowerCase().includes(needle) ||
               (p.group ?? "").toLowerCase().includes(needle),
           )
-        : profiles,
-    [profiles, needle],
+        : visibleProfiles,
+    [visibleProfiles, needle],
   );
   const buckets = useMemo(() => bucketByGroup(matches), [matches]);
 
@@ -187,7 +202,7 @@ function ConnectionsPane() {
         ) : (
           <div className="flex flex-col gap-4">
             {buckets.ungrouped.length > 0 && (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
                 {buckets.ungrouped.map((p) => (
                   <ConnectionCard key={p.id} p={p} />
                 ))}
@@ -198,7 +213,7 @@ function ConnectionsPane() {
                 <div className="px-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {name}
                 </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
                   {items.map((p) => (
                     <ConnectionCard key={p.id} p={p} />
                   ))}
@@ -263,7 +278,7 @@ function EnvironmentsPane() {
           {t("commandPalette.noResults")}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
           {matches.map((env) => (
             <PickerCard
               key={env.id}

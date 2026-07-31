@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CellEditorBody } from "@/components/CellEditor";
+import { CellEditorBody } from "@/components/grid/dialogs/CellEditor";
 import { useCellEditor, type CellEditorTarget } from "@/stores/cellEditor";
 import { useTabs } from "@/stores/tabs";
 import { detectLanguage, type ContentLanguage } from "@/lib/detectContentType";

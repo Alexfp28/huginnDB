@@ -51,8 +51,8 @@ import type {
   RowValue,
   SortSpec,
 } from "@/types";
-import { DataGrid } from "@/components/DataGrid";
-import { AdvancedFilterDialog } from "@/components/AdvancedFilterDialog";
+import { DataGrid } from "@/components/grid/DataGrid";
+import { AdvancedFilterDialog } from "@/components/grid/dialogs/AdvancedFilterDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

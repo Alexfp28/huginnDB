@@ -33,6 +33,7 @@ import {
   ListFilter,
   Loader2,
   Plug,
+  PlugZap,
   RotateCw,
   Search,
   X,
@@ -40,13 +41,13 @@ import {
 import { useConnections } from "@/stores/connections";
 import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
+import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
-import { selectUiPrefs, usePreferences } from "@/stores/preferences";
 import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
 import { connectAndWarm, disconnectAndClean } from "@/lib/connectFlow";
 import { persistLaunchState } from "@/stores/persistedTabs";
 import { bucketByGroup, cn } from "@/lib/utils";
-import { DriverBadge } from "@/components/DriverBadge";
+import { DriverBadge } from "@/components/common/DriverBadge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,14 +61,15 @@ import {
 import {
   ConnectionActionsMenu,
   SchemaExplorer,
-} from "@/components/SchemaExplorer";
-import { VanishedOriginMark } from "@/components/VanishedOriginNotice";
+} from "@/components/schema/SchemaExplorer";
+import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import type { ConnectionProfile } from "@/types";
 
 export function ConnectionsTree() {
   const { t } = useTranslation();
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
+  const disconnect = useConnections((s) => s.disconnect);
   const lostConnections = useConnectionHealth((s) => s.lost);
   // Whole map, so a row can show that its schema is being fetched. The explorer's
   // spinning refresh button carried that signal before its icon strip moved to
@@ -75,6 +77,8 @@ export function ConnectionsTree() {
   // collapsed. `MultiDbExplorer` already subscribes this broadly for the same
   // reason — the lookups are cheap and the map is replaced, not mutated.
   const schemaByConnection = useSchema((s) => s.byConnection);
+  const dropSchema = useSchema((s) => s.drop);
+  const closeTabsForConnection = useTabs((s) => s.closeForConnection);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
   // The folded set (see `useUi`): a row follows its pool unless the user said
@@ -91,9 +95,11 @@ export function ConnectionsTree() {
   const groupCollapse = useConnectionGroupCollapse();
 
   // DataGrip-style subset of connections to show, one level up from the
-  // per-connection `visible_databases` (SchemaExplorer.tsx). Lives in prefs
-  // rather than on a profile since it spans every connection, not one.
-  const visibleConnectionIds = usePreferences(selectUiPrefs).visibleConnections;
+  // per-connection `visible_databases` (SchemaExplorer.tsx). Lives in `useUi`,
+  // persisted per environment via `LaunchState.visibleConnections` — not in
+  // prefs, so switching environments doesn't drag one's filter into another's
+  // tree.
+  const visibleConnectionIds = useUi((s) => s.visibleConnections);
   const visibleSet = useMemo(
     () =>
       visibleConnectionIds && visibleConnectionIds.length > 0
@@ -154,6 +160,22 @@ export function ConnectionsTree() {
     if (selected === p.id) setSelected(null);
     // The fold is left in place deliberately: it can only mean "show folded when
     // this comes back", never "open over a subtree that isn't there".
+  }
+
+  /** Tear down every live pool and clear the selected connection. Lives here
+   *  (rather than the File menu, where it used to sit next to the now-removed
+   *  connection list) since it's a bulk action over exactly what this tree shows. */
+  async function handleDisconnectAll() {
+    for (const id of Array.from(active)) {
+      try {
+        await disconnect(id);
+        dropSchema(id);
+        closeTabsForConnection(id);
+      } catch {
+        // Continue on partial failures so one bad pool doesn't block the rest.
+      }
+    }
+    setSelected(null);
   }
 
   /** Tear the dead pool down and reopen it, mirroring the status bar's affordance. */
@@ -321,10 +343,22 @@ export function ConnectionsTree() {
   return (
     <div className="flex h-full flex-col">
       <div className="shrink-0 px-2 pb-1 pt-2">
-        {/* The visibility picker acts on the whole tree, not one row, so it
-            can't live in a per-connection context menu — it gets its own
-            action above the filter box instead. */}
-        <div className="mb-1.5 flex justify-end">
+        {/* Tree-wide actions, above the filter box: bulk-disconnect on the
+            left, the visibility picker (which acts on the whole tree, not
+            one row, so it can't live in a per-connection context menu) on
+            the right. */}
+        <div className="mb-1.5 flex items-center justify-between gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={active.size === 0}
+            onClick={() => void handleDisconnectAll()}
+            className="h-6 gap-1 px-2 text-[11px]"
+          >
+            <PlugZap className="h-3 w-3" />
+            {t("menu.file.disconnectAll")}
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -392,12 +426,13 @@ export function ConnectionsTree() {
 
 /**
  * DataGrip-style "choose which connections to show" picker, one level up
- * from `DatabaseVisibilityDialog` (SchemaExplorer.tsx). Persisted in
- * `prefs.ui.visibleConnections` rather than on a profile, since it spans
- * every saved connection rather than one. "All selected" stores `null` so a
- * newly-saved connection stays visible by default. Save is disabled with
- * nothing selected — an empty subset would hide the whole tree, which is
- * never what the user wants.
+ * from `DatabaseVisibilityDialog` (SchemaExplorer.tsx). Persisted per
+ * environment via `LaunchState.visibleConnections` rather than on a profile,
+ * since it spans every saved connection rather than one — and
+ * rather than in global prefs, so the filter doesn't follow the user across
+ * environments. "All selected" stores `null` so a newly-saved connection
+ * stays visible by default. Save is disabled with nothing selected — an
+ * empty subset would hide the whole tree, which is never what the user wants.
  */
 function ConnectionVisibilityDialog({
   profiles,
@@ -448,7 +483,8 @@ function ConnectionVisibilityDialog({
     const chosen = profiles.filter((p) => sel.has(p.id)).map((p) => p.id);
     // "All" → null so a connection saved later stays visible automatically.
     const value = chosen.length === profiles.length ? null : chosen;
-    usePreferences.getState().updateUi({ visibleConnections: value });
+    useUi.getState().setVisibleConnections(value);
+    void persistLaunchState(Array.from(useConnections.getState().active));
     onClose();
   };
 

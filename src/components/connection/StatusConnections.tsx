@@ -1,8 +1,9 @@
 /**
- * Status-bar connections control. Replaces the old comma-joined list of
- * active connection names with a dropdown: active pools at the top (click to
- * jump to that workspace, or disconnect), saved-but-idle profiles below for
- * quick-connect. The trigger shows a brand-coloured dot + a live count.
+ * Status-bar connections control. A dropdown listing the currently active
+ * pools (click to jump to that workspace, or disconnect) — the trigger shows
+ * a brand-coloured dot + a live count. The full saved-profile browsing/quick
+ * -connect list lives in the Schema panel's `ConnectionsTree` (#107) now, so
+ * this control only surfaces what's *already* connected, not every profile.
  *
  * Connect / disconnect mirror the FileMenu flow (best-effort connect with the
  * keychain-stored secret; disconnect tears down the schema cache + tabs) so
@@ -11,34 +12,24 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  Plug,
-  RotateCw,
-  X,
-} from "lucide-react";
+import { Check, ChevronUp, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { useConnections } from "@/stores/connections";
 import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
-import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
-import { DriverBadge } from "@/components/DriverBadge";
-import { VanishedOriginMark } from "@/components/VanishedOriginNotice";
+import { DriverBadge } from "@/components/common/DriverBadge";
+import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { driverMismatchHint } from "@/lib/driver";
-import { bucketByGroup, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
 
 export function StatusConnections() {
@@ -54,25 +45,14 @@ export function StatusConnections() {
   const closeTabs = useTabs((s) => s.closeForConnection);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
-  const groupCollapse = useConnectionGroupCollapse();
 
-  // Split profiles into active / idle. Both inputs are reference-stable, so
-  // deriving here (rather than via a store selector) honours the Zustand rule.
-  const { activeProfiles, idleProfiles } = useMemo(() => {
-    const a: ConnectionProfile[] = [];
-    const idle: ConnectionProfile[] = [];
-    for (const p of profiles) (active.has(p.id) ? a : idle).push(p);
-    return { activeProfiles: a, idleProfiles: idle };
-  }, [profiles, active]);
-
-  // Bucket each section by `group` — a group collapsed here hides it in
-  // both Active and Available, matching a user's expectation that "Acme"
-  // is one thing to fold, not two independent toggles.
-  const activeBuckets = useMemo(
-    () => bucketByGroup(activeProfiles),
-    [activeProfiles],
+  // Just the connected profiles, in whatever order `profiles` already has
+  // them. Reference-stable inputs, so deriving here (rather than via a store
+  // selector) honours the Zustand rule.
+  const activeProfiles = useMemo(
+    () => profiles.filter((p) => active.has(p.id)),
+    [profiles, active],
   );
-  const idleBuckets = useMemo(() => bucketByGroup(idleProfiles), [idleProfiles]);
 
   // The connection currently in focus (a live pool the workspace points at).
   // Drives the trigger label so the active connection is visible at a glance.
@@ -206,45 +186,6 @@ export function StatusConnections() {
     );
   }
 
-  function renderIdleItem(p: ConnectionProfile) {
-    return (
-      <DropdownMenuItem
-        key={p.id}
-        onSelect={() => void handleConnect(p)}
-        className="gap-2"
-      >
-        <Plug className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="flex-1 truncate text-xs">{p.name}</span>
-        <VanishedOriginMark profileId={p.id} />
-        <DriverBadge driver={p.driver} />
-      </DropdownMenuItem>
-    );
-  }
-
-  /** One group's collapsible header, shared by the Active/Available lists. */
-  function GroupHeader({ name, count: n }: { name: string; count: number }) {
-    const collapsed = groupCollapse.isCollapsed(name);
-    return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          groupCollapse.toggle(name);
-        }}
-        className="flex w-full items-center gap-1 px-2 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
-      >
-        {collapsed ? (
-          <ChevronRight className="h-3 w-3 shrink-0" />
-        ) : (
-          <ChevronDown className="h-3 w-3 shrink-0" />
-        )}
-        <span className="truncate">{name}</span>
-        <span className="text-muted-foreground/60">({n})</span>
-      </button>
-    );
-  }
-
   const count = activeProfiles.length;
 
   return (
@@ -292,31 +233,7 @@ export function StatusConnections() {
             {t("statusBar.noConnections")}
           </div>
         ) : (
-          <>
-            {activeBuckets.ungrouped.map(renderActiveItem)}
-            {activeBuckets.groups.map(({ name, items }) => (
-              <div key={name}>
-                <GroupHeader name={name} count={items.length} />
-                {!groupCollapse.isCollapsed(name) && items.map(renderActiveItem)}
-              </div>
-            ))}
-          </>
-        )}
-
-        {idleProfiles.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {t("statusBar.connectionsAvailable")}
-            </div>
-            {idleBuckets.ungrouped.map(renderIdleItem)}
-            {idleBuckets.groups.map(({ name, items }) => (
-              <div key={name}>
-                <GroupHeader name={name} count={items.length} />
-                {!groupCollapse.isCollapsed(name) && items.map(renderIdleItem)}
-              </div>
-            ))}
-          </>
+          activeProfiles.map(renderActiveItem)
         )}
       </DropdownMenuContent>
     </DropdownMenu>

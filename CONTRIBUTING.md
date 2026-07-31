@@ -34,8 +34,16 @@ That launches the Tauri shell with HMR for the React frontend and `cargo` rebuil
 
 ```
 src/                   React + TypeScript frontend
-  components/          UI + feature components
+  components/          Feature components, grouped by domain (each with an optional dialogs/ subfolder for modal-only components)
     ui/                shadcn-style primitives
+    common/            Cross-domain leaf components (DriverBadge, VanishedOriginNotice)
+    connection/        Connection profiles, tree, status
+    schema/            Schema explorer, structure/view/security tabs
+    query/             Query editor, console, saved queries
+    grid/              Data grid + cell editing
+    menus/             Top bar menus (File/Window/View/Help)
+    shell/             App shell: tabs host, status bar, command palette, banners
+    settings/          Settings dialog + its sections/
   stores/              Zustand stores
   lib/                 Tauri command wrappers, helpers, themes, constants
   types.ts             Shared TS types mirroring the Rust DTOs
@@ -106,7 +114,7 @@ Adding support for a fourth driver (MSSQL, ClickHouse, etc.) touches:
 3. `src-tauri/src/db/pool.rs` — URL builder + pool constructor.
 4. `src-tauri/src/db/values.rs` — row → JSON extraction.
 5. `src-tauri/src/commands/schema.rs` — introspection queries.
-6. `src/lib/constants.ts` and `src/components/ConnectionDialog.tsx` — default port + UI.
+6. `src/lib/constants.ts` and `src/components/connection/dialogs/ConnectionDialog.tsx` — default port + UI.
 
 Open an issue first if you're planning this so we can agree on the scope.
 

@@ -1,6 +1,6 @@
 /**
  * Open/close + selected-doc state for the Documentation viewer
- * ({@link ../components/DocsDialog}). Its own tiny store so the Help menu (or
+ * ({@link ../components/shell/dialogs/DocsDialog}). Its own tiny store so the Help menu (or
  * any future entry point) can open it — optionally to a specific doc — without
  * prop-drilling through `App.tsx`. Mirrors `stores/feedbackDialog.ts`.
  */

@@ -52,8 +52,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ExportProfilesDialog } from "@/components/ExportProfilesDialog";
-import { ImportProfilesDialog } from "@/components/ImportProfilesDialog";
+import { ExportProfilesDialog } from "@/components/connection/dialogs/ExportProfilesDialog";
+import { ImportProfilesDialog } from "@/components/connection/dialogs/ImportProfilesDialog";
 import {
   Select,
   SelectContent,
@@ -62,7 +62,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DriverBadge, driverLabel } from "@/components/DriverBadge";
+import { DriverBadge, driverLabel } from "@/components/common/DriverBadge";
 import { api } from "@/lib/tauri";
 import { buildMongoUri, parseMongoUri } from "@/lib/mongoUri";
 import { DEFAULT_PORTS } from "@/lib/constants";

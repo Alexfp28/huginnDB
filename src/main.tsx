@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
-import { DetachedTabWindow } from "./components/DetachedTabWindow";
+import { DetachedTabWindow } from "./components/shell/DetachedTabWindow";
 import "./lib/monaco-setup";
 import "./lib/i18n";
 import "./index.css";

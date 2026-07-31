@@ -1,6 +1,6 @@
 /**
  * Curated registry for the in-app Documentation viewer (Help → Documentation,
- * {@link ../components/DocsDialog}).
+ * {@link ../components/shell/dialogs/DocsDialog}).
  *
  * Each entry bundles a user-facing markdown file from the repo `docs/` folder
  * at build time via Vite's `?raw` import — no network, works offline, mirroring

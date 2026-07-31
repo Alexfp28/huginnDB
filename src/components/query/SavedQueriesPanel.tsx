@@ -11,7 +11,7 @@ import { useSavedQueries, type SavedQuery } from "@/stores/savedQueries";
 import { useTabs } from "@/stores/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SaveQueryDialog } from "@/components/SaveQueryDialog";
+import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 
 export function SavedQueriesPanel({
