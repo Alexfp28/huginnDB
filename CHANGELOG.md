@@ -146,6 +146,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   per filter — every value is one bind, and engines have their own placeholder
   ceilings whose failure mode is an opaque driver error.
 
+- **A new built-in theme, Neon.** A near-black dark theme built around a
+  signature neon green (primary/brand/focus ring), with the rest of the
+  semantic accents (fk, pk/numeric, warning, destructive) picked as neon
+  cyan/amber/pink so the palette reads as one coherent family rather than a
+  single green accent dropped into an otherwise ordinary dark theme.
+
 ### Changed
 
 - **"Go to referenced row" moved from Ctrl/Cmd+click to Alt+click.** The FK
@@ -158,6 +164,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   chord.
 
 ### Fixed
+
+- **Driver logos in `DriverBadge` no longer sit on a hard-coded white/light
+  tile regardless of the active theme.** Every bundled logo is a transparent
+  SVG with no baked-in backing, so the tile now uses the theme's own
+  `--muted` surface colour instead — it blends into dark themes rather than
+  reading as a glaring white square. SQLite is the one exception: its navy
+  brand colour (#003B57) isn't legible against a dark theme's `--muted`, so
+  it keeps a fixed light backing plate.
+
+- **The theme swatch in Preferences → Appearance showed the wrong tone for
+  the two default themes** — a white dot for "HuginnDB Dark" and a near-black
+  one for "HuginnDB Light", the opposite of what each list item's own mode
+  would suggest. It rendered `colors.primary` alone, which is an inverted
+  grayscale tone in those two themes (a near-white button colour for the
+  dark theme, a near-black one for the light theme). The swatch is now split
+  by the theme's own `background` (so mode is visible at a glance) and
+  `brand` (so themes sharing a mode still stay distinguishable).
 
 - **Ctrl/Cmd+click now reliably toggles row selection in the data grid** (#113).
   Three independent causes, all addressed: the FK accelerator swallowed the

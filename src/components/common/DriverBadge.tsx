@@ -4,21 +4,31 @@
  * connections dropdown, the connection manager, and the schema explorer.
  *
  * Logos are bundled locally under `public/image/db/` (simple-icons, brand
- * colours baked in) — no CDN at runtime. The brand marks keep their colours,
- * but the tile they sit on is theme-aware: a plain light tile in light themes
- * and a softened (not pure-white) tile in dark themes, so the darker marks
- * (e.g. SQLite's navy) stay legible without a glaring white square clashing
- * with the dark chrome. The `.dark` class is toggled by `applyTheme`, so the
+ * colours baked in) — no CDN at runtime, and each is a transparent SVG with
+ * no baked-in backing, so the tile is free to use the theme's own surface
+ * colour (`bg-muted`) instead of a hard-coded light/white tile — it now
+ * blends into dark themes instead of sitting on top as a white square.
+ * The one exception is `needsLightBacking`: a logo whose brand colour is too
+ * dark to read against a dark theme's `--muted` (currently only SQLite's
+ * navy, #003B57) still gets a fixed light backing plate so it stays legible
+ * regardless of theme. The `.dark` class is toggled by `applyTheme`, so the
  * `dark:` variants below track the active theme's mode.
  */
 
 import { cn } from "@/lib/utils";
 import type { Driver } from "@/types";
 
-const DRIVER_LOGO: Record<Driver, { src: string; label: string }> = {
+const DRIVER_LOGO: Record<
+  Driver,
+  { src: string; label: string; needsLightBacking?: boolean }
+> = {
   postgres: { src: "/image/db/postgresql.svg", label: "PostgreSQL" },
   mysql: { src: "/image/db/mysql.svg", label: "MySQL" },
-  sqlite: { src: "/image/db/sqlite.svg", label: "SQLite" },
+  sqlite: {
+    src: "/image/db/sqlite.svg",
+    label: "SQLite",
+    needsLightBacking: true,
+  },
   mongodb: { src: "/image/db/mongodb.svg", label: "MongoDB" },
 };
 
@@ -42,13 +52,16 @@ export function DriverBadge({
   driver: Driver;
   size?: keyof typeof DRIVER_BADGE_SIZE;
 }) {
-  const { src, label } = DRIVER_LOGO[driver];
+  const { src, label, needsLightBacking } = DRIVER_LOGO[driver];
   const { tile, img } = DRIVER_BADGE_SIZE[size];
   return (
     <span
       title={label}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center bg-white ring-1 ring-border dark:bg-zinc-200/90 dark:ring-white/10",
+        "inline-flex shrink-0 items-center justify-center ring-1 ring-border",
+        needsLightBacking
+          ? "bg-white dark:bg-zinc-200/90 dark:ring-white/10"
+          : "bg-muted",
         tile,
       )}
     >

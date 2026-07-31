@@ -316,6 +316,48 @@ export const BUILT_IN_THEMES: Theme[] = [
     },
   },
   {
+    // A near-black, high-saturation dark theme built around a signature
+    // neon green — deliberately more vivid than every other built-in theme
+    // (which stay in muted/desaturated ranges), including the semantic
+    // accents (fk/warning/destructive) picked as neon cyan/amber/pink so the
+    // whole palette reads as one coherent "neon" family rather than a single
+    // green accent dropped into an otherwise ordinary dark theme.
+    id: "neon",
+    name: "Neon",
+    mode: "dark",
+    builtin: true,
+    colors: {
+      background: "#05080a",
+      foreground: "#e8fff2",
+      card: "#0a1710",
+      cardForeground: "#e8fff2",
+      popover: "#0a1710",
+      popoverForeground: "#e8fff2",
+      primary: "#39ff14",
+      primaryForeground: "#04120a",
+      secondary: "#101a13",
+      secondaryForeground: "#e8fff2",
+      muted: "#101a13",
+      mutedForeground: "#7fa693",
+      accent: "#173325",
+      accentForeground: "#39ff14",
+      brand: "#39ff14",
+      brandForeground: "#04120a",
+      success: "#00e676",
+      successForeground: "#04120a",
+      warning: "#ffea00",
+      warningForeground: "#1a1204",
+      pk: "#faff00",
+      fk: "#00eaff",
+      numeric: "#faff00",
+      destructive: "#ff1053",
+      destructiveForeground: "#1a0208",
+      border: "#1b2a20",
+      input: "#1b2a20",
+      ring: "#39ff14",
+    },
+  },
+  {
     id: "high-contrast",
     name: "High Contrast",
     mode: "dark",
