@@ -25,7 +25,6 @@ import {
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
-  type Table as TanstackTable,
   type Updater,
 } from "@tanstack/react-table";
 import { tableKey } from "@/stores/schema";
@@ -49,7 +48,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
-import { cn, formatBitValue, isBitType, isNumericType } from "@/lib/utils";
+import {
+  cn,
+  defaultColumnWidth,
+  formatBitValue,
+  isBitType,
+  isNumericType,
+} from "@/lib/utils";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences";
 import { formatComboForDisplay, getBinding, matchesBinding } from "@/lib/keybindings";
 import type {
@@ -755,6 +760,68 @@ export function DataGrid({
     });
   }
   /**
+   * Column currently being dragged to resize, if any — drives the header's
+   * highlight + handle tint. Set on mousedown and cleared on mouseup, so it
+   * changes exactly twice per drag (never per pixel), unlike the width
+   * itself (see `startColumnResize` below).
+   */
+  const [resizingColId, setResizingColId] = useState<string | null>(null);
+  const MIN_COLUMN_WIDTH = 40;
+
+  /**
+   * Drag a column's header edge to resize it — deliberately NOT TanStack's
+   * own `getResizeHandler()`. That tracks the drag through
+   * `columnSizingInfo.deltaOffset`, which changes (and forces a re-render of
+   * this whole, unvirtualised table) on every single `mousemove`; with
+   * hundreds/thousands of rows that's what made the drag feel slow, and it's
+   * also why a resize used to need a separate full-height guideline line —
+   * the actual column couldn't cheaply track the pointer that way, so there
+   * was nothing to visually resize in real time.
+   *
+   * Instead this mutates the dragged `<th>`'s `style.width` directly. The
+   * table is `table-fixed`, so per the CSS spec its column widths come from
+   * the header row's cells alone (`<thead>` precedes `<tbody>`, making it the
+   * table's first row) — one DOM write here reflows every row's matching
+   * cell natively, with zero React re-renders, for a genuinely live preview.
+   * `columnSizing` state (and its persistence to `prefs.json`) is only
+   * touched once, on release, matching the perf goal the old `onEnd` mode
+   * was reaching for — but without giving up live feedback to get there.
+   */
+  function startColumnResize(e: React.MouseEvent<HTMLDivElement>, colId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const thEl = (e.currentTarget as HTMLElement).closest("th");
+    if (!thEl) return;
+    const th: HTMLTableCellElement = thEl;
+    const startWidth = th.getBoundingClientRect().width;
+    const startX = e.clientX;
+    setResizingColId(colId);
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    function onMove(ev: MouseEvent) {
+      const next = Math.max(
+        MIN_COLUMN_WIDTH,
+        Math.round(startWidth + (ev.clientX - startX)),
+      );
+      th.style.width = `${next}px`;
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
+      setResizingColId(null);
+      const finalWidth = parseInt(th.style.width, 10);
+      handleColumnSizingChange((prev) => ({ ...prev, [colId]: finalWidth }));
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  /**
    * Inline styles derived from `rowHeight`. Memoised so the object identity
    * is stable across the per-cell render loop (it feeds hundreds of cells).
    * Font-size tracks the row height but is clamped to stay legible.
@@ -901,6 +968,10 @@ export function DataGrid({
           );
         },
         accessorFn: (row) => row[idx],
+        // Only a starting point: `columnSizing` (persisted per table, or
+        // in-session for ad-hoc results) always wins once the user resizes
+        // a column, same as TanStack's own precedence.
+        size: defaultColumnWidth(col.data_type) ?? undefined,
         cell: (info) => {
           const v = info.getValue() as CellValue;
           const rowValues = info.row.original as CellValue[];
@@ -1078,13 +1149,10 @@ export function DataGrid({
     data: visibleRows,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    enableColumnResizing: true,
-    // "onEnd" defers the (expensive, store-writing) sizing update until the
-    // pointer is released instead of committing a new width on every drag
-    // frame. TanStack does NOT draw its own indicator in this mode — it only
-    // tracks the drag in `columnSizingInfo.deltaOffset` — so we render our own
-    // full-height guideline from that offset (see `ResizeGuideline` below).
-    columnResizeMode: "onEnd",
+    // Column resizing itself is handled by our own `startColumnResize` below,
+    // not TanStack's built-in `getResizeHandler()` — see the comment there for
+    // why. `columnSizing` stays the single source of truth for committed
+    // widths (persisted per table, gotcha-style — see `persistKey` above).
     state: { columnSizing },
     onColumnSizingChange: handleColumnSizingChange,
   });
@@ -1596,7 +1664,7 @@ export function DataGrid({
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 <th
-                  className="border-b border-border bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
+                  className="border-b border-border border-r border-r-foreground/25 bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
                   style={{ ...headerStyle, width: 40 }}
                 >
                   {selectionEnabled ? (
@@ -1630,21 +1698,22 @@ export function DataGrid({
                   <th
                     key={h.id}
                     data-col-id={h.column.id}
-                    className="relative border-b border-border bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
+                    className={cn(
+                      "relative border-b border-border border-r border-r-foreground/25 bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground transition-colors duration-150",
+                      resizingColId === h.column.id && "bg-primary/10",
+                    )}
                     style={{ ...headerStyle, width: h.getSize() }}
                   >
                     <div className="overflow-hidden">
                       {flexRender(h.column.columnDef.header, h.getContext())}
                     </div>
                     {/* Drag handle — thin strip on the column's trailing edge.
-                        `select-none`/`touch-none` stop text selection and
-                        mobile scroll-gesture conflicts while dragging. */}
+                        `select-none` stops text selection while dragging. */}
                     <div
-                      onMouseDown={h.getResizeHandler()}
-                      onTouchStart={h.getResizeHandler()}
+                      onMouseDown={(e) => startColumnResize(e, h.column.id)}
                       className={cn(
-                        "absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none hover:bg-primary/50",
-                        h.column.getIsResizing() && "bg-primary",
+                        "absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-primary/50",
+                        resizingColId === h.column.id && "bg-primary",
                       )}
                     />
                   </th>
@@ -1709,7 +1778,7 @@ export function DataGrid({
                 >
                   <td
                     className={cn(
-                      "border-b border-border/50 px-2 tabular-nums text-muted-foreground",
+                      "border-b border-border/50 border-r border-r-foreground/15 px-2 tabular-nums text-muted-foreground",
                       // Inset accent bar marking a selected row's left edge. It
                       // lives on the gutter cell rather than the `<tr>` because
                       // box-shadow on a table-row box is unreliable across
@@ -1783,7 +1852,7 @@ export function DataGrid({
                           <td
                             data-cell={`${i}-${cIdx}`}
                             className={cn(
-                              "cursor-pointer border-b border-border/50 px-2",
+                              "cursor-pointer border-b border-border/50 border-r border-r-foreground/15 px-2",
                               isFkCell &&
                                 "hover:underline hover:decoration-dotted hover:decoration-fk/70 hover:underline-offset-2",
                               // Inset ring marks the keyboard-active cell.
@@ -2211,10 +2280,6 @@ export function DataGrid({
             <Loader2 className="mt-6 h-5 w-5 animate-spin text-brand" />
           </div>
         )}
-        {/* Live resize guideline (see `columnResizeMode: "onEnd"` above). */}
-        {viewMode !== "list" && (
-          <ResizeGuideline table={table} scrollRef={scrollRef} />
-        )}
       </div>
 
       {/* Compact cell preview panel — gated by the `cellPreview` grid pref.
@@ -2283,53 +2348,6 @@ export function DataGrid({
         />
       )}
     </div>
-  );
-}
-
-/**
- * Full-height vertical guideline drawn while a column is being resized.
- *
- * With `columnResizeMode: "onEnd"` the committed width doesn't change until the
- * pointer is released, so without this the drag gives no feedback (issue #42).
- *
- * The x position is derived from the resizing header's *rendered* right edge,
- * not from TanStack's nominal `getStart() + getSize()`: the table is
- * `table-fixed w-full`, so when the columns don't fill the container the
- * browser stretches each one past its nominal width and the nominal edge drifts
- * left of the real one (issue #46). We measure the actual `<th>` rect and add
- * the live pointer delta. `getBoundingClientRect` already reflects horizontal
- * scroll, so no separate `scrollLeft` term is needed. The component re-renders
- * as TanStack updates `columnSizingInfo` on each pointer move.
- */
-function ResizeGuideline({
-  table,
-  scrollRef,
-}: {
-  table: TanstackTable<CellValue[]>;
-  scrollRef: React.RefObject<HTMLDivElement>;
-}) {
-  const info = table.getState().columnSizingInfo;
-  const resizingId = info.isResizingColumn;
-  if (!resizingId) return null;
-  const container = scrollRef.current;
-  // Positioned ancestor of the guideline (the `relative` wrapper around the
-  // scroll container); the `left` value is relative to it.
-  const wrapper = container?.parentElement;
-  if (!container || !wrapper) return null;
-  const th = container.querySelector<HTMLTableCellElement>(
-    `th[data-col-id="${CSS.escape(resizingId)}"]`,
-  );
-  if (!th) return null;
-  const left =
-    th.getBoundingClientRect().right -
-    wrapper.getBoundingClientRect().left +
-    (info.deltaOffset ?? 0);
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-primary"
-      style={{ left, transform: "translateX(-50%)" }}
-    />
   );
 }
 
@@ -2512,7 +2530,7 @@ function DraftRowView({
         onBlur={handleRowBlur}
         onKeyDown={handleKeyDown}
       >
-        <td className="border-b border-border/50 px-2 py-1 text-[10px] font-medium text-primary">
+        <td className="border-b border-border/50 border-r border-r-foreground/15 px-2 py-1 text-[10px] font-medium text-primary">
           {draft.saving ? "…" : "+"}
         </td>
         {columns.map((col, idx) => {
@@ -2525,7 +2543,7 @@ function DraftRowView({
           return (
             <td
               key={col.name}
-              className="border-b border-border/50 px-1 py-0.5"
+              className="border-b border-border/50 border-r border-r-foreground/15 px-1 py-0.5"
             >
               {isAutoPk ? (
                 <span

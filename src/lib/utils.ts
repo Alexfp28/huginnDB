@@ -91,6 +91,29 @@ export function isBooleanType(dataType: string): boolean {
 }
 
 /**
+ * A predictable initial column width (px), based on the SQL type alone.
+ * Boolean, numeric, date/time and UUID columns render a bounded range of
+ * characters, so they can be sized up front instead of starting at the
+ * grid's generic default — which exists for free-text columns, where the
+ * content length genuinely isn't predictable from the type. Returns `null`
+ * for anything else (text/varchar/char, json, blob, …), so the caller falls
+ * back to its own default for those.
+ */
+export function defaultColumnWidth(dataType: string): number | null {
+  const t = dataType.toLowerCase();
+  if (isBitType(dataType) || isBooleanType(dataType)) return 70;
+  if (t === "uuid" || t === "uniqueidentifier" || t === "objectid") return 260;
+  // Check the combined forms before the plain "date"/"time" substrings they
+  // both contain, or e.g. "timestamptz" would be misclassified as "date".
+  if (t.includes("timestamp") || t.includes("datetime")) return 170;
+  if (t === "date") return 130;
+  if (t === "time" || t.includes("time")) return 110;
+  if (t === "year") return 70;
+  if (isNumericType(dataType)) return 100;
+  return null;
+}
+
+/**
  * Render a numeric BIT value per the grid's `bitDisplay` preference.
  * In `true_false` mode, 0/1 become `false`/`true`; any wider BIT(n) value
  * falls back to its integer form. `zero_one` always shows the raw number.
