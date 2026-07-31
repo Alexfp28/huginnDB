@@ -134,6 +134,11 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     // folded would render open for as long as the reconnect takes and then snap
     // shut.
     useUi.getState().setCollapsedConnections(launch.collapsedConnections ?? []);
+    // Same reasoning for the connection-visibility filter: restore it before the
+    // tree renders the reconnected connections, not after — and unconditionally,
+    // since `null` (show all) is itself meaningful and must overwrite whatever
+    // the previous environment left behind.
+    useUi.getState().setVisibleConnections(launch.visibleConnections ?? null);
 
     if (launch.activeConnections.length > 0) {
       // Only reconnect ids that still have a profile, and skip anything already
@@ -198,6 +203,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       const leavingSelected = useUi.getState().selectedConnectionId;
       const leavingActiveTab = useTabs.getState().activeId;
       const leavingCollapsed = useUi.getState().collapsedConnections;
+      const leavingVisible = useUi.getState().visibleConnections;
       await flushAllTabState();
 
       // 2. Unpoint the UI *before* closing anything. The schema explorer
@@ -214,6 +220,11 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       // off that function returns before it reads anything, and the outgoing
       // environment's folds would carry over into the incoming one.
       useUi.getState().setCollapsedConnections([]);
+      // Same reasoning for the connection-visibility filter — this is the bug the
+      // move to per-environment state fixes: leaving it set here is exactly
+      // how a subset tuned for the outgoing environment used to stay active
+      // after switching to another one.
+      useUi.getState().setVisibleConnections(null);
 
       // Emptying the tab store above wakes the per-connection subscriptions and
       // arms a save. That save would serialise the store as it is *now* —
@@ -245,6 +256,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         selectedConnectionId: leavingSelected,
         activeTabId: leavingActiveTab,
         collapsedConnections: leavingCollapsed,
+        visibleConnections: leavingVisible,
       });
 
       // 5. Cancel the debounced writes the teardown just armed. Removing panels
@@ -288,6 +300,13 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     const sourceCollapsed = replicate.connections
       ? useUi.getState().collapsedConnections
       : [];
+    // Same reasoning for the connection-visibility filter: it's part of "which
+    // connections are in play", so it rides with `replicate.connections` too —
+    // not replicating connections into a fresh environment but keeping the old
+    // filter would just hide the ones that got copied in.
+    const sourceVisible = replicate.connections
+      ? useUi.getState().visibleConnections
+      : null;
     let sourceTabs: [string, Awaited<ReturnType<typeof api.getTabState>>][] = [];
     let sourceLayout: unknown = null;
     try {
@@ -327,6 +346,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
           selectedConnectionId: sourceSelected,
           activeTabId: null,
           collapsedConnections: sourceCollapsed,
+          visibleConnections: sourceVisible,
         });
         // Now that the new environment has a launch state, bring it up for
         // real. `switchTo` above already ran `restoreSession` against what was

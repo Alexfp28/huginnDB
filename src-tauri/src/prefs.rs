@@ -148,13 +148,6 @@ pub struct UiPrefs {
     /// the initial state (per-surface session toggles still apply on top).
     /// Stringly-typed; the frontend owns the enum.
     pub connection_group_expand_mode: String,
-    /// DataGrip-style subset of saved connections to show in the connections
-    /// tree — the same "hide the noise" idea as
-    /// `ConnectionProfile.visible_databases` one level up. `None` (or
-    /// absent) means "show all" — the historical behaviour. Ids that no
-    /// longer match a saved profile are harmless leftovers, same reasoning
-    /// as `collapsed_connection_groups`.
-    pub visible_connections: Option<Vec<String>>,
 }
 
 impl Default for Preferences {
@@ -217,7 +210,6 @@ impl Default for UiPrefs {
             collapsed_connection_groups: Vec::new(),
             tab_accent_style: "cap".into(),
             connection_group_expand_mode: "remember".into(),
-            visible_connections: None,
         }
     }
 }

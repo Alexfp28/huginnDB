@@ -566,13 +566,6 @@ export interface UiPrefs {
    *  "expanded"/"collapsed" force the initial state (per-surface session
    *  toggles still apply on top). */
   connectionGroupExpandMode: ConnectionGroupExpandMode;
-  /**
-   * DataGrip-style subset of saved connections to show in the connections
-   * tree — the same "hide the noise" idea as `ConnectionProfile.visible_databases`,
-   * one level up. `null`/absent means "show all" (the historical behaviour);
-   * a hidden connection is still saved, just not rendered as a row.
-   */
-  visibleConnections?: string[] | null;
 }
 
 export type CellEditorMode = "modal" | "side";
@@ -699,6 +692,17 @@ export interface LaunchState {
    *  worth storing, and a stale id can then only ever mean "show folded". Must be
    *  declared in the Rust `LaunchState` too or serde drops it (gotcha #14). */
   collapsedConnections: string[];
+  /**
+   * DataGrip-style subset of saved connections to show in the connections tree
+   * — the same "hide the noise" idea as
+   * `ConnectionProfile.visible_databases`, one level up. `null`/absent means
+   * "show all" (the historical behaviour); a hidden connection is still saved,
+   * just not rendered as a row. Scoped to the environment (not global
+   * `Preferences.ui`, where it used to live) so a filter tuned for one
+   * environment doesn't stay active after switching to another. Must be
+   * declared in the Rust `LaunchState` too or serde drops it (gotcha #14).
+   */
+  visibleConnections: string[] | null;
 }
 
 export interface PersistedTab {

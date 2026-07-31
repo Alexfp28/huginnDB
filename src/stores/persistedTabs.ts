@@ -190,6 +190,7 @@ export function persistLaunchState(
       selectedConnectionId: useUi.getState().selectedConnectionId,
       activeTabId: useTabs.getState().activeId,
       collapsedConnections: useUi.getState().collapsedConnections,
+      visibleConnections: useUi.getState().visibleConnections,
     })
     .catch((err) => {
       console.error("[persistedTabs] launch-state save failed:", err);

@@ -56,8 +56,6 @@
       "label": "Archivo",
       "newConnection": "Nueva conexión…",
       "manageConnections": "Gestionar conexiones…",
-      "sectionConnections": "Conexiones",
-      "noConnections": "Aún no hay conexiones.",
       "importProfiles": "Importar perfiles…",
       "exportProfiles": "Exportar perfiles…",
       "disconnectAll": "Desconectar todas"
@@ -599,7 +597,6 @@
     "history": "historial:",
     "connections": "{{count}} conectada(s)",
     "connectionsActive": "Conexiones activas",
-    "connectionsAvailable": "Conectar a…",
     "activeLabel": "activa",
     "noConnections": "Sin conexiones activas",
     "jumpTo": "Ir al espacio de trabajo",
@@ -669,7 +666,10 @@
         "label": "Acerca de",
         "desc": "Versión y rutas"
       },
-      "origins": "Orígenes"
+      "origins": {
+        "label": "Orígenes",
+        "desc": "Perfiles desde carpeta compartida"
+      }
     },
     "general": {
       "defaultDriver": {

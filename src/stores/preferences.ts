@@ -69,7 +69,6 @@ const DEFAULT_PREFS: Preferences = {
     collapsedConnectionGroups: [],
     tabAccentStyle: "cap",
     connectionGroupExpandMode: "remember",
-    visibleConnections: null,
   },
   keybindings: {},
 };

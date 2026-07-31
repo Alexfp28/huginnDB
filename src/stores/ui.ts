@@ -41,6 +41,18 @@ interface UiState {
    */
   treeFilter: string;
   setTreeFilter: (value: string) => void;
+  /**
+   * DataGrip-style subset of saved connections to show in the connections
+   * tree. `null` means "show all". Persisted per environment via
+   * `LaunchState.visibleConnections` — restored on launch/switch by
+   * `useEnvironments.restoreSession`, cleared on the way out by `switchTo` —
+   * rather than in `usePreferences`, which is global: a filter tuned for one
+   * environment (e.g. "Pruebas") must not stay active after switching to
+   * another (e.g. "Predeterminado"), which is exactly what living in global
+   * prefs used to cause.
+   */
+  visibleConnections: string[] | null;
+  setVisibleConnections: (ids: string[] | null) => void;
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -68,4 +80,7 @@ export const useUi = create<UiState>((set) => ({
 
   treeFilter: "",
   setTreeFilter: (value) => set({ treeFilter: value }),
+
+  visibleConnections: null,
+  setVisibleConnections: (ids) => set({ visibleConnections: ids }),
 }));

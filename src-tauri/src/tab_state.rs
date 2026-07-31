@@ -188,6 +188,16 @@ pub struct LaunchState {
     /// expanded ids could claim a row should be open over a subtree that does not
     /// exist.
     pub collapsed_connections: Vec<String>,
+    /// DataGrip-style subset of saved connections to show in the connections
+    /// tree. Scoped to the environment, not global: `Environment` is
+    /// already "which subset of connections is in play" (gotcha #27), and a
+    /// filter tuned for one environment being visible in another — e.g. after
+    /// switching from a curated "Pruebas" set back to "Predeterminado" — was
+    /// the reported bug. `None`/absent means "show all", same convention as
+    /// the pre-move `Preferences.ui.visible_connections` it replaces. A
+    /// leftover id with no matching profile is harmless (never matches, so
+    /// effectively ignored), same reasoning as `collapsed_connections`.
+    pub visible_connections: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -353,6 +363,11 @@ impl RawState {
             // Pre-v4 blobs predate the connections tree, so nothing was ever
             // folded: the default (follow the pool) is the right migration.
             collapsed_connections: Vec::new(),
+            // Pre-v4 blobs predate the visibility filter too (it lived in
+            // global `Preferences.ui` at the time): "show all" is the right
+            // migration, and that global value is left untouched (a one-time
+            // dangling field, harmless — see the `prefs.rs` removal note).
+            visible_connections: None,
         };
         let top_level_layout = self.internal_layout;
 
@@ -805,6 +820,40 @@ mod tests {
                 .launch
                 .collapsed_connections,
             vec!["c2".to_string()]
+        );
+    }
+
+    #[test]
+    fn visible_connections_are_scoped_per_environment() {
+        // The filter used to live in global `Preferences.ui`, so switching
+        // environments never changed it — a subset tuned for one environment
+        // stayed active in every other one. Moving it onto `LaunchState` fixes
+        // that only if each environment round-trips its own value independently.
+        let v4 = r#"{
+            "version": 4,
+            "activeEnvironmentId": "b",
+            "environments": [
+                { "id": "a", "launch": { "visibleConnections": ["c1", "c2"] } },
+                { "id": "b", "launch": {} }
+            ]
+        }"#;
+        let raw: RawState = serde_json::from_str(v4).unwrap();
+        let state = raw.into_state();
+        assert_eq!(
+            state.environments[0].launch.visible_connections,
+            Some(vec!["c1".to_string(), "c2".to_string()])
+        );
+        // "b" is active and never set a subset: must default to "show all"
+        // (`None`), not inherit "a"'s.
+        assert_eq!(state.active_environment().unwrap().launch.visible_connections, None);
+
+        let json = serde_json::to_string(&state).unwrap();
+        let reparsed: RawState = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            reparsed.into_state().environments[0]
+                .launch
+                .visible_connections,
+            Some(vec!["c1".to_string(), "c2".to_string()])
         );
     }
 

@@ -56,8 +56,6 @@
       "label": "File",
       "newConnection": "New connection…",
       "manageConnections": "Manage connections…",
-      "sectionConnections": "Connections",
-      "noConnections": "No connections yet.",
       "importProfiles": "Import profiles…",
       "exportProfiles": "Export profiles…",
       "disconnectAll": "Disconnect all"
@@ -599,7 +597,6 @@
     "history": "history:",
     "connections": "{{count}} connected",
     "connectionsActive": "Active connections",
-    "connectionsAvailable": "Connect to…",
     "activeLabel": "active",
     "noConnections": "No active connections",
     "jumpTo": "Go to workspace",
@@ -669,7 +666,10 @@
         "label": "About",
         "desc": "Version & paths"
       },
-      "origins": "Origins"
+      "origins": {
+        "label": "Origins",
+        "desc": "Shared folder profiles"
+      }
     },
     "general": {
       "defaultDriver": {
