@@ -26,9 +26,11 @@ import {
   Copy,
   ExternalLink,
   Eye,
+  FolderTree,
   Gauge,
   HardDrive,
   Keyboard,
+  Layers,
   LayoutList,
   ListFilter,
   ListTree,
@@ -37,11 +39,13 @@ import {
   Pencil,
   Plug,
   Power,
+  Share2,
   ShieldCheck,
   SquareTerminal,
   Table2,
   Tags,
   Target,
+  Timer,
 } from "lucide-react";
 
 export interface ReleaseHighlight {
@@ -72,6 +76,43 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.12.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_12_0.tagline",
+    highlights: [
+      {
+        icon: Layers,
+        titleKey: "whatsNew.releases.1_12_0.items.environments.title",
+        bodyKey: "whatsNew.releases.1_12_0.items.environments.body",
+      },
+      {
+        icon: Share2,
+        titleKey: "whatsNew.releases.1_12_0.items.sharedOrigins.title",
+        bodyKey: "whatsNew.releases.1_12_0.items.sharedOrigins.body",
+      },
+      {
+        icon: FolderTree,
+        titleKey: "whatsNew.releases.1_12_0.items.connectionsInTree.title",
+        bodyKey: "whatsNew.releases.1_12_0.items.connectionsInTree.body",
+      },
+      {
+        icon: ListFilter,
+        titleKey: "whatsNew.releases.1_12_0.items.filterSelected.title",
+        bodyKey: "whatsNew.releases.1_12_0.items.filterSelected.body",
+      },
+      {
+        icon: Timer,
+        titleKey: "whatsNew.releases.1_12_0.items.queryFeedback.title",
+        bodyKey: "whatsNew.releases.1_12_0.items.queryFeedback.body",
+      },
+      {
+        icon: Palette,
+        titleKey: "whatsNew.releases.1_12_0.items.neonTheme.title",
+        bodyKey: "whatsNew.releases.1_12_0.items.neonTheme.body",
+      },
+    ],
+  },
   {
     version: "1.11.0",
     major: true,

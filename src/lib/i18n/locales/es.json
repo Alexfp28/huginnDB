@@ -983,6 +983,35 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_12_0": {
+        "tagline": "Los entornos agrupan tus conexiones en sesiones con nombre y cambiables — con orígenes compartidos para sincronizarlas en equipo, las conexiones ahora en el árbol de esquema, y una experiencia de ejecución de consultas rediseñada.",
+        "items": {
+          "environments": {
+            "title": "Entornos",
+            "body": "Un nivel nuevo por encima de las conexiones: un conjunto con nombre de conexiones con sus propias pestañas, disposición de paneles y reconexión, cambiable desde un selector en la barra superior — un entorno por cliente en vez de una ventana por cliente."
+          },
+          "sharedOrigins": {
+            "title": "Orígenes compartidos",
+            "body": "Un entorno puede sincronizar sus conexiones — y sus contraseñas — desde un fichero de configuración compartido en la red, así que unirse a un equipo consiste en escribir una passphrase una vez en vez de configurar cada conexión a mano."
+          },
+          "connectionsInTree": {
+            "title": "Las conexiones viven en el árbol de esquema",
+            "body": "El árbol empieza ahora con las carpetas y las conexiones como sus dos niveles superiores, así que abrir un segundo servidor es un clic en la misma ventana en lugar de un viaje por un menú aparte."
+          },
+          "filterSelected": {
+            "title": "Filtrar por las filas seleccionadas",
+            "body": "Selecciona filas en la rejilla de datos, haz clic derecho sobre una columna y filtra el resto de la tabla hasta (o excluyendo) justo esos valores — deduplicados y funcionando en todos los drivers, MongoDB incluido."
+          },
+          "queryFeedback": {
+            "title": "Feedback de consultas rediseñado",
+            "body": "Un cronómetro en vivo, un reparto editor/resultados más amplio por defecto y un historial de consultas con búsqueda y «ejecutar de nuevo» con un clic sustituyen a la antigua etiqueta de «ejecutando/terminado» a secas."
+          },
+          "neonTheme": {
+            "title": "Neon, un nuevo tema oscuro",
+            "body": "Un tema casi negro construido alrededor de un verde neón de marca, con cian/ámbar/rosa elegidos a juego — una capa de pintura nueva para quien esté cansado de los dos temas por defecto."
+          }
+        }
+      },
       "1_11_0": {
         "tagline": "La app se reconecta al arrancar y abre tablas grandes casi al instante, con una barra de herramientas de rejilla unificada, una vista de lista para MongoDB y ventanas flotantes reales.",
         "items": {
