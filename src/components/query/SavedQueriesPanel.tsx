@@ -47,7 +47,7 @@ export function SavedQueriesPanel({
     openTab({
       kind: "query",
       title: q.name,
-      connectionId,
+      connectionId: useTabs.getState().queryTargetFor(connectionId),
       query: q.sql,
     });
   }

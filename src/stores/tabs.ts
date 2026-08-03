@@ -42,13 +42,15 @@ interface TabsState {
    */
   setViewState: (id: string, viewState: TabViewState) => void;
   /**
-   * Store the row count and elapsed time from the most recent query execution
-   * in `id`. Used by the status bar to display live execution metadata.
+   * Resolve the connectionId a fresh query tab on `parentId` should open
+   * against: the database-scoped child (`<parentId>::db::<database>`) of
+   * whichever tab is currently focused, if that tab belongs to this same
+   * connection — so "new query" while browsing a specific database lands the
+   * editor on that database instead of always resetting to the connection's
+   * default. Falls back to `parentId` itself when the focused tab belongs to
+   * another connection (or there isn't one).
    */
-  updateQueryStats: (
-    id: string,
-    stats: { rows: number; elapsed_ms: number },
-  ) => void;
+  queryTargetFor: (parentId: string) => string;
   /** Drop every tab for a connection (called on disconnect). */
   closeForConnection: (connectionId: string) => void;
   /**
@@ -173,12 +175,12 @@ export const useTabs = create<TabsState>((set, get) => ({
     set((s) => ({
       tabs: s.tabs.map((t) => (t.id === id ? { ...t, query } : t)),
     })),
-  updateQueryStats: (id, stats) =>
-    set((s) => ({
-      tabs: s.tabs.map((t) =>
-        t.id === id ? { ...t, lastQueryStats: stats } : t,
-      ),
-    })),
+  queryTargetFor: (parentId) => {
+    const { tabs, activeId } = get();
+    const active = tabs.find((t) => t.id === activeId);
+    const prefix = `${parentId}::db::`;
+    return active?.connectionId.startsWith(prefix) ? active.connectionId : parentId;
+  },
   setViewState: (id, viewState) =>
     set((s) => {
       const tab = s.tabs.find((t) => t.id === id);

@@ -226,8 +226,8 @@ function accentBoxShadow(style: TabAccentStyle, color: string): string {
  * search change — so a bare reference-equality subscription re-rendered
  * every open tab's header on every keystroke-driven query elsewhere, not
  * just on tab open/close/rename. Comparing by these fields instead means a
- * `viewState`/`lastQueryStats`/`initialFilters` change on some other tab no
- * longer touches this one.
+ * `viewState`/`initialFilters` change on some other tab no longer touches
+ * this one.
  */
 function tabsRelevantEqual(a: AppTab[], b: AppTab[]): boolean {
   if (a === b) return true;
@@ -651,7 +651,7 @@ function NewTabAction(_props: IDockviewHeaderActionsProps) {
             useTabs.getState().open({
               kind: "query",
               title: t("tabs.queryFileName"),
-              connectionId,
+              connectionId: useTabs.getState().queryTargetFor(connectionId),
               query: "-- write a SQL query and press Ctrl+Enter\n",
             });
           }}
@@ -716,7 +716,7 @@ function EmptyWatermark() {
     useTabs.getState().open({
       kind: "query",
       title: t("tabs.queryFileName"),
-      connectionId,
+      connectionId: useTabs.getState().queryTargetFor(connectionId),
       query: "-- write a SQL query and press Ctrl+Enter\n",
     });
   }

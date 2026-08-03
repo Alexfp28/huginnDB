@@ -591,7 +591,6 @@
   "statusBar": {
     "disconnected": "desconectado",
     "rows": "filas",
-    "executedIn": "ejecutado en",
     "ms": "ms",
     "encoding": "utf-8",
     "history": "historial:",
@@ -602,7 +601,6 @@
     "jumpTo": "Ir al espacio de trabajo",
     "disconnect": "Desconectar",
     "selected": "{{count}} seleccionada(s)",
-    "readOnly": "solo lectura",
     "recentQueries": "Consultas recientes",
     "noHistory": "Aún no hay consultas",
     "clearHistory": "Limpiar historial",
@@ -897,6 +895,9 @@
     "history": "Historial de consultas",
     "clearHistory": "Limpiar historial",
     "historyTitle": "Historial",
+    "historyFilterPlaceholder": "Filtrar historial…",
+    "historyEntryStats": "{{rows}} filas · {{duration}}",
+    "runAgain": "Ejecutar de nuevo",
     "noQueries": "Aún no hay consultas.",
     "running": "ejecutando…",
     "run": "Ejecutar",
@@ -907,6 +908,7 @@
     "noResults": "Ejecuta una consulta para ver los resultados.",
     "database": "Base de datos",
     "defaultDatabase": "(por defecto)",
+    "elapsedTitle": "Duración de la consulta",
     "batchOk": "{{count}} sentencias · {{rows}} filas afectadas",
     "batchFailed": "Detenido en la sentencia {{index}} de {{total}}",
     "rowsAffected": "{{rows}} filas afectadas · {{ms}} ms"
@@ -933,7 +935,9 @@
     "tagsPlaceholder": "informes, facturación",
     "untitled": "Sin título",
     "submitUpdate": "Actualizar",
-    "submitSave": "Guardar"
+    "submitSave": "Guardar",
+    "savedToast": "Consulta \"{{name}}\" guardada",
+    "updatedToast": "Consulta \"{{name}}\" actualizada"
   },
   "update": {
     "sectionTitle": "Actualizaciones",

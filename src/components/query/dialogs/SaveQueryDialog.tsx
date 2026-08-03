@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -63,14 +64,16 @@ export function SaveQueryDialog({
       .filter(Boolean);
     if (existing) {
       update(existing.id, { name, description, tags: tagList, sql });
+      toast.success(t("saveQuery.updatedToast", { name: name || existing.name }));
     } else {
-      add({
+      const saved = add({
         name: name || t("saveQuery.untitled"),
         description,
         tags: tagList,
         sql,
         connectionId,
       });
+      toast.success(t("saveQuery.savedToast", { name: saved.name }));
     }
     onOpenChange(false);
   }

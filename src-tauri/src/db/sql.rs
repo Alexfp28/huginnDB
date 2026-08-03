@@ -17,16 +17,55 @@ pub fn quote_ident(pg_or_sqlite: bool, name: &str) -> String {
     }
 }
 
+/// Skip leading whitespace and SQL comments (`-- …` line comments and
+/// `/* … */` block comments) so the keyword-prefix classifiers below aren't
+/// fooled by a comment sitting in front of the real statement — e.g. the
+/// query editor's own placeholder text (`-- write a SQL query…`) left above
+/// a pasted `SELECT` used to make [`is_read_only`] fall through to the write
+/// path: the statement still ran and reported a row count, but
+/// `execute_query` only fetches a result set on the read path, so the grid
+/// stayed empty even though the query genuinely returned rows.
+///
+/// Not a real lexer — doesn't understand string/identifier quoting, so a
+/// `--` or `/*` inside a string literal before the statement proper would
+/// misfire. Statements never legitimately start with a quoted literal, so
+/// this is good enough for "what kind of statement is this".
+fn skip_leading_noise(sql: &str) -> &str {
+    let mut s = sql;
+    loop {
+        let trimmed = s.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("--") {
+            match rest.find('\n') {
+                Some(nl) => {
+                    s = &rest[nl + 1..];
+                    continue;
+                }
+                None => return "",
+            }
+        }
+        if let Some(rest) = trimmed.strip_prefix("/*") {
+            match rest.find("*/") {
+                Some(end) => {
+                    s = &rest[end + 2..];
+                    continue;
+                }
+                None => return "",
+            }
+        }
+        return trimmed;
+    }
+}
+
 /// Best-effort classification of a SQL statement as a read-only query.
 ///
 /// We use this to decide whether [`crate::commands::query::execute_query`]
 /// should fetch a result set or just report `rows_affected`. The check is
 /// intentionally simple — it inspects the first keyword after leading
-/// whitespace. Anything unusual (e.g. multi-statement scripts, DDL that
-/// returns rows on some drivers) falls back to the write path and the user
-/// still sees the row-count summary.
+/// whitespace/comments. Anything unusual (e.g. multi-statement scripts, DDL
+/// that returns rows on some drivers) falls back to the write path and the
+/// user still sees the row-count summary.
 pub fn is_read_only(sql: &str) -> bool {
-    let head = sql.trim_start().to_ascii_lowercase();
+    let head = skip_leading_noise(sql).to_ascii_lowercase();
     head.starts_with("select")
         || head.starts_with("with")
         || head.starts_with("show")
@@ -65,7 +104,7 @@ pub enum StmtClass {
 /// row-level `data` tier.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub fn is_ddl(sql: &str) -> bool {
-    let head = sql.trim_start().to_ascii_lowercase();
+    let head = skip_leading_noise(sql).to_ascii_lowercase();
     const DDL_PREFIXES: [&str; 8] = [
         "create", "drop", "alter", "truncate", "rename", "grant", "revoke", "comment",
     ];
@@ -134,6 +173,31 @@ mod tests {
             "PRAGMA table_info(t)",
         ] {
             assert!(is_read_only(sql), "expected read-only: {sql:?}");
+        }
+    }
+
+    #[test]
+    fn a_leading_comment_does_not_defeat_read_only_detection() {
+        // The query editor's own placeholder ("-- write a SQL query and
+        // press Ctrl+Enter") left above a pasted SELECT used to make this
+        // fall through to the write path, which silently drops the result
+        // set (execute_query only fetches rows on the read path).
+        for sql in [
+            "-- write a SQL query and press Ctrl+Enter\nSELECT * FROM t",
+            "-- a comment\n-- another comment\nselect 1",
+            "/* block comment */ SELECT 1",
+            "/* multi\nline */\nSELECT 1",
+        ] {
+            assert!(is_read_only(sql), "expected read-only: {sql:?}");
+        }
+    }
+
+    #[test]
+    fn an_unterminated_leading_comment_is_not_read_only() {
+        // No real statement follows the comment, so there is nothing to
+        // classify as a read — falling to the write path is the safe default.
+        for sql in ["-- trailing comment with no newline", "/* unterminated"] {
+            assert!(!is_read_only(sql), "expected non-read-only: {sql:?}");
         }
     }
 

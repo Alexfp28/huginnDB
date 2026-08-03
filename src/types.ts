@@ -349,8 +349,6 @@ export interface AppTab {
   query?: string;
   /** For structure tabs: whether we're creating a new table or editing one. */
   structureMode?: StructureMode;
-  /** Stats from the most recent query execution in this tab. */
-  lastQueryStats?: { rows: number; elapsed_ms: number };
   /**
    * Seed server-side filters for a `kind: "table"` tab — set when the tab is
    * opened by "go to referenced row" (FK navigation) so the table lands

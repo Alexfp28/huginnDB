@@ -130,6 +130,23 @@ export function formatBitValue(
 }
 
 /**
+ * Format a duration in milliseconds for compact, glanceable display:
+ * `842 ms`, `1.24 s`, `12.3 s`, `1m 04s`. Used by the query editor's
+ * running/elapsed timer and by query-history entries.
+ */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "0 ms";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  const totalSeconds = ms / 1000;
+  if (totalSeconds < 60) {
+    return `${totalSeconds.toFixed(totalSeconds < 10 ? 2 : 1)} s`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+}
+
+/**
  * Bucket items by their free-text `group` field (e.g. `ConnectionProfile`).
  * Ungrouped items (`group` null/empty) come back separately so callers can
  * render them flat, with no header — groups are sorted alphabetically by

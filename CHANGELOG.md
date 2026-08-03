@@ -8,6 +8,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The query editor shows how a query is actually going, not just that it
+  finished.** A run timer next to the Run button ticks live (wall-clock,
+  including the IPC round trip) while a statement is in flight and freezes on
+  the settled time, tinted by outcome — previously the only feedback was a
+  "running…" label with no sense of how long that had been. The editor:results
+  split now defaults to 75/25 instead of 45/55 (writing SQL is the bulk of the
+  work; results are a glance) and remembers wherever you drag it to afterwards,
+  shared across every query tab. The history sidebar gained a search filter, a
+  per-entry "run again" that re-executes without first loading it into the
+  buffer, and its count/clear affordances moved into the panel itself instead
+  of crowding the main toolbar; saving or updating a query now confirms with a
+  toast instead of closing silently. A fresh query tab also defaults to
+  whichever database you're actively browsing on that connection (the
+  database-scoped child of the currently focused tab) instead of always
+  resetting to the connection's own default database.
+
 - **Environments.** A new level above connections: an environment is a named set
   of connections plus the whole session that belongs to them — open tabs, pane
   layout, and what reconnects when you enter it. A switcher in the topbar moves
@@ -154,6 +170,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The global status bar no longer duplicates the active query's row count
+  and elapsed time**, nor does it show an unconditional "read-only" badge for
+  every query tab regardless of anything about the query itself. Both now live
+  only inside the query editor, where the new run timer and history already
+  cover the same ground — the status bar's `readOnly` flag was really just
+  "query-result grids can't be edited inline", true for every query tab with no
+  exception, so it carried no information worth a persistent badge.
+
 - **"Go to referenced row" moved from Ctrl/Cmd+click to Alt+click.** The FK
   navigation accelerator shared a chord with the data grid's row multi-selection
   and won it outright: the handler returned early on any foreign-key cell, so on
@@ -164,6 +188,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   chord.
 
 ### Fixed
+
+- **A `SELECT` preceded by a comment reported success with a row count but
+  showed no data in the grid.** Every new query tab seeds its buffer with
+  `-- write a SQL query and press Ctrl+Enter`, and `is_read_only`/`is_ddl`
+  (`db/sql.rs`) classified a statement by checking only whether it *starts*
+  with a keyword like `select` after trimming whitespace — a leading comment
+  left the text starting with `--`, so it fell through to the write path.
+  `execute_query` only fetches a result set on the read path; the write path
+  just runs the statement and reports `rows_affected` (correctly, since a
+  `SELECT` run via the unprepared protocol still returns a row count), which
+  is exactly the "correct but empty" behaviour reported. Both classifiers now
+  skip leading whitespace, `--` line comments and `/* */` block comments
+  before matching the keyword.
 
 - **Switching environments could restore the right tabs but collapse a split
   workspace back to a single tabbed group** whenever the split included a tab

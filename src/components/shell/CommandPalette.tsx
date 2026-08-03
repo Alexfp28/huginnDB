@@ -163,7 +163,7 @@ export function CommandPalette() {
           useTabs.getState().open({
             kind: "query",
             title: t("tabs.queryFileName"),
-            connectionId: selected,
+            connectionId: useTabs.getState().queryTargetFor(selected),
             query: "-- write a SQL query and press Ctrl+Enter\n",
           });
         },
