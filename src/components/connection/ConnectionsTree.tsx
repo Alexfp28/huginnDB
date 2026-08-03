@@ -354,20 +354,22 @@ export function ConnectionsTree() {
             size="sm"
             disabled={active.size === 0}
             onClick={() => void handleDisconnectAll()}
-            className="h-6 gap-1 px-2 text-[11px]"
+            title={t("menu.file.disconnectAll")}
+            className="h-6 min-w-0 gap-1 px-2 text-[11px]"
           >
-            <PlugZap className="h-3 w-3" />
-            {t("menu.file.disconnectAll")}
+            <PlugZap className="h-3 w-3 shrink-0" />
+            <span className="truncate">{t("menu.file.disconnectAll")}</span>
           </Button>
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => setVisibilityPickerOpen(true)}
-            className="h-6 gap-1 px-2 text-[11px]"
+            title={t("connectionsTree.selectConnections.action")}
+            className="h-6 min-w-0 gap-1 px-2 text-[11px]"
           >
-            <ListFilter className="h-3 w-3" />
-            {t("connectionsTree.selectConnections.action")}
+            <ListFilter className="h-3 w-3 shrink-0" />
+            <span className="truncate">{t("connectionsTree.selectConnections.action")}</span>
           </Button>
         </div>
         <Input
