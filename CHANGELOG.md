@@ -170,6 +170,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Open table/query tabs now carry the "island view" look the rest of the
+  workspace already had**, instead of a flat, edge-to-edge strip that stood
+  out against every other panel. Each tab is its own rounded, floating chip
+  over a recessed backdrop — the same elevation recipe as the outer
+  Schema/Saved/Workspace/Console panels — and the active tab lifts further
+  with a soft shadow. Every tab now also carries a small driver-logo badge
+  for its connection: previously the only way to tell which connection a tab
+  belonged to was a "Connection · table" text prefix that only appeared once
+  a second connection was opened, so a tab's origin visually changed context
+  as you worked across connections. The badge is a permanent anchor instead,
+  and the text prefix still appears only when needed to disambiguate.
+
+  The tab's "⋮" action menu is gone — everything it offered (pin, split,
+  float, colour, the close variants) was already duplicated in the same
+  tab's right-click menu, so the toolbar button was a second, discoverable
+  but redundant path to the same actions.
+
 - **The global status bar no longer duplicates the active query's row count
   and elapsed time**, nor does it show an unconditional "read-only" badge for
   every query tab regardless of anything about the query itself. Both now live

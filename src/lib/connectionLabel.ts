@@ -10,7 +10,7 @@
  * switcher and any other cross-connection surface share one implementation.
  */
 
-import type { ConnectionProfile } from "@/types";
+import type { ConnectionProfile, Driver } from "@/types";
 
 const DB_SEP = "::db::";
 
@@ -29,6 +29,26 @@ export function resolveConnectionLabel(
     return parent ? `${parent.name} · ${db}` : db;
   }
   return connectionId;
+}
+
+/**
+ * Resolve a connectionId to its driver, for surfaces that show a
+ * `DriverBadge` next to the connection (the workspace tab strip). Shares the
+ * `<parent>::db::<db>` parsing with [`resolveConnectionLabel`] — a synthetic
+ * multi-DB child id inherits the parent profile's driver.
+ */
+export function resolveConnectionDriver(
+  profiles: ConnectionProfile[],
+  connectionId: string,
+): Driver | undefined {
+  const direct = profiles.find((p) => p.id === connectionId);
+  if (direct) return direct.driver;
+  const sep = connectionId.indexOf(DB_SEP);
+  if (sep > 0) {
+    const parent = profiles.find((p) => p.id === connectionId.slice(0, sep));
+    if (parent) return parent.driver;
+  }
+  return undefined;
 }
 
 export interface ConnectionParts {
