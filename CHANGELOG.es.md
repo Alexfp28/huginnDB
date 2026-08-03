@@ -6,202 +6,71 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
-## [Unreleased]
+## [1.12.0] — 2026-08-03
 
 ### Añadido
 
-- **Entornos.** Un nivel nuevo por encima de las conexiones: un entorno es un
-  conjunto con nombre de conexiones más la sesión entera que les pertenece —
-  pestañas abiertas, distribución de paneles y qué se reconecta al entrar. Un
-  selector en la barra superior cambia entre ellos y cada uno recuerda su propio
-  estado, así que un entorno por cliente (o por sede) ya no implica una ventana
-  por cliente (#109). Crear, renombrar, dar color y eliminar se hacen desde el
-  propio selector.
-
-  Las conexiones siguen siendo globales: un entorno decide cuáles están *en
-  juego*, no las posee. Eliminar uno descarta sus pestañas y su distribución, y
-  nunca toca una conexión ni una contraseña guardada — la confirmación lo dice,
-  porque «eliminar entorno» se puede leer perfectamente al contrario.
-
-  `tab_state.json` pasa a v4 para poder guardar esto. La actualización no pierde
-  nada: la sesión que tuvieras se convierte en un entorno único que la contiene
-  tal cual, de modo que el primer arranque tras actualizar se ve igual que el
-  último antes de hacerlo. Ese entorno nace sin nombre y se muestra como
-  «Predeterminado» en tu idioma, en vez de llevar un nombre en inglés escrito
-  dentro de tus datos.
-
-- **La pantalla vacía ya sirve para empezar.** Sin pestañas abiertas, el panel
-  mostraba un logo, una línea de texto y un botón «Nueva consulta» que seguía
-  deshabilitado hasta elegir una conexión en otro sitio. Ahora lleva
-  `WorkspacePicker` (#110): pestañas para Conexiones y Entornos, cada una con
-  su propio buscador y una cuadrícula de tarjetas de buen tamaño — un borde del
-  color de marca, un icono (el logo del driver para una conexión; el icono
-  propio del entorno, o uno por defecto, para un entorno) y un nombre.
-  Escribes, pulsas una y quedas conectado y situado en ella.
-
-  #110 pasó por dos versiones antes de esta: primero reutilizaba el aspecto
-  del árbol lateral tal cual (chevrons, sangría, estado de plegado), luego se
-  redujo a una fila de chips en línea — ambas se leían como prestadas de otro
-  sitio en vez de pensadas para una pantalla cuyo único trabajo es «elegir una
-  y seguir». Las tarjetas de aquí son deliberadamente amplias: un elemento
-  focal por tarjeta, cromado contenido (el borde es la única decoración, y
-  solo significa «se puede elegir» o «esta es la actual»). Las carpetas siguen
-  agrupando las conexiones bajo un encabezado (la búsqueda también encuentra
-  por nombre de carpeta), pero ahora solo como etiquetas — sin un estado de
-  plegado propio que mantener sincronizado con el del árbol. La pestaña de
-  Entornos cambia de entorno de verdad — el mismo `switchTo` de
-  desconectar-y-reconectar que hay detrás del selector de la barra superior —
-  y solo aparece en la ventana principal, la única donde cambiar de entorno
-  significa algo.
-
-- **Las conexiones están en el árbol de esquema.** El árbol empieza ahora un nivel
-  más arriba: carpetas, dentro las conexiones, y después las bases de datos y las
-  tablas como siempre (#107). Al pulsar una conexión se abre y se despliega ahí
-  mismo, así que consultar un segundo servidor ya no obliga a salir del árbol para
-  elegirlo en un menú: una carpeta como `SERVIDOR_PRUEBAS` con un cliente por fila
-  se ve y se navega en la misma ventana.
-
-  Las carpetas son las mismas que ya muestran el menú Archivo y la barra de
-  estado, y se pliegan igual: un único estado compartido y la misma preferencia
-  **Despliegue de grupos de conexiones**, de modo que una carpeta que cierras
-  queda cerrada en todas partes. Las conexiones inactivas aparecen atenuadas con
-  su distintivo de driver, y una conexión perdida conserva el botón de reconectar
-  que ya tiene en la barra de estado.
-
-  Las acciones de la conexión se han movido con ella. El clic derecho sobre una
-  conexión ofrece refrescar, nueva base de datos o colección, exportar e importar
-  la base completa en `.sql`, el selector de bases visibles, el panel de seguridad
-  y conectar/desconectar: el mismo conjunto que el explorador tenía como fila de
-  iconos en su cabecera, que de otro modo se habría repetido bajo cada conexión
-  desplegada. Lo que se ofrece sigue dependiendo del driver y de si la conexión
-  navega una base o todas, igual que antes. Cuando hay un subconjunto de bases
-  ocultas, el árbol lo dice con palabras bajo el buscador en lugar de teñir un
-  icono.
-
-  La fila de una conexión está abierta cuando la conexión lo está, y si la pliegas
-  se recuerda por entorno, así que el árbol vuelve como lo dejaste al arrancar y al
-  cambiar de entorno. Solo se guardan tus pliegues, nunca una lista de lo que debe
-  estar abierto: un pliegue recordado como mucho muestra una fila cerrada, mientras
-  que un despliegue recordado podría insistir en abrir una fila sobre una conexión
-  que no ha vuelto.
-
-- **Orígenes compartidos.** Un entorno puede importar sus conexiones desde un
-  fichero en una carpeta compartida, de modo que quien se incorpora a un equipo
-  no configura nada a mano: se apunta HuginnDB a
-  `\\servidor\huginndb\clientes.json`, se escribe la passphrase una vez y las
-  conexiones aparecen con sus contraseñas ya puestas (#108). El fichero es
-  exactamente lo que ya produce «Exportar perfiles…», así que publicar consiste en
-  que una persona exporte y deje el resultado en la carpeta. Registrar y
-  sincronizar se hace en Ajustes → Orígenes compartidos.
-
-  El sentido es estrictamente único: HuginnDB solo lee esa ruta, nunca escribe en
-  ella. Una conexión que viene de un origen es de solo lectura — editarla o
-  borrarla en local lo desharía la siguiente sincronización de todas formas — y el
-  aviso de su diálogo dice cómo saltárselo: duplícala y la copia es tuya. La
-  passphrase se guarda por origen en tu propio almacén de credenciales, nunca en
-  disco. Como leer la carpeta más la passphrase equivale a tener las contraseñas,
-  el perímetro real son los permisos de la carpeta y que la passphrase viaje fuera
-  de banda; está en `SECURITY.md`.
-
-  Los orígenes se sincronizan al arrancar, cada cuatro horas y cuando lo pidas.
-  Esa cadencia es la del actualizador y no la del keepalive a propósito: un
-  fichero de configuración curado a mano no cambia cada minuto, y veinte equipos
-  consultando un recurso SMB sin parar se nota en el servidor de ficheros.
-
-  **Una sincronización nunca borra nada por su cuenta.** Cuando una conexión deja
-  de aparecer en el fichero, se *avisa* — un aviso persistente en el árbol de
-  esquema y en Ajustes, nunca un diálogo, porque el barrido corre en segundo plano
-  y no hay garantía de que nadie esté mirando — y tú decides: conservarla como
-  tuya, lo que la desvincula del origen y la vuelve editable, o borrarla junto con
-  su contraseña guardada. La decisión se recuerda para que un barrido no vuelva a
-  preguntar. Que otra persona edite un fichero compartido no puede destruir
-  credenciales en tu máquina.
-
-  Hay tres formas de fallar contempladas de forma explícita, porque en una oficina
-  son más frecuentes que el caso para el que está pensado. Un fichero que no se
-  puede leer o interpretar — recurso caído, VPN cortada, el publicador guardando
-  sin renombrado atómico — no cambia *absolutamente nada*, ya que una lectura
-  fallida no puede confundirse con «ahora el fichero dice menos». Un fichero que
-  se lee bien pero ha perdido de golpe la mitad de las conexiones de un origen se
-  trata como poco fiable en lugar de como un borrado en lote, y no avisa de nada
-  hasta que lo revises, porque enterrar a alguien en avisos de baja de conexiones
-  que están perfectamente vivas le cuesta readoptarlas una a una. Y los cambios de
-  metadatos de una conexión con un pool abierto se retienen hasta que se cierra, y
-  entonces se aplican: mover el host o el puerto bajo una consulta en marcha
-  cambiaría el servidor bajo tus pies a mitad de sentencia.
-
-- **Las pestañas de tabla recuerdan sus filtros y su ordenación.** Al restaurar
-  una sesión vuelven los filtros de columna de cada pestaña, su ordenación
-  multinivel y su búsqueda confirmada, en lugar de reabrirse todas sin filtrar y
-  sin ordenar (#112). Solo se guarda lo que estaba realmente aplicado, nunca una
-  búsqueda a medio escribir. Los filtros que llegan de «Ir al registro
-  referenciado» siguen teniendo prioridad sobre los restaurados, porque son un
-  gesto explícito que acabas de hacer y no un resto de la sesión anterior.
-
-- **Filtrar por las filas seleccionadas.** Con varias filas seleccionadas en el
-  navegador de datos, el clic derecho sobre una columna ofrece ahora «Filtrar
-  *columna* por los N valores seleccionados» y su inversa, que aplican un `IN` /
-  `NOT IN` en servidor y componen con el buscador y con los filtros que ya
-  hubiera (#114). La lista se deduplica antes de convertirse en SQL, así que
-  seleccionar cuarenta filas que comparten tres valores envía tres binds y la
-  etiqueta del menú anuncia tres, no cuarenta. El chip muestra el número de
-  valores y los valores en su tooltip. Funciona en todos los drivers, MongoDB
-  incluido (`$in` / `$nin`, reconstruyendo los `_id` en hexadecimal como
-  ObjectId reales).
-
-  `NULL` recibe el cuidado que exige la lógica de tres valores de SQL, porque ni
-  `IN` ni `NOT IN` se comportan de forma intuitiva a su alrededor: si se
-  selecciona una fila con `NULL` y se filtra *por* esos valores se añade una rama
-  `IS NULL` explícita, ya que `col IN (…)` nunca es cierto para una columna
-  `NULL` y la fila que el usuario acaba de elegir desaparecería de su propio
-  filtro; y al pedir *excluir* valores sin ningún `NULL` entre ellos, las filas
-  con `NULL` siguen visibles en lugar de que el comportamiento estándar de
-  `NOT IN` descarte filas que nadie pidió excluir. Las listas se limitan a 1000
-  valores por filtro: cada valor es un bind y los motores tienen sus propios
-  techos de placeholders, cuyo modo de fallo es un error opaco del driver.
+- **Entornos** — un nuevo nivel por encima de las conexiones: un conjunto
+  con nombre de conexiones con sus propias pestañas, disposición de
+  paneles y reconexión, cambiable desde un selector en la barra superior
+  (#109).
+- **Orígenes compartidos** — sincroniza las conexiones (y contraseñas) de
+  un entorno desde un fichero de configuración compartido, así que unirse
+  a un equipo consiste en escribir una passphrase una vez en vez de
+  configurar cada conexión a mano (#108).
+- **Las conexiones viven ahora en el árbol de esquema**, como sus dos
+  niveles superiores por encima de las carpetas; las acciones de una
+  conexión se movieron a su menú de clic derecho (#107).
+- **Un selector de espacio de trabajo** con pestañas y búsqueda
+  (conexiones y entornos) sustituye al antiguo marcador de espacio vacío
+  (#110).
+- **Las pestañas de tabla recuerdan sus filtros, orden y búsqueda** al
+  restaurar una sesión (#112).
+- **Filtrar por las filas seleccionadas** — clic derecho sobre una columna
+  con filas seleccionadas añade un filtro `IN`/`NOT IN` en servidor (#114).
+- **Feedback de ejecución de consultas rediseñado**: un cronómetro en
+  vivo, un reparto editor/resultados 75/25 por defecto y un historial con
+  búsqueda y «ejecutar de nuevo» por entrada.
+- **Neon**, un nuevo tema oscuro casi negro con una paleta de acentos neón
+  propia.
+- Las pestañas de tabla/consulta abiertas usan ahora el aspecto «isla» del
+  resto de la app, con un distintivo de driver permanente por pestaña.
+- Las columnas de la rejilla de datos ahora muestran un divisor visible, se
+  dimensionan según su tipo (booleanos/números/fechas/UUID con un ancho
+  sensato desde el principio) y se redimensionan con una previsualización
+  en vivo real en vez de una guía estática.
 
 ### Cambiado
 
-- **«Ir al registro referenciado» pasa de Ctrl/Cmd+clic a Alt+clic.** El atajo
-  de navegación por clave ajena compartía acorde con la multiselección de filas
-  de la rejilla y se lo llevaba siempre: el handler salía antes de tiempo en
-  cualquier celda con clave ajena, así que en una tabla cuyas columnas visibles
-  son mayoritariamente FK, Ctrl+clic no podía alternar una fila (#113). La
-  selección es el gesto más básico y debe comportarse igual en todas las
-  columnas, así que la navegación FK tiene ahora acorde propio. La entrada del
-  menú contextual no cambia, y el tooltip de la celda anuncia el nuevo acorde.
+- «Ir al registro referenciado» pasa de Ctrl/Cmd+clic a Alt+clic,
+  liberando ese acorde para la multiselección de filas (#113).
+- La barra de estado global ya no duplica el contador de filas, el
+  cronómetro ni el badge de solo lectura de la propia consulta.
 
 ### Corregido
 
-- **Ctrl/Cmd+clic ya alterna la selección de filas de forma fiable** (#113).
-  Tres causas independientes, todas atacadas: el atajo FK se comía el acorde en
-  las celdas con clave ajena (arriba); una fila multiseleccionada se pintaba
-  `bg-brand/20` frente al `bg-brand/10` del cursor de fila única, una diferencia
-  que la mayoría de pantallas muestra como idéntica, de modo que un toggle
-  correcto parecía no hacer nada — ahora la fila seleccionada lleva un tinte más
-  fuerte y una barra de acento en su borde izquierdo; y una tabla **sin clave
-  primaria** no obtenía identidad de fila alguna, lo que desactivaba la
-  selección por completo (ni columna de checkbox ni rango con Mayús). Esa tabla
-  pasa a usar como identidad la fila entera, así que selección, copia y filtrado
-  funcionan; dos filas byte a byte idénticas comparten identidad y se
-  seleccionan juntas, que es el límite honesto de no tener clave. Toda acción
-  que modifica datos (edición en línea, insertar, duplicar, borrar, borrado
-  masivo) sigue supeditada a una clave primaria real, igual que antes. Los
-  checkboxes de fila además permanecen visibles en cuanto hay algo seleccionado
-  en lugar de aparecer solo al pasar por encima.
+- Varios errores al cambiar de entorno que podían perder las pestañas
+  abiertas, el foco o la disposición dividida, o colapsar una división en
+  un solo grupo de pestañas.
+- Un `SELECT` precedido de un comentario se ejecutaba bien pero no
+  mostraba filas.
+- Ctrl/Cmd+clic ahora alterna la selección de filas de forma fiable,
+  incluso en tablas sin clave primaria (#113).
+- Los menús desplegables largos ahora hacen scroll en vez de recortarse
+  (#111).
+- Corregida la regresión de rendimiento en MySQL/Postgres de la
+  separación del conteo de filas en la 1.11.0: el conteo ya no compite
+  con la carga de datos por una conexión del pool.
+- Los logos de driver y la muestra de tema ahora son sensibles al tema en
+  vez de ir sobre una placa clara fija.
 
-- **Los menús largos ahora hacen scroll en vez de recortarse.** Un desplegable
-  o menú contextual más alto que el hueco entre su disparador y el borde de la
-  ventana se cortaba sin forma de llegar a las entradas ocultas: los
-  primitivos compartidos usaban `overflow: hidden` y nunca limitaban su alto.
-  El caso más visible era la lista de conexiones del menú Archivo con todas
-  las carpetas desplegadas (#111), donde las conexiones que quedaban por
-  debajo del corte eran directamente inalcanzables. Ambos primitivos limitan
-  ahora su alto a `--radix-popper-available-height` de Radix (el hueco real
-  hasta el borde de la ventana, recalculado en cada reposicionamiento) y hacen
-  scroll vertical. Se mantiene el recorte horizontal, para que un nombre de
-  conexión largo no se salga de las esquinas redondeadas, y cualquier punto de
-  uso que ya pasaba su propio `max-h-*` sigue ganando al valor por defecto.
+### Rendimiento
+
+- Un clic en la rejilla de datos, y abrir una pestaña nueva junto a varias
+  ya abiertas, dejaron de re-renderizar el resto de filas/pestañas — antes
+  ambos escalaban con el total de filas/pestañas.
+
+## [1.11.0] — 2026-07-24
 
 ### Añadido
 

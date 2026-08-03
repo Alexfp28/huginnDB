@@ -560,7 +560,6 @@
     "closeAll": "Close all tabs",
     "pin": "Pin tab",
     "unpin": "Unpin tab",
-    "actionsTooltip": "Tab actions",
     "color": "Colour",
     "colorNone": "No colour",
     "colorCustom": "Custom colour…",
@@ -984,6 +983,35 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_12_0": {
+        "tagline": "Environments group your connections into named, switchable sessions — with shared origins to sync them across a team, connections now living in the schema tree, and a redesigned query run experience.",
+        "items": {
+          "environments": {
+            "title": "Environments",
+            "body": "A new level above connections: a named set of connections with its own tabs, pane layout and reconnect behaviour, switchable from a topbar selector — one environment per client instead of one window per client."
+          },
+          "sharedOrigins": {
+            "title": "Shared origins",
+            "body": "An environment can sync its connections — and their passwords — from a shared config file on the network, so joining a team means entering a passphrase once instead of configuring every connection by hand."
+          },
+          "connectionsInTree": {
+            "title": "Connections live in the schema tree",
+            "body": "The tree now starts with folders and connections as its top two levels, so opening a second server is a click in the same window instead of a trip through a separate menu."
+          },
+          "filterSelected": {
+            "title": "Filter by the selected rows",
+            "body": "Select rows in the data grid, right-click a column, and filter the rest of the table down to (or excluding) exactly those values — deduplicated, and working on every driver, MongoDB included."
+          },
+          "queryFeedback": {
+            "title": "Redesigned query feedback",
+            "body": "A live run timer, a bigger default editor/results split, and a searchable query history with a one-click \"run again\" replace the old bare running/finished label."
+          },
+          "neonTheme": {
+            "title": "Neon, a new dark theme",
+            "body": "A near-black theme built around a signature neon green accent, with cyan/amber/pink picked to match — a fresh coat for anyone tired of the two defaults."
+          }
+        }
+      },
       "1_11_0": {
         "tagline": "The app reconnects on launch and opens big tables almost instantly, with a cleaner single-bar grid toolbar, a MongoDB list view and true floating windows.",
         "items": {

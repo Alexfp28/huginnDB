@@ -1,12 +1,15 @@
 /**
  * Changelog access for the in-app "What's new" panel.
  *
- * Both CHANGELOG.md (English, authoritative + complete) and CHANGELOG.es.md
- * (Spanish, maintained for the recent releases) are bundled at build time via
- * Vite's `?raw` import — no network, no HTTP plugin. The Spanish file may lag
- * behind on older versions; `getReleases("es")` therefore keeps the English
- * version list + order and substitutes the Spanish body only where it exists,
- * falling back to English per-version otherwise.
+ * Both CHANGELOG.md (English, authoritative) and CHANGELOG.es.md (Spanish,
+ * maintained for the recent releases) are bundled at build time via Vite's
+ * `?raw` import — no network, no HTTP plugin. CHANGELOG.md's pre-1.0 (0.x)
+ * history was pruned once the file grew too large to be a useful in-app
+ * reader; the full early history still lives in git tags/commits. The
+ * Spanish file may lag behind on older versions; `getReleases("es")`
+ * therefore keeps the English version list + order and substitutes the
+ * Spanish body only where it exists, falling back to English per-version
+ * otherwise.
  *
  * The parser is intentionally small: it understands the Keep a Changelog shape
  * this repo uses (`## [x.y.z] — date`, `### Section`, `- bullet` with wrapped

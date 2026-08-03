@@ -24,21 +24,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import {
-  MoreVertical,
-  PanelsTopLeft,
-  Pin,
-  PinOff,
-  Plus,
-  X,
-} from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown";
+import { PanelsTopLeft, Pin, PinOff, Plus, X } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -70,7 +56,11 @@ import { useCommandPalette } from "@/components/shell/CommandPalette";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { ConnectionDialog } from "@/components/connection/dialogs/ConnectionDialog";
 import { getBinding, formatComboForDisplay } from "@/lib/keybindings";
-import { resolveConnectionLabel } from "@/lib/connectionLabel";
+import {
+  resolveConnectionLabel,
+  resolveConnectionDriver,
+} from "@/lib/connectionLabel";
+import { DriverBadge } from "@/components/common/DriverBadge";
 import { TableDataTab } from "@/components/grid/TableDataTab";
 import { QueryEditorTab } from "@/components/query/QueryEditorTab";
 import { StructureEditorTab } from "@/components/schema/StructureEditorTab";
@@ -265,15 +255,19 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const isActive = useTabs((s) => s.activeId === id);
   const profiles = useConnections((s) => s.profiles);
 
-  const { label, tooltip } = useMemo(() => {
+  const { label, tooltip, driver } = useMemo(() => {
     const tab = tabs.find((t) => t.id === id);
-    if (!tab) return { label: id, tooltip: id };
+    if (!tab) return { label: id, tooltip: id, driver: undefined };
 
     // Prefix the connection/database context whenever it's needed to tell tabs
     // apart: either more than one connection is in play, or another open tab
     // carries the same bare title (the same table opened on two connections /
     // databases — issue #22, where both rendered as an identical bare name). A
-    // lone tab, or unique titles on a single connection, stay bare.
+    // lone tab, or unique titles on a single connection, stay bare. The driver
+    // badge (rendered unconditionally, see below) already gives every tab a
+    // permanent visual anchor to its connection, so this text prefix is only
+    // needed for the disambiguation cases, not as the primary "which
+    // connection" cue anymore.
     const distinctConnections = new Set(tabs.map((x) => x.connectionId)).size;
     const titleCollision =
       tabs.filter((x) => x.kind === tab.kind && x.title === tab.title).length > 1;
@@ -285,6 +279,7 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
         tab.kind === "table"
           ? `${connName} / ${tab.schema ?? ""}${tab.schema ? "." : ""}${tab.table ?? ""}`
           : `${connName} / ${tab.title}`,
+      driver: resolveConnectionDriver(profiles, tab.connectionId),
     };
   }, [tabs, profiles, id]);
 
@@ -377,136 +372,17 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
         }
       }}
     >
+      {driver && <DriverBadge driver={driver} />}
       {isPinned && (
         <Pin className="h-3 w-3 shrink-0 -rotate-45 text-brand" />
       )}
       <span className="max-w-[220px] truncate">{label}</span>
       {/*
-       * Explicit action menu (⋮). Drag-to-split should work natively, but
-       * we surface the actions here as a reliable affordance — discoverable
-       * for new users, and a working fallback if a webview quirk makes the
-       * native drag drop overlay flaky in a nested dockview.
+       * No explicit action menu here anymore — every action below (split,
+       * float, colour, close variants) lives in the right-click context menu
+       * on this same tab (see `ContextMenuContent` below). Drag-to-split
+       * still works natively.
        */}
-      <DropdownMenu>
-        <SimpleTooltip label={t("tabs.actionsTooltip")} side="bottom">
-          <DropdownMenuTrigger asChild>
-            <button
-              className={cn(
-                "rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                // Reveal on hover AND on keyboard focus (focus-within on the
-                // tab, or the button itself receiving focus) so the close/menu
-                // actions aren't mouse-only.
-                isActive
-                  ? "opacity-100"
-                  : "opacity-0 focus-visible:opacity-100 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100",
-              )}
-              onClick={(e) => e.stopPropagation()}
-              // Don't let dockview start a tab drag from the menu trigger.
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <MoreVertical className="h-3.5 w-3.5" />
-            </button>
-          </DropdownMenuTrigger>
-        </SimpleTooltip>
-        <DropdownMenuContent align="end" className="text-xs">
-          <DropdownMenuItem onClick={togglePin}>
-            {isPinned ? (
-              <PinOff className="mr-2 h-3.5 w-3.5" />
-            ) : (
-              <Pin className="mr-2 h-3.5 w-3.5" />
-            )}
-            {isPinned ? t("tabs.unpin") : t("tabs.pin")}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {/*
-           * Splits require a reference `group` — `panel.api.moveTo` silently
-           * coerces `position` to `'center'` when `group` is undefined
-           * (see dockviewPanelApi.js → DockviewPanelApiImpl.moveTo), which
-           * is why a previous version of these handlers was a no-op.
-           * Passing the panel's own group makes dockview create a new group
-           * adjacent to it at the requested position.
-           */}
-          <DropdownMenuItem
-            onClick={() =>
-              props.api.moveTo({ group: props.api.group, position: "right" })
-            }
-          >
-            {t("tabs.splitRight")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() =>
-              props.api.moveTo({ group: props.api.group, position: "bottom" })
-            }
-          >
-            {t("tabs.splitDown")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={detachToWindow}>
-            {t("tabs.floatPanel")}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <div className="px-2 py-1.5">
-            <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-              {t("tabs.color")}
-            </div>
-            <div className="flex items-center gap-1">
-              {TAB_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={cn(
-                    "h-4 w-4 rounded-full border border-border/50 transition-transform hover:scale-110",
-                    tabColor === c &&
-                      "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
-                  )}
-                  style={{ backgroundColor: c }}
-                  title={c}
-                />
-              ))}
-              <button
-                type="button"
-                onClick={() => setColor(null)}
-                className={cn(
-                  "flex h-4 w-4 items-center justify-center rounded-full border border-border/50 text-muted-foreground hover:bg-accent",
-                  !tabColor &&
-                    "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
-                )}
-                title={t("tabs.colorNone")}
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-              {/* Free-form colour, beyond the preset swatches (issue #35). A
-                  rectangle (vs. the presets' circles) signals "custom". */}
-              <input
-                type="color"
-                value={tabColor ?? "#888888"}
-                onChange={(e) => setColor(e.target.value)}
-                className="h-4 w-6 cursor-pointer rounded border border-border/50 bg-transparent p-0"
-                title={t("tabs.colorCustom")}
-              />
-            </div>
-          </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={requestClose}>
-            {t("tabs.closeTab")}
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled={!hasOthers} onClick={closeOthers}>
-            {t("tabs.closeOthers")}
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled={!hasOthers} onClick={closeToRight}>
-            {t("tabs.closeToRight")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={!hasOthersInConnection}
-            onClick={closeOthersInConnection}
-          >
-            {t("tabs.closeOthersInConnection")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={closeAll}>
-            {t("tabs.closeAll")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
       <SimpleTooltip label={t("tabs.closeTab")} side="bottom">
         <button
           className={cn(

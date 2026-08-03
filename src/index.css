@@ -315,46 +315,77 @@ input[type="password"]::-ms-clear {
 /* -------------------------------------------------------------------------
  * Inner workspace dockview (open table / query tabs) — `.inner-dock`
  * -------------------------------------------------------------------------
- * The shared theme makes the tab strip short and very dark, so the active tab
- * was barely distinguishable and the chrome felt cramped. These rules, scoped
- * to TabbedArea's wrapper, give the inner strip a taller, lighter header, a
- * clear hover state, and — crucially — a brand-tinted accent on the ACTIVE
- * tab so the active panel reads at a glance (and now tracks correctly, since
- * the custom tab re-renders on active change). The outer island shell is
- * untouched. `.dv-dockview` carries the theme className, so setting the size
- * vars there overrides the shared defaults. */
+ * Extends the "island view" language from the outer shell (`.outer-dock`
+ * above) down to individual tabs: each open table/query is its own floating
+ * rounded chip over a recessed backdrop, rather than a flush segment in a
+ * flat strip. `--dv-tab-margin` and `--dv-tab-border-radius` are dockview's
+ * own theming hooks — the same two variables its bundled "-spaced" themes
+ * (nord-spaced, github-dark-spaced, …) use — so the gap and rounding come
+ * from supported theming, not a layout hack; dockview's drag/reorder math
+ * already accounts for a margin-carrying tab. `.dv-dockview` carries the
+ * theme className, so setting vars there overrides the shared defaults. */
 .inner-dock .dv-dockview {
-  --dv-tabs-and-actions-container-height: 36px;
+  --dv-tabs-and-actions-container-height: 42px;
   --dv-tab-font-size: 12px;
+  --dv-tab-border-radius: calc(var(--radius) - 2px);
+  --dv-tab-margin: 7px 3px 0 3px;
 }
 .inner-dock .dv-tabs-and-actions-container {
-  background-color: hsl(var(--card));
+  /* Same recessed backdrop as the outer shell's dockview root (muted surface
+     + a foreground veil) — the trench each tab chip floats above. */
+  background-color: hsl(var(--muted));
+  background-image: linear-gradient(
+    hsl(var(--foreground) / 0.05),
+    hsl(var(--foreground) / 0.05)
+  );
   border-bottom: 1px solid hsl(var(--border));
 }
 .inner-dock .dv-tab {
-  border-right: 1px solid hsl(var(--border) / 0.6);
+  border-radius: var(--dv-tab-border-radius);
+  border: 1px solid transparent;
+  background-color: hsl(var(--card) / 0.55);
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    filter 0.12s ease;
+}
+/* dockview's own hairline divider (`::before`) is meant for flush tabs; the
+   margin gap above already separates each chip, so a bare vertical line
+   would just cut across its rounded corner. */
+.inner-dock .dv-tabs-container.dv-horizontal .dv-tab:not(:first-child)::before {
+  content: none;
 }
 .inner-dock .dv-tab:not(.dv-active-tab):hover {
   background-color: hsl(var(--accent));
+  border-color: hsl(var(--border) / 0.7);
 }
-/* Active tab merges into the content surface and carries a brand accent in
- * one of three styles (`ui.tabAccentStyle`, stamped as `data-tab-accent` on
- * `.inner-dock` by TabbedArea). Default is "cap" — kept unprefixed so an
- * unset/unknown value still renders the original look. A per-tab custom
- * colour (`WorkspaceTab`'s inline `boxShadow`) overrides this box-shadow
- * entirely on that one tab — matching axis, computed from the same
- * preference, so the two never fight over conflicting positions. */
+/* Active tab merges into the content surface, is lifted with the same
+ * elevation recipe as the outer islands' floating panels (via `filter`,
+ * which stays independent of `box-shadow` — see below), and carries a brand
+ * accent in one of three styles (`ui.tabAccentStyle`, stamped as
+ * `data-tab-accent` on `.inner-dock` by TabbedArea). Default is "cap" — kept
+ * unprefixed so an unset/unknown value still renders the original look. A
+ * per-tab custom colour (`WorkspaceTab`'s inline `boxShadow`) overrides this
+ * box-shadow entirely on that one tab — matching axis, computed from the
+ * same preference, so the two never fight over conflicting positions; using
+ * `filter` (not `box-shadow`) for the elevation keeps that override from
+ * also erasing the lift. */
 .inner-dock .dv-tab.dv-active-tab {
   background-color: hsl(var(--background));
+  border-color: hsl(var(--border));
   box-shadow: inset 0 2px 0 0 hsl(var(--brand));
+  filter:
+    drop-shadow(0 1px 2px hsl(var(--foreground) / 0.06))
+    drop-shadow(0 2px 6px hsl(var(--foreground) / 0.08));
 }
 .inner-dock[data-tab-accent="rail"] .dv-tab.dv-active-tab {
   box-shadow: inset 3px 0 0 0 hsl(var(--brand));
 }
+/* "boxed" now means the plain elevated chip with no colour line — every
+ * active tab already gets the lift above, so this style just omits the
+ * accent stripe rather than duplicating it. */
 .inner-dock[data-tab-accent="boxed"] .dv-tab.dv-active-tab {
-  box-shadow:
-    0 2px 6px hsl(var(--foreground) / 0.08),
-    0 1px 2px hsl(var(--foreground) / 0.06);
+  box-shadow: none;
 }
 
 /* -------------------------------------------------------------------------
