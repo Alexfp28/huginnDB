@@ -985,6 +985,8 @@ const GridRow = memo(function GridRow({
           </ContextMenu>
         );
       })}
+      {/* Matches the header's filler `<th>` — see the comment there. */}
+      <td className="border-b border-border/50" />
     </tr>
   );
 });
@@ -1433,13 +1435,25 @@ export function DataGrid({
    * touched once, on release, matching the perf goal the old `onEnd` mode
    * was reaching for — but without giving up live feedback to get there.
    */
-  function startColumnResize(e: React.MouseEvent<HTMLDivElement>, colId: string) {
+  function startColumnResize(
+    e: React.MouseEvent<HTMLDivElement>,
+    colId: string,
+    currentSize: number,
+  ) {
     e.preventDefault();
     e.stopPropagation();
     const thEl = (e.currentTarget as HTMLElement).closest("th");
     if (!thEl) return;
     const th: HTMLTableCellElement = thEl;
-    const startWidth = th.getBoundingClientRect().width;
+    // Anchor to the column's logical size, not `getBoundingClientRect()`.
+    // The table is `table-fixed` + `w-full`; when the declared column
+    // widths don't fill the available width, the browser stretches them
+    // to fit (CSS2.1 fixed-table-layout, extra-width distribution). That
+    // makes the rendered `<th>` wider than its logical size, so measuring
+    // the DOM here would bake the cosmetic stretch in as the new
+    // committed width the instant the drag starts — the column visibly
+    // jumps before the pointer even moves.
+    const startWidth = currentSize;
     const startX = e.clientX;
     setResizingColId(colId);
     const prevCursor = document.body.style.cursor;
@@ -2380,7 +2394,9 @@ export function DataGrid({
                     {/* Drag handle — thin strip on the column's trailing edge.
                         `select-none` stops text selection while dragging. */}
                     <div
-                      onMouseDown={(e) => startColumnResize(e, h.column.id)}
+                      onMouseDown={(e) =>
+                        startColumnResize(e, h.column.id, h.column.getSize())
+                      }
                       className={cn(
                         "absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-primary/50",
                         resizingColId === h.column.id && "bg-primary",
@@ -2388,6 +2404,13 @@ export function DataGrid({
                     />
                   </th>
                 ))}
+                {/* Filler column: absorbs any leftover width itself, so
+                    real columns never get proportionally stretched by the
+                    browser's fixed-table-layout algorithm (which otherwise
+                    makes a resized column's rendered width outrun the
+                    cursor — see `startColumnResize`). Needs a matching
+                    empty cell in every row below, not just here. */}
+                <th className="border-b border-border bg-card" />
               </tr>
             ))}
           </thead>
@@ -2466,7 +2489,7 @@ export function DataGrid({
             {visibleRows.length === 0 && !draftRow && (
               <tr>
                 <td
-                  colSpan={result.columns.length + 1}
+                  colSpan={result.columns.length + 2}
                   className="px-4 py-8 text-center text-xs text-muted-foreground"
                 >
                   No rows
@@ -2822,11 +2845,12 @@ function DraftRowView({
             </td>
           );
         })}
+        <td className="border-b border-border/50" />
       </tr>
       {draft.error && (
         <tr>
           <td
-            colSpan={columns.length + 1}
+            colSpan={columns.length + 2}
             className="border-b border-border/50 bg-destructive/10 px-3 py-1 text-[11px] text-destructive"
           >
             {draft.error}
