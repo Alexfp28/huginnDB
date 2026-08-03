@@ -165,6 +165,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Switching environments could restore the right tabs but collapse a split
+  workspace back to a single tabbed group** whenever the split included a tab
+  opened against a multi-DB "database view" child (`<parent>::db::<database>`,
+  the connection `SchemaExplorer` opens on demand when a database node is
+  expanded). `restoreSession`'s reconnect loop only ever restores TOP-LEVEL
+  connections; a database-view child's tabs come back later, asynchronously,
+  whenever `SchemaExplorer`'s own auto-re-expand effect (for a database node
+  the tree remembers as expanded) gets around to calling
+  `openTrackedDatabaseView` — a separate React component's effect, on its own
+  schedule, entirely decoupled from `restoreSession`. `hydrateWorkspaceLayout`
+  was gated on `useTabs.getState().tabs.length > 0`, checked right after the
+  top-level reconnect loop — before that database view had any chance to
+  reopen — so whenever a saved split's tabs all belonged to one, the check
+  saw zero tabs and skipped the restore outright: no exception, no trace,
+  `fromJSON` simply never ran. (An intermediate fix tried polling for the
+  store→dockview reconciler to "converge" on `useTabs` before applying the
+  layout — that couldn't help either, since `useTabs` stayed empty the entire
+  time this ran; there was nothing to converge on yet.)
+
+  `hydrateWorkspaceLayout` now applies the saved split unconditionally instead
+  of waiting on tab count. A panel `fromJSON` recreates whose tab hasn't shown
+  up in `useTabs` yet is marked `protectPanelUntilRestored` (`lib/dockview.ts`)
+  rather than pruned, so the ordinary reconciler effect — which still fires
+  for every unrelated `tabs` change in the meantime — leaves it alone instead
+  of deleting it for "not being in `tabs` right now" and letting a later pass
+  re-add it, un-split, into the default group. Protection lifts itself the
+  moment the real tab lands (it's simply in `live` again by then), or is
+  dropped explicitly by `clearProtectedPanelsForConnection` when that
+  connection (or its parent) disconnects — the only two ways a panel like this
+  is now allowed to disappear, instead of "wasn't in `tabs` at this instant."
+
 - **Tabs opened against a multi-DB "database view" (`<parent>::db::<database>`,
   the synthetic child pool `open_database_view` opens when a server connection's
   database node is expanded in the tree) never persisted at all** — not across

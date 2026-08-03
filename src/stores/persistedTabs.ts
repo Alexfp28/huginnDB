@@ -56,6 +56,7 @@ import {
   getInnerDockviewApi,
   setPendingInternalLayout,
   syncTabPanels,
+  protectPanelUntilRestored,
 } from "@/lib/dockview";
 
 const SAVE_DEBOUNCE_MS = 600;
@@ -417,43 +418,42 @@ export function subscribedConnectionIds(): string[] {
 }
 
 /**
- * Restore the session-level inner-dockview geometry once at launch, AFTER the
- * launch flow has populated `useTabs` (i.e. after auto-reconnect settles).
- * Ordering matters: `fromJSON` recreates panels from the stored params, but
- * the TabbedArea reconciler removes any panel whose tab isn't in `useTabs` —
- * so if this ran with an empty tab store (as it did in the first cut), the
- * reconciler would immediately delete the geometry `fromJSON` had just built.
- * Called with the tabs already present, `fromJSON` is stable and no later
- * reconciler pass nukes it.
+ * Restore the session-level inner-dockview geometry: at launch, AFTER the
+ * launch flow has populated `useTabs` (auto-reconnect settling), or from
+ * `useEnvironments.switchTo`'s `restoreSession` on an environment switch.
  *
- * `fromJSON` is authoritative (gotcha #10). After it we prune panels for tabs
- * that never came back (a connection that failed to reconnect), matching the
- * reconciler's own removal step, so a half-restored session doesn't leave dead
- * panels around. Main-window-only and gated on `restoreTabsOnOpen`.
+ * `fromJSON` (dockview-core) is applied UNCONDITIONALLY — not gated on
+ * "are there tabs yet", which an earlier version of this function was, and
+ * which was the actual bug behind a report of "tabs come back but the split
+ * doesn't": a table/query/security tab against a multi-DB "database view"
+ * child (`<parent>::db::<database>`) is NOT restored by `restoreSession`'s
+ * reconnect loop — it comes back later, whenever `SchemaExplorer`'s own
+ * auto-re-expand effect (for a database node that was expanded before) gets
+ * around to calling `openTrackedDatabaseView`, a completely separate React
+ * component's effect on its own schedule. A saved split whose panels all
+ * belonged to such a child meant `useTabs` was still empty by the time this
+ * ran, the old `if (tabs.length > 0)` gate skipped the whole restore, and the
+ * layout was simply never applied — no exception, no trace, just silently
+ * skipped. (A version in between tried waiting for `TabbedArea`'s reconciler
+ * to "converge" on the current `tabs` first; that doesn't help either, since
+ * "current tabs" was `[]` the entire time this function ran — there was
+ * nothing to converge on yet.)
  *
- * Also called from `useEnvironments.switchTo`'s `restoreSession`, and that
- * call site is NOT the same situation as launch even though the code path is
- * shared. At launch, `innerApi` is reliably still null here — the App-level
- * launch effect resolves `restoreSession()`'s first `await` before
- * `TabbedArea`'s nested dockview has even mounted, so this falls into the
- * "stash as pending" branch below and `TabbedArea.onReady` applies `fromJSON`
- * before its own reconciler effect has ever run for that mount. If that
- * `fromJSON` call throws (a corrupt/incompatible blob), the reconciler's
- * *first-ever* run for this mount happens right after and builds the default
- * flat layout for whatever `fromJSON` didn't manage to create — the "swallow
- * the error" comment below is describing that recovery.
+ * Since `fromJSON` runs regardless of what's in `useTabs` right now, a panel
+ * it creates may not have a matching tab yet. Those get `protectPanelUntilRestored`
+ * instead of being pruned — see that function's comment for why "not in
+ * `tabs` at this instant" can't be trusted to mean "gone for good" here, and
+ * why the eventual real close (of the tab, or of its connection) is the only
+ * thing allowed to remove one.
  *
- * On a switch, `TabbedArea` never unmounts, so there is no "first-ever"
- * reconciler run left to lean on — it's been converging tabs → panels the
- * whole time `restoreSession` was reconnecting, and won't run again unless
- * `tabs` itself changes, which a layout restore doesn't do. `fromJSON` already
- * clears the dockview before rebuilding (dockview-core's own behaviour, not
- * something this module needs to do), so it can't collide with panels the
- * reconciler already added — but if it throws partway through, the dockview
- * is left genuinely empty with nothing left to repair it. `syncTabPanels`
- * (also used by the reconciler itself) rebuilds the flat layout directly in
- * that case, so a bad geometry blob degrades to "tabs came back, just not
- * split" instead of an empty workspace.
+ * `fromJSON` already clears the dockview before rebuilding (dockview-core's
+ * own behaviour, not something this module needs to do), so it can't collide
+ * with panels the reconciler already added — but if it throws partway
+ * through (a corrupt/incompatible blob), the dockview is left genuinely empty
+ * with nothing else scheduled to rebuild it. `syncTabPanels` (also used by
+ * the reconciler itself) rebuilds the flat layout directly in that case, so a
+ * bad geometry blob degrades to "tabs came back, just not split" instead of
+ * an empty workspace. Main-window-only and gated on `restoreTabsOnOpen`.
  */
 export async function hydrateWorkspaceLayout(): Promise<void> {
   if (!isMainWindow()) return;
@@ -472,7 +472,11 @@ export async function hydrateWorkspaceLayout(): Promise<void> {
         innerApi.fromJSON(layout as Parameters<typeof innerApi.fromJSON>[0]);
         const live = new Set(useTabs.getState().tabs.map((t) => t.id));
         for (const panel of innerApi.panels) {
-          if (!live.has(panel.id)) innerApi.removePanel(panel);
+          if (live.has(panel.id)) continue;
+          const connectionId = (
+            panel.params as { connectionId?: string } | undefined
+          )?.connectionId;
+          if (connectionId) protectPanelUntilRestored(panel.id, connectionId);
         }
       } catch (err) {
         console.warn("[persistedTabs] workspace layout restore failed:", err);
@@ -484,7 +488,7 @@ export async function hydrateWorkspaceLayout(): Promise<void> {
       }
     }
     // If not mounted yet, the blob stays pending: `TabbedArea.onReady` replays
-    // it and its reconciler effect (tabs already present) prunes/adds to match.
+    // it and its reconciler effect (protecting/adding/pruning) as tabs land.
   } catch (err) {
     console.error("[persistedTabs] workspace layout hydrate failed:", err);
   }

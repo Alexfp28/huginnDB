@@ -182,12 +182,80 @@ export function consumePendingInternalLayout(): unknown | null {
 }
 
 /**
+ * Panels that `hydrateWorkspaceLayout` restored from a saved geometry blob
+ * whose tab hadn't shown up in `useTabs` yet at that moment — keyed by panel
+ * (= tab) id, valued by the connection id from that panel's own params.
+ *
+ * Why this needs to exist at all: a saved split's panel ids only match
+ * `useTabs` once every tab that owned one is back — but a table/query/security
+ * tab against a multi-DB "database view" child (`<parent>::db::<database>`)
+ * is NOT restored by `restoreSession`'s reconnect loop. It comes back later,
+ * asynchronously, whenever `SchemaExplorer`'s own auto-re-expand effect (for a
+ * database node that was expanded before) gets around to calling
+ * `openTrackedDatabaseView` — a completely separate React component's effect,
+ * on its own schedule, decoupled from `restoreSession` entirely. If
+ * `hydrateWorkspaceLayout` waited for `useTabs` to already contain that tab
+ * before restoring the split (an earlier version of this fix tried exactly
+ * that, via a reconciler-convergence poll), it would wait on a `tabs` value
+ * that was never going to arrive within any reasonable window — the poll's
+ * timeout would elapse, or `hydrateWorkspaceLayout` just wouldn't be called
+ * for it at all if gated on "are there tabs yet" (the actual regression this
+ * fixes: `restoreSession` used to skip the whole layout restore when the only
+ * tabs belonged to a not-yet-reopened database view).
+ *
+ * So `hydrateWorkspaceLayout` applies the saved split unconditionally and
+ * marks whatever panel doesn't have a matching tab YET as protected here,
+ * instead of pruning it — same treatment `TabbedArea`'s own reconciler
+ * effect gives it (see `syncTabPanels` below). The moment the real tab shows
+ * up, it's simply in `live` again and protection is moot. The only way a
+ * protected panel is ever removed is a genuine close — of the tab itself, or
+ * of its connection (`clearProtectedPanelsForConnection`, called from
+ * `useConnections.markDisconnected`) — never "it wasn't in `tabs` at this
+ * particular instant", which is the check this whole thing exists to not
+ * rely on for these panels.
+ */
+const protectedPanels = new Map<string, string>();
+
+/** Protect `panelId` (whose tab isn't in `useTabs` yet) from the reconciler's
+ *  prune step until its tab shows up or `connectionId` disconnects. */
+export function protectPanelUntilRestored(
+  panelId: string,
+  connectionId: string,
+): void {
+  protectedPanels.set(panelId, connectionId);
+}
+
+/**
+ * Drop protection for every panel belonging to `connectionId` or one of its
+ * `<connectionId>::db::*` children, and immediately re-run the reconciler
+ * against the current `tabs` so anything now-unprotected-and-still-absent
+ * gets pruned right away rather than waiting on some unrelated future tab
+ * change. Call when a connection disconnects — nothing is coming back for it.
+ */
+export function clearProtectedPanelsForConnection(
+  connectionId: string,
+  tabs: AppTab[],
+): void {
+  const prefix = `${connectionId}::db::`;
+  let changed = false;
+  for (const [panelId, connId] of protectedPanels) {
+    if (connId === connectionId || connId.startsWith(prefix)) {
+      protectedPanels.delete(panelId);
+      changed = true;
+    }
+  }
+  if (changed && innerDockviewApi) syncTabPanels(innerDockviewApi, tabs);
+}
+
+/**
  * Reconcile the inner dockview's panels against `tabs`: add a panel for any
  * tab that doesn't have one yet (in the default tabbed arrangement — no
  * `position`, so it lands in whatever group is active), and remove any panel
- * whose tab is gone. This is `TabbedArea`'s own store→dockview reconciler
- * effect, factored out so `persistedTabs.hydrateWorkspaceLayout` can call the
- * exact same panel-creation logic as a recovery path.
+ * whose tab is gone — EXCEPT one `protectPanelUntilRestored` is still holding
+ * (see that function's comment for why some panels can't be judged by "is its
+ * tab in `tabs` right now"). This is `TabbedArea`'s own store→dockview
+ * reconciler effect, factored out so `persistedTabs.hydrateWorkspaceLayout`
+ * can call the exact same panel-creation logic as a recovery path.
  *
  * That recovery path matters because it's the one case where this can't rely
  * on the reconciler's *own* `useEffect` to converge on its own: at launch,
@@ -233,7 +301,13 @@ export function syncTabPanels(api: DockviewApi, tabs: AppTab[]): void {
   }
   const live = new Set(tabs.map((t) => t.id));
   for (const panel of api.panels) {
-    if (!live.has(panel.id)) api.removePanel(panel);
+    if (live.has(panel.id)) {
+      // Its tab showed up for real — protection (if any) has done its job.
+      protectedPanels.delete(panel.id);
+      continue;
+    }
+    if (protectedPanels.has(panel.id)) continue;
+    api.removePanel(panel);
   }
 }
 

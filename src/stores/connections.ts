@@ -23,6 +23,7 @@ import {
 import { useConnectionHealth } from "@/stores/connectionHealth";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
+import { clearProtectedPanelsForConnection } from "@/lib/dockview";
 import type { ConnectionProfile } from "@/types";
 
 interface ConnectionsState {
@@ -207,6 +208,14 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
       tabsState.closeForConnection(childId);
       schemaState.drop(childId);
     }
+
+    // Release any panel `hydrateWorkspaceLayout` restored from a saved split
+    // whose tab (this connection's own, or a `::db::` child's) hadn't shown up
+    // in `useTabs` yet — see `protectPanelUntilRestored`'s comment. Nothing is
+    // ever coming back for this connection now, so its protected panels (if
+    // any) are safe to prune; this also re-syncs the dockview immediately so
+    // they don't linger until some unrelated tab change happens to do it.
+    clearProtectedPanelsForConnection(id, useTabs.getState().tabs);
   },
   refreshProfiles: async () => {
     const profiles = await api.listProfiles();

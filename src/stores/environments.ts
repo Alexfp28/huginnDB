@@ -165,13 +165,15 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       );
     }
 
-    // Layout AFTER the tabs exist. `fromJSON` rebuilds the panels, but the
-    // TabbedArea reconciler removes any panel whose tab isn't in `useTabs` — run
-    // this against an empty tab store and it deletes what it just built
-    // (gotcha #10).
-    if (useTabs.getState().tabs.length > 0) {
-      await hydrateWorkspaceLayout();
-    }
+    // Applied unconditionally, not gated on "are there tabs yet" — a saved
+    // split can belong entirely to a multi-DB database-view child, which
+    // isn't restored by the reconnect loop above at all (it comes back later,
+    // asynchronously, via `SchemaExplorer`'s own auto-re-expand effect). Gating
+    // this on `useTabs.getState().tabs.length > 0` used to skip the whole
+    // restore in exactly that case — see `hydrateWorkspaceLayout`'s doc
+    // comment for the full story and how it now handles a panel whose tab
+    // hasn't shown up yet.
+    await hydrateWorkspaceLayout();
 
     // Focus last: `connect()` never sets `selectedConnectionId` itself, and the
     // App auto-select effect picks whichever pool opened first — which is
