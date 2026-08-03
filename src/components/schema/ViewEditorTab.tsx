@@ -25,7 +25,7 @@ import Editor, { type Monaco } from "@monaco-editor/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DataGrid } from "@/components/DataGrid";
+import { DataGrid } from "@/components/grid/DataGrid";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
@@ -39,8 +39,8 @@ import {
   registerSqlEditor,
 } from "@/lib/monacoSql";
 import { registerEditorActionRedispatch } from "@/lib/monacoKeybindings";
-import { useCommandPalette } from "@/components/CommandPalette";
-import { useTabSwitcher } from "@/components/TabSwitcher";
+import { useCommandPalette } from "@/components/shell/CommandPalette";
+import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import type { QueryResult, StructureMode, ViewDefinition } from "@/types";
 
 interface Props {

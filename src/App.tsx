@@ -31,13 +31,13 @@ import {
   selectUpdateNotificationVisible,
   useUpdateStore,
 } from "@/stores/update";
-import { UpdateBanner } from "@/components/UpdateBanner";
-import { WindowTitleSync } from "@/components/WindowTitleSync";
-import { SandboxRibbon } from "@/components/SandboxRibbon";
+import { UpdateBanner } from "@/components/shell/UpdateBanner";
+import { WindowTitleSync } from "@/components/shell/WindowTitleSync";
+import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
 import { getCurrentVersion } from "@/lib/updater";
 import { useWhatsNew } from "@/stores/whatsNew";
-import { WhatsNewDialog } from "@/components/WhatsNewDialog";
-import { DocsDialog } from "@/components/DocsDialog";
+import { WhatsNewDialog } from "@/components/shell/dialogs/WhatsNewDialog";
+import { DocsDialog } from "@/components/shell/dialogs/DocsDialog";
 import { useConnections } from "@/stores/connections";
 import { useSchema } from "@/stores/schema";
 import { useTabs } from "@/stores/tabs";
@@ -49,38 +49,36 @@ import { getBinding, matchesBinding } from "@/lib/keybindings";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useTranslation } from "react-i18next";
 import { setLanguage } from "@/lib/i18n";
-import { FileMenu } from "@/components/FileMenu";
-import { WindowMenu } from "@/components/WindowMenu";
-import { ViewMenu } from "@/components/ViewMenu";
-import { HelpMenu } from "@/components/HelpMenu";
-import { SchemaExplorer } from "@/components/SchemaExplorer";
-import { TabbedArea } from "@/components/TabbedArea";
-import { StatusBar } from "@/components/StatusBar";
-import { CommandPalette, useCommandPalette } from "@/components/CommandPalette";
-import { TabSwitcher, useTabSwitcher } from "@/components/TabSwitcher";
-import { SettingsDialog } from "@/components/SettingsDialog";
-import { ConnectionErrorBoundary } from "@/components/ConnectionErrorBoundary";
-import { SideEditorPanel } from "@/components/SideEditorPanel";
-import { SavedQueriesPanel } from "@/components/SavedQueriesPanel";
-import { Console } from "@/components/Console";
+import { FileMenu } from "@/components/menus/FileMenu";
+import { WindowMenu } from "@/components/menus/WindowMenu";
+import { ViewMenu } from "@/components/menus/ViewMenu";
+import { HelpMenu } from "@/components/menus/HelpMenu";
+import { ConnectionsTree } from "@/components/connection/ConnectionsTree";
+import { TabbedArea } from "@/components/shell/TabbedArea";
+import { StatusBar } from "@/components/shell/StatusBar";
+import { CommandPalette, useCommandPalette } from "@/components/shell/CommandPalette";
+import { TabSwitcher, useTabSwitcher } from "@/components/shell/TabSwitcher";
+import { SettingsDialog } from "@/components/settings/dialogs/SettingsDialog";
+import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
+import { SideEditorPanel } from "@/components/grid/SideEditorPanel";
+import { SavedQueriesPanel } from "@/components/query/SavedQueriesPanel";
+import { Console } from "@/components/query/Console";
 import { startLogBridge } from "@/lib/log-bridge";
 import { startCliConnectBridge } from "@/lib/cli-connect-bridge";
 import { startConnectionHealthBridge } from "@/lib/connection-health-bridge";
 import { startConnectionSyncBridge } from "@/lib/connection-sync-bridge";
 import { startPrefsSyncBridge } from "@/lib/prefs-sync-bridge";
-import {
-  flushAllTabState,
-  hydrateWorkspaceLayout,
-  persistLaunchState,
-} from "@/stores/persistedTabs";
+import { flushAllTabState, persistLaunchState } from "@/stores/persistedTabs";
+import { useEnvironments } from "@/stores/environments";
+import { startPeriodicOriginSync } from "@/stores/originSync";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CliConnectChoiceDialog } from "@/components/CliConnectChoiceDialog";
-import { FeedbackDialog } from "@/components/FeedbackDialog";
+import { CliConnectChoiceDialog } from "@/components/connection/dialogs/CliConnectChoiceDialog";
+import { FeedbackDialog } from "@/components/shell/dialogs/FeedbackDialog";
 import { api } from "@/lib/tauri";
 import { useLogs } from "@/stores/logs";
 import { normalizeDriver, driverMismatchHint } from "@/lib/driver";
 import { DEFAULT_PORTS } from "@/lib/constants";
-import { AdHocDriverDialog } from "@/components/AdHocDriverDialog";
+import { AdHocDriverDialog } from "@/components/connection/dialogs/AdHocDriverDialog";
 import type { ConnectionProfile, Driver, StartupArgs } from "@/types";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider, SimpleTooltip } from "@/components/ui/tooltip";
@@ -100,17 +98,17 @@ import { refreshTable } from "@/lib/tableRefresh";
 
 function SchemaPanel() {
   const id = useUi((s) => s.selectedConnectionId);
-  const { t } = useTranslation();
-  if (!id) {
-    return (
-      <div className="flex h-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
-        {t("common.emptyConnectDatabase")}
-      </div>
-    );
-  }
+  // The panel now starts at the connection level (#107): folders and connections
+  // are rows in the tree, and each expanded connection renders its own schema
+  // subtree. It no longer needs a selected connection to show anything, so the
+  // "connect a database" watermark is gone — an empty list says that better.
+  //
+  // The error boundary still keys on the selected connection: a subtree that
+  // throws is almost always the focused one, and resetting on a change of focus
+  // is the recovery the user expects.
   return (
-    <ConnectionErrorBoundary resetKey={id}>
-      <SchemaExplorer connectionId={id} />
+    <ConnectionErrorBoundary resetKey={id ?? undefined}>
+      <ConnectionsTree />
     </ConnectionErrorBoundary>
   );
 }
@@ -274,72 +272,29 @@ export default function App() {
     refreshConnections();
   }, [refreshConnections]);
 
-  // Launch restore (main window only, `reconnectOnLaunch` on): reconnect to
-  // the connections that were live at last close, then restore focus + the
-  // session workspace layout. Order is load-bearing: the layout `fromJSON`
-  // must run AFTER the reconnected tabs are in `useTabs`, or the TabbedArea
-  // reconciler would delete the panels it just built (see
-  // `hydrateWorkspaceLayout`). Reconnect uses the OS-keychain secrets
-  // (connect() falls back to them); a connection whose secret is missing or
-  // whose host is unreachable fails its own promise and is skipped, never
-  // blocking boot. Ids already active (e.g. from a racing CLI intent) are
-  // filtered out to avoid a double connect. Runs once.
+  // Launch restore (main window only, `reconnectOnLaunch` on): load the
+  // environment list, then bring the active environment's session up —
+  // reconnect what was live, restore the pane layout, restore focus.
+  //
+  // The sequence itself lives in `useEnvironments.restoreSession` because
+  // entering an environment at launch and entering one via the switcher are the
+  // same operation, and its ordering is load-bearing enough that two copies
+  // would eventually drift: the layout `fromJSON` must run AFTER the
+  // reconnected tabs are in `useTabs`, or the TabbedArea reconciler deletes the
+  // panels it just built (gotcha #10), and focus must come last because
+  // `connect()` never sets it and the auto-select effect below would otherwise
+  // win with whichever pool opened first. Runs once.
   const launchRestoreDone = useRef(false);
   useEffect(() => {
     if (launchRestoreDone.current) return;
     if (getCurrentWindow().label !== "main") return;
     launchRestoreDone.current = true;
     void (async () => {
-      if (!usePreferences.getState().prefs.ui.reconnectOnLaunch) return;
-      let launchState: Awaited<ReturnType<typeof api.getLaunchState>>;
-      try {
-        launchState = await api.getLaunchState();
-      } catch (e) {
-        console.error("[launch] failed to read launch state", e);
-        return;
-      }
-      if (launchState.activeConnections.length > 0) {
-        // The boot-time refresh may not have resolved yet; ensure the profile
-        // list is loaded so we only reconnect ids that still exist.
-        await refreshConnections();
-        const loaded = useConnections.getState().profiles;
-        const alreadyActive = useConnections.getState().active;
-        const toConnect = launchState.activeConnections.filter(
-          (id) => loaded.some((p) => p.id === id) && !alreadyActive.has(id),
-        );
-        // connect() awaits hydrateTabState, so once all settle every
-        // reconnected connection's tabs are in `useTabs`.
-        await Promise.allSettled(
-          toConnect.map((id) =>
-            connectProfile(id).catch((e) => {
-              console.warn(`[launch] auto-reconnect failed for ${id}`, e);
-            }),
-          ),
-        );
-      }
-
-      // Restore the session layout now that the tabs are present.
-      if (useTabs.getState().tabs.length > 0) {
-        await hydrateWorkspaceLayout();
-      }
-
-      // Restore focus: the schema-explorer/status-bar connection and the
-      // globally-active tab. Done after reconnect so it isn't clobbered by the
-      // nondeterministic order pools finish opening (the App auto-select
-      // effect otherwise picks whichever connected first).
-      const nowActive = useConnections.getState().active;
-      if (
-        launchState.selectedConnectionId &&
-        nowActive.has(launchState.selectedConnectionId)
-      ) {
-        setSelected(launchState.selectedConnectionId);
-      }
-      if (
-        launchState.activeTabId &&
-        useTabs.getState().tabs.some((t) => t.id === launchState.activeTabId)
-      ) {
-        useTabs.getState().setActive(launchState.activeTabId);
-      }
+      await useEnvironments.getState().load();
+      await useEnvironments.getState().restoreSession();
+      // Shared origins: first sweep now, then every few hours. After the session
+      // is up so a slow or unreachable share can never delay the workspace.
+      startPeriodicOriginSync();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

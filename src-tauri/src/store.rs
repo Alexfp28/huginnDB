@@ -5,7 +5,7 @@
 //!
 //! * Windows — `%APPDATA%\HuginnDB\profiles.json`
 //! * Linux   — `$XDG_CONFIG_HOME/HuginnDB/profiles.json`
-//!                 (or `~/.config/HuginnDB/profiles.json`)
+//!   (or `~/.config/HuginnDB/profiles.json`)
 //! * macOS   — `~/Library/Application Support/HuginnDB/profiles.json`
 //!
 //! **Passwords are never written here** — see [`crate::keychain`].
@@ -85,6 +85,7 @@ mod tests {
             group: None,
             visible_databases: None,
             mcp_write: Default::default(),
+            origin_id: None,
         }
     }
 

@@ -52,8 +52,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ExportProfilesDialog } from "@/components/ExportProfilesDialog";
-import { ImportProfilesDialog } from "@/components/ImportProfilesDialog";
+import { ExportProfilesDialog } from "@/components/connection/dialogs/ExportProfilesDialog";
+import { ImportProfilesDialog } from "@/components/connection/dialogs/ImportProfilesDialog";
 import {
   Select,
   SelectContent,
@@ -62,11 +62,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DriverBadge, driverLabel } from "@/components/DriverBadge";
+import { DriverBadge, driverLabel } from "@/components/common/DriverBadge";
 import { api } from "@/lib/tauri";
 import { buildMongoUri, parseMongoUri } from "@/lib/mongoUri";
 import { DEFAULT_PORTS } from "@/lib/constants";
-import { confirmDestructive } from "@/lib/confirmDestructive";
+import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
 import type {
@@ -396,7 +396,7 @@ export function ConnectionDialog({
   async function onBulkDelete() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    if (!window.confirm(t("connections.bulkDeleteConfirm", { count: ids.length })))
+    if (!confirmIrreversible(t("connections.bulkDeleteConfirm", { count: ids.length })))
       return;
     for (const id of ids) {
       try {
@@ -515,6 +515,15 @@ export function ConnectionDialog({
     };
   }
 
+  /**
+   * Whether the profile under edit came from a shared origin (#108). Read from
+   * the stored profile rather than from form state: the form is a draft, and a
+   * draft can't be trusted to still carry `origin_id`.
+   */
+  const isFromOrigin = !!(
+    editingId && profiles.find((p) => p.id === editingId)?.origin_id
+  );
+
   function buildProfile(): ConnectionProfile {
     return {
       id: editingId ?? draftId,
@@ -553,6 +562,13 @@ export function ConnectionDialog({
   }
 
   async function onSave() {
+    // A profile published by a shared origin is a mirror of somebody else's
+    // entry: the next sync overwrites whatever is changed here, so allowing the
+    // edit would silently discard the user's work. Enforced at the boundary and
+    // not only by disabling the form, because Enter-to-save and any future call
+    // site would otherwise slip past the UI guard (`origin_id`'s contract in
+    // `state.rs` says read-only; until now only the docs said so).
+    if (isFromOrigin) return;
     setSaving(true);
     try {
       const saved = await save(
@@ -602,9 +618,14 @@ export function ConnectionDialog({
 
   async function onDelete() {
     if (!editingId) return;
+    // Deleting an origin-published profile locally is pointless — the next sync
+    // re-imports it — and destroys its keychain entry on the way. Retiring one
+    // for good is offered where it makes sense: on the notice raised when the
+    // origin itself stops publishing it (`useOriginSync.retire`).
+    if (isFromOrigin) return;
     const target = profiles.find((p) => p.id === editingId);
     if (
-      !confirmDestructive(
+      !confirmIrreversible(
         t("connections.deleteConfirm", { name: target?.name ?? name }),
       )
     )
@@ -946,6 +967,15 @@ export function ConnectionDialog({
                   </TabsTrigger>
                 </TabsList>
 
+                {/* Says why the form is inert before the user discovers it by
+                    typing into a field and finding Save greyed out. Placed at the
+                    top of the first tab rather than beside the button, since the
+                    editing is what's blocked, not just the saving. */}
+                {isFromOrigin && (
+                  <div className="mb-2 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-[11px] text-muted-foreground">
+                    {t("connectionDialog.fromOrigin")}
+                  </div>
+                )}
                 <TabsContent value="general" className="pt-3">
                   <div className="grid gap-3">
                     <Field label={t("connectionDialog.fields.name")}>
@@ -1393,7 +1423,7 @@ export function ConnectionDialog({
                     {t("connectionDialog.duplicate")}
                   </Button>
                 )}
-                {editingId && (
+                {editingId && !isFromOrigin && (
                   <Button
                     variant="ghost"
                     className="text-destructive hover:text-destructive"
@@ -1415,7 +1445,10 @@ export function ConnectionDialog({
                       ? t("connectionDialog.connecting")
                       : t("connectionDialog.connect")}
                   </Button>
-                  <Button onClick={onSave} disabled={busy || !name}>
+                  <Button
+                    onClick={onSave}
+                    disabled={busy || !name || isFromOrigin}
+                  >
                     {saving
                       ? t("connectionDialog.saving")
                       : t("connectionDialog.save")}

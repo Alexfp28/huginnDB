@@ -7,13 +7,13 @@
 //!
 //! ### Module map
 //!
-//! * [`commands`]  — public command surface exposed to the frontend via
-//!                   `invoke`. Each submodule maps to one feature area.
-//! * [`db`]        — database abstraction layer shared by all commands.
-//! * [`keychain`]  — OS-keychain integration for password storage.
-//! * [`state`]     — runtime state (active pools, saved profiles).
-//! * [`store`]     — on-disk persistence for non-sensitive profile metadata.
-//! * [`error`]     — common error type, serialised to the frontend.
+//! * [`commands`] — public command surface exposed to the frontend via
+//!   `invoke`. Each submodule maps to one feature area.
+//! * [`db`] — database abstraction layer shared by all commands.
+//! * [`keychain`] — OS-keychain integration for password storage.
+//! * [`state`] — runtime state (active pools, saved profiles).
+//! * [`store`] — on-disk persistence for non-sensitive profile metadata.
+//! * [`error`] — common error type, serialised to the frontend.
 
 mod app_identity;
 mod commands;
@@ -163,94 +163,6 @@ fn parse_args(args: &[String]) -> StartupArgs {
     result
 }
 
-#[cfg(test)]
-mod cli_tests {
-    use super::parse_args;
-
-    fn v(args: &[&str]) -> Vec<String> {
-        args.iter().map(|s| s.to_string()).collect()
-    }
-
-    #[test]
-    fn equals_form_is_accepted() {
-        // The original bug: `--password=secret` (and friends) never matched
-        // and the value was silently dropped.
-        let a = parse_args(&v(&[
-            "--host=db.example.com",
-            "--port=46005",
-            "--database=iMesPyme",
-            "--username=ITB_industria",
-            "--password=ITBCastellon",
-        ]));
-        assert_eq!(a.adhoc_host.as_deref(), Some("db.example.com"));
-        assert_eq!(a.adhoc_port, Some(46005));
-        assert_eq!(a.adhoc_database.as_deref(), Some("iMesPyme"));
-        assert_eq!(a.adhoc_username.as_deref(), Some("ITB_industria"));
-        assert_eq!(a.adhoc_password.as_deref(), Some("ITBCastellon"));
-    }
-
-    #[test]
-    fn space_form_still_works_and_user_alias() {
-        let a = parse_args(&v(&[
-            "--host",
-            "localhost",
-            "--user",
-            "root",
-            "--pass",
-            "hunter2",
-        ]));
-        assert_eq!(a.adhoc_host.as_deref(), Some("localhost"));
-        assert_eq!(a.adhoc_username.as_deref(), Some("root"));
-        assert_eq!(a.adhoc_password.as_deref(), Some("hunter2"));
-    }
-
-    #[test]
-    fn password_may_contain_equals() {
-        // split_once('=') must only split on the first '='.
-        let a = parse_args(&v(&["--password=a=b=c"]));
-        assert_eq!(a.adhoc_password.as_deref(), Some("a=b=c"));
-    }
-
-    #[test]
-    fn connection_string_uri_flag() {
-        // `--uri` is the MongoDB-friendly alias; the value (an SRV URI with its
-        // own `=` query params) must survive the first-`=` split.
-        let a = parse_args(&v(&[
-            "--uri=mongodb+srv://u:p@cluster.mongodb.net/db?retryWrites=true",
-        ]));
-        assert_eq!(
-            a.adhoc_connection_string.as_deref(),
-            Some("mongodb+srv://u:p@cluster.mongodb.net/db?retryWrites=true")
-        );
-        // The long spelling and the space form work too.
-        let b = parse_args(&v(&["--connection-string", "mongodb://localhost:27017"]));
-        assert_eq!(
-            b.adhoc_connection_string.as_deref(),
-            Some("mongodb://localhost:27017")
-        );
-    }
-
-    #[test]
-    fn auth_source_flag() {
-        let a = parse_args(&v(&[
-            "--host=localhost",
-            "--username=root",
-            "--auth-source=admin",
-        ]));
-        assert_eq!(a.adhoc_auth_source.as_deref(), Some("admin"));
-        // Space form too.
-        let b = parse_args(&v(&["--auth-source", "myAuthDb"]));
-        assert_eq!(b.adhoc_auth_source.as_deref(), Some("myAuthDb"));
-    }
-
-    #[test]
-    fn connect_profile_id_sets_flag() {
-        let a = parse_args(&v(&["--connect-profile-id=abc-123"]));
-        assert_eq!(a.connect_profile.as_deref(), Some("abc-123"));
-        assert!(a.connect_by_id);
-    }
-}
-
 /// Does this parsed arg set carry a connection intent (vs. just flags we
 /// ignore)? Mirrors the frontend's own check in `App.tsx`.
 fn has_connection_intent(args: &StartupArgs) -> bool {
@@ -395,6 +307,16 @@ pub fn run() {
             commands::prefs::save_workspace_layout,
             commands::prefs::get_launch_state,
             commands::prefs::save_launch_state,
+            commands::prefs::list_environments,
+            commands::prefs::save_environment,
+            commands::prefs::delete_environment,
+            commands::prefs::set_active_environment,
+            commands::prefs::reorder_environments,
+            commands::origins::list_origins,
+            commands::origins::add_origin,
+            commands::origins::update_origin,
+            commands::origins::remove_origin,
+            commands::origins::sync_origin,
             commands::feedback::get_diagnostics,
             commands::feedback::set_github_pat,
             commands::feedback::has_github_pat,
@@ -407,4 +329,92 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running HuginnDB");
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::parse_args;
+
+    fn v(args: &[&str]) -> Vec<String> {
+        args.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn equals_form_is_accepted() {
+        // The original bug: `--password=secret` (and friends) never matched
+        // and the value was silently dropped.
+        let a = parse_args(&v(&[
+            "--host=db.example.com",
+            "--port=46005",
+            "--database=iMesPyme",
+            "--username=ITB_industria",
+            "--password=ITBCastellon",
+        ]));
+        assert_eq!(a.adhoc_host.as_deref(), Some("db.example.com"));
+        assert_eq!(a.adhoc_port, Some(46005));
+        assert_eq!(a.adhoc_database.as_deref(), Some("iMesPyme"));
+        assert_eq!(a.adhoc_username.as_deref(), Some("ITB_industria"));
+        assert_eq!(a.adhoc_password.as_deref(), Some("ITBCastellon"));
+    }
+
+    #[test]
+    fn space_form_still_works_and_user_alias() {
+        let a = parse_args(&v(&[
+            "--host",
+            "localhost",
+            "--user",
+            "root",
+            "--pass",
+            "hunter2",
+        ]));
+        assert_eq!(a.adhoc_host.as_deref(), Some("localhost"));
+        assert_eq!(a.adhoc_username.as_deref(), Some("root"));
+        assert_eq!(a.adhoc_password.as_deref(), Some("hunter2"));
+    }
+
+    #[test]
+    fn password_may_contain_equals() {
+        // split_once('=') must only split on the first '='.
+        let a = parse_args(&v(&["--password=a=b=c"]));
+        assert_eq!(a.adhoc_password.as_deref(), Some("a=b=c"));
+    }
+
+    #[test]
+    fn connection_string_uri_flag() {
+        // `--uri` is the MongoDB-friendly alias; the value (an SRV URI with its
+        // own `=` query params) must survive the first-`=` split.
+        let a = parse_args(&v(&[
+            "--uri=mongodb+srv://u:p@cluster.mongodb.net/db?retryWrites=true",
+        ]));
+        assert_eq!(
+            a.adhoc_connection_string.as_deref(),
+            Some("mongodb+srv://u:p@cluster.mongodb.net/db?retryWrites=true")
+        );
+        // The long spelling and the space form work too.
+        let b = parse_args(&v(&["--connection-string", "mongodb://localhost:27017"]));
+        assert_eq!(
+            b.adhoc_connection_string.as_deref(),
+            Some("mongodb://localhost:27017")
+        );
+    }
+
+    #[test]
+    fn auth_source_flag() {
+        let a = parse_args(&v(&[
+            "--host=localhost",
+            "--username=root",
+            "--auth-source=admin",
+        ]));
+        assert_eq!(a.adhoc_auth_source.as_deref(), Some("admin"));
+        // Space form too.
+        let b = parse_args(&v(&["--auth-source", "myAuthDb"]));
+        assert_eq!(b.adhoc_auth_source.as_deref(), Some("myAuthDb"));
+    }
+
+    #[test]
+    fn connect_profile_id_sets_flag() {
+        let a = parse_args(&v(&["--connect-profile-id=abc-123"]));
+        assert_eq!(a.connect_profile.as_deref(), Some("abc-123"));
+        assert!(a.connect_by_id);
+    }
 }

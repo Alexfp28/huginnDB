@@ -27,6 +27,23 @@
     "ribbonDetail": "Estado: {{dir}}",
     "tooltip": "Estás ejecutando el build canary de sandbox. Su estado en disco está aislado en {{dir}}; comparte el llavero del sistema con la instalación estable."
   },
+  "environments": {
+    "defaultName": "Predeterminado",
+    "switcherTooltip": "Entorno — las conexiones en juego y su sesión",
+    "create": "Nuevo entorno…",
+    "createTitle": "Nuevo entorno",
+    "rename": "Renombrar",
+    "renameTitle": "Renombrar entorno",
+    "delete": "Eliminar",
+    "deleteConfirm": "¿Eliminar el entorno «{{name}}»?\n\nSe descartan sus pestañas abiertas y la distribución de paneles. Tus conexiones y sus contraseñas no se tocan.",
+    "switchFailed": "No se pudo cambiar de entorno: {{error}}",
+    "color": "Color",
+    "icon": "Icono",
+    "none": "Ninguno",
+    "replicateFrom": "Partir de «{{name}}»",
+    "replicateConnections": "Reabrir las mismas conexiones y sus pestañas",
+    "replicateLayout": "Reutilizar la distribución de paneles"
+  },
   "panels": {
     "schema": "Esquema",
     "saved": "Guardadas",
@@ -39,8 +56,6 @@
       "label": "Archivo",
       "newConnection": "Nueva conexión…",
       "manageConnections": "Gestionar conexiones…",
-      "sectionConnections": "Conexiones",
-      "noConnections": "Aún no hay conexiones.",
       "importProfiles": "Importar perfiles…",
       "exportProfiles": "Exportar perfiles…",
       "disconnectAll": "Desconectar todas"
@@ -65,6 +80,28 @@
       "label": "Ayuda",
       "about": "Acerca de HuginnDB"
     }
+  },
+  "connectionsTree": {
+    "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
+    "connect": "Conectar",
+    "filterNeedsSelection": "Selecciona una conexión para filtrar sus tablas.",
+    "selectConnections": {
+      "action": "Conexiones a mostrar",
+      "title": "Conexiones a mostrar",
+      "description": "Elige qué conexiones guardadas aparecen en el árbol. Las ocultas siguen guardadas, solo dejan de ocupar sitio en la lista.",
+      "count": "{{selected}} de {{total}} seleccionadas",
+      "subsetActive": "Mostrando {{count}} de {{total}} conexiones",
+      "selectAll": "Seleccionar todas",
+      "deselectAll": "Deseleccionar todas",
+      "filterPlaceholder": "Filtrar conexiones…",
+      "noMatches": "Ninguna conexión coincide con “{{query}}”.",
+      "allHidden": "Todas las conexiones guardadas están ocultas — usa “Conexiones a mostrar” arriba para recuperar alguna."
+    }
+  },
+  "workspacePicker": {
+    "connectionsTab": "Conexiones",
+    "environmentsTab": "Entornos",
+    "searchEnvironments": "Buscar entornos…"
   },
   "connections": {
     "disconnectTooltip": "Desconectar",
@@ -161,7 +198,8 @@
     "listTitle": "Conexiones guardadas",
     "emptyList": "Aún no hay conexiones guardadas.",
     "searchPlaceholder": "Buscar conexiones…",
-    "noMatches": "Ninguna conexión coincide con la búsqueda."
+    "noMatches": "Ninguna conexión coincide con la búsqueda.",
+    "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya."
   },
   "connectPassword": {
     "title": "Contraseña requerida",
@@ -223,7 +261,6 @@
     "sectionViews": "vistas",
     "sectionIndexes": "índices",
     "filterPlaceholder": "Filtrar tablas… (users; orders)",
-    "filterInDb": "Filtrar en {{db}}…",
     "filterScopedTo": "Buscando solo en {{db}}",
     "noMatches": "Ninguna tabla coincide con el filtro.",
     "context": {
@@ -299,6 +336,7 @@
       "title": "Bases de datos a mostrar",
       "description": "Elige qué bases de datos aparecen en el explorador de esta conexión. Las ocultas también se omiten al precargar, lo que acelera la conexión a servidores con muchas bases.",
       "count": "{{selected}} de {{total}} seleccionadas",
+      "subsetActive": "Mostrando {{count}} de {{total}} bases de datos",
       "selectAll": "Seleccionar todas",
       "deselectAll": "Deseleccionar todas"
     },
@@ -383,7 +421,7 @@
     "selectRow": "Seleccionar fila",
     "ctxCopy": "Copiar",
     "ctxGoToReference": "Ir al registro referenciado",
-    "fkNavHint": "Ctrl/Cmd+clic → registro referenciado",
+    "fkNavHint": "Alt+clic → registro referenciado",
     "ctxCopyWithColumn": "Copiar con el nombre de columna",
     "ctxCopyRowAs": "Copiar fila como",
     "ctxFilterBy": "Filtrar por este valor",
@@ -394,6 +432,9 @@
     "ctxRowsSelected": "{{count}} filas seleccionadas",
     "ctxCopyRowsAs": "Copiar {{count}} filas como",
     "ctxDeleteRows": "Eliminar {{count}} filas",
+    "ctxFilterInSelected": "Filtrar {{column}} por los {{count}} valores seleccionados",
+    "ctxFilterNotInSelected": "Excluir los {{count}} valores seleccionados de {{column}}",
+    "filterValueCount": "{{count}} valores",
     "filterRows": "Filtrar filas… (Enter)",
     "serverSideFilter": "Filtro del servidor",
     "removeFilter": "Quitar filtro",
@@ -550,19 +591,16 @@
   "statusBar": {
     "disconnected": "desconectado",
     "rows": "filas",
-    "executedIn": "ejecutado en",
     "ms": "ms",
     "encoding": "utf-8",
     "history": "historial:",
     "connections": "{{count}} conectada(s)",
     "connectionsActive": "Conexiones activas",
-    "connectionsAvailable": "Conectar a…",
     "activeLabel": "activa",
     "noConnections": "Sin conexiones activas",
     "jumpTo": "Ir al espacio de trabajo",
     "disconnect": "Desconectar",
     "selected": "{{count}} seleccionada(s)",
-    "readOnly": "solo lectura",
     "recentQueries": "Consultas recientes",
     "noHistory": "Aún no hay consultas",
     "clearHistory": "Limpiar historial",
@@ -625,6 +663,10 @@
       "about": {
         "label": "Acerca de",
         "desc": "Versión y rutas"
+      },
+      "origins": {
+        "label": "Orígenes",
+        "desc": "Perfiles desde carpeta compartida"
       }
     },
     "general": {
@@ -853,6 +895,9 @@
     "history": "Historial de consultas",
     "clearHistory": "Limpiar historial",
     "historyTitle": "Historial",
+    "historyFilterPlaceholder": "Filtrar historial…",
+    "historyEntryStats": "{{rows}} filas · {{duration}}",
+    "runAgain": "Ejecutar de nuevo",
     "noQueries": "Aún no hay consultas.",
     "running": "ejecutando…",
     "run": "Ejecutar",
@@ -863,6 +908,7 @@
     "noResults": "Ejecuta una consulta para ver los resultados.",
     "database": "Base de datos",
     "defaultDatabase": "(por defecto)",
+    "elapsedTitle": "Duración de la consulta",
     "batchOk": "{{count}} sentencias · {{rows}} filas afectadas",
     "batchFailed": "Detenido en la sentencia {{index}} de {{total}}",
     "rowsAffected": "{{rows}} filas afectadas · {{ms}} ms"
@@ -889,7 +935,9 @@
     "tagsPlaceholder": "informes, facturación",
     "untitled": "Sin título",
     "submitUpdate": "Actualizar",
-    "submitSave": "Guardar"
+    "submitSave": "Guardar",
+    "savedToast": "Consulta \"{{name}}\" guardada",
+    "updatedToast": "Consulta \"{{name}}\" actualizada"
   },
   "update": {
     "sectionTitle": "Actualizaciones",
@@ -919,6 +967,10 @@
     "updated": "Actualizado {{date}}",
     "empty": "No hay documentación disponible.",
     "entries": {
+      "environments": {
+        "title": "Entornos",
+        "description": "Mantén conjuntos de conexiones separados"
+      },
       "mcp": {
         "title": "Conector MCP",
         "description": "Conecta herramientas de IA a tus bases de datos"
@@ -1058,6 +1110,33 @@
           }
         }
       }
+    }
+  },
+  "origins": {
+    "title": "Orígenes compartidos",
+    "description": "Importa conexiones desde un fichero en una carpeta compartida. Es del entorno activo; HuginnDB solo lo lee, nunca escribe en él.",
+    "add": "Añadir origen…",
+    "adding": "Añadiendo…",
+    "syncNow": "Sincronizar ahora",
+    "empty": "Aún no hay orígenes. Apunta uno a un fichero de perfiles exportado en una ruta de red.",
+    "remove": "Quitar origen",
+    "removeConfirm": "¿Quitar el origen «{{name}}»?\n\nSe olvida su passphrase guardada. Las conexiones que importó se quedan: no se borran.",
+    "lastSynced": "Última sincronización: {{when}}",
+    "neverSynced": "Sin sincronizar",
+    "pathPlaceholder": "\\\\servidor\\huginndb\\clientes.json",
+    "namePlaceholder": "Nombre (opcional)",
+    "passphrasePlaceholder": "Passphrase (solo si está cifrado)",
+    "passphraseHint": "Se guarda en el almacén de credenciales del sistema, nunca en disco. Déjalo vacío si el fichero se exportó sin contraseñas.",
+    "vanished": {
+      "title": "Ya no se publica",
+      "titleNamed": "«{{name}}» ya no se publica",
+      "body": "«{{origin}}» ya no ofrece esta conexión. Consérvala como tuya o bórrala junto con su contraseña guardada.",
+      "keep": "Conservar como mía",
+      "keepTooltip": "Deja de seguir el origen y guarda la conexión en local, editable de nuevo.",
+      "retire": "Borrar",
+      "retireConfirm": "¿Borrar la conexión «{{name}}»?\n\nTambién se elimina su contraseña del almacén de credenciales. Esto no se puede deshacer.",
+      "mark": "«{{origin}}» ya no ofrece esta conexión: resuélvelo desde el árbol de esquema o en Ajustes → Orígenes compartidos.",
+      "pending": "Conexiones desaparecidas"
     }
   }
 }

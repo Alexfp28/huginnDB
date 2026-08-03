@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { DriverBadge } from "@/components/DriverBadge";
+import { DriverBadge } from "@/components/common/DriverBadge";
 import type { Driver } from "@/types";
 
 const DRIVERS: { id: Driver; label: string }[] = [

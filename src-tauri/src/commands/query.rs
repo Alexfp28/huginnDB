@@ -29,6 +29,7 @@ use serde_json::Value;
 // `sqlx::query(sql)` always prepares. Inherent `Query::execute` calls elsewhere
 // are unaffected (inherent methods win over the trait).
 use sqlx::Executor as _;
+use std::collections::HashSet;
 use std::time::Instant;
 use tauri::{AppHandle, State};
 
@@ -142,6 +143,11 @@ pub enum FilterOp {
     Lte,
     /// `BETWEEN v1 AND v2` (inclusive). Consumes both `value` and `value2`.
     Between,
+    /// `IN (v1, v2, …)` / `NOT IN (…)`. The only ops that read the filter's
+    /// `values` list instead of `value`/`value2`; driven by the data grid's
+    /// "filter by the selected rows" action (#114).
+    In,
+    NotIn,
     IsNull,
     IsNotNull,
 }
@@ -163,6 +169,11 @@ pub struct ColumnFilter {
     /// bound). Ignored by every other op.
     #[serde(default)]
     pub value2: Value,
+    /// Value list, only consumed by `In` / `NotIn`. Ignored by every other op.
+    /// Capped at [`MAX_IN_VALUES`] by [`validate_filters`] before any SQL is
+    /// built.
+    #[serde(default)]
+    pub values: Vec<Value>,
 }
 
 /// One level of an `ORDER BY` clause built by [`fetch_table_data`].
@@ -744,6 +755,35 @@ fn like_escape_clause(is_mysql: bool) -> &'static str {
     }
 }
 
+/// Upper bound on how many values a single `In` / `NotIn` filter may carry.
+///
+/// Every value becomes one bind, so an unbounded list turns into an unbounded
+/// statement: engines have their own placeholder ceilings (Postgres tops out at
+/// 65535 binds per statement, SQLite's `SQLITE_MAX_VARIABLE_NUMBER` defaults far
+/// lower) and the failure mode is an opaque driver error rather than anything the
+/// user can act on. 1000 is comfortably above any plausible manual selection in
+/// the grid and far below every engine limit.
+pub const MAX_IN_VALUES: usize = 1000;
+
+/// Reject filter payloads that would build pathological or invalid SQL.
+///
+/// Called from [`fetch_table_data_inner`] rather than from the `#[tauri::command]`
+/// wrapper, so it guards every caller of the shared core — today that's the GUI
+/// command (the only one that sends filters; the MCP `browse_table` tool passes
+/// `None`), and tomorrow anything else built on it.
+fn validate_filters(filters: &[ColumnFilter]) -> AppResult<()> {
+    for f in filters {
+        if matches!(f.op, FilterOp::In | FilterOp::NotIn) && f.values.len() > MAX_IN_VALUES {
+            return Err(AppError::InvalidInput(format!(
+                "filter on {:?}: {} values exceeds the {MAX_IN_VALUES}-value limit for IN/NOT IN",
+                f.column,
+                f.values.len()
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Build the `WHERE` fragment + bind list for a set of column filters
 /// plus an optional free-text `search` applied across `search_columns`.
 ///
@@ -807,6 +847,72 @@ fn build_filter_clause(
                 parts.push(format!("{col} BETWEEN {ph1} AND {ph2}"));
                 binds.push(json_to_string(&f.value));
                 binds.push(json_to_string(&f.value2));
+            }
+            FilterOp::In | FilterOp::NotIn => {
+                let negated = matches!(f.op, FilterOp::NotIn);
+                // Deduplicate on the *bound* representation while preserving the
+                // order the values arrived in: selecting 40 rows that share a
+                // value must produce one placeholder, not 40. NULL is pulled out
+                // separately — no `IN` list can ever match it.
+                let mut seen: HashSet<String> = HashSet::new();
+                let mut bound: Vec<Option<String>> = Vec::new();
+                let mut has_null = false;
+                for v in &f.values {
+                    match json_to_string(v) {
+                        None => has_null = true,
+                        Some(s) => {
+                            if seen.insert(s.clone()) {
+                                bound.push(Some(s));
+                            }
+                        }
+                    }
+                }
+
+                if bound.is_empty() {
+                    // `IN ()` is a syntax error on every engine. A list that is
+                    // empty (or NULL-only) can only arrive from a hand-built
+                    // payload, since the UI always sends the selected values —
+                    // but emit a valid degenerate predicate rather than dropping
+                    // the filter, because dropping it would silently widen the
+                    // result set to the whole table, the opposite of the ask.
+                    if has_null {
+                        let kw = if negated { "IS NOT NULL" } else { "IS NULL" };
+                        parts.push(format!("{col} {kw}"));
+                    } else {
+                        parts.push(if negated { "1 = 1" } else { "1 = 0" }.to_string());
+                    }
+                } else {
+                    let list = bound
+                        .iter()
+                        .map(|_| placeholder(&mut next_placeholder))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    // SQL's three-valued logic makes NULL the whole subtlety
+                    // here, and it cuts in opposite directions per op:
+                    //
+                    // * `IN` + NULL selected → `col IN (…)` is never true for a
+                    //   NULL column, so the NULL rows the user explicitly picked
+                    //   would vanish. Add `OR col IS NULL`.
+                    // * `NOT IN` + NULL selected → nothing to add: NULL was kept
+                    //   out of the list, and `NULL NOT IN (…)` evaluates to NULL
+                    //   (not true), so NULL rows are already excluded — which is
+                    //   exactly what "exclude these" asked for.
+                    // * `NOT IN` without NULL selected → the classic trap. NULL
+                    //   rows would be dropped by 3VL even though the user never
+                    //   asked to exclude them. Add `OR col IS NULL` to keep them.
+                    if negated {
+                        if has_null {
+                            parts.push(format!("{col} NOT IN ({list})"));
+                        } else {
+                            parts.push(format!("({col} NOT IN ({list}) OR {col} IS NULL)"));
+                        }
+                    } else if has_null {
+                        parts.push(format!("({col} IN ({list}) OR {col} IS NULL)"));
+                    } else {
+                        parts.push(format!("{col} IN ({list})"));
+                    }
+                    binds.extend(bound);
+                }
             }
             FilterOp::Contains
             | FilterOp::NotContains
@@ -928,6 +1034,9 @@ pub(crate) async fn fetch_table_data_inner(
     search_columns: Option<Vec<String>>,
     with_count: Option<bool>,
 ) -> AppResult<QueryResult> {
+    if let Some(f) = filters.as_deref() {
+        validate_filters(f)?;
+    }
     let pool = pool_for(state, &connection_id)?;
 
     // MongoDB browse: delegate to the mongo module (find + count). Clone the
@@ -1766,6 +1875,13 @@ fn json_to_string(v: &Value) -> Option<String> {
 ///
 /// Returns the number of rows actually deleted; that should equal
 /// `pk_value_rows.len()` when every key existed, and less if any did not.
+// The argument list is the IPC surface, not a design choice: a `#[tauri::command]`
+// receives flat named arguments from `invoke`, and `app`/`window`/`state` are
+// injected by Tauri rather than passed by the caller. Collapsing these into a
+// struct would change the shape the frontend calls with for no gain here. (The
+// same allow on the `_inner` helpers below is a different matter — those are
+// plain Rust functions and genuinely want a request struct.)
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn delete_rows(
     app: AppHandle,
@@ -1945,6 +2061,8 @@ pub(crate) async fn delete_rows_inner(
 /// with `RETURNING <pk>` and the generated value is returned to the
 /// frontend. MySQL/SQLite return the last insert id when available; if
 /// neither path applies the response is `null`.
+// Flat argument list is the IPC surface — see the note on `delete_rows`.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn insert_row(
     app: AppHandle,
@@ -2395,6 +2513,7 @@ mod filter_tests {
             op,
             value,
             value2: json!(null),
+            values: Vec::new(),
         }
     }
 
@@ -2404,6 +2523,18 @@ mod filter_tests {
             op: FilterOp::Between,
             value,
             value2,
+            values: Vec::new(),
+        }
+    }
+
+    /// `In` / `NotIn` filter over an explicit value list.
+    fn in_list(column: &str, op: FilterOp, values: Vec<serde_json::Value>) -> ColumnFilter {
+        ColumnFilter {
+            column: column.into(),
+            op,
+            value: json!(null),
+            value2: json!(null),
+            values,
         }
     }
 
@@ -2486,5 +2617,137 @@ mod filter_tests {
         assert!(clause.contains(r#""a" IS NULL"#), "{clause}");
         assert!(clause.contains(r#""b" IS NOT NULL"#), "{clause}");
         assert!(binds.is_empty());
+    }
+
+    #[test]
+    fn in_builds_one_placeholder_per_value() {
+        let filters = vec![in_list(
+            "id",
+            FilterOp::In,
+            vec![json!(1), json!(2), json!(3)],
+        )];
+        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(clause.contains(r#""id" IN ($1, $2, $3)"#), "{clause}");
+        assert_eq!(
+            binds,
+            vec![
+                Some("1".to_string()),
+                Some("2".to_string()),
+                Some("3".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn in_uses_question_marks_on_mysql() {
+        let filters = vec![in_list("id", FilterOp::In, vec![json!(1), json!(2)])];
+        let (clause, binds) = build_filter_clause(false, false, &filters, None, &[]);
+        assert!(clause.contains("`id` IN (?, ?)"), "{clause}");
+        assert_eq!(binds.len(), 2);
+    }
+
+    #[test]
+    fn in_deduplicates_repeated_values() {
+        // Selecting many rows that share a value must not fan out into one
+        // placeholder per row.
+        let filters = vec![in_list(
+            "status",
+            FilterOp::In,
+            vec![json!("a"), json!("b"), json!("a"), json!("a")],
+        )];
+        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(clause.contains(r#""status" IN ($1, $2)"#), "{clause}");
+        assert_eq!(
+            binds,
+            vec![Some("a".to_string()), Some("b".to_string())],
+            "order of first appearance must be preserved"
+        );
+    }
+
+    #[test]
+    fn in_with_a_null_value_adds_an_is_null_branch() {
+        // `col IN (…)` is never true for a NULL column, so a selected NULL row
+        // would silently disappear from its own filter without this.
+        let filters = vec![in_list("x", FilterOp::In, vec![json!(1), json!(null)])];
+        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(
+            clause.contains(r#"("x" IN ($1) OR "x" IS NULL)"#),
+            "{clause}"
+        );
+        assert_eq!(binds, vec![Some("1".to_string())]);
+    }
+
+    #[test]
+    fn not_in_without_null_keeps_null_rows_visible() {
+        // The classic NOT IN trap: 3VL would drop NULL rows the user never asked
+        // to exclude.
+        let filters = vec![in_list("x", FilterOp::NotIn, vec![json!(1)])];
+        let (clause, _) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(
+            clause.contains(r#"("x" NOT IN ($1) OR "x" IS NULL)"#),
+            "{clause}"
+        );
+    }
+
+    #[test]
+    fn not_in_with_null_excludes_null_rows() {
+        // Here the user *did* pick NULL, so 3VL's own exclusion is the wanted
+        // behaviour and no extra branch is emitted.
+        let filters = vec![in_list("x", FilterOp::NotIn, vec![json!(1), json!(null)])];
+        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(clause.contains(r#""x" NOT IN ($1)"#), "{clause}");
+        assert!(!clause.contains("IS NULL"), "{clause}");
+        assert_eq!(binds, vec![Some("1".to_string())]);
+    }
+
+    #[test]
+    fn empty_in_list_matches_nothing_instead_of_emitting_invalid_sql() {
+        // `IN ()` is a syntax error everywhere. Dropping the filter would be
+        // worse than a never-true predicate: it would widen the result set to
+        // the whole table.
+        let filters = vec![in_list("x", FilterOp::In, vec![])];
+        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(clause.contains("1 = 0"), "{clause}");
+        assert!(!clause.contains("IN ()"), "{clause}");
+        assert!(binds.is_empty());
+    }
+
+    #[test]
+    fn null_only_in_list_degrades_to_is_null() {
+        let filters = vec![in_list("x", FilterOp::In, vec![json!(null)])];
+        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(clause.contains(r#""x" IS NULL"#), "{clause}");
+        assert!(binds.is_empty());
+
+        let filters = vec![in_list("x", FilterOp::NotIn, vec![json!(null)])];
+        let (clause, _) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(clause.contains(r#""x" IS NOT NULL"#), "{clause}");
+    }
+
+    #[test]
+    fn in_placeholders_stay_in_step_with_other_filters() {
+        // The `$N` counter is shared across every filter; an `IN` list consuming
+        // several numbers must not desync the ones that follow it.
+        let filters = vec![
+            f("a", FilterOp::Eq, json!("x")),
+            in_list("b", FilterOp::In, vec![json!(1), json!(2)]),
+            f("c", FilterOp::Gt, json!(9)),
+        ];
+        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        assert!(clause.contains(r#""a" = $1"#), "{clause}");
+        assert!(clause.contains(r#""b" IN ($2, $3)"#), "{clause}");
+        assert!(clause.contains(r#""c" > $4"#), "{clause}");
+        assert_eq!(binds.len(), 4);
+    }
+
+    #[test]
+    fn oversize_in_list_is_rejected() {
+        let values: Vec<serde_json::Value> = (0..=MAX_IN_VALUES).map(|i| json!(i)).collect();
+        let filters = vec![in_list("id", FilterOp::In, values)];
+        assert!(validate_filters(&filters).is_err());
+
+        let values: Vec<serde_json::Value> = (0..MAX_IN_VALUES).map(|i| json!(i)).collect();
+        let filters = vec![in_list("id", FilterOp::In, values)];
+        assert!(validate_filters(&filters).is_ok());
     }
 }

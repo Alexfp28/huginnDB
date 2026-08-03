@@ -6,6 +6,429 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **The query editor shows how a query is actually going, not just that it
+  finished.** A run timer next to the Run button ticks live (wall-clock,
+  including the IPC round trip) while a statement is in flight and freezes on
+  the settled time, tinted by outcome — previously the only feedback was a
+  "running…" label with no sense of how long that had been. The editor:results
+  split now defaults to 75/25 instead of 45/55 (writing SQL is the bulk of the
+  work; results are a glance) and remembers wherever you drag it to afterwards,
+  shared across every query tab. The history sidebar gained a search filter, a
+  per-entry "run again" that re-executes without first loading it into the
+  buffer, and its count/clear affordances moved into the panel itself instead
+  of crowding the main toolbar; saving or updating a query now confirms with a
+  toast instead of closing silently. A fresh query tab also defaults to
+  whichever database you're actively browsing on that connection (the
+  database-scoped child of the currently focused tab) instead of always
+  resetting to the connection's own default database.
+
+- **Environments.** A new level above connections: an environment is a named set
+  of connections plus the whole session that belongs to them — open tabs, pane
+  layout, and what reconnects when you enter it. A switcher in the topbar moves
+  between them, and each remembers its own state, so one environment per client
+  (or per site) no longer means one window per client (#109). Creating,
+  renaming, recolouring and deleting are all in the switcher.
+
+  Connections themselves stay global: an environment decides which are *in
+  play*, it doesn't own them. Deleting one discards its tabs and layout and
+  never touches a connection or a stored password — the confirmation says so,
+  since "delete environment" could easily read the other way.
+
+  `tab_state.json` moves to v4 to hold this. The upgrade is lossless: whatever
+  session you had becomes a single environment holding it verbatim, so the first
+  launch after updating looks exactly like the last one before it. That
+  environment starts unnamed and displays as "Default" in your language rather
+  than having an English name written into your data.
+
+- **The empty workspace is somewhere to start.** With no tabs open, the panel
+  used to show a logo, a line of text and a "New query" button that stayed
+  disabled until a connection had been picked somewhere else. It now carries
+  `WorkspacePicker` (#110): tabs for Connections and Environments, each its own
+  search box and a grid of sizeable cards — a brand-coloured border, an icon
+  (the driver logo for a connection; the environment's own icon, or a default
+  one, for an environment), and a name. Type, click one, and you're connected
+  and focused on it.
+
+  #110 went through two passes before this: the sidebar tree's look reused
+  wholesale (chevrons, indentation, collapse state), then shrunk to an inline
+  row of chips — both read as borrowed from somewhere else rather than built
+  for a screen whose only job is "pick one and go". The cards here are
+  deliberately roomy: one focal element each, restrained chrome (the border is
+  the only decoration, and it only ever means "selectable" or "this is the
+  current one"). Folders still group connections under a heading (folder names
+  match the search too), but only as plain labels now — no fold state of their
+  own to keep in sync with the tree's. The Environments tab switches for real —
+  the same teardown-and-reconnect `switchTo` behind the topbar switcher — and
+  only appears in the main window, the only place switching actually means
+  something.
+
+- **Connections live in the schema tree.** The tree now starts one level higher:
+  folders, then the connections inside them, then databases and tables as before
+  (#107). Clicking a connection opens it and expands it in place, so browsing a
+  second server no longer means leaving the tree to pick it from a menu — a
+  folder like `SERVIDOR_PRUEBAS` with a client per row is visible and navigable
+  in one window.
+
+  Folders are the same ones the File menu and the status bar already show, and
+  they fold the same way: one shared collapse state and the same
+  **Connection group expansion** preference, so a folder you closed is closed
+  everywhere. Idle connections are listed greyed out with their driver badge, and
+  a lost connection keeps the reconnect button it has in the status bar.
+
+  A connection's actions moved with it. Right-clicking a connection offers
+  refresh, new database or collection, whole-database `.sql` export and import,
+  the visible-databases picker, the security panel and connect/disconnect — the
+  same set the explorer used to keep as a row of icons in its header, which would
+  otherwise have repeated under every expanded connection. What's offered still
+  depends on the driver and on whether the connection browses one database or all
+  of them, exactly as before. When a subset of databases is hidden, the tree says
+  so in words under the filter box instead of tinting an icon.
+
+  A connection's row is open when the connection is, and folding one is
+  remembered per environment — so the tree comes back the way you left it at
+  launch and on a switch. Only your folds are stored, never a list of what should
+  be open: a remembered fold can at worst show a row closed, whereas a remembered
+  expansion could insist a row be open over a connection that didn't come back.
+
+- **Shared origins.** An environment can pull its connections from a file on a
+  shared folder, so somebody joining a team configures nothing by hand: point
+  HuginnDB at `\\server\huginndb\clients.json`, enter the passphrase once, and
+  the connections appear with their passwords already in place (#108). The file
+  is exactly what "Export profiles…" already produces, so publishing is one
+  person exporting and dropping the result on the share. Registering and syncing
+  live in Settings → Shared origins.
+
+  The direction is strictly one-way: HuginnDB only ever reads that path and never
+  writes to it. A connection that came from an origin is read-only — editing or
+  deleting it locally would be undone by the next sync anyway — and the notice on
+  its dialog names the way around that: duplicate it, and the copy is yours. The
+  passphrase is stored per origin in your own OS keychain, never on disk. Because
+  reading the share plus the passphrase yields the passwords, the real perimeter
+  is the folder's permissions and the passphrase travelling out of band; see
+  `SECURITY.md`.
+
+  Origins re-sync at launch, every four hours, and on demand. That cadence is the
+  updater's tier rather than the keepalive's on purpose: a curated config file
+  doesn't change by the minute, and twenty workstations polling an SMB share
+  continuously is felt on the file server.
+
+  **A sync never deletes anything by itself.** When a connection stops appearing
+  in the file, it is *reported* — a persistent notice in the schema tree and in
+  Settings, never a dialog, since the sweep runs in the background and there is
+  nobody guaranteed to be watching — and you choose: keep it as your own, which
+  detaches it from the origin and makes it editable again, or delete it along
+  with its stored password. The decision is remembered so a poll can't ask twice.
+  Another person editing a shared file must not be able to destroy credentials on
+  your machine.
+
+  Three failure modes get explicit handling, because the ways this goes wrong in
+  an office are more common than the case it is built for. A file that can't be
+  read or parsed — share offline, VPN down, publisher mid-save without an atomic
+  rename — changes *nothing at all*, since a failed read must never be mistaken
+  for "the file now says less". A file that reads cleanly but has lost half of an
+  origin's connections at once is treated as untrustworthy rather than as a batch
+  of deletions, and reports nothing until you look, because burying someone in
+  removal notices for connections that are perfectly alive costs them a manual
+  re-adoption each. And metadata changes for a connection that currently has an
+  open pool are held back until it closes, then applied: repointing host or port
+  under a running query would change the server beneath you mid-statement.
+
+- **Table tabs remember their filters and sorting.** A restored session brings
+  back each table tab's column filters, its multi-level sort and its committed
+  search, instead of reopening every tab unfiltered and unsorted (#112). Only
+  what was actually applied is saved, never a half-typed search box. Filters
+  arriving from "go to referenced row" still win over a restored set, since
+  that's an explicit gesture you just made rather than last session's leftovers.
+
+- **Filter by the selected rows.** With several rows selected in the data
+  browser, right-clicking a column now offers "Filter *column* by the N selected
+  values" and its inverse, which push a server-side `IN` / `NOT IN` predicate
+  composing with the search box and any existing filters (#114). The list is
+  deduplicated before it becomes SQL, so selecting forty rows that share three
+  values sends three binds and the menu label advertises three, not forty. The
+  chip shows the value count with the values themselves in its tooltip. Works on
+  every driver, including MongoDB (`$in` / `$nin`, with `_id` hex strings
+  reconstructed as real ObjectIds).
+
+  `NULL` gets the care SQL's three-valued logic demands, since neither `IN` nor
+  `NOT IN` behaves intuitively around it: selecting a `NULL` row and filtering
+  *for* those values adds an explicit `IS NULL` branch, because `col IN (…)` is
+  never true for a `NULL` column and the row the user just picked would otherwise
+  vanish from its own filter; asking to *exclude* values without a `NULL` among
+  them keeps `NULL` rows visible, rather than letting `NOT IN`'s standard
+  behaviour drop rows nobody asked to exclude. Value lists are capped at 1000
+  per filter — every value is one bind, and engines have their own placeholder
+  ceilings whose failure mode is an opaque driver error.
+
+- **A new built-in theme, Neon.** A near-black dark theme built around a
+  signature neon green (primary/brand/focus ring), with the rest of the
+  semantic accents (fk, pk/numeric, warning, destructive) picked as neon
+  cyan/amber/pink so the palette reads as one coherent family rather than a
+  single green accent dropped into an otherwise ordinary dark theme.
+
+### Changed
+
+- **The global status bar no longer duplicates the active query's row count
+  and elapsed time**, nor does it show an unconditional "read-only" badge for
+  every query tab regardless of anything about the query itself. Both now live
+  only inside the query editor, where the new run timer and history already
+  cover the same ground — the status bar's `readOnly` flag was really just
+  "query-result grids can't be edited inline", true for every query tab with no
+  exception, so it carried no information worth a persistent badge.
+
+- **"Go to referenced row" moved from Ctrl/Cmd+click to Alt+click.** The FK
+  navigation accelerator shared a chord with the data grid's row multi-selection
+  and won it outright: the handler returned early on any foreign-key cell, so on
+  a table whose visible columns are mostly FKs Ctrl+click could never toggle a
+  row (#113). Selection is the more fundamental gesture and has to behave the
+  same on every column, so FK navigation got a chord of its own. The
+  context-menu entry is unchanged, and the cell tooltip advertises the new
+  chord.
+
+### Fixed
+
+- **A `SELECT` preceded by a comment reported success with a row count but
+  showed no data in the grid.** Every new query tab seeds its buffer with
+  `-- write a SQL query and press Ctrl+Enter`, and `is_read_only`/`is_ddl`
+  (`db/sql.rs`) classified a statement by checking only whether it *starts*
+  with a keyword like `select` after trimming whitespace — a leading comment
+  left the text starting with `--`, so it fell through to the write path.
+  `execute_query` only fetches a result set on the read path; the write path
+  just runs the statement and reports `rows_affected` (correctly, since a
+  `SELECT` run via the unprepared protocol still returns a row count), which
+  is exactly the "correct but empty" behaviour reported. Both classifiers now
+  skip leading whitespace, `--` line comments and `/* */` block comments
+  before matching the keyword.
+
+- **Switching environments could restore the right tabs but collapse a split
+  workspace back to a single tabbed group** whenever the split included a tab
+  opened against a multi-DB "database view" child (`<parent>::db::<database>`,
+  the connection `SchemaExplorer` opens on demand when a database node is
+  expanded). `restoreSession`'s reconnect loop only ever restores TOP-LEVEL
+  connections; a database-view child's tabs come back later, asynchronously,
+  whenever `SchemaExplorer`'s own auto-re-expand effect (for a database node
+  the tree remembers as expanded) gets around to calling
+  `openTrackedDatabaseView` — a separate React component's effect, on its own
+  schedule, entirely decoupled from `restoreSession`. `hydrateWorkspaceLayout`
+  was gated on `useTabs.getState().tabs.length > 0`, checked right after the
+  top-level reconnect loop — before that database view had any chance to
+  reopen — so whenever a saved split's tabs all belonged to one, the check
+  saw zero tabs and skipped the restore outright: no exception, no trace,
+  `fromJSON` simply never ran. (An intermediate fix tried polling for the
+  store→dockview reconciler to "converge" on `useTabs` before applying the
+  layout — that couldn't help either, since `useTabs` stayed empty the entire
+  time this ran; there was nothing to converge on yet.)
+
+  `hydrateWorkspaceLayout` now applies the saved split unconditionally instead
+  of waiting on tab count. A panel `fromJSON` recreates whose tab hasn't shown
+  up in `useTabs` yet is marked `protectPanelUntilRestored` (`lib/dockview.ts`)
+  rather than pruned, so the ordinary reconciler effect — which still fires
+  for every unrelated `tabs` change in the meantime — leaves it alone instead
+  of deleting it for "not being in `tabs` right now" and letting a later pass
+  re-add it, un-split, into the default group. Protection lifts itself the
+  moment the real tab lands (it's simply in `live` again by then), or is
+  dropped explicitly by `clearProtectedPanelsForConnection` when that
+  connection (or its parent) disconnects — the only two ways a panel like this
+  is now allowed to disappear, instead of "wasn't in `tabs` at this instant."
+
+- **Tabs opened against a multi-DB "database view" (`<parent>::db::<database>`,
+  the synthetic child pool `open_database_view` opens when a server connection's
+  database node is expanded in the tree) never persisted at all** — not across
+  an environment switch, not across a reconnect, not even across a plain app
+  restart. `persistedTabs.ts`'s save/restore subscription is entirely keyed off
+  `useConnections.connect()` calling `hydrateTabState`, which only ever runs
+  for genuine top-level connection profiles. A database-view child is never
+  "connected" in that sense — `SchemaExplorer.tsx` opened one directly via
+  `api.openDatabaseView` the moment a database node was expanded (or a
+  per-database action needed it), entirely outside the top-level connection
+  lifecycle, so a table/query/security tab opened against that child id was
+  invisible to the persistence layer from the start: never saved, never
+  restored, regardless of what later happened to the session. This is why
+  switching environments appeared to keep the active connection and the
+  connection-visibility filter (both scoped to the top-level connection) while
+  silently dropping every open table on a non-default database — the exact
+  report that motivated this fix.
+
+  Every call site in `SchemaExplorer.tsx` that opens a database view now goes
+  through `persistedTabs.openTrackedDatabaseView` instead of calling
+  `api.openDatabaseView` directly: it hydrates the child's persisted tabs/
+  schema-expansion and attaches its save subscription the first time the child
+  is opened, guarded by the same `active` subscription map `attachSubscriptions`
+  already maintains rather than a separate tracking set (an earlier draft of
+  this fix used one, and it could go stale independently of the actual
+  subscription lifecycle — confirmed by a failing round-trip test before
+  switching to this design). `useConnections.markDisconnected` now also flushes
+  and tears down every child subscription under a disconnecting parent before
+  clearing its tabs/schema, found via the subscription registry itself
+  (`useTabs`/`useSchema` are not reliable indexes at that point: an environment
+  switch clears `useTabs` before disconnecting anything, and a child opened but
+  never persisted yet has no `useSchema` slice either).
+
+- **Switching environments still didn't bring back which tabs were open, which
+  one had focus, or the split layout, even after the teardown/rebuild fix
+  below.** That fix only covered the debounced tab/layout saves routed through
+  `scheduleSave`/`scheduleSaveActive`. A sibling path wasn't covered:
+  `switchTo`'s teardown loop calls `useConnections.disconnect()` for each
+  outgoing connection, and `disconnect()` fires `persistLaunchState()` itself
+  — fire-and-forget, never awaited by the loop — capturing whatever
+  `useUi`/`useTabs` hold *at that instant*, which by then is the nulled-out
+  focus/active-tab/folds/filter state `switchTo` had already cleared before
+  the loop started. `switchTo` re-saves the real, captured-before-teardown
+  values right after the loop, but that write and the loop's fire-and-forget
+  ones are unrelated, unawaited promises with no ordering guarantee between
+  them: one straggler resolving after the real re-save silently overwrote it
+  with nulls, and if it resolved after the environment pointer had already
+  flipped, it corrupted the *incoming* environment's launch state instead —
+  which is what made the active tab and focus disappear on a switch even
+  though the underlying per-connection tab data was saved correctly.
+  `persistLaunchState()` now checks the same `saveSuspended` flag the earlier
+  fix introduced, so it's a no-op for the same window the tab/layout saves are
+  already blocked in, and the single corrective write always wins.
+
+  Separately hardened the workspace-layout restore itself for the same
+  environment-switch case: `TabbedArea`'s dockview never unmounts across a
+  switch (unlike at launch, where `fromJSON` runs before the panel reconciler
+  has ever fired for that mount and a failed restore is naturally cleaned up
+  by the reconciler's first run right after). On a switch there's no such
+  "first run" left to lean on, so a `fromJSON` failure — which leaves the
+  dockview empty, since `fromJSON` clears it before rebuilding — used to have
+  nothing left to repair it. The panel-creation logic the reconciler uses is
+  now shared (`syncTabPanels` in `src/lib/dockview.ts`) so this path can
+  rebuild the flat tabbed layout directly on a restore failure, instead of
+  leaving the workspace blank.
+
+- **Switching environments could silently wipe the tabs you'd open in the one
+  you were returning to.** `2299f40` fixed this once already for the most
+  direct case — emptying `useTabs` on the way out woke the per-connection
+  save subscriptions, and `cancelPendingSaves()` right after closed that
+  timer before it could fire against the wrong environment. What survived
+  was a second path into the same failure: `switchTo`'s teardown loop calls
+  `disconnect()` for each outgoing connection, which awaits a real backend
+  round-trip and then drops that connection's schema cache (and, for a
+  multi-DB parent, closes its children's tabs) — either of which can wake a
+  *different*, still-subscribed connection's listener partway through the
+  loop, well after the last `cancelPendingSaves()` call had already run. The
+  save that timer armed fired ~600ms later against whichever environment was
+  active by then — the one you'd just switched into — and overwrote its real,
+  previously-saved tabs with a snapshot of the transiently-emptied store.
+  `persistedTabs.ts` now exposes `suspendSaves()`/`resumeSaves()`: instead of
+  chasing each place a save could get re-armed during the teardown/rebuild
+  window, every debounced tab and workspace-layout save is blocked outright
+  from right after the outgoing environment's own flush until the incoming
+  one's session has finished rebuilding, so no source of teardown noise can
+  reach disk regardless of what wakes it.
+
+- **Driver logos in `DriverBadge` no longer sit on a hard-coded white/light
+  tile regardless of the active theme.** Every bundled logo is a transparent
+  SVG with no baked-in backing, so the tile now uses the theme's own
+  `--muted` surface colour instead — it blends into dark themes rather than
+  reading as a glaring white square. SQLite is the one exception: its navy
+  brand colour (#003B57) isn't legible against a dark theme's `--muted`, so
+  it keeps a fixed light backing plate.
+
+- **The theme swatch in Preferences → Appearance showed the wrong tone for
+  the two default themes** — a white dot for "HuginnDB Dark" and a near-black
+  one for "HuginnDB Light", the opposite of what each list item's own mode
+  would suggest. It rendered `colors.primary` alone, which is an inverted
+  grayscale tone in those two themes (a near-white button colour for the
+  dark theme, a near-black one for the light theme). The swatch is now split
+  by the theme's own `background` (so mode is visible at a glance) and
+  `brand` (so themes sharing a mode still stay distinguishable).
+
+- **Ctrl/Cmd+click now reliably toggles row selection in the data grid** (#113).
+  Three independent causes, all addressed: the FK accelerator swallowed the
+  chord on foreign-key cells (see above); a multi-selected row was tinted
+  `bg-brand/20` against the single-row cursor's `bg-brand/10`, a difference most
+  panels render as identical, so a correct toggle looked like a no-op — selected
+  rows now carry a stronger tint plus an accent bar down their left edge; and a
+  table **without a primary key** got no row identity at all, which disabled
+  selection wholesale (no checkbox column, no Shift range either). Such a table
+  now falls back to whole-row identity, so selection, copy and filtering work
+  there; two byte-identical rows share an identity and select together, which is
+  the honest limit of having no key. Every mutating action (inline edit, insert,
+  duplicate, delete, bulk delete) remains gated on a real primary key exactly as
+  before. Row checkboxes also stay visible once anything is selected instead of
+  only on hover, so extending a selection no longer means hunting for the
+  affordance.
+
+- **Long menus scroll instead of being clipped.** A dropdown or context menu
+  taller than the space between its trigger and the viewport edge was cut off
+  with no way to reach the hidden entries — the shared menu primitives set
+  `overflow: hidden` and never capped their height. The most visible case was
+  the connections list in the File menu with every group folder expanded
+  (#111): the connections past the fold were simply unreachable. Both
+  primitives now cap their height at Radix's
+  `--radix-popper-available-height` (the real gap to the viewport edge,
+  recomputed on every reposition) and scroll vertically. Horizontal clipping
+  is kept, so a long connection name still can't spill past the rounded
+  corners, and any call site that already passed its own `max-h-*` keeps
+  winning over the default.
+
+- **MySQL (and Postgres) table browsing got measurably slower after the
+  row-count split in 1.11.0 (issue #77), even on tables far smaller than the
+  MongoDB collections that same change was meant to speed up.** Splitting the
+  count off the data page turned every table open / filter change into *two*
+  concurrent backend requests (`fetch_table_data` + `count_table_rows`)
+  instead of one. MongoDB's driver defaults to a ~100-connection pool, so the
+  doubled concurrency was free; MySQL and Postgres pools cap at
+  `MAX_CONNECTIONS_SERVER = 5` (`pool.rs`, deliberately small for "a couple of
+  in-flight queries at once"), so with more than a couple of tabs open the
+  pool saturated and later requests queued for a free connection — read as
+  "MySQL got slower", when profiling the count query itself (MySQL
+  `information_schema.TABLE_ROWS`) showed single-digit millisecond times.
+  `TableDataTab` now sequences the two: `refreshCount` waits for the sibling
+  `fetchData` call to release its connection before requesting one of its own,
+  restoring one-connection-in-flight-per-tab without reintroducing the
+  original issue #77 regression (the data page still renders the instant
+  `fetchTableData` resolves — `refreshCount` just no longer races it for a
+  connection).
+
+### Performance
+
+- **Clicking a row/cell in the data grid re-rendered every visible row, not
+  just the one(s) that changed — cost that scaled with total visible cells
+  (rows × columns), which is why a 15-column table felt sluggish to click
+  through while a 5-column one didn't at the same row count.** Every
+  interactive grid state (`selectedRowIndex`, `activeCell`, `selectedCell`,
+  `inlineEdit`, `fkEditCell`) lived in `DataGrid` itself, so a single click
+  re-ran the whole render body — every row, every cell, each wrapping its own
+  `<ContextMenu>` — with no `React.memo` boundary anywhere to stop it. Each
+  row's rendering now lives in its own `GridRow`, wrapped in `React.memo` and
+  fed only state already narrowed to "does this concern THIS row" (is this
+  row selected, is the active cell one of mine, is the inline editor mine).
+  Every other row's props come back unchanged, so React skips re-rendering
+  them entirely — a click now costs O(columns) for the one or two rows it
+  actually affects, not O(rows × columns) for the whole page. `DataGrid`'s
+  own locally-declared helpers (`openCellEdit`, `copyToClipboard`, …), which
+  are recreated on every one of its renders, are threaded through a
+  `callbacksRef` (the same live-ref pattern the `columns` cell definitions
+  already used for `fkEditCell`/`inlineEdit`/`selectedCell`) so their
+  identity churn can't itself defeat the new memoization.
+
+- **Opening a table with 10+ other tabs already open on the same connection
+  took ~1900ms instead of ~1ms — not because anything re-fetched, but because
+  loading it re-rendered every other open tab too.** `TableDataTab` subscribed
+  to the *entire* per-connection `columns` map
+  (`s.byConnection[connectionId]?.columns`) instead of just its own table's
+  entry, and `loadColumns` (`stores/schema.ts`) writes a new map reference on
+  every table load — any table, any tab. With dockview keeping every opened
+  tab's `TableDataTab` (and its `DataGrid`) mounted for the tab's lifetime,
+  loading table #11 forced a full re-render pass across the 10 already-open,
+  already-loaded tabs too, even though none of them actually refetched (their
+  own cached entry was untouched). `TableDataTab` now subscribes to
+  `columns[tableKey]` directly, so a sibling tab's first load no longer
+  touches it. A related but smaller contributor in the same family:
+  `WorkspaceTab` (the tab-header component, one instance per open tab)
+  subscribed to the *whole* tabs array, so **any** tab mutation — including
+  `setViewState`, which fires on nearly every filter/sort/search edit —
+  re-rendered every tab's header, not just the one that changed; it now
+  compares tabs by the handful of fields its render actually reads
+  (id/connectionId/kind/title/color/pinned) via `zustand/traditional`'s
+  `useStoreWithEqualityFn`, so unrelated tabs' `viewState` churn no longer
+  touches it either.
+
 ## [1.11.0] — 2026-07-24
 
 ### Added

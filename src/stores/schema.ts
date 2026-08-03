@@ -98,33 +98,57 @@ export const useSchema = create<SchemaState>((set, get) => ({
         api.listDatabases(connectionId),
         api.listTables(connectionId),
       ]);
-      set((state) => ({
-        byConnection: {
-          ...state.byConnection,
-          [connectionId]: {
-            ...(state.byConnection[connectionId] ?? emptyState()),
-            databases,
-            tables,
-            loading: false,
-            initialized: true,
+      set((state) => {
+        // Discard a response that outlived its slice — see the note in the
+        // catch below.
+        const current = state.byConnection[connectionId];
+        if (!current) return state;
+        return {
+          byConnection: {
+            ...state.byConnection,
+            [connectionId]: {
+              ...current,
+              databases,
+              tables,
+              loading: false,
+              initialized: true,
+            },
           },
-        },
-      }));
+        };
+      });
     } catch (e) {
-      set((state) => ({
-        byConnection: {
-          ...state.byConnection,
-          [connectionId]: {
-            ...(state.byConnection[connectionId] ?? emptyState()),
-            loading: false,
-            // Mark as initialized even on failure so the useEffect guard
-            // (`!cs.initialized && !cs.loading`) does not auto-retry and
-            // create a loop. The user can retry manually via the refresh button.
-            initialized: true,
-            error: String(e),
+      set((state) => {
+        // If `drop(connectionId)` ran while this call was in flight, the
+        // connection is gone (disconnected, or its environment was switched
+        // away from) and this result is stale. Writing it would *resurrect* the
+        // slice, because the spread below used to fall back to `emptyState()`
+        // for a missing entry — and resurrecting it on the error path is
+        // permanent damage, not a cosmetic glitch: the entry comes back with
+        // `initialized: true`, which is exactly the flag that stops the
+        // explorer's `!initialized && !loading` guard from ever retrying.
+        //
+        // That is the "not connected: <id>" that survived a full reconnect: the
+        // teardown closed the pool, an in-flight `list_tables` lost the race and
+        // landed after the drop, and the healthy connection that came back
+        // inherited a poisoned slice no automatic path would ever refresh.
+        const current = state.byConnection[connectionId];
+        if (!current) return state;
+        return {
+          byConnection: {
+            ...state.byConnection,
+            [connectionId]: {
+              ...current,
+              loading: false,
+              // Mark as initialized even on failure so the useEffect guard
+              // (`!cs.initialized && !cs.loading`) does not auto-retry and
+              // create a loop. The user can retry manually via the refresh
+              // button. Safe only because of the staleness check above.
+              initialized: true,
+              error: String(e),
+            },
           },
-        },
-      }));
+        };
+      });
     }
   },
   toggleNode: (connectionId, key) => {

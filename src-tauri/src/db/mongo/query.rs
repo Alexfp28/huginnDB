@@ -394,6 +394,20 @@ fn build_filter(
                     "$lte": field_value(&f.column, &f.value2),
                 }
             },
+            // `$in` / `$nin` need none of the NULL gymnastics the SQL builder
+            // does: Mongo has no three-valued logic, and a `null` in the list
+            // matches both an explicit null and a missing field — the same
+            // semantics `IsNull` already has here. The degenerate empty list is
+            // also already correct: `$in: []` matches nothing, `$nin: []`
+            // matches everything.
+            FilterOp::In => {
+                let vs: Vec<Bson> = f.values.iter().map(|v| field_value(&f.column, v)).collect();
+                doc! { &f.column: { "$in": vs } }
+            }
+            FilterOp::NotIn => {
+                let vs: Vec<Bson> = f.values.iter().map(|v| field_value(&f.column, v)).collect();
+                doc! { &f.column: { "$nin": vs } }
+            }
         };
         clauses.push(clause);
     }
@@ -644,6 +658,7 @@ mod tests {
             op: FilterOp::Eq,
             value: serde_json::json!(183),
             value2: serde_json::Value::Null,
+            values: Vec::new(),
         }];
         let order = vec![SortSpec {
             column: "atnId".to_string(),
@@ -664,11 +679,57 @@ mod tests {
             op: FilterOp::Between,
             value: serde_json::json!(18),
             value2: serde_json::json!(65),
+            values: Vec::new(),
         }];
         let filter = build_filter(&filters, None, &[]);
         let age = filter.get_document("age").unwrap();
         assert_eq!(age.get_i32("$gte").unwrap(), 18);
         assert_eq!(age.get_i32("$lte").unwrap(), 65);
+    }
+
+    #[test]
+    fn in_and_not_in_build_in_nin_documents() {
+        let mk = |op: FilterOp| {
+            vec![ColumnFilter {
+                column: "status".to_string(),
+                op,
+                value: serde_json::Value::Null,
+                value2: serde_json::Value::Null,
+                values: vec![serde_json::json!("a"), serde_json::json!("b")],
+            }]
+        };
+
+        let f = build_filter(&mk(FilterOp::In), None, &[]);
+        let status = f.get_document("status").unwrap();
+        let list = status.get_array("$in").unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].as_str(), Some("a"));
+
+        let f = build_filter(&mk(FilterOp::NotIn), None, &[]);
+        let status = f.get_document("status").unwrap();
+        assert_eq!(status.get_array("$nin").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn in_on_id_reconstructs_object_ids() {
+        // `_id` values arrive as hex strings from the grid; each one has to go
+        // through the ObjectId-aware conversion or the `$in` would compare
+        // strings against real ObjectIds and match nothing.
+        let hex = "65f1c2d3e4b5a60718293a4b";
+        let filters = vec![ColumnFilter {
+            column: "_id".to_string(),
+            op: FilterOp::In,
+            value: serde_json::Value::Null,
+            value2: serde_json::Value::Null,
+            values: vec![serde_json::json!(hex)],
+        }];
+        let f = build_filter(&filters, None, &[]);
+        let list = f.get_document("_id").unwrap().get_array("$in").unwrap();
+        assert!(
+            matches!(list[0], Bson::ObjectId(_)),
+            "expected an ObjectId, got {:?}",
+            list[0]
+        );
     }
 
     #[test]

@@ -1,8 +1,10 @@
 /**
  * Bottom status bar. Left side: a connections dropdown (see
- * `StatusConnections`) plus live query/selection stats for the active tab and
- * a read-only marker. Right side: encoding, the connected server version, a
- * clickable query-history popover, and quick density / theme toggles.
+ * `StatusConnections`) plus the active tab's selection count, if any (query
+ * tabs have their own run stats — timer, rows, history — inside the query
+ * editor itself, see `QueryEditorTab`, rather than duplicated here). Right
+ * side: encoding, the connected server version, a clickable query-history
+ * popover, and quick density / theme toggles.
  *
  * Everything here subscribes to reference-stable store values and derives
  * scalars locally, per the Zustand selector rule in CLAUDE.md.
@@ -17,7 +19,8 @@ import { useGridSelection } from "@/stores/gridSelection";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences";
 import { useThemeStore, selectActiveTheme } from "@/stores/theme";
 import { useUi } from "@/stores/ui";
-import { StatusConnections } from "@/components/StatusConnections";
+import { StatusConnections } from "@/components/connection/StatusConnections";
+import { EnvironmentSwitcher } from "@/components/connection/EnvironmentSwitcher";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -55,49 +58,21 @@ export function StatusBar() {
     activeId ? s.byTab[activeId] : undefined,
   );
 
-  const stats = activeTab?.lastQueryStats;
   const serverVersion = activeTab ? versions[activeTab.connectionId] : undefined;
-  // Query-result tabs are read-only (no PK-anchored editing); table tabs edit.
-  const readOnly = activeTab?.kind === "query";
 
   return (
     <div className="flex h-7 items-center justify-between border-t border-border bg-card/60 px-2 text-[11px] text-muted-foreground">
-      {/* Left — connections + query/selection stats */}
+      {/* Left — connections + selection stats */}
       <div className="flex items-center gap-2">
+        <EnvironmentSwitcher />
+        <Sep />
         <StatusConnections />
 
-        {selection && selection.count > 0 ? (
+        {selection && selection.count > 0 && (
           <>
             <Sep />
             <span className="tabular-nums text-foreground">
               {t("statusBar.selected", { count: selection.count })}
-            </span>
-          </>
-        ) : (
-          stats && (
-            <>
-              <Sep />
-              <span className="tabular-nums">
-                <span className="text-foreground">
-                  {stats.rows.toLocaleString()}
-                </span>{" "}
-                {t("statusBar.rows")}
-              </span>
-              <Sep />
-              <span className="tabular-nums">
-                {t("statusBar.executedIn")}{" "}
-                <span className="text-foreground">{stats.elapsed_ms}</span>{" "}
-                {t("statusBar.ms")}
-              </span>
-            </>
-          )
-        )}
-
-        {readOnly && (
-          <>
-            <Sep />
-            <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
-              {t("statusBar.readOnly")}
             </span>
           </>
         )}
@@ -109,7 +84,7 @@ export function StatusBar() {
           <button
             type="button"
             onClick={() => {
-              import("@/components/CommandPalette").then((m) =>
+              import("@/components/shell/CommandPalette").then((m) =>
                 m.useCommandPalette.getState().toggle(),
               );
             }}

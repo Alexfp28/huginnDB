@@ -1,0 +1,147 @@
+name: ci
+
+# Quality gates on every push and pull request. Before this existed the repo
+# had 83 backend tests that no automation ever ran — the first thing to catch a
+# regression was a failing release build, long after the fact.
+#
+# Deliberately split into three jobs so a failure names its own cause:
+#   fmt      — seconds, compiles nothing, fails fast on a formatting slip
+#   frontend — TypeScript only
+#   rust     — clippy + tests, on both target platforms
+#
+# Release bundling lives in release.yml / canary.yml; nothing here builds an
+# installer or touches the signing keys.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch supersedes the previous run. `group` includes
+# the workflow name so ci and release runs never cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only: nothing here publishes, comments, or writes to the repo.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Pinned rather than `stable` on purpose. `clippy -D warnings` turns every
+  # lint into a build failure, so an upstream Rust release that adds a lint
+  # would turn CI red with no change to this repo. Bumping this is a
+  # deliberate one-line commit that carries whatever fixes the new lints want.
+  RUST_VERSION: "1.95.0"
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt
+
+      # `cargo fmt` only parses — it never invokes build.rs, so this job needs
+      # neither the sidecar placeholder below nor the Linux WebKit packages.
+      - name: Check formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+  frontend:
+    name: typescript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        # Version intentionally unpinned here — pnpm/action-setup reads
+        # `packageManager` from package.json. Specifying both produces
+        # ERR_PNPM_BAD_PM_VERSION.
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # pnpm 11 requires Node >= 22.13 (it `require`s the built-in
+          # `node:sqlite`, absent before 22.5). Keep this >= 22.13.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+  rust:
+    name: clippy + tests (${{ matrix.platform }})
+    strategy:
+      # Report both platforms' failures in one run instead of masking the
+      # second behind the first.
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          # Keyed per platform so the two matrix legs don't evict each other.
+          key: ${{ matrix.platform }}
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # Load-bearing, not defensive. `tauri-build` (huginndb's build.rs) hard-
+      # fails ANY compile of huginndb_lib — a bare `cargo check` included — when
+      # the `bundle.externalBin` resource for the current target triple is not
+      # already on disk. It checks existence only; content is irrelevant at
+      # compile time. See CLAUDE.md gotcha #22.
+      #
+      # Unlike release.yml, this workflow does NOT build the real sidecar: CI
+      # bundles no installer, so an empty placeholder is all `cargo clippy` and
+      # `cargo test` need. That also means the `rm` + `cp` dance from
+      # release.yml (which exists so `cp` can't inherit the placeholder's
+      # non-executable mode) has nothing to do here.
+      - name: Stage huginndb-mcp sidecar placeholder
+        shell: bash
+        run: |
+          triple="$(rustc -Vv | sed -n 's/^host: //p')"
+          mkdir -p src-tauri/binaries
+          touch "src-tauri/binaries/huginndb-mcp-${triple}.exe" \
+                "src-tauri/binaries/huginndb-mcp-${triple}"
+
+      # `--features mcp` is not optional here: the connector's write-policy
+      # enforcement and its tests live behind that feature, and it is exactly
+      # the code an unreviewed change is most dangerous in.
+      - name: Clippy
+        run: >
+          cargo clippy --manifest-path src-tauri/Cargo.toml
+          --workspace --all-targets --features mcp --locked -- -D warnings
+
+      - name: Tests
+        run: >
+          cargo test --manifest-path src-tauri/Cargo.toml
+          --workspace --features mcp --locked

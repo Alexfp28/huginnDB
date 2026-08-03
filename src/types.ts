@@ -91,6 +91,16 @@ export interface ConnectionProfile {
    *  change here takes effect without restarting the MCP client. Mirrors
    *  `McpWritePolicy` in Rust. */
   mcp_write?: McpWritePolicy;
+  /**
+   * Set when this profile came from a shared origin (#108). Such a profile is
+   * **read-only in the UI**: it mirrors an entry in a file somebody else
+   * curates, so a local edit would be silently undone by the next sync.
+   * Duplicating it produces an ordinary local profile with no `origin_id`.
+   *
+   * `snake_case` like its neighbours here — this interface mirrors the Rust
+   * struct's serde output, which is not camelCased for profiles.
+   */
+  origin_id?: string | null;
 }
 
 /** How far the MCP connector may write to a connection. Mirrors
@@ -339,8 +349,6 @@ export interface AppTab {
   query?: string;
   /** For structure tabs: whether we're creating a new table or editing one. */
   structureMode?: StructureMode;
-  /** Stats from the most recent query execution in this tab. */
-  lastQueryStats?: { rows: number; elapsed_ms: number };
   /**
    * Seed server-side filters for a `kind: "table"` tab — set when the tab is
    * opened by "go to referenced row" (FK navigation) so the table lands
@@ -349,6 +357,28 @@ export interface AppTab {
    * `TableDataTab` + `useTabs.open`.
    */
   initialFilters?: ColumnFilter[];
+  /**
+   * Committed view state of a `kind: "table"` tab, persisted with the tab so a
+   * restored session comes back filtered and sorted the way it was left (#112).
+   *
+   * Distinct from `initialFilters` in both direction and lifetime: that one is a
+   * transient *seed* pushed in by FK navigation, while this is the tab's current
+   * state pushed *out* by `TableDataTab` via `setViewState` whenever the user
+   * commits a change. `TableDataTab` reads it once on mount and owns the working
+   * copy from then on, so there is no write-back loop.
+   *
+   * Lives on the tab rather than inside `TableDataTab` because
+   * `persistedTabs.snapshotFor` can only see what's in this store.
+   */
+  viewState?: TabViewState;
+}
+
+/** Persisted, committed view state of a table tab (#112). */
+export interface TabViewState {
+  filters?: ColumnFilter[];
+  sort?: SortSpec[];
+  /** The *applied* free-text search, never the uncommitted toolbar draft. */
+  search?: string;
 }
 
 /**
@@ -357,7 +387,8 @@ export interface AppTab {
  * the `value` field; every other op consumes it. The `contains` family is
  * substring/prefix/suffix `LIKE`; `gt`/`gte`/`lt`/`lte`/`between` are ordered
  * comparisons (offered for numeric/date columns) — `between` additionally
- * consumes `value2` as the inclusive upper bound.
+ * consumes `value2` as the inclusive upper bound. `in` / `not_in` read the
+ * `values` list instead of `value`.
  */
 export type FilterOp =
   | "eq"
@@ -371,6 +402,8 @@ export type FilterOp =
   | "lt"
   | "lte"
   | "between"
+  | "in"
+  | "not_in"
   | "is_null"
   | "is_not_null";
 
@@ -381,6 +414,12 @@ export interface ColumnFilter {
   value?: CellValue;
   /** Range upper bound, only used by `"between"`. */
   value2?: CellValue;
+  /**
+   * Value list, only used by `"in"` / `"not_in"`. The backend deduplicates it,
+   * handles a `null` member through a dedicated `IS NULL` branch, and rejects
+   * lists longer than its `MAX_IN_VALUES` cap (1000).
+   */
+  values?: CellValue[];
 }
 
 /** One column/value pair used when building an INSERT. */
@@ -556,8 +595,85 @@ export interface ConnectionTabState {
  * Session-level inner-dockview geometry (the workspace's split/float
  * arrangement), shared across every connection's tabs. Opaque dockview
  * `toJSON()` blob; `null` means the default tabbed layout.
+ *
+ * Scoped to the active environment on the backend side — `getWorkspaceLayout`
+ * always answers for whichever environment is current.
  */
 export type WorkspaceLayout = unknown | null;
+
+/**
+ * A named set of connections plus the session state that belongs to them.
+ * Mirrors `Environment` in `src-tauri/src/tab_state.rs` (`tab_state.json` v4).
+ *
+ * Only the presentation fields are exposed here. `connections`,
+ * `internalLayout` and `launch` live in the same on-disk struct but are owned by
+ * the session-state commands (`get/saveTabState`, `get/saveWorkspaceLayout`,
+ * `get/saveLaunchState`), which resolve against the active environment — the
+ * frontend never sends them as part of an environment payload.
+ */
+export interface Environment {
+  id: string;
+  /**
+   * Empty means "never named by the user": the backend refuses to write display
+   * copy (it would freeze one language into the user's data), so render
+   * `environmentLabel()` rather than this field directly.
+   */
+  name: string;
+  color: string | null;
+  icon: string | null;
+  order: number;
+}
+
+/**
+ * A shared folder an environment imports connections from (#108). Mirrors
+ * `Origin` in `src-tauri/src/tab_state.rs`.
+ *
+ * `path` points at a file in the format "Export profiles…" already writes. The
+ * sync is pull-only — HuginnDB never writes back to it — and the passphrase for
+ * an encrypted file lives in this user's OS keychain, never here.
+ */
+export interface Origin {
+  id: string;
+  name: string;
+  path: string;
+  /** RFC 3339, or `null` if it has never synced. Display only. */
+  lastSyncedAt: string | null;
+}
+
+/**
+ * Outcome of one `syncOrigin` run. Mirrors `OriginSyncReport` in
+ * `src-tauri/src/commands/origins.rs`.
+ *
+ * Note what it does *not* contain: any notion of a deletion having happened. The
+ * sync only ever reports; adopting or retiring a vanished connection is the
+ * user's call (#108).
+ */
+export interface OriginSyncReport {
+  /** Profile ids created by this sync. */
+  added: string[];
+  /** Profile ids refreshed from the file. */
+  updated: string[];
+  /** Ids whose metadata changed but which have a live pool, so the change is
+   *  held back rather than repointing a server under a running query. */
+  deferred: string[];
+  /** Ids present locally under this origin but absent from the file. */
+  vanished: string[];
+  /**
+   * True when the read looked untrustworthy (a truncated or half-written file
+   * parses fine while listing far fewer profiles than it should). `vanished` is
+   * empty in that case — never offer removals when this is set.
+   */
+  suspicious: boolean;
+  /** RFC 3339 stamp of this run. */
+  syncedAt: string;
+}
+
+/** What `listEnvironments` returns — the list and the active id together, so a
+ *  switcher can't render out of step with the backend's current environment. */
+export interface EnvironmentList {
+  environments: Environment[];
+  activeEnvironmentId: string;
+}
 
 /**
  * The main window's launch-restore state: which connections were live at last
@@ -569,6 +685,22 @@ export interface LaunchState {
   activeConnections: string[];
   selectedConnectionId: string | null;
   activeTabId: string | null;
+  /** Connections folded in the connections tree (#107). The *collapsed* set, not
+   *  the expanded one: a row follows its pool by default, so only an override is
+   *  worth storing, and a stale id can then only ever mean "show folded". Must be
+   *  declared in the Rust `LaunchState` too or serde drops it (gotcha #14). */
+  collapsedConnections: string[];
+  /**
+   * DataGrip-style subset of saved connections to show in the connections tree
+   * — the same "hide the noise" idea as
+   * `ConnectionProfile.visible_databases`, one level up. `null`/absent means
+   * "show all" (the historical behaviour); a hidden connection is still saved,
+   * just not rendered as a row. Scoped to the environment (not global
+   * `Preferences.ui`, where it used to live) so a filter tuned for one
+   * environment doesn't stay active after switching to another. Must be
+   * declared in the Rust `LaunchState` too or serde drops it (gotcha #14).
+   */
+  visibleConnections: string[] | null;
 }
 
 export interface PersistedTab {
@@ -582,6 +714,17 @@ export interface PersistedTab {
   /** Whether the tab was pinned. Must round-trip through the Rust struct or
    *  serde drops it on the typed IPC boundary (gotcha #14). */
   pinned: boolean | null;
+  /**
+   * Table-tab view state, restored when the tab comes back (#112): the
+   * structured column filters, the multi-level sort, and the committed
+   * free-text search. `null` on a query tab, which has none of them.
+   *
+   * Same IPC-boundary rule as `color`/`pinned` — each field must exist on the
+   * Rust `PersistedTab` or serde drops it before it reaches disk (gotcha #14).
+   */
+  filters: ColumnFilter[] | null;
+  sort: SortSpec[] | null;
+  search: string | null;
 }
 
 /**

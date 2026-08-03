@@ -55,6 +55,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   getInnerDockviewApi,
   setPendingInternalLayout,
+  syncTabPanels,
+  protectPanelUntilRestored,
 } from "@/lib/dockview";
 
 const SAVE_DEBOUNCE_MS = 600;
@@ -66,6 +68,68 @@ interface ActiveSubscription {
 }
 
 const active = new Map<string, ActiveSubscription>();
+
+/**
+ * True while an environment switch is tearing down/rebuilding the session
+ * (`useEnvironments.switchTo`). While set, `scheduleSave` and
+ * `scheduleSaveActive` are no-ops instead of arming a timer.
+ *
+ * `cancelPendingSaves()` alone (the pre-existing guard, kept below) only
+ * drops timers already armed *at the moment it's called* — it does nothing
+ * about one armed a tick later. And one reliably gets armed a tick later:
+ * `switchTo`'s teardown loop calls `disconnect()` for each outgoing
+ * connection, which awaits a real backend IPC round-trip and then runs
+ * `markDisconnected` — which drops the connection's schema cache and, for a
+ * multi-DB parent, closes its children's tabs. Either can wake another
+ * still-subscribed connection's `useTabs`/`useSchema` listener mid-loop, long
+ * after the last `cancelPendingSaves()` call, and that timer fires ~600ms
+ * later against whichever environment is active by then — the *incoming*
+ * one, since `setActiveEnvironment` has since run. The result is exactly the
+ * regression `2299f40` fixed once already, just via a path that fix didn't
+ * close: a snapshot of the (still transiently empty) tab store overwrites
+ * the incoming environment's real, previously-saved tabs.
+ *
+ * A suspend flag closes every path at once, regardless of what wakes a
+ * subscription, instead of chasing individual re-arm sites one at a time.
+ *
+ * `persistLaunchState` (below) checks the same flag, for the same reason via
+ * a sibling path this flag didn't originally cover: `switchTo`'s teardown
+ * loop calls `useConnections.disconnect()` for each outgoing connection, and
+ * `disconnect()` fires `persistLaunchState` itself (fire-and-forget, never
+ * awaited by the loop) with whatever `useUi`/`useTabs` hold *at that instant*
+ * — which by then is the nulled-out focus/active-tab/folds/filter that
+ * `switchTo` step 2 already cleared, since step 2 runs before the disconnect
+ * loop. `switchTo` re-saves the *real* captured values right after the loop,
+ * but that write and the loop's fire-and-forget ones are unrelated, unawaited
+ * promises with no ordering guarantee between them — if even one straggler
+ * from the loop resolves after the real re-save (plausible: it's one
+ * `saveLaunchState` IPC round-trip per disconnected connection, racing a
+ * single corrective write), it overwrites the good launch state with nulls,
+ * and if it resolves after `setActiveEnvironment` too, it corrupts the
+ * *incoming* environment's launch state instead. Gating it on `saveSuspended`
+ * turns every one of those calls into a no-op for the same window the tab/
+ * layout saves are already blocked in.
+ */
+let saveSuspended = false;
+
+/**
+ * Block `scheduleSave`/`scheduleSaveActive` from arming new timers, and drop
+ * any already pending. Call right after the outgoing environment's own
+ * `flushAllTabState()` has written its good snapshot — anything that wakes a
+ * subscription from that point until `resumeSaves()` is not a real edit, just
+ * teardown/rebuild noise.
+ */
+export function suspendSaves(): void {
+  saveSuspended = true;
+  cancelPendingSaves();
+}
+
+/** Re-arm normal debounced saving once the incoming environment's session is
+ *  fully rebuilt. Must run even if the switch fails partway — callers use
+ *  try/finally. */
+export function resumeSaves(): void {
+  saveSuspended = false;
+}
 
 function snapshotFor(connectionId: string): ConnectionTabState {
   const tabsState = useTabs.getState();
@@ -85,6 +149,13 @@ function snapshotFor(connectionId: string): ConnectionTabState {
       title: t.title ?? null,
       color: t.color ?? null,
       pinned: t.pinned ?? null,
+      // Committed table-tab view state (#112). Flattened onto the persisted tab
+      // rather than nested, matching the Rust struct's three fields — each one
+      // has to be declared there or serde drops it at the IPC boundary
+      // (gotcha #14).
+      filters: t.viewState?.filters ?? null,
+      sort: t.viewState?.sort ?? null,
+      search: t.viewState?.search ?? null,
     }));
   const activeId = tabs.find((t) => t.id === tabsState.activeId)?.id ?? null;
   const expandedSchemaNodes = schemaSlice
@@ -105,6 +176,7 @@ function snapshotFor(connectionId: string): ConnectionTabState {
 }
 
 function scheduleSave(connectionId: string) {
+  if (saveSuspended) return;
   const entry = active.get(connectionId);
   if (!entry) return;
   if (entry.timer) clearTimeout(entry.timer);
@@ -158,6 +230,7 @@ async function saveWorkspaceLayoutNow(): Promise<void> {
  */
 export function scheduleSaveActive() {
   if (!isMainWindow()) return;
+  if (saveSuspended) return;
   if (layoutSaveTimer) clearTimeout(layoutSaveTimer);
   layoutSaveTimer = setTimeout(() => {
     layoutSaveTimer = null;
@@ -177,11 +250,18 @@ export function persistLaunchState(
   activeConnectionIds: string[],
 ): Promise<void> {
   if (!isMainWindow()) return Promise.resolve();
+  // See `saveSuspended`'s comment: during an environment switch this would
+  // otherwise fire once per disconnected connection, each carrying the
+  // already-cleared (null/empty) focus and tab state, racing `switchTo`'s own
+  // corrective `saveLaunchState` call with no ordering guarantee between them.
+  if (saveSuspended) return Promise.resolve();
   return api
     .saveLaunchState({
       activeConnections: activeConnectionIds,
       selectedConnectionId: useUi.getState().selectedConnectionId,
       activeTabId: useTabs.getState().activeId,
+      collapsedConnections: useUi.getState().collapsedConnections,
+      visibleConnections: useUi.getState().visibleConnections,
     })
     .catch((err) => {
       console.error("[persistedTabs] launch-state save failed:", err);
@@ -231,6 +311,17 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
         query: p.query ?? undefined,
         color: p.color ?? undefined,
         pinned: p.pinned ?? undefined,
+        // Re-nest the flat persisted fields into `viewState` (#112). Left
+        // `undefined` when the tab carried none, so `TableDataTab` falls back to
+        // its own defaults rather than starting from empty-but-present state.
+        viewState:
+          p.filters || p.sort || p.search
+            ? {
+                filters: p.filters ?? undefined,
+                sort: p.sort ?? undefined,
+                search: p.search ?? undefined,
+              }
+            : undefined,
       }));
 
       // Merge: keep tabs from other connections, drop the previous set
@@ -265,19 +356,104 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
 }
 
 /**
- * Restore the session-level inner-dockview geometry once at launch, AFTER the
- * launch flow has populated `useTabs` (i.e. after auto-reconnect settles).
- * Ordering matters: `fromJSON` recreates panels from the stored params, but
- * the TabbedArea reconciler removes any panel whose tab isn't in `useTabs` —
- * so if this ran with an empty tab store (as it did in the first cut), the
- * reconciler would immediately delete the geometry `fromJSON` had just built.
- * Called with the tabs already present, `fromJSON` is stable and no later
- * reconciler pass nukes it.
+ * Open (or resolve, if already open) a multi-DB connection's per-database
+ * child pool, hydrating its persisted tabs/schema-expansion and attaching its
+ * save subscription the first time it's opened — the same thing `connect()`
+ * does for a top-level connection via `hydrateTabState`.
  *
- * `fromJSON` is authoritative (gotcha #10). After it we prune panels for tabs
- * that never came back (a connection that failed to reconnect), matching the
- * reconciler's own removal step, so a half-restored session doesn't leave dead
- * panels around. Main-window-only and gated on `restoreTabsOnOpen`.
+ * A `<parentId>::db::<database>` child is never "connected" in the
+ * `useConnections`/`connect()` sense: `SchemaExplorer.tsx` opens one directly
+ * via `api.openDatabaseView` the first time a database node is expanded (or a
+ * per-database action needs it), entirely independent of the top-level
+ * connection lifecycle. Nothing about that path ever called `hydrateTabState`
+ * or `attachSubscriptions`, so a table/query/security tab opened against a
+ * child id was invisible to this module — never saved, never restored,
+ * regardless of whether the environment switched, the app restarted, or
+ * anything else. Every call site in `SchemaExplorer.tsx` that opens a
+ * database view MUST go through this instead of calling
+ * `api.openDatabaseView` directly, or its tabs silently stop persisting
+ * again.
+ *
+ * Guarded by the SAME `active` map `attachSubscriptions` populates — not a
+ * separate "have we seen this child" set. A database can be closed and
+ * reopened (or the tree re-expanded) multiple times per session without a
+ * fresh `openDatabaseView` round-trip once dockview already has the id, and
+ * re-running the restore each time would clobber whatever the user has open
+ * with the on-disk snapshot again; `active.has(id)` is true for exactly as
+ * long as that's true. It goes back to false the moment
+ * `useConnections.markDisconnected` flushes and tears the child down (see
+ * `subscribedConnectionIds`), so the *next* open — the parent reconnecting,
+ * or the same database reopened after being dropped and recreated — restores
+ * fresh from disk instead of being skipped as "already done this session". A
+ * private tracking set would drift from that lifecycle independently (and
+ * did, in an earlier version of this fix): it can only be reset by whoever
+ * remembered to call into it, whereas `active` is reset by the one thing that
+ * actually stops the subscription.
+ */
+export async function openTrackedDatabaseView(
+  parentId: string,
+  database: string,
+): Promise<string> {
+  const id = await api.openDatabaseView(parentId, database);
+  if (!active.has(id)) {
+    await hydrateTabState(id);
+  }
+  return id;
+}
+
+/**
+ * Every connection id (top-level or `<parentId>::db::<database>` child) with
+ * a live save subscription right now. Used by `useConnections.markDisconnected`
+ * to find every child connection under a disconnecting parent: by the time it
+ * runs during an environment switch, `useTabs` has already been cleared (the
+ * switch does that before tearing down connections) and a child that was
+ * opened but never had anything persisted yet has no `useSchema` slice either
+ * (`hydrateTabState` only writes one when it finds saved state to restore) —
+ * so neither store is a reliable index of "what children exist" on its own.
+ * The subscription registry always is, since `attachSubscriptions` is the one
+ * thing that puts a connection (parent or child) into it.
+ */
+export function subscribedConnectionIds(): string[] {
+  return Array.from(active.keys());
+}
+
+/**
+ * Restore the session-level inner-dockview geometry: at launch, AFTER the
+ * launch flow has populated `useTabs` (auto-reconnect settling), or from
+ * `useEnvironments.switchTo`'s `restoreSession` on an environment switch.
+ *
+ * `fromJSON` (dockview-core) is applied UNCONDITIONALLY — not gated on
+ * "are there tabs yet", which an earlier version of this function was, and
+ * which was the actual bug behind a report of "tabs come back but the split
+ * doesn't": a table/query/security tab against a multi-DB "database view"
+ * child (`<parent>::db::<database>`) is NOT restored by `restoreSession`'s
+ * reconnect loop — it comes back later, whenever `SchemaExplorer`'s own
+ * auto-re-expand effect (for a database node that was expanded before) gets
+ * around to calling `openTrackedDatabaseView`, a completely separate React
+ * component's effect on its own schedule. A saved split whose panels all
+ * belonged to such a child meant `useTabs` was still empty by the time this
+ * ran, the old `if (tabs.length > 0)` gate skipped the whole restore, and the
+ * layout was simply never applied — no exception, no trace, just silently
+ * skipped. (A version in between tried waiting for `TabbedArea`'s reconciler
+ * to "converge" on the current `tabs` first; that doesn't help either, since
+ * "current tabs" was `[]` the entire time this function ran — there was
+ * nothing to converge on yet.)
+ *
+ * Since `fromJSON` runs regardless of what's in `useTabs` right now, a panel
+ * it creates may not have a matching tab yet. Those get `protectPanelUntilRestored`
+ * instead of being pruned — see that function's comment for why "not in
+ * `tabs` at this instant" can't be trusted to mean "gone for good" here, and
+ * why the eventual real close (of the tab, or of its connection) is the only
+ * thing allowed to remove one.
+ *
+ * `fromJSON` already clears the dockview before rebuilding (dockview-core's
+ * own behaviour, not something this module needs to do), so it can't collide
+ * with panels the reconciler already added — but if it throws partway
+ * through (a corrupt/incompatible blob), the dockview is left genuinely empty
+ * with nothing else scheduled to rebuild it. `syncTabPanels` (also used by
+ * the reconciler itself) rebuilds the flat layout directly in that case, so a
+ * bad geometry blob degrades to "tabs came back, just not split" instead of
+ * an empty workspace. Main-window-only and gated on `restoreTabsOnOpen`.
  */
 export async function hydrateWorkspaceLayout(): Promise<void> {
   if (!isMainWindow()) return;
@@ -288,22 +464,31 @@ export async function hydrateWorkspaceLayout(): Promise<void> {
     setPendingInternalLayout(layout);
     const innerApi = getInnerDockviewApi();
     if (innerApi) {
-      // Already mounted (the common case — TabbedArea mounts at boot). Consume
-      // the pending blob ourselves so a future onReady can't replay a stale
-      // one, apply it, and prune orphans.
+      // Already mounted — an environment switch, not launch (see the doc
+      // comment above). Consume the pending blob ourselves so a future
+      // onReady can't replay a stale one.
       setPendingInternalLayout(null);
       try {
         innerApi.fromJSON(layout as Parameters<typeof innerApi.fromJSON>[0]);
         const live = new Set(useTabs.getState().tabs.map((t) => t.id));
         for (const panel of innerApi.panels) {
-          if (!live.has(panel.id)) innerApi.removePanel(panel);
+          if (live.has(panel.id)) continue;
+          const connectionId = (
+            panel.params as { connectionId?: string } | undefined
+          )?.connectionId;
+          if (connectionId) protectPanelUntilRestored(panel.id, connectionId);
         }
       } catch (err) {
         console.warn("[persistedTabs] workspace layout restore failed:", err);
+        // `fromJSON`'s own internal clear() already emptied the dockview, and
+        // nothing else is going to rebuild it (see the doc comment above) — do
+        // it ourselves so a bad/stale geometry blob degrades to "tabs came
+        // back, just not split" instead of an empty workspace.
+        syncTabPanels(innerApi, useTabs.getState().tabs);
       }
     }
     // If not mounted yet, the blob stays pending: `TabbedArea.onReady` replays
-    // it and its reconciler effect (tabs already present) prunes/adds to match.
+    // it and its reconciler effect (protecting/adding/pruning) as tabs land.
   } catch (err) {
     console.error("[persistedTabs] workspace layout hydrate failed:", err);
   }
@@ -333,6 +518,32 @@ function attachSubscriptions(connectionId: string) {
   });
 
   active.set(connectionId, entry);
+}
+
+/**
+ * Drop every pending debounced save without writing it.
+ *
+ * For the environment switch (`useEnvironments.switchTo`): tearing a session
+ * down removes dockview panels and closes tabs, which arms a layout save and
+ * per-connection tab saves. Those timers resolve against whichever environment
+ * is active *when they fire*, so if the switch completes first they write the
+ * torn-down state into the environment being entered and destroy its saved
+ * geometry. The outgoing state has already been flushed by then, so there is
+ * nothing worth keeping in these timers — discarding is correct, not lossy.
+ *
+ * Subscriptions are left attached; only the queued writes are dropped.
+ */
+export function cancelPendingSaves(): void {
+  if (layoutSaveTimer) {
+    clearTimeout(layoutSaveTimer);
+    layoutSaveTimer = null;
+  }
+  for (const entry of active.values()) {
+    if (entry.timer) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+  }
 }
 
 /**

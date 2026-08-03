@@ -44,10 +44,25 @@ in a roadmap and now don't:
    between two schemas or two points in time. No backend or UI work started.
 3. **More drivers** — Microsoft SQL Server, ClickHouse, DuckDB. Recipe for
    adding a driver is in `CONTRIBUTING.md`.
-4. **Tighter CSP** for the webview. Currently `csp: null` (`tauri.conf.json`)
+4. **Cloud/managed database support (Supabase, Neon, PlanetScale, ...)** — a
+   Supabase project's Postgres endpoint already connects today through the
+   existing PostgreSQL driver (it's plain Postgres on the wire), so this
+   isn't a new driver — it's ergonomics and pooler-awareness on top of the
+   one that exists. Candidate scope: (a) a "cloud provider" connection mode
+   that takes a project URL/API key instead of hand-entered host/port/user/
+   password; (b) correct handling of Supabase's pgbouncer **transaction-mode**
+   pooler, which doesn't support prepared statements — `sqlx`'s default
+   Postgres protocol assumes them, so connecting through port 6543 needs a
+   simple-query fallback or the direct-connection port documented as the
+   supported path; (c) optionally surfacing project-level metadata (RLS
+   policies, branches) the way the existing users/privileges panel does for
+   plain Postgres. No design work started; needs scoping (Supabase-only vs.
+   a generic "cloud Postgres" abstraction covering Neon/PlanetScale too)
+   before implementation begins.
+5. **Tighter CSP** for the webview. Currently `csp: null` (`tauri.conf.json`)
    because Monaco loads its workers as blobs — see `CLAUDE.md`'s architecture
    invariants for why the relaxation is considered narrow today.
-5. **Automated tests, wider coverage.** Backend unit tests already cover a
+6. **Automated tests, wider coverage.** Backend unit tests already cover a
    meaningful slice (`tab_state` migrations, `db::ddl`/`view_ddl` builders,
    `db::sql`, the Mongo shell parser and value coercion, `mcp::mod`, prefs,
    store — see `#[test]` in `src-tauri/src/{lib,store,prefs,tab_state,
@@ -55,7 +70,7 @@ in a roadmap and now don't:
    values,query}.rs`). Still missing: integration tests against ephemeral
    Postgres/MySQL (`testcontainers-rs`), and any frontend test coverage
    (Playwright).
-6. **Ship Linux release artifacts.** Closer to done than it looks: the
+7. **Ship Linux release artifacts.** Closer to done than it looks: the
    bundler is already configured for `.deb`/`.AppImage`
    (`tauri.conf.json`'s `bundle.targets`), and the release workflow
    (`.github/workflows/release.yml`) already has the `ubuntu-22.04` matrix
@@ -71,12 +86,12 @@ in a roadmap and now don't:
    distribution beyond raw GitHub Releases (Flatpak/Flathub, Snap, an AUR
    package) have zero existing scaffolding and are further-out stretch
    goals, not blocking this item.
-7. **macOS bundle with code signing.** The build is expected to work but is
+8. **macOS bundle with code signing.** The build is expected to work but is
    unverified, and there's no Apple Developer signing/notarization yet
    (parallels the Windows SmartScreen situation documented in the README).
-8. **Visual query builder** — low priority. Monaco is fast enough that most
+9. **Visual query builder** — low priority. Monaco is fast enough that most
    users probably don't want one; only pursue if there's real demand.
-9. **Keyset (seek) pagination for deep table navigation** — low priority.
+10. **Keyset (seek) pagination for deep table navigation** — low priority.
    The data browser paginates with `LIMIT/OFFSET` (and `.skip()` on MongoDB),
    which is O(offset): jumping deep into a multi-million-row table makes the
    engine scan and discard every skipped row. A `WHERE (sort_key) > :last`
@@ -102,6 +117,9 @@ Don't propose these unless the user asks first:
 - AI features baked into the app itself (autocomplete suggestions via LLM,
   "explain this query", etc.) — the MCP connector is the sanctioned way an AI
   tool touches HuginnDB, from the outside.
-- Cloud sync of profiles or saved queries.
+- Cloud sync of profiles or saved queries. **Shared origins** (#108, shipped) are
+  not this and don't open the door to it: a file on a path the OS already mounts,
+  curated by hand, read one way with no service, account or background upload
+  behind it. HuginnDB never writes to the share.
 - Mobile builds — Tauri's icon CLI generated iOS/Android directories during
   scaffolding, but desktop is the only target.

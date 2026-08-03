@@ -648,8 +648,11 @@ pub async fn list_columns_inner(
             .fetch_all(&p)
             .await?;
             use std::collections::HashMap;
-            let mut fk_map: HashMap<String, (Option<String>, Option<String>, Option<String>)> =
-                HashMap::new();
+            // Referenced (schema, table, column) for one column. Every part is
+            // optional because `information_schema` reports NULL for a target
+            // it cannot resolve (cross-database, or insufficient privileges).
+            type FkTarget = (Option<String>, Option<String>, Option<String>);
+            let mut fk_map: HashMap<String, FkTarget> = HashMap::new();
             for r in fk_rows {
                 fk_map.insert(
                     r.get::<String, _>("column_name"),
@@ -712,7 +715,8 @@ pub async fn list_columns_inner(
             use std::collections::HashSet;
             let needs_pk_resolution: HashSet<String> = fk_map
                 .values()
-                .filter_map(|(t, to)| to.is_none().then(|| t.clone()))
+                .filter(|(_, to)| to.is_none())
+                .map(|(t, _)| t.clone())
                 .collect();
             let mut pk_cache: HashMap<String, Option<String>> = HashMap::new();
             for target in needs_pk_resolution {

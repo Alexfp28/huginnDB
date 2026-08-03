@@ -1,6 +1,7 @@
 /**
  * Tab body for ad-hoc SQL queries. Hosts a Monaco editor on top and a
- * `DataGrid` of results below, separated by a vertical resize handle.
+ * `DataGrid` of results below, separated by a vertical resize handle
+ * (defaults to a 75/25 split, remembered via `autoSaveId` once dragged).
  *
  * Editor features:
  *  - `Ctrl+Enter` runs the entire buffer. Bound through Monaco's command
@@ -25,10 +26,12 @@ import Editor, { type Monaco } from "@monaco-editor/react";
 import {
   Bookmark,
   Check,
+  Clock,
   Database,
   History,
   Loader2,
   Play,
+  Search,
   Trash2,
   X,
 } from "lucide-react";
@@ -40,13 +43,14 @@ import { useTabs } from "@/stores/tabs";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco-themes";
 import { useQueryHistory } from "@/stores/queryHistory";
-import { useCommandPalette } from "@/components/CommandPalette";
-import { useTabSwitcher } from "@/components/TabSwitcher";
+import { useCommandPalette } from "@/components/shell/CommandPalette";
+import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { formatComboForDisplay, getBinding } from "@/lib/keybindings";
 import { registerEditorActionRedispatch } from "@/lib/monacoKeybindings";
 import type { BatchResult, DatabaseInfo, QueryResult } from "@/types";
-import { DataGrid } from "@/components/DataGrid";
+import { DataGrid } from "@/components/grid/DataGrid";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -54,10 +58,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SaveQueryDialog } from "@/components/SaveQueryDialog";
+import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { splitSql } from "@/lib/sqlSplit";
 import { keywordsFor } from "@/lib/sqlKeywords";
 import { buildCompletions } from "@/lib/sqlCompletions";
+import { cn, formatDuration } from "@/lib/utils";
 import {
   ensureSqlProviders,
   registerSqlEditor,
@@ -78,7 +83,6 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const { t } = useTranslation();
   const tab = useTabs((s) => s.tabs.find((t) => t.id === tabId));
   const updateQuery = useTabs((s) => s.updateQuery);
-  const updateQueryStats = useTabs((s) => s.updateQueryStats);
   const editorPrefs = usePreferences(selectEditorPrefs);
   const addHistory = useQueryHistory((s) => s.add);
   const allHistory = useQueryHistory((s) => s.entries);
@@ -137,8 +141,53 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const [historyFilter, setHistoryFilter] = useState("");
   /** Line and character counts updated live by Monaco. */
   const [editorStats, setEditorStats] = useState({ lines: 1, chars: 0 });
+
+  /**
+   * Wall-clock run timer. `elapsedMs` ticks live while `running` and
+   * freezes at the measured round-trip time once the query settles —
+   * previously the only feedback was "running…" with no indication of
+   * how long that had actually been. `lastRunOk` drives the frozen
+   * badge's color (null = never run yet, so the badge stays hidden).
+   */
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [lastRunOk, setLastRunOk] = useState<boolean | null>(null);
+  const runStartRef = useRef(0);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startTimer = useCallback(() => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    runStartRef.current = Date.now();
+    setElapsedMs(0);
+    setLastRunOk(null);
+    timerIntervalRef.current = setInterval(() => {
+      setElapsedMs(Date.now() - runStartRef.current);
+    }, 50);
+  }, []);
+
+  const stopTimer = useCallback((ok: boolean) => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    setElapsedMs(Date.now() - runStartRef.current);
+    setLastRunOk(ok);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    },
+    [],
+  );
+
+  const filteredHistory = useMemo(() => {
+    if (!historyFilter.trim()) return history;
+    const q = historyFilter.toLowerCase();
+    return history.filter((h) => h.sql.toLowerCase().includes(q));
+  }, [history, historyFilter]);
 
   // Typed loosely to avoid importing the heavy monaco-editor types at compile
   // time. The subset we need is stable across Monaco versions.
@@ -254,17 +303,17 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       setRunning(true);
       setError(null);
       setBatchSummary(null);
+      startTimer();
       try {
         const r = await api.executeQuery(effectiveId, toRun);
         setResult(r);
-        // Propagate stats to the tab store so StatusBar can display them.
-        updateQueryStats(tabId, { rows: r.rows_affected, elapsed_ms: r.elapsed_ms });
         addHistory({
           sql: toRun,
           connectionId: parentId,
           elapsedMs: r.elapsed_ms,
           rowsAffected: r.rows_affected,
         });
+        stopTimer(true);
       } catch (e) {
         setError(String(e));
         addHistory({
@@ -274,11 +323,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           rowsAffected: 0,
           error: String(e),
         });
+        stopTimer(false);
       } finally {
         setRunning(false);
       }
     },
-    [sql, effectiveId, parentId, running, addHistory, updateQueryStats, tabId],
+    [sql, effectiveId, parentId, running, addHistory, startTimer, stopTimer],
   );
 
   /**
@@ -292,6 +342,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     if (running || statements.length === 0) return;
     setRunning(true);
     setError(null);
+    startTimer();
     try {
       const r = await api.executeBatch(
         effectiveId,
@@ -300,7 +351,6 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       setBatchSummary(r);
       setResult(r.last_result);
       const failed = r.statements.find((s) => s.error);
-      updateQueryStats(tabId, { rows: r.total_affected, elapsed_ms: 0 });
       addHistory({
         sql: statements.map((s) => s.text).join(";\n"),
         connectionId: parentId,
@@ -308,20 +358,14 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         rowsAffected: r.total_affected,
         error: failed?.error ?? undefined,
       });
+      stopTimer(!failed);
     } catch (e) {
       setError(String(e));
+      stopTimer(false);
     } finally {
       setRunning(false);
     }
-  }, [
-    running,
-    statements,
-    effectiveId,
-    parentId,
-    updateQueryStats,
-    tabId,
-    addHistory,
-  ]);
+  }, [running, statements, effectiveId, parentId, addHistory, startTimer, stopTimer]);
 
   /**
    * Ref pointing at the latest `runQuery`. Monaco's `addCommand` runs
@@ -435,9 +479,16 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   }
 
   return (
-    <PanelGroup direction="vertical" className="h-full">
-      {/* Editor panel */}
-      <Panel defaultSize={45} minSize={15}>
+    <PanelGroup
+      direction="vertical"
+      className="h-full"
+      autoSaveId="query-editor-split"
+    >
+      {/* Editor panel. Defaults to a 75/25 editor:results split — writing SQL
+          is the bulk of the work here, results are a glance — but the handle
+          below is fully draggable and `autoSaveId` remembers wherever the
+          user leaves it, across every query tab. */}
+      <Panel defaultSize={75} minSize={20}>
         <div className="flex h-full flex-col">
           {/* Compact action row: save + history (Run is Ctrl+Enter) and,
               for multi-DB servers, a database selector that scopes the tab. */}
@@ -469,6 +520,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 </kbd>
               )}
             </Button>
+            <QueryTimer running={running} elapsedMs={elapsedMs} ok={lastRunOk} />
             <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
             <Button
               size="sm"
@@ -481,22 +533,13 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             </Button>
             <Button
               size="sm"
-              variant="ghost"
+              variant={showHistory ? "secondary" : "ghost"}
+              aria-pressed={showHistory}
               onClick={() => setShowHistory((v) => !v)}
               title={t("query.history")}
             >
               <History className="h-3.5 w-3.5" />
             </Button>
-            {showHistory && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={clearHistory}
-                title={t("query.clearHistory")}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
 
             {driver !== "sqlite" && databases.length > 0 && (
               <div className="ml-auto flex items-center gap-1">
@@ -556,36 +599,91 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               />
             </div>
             {showHistory && (
-              <div className="w-72 border-l border-border bg-card/40">
-                <div className="border-b border-border px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  {t("query.historyTitle")}
+              <div className="flex w-72 shrink-0 flex-col border-l border-border bg-card/40">
+                <div className="flex items-center justify-between gap-2 px-3 py-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {t("query.historyTitle")}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground">
+                      {history.length}
+                    </span>
+                    {history.length > 0 && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        onClick={clearHistory}
+                        title={t("query.clearHistory")}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="h-full overflow-y-auto pb-12">
-                  {history.length === 0 && (
+                <div className="border-b border-border px-3 pb-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={historyFilter}
+                      onChange={(e) => setHistoryFilter(e.target.value)}
+                      placeholder={t("query.historyFilterPlaceholder")}
+                      className="h-6 pl-6 text-xs"
+                    />
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto pb-12">
+                  {filteredHistory.length === 0 && (
                     <div className="px-3 py-3 text-xs text-muted-foreground">
-                      {t("query.noQueries")}
+                      {history.length === 0
+                        ? t("query.noQueries")
+                        : t("saved.emptyNoMatch")}
                     </div>
                   )}
-                  {history.map((h) => (
-                    <button
+                  {filteredHistory.map((h) => (
+                    <div
                       key={h.id}
-                      onClick={() => updateQuery(tabId, h.sql)}
-                      className="block w-full border-b border-border/40 px-3 py-2 text-left text-xs hover:bg-accent/30"
+                      className="group flex items-start gap-1.5 border-b border-border/40 px-3 py-2 hover:bg-accent/30"
                     >
-                      <div className="line-clamp-2 font-mono text-[11px]">
-                        {h.sql}
-                      </div>
-                      <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
-                        <span>{new Date(h.ranAt).toLocaleTimeString()}</span>
-                        {h.error ? (
-                          <span className="text-destructive">error</span>
-                        ) : (
-                          <span>
-                            {h.rowsAffected} rows · {h.elapsedMs} ms
-                          </span>
-                        )}
-                      </div>
-                    </button>
+                      {h.error ? (
+                        <X className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
+                      ) : (
+                        <Check className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+                      )}
+                      <button
+                        onClick={() => updateQuery(tabId, h.sql)}
+                        className="min-w-0 flex-1 text-left text-xs"
+                        title={h.sql}
+                      >
+                        <div className="line-clamp-2 font-mono text-[11px]">
+                          {h.sql}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span>{new Date(h.ranAt).toLocaleTimeString()}</span>
+                          {h.error ? (
+                            <span className="truncate text-destructive">
+                              {h.error}
+                            </span>
+                          ) : (
+                            <span>
+                              {t("query.historyEntryStats", {
+                                rows: h.rowsAffected,
+                                duration: formatDuration(h.elapsedMs),
+                              })}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                        onClick={() => void runQuery(h.sql)}
+                        title={t("query.runAgain")}
+                      >
+                        <Play className="h-3 w-3" />
+                      </Button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -621,7 +719,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       <PanelResizeHandle className="h-1 bg-border hover:bg-primary/30" />
 
       {/* Results panel */}
-      <Panel defaultSize={55} minSize={20}>
+      <Panel defaultSize={25} minSize={10}>
         <div className="flex h-full flex-col">
           {/* Batch summary: one line per statement, last SELECT shown below. */}
           {batchSummary && <BatchSummary summary={batchSummary} />}
@@ -653,6 +751,42 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         connectionId={parentId}
       />
     </PanelGroup>
+  );
+}
+
+/**
+ * Live/frozen run-duration badge next to the Run button. Ticks in real time
+ * (wall clock, not the driver's own `elapsed_ms`, so it reflects what the
+ * user is actually waiting on — IPC included) while a query is in flight,
+ * then freezes on the settled time, tinted by outcome. Renders nothing
+ * before the first run — an idle "0 ms" badge would just be noise.
+ */
+function QueryTimer({
+  running,
+  elapsedMs,
+  ok,
+}: {
+  running: boolean;
+  elapsedMs: number;
+  ok: boolean | null;
+}) {
+  const { t } = useTranslation();
+  if (!running && ok === null) return null;
+  return (
+    <div
+      className={cn(
+        "ml-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] tabular-nums transition-colors",
+        running
+          ? "bg-brand/10 text-brand"
+          : ok
+            ? "bg-muted text-muted-foreground"
+            : "bg-destructive/10 text-destructive",
+      )}
+      title={t("query.elapsedTitle")}
+    >
+      <Clock className={cn("h-3 w-3", running && "animate-pulse")} />
+      <span>{formatDuration(elapsedMs)}</span>
+    </div>
   );
 }
 

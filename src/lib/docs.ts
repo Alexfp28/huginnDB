@@ -1,6 +1,6 @@
 /**
  * Curated registry for the in-app Documentation viewer (Help → Documentation,
- * {@link ../components/DocsDialog}).
+ * {@link ../components/shell/dialogs/DocsDialog}).
  *
  * Each entry bundles a user-facing markdown file from the repo `docs/` folder
  * at build time via Vite's `?raw` import — no network, works offline, mirroring
@@ -20,6 +20,8 @@
 import type { AppLanguage } from "@/types";
 import mcpRaw from "../../docs/MCP.md?raw";
 import mcpEsRaw from "../../docs/MCP.es.md?raw";
+import environmentsRaw from "../../docs/ENVIRONMENTS.md?raw";
+import environmentsEsRaw from "../../docs/ENVIRONMENTS.es.md?raw";
 
 export interface DocEntry {
   /** Stable id (used as the selected-doc key and React key). */
@@ -40,6 +42,14 @@ const dates: Record<string, string | undefined> =
   typeof __DOC_UPDATED__ !== "undefined" ? __DOC_UPDATED__ : {};
 
 export const DOCS: DocEntry[] = [
+  {
+    id: "environments",
+    titleKey: "docs.entries.environments.title",
+    descriptionKey: "docs.entries.environments.description",
+    path: "docs/ENVIRONMENTS.md",
+    bodies: { en: environmentsRaw, es: environmentsEsRaw },
+    updated: dates["docs/ENVIRONMENTS.md"] ?? null,
+  },
   {
     id: "mcp",
     titleKey: "docs.entries.mcp.title",

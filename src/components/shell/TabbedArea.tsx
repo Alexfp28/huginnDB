@@ -23,7 +23,7 @@
  * unidirectional (store → dockview) and can't feed back on itself.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   MoreVertical,
   PanelsTopLeft,
@@ -55,24 +55,34 @@ import {
   type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTabs } from "@/stores/tabs";
+import { useStoreWithEqualityFn } from "zustand/traditional";
+import type { AppTab } from "@/types";
 import { useUi } from "@/stores/ui";
 import { usePreferences } from "@/stores/preferences";
 import { useConnections } from "@/stores/connections";
+import { useEnvironments } from "@/stores/environments";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { useTabSwitcher } from "@/components/TabSwitcher";
+import { useTabSwitcher } from "@/components/shell/TabSwitcher";
+import { useCommandPalette } from "@/components/shell/CommandPalette";
+import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
+import { ConnectionDialog } from "@/components/connection/dialogs/ConnectionDialog";
+import { getBinding, formatComboForDisplay } from "@/lib/keybindings";
 import { resolveConnectionLabel } from "@/lib/connectionLabel";
-import { TableDataTab } from "@/components/TableDataTab";
-import { QueryEditorTab } from "@/components/QueryEditorTab";
-import { StructureEditorTab } from "@/components/StructureEditorTab";
-import { ViewEditorTab } from "@/components/ViewEditorTab";
-import { SecurityTab } from "@/components/SecurityTab";
+import { TableDataTab } from "@/components/grid/TableDataTab";
+import { QueryEditorTab } from "@/components/query/QueryEditorTab";
+import { StructureEditorTab } from "@/components/schema/StructureEditorTab";
+import { ViewEditorTab } from "@/components/schema/ViewEditorTab";
+import { SecurityTab } from "@/components/schema/SecurityTab";
+import { WorkspacePicker } from "@/components/connection/WorkspacePicker";
 import {
   huginnDockviewThemeInner,
   registerInnerDockviewApi,
   clearInnerDockviewApi,
   consumePendingInternalLayout,
+  syncTabPanels,
 } from "@/lib/dockview";
 import { scheduleSaveActive } from "@/stores/persistedTabs";
 import { cn } from "@/lib/utils";
@@ -207,10 +217,46 @@ function accentBoxShadow(style: TabAccentStyle, color: string): string {
   }
 }
 
+/**
+ * Custom equality for `WorkspaceTab`'s `tabs` subscription: only the fields
+ * this component's render actually depends on (id/connectionId/kind/title
+ * for the label + collision check, color/pinned for the accent + pin icon).
+ * `useTabs` mutates `tabs` immutably on EVERY store action — including
+ * `setViewState`, which `TableDataTab` fires on nearly every filter/sort/
+ * search change — so a bare reference-equality subscription re-rendered
+ * every open tab's header on every keystroke-driven query elsewhere, not
+ * just on tab open/close/rename. Comparing by these fields instead means a
+ * `viewState`/`initialFilters` change on some other tab no longer touches
+ * this one.
+ */
+function tabsRelevantEqual(a: AppTab[], b: AppTab[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.id !== y.id ||
+      x.connectionId !== y.connectionId ||
+      x.kind !== y.kind ||
+      x.title !== y.title ||
+      x.color !== y.color ||
+      x.pinned !== y.pinned
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const { t } = useTranslation();
   const id = props.api.id;
-  const tabs = useTabs((s) => s.tabs);
+  const tabs = useStoreWithEqualityFn(
+    useTabs,
+    (s) => s.tabs,
+    tabsRelevantEqual,
+  );
   // Derive active state from the store (the source of truth), NOT from
   // `props.api.isActive`: dockview does not re-render this custom tab on an
   // active-panel change, so reading `isActive` at render time goes stale and
@@ -605,7 +651,7 @@ function NewTabAction(_props: IDockviewHeaderActionsProps) {
             useTabs.getState().open({
               kind: "query",
               title: t("tabs.queryFileName"),
-              connectionId,
+              connectionId: useTabs.getState().queryTargetFor(connectionId),
               query: "-- write a SQL query and press Ctrl+Enter\n",
             });
           }}
@@ -617,42 +663,159 @@ function NewTabAction(_props: IDockviewHeaderActionsProps) {
   );
 }
 
-/** Empty-state watermark shown when no tabs are open. */
+/** Small monospace key-cap, matching the shortcut style in `ShortcutRow`. */
+function Kbd({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
+      {children}
+    </kbd>
+  );
+}
+
+/**
+ * Empty-state screen shown when no tabs are open.
+ *
+ * It used to be a logo, a line of text and a "New query" button floating
+ * below the workspace picker (#110) with no relation to each other, plus a
+ * lot of dead space on wide windows — the reported inconsistency. This
+ * composes the same pieces (hero, hint, picker) into one column with a
+ * shared visual frame: the "new query" action now sits inline with the hint
+ * it belongs to instead of hanging on its own underneath, the picker gets a
+ * console-style card so it reads as the deliberate focal panel rather than a
+ * loose block, and a subtle dot-grid + brand glow fills the backdrop instead
+ * of leaving flat empty space. A fresh install (no profiles, no picker to
+ * show) now gets an actual "New connection" call to action instead of just
+ * static hint text — previously the least useful screen in the app at the
+ * moment you most need a way in. The keyboard-shortcut footer reads the
+ * user's live rebindings (`getBinding`), never hardcoded combos, and doubles
+ * as a real trigger for the command palette / preferences.
+ */
 function EmptyWatermark() {
   const { t } = useTranslation();
   const connectionId = useUi((s) => s.selectedConnectionId);
+  const hasProfiles = useConnections((s) => s.profiles.length > 0);
+  const environments = useEnvironments((s) => s.environments);
+  // Same guard as `WorkspacePicker` itself (gotcha #8) — a secondary window
+  // never owns an environment, so switching is hidden there.
+  const showEnvironments =
+    getCurrentWindow().label === "main" && environments.length > 1;
+  const showPicker = hasProfiles || showEnvironments;
+
+  const [connDialogOpen, setConnDialogOpen] = useState(false);
+  const togglePalette = useCommandPalette((s) => s.toggle);
+  const openSettings = useSettingsDialog((s) => s.openAt);
+  const paletteCombo = usePreferences((s) =>
+    getBinding(s.prefs.keybindings, "toggleCommandPalette"),
+  );
+  const settingsCombo = usePreferences((s) =>
+    getBinding(s.prefs.keybindings, "openSettings"),
+  );
+
+  function openNewQuery() {
+    if (!connectionId) return;
+    useTabs.getState().open({
+      kind: "query",
+      title: t("tabs.queryFileName"),
+      connectionId: useTabs.getState().queryTargetFor(connectionId),
+      query: "-- write a SQL query and press Ctrl+Enter\n",
+    });
+  }
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-      <img
-        src="/image/huginn-app-icon.svg"
-        alt="HuginnDB"
-        className="mb-1 h-16 w-16 opacity-90"
-        draggable={false}
-      />
-      <div className="font-mono text-lg font-semibold text-foreground">
-        huginndb
+    <div className="relative flex h-full flex-col items-center overflow-y-auto p-6">
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-50"
+          style={{
+            backgroundImage:
+              "radial-gradient(hsl(var(--border)) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+            maskImage:
+              "radial-gradient(ellipse 60% 55% at 50% 32%, black 0%, transparent 75%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse 60% 55% at 50% 32%, black 0%, transparent 75%)",
+          }}
+        />
+        <div className="absolute left-1/2 top-[-140px] h-[420px] w-[680px] -translate-x-1/2 rounded-full bg-brand/10 blur-[110px]" />
       </div>
-      <div>
-        {connectionId
-          ? t("tabs.emptyOpenSomething")
-          : t("tabs.emptyConnectFirst")}
+
+      <div className="relative z-10 flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-7 py-10">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="relative">
+            <div className="absolute inset-0 -z-10 scale-125 rounded-2xl bg-brand/15 blur-xl" />
+            <img
+              src="/image/huginn-app-icon.svg"
+              alt="HuginnDB"
+              className="h-14 w-14"
+              draggable={false}
+            />
+          </div>
+          <div className="font-mono text-xl font-semibold tracking-tight text-foreground">
+            huginndb<span className="text-brand">_</span>
+          </div>
+          {!showPicker && (
+            <p className="max-w-xs text-sm text-muted-foreground">
+              {t("tabs.emptyConnectFirst")}
+            </p>
+          )}
+        </div>
+
+        {showPicker ? (
+          <>
+            <div className="flex flex-wrap items-center justify-center gap-2.5 rounded-full border border-border/70 bg-card/60 py-1.5 pl-4 pr-1.5 text-sm text-muted-foreground">
+              <span>
+                {connectionId
+                  ? t("tabs.emptyOpenSomething")
+                  : t("tabs.emptyConnectFirst")}
+              </span>
+              {connectionId && (
+                <Button
+                  size="sm"
+                  className="h-7 gap-1.5 rounded-full px-3"
+                  onClick={openNewQuery}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {t("tabs.newQuery")}
+                </Button>
+              )}
+            </div>
+
+            <div className="w-full rounded-2xl border border-border/70 bg-card/50 p-5 shadow-sm">
+              <WorkspacePicker />
+            </div>
+          </>
+        ) : (
+          <Button className="gap-1.5" onClick={() => setConnDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            {t("menu.file.newConnection")}
+          </Button>
+        )}
       </div>
-      {connectionId && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            useTabs.getState().open({
-              kind: "query",
-              title: t("tabs.queryFileName"),
-              connectionId,
-              query: "-- write a SQL query and press Ctrl+Enter\n",
-            })
-          }
+
+      <div className="relative z-10 flex items-center gap-5 pb-1 text-xs text-muted-foreground">
+        <button
+          type="button"
+          onClick={() => togglePalette()}
+          className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:text-foreground"
         >
-          {t("tabs.newQuery")}
-        </Button>
-      )}
+          <Kbd>{formatComboForDisplay(paletteCombo)}</Kbd>
+          {t("commandPalette.title")}
+        </button>
+        <button
+          type="button"
+          onClick={() => openSettings()}
+          className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:text-foreground"
+        >
+          <Kbd>{formatComboForDisplay(settingsCombo)}</Kbd>
+          {t("settings.title")}
+        </button>
+      </div>
+
+      <ConnectionDialog
+        open={connDialogOpen}
+        onOpenChange={setConnDialogOpen}
+        initial={null}
+      />
     </div>
   );
 }
@@ -708,47 +871,13 @@ export function TabbedArea(_props: Props) {
 
   // Reconcile the dockview panels with the store: add panels for new tabs,
   // remove panels for closed ones. This is the only place panels are
-  // added/removed, so the flow is strictly store → dockview.
+  // added/removed during ordinary use, so the flow is strictly store →
+  // dockview. `hydrateWorkspaceLayout` (environment switch) also drives panel
+  // creation directly, via the same `syncTabPanels` helper — see its comment
+  // for why that path can't just wait for this effect to converge.
   useEffect(() => {
     if (!api) return;
-    for (const tab of tabs) {
-      if (api.getPanel(tab.id)) continue;
-      let params: Record<string, unknown>;
-      if (tab.kind === "table") {
-        params = {
-          connectionId: tab.connectionId,
-          schema: tab.schema,
-          table: tab.table,
-        };
-      } else if (tab.kind === "structure") {
-        params = {
-          tabId: tab.id,
-          connectionId: tab.connectionId,
-          schema: tab.schema,
-          table: tab.table,
-          mode: tab.structureMode ?? "edit",
-        };
-      } else if (tab.kind === "view") {
-        params = {
-          tabId: tab.id,
-          connectionId: tab.connectionId,
-          schema: tab.schema,
-          view: tab.view,
-          mode: tab.viewMode ?? "edit",
-        };
-      } else {
-        params = { tabId: tab.id, connectionId: tab.connectionId };
-      }
-      api.addPanel({
-        id: tab.id,
-        component: tab.kind,
-        params,
-      });
-    }
-    const live = new Set(tabs.map((t) => t.id));
-    for (const panel of api.panels) {
-      if (!live.has(panel.id)) api.removePanel(panel);
-    }
+    syncTabPanels(api, tabs);
   }, [api, tabs]);
 
   // Mirror the store's active tab into dockview (e.g. when a tab is opened

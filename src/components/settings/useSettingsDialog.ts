@@ -14,6 +14,7 @@ export type SettingsSection =
   | "grid"
   | "appearance"
   | "shortcuts"
+  | "origins"
   | "mcp"
   | "about";
 

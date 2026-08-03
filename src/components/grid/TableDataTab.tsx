@@ -51,8 +51,8 @@ import type {
   RowValue,
   SortSpec,
 } from "@/types";
-import { DataGrid } from "@/components/DataGrid";
-import { AdvancedFilterDialog } from "@/components/AdvancedFilterDialog";
+import { DataGrid } from "@/components/grid/DataGrid";
+import { AdvancedFilterDialog } from "@/components/grid/dialogs/AdvancedFilterDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -161,7 +161,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // disconnect) so the status bar never reads a stale count.
   useEffect(() => () => clearSelection(tabId), [tabId, clearSelection]);
   const loadColumns = useSchema((s) => s.loadColumns);
-  const columnsBySchema = useSchema((s) => s.byConnection[connectionId]?.columns);
   // Resolve the driver for this connection — needed by the DataGrid so
   // its "Copy as SQL …" snippets use the right identifier quoting
   // (backticks for MySQL, double quotes for PG/SQLite). Multi-DB
@@ -178,7 +177,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     return undefined;
   });
   const tableKey = `${schema ?? ""}.${table}`;
-  const cols = columnsBySchema?.[tableKey];
+  // Subscribe to THIS tab's own column entry, not the whole per-connection
+  // `columns` map. `loadColumns` (schema.ts) writes a new map reference on
+  // every table load (any table, any tab), so subscribing to the map made
+  // every already-open table tab on the connection re-render whenever a
+  // sibling tab loaded its columns — harmless on its own (this entry stays
+  // reference-stable so the effect below still no-ops), but with several
+  // tabs open on the same connection each one paid a full re-render for
+  // every unrelated tab's first load, which is what made opening tab N+1
+  // feel like it was reloading everything instead of just the new table.
+  const cols = useSchema((s) => s.byConnection[connectionId]?.columns[tableKey]);
 
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -211,20 +219,35 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * A plain header click replaces it with a single key; Ctrl/Cmd+click adds
    * (or cycles) a level. See [[applySort]].
    */
-  const [sort, setSort] = useState<SortSpec[]>([]);
+  /**
+   * View state restored with the tab (#112). Read once, at mount: from here on
+   * the `useState` values below are the working copy and this component pushes
+   * changes back out via `setViewState`, so reading it reactively would fight
+   * its own writes.
+   */
+  const restoredViewState = useRef(
+    useTabs.getState().tabs.find((t) => t.id === tabId)?.viewState,
+  ).current;
+  const [sort, setSort] = useState<SortSpec[]>(
+    () => restoredViewState?.sort ?? [],
+  );
   /** Free-text search bound to the toolbar input (uncommitted draft). */
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(() => restoredViewState?.search ?? "");
   /** Advanced per-column filter builder dialog (#66). */
   const [advancedOpen, setAdvancedOpen] = useState(false);
   /** What was actually committed via Enter — drives the backend fetch. */
-  const [appliedFilter, setAppliedFilter] = useState("");
+  const [appliedFilter, setAppliedFilter] = useState(
+    () => restoredViewState?.search ?? "",
+  );
   // Seed filters from the tab's `initialFilters` (set by FK "go to referenced
   // row" navigation) so the table lands pre-filtered to the master record.
   const tabInitialFilters = useTabs(
     (s) => s.tabs.find((t) => t.id === tabId)?.initialFilters,
   );
   const [serverFilters, setServerFilters] = useState<ColumnFilter[]>(
-    () => tabInitialFilters ?? [],
+    // FK navigation wins over the restored set: it is an explicit gesture the
+    // user just made, while the restored filters are last session's leftovers.
+    () => tabInitialFilters ?? restoredViewState?.filters ?? [],
   );
   // Re-apply when a *new* `initialFilters` array arrives — i.e. the user
   // navigated via FK into a table tab that was already open. The initial mount
@@ -238,6 +261,20 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       setOffset(0);
     }
   }, [tabInitialFilters]);
+
+  // Publish the committed view state onto the tab so it persists with it
+  // (#112). Driven off the same three values the backend fetch uses, so what is
+  // saved is always what was actually applied — never the uncommitted toolbar
+  // draft. `setViewState` skips no-op writes, which keeps this from scheduling a
+  // disk save on every unrelated re-render.
+  const setViewState = useTabs((s) => s.setViewState);
+  useEffect(() => {
+    setViewState(tabId, {
+      filters: serverFilters.length > 0 ? serverFilters : undefined,
+      sort: sort.length > 0 ? sort : undefined,
+      search: appliedFilter || undefined,
+    });
+  }, [setViewState, tabId, serverFilters, sort, appliedFilter]);
 
   const pushHistory = useFilterHistory((s) => s.push);
   const filterHistory = useFilterHistory(
@@ -346,6 +383,23 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // params still go through.
   const inflightKeyRef = useRef<string | null>(null);
 
+  // The most recently dispatched `fetchData()` call, so `refreshCount` (below)
+  // can wait for it to release its pooled connection before asking for one of
+  // its own. `fetchTableData` and `countTableRows` used to fire as two
+  // genuinely concurrent requests on every table open / predicate change —
+  // fine for MongoDB's ~100-connection default pool, but MySQL/Postgres cap
+  // at `MAX_CONNECTIONS_SERVER = 5` (`pool.rs`), sized for "a couple of
+  // in-flight queries at once". Doubling the concurrent connection demand per
+  // open tab saturated that pool with more than a couple of tabs open, which
+  // read as "MySQL got slower" even on small tables — a pool-contention
+  // regression, not a per-query one (confirmed by profiling: the MySQL
+  // estimate query itself runs in single-digit ms). Sequencing restores the
+  // pre-regression "1 connection in flight per tab" behaviour without giving
+  // up the original point of the split — the data page still renders the
+  // moment `fetchTableData` resolves, `refreshCount` just no longer races it
+  // for a connection.
+  const fetchPromiseRef = useRef<Promise<void> | null>(null);
+
   const fetchData = useCallback(async () => {
     const reqKey = JSON.stringify({
       connectionId,
@@ -413,6 +467,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     if (countInflightRef.current === countKey) return;
     countInflightRef.current = countKey;
     setTotal(null);
+    // Let the sibling data fetch (if any) release its pooled connection
+    // first — see `fetchPromiseRef`'s comment above `fetchData`. A failed
+    // data fetch shouldn't block the count from trying anyway.
+    await fetchPromiseRef.current?.catch(() => {});
     try {
       const c = await api.countTableRows({
         connectionId,
@@ -437,7 +495,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   }, [cols, connectionId, schema, table, loadColumns]);
 
   useEffect(() => {
-    fetchData();
+    // Stash the promise before `refreshCount`'s effect (declared next, runs
+    // right after this one within the same commit) reads it.
+    fetchPromiseRef.current = fetchData();
   }, [fetchData]);
 
   useEffect(() => {
@@ -691,6 +751,39 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     pkColumns.length > 0 &&
     (result === null || pkColumnIndices.every((i) => i >= 0));
 
+  /**
+   * Stable identity for a grid row, derived from its payload rather than a
+   * display index (gotcha #7). Drives the grid's multi-row selection.
+   *
+   * With a usable PK the key is the PK tuple. Without one it falls back to the
+   * full values array: a no-PK table used to get no `getRowKey` at all, which
+   * switched `selectionEnabled` off in `DataGrid` and left the user with *no*
+   * selection whatsoever — no checkbox column, no Shift range, no Ctrl toggle
+   * (the third strand of #113). The fallback is honest about its limit: two
+   * byte-identical rows share a key and therefore select together, which a PK
+   * would have told apart. That's acceptable here because every gesture the
+   * fallback unlocks is read-only — copy, and the `IN` filter — while every
+   * mutating path (`editable`, insert/duplicate/delete, bulk delete) stays
+   * gated on `hasPk` at the call site below and never sees this key.
+   *
+   * `useCallback` matters beyond tidiness: `DataGrid` lists `getRowKey` in the
+   * deps of the memo that pairs every visible row with its key, so an unstable
+   * identity would recompute it on each render of a full page of rows.
+   */
+  const getRowKey = useCallback(
+    (rowValues: CellValue[]): string | null => {
+      try {
+        return JSON.stringify(hasPk ? pkValuesFromRow(rowValues) : rowValues);
+      } catch {
+        return null;
+      }
+    },
+    // `pkValuesFromRow` closes over `pkColumns`/`pkColumnIndices`; it is a plain
+    // function redeclared each render, so key off its inputs instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hasPk, pkColumns, pkColumnIndices],
+  );
+
   // Leading toolbar content folded into the grid's own toolbar (via DataGrid's
   // `toolbarLeading`) so a table tab shows ONE bar instead of two stacked ones.
   // The schema › table breadcrumb used to live here, but the tab title already
@@ -884,17 +977,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onDuplicateRow={hasPk ? onDuplicateRow : undefined}
             onDeleteRow={hasPk ? onDeleteRow : undefined}
             onBulkDelete={hasPk ? onBulkDelete : undefined}
-            getRowKey={
-              hasPk
-                ? (rowValues) => {
-                    try {
-                      return JSON.stringify(pkValuesFromRow(rowValues));
-                    } catch {
-                      return null;
-                    }
-                  }
-                : undefined
-            }
+            getRowKey={getRowKey}
             onSelectionChange={(count, total) =>
               reportSelection(tabId, count, total)
             }

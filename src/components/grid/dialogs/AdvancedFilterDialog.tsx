@@ -101,6 +101,20 @@ function opsForColumn(dataType: string | undefined): FilterOp[] {
   return ops;
 }
 
+/**
+ * Ops whose payload is a value *list* (`values`) rather than `value`/`value2`.
+ *
+ * They are built by the data grid's "filter by the selected rows" action (#114),
+ * never by hand here — `opsForColumn` doesn't offer them, and typing a hundred
+ * values into a text box isn't the use case. This dialog replaces the whole
+ * filter list on apply, so such a filter has to be held aside and re-attached
+ * verbatim: round-tripping it through `DraftRow` would drop `values` (the row
+ * model has no field for it) and coerce the empty `value` into a degenerate
+ * `IN ()` that matches nothing. They stay visible and removable as toolbar
+ * chips, which is where they were created.
+ */
+const LIST_OPS: FilterOp[] = ["in", "not_in"];
+
 interface DraftRow {
   /** Stable React key, independent of array position. */
   key: number;
@@ -127,13 +141,21 @@ export function AdvancedFilterDialog({
   const { t } = useTranslation();
 
   const [rows, setRows] = useState<DraftRow[]>(() =>
-    initial.map((f) => ({
-      key: nextKey++,
-      column: f.column,
-      op: f.op,
-      value: f.value == null ? "" : String(f.value),
-      value2: f.value2 == null ? "" : String(f.value2),
-    })),
+    initial
+      .filter((f) => !LIST_OPS.includes(f.op))
+      .map((f) => ({
+        key: nextKey++,
+        column: f.column,
+        op: f.op,
+        value: f.value == null ? "" : String(f.value),
+        value2: f.value2 == null ? "" : String(f.value2),
+      })),
+  );
+
+  /** Active list filters, passed through untouched on apply (see `LIST_OPS`). */
+  const listFilters = useMemo(
+    () => initial.filter((f) => LIST_OPS.includes(f.op)),
+    [initial],
   );
 
   const columnNames = useMemo(() => columns.map((c) => c.name), [columns]);
@@ -188,7 +210,7 @@ export function AdvancedFilterDialog({
               : undefined,
         };
       });
-    onApply(filters);
+    onApply([...listFilters, ...filters]);
     onClose();
   };
 

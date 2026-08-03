@@ -22,3 +22,25 @@ export function confirmDestructive(message: string): boolean {
   if (!enabled) return true;
   return window.confirm(message);
 }
+
+/**
+ * Confirm an **irreversible** action, ignoring `ui.confirmDestructive`.
+ *
+ * The preference exists so a user who knows what they are doing isn't nagged
+ * about actions they can undo or redo — deleting a row they can re-insert,
+ * emptying a table they can repopulate. It was never meant to be a blanket
+ * "never ask me anything", and reading it that way turns one stale toggle into
+ * silent data loss.
+ *
+ * Use this instead whenever the thing being destroyed exists nowhere else and
+ * cannot be reconstructed from the database: an environment's tabs and pane
+ * layout, a registered origin's stored passphrase. `DROP TABLE` already had its
+ * own always-on dialog for the same reason; this is that rule made shared
+ * instead of re-implemented per call site.
+ *
+ * If in doubt about which helper an action wants, ask: *could the user get this
+ * back?* If the answer is no, it belongs here.
+ */
+export function confirmIrreversible(message: string): boolean {
+  return window.confirm(message);
+}

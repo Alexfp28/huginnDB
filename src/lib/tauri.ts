@@ -46,6 +46,10 @@ import type {
   ViewPreview,
   WorkspaceLayout,
   LaunchState,
+  Environment,
+  EnvironmentList,
+  Origin,
+  OriginSyncReport,
 } from "@/types";
 
 export const api = {
@@ -445,6 +449,66 @@ export const api = {
   /** Persist the launch-restore state so the next launch can restore it. */
   saveLaunchState: (launchState: LaunchState) =>
     invoke<void>("save_launch_state", { launchState }),
+
+  // Environments -----------------------------------------------------------
+  // Every call above resolves against whichever environment is active, so
+  // these are what decide the scope of the six calls above. Main-window-only,
+  // for the same reason tab state is (gotcha #8).
+
+  /** All environments in display order, plus which one is active. */
+  listEnvironments: () => invoke<EnvironmentList>("list_environments"),
+
+  /** Create (`id` omitted) or rename/restyle (`id` given) an environment.
+   *  Only presentation fields — never the session state the environment owns. */
+  saveEnvironment: (args: {
+    id?: string | null;
+    name: string;
+    color?: string | null;
+    icon?: string | null;
+  }) => invoke<Environment>("save_environment", args),
+
+  /** Delete an environment and the session state it remembered. Rejects the
+   *  last remaining one; connection profiles are never touched. */
+  deleteEnvironment: (id: string) =>
+    invoke<void>("delete_environment", { id }),
+
+  /** Point the backend at a different environment. Callers must orchestrate
+   *  the frontend side around this — see `useEnvironments.switchTo`. */
+  setActiveEnvironment: (id: string) =>
+    invoke<void>("set_active_environment", { id }),
+
+  /** Persist the switcher's display order. */
+  reorderEnvironments: (ids: string[]) =>
+    invoke<void>("reorder_environments", { ids }),
+
+  // Shared origins ---------------------------------------------------------
+
+  /** Origins registered in the active environment. */
+  listOrigins: () => invoke<Origin[]>("list_origins"),
+
+  /** Register a shared origin. `passphrase` only for an encrypted file; it goes
+   *  to the OS keychain, never to `tab_state.json`. */
+  addOrigin: (args: {
+    name: string;
+    path: string;
+    passphrase?: string | null;
+  }) => invoke<Origin>("add_origin", args),
+
+  /** Rename / repoint an origin. `passphrase` is tri-state: omit to keep the
+   *  stored one, `""` to clear it, a string to replace it. */
+  updateOrigin: (args: {
+    id: string;
+    name: string;
+    path: string;
+    passphrase?: string | null;
+  }) => invoke<Origin>("update_origin", args),
+
+  /** Unregister an origin. The connections it imported are left in place. */
+  removeOrigin: (id: string) => invoke<void>("remove_origin", { id }),
+
+  /** Pull an origin. Rejects (touching nothing) when the file can't be read or
+   *  parsed; never deletes — disappearances come back in `vanished`. */
+  syncOrigin: (id: string) => invoke<OriginSyncReport>("sync_origin", { id }),
 
   // Multi-window -----------------------------------------------------------
 

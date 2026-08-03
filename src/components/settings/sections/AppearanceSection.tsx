@@ -62,10 +62,7 @@ export function AppearanceSection() {
                 : "border-transparent hover:bg-accent/30"
             }`}
           >
-            <span
-              className="h-3 w-3 rounded-full border border-border"
-              style={{ background: theme.colors.primary }}
-            />
+            <ThemeSwatch colors={theme.colors} />
             <span className="flex-1 truncate">{theme.name}</span>
             <span className="text-[9px] uppercase text-muted-foreground">
               {theme.builtin
@@ -145,6 +142,29 @@ export function AppearanceSection() {
         </div>
       </main>
     </div>
+  );
+}
+
+/**
+ * Small per-theme indicator in the theme list. Split in half by the theme's
+ * own `background` (so a dark theme reads as a dark chip and a light theme
+ * as a light one — the mode is visible at a glance) and `brand` (so themes
+ * sharing a mode still stay distinguishable by their accent colour).
+ *
+ * Previously this rendered `colors.primary` alone, which is the *inverse*
+ * grayscale tone in the two default themes (a near-white button colour for
+ * the dark theme, a near-black one for the light theme) — so the dark theme
+ * showed a white dot and the light theme a black one, backwards from what
+ * the list item's own mode would suggest.
+ */
+function ThemeSwatch({ colors }: { colors: ThemeColors }) {
+  return (
+    <span
+      className="h-3 w-3 shrink-0 rounded-full border border-border"
+      style={{
+        background: `conic-gradient(${colors.brand} 0deg 180deg, ${colors.background} 180deg 360deg)`,
+      }}
+    />
   );
 }
 

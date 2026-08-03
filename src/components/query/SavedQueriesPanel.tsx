@@ -11,8 +11,8 @@ import { useSavedQueries, type SavedQuery } from "@/stores/savedQueries";
 import { useTabs } from "@/stores/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SaveQueryDialog } from "@/components/SaveQueryDialog";
-import { confirmDestructive } from "@/lib/confirmDestructive";
+import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
+import { confirmIrreversible } from "@/lib/confirmDestructive";
 
 export function SavedQueriesPanel({
   connectionId,
@@ -47,7 +47,7 @@ export function SavedQueriesPanel({
     openTab({
       kind: "query",
       title: q.name,
-      connectionId,
+      connectionId: useTabs.getState().queryTargetFor(connectionId),
       query: q.sql,
     });
   }
@@ -136,7 +136,7 @@ export function SavedQueriesPanel({
                   className="h-6 w-6"
                   onClick={() => {
                     if (
-                      confirmDestructive(
+                      confirmIrreversible(
                         t("saved.deleteConfirm", { name: q.name }),
                       )
                     )
