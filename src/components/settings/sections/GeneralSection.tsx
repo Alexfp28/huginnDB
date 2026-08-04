@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { usePreferences, selectUiPrefs } from "@/stores/preferences";
+import { usePreferences, selectUiPrefs } from "@/stores/preferences/preferences";
 import type {
   AppLanguage,
   CellEditorMode,

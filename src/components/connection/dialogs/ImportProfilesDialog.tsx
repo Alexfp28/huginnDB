@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { Upload, KeyRound, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "@/lib/tauri";
-import { useConnections } from "@/stores/connections";
+import { useConnections } from "@/stores/session/connections";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";

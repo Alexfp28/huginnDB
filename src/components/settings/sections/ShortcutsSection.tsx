@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { usePreferences, selectKeybindings } from "@/stores/preferences";
+import { usePreferences, selectKeybindings } from "@/stores/preferences/preferences";
 import { ACTIONS, getBinding, type ActionId } from "@/lib/keybindings";
 import { ShortcutRow } from "./ShortcutRow";
 

@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useThemeStore, selectActiveTheme } from "@/stores/theme";
+import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
 import { BUILT_IN_THEMES, COLOR_KEYS, type ThemeColors } from "@/lib/themes";
 
 export function AppearanceSection() {

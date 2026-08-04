@@ -20,9 +20,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown";
-import { useFeedbackDialog } from "@/stores/feedbackDialog";
-import { useWhatsNew } from "@/stores/whatsNew";
-import { useDocsDialog } from "@/stores/docsDialog";
+import { useFeedbackDialog } from "@/stores/dialogs/feedbackDialog";
+import { useWhatsNew } from "@/stores/dialogs/whatsNew";
+import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 
 export function HelpMenu() {

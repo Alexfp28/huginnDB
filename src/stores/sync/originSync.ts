@@ -21,7 +21,7 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
-import { useConnections } from "@/stores/connections";
+import { useConnections } from "@/stores/session/connections";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Origin } from "@/types";
 

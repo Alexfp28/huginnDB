@@ -18,10 +18,10 @@
 
 import { useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useTabs } from "@/stores/tabs";
-import { useConnections } from "@/stores/connections";
-import { useUi } from "@/stores/ui";
-import { useAppFlavor } from "@/stores/appFlavor";
+import { useTabs } from "@/stores/session/tabs";
+import { useConnections } from "@/stores/session/connections";
+import { useUi } from "@/stores/session/ui";
+import { useAppFlavor } from "@/stores/preferences/appFlavor";
 import {
   resolveConnectionLabel,
   resolveConnectionParts,

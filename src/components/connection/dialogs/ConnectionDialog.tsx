@@ -64,11 +64,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DriverBadge, driverLabel } from "@/components/common/DriverBadge";
 import { api } from "@/lib/tauri";
-import { buildMongoUri, parseMongoUri } from "@/lib/mongoUri";
+import { buildMongoUri, parseMongoUri } from "@/lib/db/mongoUri";
 import { DEFAULT_PORTS } from "@/lib/constants";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { bucketByGroup, cn } from "@/lib/utils";
-import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
+import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups";
 import type {
   ConnectionProfile,
   Driver,
@@ -76,10 +76,10 @@ import type {
   SshAuth,
   SshTunnel,
 } from "@/types";
-import { useConnections } from "@/stores/connections";
-import { useSchema } from "@/stores/schema";
-import { usePreferences } from "@/stores/preferences";
-import { driverMismatchHint } from "@/lib/driver";
+import { useConnections } from "@/stores/session/connections";
+import { useSchema } from "@/stores/session/schema";
+import { usePreferences } from "@/stores/preferences/preferences";
+import { driverMismatchHint } from "@/lib/db/driver";
 
 interface Props {
   open: boolean;

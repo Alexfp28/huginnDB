@@ -17,9 +17,9 @@
  * item text and rendered by the component.
  */
 
-// The files live at the repo root, one level above `src`.
-import enRaw from "../../CHANGELOG.md?raw";
-import esRaw from "../../CHANGELOG.es.md?raw";
+// The files live at the repo root.
+import enRaw from "../../../CHANGELOG.md?raw";
+import esRaw from "../../../CHANGELOG.es.md?raw";
 
 export interface ChangelogSection {
   /** "Added", "Changed", "Fixed", … */

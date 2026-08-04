@@ -50,7 +50,7 @@ import {
   getCurrentVersion,
   installUpdate,
   relaunchApp,
-} from "@/lib/updater";
+} from "@/lib/appInfo/updater";
 
 export type UpdateStatus =
   | "idle"

@@ -42,13 +42,13 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useTabs } from "@/stores/tabs";
+import { useTabs } from "@/stores/session/tabs";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import type { AppTab } from "@/types";
-import { useUi } from "@/stores/ui";
-import { usePreferences } from "@/stores/preferences";
-import { useConnections } from "@/stores/connections";
-import { useEnvironments } from "@/stores/environments";
+import { useUi } from "@/stores/session/ui";
+import { usePreferences } from "@/stores/preferences/preferences";
+import { useConnections } from "@/stores/session/connections";
+import { useEnvironments } from "@/stores/session/environments";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
@@ -74,7 +74,7 @@ import {
   consumePendingInternalLayout,
   syncTabPanels,
 } from "@/lib/dockview";
-import { scheduleSaveActive } from "@/stores/persistedTabs";
+import { scheduleSaveActive } from "@/stores/session/persistedTabs";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/tauri";
 import type { TabAccentStyle } from "@/types";

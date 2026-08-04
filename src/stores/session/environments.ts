@@ -18,16 +18,16 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
-import { useConnections } from "@/stores/connections";
-import { useTabs } from "@/stores/tabs";
-import { useUi } from "@/stores/ui";
-import { usePreferences } from "@/stores/preferences";
+import { useConnections } from "@/stores/session/connections";
+import { useTabs } from "@/stores/session/tabs";
+import { useUi } from "@/stores/session/ui";
+import { usePreferences } from "@/stores/preferences/preferences";
 import {
   flushAllTabState,
   hydrateWorkspaceLayout,
   resumeSaves,
   suspendSaves,
-} from "@/stores/persistedTabs";
+} from "@/stores/session/persistedTabs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Environment } from "@/types";
 

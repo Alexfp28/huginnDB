@@ -30,10 +30,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useLogs, type LogKindFilter } from "@/stores/logs";
-import { useFeedbackDialog } from "@/stores/feedbackDialog";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco-themes";
+import { useLogs, type LogKindFilter } from "@/stores/query/logs";
+import { useFeedbackDialog } from "@/stores/dialogs/feedbackDialog";
+import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import type { LogEntry } from "@/types";
 
 /** `HH:MM:SS.mmm` — fixed-width clock used by every console row so the

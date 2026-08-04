@@ -10,7 +10,7 @@
  * same `matchesBinding` helper every other dispatch site uses.
  */
 
-import { usePreferences } from "@/stores/preferences";
+import { usePreferences } from "@/stores/preferences/preferences";
 import { type ActionId, getBinding, matchesBinding } from "@/lib/keybindings";
 
 interface MonacoKeyDownEvent {

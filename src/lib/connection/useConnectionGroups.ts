@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useState } from "react";
-import { usePreferences } from "@/stores/preferences";
+import { usePreferences } from "@/stores/preferences/preferences";
 
 export interface GroupCollapse {
   /** Whether the named group is currently collapsed. */

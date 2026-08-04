@@ -15,7 +15,7 @@
  * table is a higher safety tier, so it is confirmed regardless of this toggle.
  */
 
-import { usePreferences } from "@/stores/preferences";
+import { usePreferences } from "@/stores/preferences/preferences";
 
 export function confirmDestructive(message: string): boolean {
   const enabled = usePreferences.getState().prefs.ui.confirmDestructive;

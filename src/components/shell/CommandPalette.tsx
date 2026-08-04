@@ -27,13 +27,13 @@ import {
   Settings,
   Table as TableIcon,
 } from "lucide-react";
-import { useConnections } from "@/stores/connections";
+import { useConnections } from "@/stores/session/connections";
 import { tableTabTitle } from "@/lib/connectionLabel";
-import { useSchema } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
-import { useUi } from "@/stores/ui";
-import { usePreferences } from "@/stores/preferences";
-import { useThemeStore } from "@/stores/theme";
+import { useSchema } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
+import { useUi } from "@/stores/session/ui";
+import { usePreferences } from "@/stores/preferences/preferences";
+import { useThemeStore } from "@/stores/preferences/theme";
 import { BUILT_IN_THEMES } from "@/lib/themes";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { cn } from "@/lib/utils";

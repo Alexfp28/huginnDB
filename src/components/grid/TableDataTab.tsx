@@ -35,13 +35,13 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/tauri";
-import { useSchema } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
-import { useFilterHistory } from "@/stores/filterHistory";
-import { useConnections } from "@/stores/connections";
+import { useSchema } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
+import { useFilterHistory } from "@/stores/grid/filterHistory";
+import { useConnections } from "@/stores/session/connections";
 import { tableTabTitle } from "@/lib/connectionLabel";
-import { useGridSelection } from "@/stores/gridSelection";
-import { usePreferences, selectGridPrefs } from "@/stores/preferences";
+import { useGridSelection } from "@/stores/grid/gridSelection";
+import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
 import type {
   CellValue,
   ColumnFilter,
@@ -62,7 +62,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
-import { registerTableRefresh, unregisterTableRefresh } from "@/lib/tableRefresh";
+import { registerTableRefresh, unregisterTableRefresh } from "@/lib/grid/tableRefresh";
 
 interface Props {
   /** The owning tab's id — used to scope the grid-selection report. */

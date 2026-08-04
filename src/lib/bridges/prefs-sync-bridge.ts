@@ -15,7 +15,7 @@
  */
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { usePreferences } from "@/stores/preferences";
+import { usePreferences } from "@/stores/preferences/preferences";
 import type { Preferences } from "@/types";
 
 const PREFS_CHANGED_EVENT = "huginndb://prefs-changed";

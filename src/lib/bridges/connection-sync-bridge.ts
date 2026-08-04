@@ -25,7 +25,7 @@
  */
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { useConnections } from "@/stores/connections";
+import { useConnections } from "@/stores/session/connections";
 
 const CONNECTION_CLOSED_EVENT = "huginndb://connection-closed";
 const PROFILES_CHANGED_EVENT = "huginndb://profiles-changed";

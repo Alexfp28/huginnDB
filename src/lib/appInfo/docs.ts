@@ -18,10 +18,10 @@
  */
 
 import type { AppLanguage } from "@/types";
-import mcpRaw from "../../docs/MCP.md?raw";
-import mcpEsRaw from "../../docs/MCP.es.md?raw";
-import environmentsRaw from "../../docs/ENVIRONMENTS.md?raw";
-import environmentsEsRaw from "../../docs/ENVIRONMENTS.es.md?raw";
+import mcpRaw from "../../../docs/MCP.md?raw";
+import mcpEsRaw from "../../../docs/MCP.es.md?raw";
+import environmentsRaw from "../../../docs/ENVIRONMENTS.md?raw";
+import environmentsEsRaw from "../../../docs/ENVIRONMENTS.es.md?raw";
 
 export interface DocEntry {
   /** Stable id (used as the selected-doc key and React key). */

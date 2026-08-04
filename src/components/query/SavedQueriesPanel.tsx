@@ -7,8 +7,8 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Bookmark, Pencil, Play, Search, Trash2 } from "lucide-react";
-import { useSavedQueries, type SavedQuery } from "@/stores/savedQueries";
-import { useTabs } from "@/stores/tabs";
+import { useSavedQueries, type SavedQuery } from "@/stores/query/savedQueries";
+import { useTabs } from "@/stores/session/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";

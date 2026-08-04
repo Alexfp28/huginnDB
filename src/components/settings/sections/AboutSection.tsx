@@ -11,8 +11,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useUpdateStore } from "@/stores/update";
-import { useAppFlavor } from "@/stores/appFlavor";
-import { getCurrentVersion } from "@/lib/updater";
+import { useAppFlavor } from "@/stores/preferences/appFlavor";
+import { getCurrentVersion } from "@/lib/appInfo/updater";
 import { UpdatesCard } from "./UpdatesCard";
 import { PatchNotesCard } from "./PatchNotesCard";
 

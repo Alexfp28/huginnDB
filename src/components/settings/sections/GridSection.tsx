@@ -17,7 +17,7 @@ import {
   usePreferences,
   selectGridPrefs,
   selectUiPrefs,
-} from "@/stores/preferences";
+} from "@/stores/preferences/preferences";
 import type { GridPrefs, SchemaTableMetric, TabAccentStyle } from "@/types";
 import { PrefRow } from "./PrefRow";
 

@@ -28,7 +28,7 @@ import {
   type Row,
   type Updater,
 } from "@tanstack/react-table";
-import { tableKey } from "@/stores/schema";
+import { tableKey } from "@/stores/session/schema";
 import {
   ArrowDown,
   ArrowRightCircle,
@@ -56,14 +56,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
+import { cn } from "@/lib/utils";
 import {
-  cn,
   defaultColumnWidth,
   formatBitValue,
   isBitType,
   isNumericType,
-} from "@/lib/utils";
-import { usePreferences, selectGridPrefs } from "@/stores/preferences";
+} from "@/lib/grid/columnKinds";
+import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
 import { formatComboForDisplay, getBinding, matchesBinding } from "@/lib/keybindings";
 import type {
   CellValue,
@@ -96,8 +96,8 @@ import {
   toJson as rowToJson,
   toSqlInsert as rowToSqlInsert,
   toSqlUpdate as rowToSqlUpdate,
-} from "@/lib/copyFormats";
-import { useCellEditor } from "@/stores/cellEditor";
+} from "@/lib/grid/copyFormats";
+import { useCellEditor } from "@/stores/grid/cellEditor";
 import { openSideEditor, isSideEditorOpen } from "@/lib/dockview";
 import type { Driver } from "@/types";
 

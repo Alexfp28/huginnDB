@@ -2,7 +2,7 @@ import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import { loader } from "@monaco-editor/react";
-import { registerMonacoThemes } from "@/lib/monaco-themes";
+import { registerMonacoThemes } from "@/lib/monaco/monaco-themes";
 
 // Self-host Monaco so the app works offline and inside Tauri without any
 // CDN dependency. Workers are bundled by Vite via the ?worker imports.

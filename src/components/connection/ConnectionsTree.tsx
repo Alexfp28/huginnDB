@@ -38,14 +38,14 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useConnections } from "@/stores/connections";
-import { useConnectionHealth } from "@/stores/connectionHealth";
-import { useSchema } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
-import { useUi } from "@/stores/ui";
-import { useConnectionGroupCollapse } from "@/lib/useConnectionGroups";
-import { connectAndWarm, disconnectAndClean } from "@/lib/connectFlow";
-import { persistLaunchState } from "@/stores/persistedTabs";
+import { useConnections } from "@/stores/session/connections";
+import { useConnectionHealth } from "@/stores/session/connectionHealth";
+import { useSchema } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
+import { useUi } from "@/stores/session/ui";
+import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups";
+import { connectAndWarm, disconnectAndClean } from "@/lib/connection/connectFlow";
+import { persistLaunchState } from "@/stores/session/persistedTabs";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { Input } from "@/components/ui/input";

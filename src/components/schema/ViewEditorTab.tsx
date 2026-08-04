@@ -27,18 +27,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { api } from "@/lib/tauri";
-import { useSchema } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
-import { useConnections } from "@/stores/connections";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco-themes";
-import { keywordsFor } from "@/lib/sqlKeywords";
-import { buildCompletions } from "@/lib/sqlCompletions";
+import { useSchema } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
+import { useConnections } from "@/stores/session/connections";
+import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { keywordsFor } from "@/lib/sql/sqlKeywords";
+import { buildCompletions } from "@/lib/sql/sqlCompletions";
 import {
   ensureSqlProviders,
   registerSqlEditor,
-} from "@/lib/monacoSql";
-import { registerEditorActionRedispatch } from "@/lib/monacoKeybindings";
+} from "@/lib/monaco/monacoSql";
+import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import { useCommandPalette } from "@/components/shell/CommandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import type { QueryResult, StructureMode, ViewDefinition } from "@/types";

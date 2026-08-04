@@ -13,8 +13,8 @@
 import { useEffect, useMemo } from "react";
 import { X, Maximize2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { detectLanguage, tryFormat } from "@/lib/detectContentType";
-import { usePreferences, selectGridPrefs } from "@/stores/preferences";
+import { detectLanguage, tryFormat } from "@/lib/grid/detectContentType";
+import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
 import { cn } from "@/lib/utils";
 import type { CellValue } from "@/types";
 

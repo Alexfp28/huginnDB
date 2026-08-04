@@ -7,7 +7,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { QUERY_HISTORY_LIMIT, STORAGE_KEYS } from "@/lib/constants";
-import { usePreferences } from "@/stores/preferences";
+import { usePreferences } from "@/stores/preferences/preferences";
 import type { QueryHistoryEntry } from "@/types";
 
 interface HistoryState {

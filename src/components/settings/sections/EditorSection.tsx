@@ -14,11 +14,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
+import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import {
   MONACO_THEME_OPTIONS,
   getMonacoPreviewColors,
-} from "@/lib/monaco-themes";
+} from "@/lib/monaco/monaco-themes";
 import type { EditorPrefs } from "@/types";
 import { PrefRow } from "./PrefRow";
 

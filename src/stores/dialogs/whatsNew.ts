@@ -23,7 +23,7 @@ import { STORAGE_KEYS } from "@/lib/constants";
 import {
   getReleaseNote,
   latestReleaseNote,
-} from "@/lib/releaseNotes";
+} from "@/lib/appInfo/releaseNotes";
 
 interface WhatsNewState {
   /** Newest version whose notes were dismissed. Persisted. */

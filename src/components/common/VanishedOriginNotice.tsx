@@ -26,8 +26,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Loader2, Trash2, Unlink } from "lucide-react";
 import { toast } from "sonner";
-import { useConnections } from "@/stores/connections";
-import { useOriginSync } from "@/stores/originSync";
+import { useConnections } from "@/stores/session/connections";
+import { useOriginSync } from "@/stores/sync/originSync";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { cn } from "@/lib/utils";
 

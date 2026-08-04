@@ -14,11 +14,11 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronUp, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
-import { useConnections } from "@/stores/connections";
-import { useConnectionHealth } from "@/stores/connectionHealth";
-import { useSchema } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
-import { useUi } from "@/stores/ui";
+import { useConnections } from "@/stores/session/connections";
+import { useConnectionHealth } from "@/stores/session/connectionHealth";
+import { useSchema } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
+import { useUi } from "@/stores/session/ui";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -28,7 +28,7 @@ import {
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { driverMismatchHint } from "@/lib/driver";
+import { driverMismatchHint } from "@/lib/db/driver";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
 

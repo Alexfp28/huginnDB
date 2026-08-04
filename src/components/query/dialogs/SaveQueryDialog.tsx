@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { useSavedQueries, type SavedQuery } from "@/stores/savedQueries";
+import { useSavedQueries, type SavedQuery } from "@/stores/query/savedQueries";
 
 interface Props {
   open: boolean;

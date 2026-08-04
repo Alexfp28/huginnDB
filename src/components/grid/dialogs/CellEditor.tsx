@@ -28,10 +28,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Editor from "@monaco-editor/react";
-import { detectLanguage, tryFormat, type ContentLanguage } from "@/lib/detectContentType";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco-themes";
-import { useCellEditor } from "@/stores/cellEditor";
+import { detectLanguage, tryFormat, type ContentLanguage } from "@/lib/grid/detectContentType";
+import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useCellEditor } from "@/stores/grid/cellEditor";
 import { openSideEditor } from "@/lib/dockview";
 import { cn } from "@/lib/utils";
 

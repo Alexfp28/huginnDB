@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FolderSync, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/tauri";
-import { useOriginSync } from "@/stores/originSync";
+import { useOriginSync } from "@/stores/sync/originSync";
 import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { Button } from "@/components/ui/button";

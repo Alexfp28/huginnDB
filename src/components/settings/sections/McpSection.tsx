@@ -16,7 +16,7 @@ import { Copy, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/tauri";
-import { useDocsDialog } from "@/stores/docsDialog";
+import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import type {
   ConnectionProfile,

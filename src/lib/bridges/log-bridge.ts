@@ -7,7 +7,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { LogEntry } from "@/types";
-import { useLogs } from "@/stores/logs";
+import { useLogs } from "@/stores/query/logs";
 
 const LOG_EVENT = "huginndb://log";
 

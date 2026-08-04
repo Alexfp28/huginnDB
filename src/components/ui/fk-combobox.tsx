@@ -29,7 +29,7 @@ import {
   PREFETCH_LIMIT,
   TOO_LARGE,
   fkOptionsCache,
-} from "@/stores/fkOptions";
+} from "@/stores/grid/fkOptions";
 import type { FkOption } from "@/types";
 import { cn } from "@/lib/utils";
 

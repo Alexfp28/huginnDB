@@ -15,10 +15,10 @@
  */
 
 import { toast } from "sonner";
-import { useConnections } from "@/stores/connections";
-import { useSchema } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
-import { driverMismatchHint } from "@/lib/driver";
+import { useConnections } from "@/stores/session/connections";
+import { useSchema } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
+import { driverMismatchHint } from "@/lib/db/driver";
 
 /**
  * Open the pool for `id` and load its schema. Returns whether it worked, so the

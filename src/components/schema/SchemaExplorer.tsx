@@ -54,15 +54,15 @@ import {
   Upload,
 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { useSchema, tableKey } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
-import { useConnections } from "@/stores/connections";
+import { useSchema, tableKey } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
+import { useConnections } from "@/stores/session/connections";
 import { tableTabTitle } from "@/lib/connectionLabel";
-import { usePreferences } from "@/stores/preferences";
+import { usePreferences } from "@/stores/preferences/preferences";
 import { api } from "@/lib/tauri";
-import { openTrackedDatabaseView } from "@/stores/persistedTabs";
+import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
 import { toast } from "sonner";
-import { splitSql } from "@/lib/sqlSplit";
+import { splitSql } from "@/lib/sql/sqlSplit";
 import type { SchemaTableMetric } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

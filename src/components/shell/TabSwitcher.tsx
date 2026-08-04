@@ -29,9 +29,9 @@ import {
   Table as TableIcon,
   X,
 } from "lucide-react";
-import { useTabs } from "@/stores/tabs";
-import { useConnections } from "@/stores/connections";
-import { useUi } from "@/stores/ui";
+import { useTabs } from "@/stores/session/tabs";
+import { useConnections } from "@/stores/session/connections";
+import { useUi } from "@/stores/session/ui";
 import { resolveConnectionLabel } from "@/lib/connectionLabel";
 import { cn } from "@/lib/utils";
 import type { AppTab, TabKind } from "@/types";

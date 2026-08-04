@@ -11,7 +11,7 @@ import { useTranslation } from "react-i18next";
 import { Download, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/tauri";
-import { useConnections } from "@/stores/connections";
+import { useConnections } from "@/stores/session/connections";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";

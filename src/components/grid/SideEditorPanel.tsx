@@ -27,9 +27,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CellEditorBody } from "@/components/grid/dialogs/CellEditor";
-import { useCellEditor, type CellEditorTarget } from "@/stores/cellEditor";
-import { useTabs } from "@/stores/tabs";
-import { detectLanguage, type ContentLanguage } from "@/lib/detectContentType";
+import { useCellEditor, type CellEditorTarget } from "@/stores/grid/cellEditor";
+import { useTabs } from "@/stores/session/tabs";
+import { detectLanguage, type ContentLanguage } from "@/lib/grid/detectContentType";
 
 export function SideEditorPanel() {
   const { t } = useTranslation();

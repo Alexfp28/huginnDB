@@ -15,7 +15,7 @@
 
 import { useTranslation } from "react-i18next";
 import { FlaskConical } from "lucide-react";
-import { useAppFlavor } from "@/stores/appFlavor";
+import { useAppFlavor } from "@/stores/preferences/appFlavor";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
 export function SandboxRibbon() {

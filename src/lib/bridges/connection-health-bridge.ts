@@ -7,7 +7,7 @@
  */
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { useConnectionHealth } from "@/stores/connectionHealth";
+import { useConnectionHealth } from "@/stores/session/connectionHealth";
 
 const CONNECTION_LOST_EVENT = "huginndb://connection-lost";
 

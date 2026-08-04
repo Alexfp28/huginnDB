@@ -12,8 +12,8 @@
 
 import { Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useWhatsNew } from "@/stores/whatsNew";
-import { getReleaseNote } from "@/lib/releaseNotes";
+import { useWhatsNew } from "@/stores/dialogs/whatsNew";
+import { getReleaseNote } from "@/lib/appInfo/releaseNotes";
 import { api } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import {

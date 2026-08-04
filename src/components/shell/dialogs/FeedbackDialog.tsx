@@ -28,7 +28,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/tauri";
-import { useFeedbackDialog } from "@/stores/feedbackDialog";
+import { useFeedbackDialog } from "@/stores/dialogs/feedbackDialog";
 import type { Diagnostics, FeedbackKind } from "@/types";
 
 /** Render the optional diagnostics markdown block appended to the body. */

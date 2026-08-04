@@ -37,16 +37,16 @@ import {
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { api } from "@/lib/tauri";
-import { useConnections } from "@/stores/connections";
-import { useSchema } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco-themes";
-import { useQueryHistory } from "@/stores/queryHistory";
+import { useConnections } from "@/stores/session/connections";
+import { useSchema } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
+import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useQueryHistory } from "@/stores/query/queryHistory";
 import { useCommandPalette } from "@/components/shell/CommandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { formatComboForDisplay, getBinding } from "@/lib/keybindings";
-import { registerEditorActionRedispatch } from "@/lib/monacoKeybindings";
+import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import type { BatchResult, DatabaseInfo, QueryResult } from "@/types";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { Button } from "@/components/ui/button";
@@ -59,15 +59,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
-import { splitSql } from "@/lib/sqlSplit";
-import { keywordsFor } from "@/lib/sqlKeywords";
-import { buildCompletions } from "@/lib/sqlCompletions";
+import { splitSql } from "@/lib/sql/sqlSplit";
+import { keywordsFor } from "@/lib/sql/sqlKeywords";
+import { buildCompletions } from "@/lib/sql/sqlCompletions";
 import { cn, formatDuration } from "@/lib/utils";
 import {
   ensureSqlProviders,
   registerSqlEditor,
   fireSqlLensChange,
-} from "@/lib/monacoSql";
+} from "@/lib/monaco/monacoSql";
 
 interface Props {
   tabId: string;

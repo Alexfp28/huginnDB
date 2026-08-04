@@ -10,8 +10,8 @@
 
 import { BookOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { DOCS, getDoc, getDocBody } from "@/lib/docs";
-import { useDocsDialog } from "@/stores/docsDialog";
+import { DOCS, getDoc, getDocBody } from "@/lib/appInfo/docs";
+import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import { Markdown } from "@/components/shell/Markdown";
 import { cn } from "@/lib/utils";
 import {

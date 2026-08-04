@@ -34,17 +34,17 @@ import {
 import { UpdateBanner } from "@/components/shell/UpdateBanner";
 import { WindowTitleSync } from "@/components/shell/WindowTitleSync";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
-import { getCurrentVersion } from "@/lib/updater";
-import { useWhatsNew } from "@/stores/whatsNew";
+import { getCurrentVersion } from "@/lib/appInfo/updater";
+import { useWhatsNew } from "@/stores/dialogs/whatsNew";
 import { WhatsNewDialog } from "@/components/shell/dialogs/WhatsNewDialog";
 import { DocsDialog } from "@/components/shell/dialogs/DocsDialog";
-import { useConnections } from "@/stores/connections";
-import { useSchema } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
-import { useUi } from "@/stores/ui";
-import { useThemeStore, selectActiveTheme } from "@/stores/theme";
-import { useAppFlavor } from "@/stores/appFlavor";
-import { usePreferences } from "@/stores/preferences";
+import { useConnections } from "@/stores/session/connections";
+import { useSchema } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
+import { useUi } from "@/stores/session/ui";
+import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
+import { useAppFlavor } from "@/stores/preferences/appFlavor";
+import { usePreferences } from "@/stores/preferences/preferences";
 import { getBinding, matchesBinding } from "@/lib/keybindings";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useTranslation } from "react-i18next";
@@ -63,20 +63,20 @@ import { ConnectionErrorBoundary } from "@/components/connection/ConnectionError
 import { SideEditorPanel } from "@/components/grid/SideEditorPanel";
 import { SavedQueriesPanel } from "@/components/query/SavedQueriesPanel";
 import { Console } from "@/components/query/Console";
-import { startLogBridge } from "@/lib/log-bridge";
-import { startCliConnectBridge } from "@/lib/cli-connect-bridge";
-import { startConnectionHealthBridge } from "@/lib/connection-health-bridge";
-import { startConnectionSyncBridge } from "@/lib/connection-sync-bridge";
-import { startPrefsSyncBridge } from "@/lib/prefs-sync-bridge";
-import { flushAllTabState, persistLaunchState } from "@/stores/persistedTabs";
-import { useEnvironments } from "@/stores/environments";
-import { startPeriodicOriginSync } from "@/stores/originSync";
+import { startLogBridge } from "@/lib/bridges/log-bridge";
+import { startCliConnectBridge } from "@/lib/bridges/cli-connect-bridge";
+import { startConnectionHealthBridge } from "@/lib/bridges/connection-health-bridge";
+import { startConnectionSyncBridge } from "@/lib/bridges/connection-sync-bridge";
+import { startPrefsSyncBridge } from "@/lib/bridges/prefs-sync-bridge";
+import { flushAllTabState, persistLaunchState } from "@/stores/session/persistedTabs";
+import { useEnvironments } from "@/stores/session/environments";
+import { startPeriodicOriginSync } from "@/stores/sync/originSync";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CliConnectChoiceDialog } from "@/components/connection/dialogs/CliConnectChoiceDialog";
 import { FeedbackDialog } from "@/components/shell/dialogs/FeedbackDialog";
 import { api } from "@/lib/tauri";
-import { useLogs } from "@/stores/logs";
-import { normalizeDriver, driverMismatchHint } from "@/lib/driver";
+import { useLogs } from "@/stores/query/logs";
+import { normalizeDriver, driverMismatchHint } from "@/lib/db/driver";
 import { DEFAULT_PORTS } from "@/lib/constants";
 import { AdHocDriverDialog } from "@/components/connection/dialogs/AdHocDriverDialog";
 import type { ConnectionProfile, Driver, StartupArgs } from "@/types";
@@ -89,7 +89,7 @@ import {
   restoreOrInitLayout,
   trackSchemaWidthAroundSideEditor,
 } from "@/lib/dockview";
-import { refreshTable } from "@/lib/tableRefresh";
+import { refreshTable } from "@/lib/grid/tableRefresh";
 
 // ---------------------------------------------------------------------------
 // Panel components — thin wrappers that pull the current connection from

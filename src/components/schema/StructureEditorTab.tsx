@@ -27,12 +27,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/tauri";
-import { useSchema } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
-import { useConnections } from "@/stores/connections";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco-themes";
-import { columnTypesFor } from "@/lib/columnTypes";
+import { useSchema } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
+import { useConnections } from "@/stores/session/connections";
+import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { columnTypesFor } from "@/lib/db/columnTypes";
 import type {
   ColumnDef,
   StructureIndexDef,

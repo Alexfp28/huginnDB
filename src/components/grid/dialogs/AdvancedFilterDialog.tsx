@@ -34,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { isBooleanType, isNumericType } from "@/lib/utils";
+import { isBooleanType, isNumericType } from "@/lib/grid/columnKinds";
 import type { CellValue, ColumnInfo, ColumnFilter, FilterOp } from "@/types";
 
 /** Operators that don't consume a value. */

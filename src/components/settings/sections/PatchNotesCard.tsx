@@ -11,8 +11,8 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { usePreferences } from "@/stores/preferences";
-import { getReleases } from "@/lib/changelog";
+import { usePreferences } from "@/stores/preferences/preferences";
+import { getReleases } from "@/lib/appInfo/changelog";
 import {
   Select,
   SelectContent,

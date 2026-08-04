@@ -13,16 +13,16 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
-import { useFilterHistory } from "@/stores/filterHistory";
+import { useFilterHistory } from "@/stores/grid/filterHistory";
 import {
   flushTabState,
   hydrateTabState,
   persistLaunchState,
   subscribedConnectionIds,
-} from "@/stores/persistedTabs";
-import { useConnectionHealth } from "@/stores/connectionHealth";
-import { useSchema } from "@/stores/schema";
-import { useTabs } from "@/stores/tabs";
+} from "@/stores/session/persistedTabs";
+import { useConnectionHealth } from "@/stores/session/connectionHealth";
+import { useSchema } from "@/stores/session/schema";
+import { useTabs } from "@/stores/session/tabs";
 import { clearProtectedPanelsForConnection } from "@/lib/dockview";
 import type { ConnectionProfile } from "@/types";
 

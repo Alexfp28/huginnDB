@@ -12,13 +12,13 @@
 
 import { useTranslation } from "react-i18next";
 import { History, Moon, Rows3, Sun, Trash2 } from "lucide-react";
-import { useConnections } from "@/stores/connections";
-import { useTabs } from "@/stores/tabs";
-import { useQueryHistory } from "@/stores/queryHistory";
-import { useGridSelection } from "@/stores/gridSelection";
-import { usePreferences, selectGridPrefs } from "@/stores/preferences";
-import { useThemeStore, selectActiveTheme } from "@/stores/theme";
-import { useUi } from "@/stores/ui";
+import { useConnections } from "@/stores/session/connections";
+import { useTabs } from "@/stores/session/tabs";
+import { useQueryHistory } from "@/stores/query/queryHistory";
+import { useGridSelection } from "@/stores/grid/gridSelection";
+import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
+import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
+import { useUi } from "@/stores/session/ui";
 import { StatusConnections } from "@/components/connection/StatusConnections";
 import { EnvironmentSwitcher } from "@/components/connection/EnvironmentSwitcher";
 import {
