@@ -514,13 +514,27 @@
     },
     "col": {
       "name": "Name",
+      "namePlaceholder": "column_name",
       "type": "Type",
+      "customType": "Custom…",
+      "customTypePlaceholder": "raw type, e.g. varchar(40)",
+      "length": "Length/Set",
+      "unsigned": "Unsigned",
+      "zerofill": "Zerofill",
       "nullable": "Null",
       "pk": "PK",
       "auto": "Auto",
       "default": "Default",
       "add": "Add column",
       "remove": "Remove column"
+    },
+    "typeCategory": {
+      "integer": "Integers",
+      "real": "Real",
+      "text": "Text",
+      "datetime": "Date & time",
+      "binary": "Binary",
+      "other": "Other"
     },
     "idx": {
       "namePlaceholder": "index name (optional)",

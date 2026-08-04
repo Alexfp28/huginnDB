@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, RefreshCw } from "lucide-react";
+import { KeyRound, Plus, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
@@ -26,15 +26,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
-import { useTabs } from "@/stores/session/tabs";
+import { useTabs, retitleTabsForTableRename } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
-import { columnTypesFor } from "@/lib/db/columnTypes";
+import {
+  columnCategoriesFor,
+  composeColumnType,
+  parseColumnType,
+  type ColumnTypeCategory,
+} from "@/lib/db/columnTypes";
 import type {
   ColumnDef,
+  Driver,
   StructureIndexDef,
   ForeignKeyDef,
   StructureMode,
@@ -55,12 +62,31 @@ const nextKey = () => `c${keySeq++}`;
 /** Working column = ColumnDef + a stable client key for React lists. */
 type WorkingColumn = ColumnDef & { _key: string };
 
-function blankColumn(): WorkingColumn {
+/** A sensible starting type for a freshly-added column: the catalog's own
+ *  "varchar"-ish text entry, composed with its default length, so a new
+ *  column always lands in the categorised picker instead of the "custom
+ *  type" fallback (which a hardcoded literal like "varchar(255)" would hit
+ *  on SQLite, where the catalog's text type is spelled "TEXT"). */
+function defaultColumnType(categories: ColumnTypeCategory[]): string {
+  const textTypes = categories.find((c) => c.key === "text")?.types ?? [];
+  const candidate =
+    textTypes.find((t) => /^varchar$/i.test(t.name)) ?? textTypes[0];
+  if (!candidate) return "varchar(255)";
+  return composeColumnType({
+    baseType: candidate.name,
+    length: candidate.defaultLength ?? "",
+    unsigned: false,
+    zerofill: false,
+    custom: "",
+  });
+}
+
+function blankColumn(dataType: string): WorkingColumn {
   return {
     _key: nextKey(),
     name: "",
     originalName: null,
-    dataType: "varchar(255)",
+    dataType,
     nullable: true,
     default: null,
     isPrimaryKey: false,
@@ -90,7 +116,7 @@ export function StructureEditorTab({
     }
     return undefined;
   });
-  const typeSuggestions = useMemo(() => columnTypesFor(driver), [driver]);
+  const typeCategories = useMemo(() => columnCategoriesFor(driver), [driver]);
 
   // MongoDB structure is read-only in this version: the backend rejects
   // preview/apply, so the editor shows the inferred fields + indexes for
@@ -100,7 +126,7 @@ export function StructureEditorTab({
   const [original, setOriginal] = useState<TableStructure | null>(null);
   const [name, setName] = useState(table ?? "");
   const [columns, setColumns] = useState<WorkingColumn[]>(
-    mode === "new" ? [blankColumn()] : [],
+    mode === "new" ? [blankColumn(defaultColumnType(typeCategories))] : [],
   );
   const [indexes, setIndexes] = useState<StructureIndexDef[]>([]);
   const [foreignKeys, setForeignKeys] = useState<ForeignKeyDef[]>([]);
@@ -116,16 +142,25 @@ export function StructureEditorTab({
   const [applying, setApplying] = useState(false);
   const [confirmRebuild, setConfirmRebuild] = useState(false);
 
+  // The table's current name, tracked outside React state: the `table` prop
+  // is whatever the tab was opened/panel-created with and never updates on
+  // its own (dockview panel params are fixed at creation), so a rename via
+  // Apply would otherwise leave `reload` re-fetching a name that no longer
+  // exists. A ref (not state) so updating it never re-triggers the mount
+  // effect below.
+  const currentTableNameRef = useRef(table);
+
   // (Re)load the existing structure from the server. Runs on mount and from
   // the manual refresh button (issue #25) so external changes made while the
   // tab is open can be pulled in; a refresh resets the working state to the
-  // server's current definition. The table name is fixed in edit mode, so
-  // re-reading by `table` always targets the right table.
+  // server's current definition.
   const reload = useCallback(async () => {
-    if (mode !== "edit" || !table) return;
+    const currentName = currentTableNameRef.current;
+    if (mode !== "edit" || !currentName) return;
     setLoading(true);
     try {
-      const s = await api.getTableStructure(connectionId, schema, table);
+      const s = await api.getTableStructure(connectionId, schema, currentName);
+      currentTableNameRef.current = s.name;
       setOriginal(s);
       setName(s.name);
       setColumns(s.columns.map((c) => ({ ...c, _key: nextKey() })));
@@ -137,7 +172,7 @@ export function StructureEditorTab({
     } finally {
       setLoading(false);
     }
-  }, [mode, connectionId, schema, table]);
+  }, [mode, connectionId, schema]);
 
   useEffect(() => {
     void reload();
@@ -195,6 +230,9 @@ export function StructureEditorTab({
   async function doApply() {
     setApplying(true);
     setPreviewError(null);
+    // Captured before `applyStructureChange` — `original` (React state)
+    // still reflects the pre-apply snapshot at this point in the closure.
+    const priorName = original?.name;
     try {
       await api.applyStructureChange({ connectionId, original, desired });
       // Refresh the explorer so the new/edited table shows immediately.
@@ -205,10 +243,24 @@ export function StructureEditorTab({
         // Reload the structure so the editor reflects the applied state and
         // future diffs start from the new baseline.
         const s = await api.getTableStructure(connectionId, schema, desired.name);
+        currentTableNameRef.current = s.name;
         setOriginal(s);
         setColumns(s.columns.map((c) => ({ ...c, _key: nextKey() })));
         setIndexes(s.indexes);
         setForeignKeys(s.foreignKeys);
+        // The table was renamed — update this tab's title (and every open
+        // table-data tab for the same table) so nothing keeps showing or
+        // re-fetching the old name.
+        if (priorName && priorName !== s.name) {
+          retitleTabsForTableRename(
+            useConnections.getState().profiles,
+            connectionId,
+            schema,
+            priorName,
+            s.name,
+            t("tabs.structureSuffix"),
+          );
+        }
       }
     } catch (e) {
       // Surface the failure both in the DDL pane and as a toast. The pane
@@ -236,7 +288,7 @@ export function StructureEditorTab({
     );
   }
   function addColumn() {
-    setColumns((cs) => [...cs, blankColumn()]);
+    setColumns((cs) => [...cs, blankColumn(defaultColumnType(typeCategories))]);
   }
   function removeColumn(key: string) {
     setColumns((cs) => cs.filter((c) => c._key !== key));
@@ -265,7 +317,7 @@ export function StructureEditorTab({
           onChange={(e) => setName(e.target.value)}
           placeholder={t("structure.tableNamePlaceholder")}
           className="h-7 w-64 text-xs"
-          disabled={mode === "edit"}
+          disabled={isReadOnly}
         />
         <div className="ml-auto flex items-center gap-2">
           {mode === "edit" && (
@@ -319,7 +371,8 @@ export function StructureEditorTab({
           {section === "columns" && (
             <ColumnsEditor
               columns={columns}
-              typeSuggestions={typeSuggestions}
+              driver={driver}
+              typeCategories={typeCategories}
               onPatch={patchColumn}
               onRemove={removeColumn}
               onAdd={addColumn}
@@ -412,127 +465,352 @@ export function StructureEditorTab({
 // Columns editor
 // ---------------------------------------------------------------------------
 
+/** Shared cell chrome: a compact, bordered input matching the grid's density. */
+const cellInputClass = "h-7 border-transparent bg-transparent px-1.5 text-xs shadow-none focus-visible:border-input focus-visible:ring-1 focus-visible:ring-ring";
+
+/**
+ * Shared `<select>` chrome for the type picker. Unlike `cellInputClass`,
+ * this can't stay `bg-transparent`: WebView2/Chromium paints its native
+ * dropdown popup using the trigger element's own `background-color` /
+ * `color`, so a transparent trigger left the open popup falling back to the
+ * OS light-theme default regardless of the app's theme. `bg-background` +
+ * `text-foreground` (the same pairing `BitInput` already uses for its select)
+ * makes the popup match.
+ */
+const typeSelectClass =
+  "h-7 w-full rounded-sm border border-input bg-background px-1 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-30";
+
 function ColumnsEditor({
   columns,
-  typeSuggestions,
+  driver,
+  typeCategories,
   onPatch,
   onRemove,
   onAdd,
 }: {
   columns: WorkingColumn[];
-  typeSuggestions: string[];
+  driver: Driver | undefined;
+  typeCategories: ColumnTypeCategory[];
   onPatch: (key: string, patch: Partial<WorkingColumn>) => void;
   onRemove: (key: string) => void;
   onAdd: () => void;
 }) {
   const { t } = useTranslation();
-  const datalistId = "huginn-column-types";
+  // MySQL is the only driver where UNSIGNED/ZEROFILL are meaningful — the
+  // columns are omitted entirely for the others instead of rendering
+  // permanently-disabled checkboxes.
+  const showUnsignedCols = driver === "mysql";
+
   return (
-    <div className="space-y-1">
-      {/* Shared type suggestions for every row's editable type combo. */}
-      <datalist id={datalistId}>
-        {typeSuggestions.map((ty) => (
-          <option key={ty} value={ty} />
-        ))}
-      </datalist>
-      <table className="w-full text-xs">
-        <thead className="text-muted-foreground">
-          <tr className="text-left">
-            <th className="px-1 py-1 font-medium">{t("structure.col.name")}</th>
-            <th className="px-1 py-1 font-medium">{t("structure.col.type")}</th>
-            <th className="px-1 py-1 text-center font-medium">
-              {t("structure.col.nullable")}
-            </th>
-            <th className="px-1 py-1 text-center font-medium">
-              {t("structure.col.pk")}
-            </th>
-            <th className="px-1 py-1 text-center font-medium">
-              {t("structure.col.auto")}
-            </th>
-            <th className="px-1 py-1 font-medium">
-              {t("structure.col.default")}
-            </th>
-            <th className="w-8" />
-          </tr>
-        </thead>
-        <tbody>
-          {columns.map((c) => (
-            <tr key={c._key} className="border-t border-border/40">
-              <td className="px-1 py-0.5">
-                <Input
-                  value={c.name}
-                  onChange={(e) => onPatch(c._key, { name: e.target.value })}
-                  className="h-6 text-xs"
-                />
-              </td>
-              <td className="px-1 py-0.5">
-                <Input
-                  value={c.dataType}
-                  list={datalistId}
-                  onChange={(e) =>
-                    onPatch(c._key, { dataType: e.target.value })
-                  }
-                  className="h-6 font-mono text-xs"
-                />
-              </td>
-              <td className="px-1 py-0.5 text-center">
-                <input
-                  type="checkbox"
-                  className="accent-brand"
-                  checked={c.nullable}
-                  onChange={(e) =>
-                    onPatch(c._key, { nullable: e.target.checked })
-                  }
-                />
-              </td>
-              <td className="px-1 py-0.5 text-center">
-                <input
-                  type="checkbox"
-                  className="accent-brand"
-                  checked={c.isPrimaryKey}
-                  onChange={(e) =>
-                    onPatch(c._key, { isPrimaryKey: e.target.checked })
-                  }
-                />
-              </td>
-              <td className="px-1 py-0.5 text-center">
-                <input
-                  type="checkbox"
-                  className="accent-brand"
-                  checked={!!c.autoIncrement}
-                  onChange={(e) =>
-                    onPatch(c._key, { autoIncrement: e.target.checked })
-                  }
-                />
-              </td>
-              <td className="px-1 py-0.5">
-                <Input
-                  value={c.default ?? ""}
-                  onChange={(e) =>
-                    onPatch(c._key, { default: e.target.value || null })
-                  }
-                  placeholder="—"
-                  className="h-6 font-mono text-xs"
-                />
-              </td>
-              <td className="px-1 py-0.5 text-center">
-                <button
-                  className="text-muted-foreground/60 hover:text-destructive"
-                  onClick={() => onRemove(c._key)}
-                  title={t("structure.col.remove")}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </td>
+    <div className="space-y-2">
+      <div className="overflow-hidden rounded-md border border-border">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="bg-muted/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+              <th className="w-9 border-b border-border px-1.5 py-1.5 font-medium">
+                #
+              </th>
+              <th className="border-b border-border px-1.5 py-1.5 font-medium">
+                {t("structure.col.name")}
+              </th>
+              <th className="w-36 border-b border-border px-1.5 py-1.5 font-medium">
+                {t("structure.col.type")}
+              </th>
+              <th className="w-28 border-b border-border px-1.5 py-1.5 font-medium">
+                {t("structure.col.length")}
+              </th>
+              {showUnsignedCols && (
+                <>
+                  <th className="w-14 border-b border-border px-1 py-1.5 text-center font-medium">
+                    {t("structure.col.unsigned")}
+                  </th>
+                  <th className="w-14 border-b border-border px-1 py-1.5 text-center font-medium">
+                    {t("structure.col.zerofill")}
+                  </th>
+                </>
+              )}
+              <th className="w-14 border-b border-border px-1 py-1.5 text-center font-medium">
+                {t("structure.col.nullable")}
+              </th>
+              <th className="w-12 border-b border-border px-1 py-1.5 text-center font-medium">
+                {t("structure.col.pk")}
+              </th>
+              <th className="w-14 border-b border-border px-1 py-1.5 text-center font-medium">
+                {t("structure.col.auto")}
+              </th>
+              <th className="w-32 border-b border-border px-1.5 py-1.5 font-medium">
+                {t("structure.col.default")}
+              </th>
+              <th className="w-8 border-b border-border" />
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <Button size="sm" variant="outline" onClick={onAdd} className="mt-2">
+          </thead>
+          <tbody>
+            {columns.map((c, i) => (
+              <tr
+                key={c._key}
+                className={cn(
+                  "group/col border-b border-border/50 last:border-b-0 hover:bg-accent/30",
+                  i % 2 === 1 && "bg-muted/15",
+                )}
+              >
+                <td className="px-1.5 py-0.5 tabular-nums text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    {c.isPrimaryKey && (
+                      <KeyRound
+                        className="h-3 w-3 shrink-0 text-warning"
+                        aria-label={t("structure.col.pk")}
+                      />
+                    )}
+                    {i + 1}
+                  </span>
+                </td>
+                <td className="px-0.5 py-0.5">
+                  <Input
+                    value={c.name}
+                    onChange={(e) => onPatch(c._key, { name: e.target.value })}
+                    placeholder={t("structure.col.namePlaceholder")}
+                    className={cellInputClass}
+                  />
+                </td>
+                <TypeCell
+                  column={c}
+                  categories={typeCategories}
+                  onPatch={onPatch}
+                />
+                {showUnsignedCols && (
+                  <>
+                    <td className="px-1 py-0.5 text-center">
+                      <UnsignedZerofillCheckbox
+                        column={c}
+                        categories={typeCategories}
+                        field="unsigned"
+                        onPatch={onPatch}
+                      />
+                    </td>
+                    <td className="px-1 py-0.5 text-center">
+                      <UnsignedZerofillCheckbox
+                        column={c}
+                        categories={typeCategories}
+                        field="zerofill"
+                        onPatch={onPatch}
+                      />
+                    </td>
+                  </>
+                )}
+                <td className="px-1 py-0.5 text-center">
+                  <input
+                    type="checkbox"
+                    className="accent-brand"
+                    checked={c.nullable}
+                    onChange={(e) =>
+                      onPatch(c._key, { nullable: e.target.checked })
+                    }
+                  />
+                </td>
+                <td className="px-1 py-0.5 text-center">
+                  <input
+                    type="checkbox"
+                    className="accent-brand"
+                    checked={c.isPrimaryKey}
+                    onChange={(e) =>
+                      onPatch(c._key, { isPrimaryKey: e.target.checked })
+                    }
+                  />
+                </td>
+                <td className="px-1 py-0.5 text-center">
+                  <input
+                    type="checkbox"
+                    className="accent-brand"
+                    checked={!!c.autoIncrement}
+                    onChange={(e) =>
+                      onPatch(c._key, { autoIncrement: e.target.checked })
+                    }
+                  />
+                </td>
+                <td className="px-0.5 py-0.5">
+                  <Input
+                    value={c.default ?? ""}
+                    onChange={(e) =>
+                      onPatch(c._key, { default: e.target.value || null })
+                    }
+                    placeholder="—"
+                    className={cn(cellInputClass, "font-mono")}
+                  />
+                </td>
+                <td className="px-1 py-0.5 text-center">
+                  <button
+                    className="text-muted-foreground/40 opacity-0 hover:text-destructive group-hover/col:opacity-100"
+                    onClick={() => onRemove(c._key)}
+                    title={t("structure.col.remove")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Button size="sm" variant="outline" onClick={onAdd}>
         <Plus className="mr-1 h-3.5 w-3.5" />
         {t("structure.col.add")}
       </Button>
     </div>
+  );
+}
+
+/**
+ * Type + length/set cell. Splits `column.dataType` into a categorised base
+ * type (a native `<select>` grouped by `<optgroup>` — HeidiSQL-style, and
+ * keyboard-navigable for free) and a separate length/precision field, so
+ * picking "VARCHAR" then typing "255" reads the same way the catalog
+ * presents it. A `dataType` that doesn't match any catalog entry (a custom
+ * or exotic type carried over from an existing table) falls back to a
+ * single raw text field instead of forcing it into the picker.
+ */
+function TypeCell({
+  column,
+  categories,
+  onPatch,
+}: {
+  column: WorkingColumn;
+  categories: ColumnTypeCategory[];
+  onPatch: (key: string, patch: Partial<WorkingColumn>) => void;
+}) {
+  const { t } = useTranslation();
+  const parsed = useMemo(
+    () => parseColumnType(column.dataType, categories),
+    [column.dataType, categories],
+  );
+  const selected = categories
+    .flatMap((cat) => cat.types)
+    .find((ty) => ty.name === parsed.baseType);
+
+  function applyBaseType(name: string) {
+    if (name === CUSTOM_TYPE_VALUE) {
+      onPatch(column._key, { dataType: parsed.custom || column.dataType });
+      return;
+    }
+    const next = categories.flatMap((cat) => cat.types).find((ty) => ty.name === name);
+    onPatch(column._key, {
+      dataType: composeColumnType({
+        ...parsed,
+        baseType: name,
+        length: next?.defaultLength ?? "",
+        unsigned: false,
+        zerofill: false,
+      }),
+    });
+  }
+
+  if (!parsed.baseType) {
+    // Custom/unrecognised type: one raw field, plus the picker so the user
+    // can jump back into the catalog at any time.
+    return (
+      <>
+        <td className="px-0.5 py-0.5">
+          <select
+            value={CUSTOM_TYPE_VALUE}
+            onChange={(e) => applyBaseType(e.target.value)}
+            className={typeSelectClass}
+          >
+            <TypeOptions categories={categories} />
+          </select>
+        </td>
+        <td className="px-0.5 py-0.5">
+          <Input
+            value={column.dataType}
+            onChange={(e) => onPatch(column._key, { dataType: e.target.value })}
+            placeholder={t("structure.col.customTypePlaceholder")}
+            className={cn(cellInputClass, "font-mono")}
+          />
+        </td>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <td className="px-0.5 py-0.5">
+        <select
+          value={parsed.baseType}
+          onChange={(e) => applyBaseType(e.target.value)}
+          className={typeSelectClass}
+        >
+          <TypeOptions categories={categories} />
+        </select>
+      </td>
+      <td className="px-0.5 py-0.5">
+        <Input
+          value={parsed.length}
+          disabled={!selected?.hasLength}
+          onChange={(e) =>
+            onPatch(column._key, {
+              dataType: composeColumnType({ ...parsed, length: e.target.value }),
+            })
+          }
+          placeholder={selected?.hasLength ? selected.defaultLength ?? "" : "—"}
+          className={cn(cellInputClass, "font-mono disabled:opacity-30")}
+        />
+      </td>
+    </>
+  );
+}
+
+const CUSTOM_TYPE_VALUE = "__custom__";
+
+function TypeOptions({ categories }: { categories: ColumnTypeCategory[] }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {categories.map((cat) => (
+        <optgroup key={cat.key} label={t(`structure.typeCategory.${cat.key}`)}>
+          {cat.types.map((ty) => (
+            <option key={ty.name} value={ty.name}>
+              {ty.name}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+      <option value={CUSTOM_TYPE_VALUE}>{t("structure.col.customType")}</option>
+    </>
+  );
+}
+
+/** UNSIGNED/ZEROFILL checkbox, disabled when the selected base type doesn't
+ *  carry a numeric width (e.g. TEXT, DATE) — MySQL rejects those combinations
+ *  server-side, so the editor never offers them in the first place. */
+function UnsignedZerofillCheckbox({
+  column,
+  categories,
+  field,
+  onPatch,
+}: {
+  column: WorkingColumn;
+  categories: ColumnTypeCategory[];
+  field: "unsigned" | "zerofill";
+  onPatch: (key: string, patch: Partial<WorkingColumn>) => void;
+}) {
+  const parsed = useMemo(
+    () => parseColumnType(column.dataType, categories),
+    [column.dataType, categories],
+  );
+  const selected = categories
+    .flatMap((cat) => cat.types)
+    .find((ty) => ty.name === parsed.baseType);
+  const capable = !!selected?.unsignedCapable;
+  return (
+    <input
+      type="checkbox"
+      className="accent-brand disabled:opacity-30"
+      disabled={!capable}
+      checked={capable && parsed[field]}
+      onChange={(e) =>
+        onPatch(column._key, {
+          dataType: composeColumnType({ ...parsed, [field]: e.target.checked }),
+        })
+      }
+    />
   );
 }
 

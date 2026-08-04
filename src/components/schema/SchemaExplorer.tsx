@@ -55,7 +55,7 @@ import {
 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useSchema, tableKey } from "@/stores/session/schema";
-import { useTabs } from "@/stores/session/tabs";
+import { useTabs, retitleTabsForTableRename } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
 import { tableTabTitle } from "@/lib/connectionLabel";
 import { usePreferences } from "@/stores/preferences/preferences";
@@ -1962,6 +1962,14 @@ function RenameTableDialog({
     setError(null);
     try {
       await api.renameTable(connectionId, target.schema, target.name, trimmed);
+      retitleTabsForTableRename(
+        useConnections.getState().profiles,
+        connectionId,
+        target.schema,
+        target.name,
+        trimmed,
+        t("tabs.structureSuffix"),
+      );
       onDone();
     } catch (e) {
       setError(String(e));

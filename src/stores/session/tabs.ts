@@ -7,7 +7,8 @@
  */
 
 import { create } from "zustand";
-import type { AppTab, TabViewState } from "@/types";
+import { tableTabTitle } from "@/lib/connectionLabel";
+import type { AppTab, ConnectionProfile, TabViewState } from "@/types";
 
 interface TabsState {
   tabs: AppTab[];
@@ -31,6 +32,13 @@ interface TabsState {
   setActive: (id: string) => void;
   /** Set (or clear, with `null`) a tab's cosmetic colour. */
   setColor: (id: string, color: string | null) => void;
+  /**
+   * Update a tab's displayed title and, for table/structure tabs, the
+   * underlying table name — used after a table rename applies (structure
+   * editor "Apply", or the schema tree's quick-rename dialog) so the open
+   * tab reflects the new name instead of the one it was opened with.
+   */
+  rename: (id: string, title: string, table?: string) => void;
   /** Pin / unpin a tab (pinned tabs survive bulk-close). */
   setPinned: (id: string, pinned: boolean) => void;
   /** Update the in-memory SQL of a query tab. */
@@ -167,6 +175,12 @@ export const useTabs = create<TabsState>((set, get) => ({
         t.id === id ? { ...t, color: color ?? undefined } : t,
       ),
     })),
+  rename: (id, title, table) =>
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === id ? { ...t, title, ...(table ? { table } : {}) } : t,
+      ),
+    })),
   setPinned: (id, pinned) =>
     set((s) => ({
       tabs: s.tabs.map((t) => (t.id === id ? { ...t, pinned } : t)),
@@ -212,3 +226,37 @@ export const useTabs = create<TabsState>((set, get) => ({
       };
     }),
 }));
+
+/**
+ * Retitle every open table-data or structure tab pointing at a table that
+ * was just renamed, so it doesn't keep showing (or, for structure tabs,
+ * re-fetching) the old name. Called from both places a rename can happen:
+ * the schema tree's quick-rename dialog and a structure-editor Apply that
+ * changed the table's name. `structureSuffix` is the already-translated
+ * `t("tabs.structureSuffix")` string — this module isn't a React component,
+ * so it can't call `useTranslation()` itself.
+ */
+export function retitleTabsForTableRename(
+  profiles: ConnectionProfile[],
+  connectionId: string,
+  schema: string | undefined,
+  oldName: string,
+  newName: string,
+  structureSuffix: string,
+): void {
+  const { tabs, rename } = useTabs.getState();
+  for (const tab of tabs) {
+    if (
+      tab.connectionId !== connectionId ||
+      tab.schema !== schema ||
+      tab.table !== oldName
+    ) {
+      continue;
+    }
+    if (tab.kind === "table") {
+      rename(tab.id, tableTabTitle(profiles, connectionId, newName), newName);
+    } else if (tab.kind === "structure") {
+      rename(tab.id, `${newName} (${structureSuffix})`, newName);
+    }
+  }
+}

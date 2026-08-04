@@ -514,13 +514,27 @@
     },
     "col": {
       "name": "Nombre",
+      "namePlaceholder": "nombre_columna",
       "type": "Tipo",
+      "customType": "Personalizado…",
+      "customTypePlaceholder": "tipo en bruto, ej. varchar(40)",
+      "length": "Longitud/Conjunto",
+      "unsigned": "Sin signo",
+      "zerofill": "Rellenar ceros",
       "nullable": "Null",
       "pk": "PK",
       "auto": "Auto",
       "default": "Por defecto",
       "add": "Añadir columna",
       "remove": "Eliminar columna"
+    },
+    "typeCategory": {
+      "integer": "Enteros",
+      "real": "Real",
+      "text": "Texto",
+      "datetime": "Fecha y hora",
+      "binary": "Binario",
+      "other": "Otros"
     },
     "idx": {
       "namePlaceholder": "nombre del índice (opcional)",
