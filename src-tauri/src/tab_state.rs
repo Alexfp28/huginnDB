@@ -845,7 +845,14 @@ mod tests {
         );
         // "b" is active and never set a subset: must default to "show all"
         // (`None`), not inherit "a"'s.
-        assert_eq!(state.active_environment().unwrap().launch.visible_connections, None);
+        assert_eq!(
+            state
+                .active_environment()
+                .unwrap()
+                .launch
+                .visible_connections,
+            None
+        );
 
         let json = serde_json::to_string(&state).unwrap();
         let reparsed: RawState = serde_json::from_str(&json).unwrap();
