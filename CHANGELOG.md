@@ -6,12 +6,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Structure editor: categorised type picker.** The column type combo is
+  now grouped by category (Integers/Real/Text/Date & time/Binary/Other, one
+  catalog per driver) with a separate length/precision field, plus MySQL
+  unsigned/zerofill checkboxes — first pass of a broader HeidiSQL-style
+  rework of table creation/editing.
+- **Renaming a table from the structure editor** now works: the Name field
+  is editable in edit mode again, and applying a rename updates the open
+  tab's title (and any other open tab for that table) instead of leaving it
+  showing the old name. The schema tree's existing quick-rename dialog got
+  the same fix.
+
 ### Changed
 
+- The structure editor's columns table was redesigned with the app's own
+  bordered/zebra-striped grid look instead of a bare `<table>` of plain
+  inputs, with a key icon marking the primary key.
 - Dragging a table/query tab to split the workspace now shows a distinct
   highlight for "split in this direction" versus "add as a tab here"
   instead of one flat overlay, and sibling panels ease into their new size
   on drop instead of snapping.
+
+### Fixed
+
+- The structure editor's ALTER builder (Postgres/MySQL/SQLite) never emitted
+  a table-level `RENAME TO`, even though it already handled column renames;
+  the SQLite destructive rebuild path had the mirror bug in its `INSERT`/
+  `DROP` source. Both fixed.
+- The `rustfmt` CI job was failing on every run (not flaky) because of an
+  unformatted line left over from an earlier commit.
 
 ## [1.12.0] — 2026-08-03
 
