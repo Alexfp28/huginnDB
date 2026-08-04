@@ -6,6 +6,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
+## [Unreleased]
+
+### Cambiado
+
+- Al arrastrar una pestaña de tabla/consulta para dividir el espacio de
+  trabajo, ahora se distingue claramente entre "dividir en esta dirección"
+  y "añadir como pestaña aquí" en vez de un único resaltado plano, y los
+  paneles vecinos se ajustan a su nuevo tamaño con una transición suave en
+  vez de saltar de golpe.
+
 ## [1.12.0] — 2026-08-03
 
 ### Añadido

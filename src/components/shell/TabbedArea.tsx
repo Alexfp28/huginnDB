@@ -765,6 +765,35 @@ export function TabbedArea(_props: Props) {
     if (panel && !panel.api.isActive) panel.api.setActive();
   }, [api, activeId]);
 
+  // Ease sibling panels into their new size when a drag-drop finishes,
+  // instead of the instant jump dockview does by default (see the
+  // `.dv-animate-resize` rule in index.css for why the class lives on this
+  // root and not deeper). A *capture*-phase listener on the root fires
+  // before dockview's own `drop` handler (registered directly on each
+  // group's content element, bubble-phase — see dockview-core's
+  // `DragAndDropObserver`), so the transition is already active by the time
+  // dockview mutates the `.dv-view` sizes and has an old value to animate
+  // from. Scoped to the native `drop` event specifically: a manual sash
+  // drag never fires it, so interactive resizing is unaffected.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    let clearTimer: number | undefined;
+    const onDropCapture = () => {
+      root.classList.add("dv-animate-resize");
+      window.clearTimeout(clearTimer);
+      clearTimer = window.setTimeout(() => {
+        root.classList.remove("dv-animate-resize");
+      }, 260);
+    };
+    root.addEventListener("drop", onDropCapture, { capture: true });
+    return () => {
+      root.removeEventListener("drop", onDropCapture, { capture: true });
+      window.clearTimeout(clearTimer);
+    };
+  }, []);
+
   return (
     // Explicit positioned, full-size wrapper. The nested DockviewReact root
     // itself is `height/width: 100%`, but it also creates a shell element
@@ -772,7 +801,11 @@ export function TabbedArea(_props: Props) {
     // we make sure the box it lives in is unambiguously sized and a
     // positioned ancestor — otherwise the overlays anchor against an outer
     // dockview's shell and the vertical layout collapses on the first split.
-    <div className="inner-dock relative h-full w-full" data-tab-accent={tabAccentStyle}>
+    <div
+      ref={rootRef}
+      className="inner-dock relative h-full w-full"
+      data-tab-accent={tabAccentStyle}
+    >
       <DockviewReact
         components={INNER_COMPONENTS}
         defaultTabComponent={WorkspaceTab}

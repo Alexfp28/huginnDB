@@ -389,6 +389,74 @@ input[type="password"]::-ms-clear {
 }
 
 /* -------------------------------------------------------------------------
+ * Inner workspace drag-and-drop: directional split preview + reflow
+ * -------------------------------------------------------------------------
+ * Two gaps against the reference behaviour dragging a tab was checked
+ * against (issue: dragging a tab only ever showed one flat highlight over
+ * the whole target group, and sibling panels snapped to their new size
+ * instead of resizing into it):
+ *
+ * 1. dockview already computes a distinct quadrant per cursor position
+ *    (`dv-drop-target-{center,left,right,top,bottom}`, toggled on the same
+ *    `.dv-drop-target-anchor` overlay element — see dockview-core's
+ *    `droptarget.js` `calculateQuadrant`/`toggleClasses`): center means
+ *    "merge as a new tab in this group" (a full-group box), the four edges
+ *    mean "split in that direction" (a half-size box flush with that edge,
+ *    only reachable within ~20% of it). Every quadrant used the identical
+ *    dashed outline though, so the split preview only differed from the
+ *    merge preview by size — easy to read as "just one vague highlight"
+ *    unless the cursor happens to land exactly on the edge band. The rules
+ *    below give the two outcomes their own fill so a split reads as its own
+ *    affordance while dragging, not something you have to intuit.
+ * 2. dockview's built-in themes suppress the drop overlay's position/opacity
+ *    transition for one frame when the drag moves from one group's anchor to
+ *    another's (`dv-drop-target-anchor-container-changed`) — otherwise the
+ *    overlay visibly slides across the gap between the two groups instead of
+ *    disappearing and reappearing at the new one. That rule is keyed to each
+ *    theme's own class name in dockview's shipped stylesheet, so our custom
+ *    `dockview-theme-huginndb` needs its own copy or it never fires.
+ */
+.inner-dock .dv-drop-target-container .dv-drop-target-anchor.dv-drop-target-anchor-container-changed {
+  opacity: 0;
+  transition: none;
+}
+.inner-dock .dv-drop-target-anchor.dv-drop-target-left,
+.inner-dock .dv-drop-target-anchor.dv-drop-target-right,
+.inner-dock .dv-drop-target-anchor.dv-drop-target-top,
+.inner-dock .dv-drop-target-anchor.dv-drop-target-bottom {
+  border: none;
+  border-radius: var(--dv-border-radius);
+  background-color: hsl(var(--primary) / 0.55);
+}
+.inner-dock .dv-drop-target-anchor.dv-drop-target-left {
+  border-right: 3px solid hsl(var(--primary));
+}
+.inner-dock .dv-drop-target-anchor.dv-drop-target-right {
+  border-left: 3px solid hsl(var(--primary));
+}
+.inner-dock .dv-drop-target-anchor.dv-drop-target-top {
+  border-bottom: 3px solid hsl(var(--primary));
+}
+.inner-dock .dv-drop-target-anchor.dv-drop-target-bottom {
+  border-top: 3px solid hsl(var(--primary));
+}
+
+/* Sibling panels resize instantly by default — dockview writes the new pixel
+   sizes straight to each `.dv-view` container's inline style (see dockview-
+   core's `splitview.js` `relayout`), so dropping a tab to create or close a
+   split had every other panel jump to its new size with no transition.
+   `TabbedArea` toggles this class on `.inner-dock` for a brief window around
+   the native `drop` event, captured before dockview's own drop handling
+   mutates the sizes so the transition has an old value to animate from. A
+   manual sash drag never fires `drop`, so interactive resizing stays instant
+   — only a completed drag-drop eases into its new layout. */
+.inner-dock.dv-animate-resize .dv-view {
+  transition:
+    width 200ms ease,
+    height 200ms ease;
+}
+
+/* -------------------------------------------------------------------------
  * Sonner toast theme bridge
  * -------------------------------------------------------------------------
  * Sonner's own stylesheet hardcodes a literal white (light) / black (dark)

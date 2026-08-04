@@ -4,6 +4,15 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Changed
+
+- Dragging a table/query tab to split the workspace now shows a distinct
+  highlight for "split in this direction" versus "add as a tab here"
+  instead of one flat overlay, and sibling panels ease into their new size
+  on drop instead of snapping.
+
 ## [1.12.0] — 2026-08-03
 
 ### Added
