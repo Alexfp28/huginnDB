@@ -483,11 +483,22 @@ fn build_alter_pg_mysql(
     let qt = qualified(driver, desired.schema.as_deref(), &desired.name);
     let mut out = Vec::new();
 
+    // 0. Table rename, if any — first, so every clause below (all built from
+    // `qt`, i.e. `desired.name`) targets a table that actually exists by the
+    // time it runs.
+    if orig.name != desired.name {
+        let from = qualified(driver, orig.schema.as_deref(), &orig.name);
+        out.push(format!(
+            "ALTER TABLE {from} RENAME TO {}",
+            driver.quote(&desired.name)
+        ));
+    }
+
     // Match desired columns to originals by original_name (rename-aware).
     let orig_by_name: std::collections::HashMap<&str, &ColumnDef> =
         orig.columns.iter().map(|c| (c.name.as_str(), c)).collect();
 
-    // 1. Renames first so subsequent clauses see the new name.
+    // 1. Column renames next so subsequent clauses see the new name.
     for c in &desired.columns {
         if let Some(orig_name) = &c.original_name {
             if orig_name != &c.name {
@@ -733,6 +744,15 @@ fn build_alter_sqlite(orig: &TableStructure, desired: &TableStructure) -> AppRes
     let qt = qualified(driver, None, &desired.name);
     let mut out = Vec::new();
 
+    // Table rename first, same reasoning as the PG/MySQL path above: `qt`
+    // (used by every statement below) is already `desired.name`.
+    if orig.name != desired.name {
+        out.push(format!(
+            "ALTER TABLE {} RENAME TO {qt}",
+            qualified(driver, None, &orig.name)
+        ));
+    }
+
     for c in &desired.columns {
         if let Some(orig_name) = &c.original_name {
             if orig_name != &c.name {
@@ -804,7 +824,12 @@ fn build_sqlite_rebuild(orig: &TableStructure, desired: &TableStructure) -> AppR
         }
     }
 
+    // The live table is still under `orig.name` right up until the final
+    // rename below — the SELECT source and the DROP target must read from
+    // there, not from `desired.name` (which, on a rename, doesn't exist as a
+    // real table yet).
     let qt = driver.quote(table);
+    let qt_orig = driver.quote(&orig.name);
     let qtmp = driver.quote(&tmp);
 
     let mut out = Vec::new();
@@ -812,12 +837,12 @@ fn build_sqlite_rebuild(orig: &TableStructure, desired: &TableStructure) -> AppR
     out.extend(create);
     if !new_cols.is_empty() {
         out.push(format!(
-            "INSERT INTO {qtmp} ({}) SELECT {} FROM {qt}",
+            "INSERT INTO {qtmp} ({}) SELECT {} FROM {qt_orig}",
             new_cols.join(", "),
             old_cols.join(", ")
         ));
     }
-    out.push(format!("DROP TABLE {qt}"));
+    out.push(format!("DROP TABLE {qt_orig}"));
     out.push(format!("ALTER TABLE {qtmp} RENAME TO {qt}"));
     // Recreate indexes against the final table name.
     for (i, idx) in desired.indexes.iter().enumerate() {
@@ -962,6 +987,42 @@ mod tests {
             .any(|s| s.contains("INSERT INTO \"t__huginn_new\"")));
         assert!(stmts.iter().any(|s| s == "DROP TABLE \"t\""));
         assert!(stmts.iter().any(|s| s.contains("RENAME TO \"t\"")));
+    }
+
+    #[test]
+    fn mysql_table_rename_only() {
+        let orig = table("old_name", vec![existing("a", "int")]);
+        let desired = table("new_name", vec![existing("a", "int")]);
+        let stmts = build_ddl(Driver::Mysql, Some(&orig), &desired).unwrap();
+        assert_eq!(stmts, vec!["ALTER TABLE `old_name` RENAME TO `new_name`"]);
+    }
+
+    #[test]
+    fn sqlite_table_rename_only() {
+        let orig = table("old_name", vec![existing("a", "TEXT")]);
+        let desired = table("new_name", vec![existing("a", "TEXT")]);
+        let stmts = build_ddl(Driver::Sqlite, Some(&orig), &desired).unwrap();
+        assert_eq!(
+            stmts,
+            vec!["ALTER TABLE \"old_name\" RENAME TO \"new_name\""]
+        );
+    }
+
+    #[test]
+    fn sqlite_rename_combined_with_rebuild_reads_from_original_table() {
+        // Renaming *and* changing a column's type at once forces the
+        // rebuild path; the temp table must copy FROM the original name
+        // (still the live table at that point) and DROP the original name,
+        // not the not-yet-existing desired one.
+        let orig = table("old_name", vec![existing("a", "TEXT")]);
+        let desired = table("new_name", vec![existing("a", "INTEGER")]);
+        let stmts = build_ddl(Driver::Sqlite, Some(&orig), &desired).unwrap();
+        assert!(stmts
+            .iter()
+            .any(|s| s.contains("INSERT INTO \"new_name__huginn_new\"")
+                && s.contains("FROM \"old_name\"")));
+        assert!(stmts.iter().any(|s| s == "DROP TABLE \"old_name\""));
+        assert!(stmts.iter().any(|s| s.contains("RENAME TO \"new_name\"")));
     }
 
     #[test]
