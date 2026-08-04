@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, type LucideIcon } from "lucide-react";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import { cn } from "@/lib/utils";
 
@@ -91,6 +91,41 @@ const ContextMenuItem = React.forwardRef<
 ));
 ContextMenuItem.displayName = ContextMenuPrimitive.Item.displayName;
 
+/**
+ * A `ContextMenuItem` with a leading icon, for the common case of a single
+ * label + action. Exists so every context menu in the app (grid, connection
+ * tree, database tree, table tree) composes the same icon+label+action shape
+ * instead of each call site hand-rolling its own `<Icon className="mr-2 …" />`
+ * + label pair (which is how `TabbedArea`'s Pin/PinOff item used to do it).
+ */
+const ContextMenuAction = React.forwardRef<
+  React.ElementRef<typeof ContextMenuPrimitive.Item>,
+  {
+    icon: LucideIcon;
+    label: string;
+    onSelect: () => void;
+    disabled?: boolean;
+    /** Red styling for irreversible actions (drop, delete, …). */
+    destructive?: boolean;
+    shortcut?: string;
+  }
+>(({ icon: Icon, label, onSelect, disabled, destructive, shortcut }, ref) => (
+  <ContextMenuItem
+    ref={ref}
+    disabled={disabled}
+    onSelect={onSelect}
+    className={cn(
+      destructive &&
+        "text-destructive focus:bg-destructive/10 focus:text-destructive",
+    )}
+  >
+    <Icon className="mr-2 h-3.5 w-3.5 shrink-0" />
+    <span className="truncate">{label}</span>
+    {shortcut && <ContextMenuShortcut>{shortcut}</ContextMenuShortcut>}
+  </ContextMenuItem>
+));
+ContextMenuAction.displayName = "ContextMenuAction";
+
 const ContextMenuLabel = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Label>,
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Label>
@@ -137,6 +172,7 @@ export {
   ContextMenuTrigger,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuAction,
   ContextMenuLabel,
   ContextMenuGroup,
   ContextMenuSeparator,

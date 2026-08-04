@@ -31,13 +31,20 @@ import {
 import { tableKey } from "@/stores/schema";
 import {
   ArrowDown,
+  ArrowRightCircle,
   ArrowUp,
   ArrowUpDown,
   ChevronDown,
+  ClipboardCopy,
   Copy,
+  CopyPlus,
+  Eraser,
+  Filter,
+  FilterX,
   KeyRound,
   Loader2,
   Maximize2,
+  PanelRight,
   Plus,
   Search,
   Trash2,
@@ -75,6 +82,7 @@ import { CellPreview } from "@/components/grid/CellPreview";
 import { FkCombobox } from "@/components/ui/fk-combobox";
 import {
   ContextMenu,
+  ContextMenuAction,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuLabel,
@@ -718,6 +726,7 @@ const GridRow = memo(function GridRow({
                   </ContextMenuLabel>
                   <ContextMenuSub>
                     <ContextMenuSubTrigger>
+                      <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
                       {t("dataGrid.ctxCopyRowsAs", {
                         count: selectedRows.length,
                       })}
@@ -755,7 +764,14 @@ const GridRow = memo(function GridRow({
                   {onAddFilter && (
                     <>
                       <ContextMenuSeparator />
-                      <ContextMenuItem
+                      <ContextMenuAction
+                        icon={Filter}
+                        label={t("dataGrid.ctxFilterInSelected", {
+                          column: meta.name,
+                          count:
+                            callbacksRef.current.selectedColumnValues(colIdx)
+                              .distinct,
+                        })}
                         onSelect={() =>
                           onAddFilter({
                             column: meta.name,
@@ -765,15 +781,15 @@ const GridRow = memo(function GridRow({
                             ).values,
                           })
                         }
-                      >
-                        {t("dataGrid.ctxFilterInSelected", {
+                      />
+                      <ContextMenuAction
+                        icon={FilterX}
+                        label={t("dataGrid.ctxFilterNotInSelected", {
                           column: meta.name,
                           count:
                             callbacksRef.current.selectedColumnValues(colIdx)
                               .distinct,
                         })}
-                      </ContextMenuItem>
-                      <ContextMenuItem
                         onSelect={() =>
                           onAddFilter({
                             column: meta.name,
@@ -783,27 +799,20 @@ const GridRow = memo(function GridRow({
                             ).values,
                           })
                         }
-                      >
-                        {t("dataGrid.ctxFilterNotInSelected", {
-                          column: meta.name,
-                          count:
-                            callbacksRef.current.selectedColumnValues(colIdx)
-                              .distinct,
-                        })}
-                      </ContextMenuItem>
+                      />
                     </>
                   )}
                   {onBulkDelete && (
                     <>
                       <ContextMenuSeparator />
-                      <ContextMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onSelect={() => onBulkDelete(selectedRows)}
-                      >
-                        {t("dataGrid.ctxDeleteRows", {
+                      <ContextMenuAction
+                        icon={Trash2}
+                        destructive
+                        label={t("dataGrid.ctxDeleteRows", {
                           count: selectedRows.length,
                         })}
-                      </ContextMenuItem>
+                        onSelect={() => onBulkDelete(selectedRows)}
+                      />
                     </>
                   )}
                 </>
@@ -817,32 +826,30 @@ const GridRow = memo(function GridRow({
                 value !== null &&
                 value !== undefined && (
                   <>
-                    <ContextMenuItem
-                      onSelect={() =>
-                        onNavigateFk?.(meta.name, value)
-                      }
-                    >
-                      {t("dataGrid.ctxGoToReference")}
-                    </ContextMenuItem>
+                    <ContextMenuAction
+                      icon={ArrowRightCircle}
+                      label={t("dataGrid.ctxGoToReference")}
+                      onSelect={() => onNavigateFk?.(meta.name, value)}
+                    />
                     <ContextMenuSeparator />
                   </>
                 )}
-              <ContextMenuItem
+              <ContextMenuAction
+                icon={Copy}
+                label={t("dataGrid.ctxCopy")}
                 onSelect={() =>
                   callbacksRef.current.copyToClipboard(formatValue(value))
                 }
-              >
-                {t("dataGrid.ctxCopy")}
-              </ContextMenuItem>
-              <ContextMenuItem
+              />
+              <ContextMenuAction
+                icon={ClipboardCopy}
+                label={t("dataGrid.ctxCopyWithColumn")}
                 onSelect={() =>
                   callbacksRef.current.copyToClipboard(
                     `${meta.name} = ${sqlLiteral(value)}`,
                   )
                 }
-              >
-                {t("dataGrid.ctxCopyWithColumn")}
-              </ContextMenuItem>
+              />
               {/* Row-level formatters. We keep the per-cell
                   entries above (single value, single value
                   with column name) because they're the most
@@ -851,6 +858,7 @@ const GridRow = memo(function GridRow({
                   cases without bloating the top level. */}
               <ContextMenuSub>
                 <ContextMenuSubTrigger>
+                  <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
                   {t("dataGrid.ctxCopyRowAs")}
                 </ContextMenuSubTrigger>
                 <ContextMenuSubContent>
@@ -896,7 +904,9 @@ const GridRow = memo(function GridRow({
                   </ContextMenuItem>
                 </ContextMenuSubContent>
               </ContextMenuSub>
-              <ContextMenuItem
+              <ContextMenuAction
+                icon={PanelRight}
+                label={t("dataGrid.openInSideEditor")}
                 onSelect={() =>
                   callbacksRef.current.openSidePanelEditor(
                     rowValues,
@@ -904,25 +914,23 @@ const GridRow = memo(function GridRow({
                     formatValue(value),
                   )
                 }
-              >
-                {t("dataGrid.openInSideEditor")}
-              </ContextMenuItem>
+              />
               {editable && onCellSave && (
-                <ContextMenuItem
+                <ContextMenuAction
+                  icon={Eraser}
                   disabled={value === null}
+                  label={t("cellEditor.setNull")}
                   onSelect={() =>
-                    onCellSave(rowValues, meta.name, null).catch(
-                      () => {},
-                    )
+                    onCellSave(rowValues, meta.name, null).catch(() => {})
                   }
-                >
-                  {t("cellEditor.setNull")}
-                </ContextMenuItem>
+                />
               )}
               {onAddFilter && (
                 <>
                   <ContextMenuSeparator />
-                  <ContextMenuItem
+                  <ContextMenuAction
+                    icon={Filter}
+                    label={t("dataGrid.ctxFilterBy")}
                     onSelect={() =>
                       onAddFilter(
                         value === null
@@ -934,10 +942,10 @@ const GridRow = memo(function GridRow({
                             },
                       )
                     }
-                  >
-                    {t("dataGrid.ctxFilterBy")}
-                  </ContextMenuItem>
-                  <ContextMenuItem
+                  />
+                  <ContextMenuAction
+                    icon={FilterX}
+                    label={t("dataGrid.ctxFilterExcluding")}
                     onSelect={() =>
                       onAddFilter(
                         value === null
@@ -949,34 +957,37 @@ const GridRow = memo(function GridRow({
                             },
                       )
                     }
-                  >
-                    {t("dataGrid.ctxFilterExcluding")}
-                  </ContextMenuItem>
+                  />
                 </>
               )}
-              {(onInsertRow || onDuplicateRow || onDeleteRow) && (
+              {(onInsertRow || onDuplicateRow) && (
                 <>
                   <ContextMenuSeparator />
                   {onInsertRow && (
-                    <ContextMenuItem onSelect={() => onInsertRow()}>
-                      {t("dataGrid.ctxInsertRow")}
-                    </ContextMenuItem>
+                    <ContextMenuAction
+                      icon={Plus}
+                      label={t("dataGrid.ctxInsertRow")}
+                      onSelect={() => onInsertRow()}
+                    />
                   )}
                   {onDuplicateRow && (
-                    <ContextMenuItem
+                    <ContextMenuAction
+                      icon={CopyPlus}
+                      label={t("dataGrid.ctxDuplicateRow")}
                       onSelect={() => onDuplicateRow(rowValues)}
-                    >
-                      {t("dataGrid.ctxDuplicateRow")}
-                    </ContextMenuItem>
+                    />
                   )}
-                  {onDeleteRow && (
-                    <ContextMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onSelect={() => onDeleteRow(rowValues)}
-                    >
-                      {t("dataGrid.ctxDeleteRow")}
-                    </ContextMenuItem>
-                  )}
+                </>
+              )}
+              {onDeleteRow && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuAction
+                    icon={Trash2}
+                    destructive
+                    label={t("dataGrid.ctxDeleteRow")}
+                    onSelect={() => onDeleteRow(rowValues)}
+                  />
                 </>
               )}
               </>

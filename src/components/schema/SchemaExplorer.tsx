@@ -24,16 +24,34 @@
  * existing single-connection-id signatures.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { cloneElement, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
+  Code2,
+  Copy,
   Database,
+  DatabaseZap,
+  Download,
+  Eraser,
+  ExternalLink,
   Table as TableIcon,
   Eye,
+  FolderPlus,
   KeyRound,
   LayoutList,
+  ListFilter,
+  PencilLine,
+  Plug,
+  RefreshCw,
+  ShieldCheck,
+  SquarePen,
+  SquareTerminal,
+  Table2,
+  Trash2,
+  Unplug,
+  Upload,
 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useSchema, tableKey } from "@/stores/schema";
@@ -50,8 +68,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   ContextMenu,
+  ContextMenuAction,
   ContextMenuContent,
-  ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
@@ -251,7 +269,9 @@ export function ConnectionActionsMenu({
   connectionId: string;
   onConnect?: () => void;
   onDisconnect?: () => void;
-  children: React.ReactNode;
+  /** A single element (Radix `asChild` requirement) — cloned below to carry
+   *  the "menu is open on me" ring while right-clicked. */
+  children: React.ReactElement;
 }) {
   const { t } = useTranslation();
   const profile = useConnections((s) =>
@@ -263,6 +283,12 @@ export function ConnectionActionsMenu({
   const [createDbOpen, setCreateDbOpen] = useState(false);
   const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
   const [dbPickerOpen, setDbPickerOpen] = useState(false);
+  // Right-clicking to open the menu doesn't keep the row hovered (the
+  // pointer moves onto the menu itself), so without this the row you
+  // targeted looks indistinguishable from any other once the menu is open.
+  // Mirrors the row's own `focus-visible:ring-ring` treatment, just driven
+  // by the menu's open state instead of keyboard focus.
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const driver = profile?.driver;
   const isMultiDb = !!profile && driver !== "sqlite" && profile.database === "";
@@ -273,76 +299,89 @@ export function ConnectionActionsMenu({
 
   return (
     <>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenu onOpenChange={setMenuOpen}>
+        <ContextMenuTrigger asChild>
+          {cloneElement(children, {
+            className: cn(
+              children.props.className,
+              menuOpen && "ring-1 ring-inset ring-ring",
+            ),
+          })}
+        </ContextMenuTrigger>
         <ContextMenuContent className="w-56">
           {isActive ? (
             <>
-              <ContextMenuItem onSelect={() => refresh(connectionId)}>
-                {t("schema.refresh")}
-              </ContextMenuItem>
+              <ContextMenuAction
+                icon={RefreshCw}
+                label={t("schema.refresh")}
+                onSelect={() => refresh(connectionId)}
+              />
               {canCreateDatabase && (
-                <ContextMenuItem onSelect={() => setCreateDbOpen(true)}>
-                  {t("schema.createDatabase.title")}
-                </ContextMenuItem>
+                <ContextMenuAction
+                  icon={DatabaseZap}
+                  label={t("schema.createDatabase.title")}
+                  onSelect={() => setCreateDbOpen(true)}
+                />
               )}
               {canCreateCollection && (
-                <ContextMenuItem onSelect={() => setCreateCollectionOpen(true)}>
-                  {t("schema.createCollection.title")}
-                </ContextMenuItem>
+                <ContextMenuAction
+                  icon={FolderPlus}
+                  label={t("schema.createCollection.title")}
+                  onSelect={() => setCreateCollectionOpen(true)}
+                />
               )}
               {isMultiDb && (
-                <ContextMenuItem
+                <ContextMenuAction
+                  icon={ListFilter}
                   // Nothing to choose from until the database list has loaded.
                   disabled={databases.length === 0}
+                  label={t("schema.selectDatabases.title")}
                   onSelect={() => setDbPickerOpen(true)}
-                >
-                  {t("schema.selectDatabases.title")}
-                </ContextMenuItem>
+                />
               )}
               {canDumpSql && (
                 <>
                   <ContextMenuSeparator />
-                  <ContextMenuItem
-                    onSelect={() =>
-                      void exportDatabaseWithToast(connectionId, t)
-                    }
-                  >
-                    {t("schema.exportDatabase.title")}
-                  </ContextMenuItem>
-                  <ContextMenuItem
+                  <ContextMenuAction
+                    icon={Download}
+                    label={t("schema.exportDatabase.title")}
+                    onSelect={() => void exportDatabaseWithToast(connectionId, t)}
+                  />
+                  <ContextMenuAction
+                    icon={Upload}
+                    label={t("schema.importSql.title")}
                     onSelect={() =>
                       void importSqlFile(connectionId, t).then((ran) => {
                         if (ran) refresh(connectionId);
                       })
                     }
-                  >
-                    {t("schema.importSql.title")}
-                  </ContextMenuItem>
+                  />
                 </>
               )}
               <ContextMenuSeparator />
-              <ContextMenuItem
-                onSelect={() =>
-                  openSecurityTab(connectionId, t("security.title"))
-                }
-              >
-                {t("security.title")}
-              </ContextMenuItem>
+              <ContextMenuAction
+                icon={ShieldCheck}
+                label={t("security.title")}
+                onSelect={() => openSecurityTab(connectionId, t("security.title"))}
+              />
               {onDisconnect && (
                 <>
                   <ContextMenuSeparator />
-                  <ContextMenuItem onSelect={onDisconnect}>
-                    {t("statusBar.disconnect")}
-                  </ContextMenuItem>
+                  <ContextMenuAction
+                    icon={Unplug}
+                    label={t("statusBar.disconnect")}
+                    onSelect={onDisconnect}
+                  />
                 </>
               )}
             </>
           ) : (
             onConnect && (
-              <ContextMenuItem onSelect={onConnect}>
-                {t("connectionsTree.connect")}
-              </ContextMenuItem>
+              <ContextMenuAction
+                icon={Plug}
+                label={t("connectionsTree.connect")}
+                onSelect={onConnect}
+              />
             )
           )}
         </ContextMenuContent>
@@ -440,6 +479,12 @@ function SingleDbExplorer({
     return undefined;
   });
 
+  // Which schema header (if any) currently has its right-click menu open —
+  // there's one `ContextMenu` per schema rendered by the `schemas.map(...)`
+  // below, so this can't be a `useState` inside that loop (Rules of Hooks);
+  // tracking "which name" in the enclosing component instead works the same
+  // way since only one context menu can realistically be open at a time.
+  const [openSchemaMenu, setOpenSchemaMenu] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<TableInfo | null>(null);
   const [dropTarget, setDropTarget] = useState<TableInfo | null>(null);
   const [emptyTarget, setEmptyTarget] = useState<TableInfo | null>(null);
@@ -575,23 +620,108 @@ function SingleDbExplorer({
               <div key={schema}>
                 {/* Schema / database header — suppressed when we're a
                     nested explorer with a single schema to avoid a
-                    duplicate database node (see comment above). */}
+                    duplicate database node (see comment above). Its
+                    right-click menu is where table/view creation belongs
+                    ([[schema.context.newTable]] used to live on an existing
+                    table's own menu, which meant a database with zero
+                    tables had no way to grow one from the tree). */}
                 {!flattenSingleSchema && (
-                  <button
-                    className="flex w-full items-center gap-1 px-2 py-1.5 hover:bg-accent/40"
-                    onClick={() => toggleNode(connectionId, schemaNodeKey)}
+                  <ContextMenu
+                    onOpenChange={(open) =>
+                      setOpenSchemaMenu(open ? schema : null)
+                    }
                   >
-                    {schemaOpen ? (
-                      <ChevronDown className="h-3 w-3" />
-                    ) : (
-                      <ChevronRight className="h-3 w-3" />
-                    )}
-                    <Database className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="truncate text-xs">{schema}</span>
-                    <span className="ml-auto text-[10px] text-muted-foreground">
-                      {tables.length + views.length}
-                    </span>
-                  </button>
+                    <ContextMenuTrigger asChild>
+                      <button
+                        className={cn(
+                          "flex w-full items-center gap-1 px-2 py-1.5 hover:bg-accent/40",
+                          openSchemaMenu === schema &&
+                            "ring-1 ring-inset ring-ring",
+                        )}
+                        onClick={() => toggleNode(connectionId, schemaNodeKey)}
+                      >
+                        {schemaOpen ? (
+                          <ChevronDown className="h-3 w-3" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3" />
+                        )}
+                        <Database className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="truncate text-xs">{schema}</span>
+                        <span className="ml-auto text-[10px] text-muted-foreground">
+                          {tables.length + views.length}
+                        </span>
+                      </button>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuAction
+                        icon={RefreshCw}
+                        label={t("schema.refresh")}
+                        onSelect={() => refresh(connectionId)}
+                      />
+                      <ContextMenuSeparator />
+                      <ContextMenuAction
+                        icon={Table2}
+                        label={t("schema.context.newTable")}
+                        onSelect={() =>
+                          wrappedOpenTab({
+                            kind: "structure",
+                            structureMode: "new",
+                            title: t("schema.context.newTable"),
+                            connectionId,
+                            schema,
+                          })
+                        }
+                      />
+                      {driver !== "mongodb" && (
+                        <ContextMenuAction
+                          icon={Eye}
+                          label={t("schema.context.newView")}
+                          onSelect={() =>
+                            wrappedOpenTab({
+                              kind: "view",
+                              viewMode: "new",
+                              title: t("schema.context.newView"),
+                              connectionId,
+                              schema,
+                            })
+                          }
+                        />
+                      )}
+                      <ContextMenuAction
+                        icon={SquareTerminal}
+                        label={t("schema.context.newQueryHere")}
+                        onSelect={() =>
+                          openTab({
+                            kind: "query",
+                            title: t("tabs.queryFileName"),
+                            connectionId,
+                            query: "-- write a SQL query and press Ctrl+Enter\n",
+                          })
+                        }
+                      />
+                      {driver !== "mongodb" && (
+                        <>
+                          <ContextMenuSeparator />
+                          <ContextMenuAction
+                            icon={Download}
+                            label={t("schema.exportDatabase.title")}
+                            onSelect={() =>
+                              void exportDatabaseWithToast(connectionId, t)
+                            }
+                          />
+                          <ContextMenuAction
+                            icon={Upload}
+                            label={t("schema.importSql.title")}
+                            onSelect={() =>
+                              void importSqlFile(connectionId, t).then((ran) => {
+                                if (ran) refresh(connectionId);
+                              })
+                            }
+                          />
+                        </>
+                      )}
+                    </ContextMenuContent>
+                  </ContextMenu>
                 )}
 
                 {schemaOpen && (
@@ -1006,6 +1136,10 @@ function DatabaseRoot({
   const [childId, setChildId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+  // See `ConnectionActionsMenu`'s matching state: the row that was
+  // right-clicked stops looking hovered as soon as the pointer moves onto
+  // the open menu, so this drives the same ring explicitly instead.
+  const [menuOpen, setMenuOpen] = useState(false);
   /** The `<parent>::db::<db>` view id the create-collection dialog targets;
    *  non-null while the dialog is open (#61). */
   const [createCollectionId, setCreateCollectionId] = useState<string | null>(
@@ -1044,6 +1178,32 @@ function DatabaseRoot({
       title: t("tabs.queryFileName"),
       connectionId: id,
       query: "-- write a SQL query and press Ctrl+Enter\n",
+    });
+  };
+
+  // "New table"/"New view" here: same lazy-open-then-navigate pattern as
+  // `openQueryHere`. These used to only be reachable from an existing
+  // table's own context menu (see the schema-header menu's doc comment in
+  // `SingleDbExplorer`), which meant a freshly-created, still-empty
+  // database had no way to grow its first table from the tree at all.
+  const createTableHere = async () => {
+    const id = await resolveChildId();
+    if (!id) return;
+    useTabs.getState().open({
+      kind: "structure",
+      structureMode: "new",
+      title: t("schema.context.newTable"),
+      connectionId: id,
+    });
+  };
+  const createViewHere = async () => {
+    const id = await resolveChildId();
+    if (!id) return;
+    useTabs.getState().open({
+      kind: "view",
+      viewMode: "new",
+      title: t("schema.context.newView"),
+      connectionId: id,
     });
   };
 
@@ -1114,12 +1274,13 @@ function DatabaseRoot({
 
   return (
     <div>
-      <ContextMenu>
+      <ContextMenu onOpenChange={setMenuOpen}>
         <ContextMenuTrigger asChild>
           <button
             className={cn(
               "flex w-full items-center gap-1 px-2 py-1.5 transition-opacity hover:bg-accent/40",
               dimmed && "opacity-50 hover:opacity-100",
+              menuOpen && "ring-1 ring-inset ring-ring",
             )}
             onClick={() => {
               onToggle();
@@ -1152,39 +1313,68 @@ function DatabaseRoot({
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent>
-          <ContextMenuItem onSelect={() => void openQueryHere()}>
-            {t("schema.context.newQueryHere")}
-          </ContextMenuItem>
-          {driver === "mongodb" && (
-            <ContextMenuItem onSelect={() => void createCollectionHere()}>
-              {t("schema.createCollection.title")}
-            </ContextMenuItem>
+          <ContextMenuAction
+            icon={RefreshCw}
+            label={t("schema.refresh")}
+            onSelect={() => void useSchema.getState().refresh(parentId)}
+          />
+          <ContextMenuSeparator />
+          <ContextMenuAction
+            icon={Table2}
+            label={t("schema.context.newTable")}
+            onSelect={() => void createTableHere()}
+          />
+          {driver !== "mongodb" && (
+            <ContextMenuAction
+              icon={Eye}
+              label={t("schema.context.newView")}
+              onSelect={() => void createViewHere()}
+            />
           )}
-          <ContextMenuItem onSelect={() => void openSecurityHere()}>
-            {t("security.title")}
-          </ContextMenuItem>
+          <ContextMenuAction
+            icon={SquareTerminal}
+            label={t("schema.context.newQueryHere")}
+            onSelect={() => void openQueryHere()}
+          />
+          {driver === "mongodb" && (
+            <ContextMenuAction
+              icon={FolderPlus}
+              label={t("schema.createCollection.title")}
+              onSelect={() => void createCollectionHere()}
+            />
+          )}
           {/* Whole-database .sql export/import is SQL-only; MongoDB databases
               use the per-collection JSON export/import instead (#65). */}
           {driver !== "mongodb" && (
             <>
               <ContextMenuSeparator />
-              <ContextMenuItem onSelect={() => void exportThisDatabase()}>
-                {t("schema.exportDatabase.title")}
-              </ContextMenuItem>
-              <ContextMenuItem onSelect={() => void importSqlHere()}>
-                {t("schema.importSql.title")}
-              </ContextMenuItem>
+              <ContextMenuAction
+                icon={Download}
+                label={t("schema.exportDatabase.title")}
+                onSelect={() => void exportThisDatabase()}
+              />
+              <ContextMenuAction
+                icon={Upload}
+                label={t("schema.importSql.title")}
+                onSelect={() => void importSqlHere()}
+              />
             </>
           )}
+          <ContextMenuSeparator />
+          <ContextMenuAction
+            icon={ShieldCheck}
+            label={t("security.title")}
+            onSelect={() => void openSecurityHere()}
+          />
           {canDrop && (
             <>
               <ContextMenuSeparator />
-              <ContextMenuItem
+              <ContextMenuAction
+                icon={Trash2}
+                destructive
+                label={t("schema.context.dropDatabase")}
                 onSelect={() => void dropThisDatabase()}
-                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-              >
-                {t("schema.context.dropDatabase")}
-              </ContextMenuItem>
+              />
             </>
           )}
         </ContextMenuContent>
@@ -1361,6 +1551,9 @@ function TableRow({
   const tableOpen = cs.expanded.has(tableNodeKey);
   const cols = cs.columns[k];
   const isView = t.kind === "view";
+  // See `ConnectionActionsMenu`'s matching state/comment: keeps the row
+  // looking targeted once the pointer has moved off it onto the open menu.
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Reflect the currently-open table tab so the tree shows "you are here".
   // The selector returns a primitive string, so it's reference-stable and
@@ -1441,7 +1634,7 @@ function TableRow({
   };
 
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={setMenuOpen}>
       <ContextMenuTrigger asChild>
         <div>
           <div
@@ -1451,6 +1644,9 @@ function TableRow({
               // inset brand rail (inset shadow, so it adds no layout shift).
               isActive &&
                 "bg-brand/10 shadow-[inset_2px_0_0_hsl(var(--brand))] hover:bg-brand/15",
+              // Right-clicked-and-menu-open marker — see the `menuOpen`
+              // state's comment above.
+              menuOpen && "ring-1 ring-inset ring-ring",
             )}
           >
             <button
@@ -1580,7 +1776,9 @@ function TableRow({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem
+        <ContextMenuAction
+          icon={ExternalLink}
+          label={ct("schema.context.open")}
           onSelect={() =>
             actions.openTab({
               kind: "table",
@@ -1594,46 +1792,63 @@ function TableRow({
               table: t.name,
             })
           }
-        >
-          {ct("schema.context.open")}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={copyName}>
-          {ct("schema.context.copyName")}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={copySelect}>
-          {ct("schema.context.copySelect")}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => actions.refresh()}>
-          {ct("schema.context.refresh")}
-        </ContextMenuItem>
+        />
+        <ContextMenuAction
+          icon={Copy}
+          label={ct("schema.context.copyName")}
+          onSelect={copyName}
+        />
+        <ContextMenuAction
+          icon={Code2}
+          label={ct("schema.context.copySelect")}
+          onSelect={copySelect}
+        />
+        <ContextMenuAction
+          icon={RefreshCw}
+          label={ct("schema.context.refresh")}
+          onSelect={() => actions.refresh()}
+        />
         {/* MongoDB collections: JSON data import/export + drop. No SQL DDL
             (structure editing is read-only / rename is unsupported for Mongo). */}
         {isMongo && !isView && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => void exportCollectionJson()}>
-              {ct("schema.exportCollection.title")}
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => void importCollectionJson()}>
-              {ct("schema.importCollection.title")}
-            </ContextMenuItem>
+            <ContextMenuAction
+              icon={Download}
+              label={ct("schema.exportCollection.title")}
+              onSelect={() => void exportCollectionJson()}
+            />
+            <ContextMenuAction
+              icon={Upload}
+              label={ct("schema.importCollection.title")}
+              onSelect={() => void importCollectionJson()}
+            />
             <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => actions.onEmpty(t)}>
-              {ct("schema.context.empty")}
-            </ContextMenuItem>
-            <ContextMenuItem
+            <ContextMenuAction
+              icon={Eraser}
+              label={ct("schema.context.empty")}
+              onSelect={() => actions.onEmpty(t)}
+            />
+            <ContextMenuAction
+              icon={Trash2}
+              destructive
+              label={ct("schema.context.drop")}
               onSelect={() => actions.onDrop(t)}
-              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-            >
-              {ct("schema.context.drop")}
-            </ContextMenuItem>
+            />
           </>
         )}
-        {/* Views fall through to read-only; we only expose DDL on base tables. */}
+        {/* Views fall through to read-only; we only expose DDL on base tables.
+            Table/view *creation* lives one level up, on the database/schema
+            node's own menu — see its doc comment — never here: this menu is
+            for an existing table, and the old "New table…" entry buried at
+            its tail was exactly the bug report that prompted this file's
+            menu rework. */}
         {!isMongo && !isView && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem
+            <ContextMenuAction
+              icon={SquarePen}
+              label={ct("schema.context.editStructure")}
               onSelect={() =>
                 actions.openTab({
                   kind: "structure",
@@ -1644,35 +1859,24 @@ function TableRow({
                   table: t.name,
                 })
               }
-            >
-              {ct("schema.context.editStructure")}
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => actions.onRename(t)}>
-              {ct("schema.context.rename")}
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => actions.onEmpty(t)}>
-              {ct("schema.context.empty")}
-            </ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => actions.onDrop(t)}
-              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-            >
-              {ct("schema.context.drop")}
-            </ContextMenuItem>
+            />
+            <ContextMenuAction
+              icon={PencilLine}
+              label={ct("schema.context.rename")}
+              onSelect={() => actions.onRename(t)}
+            />
             <ContextMenuSeparator />
-            <ContextMenuItem
-              onSelect={() =>
-                actions.openTab({
-                  kind: "structure",
-                  structureMode: "new",
-                  title: ct("schema.context.newTable"),
-                  connectionId,
-                  schema: t.schema,
-                })
-              }
-            >
-              {ct("schema.context.newTable")}
-            </ContextMenuItem>
+            <ContextMenuAction
+              icon={Eraser}
+              label={ct("schema.context.empty")}
+              onSelect={() => actions.onEmpty(t)}
+            />
+            <ContextMenuAction
+              icon={Trash2}
+              destructive
+              label={ct("schema.context.drop")}
+              onSelect={() => actions.onDrop(t)}
+            />
           </>
         )}
         {/* Views: no column/index/FK editing (a view has none of its own),
@@ -1682,7 +1886,9 @@ function TableRow({
         {!isMongo && isView && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem
+            <ContextMenuAction
+              icon={SquarePen}
+              label={ct("schema.context.editView")}
               onSelect={() =>
                 actions.openTab({
                   kind: "view",
@@ -1693,32 +1899,19 @@ function TableRow({
                   view: t.name,
                 })
               }
-            >
-              {ct("schema.context.editView")}
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => actions.onRenameView(t)}>
-              {ct("schema.context.renameView")}
-            </ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => actions.onDropView(t)}
-              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-            >
-              {ct("schema.context.dropView")}
-            </ContextMenuItem>
+            />
+            <ContextMenuAction
+              icon={PencilLine}
+              label={ct("schema.context.renameView")}
+              onSelect={() => actions.onRenameView(t)}
+            />
             <ContextMenuSeparator />
-            <ContextMenuItem
-              onSelect={() =>
-                actions.openTab({
-                  kind: "view",
-                  viewMode: "new",
-                  title: ct("schema.context.newView"),
-                  connectionId,
-                  schema: t.schema,
-                })
-              }
-            >
-              {ct("schema.context.newView")}
-            </ContextMenuItem>
+            <ContextMenuAction
+              icon={Trash2}
+              destructive
+              label={ct("schema.context.dropView")}
+              onSelect={() => actions.onDropView(t)}
+            />
           </>
         )}
       </ContextMenuContent>
