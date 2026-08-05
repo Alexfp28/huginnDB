@@ -452,6 +452,32 @@ export interface DraftRow {
 }
 
 /**
+ * How a table's existing data is treated by `exportDatabases` relative to
+ * the rows being written. `truncate_insert` prefixes each table's INSERTs
+ * with a `DELETE FROM` so re-running the dump against a target that already
+ * has conflicting rows replaces them instead of erroring on the primary key.
+ */
+export type DataMode = "insert" | "truncate_insert";
+
+/** One database (or, for a multi-DB connection, one already-resolved
+ *  `<parent>::db::<name>` child) to include in an `exportDatabases` call. */
+export interface ExportTarget {
+  connectionId: string;
+  databaseName: string;
+  /** `undefined` exports every table in this database. */
+  tables?: string[];
+}
+
+/**
+ * Response from `preview_bulk_update`: how many rows/documents currently
+ * match the filter, plus the statement `apply_bulk_update` would run.
+ */
+export interface BulkUpdatePreview {
+  statement: string;
+  affectedEstimate: number;
+}
+
+/**
  * User preferences. Mirrors `Preferences` in `src-tauri/src/prefs.rs`.
  *
  * Persisted to `prefs.json` in the platform config dir. The frontend store

@@ -23,17 +23,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Download,
   ListFilter,
   Loader2,
   RefreshCw,
+  ReplaceAll,
   Rows3,
   Table2,
+  Upload,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { toast } from "sonner";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
@@ -41,7 +47,11 @@ import { useFilterHistory } from "@/stores/grid/filterHistory";
 import { useConnections } from "@/stores/session/connections";
 import { tableTabTitle } from "@/lib/connectionLabel";
 import { useGridSelection } from "@/stores/grid/gridSelection";
-import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectGridPrefs,
+} from "@/stores/preferences/preferences";
+import { confirmDestructive } from "@/lib/confirmDestructive";
 import type {
   CellValue,
   ColumnFilter,
@@ -53,6 +63,7 @@ import type {
 } from "@/types";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { AdvancedFilterDialog } from "@/components/grid/dialogs/AdvancedFilterDialog";
+import { BulkUpdateDialog } from "@/components/grid/dialogs/BulkUpdateDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -61,8 +72,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown";
 import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
-import { registerTableRefresh, unregisterTableRefresh } from "@/lib/grid/tableRefresh";
+import {
+  registerTableRefresh,
+  unregisterTableRefresh,
+} from "@/lib/grid/tableRefresh";
 
 interface Props {
   /** The owning tab's id — used to scope the grid-selection report. */
@@ -171,7 +191,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     if (direct) return direct.driver;
     const sep = connectionId.indexOf("::db::");
     if (sep > 0) {
-      const parent = s.profiles.find((p) => p.id === connectionId.slice(0, sep));
+      const parent = s.profiles.find(
+        (p) => p.id === connectionId.slice(0, sep),
+      );
       if (parent) return parent.driver;
     }
     return undefined;
@@ -186,7 +208,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // tabs open on the same connection each one paid a full re-render for
   // every unrelated tab's first load, which is what made opening tab N+1
   // feel like it was reloading everything instead of just the new table.
-  const cols = useSchema((s) => s.byConnection[connectionId]?.columns[tableKey]);
+  const cols = useSchema(
+    (s) => s.byConnection[connectionId]?.columns[tableKey],
+  );
 
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -277,9 +301,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   }, [setViewState, tabId, serverFilters, sort, appliedFilter]);
 
   const pushHistory = useFilterHistory((s) => s.push);
-  const filterHistory = useFilterHistory(
-    (s) => s.byConnection[connectionId],
-  );
+  const filterHistory = useFilterHistory((s) => s.byConnection[connectionId]);
 
   const { t } = useTranslation();
   /**
@@ -319,10 +341,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     }
   }
 
-  const searchColumns = useMemo(
-    () => cols?.map((c) => c.name) ?? [],
-    [cols],
-  );
+  const searchColumns = useMemo(() => cols?.map((c) => c.name) ?? [], [cols]);
 
   /** Apply a header click to the sort state and refetch from page 0 (a new
    *  ordering shouldn't leave the user stranded mid-table). */
@@ -331,8 +350,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     setOffset(0);
   }, []);
 
-  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
+    null,
+  );
   const [draft, setDraft] = useState<DraftRow | null>(null);
+  const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
 
   /**
    * Every column that participates in the table's PRIMARY KEY, in
@@ -486,7 +508,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       // Non-fatal: the grid pages fine without a total. Leave it null; the
       // footer shows the current range without "/ N".
     } finally {
-      if (countInflightRef.current === countKey) countInflightRef.current = null;
+      if (countInflightRef.current === countKey)
+        countInflightRef.current = null;
     }
   }, [connectionId, schema, table, serverFilters, appliedFilter]);
 
@@ -592,9 +615,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       connectionId,
       schema: col.referenced_schema ?? undefined,
       table: col.referenced_table,
-      initialFilters: [
-        { column: col.referenced_column, op: "eq", value },
-      ],
+      initialFilters: [{ column: col.referenced_column, op: "eq", value }],
     });
   }
 
@@ -669,6 +690,86 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   function confirmDelete() {
     if (!pendingDelete) return;
     void runDelete(pendingDelete.pkValueRows);
+  }
+
+  /**
+   * "Export the full table/collection" — unfiltered, the counterpart of the
+   * MongoDB tree's per-collection JSON export (#65), now also available for
+   * SQL tables via `exportTable`. A cancelled save dialog is a silent no-op.
+   */
+  async function exportFull() {
+    try {
+      const path = isMongo
+        ? await api.exportCollection(connectionId, table)
+        : await api.exportTable(connectionId, schema, table);
+      toast.success(
+        isMongo
+          ? t("schema.exportCollection.success", { path })
+          : t("tableData.exportData.tableSuccess", { path }),
+      );
+    } catch (e) {
+      const message = String(e);
+      if (!message.includes("export cancelled")) toast.error(message);
+    }
+  }
+
+  /**
+   * "Export query results" — scoped to the grid's current advanced filter
+   * (`serverFilters`) and committed search, without any pagination limit.
+   * Identical to `exportFull` when no filter is active.
+   */
+  async function exportFiltered() {
+    try {
+      const path = isMongo
+        ? await api.exportCollection(connectionId, table, serverFilters)
+        : await api.exportTableRows({
+            connectionId,
+            schema,
+            table,
+            filters: serverFilters,
+            search: appliedFilter || undefined,
+            searchColumns: appliedFilter ? searchColumns : undefined,
+          });
+      toast.success(
+        isMongo
+          ? t("schema.exportCollection.success", { path })
+          : t("tableData.exportData.rowsSuccess", { path }),
+      );
+    } catch (e) {
+      const message = String(e);
+      if (!message.includes("export cancelled")) toast.error(message);
+    }
+  }
+
+  /**
+   * "Import JSON…" (Mongo only) — the same `import_collection` flow the
+   * schema tree used to expose per-collection (#65), now reachable from the
+   * DataGrid toolbar instead. Additive (`insert_many`); existing documents
+   * sharing an `_id` stop the import, so it still goes through the
+   * destructive-write confirmation like the tree version did.
+   */
+  async function importCollectionJsonForTab() {
+    const picked = await openFileDialog({
+      multiple: false,
+      directory: false,
+      title: t("schema.importCollection.pickTitle"),
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (typeof picked !== "string" || !picked) return;
+    if (
+      !confirmDestructive(
+        t("schema.importCollection.confirm", { collection: table }),
+      )
+    ) {
+      return;
+    }
+    try {
+      const count = await api.importCollection(connectionId, table, picked);
+      toast.success(t("schema.importCollection.success", { count }));
+      await fetchData();
+    } catch (e) {
+      toast.error(String(e));
+    }
   }
 
   function onInsertRow() {
@@ -785,14 +886,14 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   );
 
   // Leading toolbar content folded into the grid's own toolbar (via DataGrid's
-  // `toolbarLeading`) so a table tab shows ONE bar instead of two stacked ones.
-  // The schema › table breadcrumb used to live here, but the tab title already
-  // shows `database.table` (#57) — repeating it next to the filter was pure
-  // redundancy, so the leading area is just the two filter-related actions:
-  // refresh and the advanced-filter dialog. The MongoDB view-mode toggle used
-  // to live here too, but it's a *display* control, not a filter action — it
-  // now rides the trailing slot with the other right-aligned readouts so the
-  // filter cluster (refresh · advanced · search box) stays cohesive.
+  // `toolbarLeading`) so a table tab shows ONE header bar instead of two
+  // stacked ones. The schema › table breadcrumb used to live here, but the
+  // tab title already shows `database.table` (#57) — repeating it next to the
+  // filter was pure redundancy, so the leading area is just the two
+  // filter-related actions: refresh and the advanced-filter dialog. Every
+  // other action (add/export/bulk data, pagination, zoom, view toggle) lives
+  // in the header's right cluster or the footer instead — see `insertExtra`/
+  // `footerContent` below — so this left side stays a small, stable cluster.
   const leadingToolbar = (
     <>
       <Button
@@ -825,66 +926,104 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     </>
   );
 
-  // Trailing (right-aligned) toolbar content, folded into the grid's single
-  // toolbar so a table tab has ONE bar (the old bottom status strip is gone).
-  // Left→right: human-format pagination range (`1–100 de 19759`, replacing the
-  // grid's redundant "N rows of M" count — hence `showRowCount={false}` below),
-  // prev/next page buttons, the page-size selector, the row-zoom −/+ pair, and
-  // finally the MongoDB table/list view toggle (Mongo-only). DataGrid appends
-  // the elapsed-time readout after this slot.
-  const trailingToolbar = (
+  // Rendered right beside DataGrid's own "Insert" button (via `insertExtra`),
+  // so every action that adds, exports, or mass-edits data reads as one group
+  // on the header's right side instead of being split across the toolbar.
+  const insertExtraContent = (
     <>
-      <span
-        className="tabular-nums text-muted-foreground"
-        title={totalEstimated ? t("tableData.approxTotal") : undefined}
-      >
-        {(offset + 1).toLocaleString()}–
-        {Math.min(offset + pageSize, total ?? offset + pageSize).toLocaleString()}
-        {total !== null && (
-          <>
-            {" "}
-            {t("dataGrid.of")}{" "}
-            <span className="font-medium text-foreground">
-              {totalEstimated ? "~" : ""}
-              {total.toLocaleString()}
-            </span>
-          </>
-        )}
-      </span>
-      <div className="flex items-center">
+      {/* MongoDB only: additive JSON import into this collection (#65),
+          moved here from the schema tree's right-click menu so the action
+          lives with the data it affects instead of the tree. SQL has no
+          table-scoped import primitive (only a whole-connection `.sql`
+          batch), so it keeps that entry point in the tree unchanged. */}
+      {isMongo && (
         <Button
           variant="ghost"
-          size="icon"
-          onClick={() => setOffset(Math.max(0, offset - pageSize))}
-          disabled={!canPrev || loading}
-          title={t("tableData.prevPage")}
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={() => void importCollectionJsonForTab()}
+          title={t("schema.importCollection.title")}
         >
-          <ChevronLeft className="h-3.5 w-3.5" />
+          <Upload className="h-3.5 w-3.5" />
+          {t("schema.importCollection.title")}
         </Button>
+      )}
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs">
+            <Download className="h-3.5 w-3.5" />
+            {t("tableData.exportData.label")}
+            <ChevronDown className="h-3 w-3 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem onSelect={() => void exportFull()}>
+            {isMongo
+              ? t("schema.exportCollection.title")
+              : t("tableData.exportData.table")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void exportFiltered()}>
+            {t("tableData.exportData.queryResults")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {hasPk && (
         <Button
           variant="ghost"
-          size="icon"
-          onClick={() => setOffset(offset + pageSize)}
-          disabled={!canNext || loading}
-          title={t("tableData.nextPage")}
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={() => setBulkUpdateOpen(true)}
+          title={t("tableData.bulkUpdate.toolbarTitle")}
         >
-          <ChevronRight className="h-3.5 w-3.5" />
+          <ReplaceAll className="h-3.5 w-3.5" />
+          {t("tableData.bulkUpdate.toolbarLabel")}
         </Button>
-      </div>
-      <select
-        value={pageSize}
-        onChange={(e) => {
-          setOffset(0);
-          setPageSize(Number(e.target.value));
-        }}
-        className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
+      )}
+    </>
+  );
+
+  // Trailing (right-aligned) HEADER content, rendered after `insertExtra` —
+  // just the MongoDB table/list view toggle, a *display* control rather than
+  // a data action, so it stays apart from the insert/export/bulk group.
+  const trailingToolbar = isMongo ? (
+    <div className="flex items-center overflow-hidden rounded-md border border-border">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => updateGrid({ documentViewMode: "table" })}
+        title={t("dataGrid.viewModeTable")}
+        className={`h-7 w-7 rounded-none ${
+          documentViewMode === "table" ? "bg-accent text-brand" : ""
+        }`}
       >
-        {pageSizeOptions.map((n) => (
-          <option key={n} value={n}>
-            {t("tableData.perPage", { count: n })}
-          </option>
-        ))}
-      </select>
+        <Table2 className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => updateGrid({ documentViewMode: "list" })}
+        title={t("dataGrid.viewModeList")}
+        className={`h-7 w-7 rounded-none ${
+          documentViewMode === "list" ? "bg-accent text-brand" : ""
+        }`}
+      >
+        <Rows3 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  ) : undefined;
+
+  // FOOTER content (a second, bottom toolbar row via DataGrid's `footer`) —
+  // "how you're browsing", kept apart from the header's data actions. Two
+  // groups anchored to opposite edges (DataGrid's footer container has no
+  // `justify-end` of its own): row-zoom on the LEFT, and — pushed right via
+  // `ml-auto` — the human-format pagination range (`1–100 de 19759`,
+  // replacing the grid's redundant "N rows of M" count, hence
+  // `showRowCount={false}` below), prev/next page buttons, and the page-size
+  // selector.
+  const footerContent = (
+    <>
       <div className="flex items-center">
         <Button
           variant="ghost"
@@ -905,32 +1044,63 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>
       </div>
-      {isMongo && (
-        <div className="flex items-center overflow-hidden rounded-md border border-border">
+
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <span
+          className="tabular-nums text-muted-foreground"
+          title={totalEstimated ? t("tableData.approxTotal") : undefined}
+        >
+          {(offset + 1).toLocaleString()}–
+          {Math.min(
+            offset + pageSize,
+            total ?? offset + pageSize,
+          ).toLocaleString()}
+          {total !== null && (
+            <>
+              {" "}
+              {t("dataGrid.of")}{" "}
+              <span className="font-medium text-foreground">
+                {totalEstimated ? "~" : ""}
+                {total.toLocaleString()}
+              </span>
+            </>
+          )}
+        </span>
+        <div className="flex items-center">
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => updateGrid({ documentViewMode: "table" })}
-            title={t("dataGrid.viewModeTable")}
-            className={`h-7 w-7 rounded-none ${
-              documentViewMode === "table" ? "bg-accent text-brand" : ""
-            }`}
+            onClick={() => setOffset(Math.max(0, offset - pageSize))}
+            disabled={!canPrev || loading}
+            title={t("tableData.prevPage")}
           >
-            <Table2 className="h-3.5 w-3.5" />
+            <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => updateGrid({ documentViewMode: "list" })}
-            title={t("dataGrid.viewModeList")}
-            className={`h-7 w-7 rounded-none ${
-              documentViewMode === "list" ? "bg-accent text-brand" : ""
-            }`}
+            onClick={() => setOffset(offset + pageSize)}
+            disabled={!canNext || loading}
+            title={t("tableData.nextPage")}
           >
-            <Rows3 className="h-3.5 w-3.5" />
+            <ChevronRight className="h-3.5 w-3.5" />
           </Button>
         </div>
-      )}
+        <select
+          value={pageSize}
+          onChange={(e) => {
+            setOffset(0);
+            setPageSize(Number(e.target.value));
+          }}
+          className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
+        >
+          {pageSizeOptions.map((n) => (
+            <option key={n} value={n}>
+              {t("tableData.perPage", { count: n })}
+            </option>
+          ))}
+        </select>
+      </div>
     </>
   );
 
@@ -988,7 +1158,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onDraftCancel={onDraftCancel}
             loading={loading}
             toolbarLeading={leadingToolbar}
+            insertExtra={insertExtraContent}
             toolbarTrailing={trailingToolbar}
+            footer={footerContent}
             showRowCount={false}
             viewMode={isMongo ? documentViewMode : "table"}
           />
@@ -1081,6 +1253,19 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             setOffset(0);
           }}
           onClose={() => setAdvancedOpen(false)}
+        />
+      )}
+
+      {bulkUpdateOpen && (
+        <BulkUpdateDialog
+          connectionId={connectionId}
+          schema={schema}
+          table={table}
+          columns={cols ?? []}
+          initialFilters={serverFilters}
+          isMongo={isMongo}
+          onApplied={() => void fetchData()}
+          onClose={() => setBulkUpdateOpen(false)}
         />
       )}
     </div>

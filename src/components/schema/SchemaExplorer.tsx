@@ -84,6 +84,14 @@ import {
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
 import { confirmDestructive } from "@/lib/confirmDestructive";
+import {
+  ExportDatabaseDialog,
+  type ExportScope,
+} from "@/components/schema/dialogs/ExportDatabaseDialog";
+import {
+  ImportSqlDialog,
+  type ImportScope,
+} from "@/components/schema/dialogs/ImportSqlDialog";
 import type { Driver, TableInfo } from "@/types";
 
 /**
@@ -103,60 +111,24 @@ function openSecurityTab(connectionId: string, title: string) {
 
 type Translate = (key: string, opts?: Record<string, unknown>) => string;
 
-/** Export `connectionId`'s target database to a user-chosen `.sql` file and
- *  toast the outcome. A cancelled save dialog is a silent no-op, not an error. */
-async function exportDatabaseWithToast(connectionId: string, t: Translate) {
-  try {
-    const path = await api.exportDatabase(connectionId);
-    toast.success(t("schema.exportDatabase.success", { path }));
-  } catch (e) {
-    const message = String(e);
-    if (!message.includes("export cancelled")) toast.error(message);
-  }
-}
-
-/** Pick a `.sql` file, confirm, and run it through the existing batch runner
- *  (`splitSql` + `executeBatch`) against `connectionId` — the same runner the
- *  query editor uses, so import gets no separate execution path. Returns
- *  `false` if the user cancelled the picker/confirmation or the file held no
- *  statements, `true` once a batch actually ran (regardless of per-statement
- *  outcome — failures are toasted, not thrown). */
-async function importSqlFile(connectionId: string, t: Translate): Promise<boolean> {
+/**
+ * Pick a `.sql` file and split it into statement texts — the frontend half
+ * of the import flow. Execution (and the target-database choice for
+ * multi-DB connections) happens in `ImportSqlDialog`, which the caller opens
+ * with the returned list. `null` when the user cancels the picker or the
+ * file holds no statements.
+ */
+async function pickAndSplitSqlFile(t: Translate): Promise<string[] | null> {
   const picked = await openFileDialog({
     multiple: false,
     directory: false,
     title: t("schema.importSql.pickTitle"),
     filters: [{ name: "SQL", extensions: ["sql"] }],
   });
-  if (typeof picked !== "string" || !picked) return false;
+  if (typeof picked !== "string" || !picked) return null;
   const text = await api.readTextFile(picked);
-  const statements = splitSql(text);
-  if (statements.length === 0) return false;
-  if (
-    !confirmDestructive(
-      t("schema.importSql.confirm", { count: statements.length }),
-    )
-  ) {
-    return false;
-  }
-  const result = await api.executeBatch(
-    connectionId,
-    statements.map((s) => s.text),
-  );
-  const failed = result.statements.find((s) => s.error);
-  if (failed) {
-    toast.error(
-      t("schema.importSql.failed", {
-        index: failed.index + 1,
-        message: failed.error,
-      }),
-    );
-  } else {
-    toast.success(
-      t("schema.importSql.success", { count: result.statements.length }),
-    );
-  }
-  return true;
+  const statements = splitSql(text).map((s) => s.text);
+  return statements.length > 0 ? statements : null;
 }
 
 function matchesFilter(name: string, filter: string): boolean {
@@ -283,6 +255,10 @@ export function ConnectionActionsMenu({
   const [createDbOpen, setCreateDbOpen] = useState(false);
   const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
   const [dbPickerOpen, setDbPickerOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importStatements, setImportStatements] = useState<string[] | null>(
+    null,
+  );
   // Right-clicking to open the menu doesn't keep the row hovered (the
   // pointer moves onto the menu itself), so without this the row you
   // targeted looks indistinguishable from any other once the menu is open.
@@ -294,8 +270,19 @@ export function ConnectionActionsMenu({
   const isMultiDb = !!profile && driver !== "sqlite" && profile.database === "";
   const canCreateDatabase = driver === "postgres" || driver === "mysql";
   const canCreateCollection = driver === "mongodb" && !isMultiDb;
-  const canDumpSql = driver !== "mongodb" && !isMultiDb;
+  // Whole-database `.sql` export/import used to require single-DB mode
+  // (nothing to pick a database *from* otherwise); the export/import
+  // dialogs now handle multi-DB themselves — a database picker for export,
+  // a target-database dropdown for import — so this is SQL-only, not also
+  // single-DB-only.
+  const canDumpSql = driver !== "mongodb";
   const databases = cs?.databases ?? [];
+  const exportScope: ExportScope = isMultiDb
+    ? { kind: "multi", parentId: connectionId, databases: databases.map((d) => d.name) }
+    : { kind: "single", connectionId, databaseName: profile?.database || connectionId };
+  const importScope: ImportScope = isMultiDb
+    ? { kind: "multi", parentId: connectionId, databases: databases.map((d) => d.name) }
+    : { kind: "single", connectionId };
 
   return (
     <>
@@ -345,14 +332,14 @@ export function ConnectionActionsMenu({
                   <ContextMenuAction
                     icon={Download}
                     label={t("schema.exportDatabase.title")}
-                    onSelect={() => void exportDatabaseWithToast(connectionId, t)}
+                    onSelect={() => setExportOpen(true)}
                   />
                   <ContextMenuAction
                     icon={Upload}
                     label={t("schema.importSql.title")}
                     onSelect={() =>
-                      void importSqlFile(connectionId, t).then((ran) => {
-                        if (ran) refresh(connectionId);
+                      void pickAndSplitSqlFile(t).then((statements) => {
+                        if (statements) setImportStatements(statements);
                       })
                     }
                   />
@@ -418,6 +405,20 @@ export function ConnectionActionsMenu({
           databases={databases.map((db) => db.name)}
           selected={profile?.visible_databases ?? null}
           onClose={() => setDbPickerOpen(false)}
+        />
+      )}
+      {exportOpen && (
+        <ExportDatabaseDialog scope={exportScope} onClose={() => setExportOpen(false)} />
+      )}
+      {importStatements && (
+        <ImportSqlDialog
+          scope={importScope}
+          statements={importStatements}
+          onClose={() => setImportStatements(null)}
+          onImported={(id) => {
+            setImportStatements(null);
+            refresh(id);
+          }}
         />
       )}
     </>
@@ -699,27 +700,6 @@ function SingleDbExplorer({
                           })
                         }
                       />
-                      {driver !== "mongodb" && (
-                        <>
-                          <ContextMenuSeparator />
-                          <ContextMenuAction
-                            icon={Download}
-                            label={t("schema.exportDatabase.title")}
-                            onSelect={() =>
-                              void exportDatabaseWithToast(connectionId, t)
-                            }
-                          />
-                          <ContextMenuAction
-                            icon={Upload}
-                            label={t("schema.importSql.title")}
-                            onSelect={() =>
-                              void importSqlFile(connectionId, t).then((ran) => {
-                                if (ran) refresh(connectionId);
-                              })
-                            }
-                          />
-                        </>
-                      )}
                     </ContextMenuContent>
                   </ContextMenu>
                 )}
@@ -1216,17 +1196,28 @@ function DatabaseRoot({
   };
 
   // Export / import: same lazy-open-then-use pattern as `openQueryHere`,
-  // scoped to this database's synthetic connection id.
+  // scoped to this database's synthetic connection id. Both dialogs need
+  // that id up front (scope `"single"`, locked to this one database), so
+  // resolve it before opening either.
+  const [exportTargetId, setExportTargetId] = useState<string | null>(null);
+  const [importTargetId, setImportTargetId] = useState<string | null>(null);
+  const [importStatements, setImportStatements] = useState<string[] | null>(
+    null,
+  );
+
   const exportThisDatabase = async () => {
     const id = await resolveChildId();
     if (!id) return;
-    await exportDatabaseWithToast(id, t);
+    setExportTargetId(id);
   };
 
   const importSqlHere = async () => {
     const id = await resolveChildId();
     if (!id) return;
-    if (await importSqlFile(id, t)) await useSchema.getState().refresh(id);
+    const statements = await pickAndSplitSqlFile(t);
+    if (!statements) return;
+    setImportTargetId(id);
+    setImportStatements(statements);
   };
 
   // "New collection" (MongoDB): lazily resolve this database's synthetic view
@@ -1388,6 +1379,27 @@ function DatabaseRoot({
             setCreateCollectionId(null);
             if (id) void useSchema.getState().refresh(id);
             toast.success(t("schema.createCollection.created", { name }));
+          }}
+        />
+      )}
+      {exportTargetId && (
+        <ExportDatabaseDialog
+          scope={{ kind: "single", connectionId: exportTargetId, databaseName: dbName }}
+          onClose={() => setExportTargetId(null)}
+        />
+      )}
+      {importTargetId && importStatements && (
+        <ImportSqlDialog
+          scope={{ kind: "single", connectionId: importTargetId }}
+          statements={importStatements}
+          onClose={() => {
+            setImportTargetId(null);
+            setImportStatements(null);
+          }}
+          onImported={(id) => {
+            setImportTargetId(null);
+            setImportStatements(null);
+            void useSchema.getState().refresh(id);
           }}
         />
       )}
@@ -1597,42 +1609,6 @@ function TableRow({
 
   const isMongo = actions.driver === "mongodb";
 
-  // MongoDB per-collection JSON export/import (#65). The save dialog is opened
-  // backend-side (like the SQL "Export database"); import picks the file here,
-  // confirms, then hands the path to the backend which parses + inserts.
-  const exportCollectionJson = async () => {
-    try {
-      const path = await api.exportCollection(connectionId, t.name);
-      toast.success(ct("schema.exportCollection.success", { path }));
-    } catch (e) {
-      const message = String(e);
-      if (!message.includes("export cancelled")) toast.error(message);
-    }
-  };
-  const importCollectionJson = async () => {
-    const picked = await openFileDialog({
-      multiple: false,
-      directory: false,
-      title: ct("schema.importCollection.pickTitle"),
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
-    if (typeof picked !== "string" || !picked) return;
-    if (
-      !confirmDestructive(
-        ct("schema.importCollection.confirm", { collection: t.name }),
-      )
-    ) {
-      return;
-    }
-    try {
-      const count = await api.importCollection(connectionId, t.name, picked);
-      toast.success(ct("schema.importCollection.success", { count }));
-      actions.refresh();
-    } catch (e) {
-      toast.error(String(e));
-    }
-  };
-
   return (
     <ContextMenu onOpenChange={setMenuOpen}>
       <ContextMenuTrigger asChild>
@@ -1808,21 +1784,14 @@ function TableRow({
           label={ct("schema.context.refresh")}
           onSelect={() => actions.refresh()}
         />
-        {/* MongoDB collections: JSON data import/export + drop. No SQL DDL
-            (structure editing is read-only / rename is unsupported for Mongo). */}
+        {/* MongoDB collections: empty + drop. JSON data import/export used to
+            live here too (#65) but has moved to the DataGrid toolbar's "Add
+            data"/"Export data" controls (see `TableDataTab.tsx`), which act on
+            the collection you're actually viewing instead of requiring a
+            tree round-trip. No SQL DDL (structure editing is read-only /
+            rename is unsupported for Mongo). */}
         {isMongo && !isView && (
           <>
-            <ContextMenuSeparator />
-            <ContextMenuAction
-              icon={Download}
-              label={ct("schema.exportCollection.title")}
-              onSelect={() => void exportCollectionJson()}
-            />
-            <ContextMenuAction
-              icon={Upload}
-              label={ct("schema.importCollection.title")}
-              onSelect={() => void importCollectionJson()}
-            />
             <ContextMenuSeparator />
             <ContextMenuAction
               icon={Eraser}

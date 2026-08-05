@@ -799,9 +799,32 @@ fn build_filter_clause(
     search: Option<&str>,
     search_columns: &[String],
 ) -> (String, Vec<Option<String>>) {
+    let (clause, binds, _) =
+        build_filter_clause_at(1, pg, pg_or_sqlite, filters, search, search_columns);
+    (clause, binds)
+}
+
+/// Same as [`build_filter_clause`], but starting the positional placeholder
+/// counter at `start_at` instead of always at 1, and returning the counter's
+/// final value alongside the usual `(clause, binds)`.
+///
+/// Needed when a `WHERE` built from this function is appended after a `SET`
+/// clause that already consumed some placeholders (bulk update, see
+/// `crate::commands::bulk`): Postgres numbers placeholders globally per
+/// statement, so the `WHERE` must continue the `SET`'s counter rather than
+/// restart at `$1`. MySQL/SQLite's `?` doesn't care about the number, so the
+/// threading is harmless there too.
+pub(crate) fn build_filter_clause_at(
+    start_at: usize,
+    pg: bool,
+    pg_or_sqlite: bool,
+    filters: &[ColumnFilter],
+    search: Option<&str>,
+    search_columns: &[String],
+) -> (String, Vec<Option<String>>, usize) {
     let mut binds: Vec<Option<String>> = Vec::new();
     let mut parts: Vec<String> = Vec::new();
-    let mut next_placeholder: usize = 1;
+    let mut next_placeholder: usize = start_at;
 
     // Next positional placeholder as a driver-appropriate string (`$N` on
     // Postgres, `?` elsewhere), advancing the counter.
@@ -964,9 +987,13 @@ fn build_filter_clause(
     }
 
     if parts.is_empty() {
-        return (String::new(), binds);
+        return (String::new(), binds, next_placeholder);
     }
-    (format!(" WHERE {}", parts.join(" AND ")), binds)
+    (
+        format!(" WHERE {}", parts.join(" AND ")),
+        binds,
+        next_placeholder,
+    )
 }
 
 /// Fetch one page of rows from `schema.table`.

@@ -57,6 +57,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   defaultColumnWidth,
   formatBitValue,
@@ -251,12 +252,28 @@ interface Props {
    */
   toolbarLeading?: ReactNode;
   /**
+   * Optional content rendered right beside the built-in "Insert" button, both
+   * living in the toolbar's right-aligned cluster. TableDataTab folds its
+   * "Add data"/"Export data"/"Bulk update" controls in here so every action
+   * that adds, exports, or mass-edits data reads as one group instead of
+   * being split across the toolbar.
+   */
+  insertExtra?: ReactNode;
+  /**
    * Optional content rendered on the TRAILING (right) side of the toolbar row,
-   * between the "Insert" button and the elapsed-time readout. TableDataTab
-   * folds its MongoDB table/list view toggle in here so it sits with the other
-   * right-aligned display controls instead of crowding the filter cluster.
+   * after `insertExtra`, before the elapsed-time readout. TableDataTab folds
+   * its MongoDB table/list view toggle in here.
    */
   toolbarTrailing?: ReactNode;
+  /**
+   * Optional second toolbar row, rendered below the grid body (a footer, not
+   * a header). TableDataTab folds its pagination range/prev/next/page-size
+   * and row-zoom controls in here — those are "how you're browsing", kept
+   * apart from the header's "what you're doing to the data" actions. Omitted
+   * entirely (no empty bar) when not provided, so query/view result tabs
+   * that don't paginate see no change.
+   */
+  footer?: ReactNode;
   /**
    * Whether to render the built-in "N rows of M" count in the toolbar
    * (default true). TableDataTab sets this false because its trailing slot
@@ -1036,7 +1053,9 @@ export function DataGrid({
   onDraftCommit,
   onDraftCancel,
   toolbarLeading,
+  insertExtra,
   toolbarTrailing,
+  footer,
   showRowCount = true,
   loading,
   viewMode = "table",
@@ -2153,11 +2172,13 @@ export function DataGrid({
     // `relative` allows CellPreview to be positioned absolute within this container.
     <div className="relative flex h-full flex-col">
       {/* Toolbar layout: leading actions (refresh · advanced filter) · growing
-          search box · Insert · filter chips  ——  then, right-aligned via the
-          cluster's `ml-auto`: optional row count · trailing slot (pagination ·
-          zoom · view toggle from TableDataTab) · elapsed time. The search box
-          flex-grows (capped) so it's the visual anchor, and Insert sits right
-          beside it as the other primary action. */}
+          search box · filter chips  ——  then, right-aligned via the cluster's
+          `ml-auto`: Insert · insertExtra (TableDataTab's Add/Export
+          data/Bulk update, grouped right beside Insert) · optional row count ·
+          trailing slot (view toggle) · elapsed time. The search box
+          flex-grows (capped) so it's the visual anchor on the left; every
+          action that adds, exports, or mass-edits data lives together on the
+          right instead of crowding the filter cluster. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs">
         {toolbarLeading}
         {toolbarLeading && (
@@ -2169,16 +2190,6 @@ export function DataGrid({
           onSubmit={onGlobalFilterSubmit}
           history={searchHistory ?? []}
         />
-        {onInsertRow && viewMode !== "list" && (
-          <button
-            className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
-            onClick={onInsertRow}
-            title={t("dataGrid.insertNewRow")}
-          >
-            <Plus className="h-3 w-3" />
-            {t("dataGrid.insert")}
-          </button>
-        )}
         {serverFilters?.map((f, i) => (
           <span
             key={`${f.column}-${f.op}-${i}`}
@@ -2216,12 +2227,26 @@ export function DataGrid({
             </button>
           </span>
         ))}
-        {/* Right-aligned display cluster. `ml-auto` opens the gap between the
-            growing search box (+ Insert + filter chips) on the left and this
-            group. Contents: optional row count (query/view tabs) · trailing
-            slot (TableDataTab's pagination + zoom + view toggle) · elapsed
-            time. Wrapped so the whole group wraps as a unit on narrow panes. */}
+        {/* Right-aligned cluster. `ml-auto` opens the gap between the growing
+            search box (+ filter chips) on the left and this group. Contents:
+            Insert · insertExtra (TableDataTab's Add/Export data/Bulk update)
+            · optional row count (query/view tabs) · trailing slot (view
+            toggle) · elapsed time. Wrapped so the whole group wraps as a unit
+            on narrow panes. */}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {onInsertRow && viewMode !== "list" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={onInsertRow}
+              title={t("dataGrid.insertNewRow")}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t("dataGrid.insert")}
+            </Button>
+          )}
+          {insertExtra}
           {showRowCount && (
             <span className="tabular-nums text-muted-foreground">
               <span className="font-medium text-foreground">
@@ -2524,6 +2549,18 @@ export function DataGrid({
           </div>
         )}
       </div>
+
+      {/* Footer: "how you're browsing" (zoom · pagination), kept apart from
+          the header's "what you're doing to the data" actions. No
+          `justify-end` here — the caller anchors its own left (zoom) and
+          right (pagination) groups so they land on opposite edges instead of
+          bunching together. Omitted entirely when the caller has nothing to
+          put here (query/view result tabs, which don't paginate). */}
+      {footer && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border bg-background px-3 py-1.5 text-xs">
+          {footer}
+        </div>
+      )}
 
       {/* Compact cell preview panel — gated by the `cellPreview` grid pref.
           When disabled, selecting a cell stays pure navigation (the heavy

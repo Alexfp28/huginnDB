@@ -345,7 +345,11 @@ pub(crate) fn describe_find(
 
 /// Build a Mongo filter document from the grid's column filters + free-text
 /// search. `_id` equality/inequality reconstructs the BSON `_id` (ObjectId-aware).
-fn build_filter(
+///
+/// `pub(crate)` (rather than private) so `commands::mongo::export_collection`
+/// can reuse it to scope a collection export to the DataGrid's current
+/// filter instead of always dumping the whole collection.
+pub(crate) fn build_filter(
     filters: &[ColumnFilter],
     search: Option<&str>,
     search_columns: &[String],
@@ -595,6 +599,54 @@ pub async fn insert_row(
 
     let res = coll.insert_one(document).await?;
     Ok(bson_to_json(&res.inserted_id))
+}
+
+/// Update every document matching `filters` with a `$set` built from
+/// `set_values` — the MongoDB analogue of the SQL bulk `UPDATE ... WHERE`
+/// built by `crate::commands::bulk`. Returns the modified-document count.
+pub async fn bulk_update(
+    conn: &MongoConn,
+    collection: &str,
+    filters: &[ColumnFilter],
+    set_values: &[RowValue],
+) -> AppResult<u64> {
+    let db = resolve_db(conn)?;
+    let coll = db.collection::<Document>(collection);
+    let filter = build_filter(filters, None, &[]);
+    let set_doc = set_document(set_values);
+    let r = coll.update_many(filter, doc! { "$set": set_doc }).await?;
+    Ok(r.modified_count)
+}
+
+/// Render the filter + `$set` [`bulk_update`] would run as a
+/// `db.<collection>.updateMany(...)`-style string, for the bulk-update
+/// preview dialog. Built from the same `build_filter`/`set_document` calls
+/// `bulk_update` uses, so the preview text can't drift from what actually
+/// executes.
+pub fn describe_bulk_update(
+    collection: &str,
+    filters: &[ColumnFilter],
+    set_values: &[RowValue],
+) -> String {
+    let filter = build_filter(filters, None, &[]);
+    let set_doc = set_document(set_values);
+    format!(
+        "db.{collection}.updateMany({}, {{ \"$set\": {} }})",
+        Bson::Document(filter).into_canonical_extjson(),
+        Bson::Document(set_doc).into_canonical_extjson()
+    )
+}
+
+/// Build the `$set` document shared by [`bulk_update`] and
+/// [`describe_bulk_update`] from column/value pairs (the same `RowValue`
+/// shape `insert_row` takes).
+fn set_document(set_values: &[RowValue]) -> Document {
+    let mut set_doc = Document::new();
+    for rv in set_values {
+        let bson = string_to_bson(rv.value.as_deref(), rv.column_type.as_deref());
+        set_doc.insert(rv.column.clone(), bson);
+    }
+    set_doc
 }
 
 #[cfg(test)]

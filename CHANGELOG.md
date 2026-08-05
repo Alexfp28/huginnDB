@@ -8,6 +8,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Bulk update** — update every row/document matching a filter in one
+  round trip, for all four drivers. A new "Bulk update…" toolbar button
+  opens a dialog that reuses the DataGrid's own advanced-filter condition
+  builder for the match side, plus a column/field → value editor for the
+  set side; a debounced preview shows the exact `UPDATE ... SET ... WHERE
+  ...` (or `db.<collection>.updateMany(...)` for MongoDB) and how many
+  rows currently match before anything runs. An empty filter is rejected
+  unless explicitly acknowledged, so a blank condition can't silently turn
+  into a full-table update.
+- **Export/import controls moved into the DataGrid toolbar.** MongoDB's
+  per-collection JSON export/import (previously only reachable from the
+  schema tree's right-click menu) and new SQL equivalents now live next to
+  the grid's "Insert" button: an "Export data" dropdown offers "export the
+  full table/collection" or "export query results" (scoped to the grid's
+  current advanced filter, unpaginated); MongoDB additionally gets an
+  "Import JSON…" entry in the same cluster. A new bottom toolbar row holds
+  pagination and row-zoom controls, separated from the header's data
+  actions.
+- **"Export database…" is now a proper dialog**, reachable from both a
+  connection's own context menu (pick one or more databases, and — per
+  database — which tables) and, in multi-DB mode, a specific database's own
+  menu (locked to that one database). Everything checked is written to a
+  single combined `.sql` file, with a "Data" mode choosing plain `INSERT`s
+  or a delete-then-insert form that survives re-running the dump against a
+  target that already has data. Replaces the old one-click, always-whole-
+  database export.
+- **"Import .sql…" is now a confirmation dialog** instead of a bare
+  browser-native confirm: it shows the statement count up front and, for a
+  multi-DB connection, lets you pick which database to run the file
+  against (or run it as-is, for a file that already addresses its own
+  database via `USE`/qualified names).
 - **Structure editor: categorised type picker.** The column type combo is
   now grouped by category (Integers/Real/Text/Date & time/Binary/Other, one
   catalog per driver) with a separate length/precision field, plus MySQL
@@ -21,6 +52,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- The schema tree's per-table (MongoDB) and per-schema (SQL) "Export…"/
+  "Import…" context-menu entries were removed now that the DataGrid toolbar
+  and the new connection-/database-level dialogs cover the same ground —
+  the per-schema entries in particular were mislabelled (they exported the
+  *whole database*, not the clicked schema). Connection-level and
+  per-database export/import remain in the tree. The "(Beta)" suffix on
+  "Export database…"/"Import .sql…" is gone.
 - The structure editor's columns table was redesigned with the app's own
   bordered/zebra-striped grid look instead of a bare `<table>` of plain
   inputs, with a key icon marking the primary key.

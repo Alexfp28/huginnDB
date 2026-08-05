@@ -14,6 +14,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppTab,
+  BulkUpdatePreview,
   CellValue,
   ColumnFilter,
   ColumnInfo,
@@ -22,7 +23,9 @@ import type {
   ConnectionProfile,
   ConnectionTabState,
   DatabaseInfo,
+  DataMode,
   Diagnostics,
+  ExportTarget,
   FeedbackKind,
   FkOptionsPage,
   IssueOutcome,
@@ -207,6 +210,37 @@ export const api = {
     original: TableStructure | null;
     desired: TableStructure;
   }) => invoke<void>("apply_structure_change", { args }),
+
+  /**
+   * Count how many rows/documents currently match a bulk update's filter,
+   * and return the statement that `applyBulkUpdate` would run — shown in
+   * the confirmation dialog before the user commits to the write. Never
+   * modifies data.
+   */
+  previewBulkUpdate: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    filters: ColumnFilter[];
+    setValues: RowValue[];
+    confirmUnfiltered?: boolean;
+  }) => invoke<BulkUpdatePreview>("preview_bulk_update", { args }),
+
+  /**
+   * Apply a bulk update: `UPDATE ... SET ... WHERE ...` for SQL,
+   * `update_many` with a `$set` for MongoDB. `filters` empty requires
+   * `confirmUnfiltered: true`, or the backend rejects the call — a blank
+   * filter can't silently become a full-table update. Returns the number
+   * of rows/documents actually modified.
+   */
+  applyBulkUpdate: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    filters: ColumnFilter[];
+    setValues: RowValue[];
+    confirmUnfiltered?: boolean;
+  }) => invoke<number>("apply_bulk_update", { args }),
 
   /** `DROP TABLE` for a catalog-sourced (schema, table) pair. */
   dropTable: (connectionId: string, schema: string | undefined, table: string) =>
@@ -581,12 +615,20 @@ export const api = {
   // Database export / import ------------------------------------------------
 
   /**
-   * Dump the target database of `connectionId` (schema + data) to a
-   * user-chosen `.sql` file — the save dialog is opened on the Rust side.
-   * Returns the written path. Rejects if the user cancels the dialog.
+   * Export one or more databases — each optionally scoped to a subset of
+   * its tables — into a single combined `.sql` file at `destPath`. Backs
+   * the connection-level and per-database "Export database…" dialog;
+   * `targets` carries already-resolved connection ids (the frontend opens
+   * any multi-DB synthetic `<parent>::db::<name>` pool itself before
+   * calling this), so the backend never has to resolve them. Unlike
+   * `exportTable`/`exportTableRows`, the save path is a caller-supplied
+   * argument, not a Rust-side dialog — the export dialog owns that field.
    */
-  exportDatabase: (connectionId: string) =>
-    invoke<string>("export_database", { connectionId }),
+  exportDatabases: (args: {
+    targets: ExportTarget[];
+    dataMode: DataMode;
+    destPath: string;
+  }) => invoke<string>("export_databases", args),
 
   /**
    * Read a text file at `filePath`. Used by the "Import .sql…" flow to load
@@ -596,11 +638,37 @@ export const api = {
   readTextFile: (filePath: string) =>
     invoke<string>("read_text_file", { filePath }),
 
-  /** Export a MongoDB collection's documents to a user-chosen `.json` file as
-   *  canonical Extended JSON (#65). The save dialog opens on the Rust side;
-   *  returns the written path. Rejects if the user cancels. */
-  exportCollection: (connectionId: string, collection: string) =>
-    invoke<string>("export_collection", { connectionId, collection }),
+  /**
+   * Export one SQL table (schema + data) to a user-chosen `.sql` file — the
+   * same format `exportDatabase` produces, scoped to a single table.
+   * Rejects MongoDB; use `exportCollection` for a collection.
+   */
+  exportTable: (connectionId: string, schema: string | undefined, table: string) =>
+    invoke<string>("export_table", { connectionId, schema, table }),
+
+  /**
+   * Export the rows of a SQL table matching `filters`/`search` as `INSERT`
+   * statements, without any DDL — "export query results" against the
+   * DataGrid's current advanced-filter state, not the whole table. No
+   * pagination limit. Rejects MongoDB.
+   */
+  exportTableRows: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    filters: ColumnFilter[];
+    search?: string;
+    searchColumns?: string[];
+  }) => invoke<string>("export_table_rows", args),
+
+  /**
+   * Export a MongoDB collection's documents matching `filters` (all of them
+   * when omitted/empty) to a user-chosen `.json` file as canonical Extended
+   * JSON (#65). The save dialog opens on the Rust side; returns the written
+   * path. Rejects if the user cancels.
+   */
+  exportCollection: (connectionId: string, collection: string, filters?: ColumnFilter[]) =>
+    invoke<string>("export_collection", { connectionId, collection, filters }),
 
   /** Import documents from `filePath` (JSON array / object / JSONL) into a
    *  MongoDB collection (#65). Returns the number of inserted documents. */

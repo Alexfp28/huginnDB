@@ -344,15 +344,35 @@
       "confirm": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor. No se puede deshacer."
     },
     "exportDatabase": {
-      "title": "Exportar base de datos… (Beta)",
+      "title": "Exportar base de datos…",
       "success": "Base de datos exportada a {{path}}"
     },
+    "exportDatabaseDialog": {
+      "title": "Exportar base de datos",
+      "description": "Elige qué base(s) de datos y tablas incluir. Todo lo marcado se escribe en un único archivo .sql combinado.",
+      "pickTitle": "Exportar base de datos",
+      "loadingTables": "Cargando tablas…",
+      "dataMode": "Datos",
+      "dataModeInsert": "Insertar",
+      "dataModeTruncateInsert": "Borrar filas existentes e insertar",
+      "destPath": "Archivo de salida",
+      "destPathPlaceholder": "Elige un archivo de destino…",
+      "browse": "Examinar…",
+      "export": "Exportar",
+      "exporting": "Exportando…",
+      "success": "Exportado a {{path}}"
+    },
     "importSql": {
-      "title": "Importar .sql… (Beta)",
+      "title": "Importar .sql…",
       "pickTitle": "Importar fichero SQL",
-      "confirm": "¿Ejecutar {{count}} sentencia(s) de este fichero contra la conexión activa? Esto puede modificar o borrar datos y no se puede deshacer.",
+      "confirm": "¿Ejecutar {{count}} sentencia(s) de este fichero? Esto puede modificar o borrar datos y no se puede deshacer.",
       "success": "Importación terminada — se ejecutaron {{count}} sentencia(s).",
       "failed": "Importación detenida en la sentencia {{index}}: {{message}}"
+    },
+    "importSqlDialog": {
+      "targetDatabase": "Base de datos destino",
+      "targetAsIs": "Ejecutar tal cual (el archivo ya especifica la base de datos)",
+      "running": "Ejecutando…"
     },
     "exportCollection": {
       "title": "Exportar colección (JSON)…",
@@ -491,6 +511,33 @@
         "is_null": "es nulo",
         "is_not_null": "no es nulo"
       }
+    },
+    "exportData": {
+      "label": "Exportar datos",
+      "table": "Exportar la tabla completa",
+      "queryResults": "Exportar resultado de la consulta",
+      "tableSuccess": "Tabla exportada a {{path}}",
+      "rowsSuccess": "Filas exportadas a {{path}}"
+    },
+    "bulkUpdate": {
+      "toolbarTitle": "Actualizar varias filas/documentos a la vez",
+      "toolbarLabel": "Actualización masiva…",
+      "titleRows": "Actualizar filas que coincidan",
+      "titleDocuments": "Actualizar documentos que coincidan",
+      "description": "Asigna uno o más valores de columna/campo a cada fila o documento que cumpla las condiciones siguientes.",
+      "matchLabel": "Condición",
+      "matchEmpty": "Sin condiciones — coincidirán todas las filas/documentos.",
+      "addCondition": "Añadir condición",
+      "confirmUnfiltered": "Actualizar todas las filas/documentos (sin filtro)",
+      "setLabel": "Asignar",
+      "setEmpty": "Aún no hay campos que asignar — añade uno abajo.",
+      "addField": "Añadir campo",
+      "setValuePlaceholder": "Nuevo valor",
+      "previewLabel": "Vista previa",
+      "previewLoading": "Contando filas coincidentes…",
+      "affected": "Se actualizarán {{count}} fila(s)/documento(s).",
+      "apply": "Aplicar",
+      "applying": "Aplicando…"
     }
   },
   "structure": {

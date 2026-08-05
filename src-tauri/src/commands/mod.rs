@@ -6,6 +6,7 @@
 //! to the [`crate::db`] / [`crate::keychain`] helpers.
 
 pub mod app;
+pub mod bulk;
 pub mod connection;
 pub mod credentials;
 pub mod dump;

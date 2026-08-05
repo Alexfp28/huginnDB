@@ -12,6 +12,8 @@
 //! the `bson` crate (see `Cargo.toml`), so fidelity matches MongoDB's spec for
 //! every BSON type — not just the common tags the grid's own converter handles.
 
+use crate::commands::query::ColumnFilter;
+use crate::db::mongo::query::build_filter;
 use crate::db::mongo::schema::resolve_db;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
@@ -38,20 +40,28 @@ fn mongo_conn(pool: &DbPool) -> AppResult<&crate::state::MongoConn> {
     }
 }
 
-/// Export every document of `collection` to a user-chosen `.json` file as a
-/// canonical Extended JSON array. Streams straight from the cursor to the file
-/// so a large collection isn't fully buffered in memory. Returns the written
-/// path; rejects if the user cancels the save dialog.
+/// Export the documents of `collection` matching `filters` (all of them when
+/// empty) to a user-chosen `.json` file as a canonical Extended JSON array.
+/// Streams straight from the cursor to the file so a large collection isn't
+/// fully buffered in memory. Returns the written path; rejects if the user
+/// cancels the save dialog.
+///
+/// `filters` reuses the same [`ColumnFilter`] shape the DataGrid's advanced
+/// filter already builds for `fetch_collection_data` — an empty list keeps
+/// today's "export the full collection" behaviour, a non-empty one scopes the
+/// export to "export query results" instead, via [`build_filter`].
 #[tauri::command]
 pub async fn export_collection(
     app: AppHandle,
     state: State<'_, AppState>,
     connection_id: String,
     collection: String,
+    filters: Option<Vec<ColumnFilter>>,
 ) -> AppResult<String> {
     let pool = pool_for(state.inner(), &connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;
+    let filters = filters.unwrap_or_default();
 
     use tauri_plugin_dialog::DialogExt;
     let suggested = format!("{collection}.json");
@@ -66,7 +76,12 @@ pub async fn export_collection(
     let dest = path.to_string();
 
     let coll = db.collection::<Document>(&collection);
-    let mut cursor = coll.find(doc! {}).await?;
+    let query_filter = if filters.is_empty() {
+        doc! {}
+    } else {
+        build_filter(&filters, None, &[])
+    };
+    let mut cursor = coll.find(query_filter).await?;
     let mut w = std::io::BufWriter::new(std::fs::File::create(&dest)?);
     write!(w, "[")?;
     let mut first = true;
