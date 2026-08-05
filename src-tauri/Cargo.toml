@@ -62,6 +62,34 @@ mongodb = { version = "3", default-features = false, features = [
 # serde_json::Value>`) used by the MongoDB collection import/export (#65). No
 # new crate enters the tree: both `bson` and `serde_json` are already deps.
 bson = { version = "3", features = ["serde_json-1"] }
+# Microsoft SQL Server (TDS). `sqlx` dropped its MSSQL driver after 0.6 and 0.8
+# has no replacement, so this cannot be "one more sqlx feature" — it is a
+# separate client with its own connection model, closer to the `mongodb` case.
+# `tiberius` is the only pure-Rust TDS implementation; its last release is
+# 0.12.3 (July 2024) though the repo is still active, which is a maintenance
+# risk we accept knowingly (a `[patch.crates-io]` fork is the escape hatch).
+#
+# `default-features = false` drops `native-tls`, which would mean schannel on
+# Windows but an OpenSSL *system* build dependency on the Linux CI leg. The
+# `rustls` feature keeps the tree pure-Rust at the cost of pulling
+# `tokio-rustls 0.24` (rustls 0.21) alongside the rustls 0.23 that
+# sqlx/mongodb/russh/reqwest already share — a second rustls *version*, not a
+# second TLS stack. Reviewed and accepted as the lesser evil; revisit on any
+# `cargo update` that lets tiberius move to rustls 0.23.
+#
+# `tds73` = TDS 7.3 (SQL Server 2008+ date/time types). `chrono` +
+# `rust_decimal` are what `ColumnData` needs to hand back real temporal and
+# numeric values instead of opaque bytes. `sql-browser-tokio` provides
+# `TcpStream::connect_named`, which resolves a named instance
+# (`HOST\SQLEXPRESS`) through the SQL Browser's UDP 1434 service — very common
+# in the on-prem installs this driver exists for.
+tiberius = { version = "0.12", default-features = false, features = [
+    "rustls",
+    "tds73",
+    "chrono",
+    "rust_decimal",
+    "sql-browser-tokio",
+] }
 keyring = { version = "3", features = [
     "windows-native",
     "apple-native",
@@ -80,7 +108,10 @@ russh = { version = "0.60", default-features = false, features = [
     "flate2",
     "rsa",
 ] }
-tokio-util = { version = "0.7", features = ["rt"] }
+# `compat` (new here) bridges tokio's `AsyncRead`/`AsyncWrite` to the
+# `futures-io` traits `tiberius` is written against, so its client can be
+# driven over a plain `tokio::net::TcpStream`.
+tokio-util = { version = "0.7", features = ["rt", "compat"] }
 # HTTP client for the in-app issue reporter (commands::feedback). rustls so it
 # reuses the ring/rustls tree already pulled by sqlx/mongodb/russh — no second
 # TLS stack, no OpenSSL/system build dep. `json` for the GitHub REST payload.
@@ -107,6 +138,13 @@ rmcp = { version = "2.2", features = [
 # derive macro emits absolute `schemars::` paths.
 schemars = { version = "1", optional = true }
 anyhow = { version = "1", optional = true }
+
+# `AuthMethod::Windows` (NTLM with an explicit `DOMAIN\user` + password) is
+# gated to `cfg(windows)` inside tiberius, so the feature that backs it can
+# only be enabled there. The Linux CI leg compiles the same source with the
+# SQL Server auth mode limited to SQL logins; see `db::mssql::auth`.
+[target.'cfg(windows)'.dependencies]
+tiberius = { version = "0.12", default-features = false, features = ["winauth"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
