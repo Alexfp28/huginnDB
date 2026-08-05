@@ -24,6 +24,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Bot,
   Copy,
+  Database,
   ExternalLink,
   Eye,
   FolderTree,
@@ -76,6 +77,33 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.12.1",
+    major: true,
+    taglineKey: "whatsNew.releases.1_12_1.tagline",
+    highlights: [
+      {
+        icon: Database,
+        titleKey: "whatsNew.releases.1_12_1.items.exportImport.title",
+        bodyKey: "whatsNew.releases.1_12_1.items.exportImport.body",
+      },
+      {
+        icon: Copy,
+        titleKey: "whatsNew.releases.1_12_1.items.bulkUpdate.title",
+        bodyKey: "whatsNew.releases.1_12_1.items.bulkUpdate.body",
+      },
+      {
+        icon: Tags,
+        titleKey: "whatsNew.releases.1_12_1.items.structureEditor.title",
+        bodyKey: "whatsNew.releases.1_12_1.items.structureEditor.body",
+      },
+      {
+        icon: Pencil,
+        titleKey: "whatsNew.releases.1_12_1.items.tableRename.title",
+        bodyKey: "whatsNew.releases.1_12_1.items.tableRename.body",
+      },
+    ],
+  },
   {
     version: "1.12.0",
     major: true,

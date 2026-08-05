@@ -1044,6 +1044,27 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_12_1": {
+        "tagline": "Exportación e importación con rediseño completo — diálogos a nivel de conexión y de base de datos, más atajos en la barra de la rejilla — junto con una herramienta de actualización masiva y un editor de estructura renovado.",
+        "items": {
+          "exportImport": {
+            "title": "Rediseño de exportación/importación",
+            "body": "\"Exportar base de datos…\" es ahora un diálogo que cubre una o varias bases de datos (y, por base de datos, qué tablas) en un único fichero .sql combinado; \"Importar .sql…\" previsualiza el número de sentencias y deja elegir destino en conexiones multi-BD. La barra de la rejilla ganó su propio \"Exportar datos\" (tabla completa o resultados de la consulta) y, en MongoDB, \"Importar JSON…\"."
+          },
+          "bulkUpdate": {
+            "title": "Actualización masiva",
+            "body": "Actualiza todas las filas/documentos que coincidan con un filtro en una sola operación, para los cuatro drivers — reutiliza el constructor de filtro avanzado de la rejilla para la parte del `WHERE` y previsualiza la sentencia exacta antes de ejecutarla."
+          },
+          "structureEditor": {
+            "title": "Selector de tipo categorizado",
+            "body": "El combo de tipo de columna del editor de estructura ahora se agrupa por categoría (Enteros/Reales/Texto/Fecha y hora/Binario/Otro) con su propio campo de longitud/precisión y las casillas unsigned/zerofill de MySQL, más una tabla de columnas rediseñada a juego con el aspecto propio de la app."
+          },
+          "tableRename": {
+            "title": "Renombrar una tabla vuelve a funcionar",
+            "body": "El campo Nombre es editable al editar una tabla, y aplicar un renombrado actualiza el título de todas las pestañas abiertas en vez de dejar mostrado el nombre antiguo."
+          }
+        }
+      },
       "1_12_0": {
         "tagline": "Los entornos agrupan tus conexiones en sesiones con nombre y cambiables — con orígenes compartidos para sincronizarlas en equipo, las conexiones ahora en el árbol de esquema, y una experiencia de ejecución de consultas rediseñada.",
         "items": {

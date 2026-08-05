@@ -8,13 +8,91 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.12.1] — 2026-08-05
+
+### Añadido
+
+- **Actualización masiva** — actualiza todas las filas/documentos que
+  coincidan con un filtro en una sola operación, para los cuatro drivers.
+  Un nuevo botón "Actualización masiva…" en la barra de herramientas abre
+  un diálogo que reutiliza el constructor de condiciones de filtro
+  avanzado de la propia rejilla para la parte del `WHERE`, más un editor
+  columna/campo → valor para la parte del `SET`; una previsualización con
+  debounce muestra el `UPDATE ... SET ... WHERE ...` exacto (o el
+  `db.<collection>.updateMany(...)` en MongoDB) y cuántas filas coinciden
+  actualmente antes de ejecutar nada. Un filtro vacío se rechaza salvo
+  confirmación explícita, para que una condición en blanco no pueda
+  convertirse silenciosamente en una actualización de toda la tabla.
+- **Los controles de exportación/importación se movieron a la barra de
+  herramientas de la rejilla de datos.** La exportación/importación JSON
+  por colección de MongoDB (antes solo accesible desde el menú de clic
+  derecho del árbol de esquema) y sus nuevos equivalentes SQL viven ahora
+  junto al botón "Insertar" de la rejilla: un desplegable "Exportar datos"
+  ofrece "exportar toda la tabla/colección" o "exportar resultados de la
+  consulta" (limitado al filtro avanzado actual de la rejilla, sin
+  paginar); MongoDB añade además una entrada "Importar JSON…" en el mismo
+  grupo. Una nueva fila inferior de la barra de herramientas aloja la
+  paginación y el zoom de filas, separados de las acciones de datos de la
+  cabecera.
+- **"Exportar base de datos…" es ahora un diálogo propio**, accesible
+  tanto desde el menú de clic derecho de una conexión (elige una o varias
+  bases de datos y, por base de datos, qué tablas) como, en modo
+  multi-BD, desde el menú de una base de datos concreta (fijado a esa
+  única base de datos). Todo lo marcado se escribe en un único fichero
+  `.sql` combinado, con un modo "Datos" que elige entre `INSERT`s planos o
+  una forma de borrado-e-inserción que sobrevive a volver a ejecutar el
+  volcado contra un destino que ya tiene datos. Sustituye a la antigua
+  exportación de un clic, siempre de la base de datos completa.
+- **"Importar .sql…" es ahora un diálogo de confirmación** en vez de un
+  simple `confirm` nativo del navegador: muestra el número de sentencias
+  por adelantado y, para una conexión multi-BD, permite elegir contra qué
+  base de datos ejecutar el fichero (o ejecutarlo tal cual, para un
+  fichero que ya referencia su propia base de datos vía `USE`/nombres
+  cualificados).
+- **Editor de estructura: selector de tipo categorizado.** El combo de
+  tipo de columna ahora se agrupa por categoría (Enteros/Reales/
+  Texto/Fecha y hora/Binario/Otro, un catálogo por driver) con un campo
+  de longitud/precisión aparte, más las casillas unsigned/zerofill de
+  MySQL — primera pasada de un rediseño más amplio, al estilo HeidiSQL,
+  de la creación/edición de tablas.
+- **Renombrar una tabla desde el editor de estructura** ahora funciona: el
+  campo Nombre vuelve a ser editable en modo edición, y aplicar un
+  renombrado actualiza el título de la pestaña abierta (y cualquier otra
+  pestaña abierta de esa tabla) en vez de dejar mostrado el nombre
+  antiguo. El diálogo de renombrado rápido del árbol de esquema recibió el
+  mismo arreglo.
+
 ### Cambiado
 
+- Las entradas de menú contextual "Exportar…"/"Importar…" por tabla
+  (MongoDB) y por esquema (SQL) del árbol de esquema se eliminaron ahora
+  que la barra de herramientas de la rejilla y los nuevos diálogos a
+  nivel de conexión/base de datos cubren lo mismo — las entradas por
+  esquema en particular estaban mal etiquetadas (exportaban la *base de
+  datos completa*, no el esquema pulsado). La exportación/importación a
+  nivel de conexión y de base de datos se mantienen en el árbol. El
+  sufijo "(Beta)" de "Exportar base de datos…"/"Importar .sql…" ha
+  desaparecido.
+- La tabla de columnas del editor de estructura se rediseñó con el
+  aspecto propio de la app (bordes y filas en cebra) en vez de una
+  `<table>` desnuda de inputs planos, con un icono de llave marcando la
+  clave primaria.
 - Al arrastrar una pestaña de tabla/consulta para dividir el espacio de
   trabajo, ahora se distingue claramente entre "dividir en esta dirección"
   y "añadir como pestaña aquí" en vez de un único resaltado plano, y los
   paneles vecinos se ajustan a su nuevo tamaño con una transición suave en
   vez de saltar de golpe.
+
+### Corregido
+
+- El constructor de `ALTER` del editor de estructura (Postgres/MySQL/
+  SQLite) nunca emitía un `RENAME TO` a nivel de tabla, aunque ya
+  manejaba el renombrado de columnas; la ruta de reconstrucción
+  destructiva de SQLite tenía el mismo bug especular en su fuente de
+  `INSERT`/`DROP`. Ambos arreglados.
+- El job de CI de `rustfmt` fallaba en todas las ejecuciones (no de forma
+  intermitente) por una línea sin formatear que quedó de un commit
+  anterior.
 
 ## [1.12.0] — 2026-08-03
 

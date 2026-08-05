@@ -1044,6 +1044,27 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_12_1": {
+        "tagline": "Export and import get a proper redesign — connection- and database-level dialogs, plus grid-toolbar shortcuts — alongside a bulk update tool and a reworked structure editor.",
+        "items": {
+          "exportImport": {
+            "title": "Export/import redesign",
+            "body": "\"Export database…\" is now a dialog covering one or more databases (and, per database, which tables) into a single combined .sql file; \"Import .sql…\" previews the statement count and lets multi-DB connections pick a target. The grid toolbar gained its own \"Export data\" (full table or query results) and, for MongoDB, \"Import JSON…\"."
+          },
+          "bulkUpdate": {
+            "title": "Bulk update",
+            "body": "Update every row/document matching a filter in one round trip, for all four drivers — reuses the grid's advanced-filter builder for the match side and previews the exact statement before running."
+          },
+          "structureEditor": {
+            "title": "Categorised type picker",
+            "body": "The structure editor's column type combo is now grouped by category (Integers/Real/Text/Date & time/Binary/Other) with its own length/precision field and MySQL unsigned/zerofill checkboxes, plus a redesigned columns table matching the app's own grid look."
+          },
+          "tableRename": {
+            "title": "Renaming a table works again",
+            "body": "The Name field is editable when editing a table, and applying a rename updates every open tab's title instead of leaving the old name showing."
+          }
+        }
+      },
       "1_12_0": {
         "tagline": "Environments group your connections into named, switchable sessions — with shared origins to sync them across a team, connections now living in the schema tree, and a redesigned query run experience.",
         "items": {
