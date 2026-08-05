@@ -7,6 +7,8 @@
  * kept on the Rust side; this file is for UI knobs only.
  */
 
+import type { Driver } from "@/types";
+
 /** Default rows-per-page selected when opening a table tab. */
 export const DEFAULT_PAGE_SIZE = 100;
 
@@ -22,7 +24,8 @@ export const DEFAULT_PORTS = {
   mysql: 3306,
   sqlite: 0,
   mongodb: 27017,
-} as const;
+  sqlserver: 1433,
+} as const satisfies Record<Driver, number>;
 
 /** Width of the sidebar (in % of the main area) on first launch. */
 export const SIDEBAR_DEFAULT_PERCENT = 20;

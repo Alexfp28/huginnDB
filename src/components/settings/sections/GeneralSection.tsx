@@ -87,6 +87,12 @@ export function GeneralSection() {
             <SelectItem value="sqlite" className="text-xs">
               SQLite
             </SelectItem>
+            <SelectItem value="mongodb" className="text-xs">
+              MongoDB
+            </SelectItem>
+            <SelectItem value="sqlserver" className="text-xs">
+              SQL Server
+            </SelectItem>
           </SelectContent>
         </Select>
       </PrefRow>

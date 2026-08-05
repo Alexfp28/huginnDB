@@ -30,6 +30,11 @@ const DRIVER_LOGO: Record<
     needsLightBacking: true,
   },
   mongodb: { src: "/image/db/mongodb.svg", label: "MongoDB" },
+  // Not the official Microsoft mark: a neutral database glyph in SQL Server's
+  // brand red, so the tile reads as "a database engine" without shipping a
+  // trademarked logo. Swap in the simple-icons `microsoftsqlserver` file if
+  // brand parity with the other four is wanted.
+  sqlserver: { src: "/image/db/sqlserver.svg", label: "SQL Server" },
 };
 
 /** Official display label for a driver (mirrors the logo map). */

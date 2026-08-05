@@ -73,6 +73,7 @@ import type {
   ConnectionProfile,
   Driver,
   HostKeyPolicy,
+  MsSqlAuth,
   SshAuth,
   SshTunnel,
 } from "@/types";
@@ -158,6 +159,20 @@ export function ConnectionDialog({
    *  fields are disabled. */
   const [mongoUriManual, setMongoUriManual] = useState(false);
 
+  // SQL Server fields ------------------------------------------------------
+  /** Named instance (`SQLEXPRESS`). Non-empty makes the port irrelevant: the
+   *  SQL Browser resolves the instance's own dynamic port. */
+  const [mssqlInstance, setMssqlInstance] = useState("");
+  /** Accept a self-signed server certificate — required by most on-prem
+   *  instances for an encrypted connection to come up at all. */
+  const [mssqlTrustCert, setMssqlTrustCert] = useState(true);
+  const [mssqlAuth, setMssqlAuth] = useState<MsSqlAuth>("sql");
+  /** Windows-only auth modes are hidden elsewhere — the backend refuses them
+   *  on other platforms because the driver's NTLM support is `cfg(windows)`. */
+  const isWindows =
+    typeof navigator !== "undefined" &&
+    navigator.userAgent.toLowerCase().includes("windows");
+
   // SSH tunnel fields ------------------------------------------------------
   const [sshEnabled, setSshEnabled] = useState(false);
   const [sshHost, setSshHost] = useState("");
@@ -203,6 +218,9 @@ export function ConnectionDialog({
       setConnectionString(p.connection_string ?? "");
       setAuthSource(p.auth_source ?? "");
       setPassword("");
+      setMssqlInstance(p.mssql?.instance ?? "");
+      setMssqlTrustCert(p.mssql?.trust_server_certificate ?? true);
+      setMssqlAuth(p.mssql?.auth ?? "sql");
 
       // MongoDB: decide form vs raw-edit mode. A stored URI we can parse back
       // into the discrete fields opens in form mode (re-populating host / port
@@ -268,6 +286,9 @@ export function ConnectionDialog({
       setConnectionString("");
       setAuthSource("");
       setMongoUriManual(false);
+      setMssqlInstance("");
+      setMssqlTrustCert(true);
+      setMssqlAuth("sql");
 
       setSshEnabled(false);
       setSshHost("");
@@ -543,6 +564,14 @@ export function ConnectionDialog({
       auth_source:
         driver === "mongodb" && !mongoUriManual
           ? authSource.trim() || null
+          : null,
+      mssql:
+        driver === "sqlserver"
+          ? {
+              instance: mssqlInstance.trim() || null,
+              trust_server_certificate: mssqlTrustCert,
+              auth: mssqlAuth,
+            }
           : null,
     };
   }
@@ -1008,7 +1037,13 @@ export function ConnectionDialog({
                         </SelectTrigger>
                         <SelectContent>
                           {(
-                            ["postgres", "mysql", "sqlite", "mongodb"] as const
+                            [
+                              "postgres",
+                              "mysql",
+                              "sqlite",
+                              "mongodb",
+                              "sqlserver",
+                            ] as const
                           ).map((d) => (
                             <SelectItem key={d} value={d}>
                               <span className="flex items-center gap-2">
@@ -1164,6 +1199,73 @@ export function ConnectionDialog({
                           </Label>
                           <Switch checked={ssl} onCheckedChange={setSsl} />
                         </div>
+                        {driver === "sqlserver" && (
+                          <>
+                            <Field
+                              label={t("connectionDialog.fields.mssqlInstance")}
+                            >
+                              <Input
+                                value={mssqlInstance}
+                                onChange={(e) =>
+                                  setMssqlInstance(e.target.value)
+                                }
+                                placeholder={t(
+                                  "connectionDialog.fields.mssqlInstancePlaceholder",
+                                )}
+                              />
+                            </Field>
+                            <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                              <div className="pr-3">
+                                <Label className="text-sm">
+                                  {t("connectionDialog.fields.mssqlTrustCert")}
+                                </Label>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  {t(
+                                    "connectionDialog.fields.mssqlTrustCertHint",
+                                  )}
+                                </p>
+                              </div>
+                              <Switch
+                                checked={mssqlTrustCert}
+                                onCheckedChange={setMssqlTrustCert}
+                              />
+                            </div>
+                            {/* NTLM is only compiled into Windows builds (the
+                                driver gates `AuthMethod::Windows` at compile
+                                time), so don't offer a mode that can only
+                                fail elsewhere. */}
+                            {isWindows && (
+                              <Field
+                                label={t("connectionDialog.fields.mssqlAuth")}
+                              >
+                                <Select
+                                  value={mssqlAuth}
+                                  onValueChange={(v) =>
+                                    setMssqlAuth(v as MsSqlAuth)
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    {t(
+                                      `connectionDialog.fields.mssqlAuth_${mssqlAuth}`,
+                                    )}
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="sql">
+                                      {t(
+                                        "connectionDialog.fields.mssqlAuth_sql",
+                                      )}
+                                    </SelectItem>
+                                    <SelectItem value="windows">
+                                      {t(
+                                        "connectionDialog.fields.mssqlAuth_windows",
+                                      )}
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            )}
+                          </>
+                        )}
                       </>
                     ) : (
                       <Field label={t("connectionDialog.fields.sqlitePath")}>
