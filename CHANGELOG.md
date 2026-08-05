@@ -6,6 +6,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Microsoft SQL Server driver** — the fifth engine, requested by users
+  running HuginnDB against SQL Server. Connect (with SSH tunnel support),
+  browse databases/schemas/tables/views/indexes with row counts and sizes,
+  run T-SQL in the editor, page/sort/filter the grid, edit cells, insert and
+  delete rows, bulk update, and the users/permissions panel. Named instances
+  (`HOST\SQLEXPRESS`) are resolved through the SQL Browser, and a "trust
+  server certificate" toggle — on by default — makes the self-signed
+  certificates most on-premise instances present usable. On Windows builds the
+  connection dialog also offers Windows (NTLM) authentication with an explicit
+  `DOMAIN\user`; the mode is hidden elsewhere because the underlying driver
+  only compiles it for Windows.
+- Minimum supported server is **SQL Server 2012**: paging uses
+  `OFFSET … ROWS FETCH NEXT … ROWS ONLY`, which does not exist before that.
+
+### Fixed
+
+- The MCP connector's write-policy classifier treated two T-SQL statements as
+  reads: `SELECT … INTO <table>` (which creates a table) and `EXEC`/`EXECUTE`
+  (which can rename objects or run dynamic DDL). Both are now classified as
+  DDL, so a `read-only` or `data`-tier connection refuses them.
+- The MCP `list_connections` tool reported the driver from a `Debug`
+  representation, so a MongoDB connection came back as `"mongo"` instead of the
+  `"mongodb"` every other surface uses.
+
+### Known limitations (SQL Server)
+
+- The **structure editor is read-only**: columns, keys, indexes and foreign
+  keys are shown, but applying changes needs a T-SQL DDL builder that isn't
+  written yet. Renaming a table (`sp_rename`) and the **view editor** are
+  unavailable for the same reason.
+- **`.sql` export/import** is not available yet; it needs a T-SQL literal
+  encoder and `IDENTITY_INSERT` handling.
+- Integrated/SSPI authentication (log in as the current Windows user without
+  typing credentials) and Entra ID tokens are not offered.
+- A named instance cannot be combined with an SSH tunnel: the SQL Browser is a
+  separate UDP service the tunnel doesn't forward. Tunnel the instance's own
+  TCP port and leave the instance field empty.
+
 ## [1.12.1] — 2026-08-05
 
 ### Added

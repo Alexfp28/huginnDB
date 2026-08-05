@@ -107,14 +107,41 @@ Long-form messages are expected for non-trivial changes. Explain *why* the chang
 
 ## Adding a new database driver
 
-Adding support for a fourth driver (MSSQL, ClickHouse, etc.) touches:
+Adding a sixth driver (ClickHouse, DuckDB, etc.) touches:
 
-1. `Cargo.toml` — enable the relevant `sqlx` feature.
-2. `src-tauri/src/state.rs` — extend the `Driver` and `DbPool` enums.
-3. `src-tauri/src/db/pool.rs` — URL builder + pool constructor.
-4. `src-tauri/src/db/values.rs` — row → JSON extraction.
-5. `src-tauri/src/commands/schema.rs` — introspection queries.
-6. `src/lib/constants.ts` and `src/components/connection/dialogs/ConnectionDialog.tsx` — default port + UI.
+1. `Cargo.toml` — the driver crate. **Not necessarily a `sqlx` feature**: `sqlx`
+   0.8 covers Postgres/MySQL/SQLite only, so MongoDB (`mongodb`) and SQL Server
+   (`tiberius`) each bring their own client — and, in SQL Server's case, its own
+   connection pool, since `tiberius` has none. Discuss the dependency first
+   (see the small-tree preference in `CLAUDE.md`).
+2. `src-tauri/src/state.rs` — extend the `Driver` and `DbPool` enums, plus
+   `Driver::wire_name`. Any driver-specific connection settings go in a nested
+   struct (`MsSqlOptions`-style), not as new top-level profile fields.
+3. `src-tauri/src/db/sql.rs` — add a `Dialect` variant. This is where identifier
+   quoting, placeholders, the text cast, `LIKE` semantics and pagination live;
+   getting it right here means most of the command layer needs no per-driver
+   code at all.
+4. `src-tauri/src/db/pool.rs` — connection construction (URL builder for a
+   `sqlx` driver, or an early return into your own module otherwise) +
+   `smoke_test`, and `src-tauri/src/keepalive.rs` — the liveness ping.
+5. Row → JSON decoding: `src-tauri/src/db/values.rs` for a `sqlx` driver, or a
+   `values.rs` inside your own module (see `db/mssql/`, `db/mongo/`).
+6. `src-tauri/src/commands/` — the compiler will point at every `match` on
+   `DbPool` that needs an arm: `schema.rs` (introspection), `query.rs`
+   (execute/browse/count/insert/update/delete/FK lookups), `bulk.rs`,
+   `structure.rs`, `view.rs`, `dump.rs`, `connection.rs`. Watch for arms that
+   are *not* exhaustive-checked; a `_ =>` here silently routes a new driver
+   down another engine's path.
+7. DDL, if you implement it: `src-tauri/src/db/ddl.rs`, `db/view_ddl.rs` and
+   `db/dump.rs`. All three are pure builders with unit tests — start there.
+8. Frontend: `src/types.ts` (the `Driver` union), `src/lib/constants.ts`
+   (default port), `src/components/common/DriverBadge.tsx` + an SVG in
+   `public/image/db/`, `src/lib/db/driver.ts` (CLI aliases + capability gates),
+   `src/lib/db/columnTypes.ts`, `src/lib/sql/sqlKeywords.ts`,
+   `src/components/connection/dialogs/ConnectionDialog.tsx` and
+   `AdHocDriverDialog.tsx`, `src/components/settings/sections/GeneralSection.tsx`,
+   and **both** i18n locales. `DriverBadge`'s `Record<Driver, …>` is the only
+   thing that fails to compile; the rest are hardcoded lists `tsc` can't see.
 
 Open an issue first if you're planning this so we can agree on the scope.
 

@@ -10,7 +10,7 @@
 [![Made with Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust)](https://www.rust-lang.org)
 [![Frontend: React + TS](https://img.shields.io/badge/React-TypeScript-3178c6?logo=typescript)](https://www.typescriptlang.org)
 
-HuginnDB is a cross-platform desktop client for **PostgreSQL**, **MySQL**, **SQLite**, and **MongoDB**. It pairs a minimalist UI with a first-class cell editor and a Monaco-powered SQL workspace — the goal is to make routine database work feel as fluid as your text editor. A headless [MCP connector](docs/MCP.md) (`huginndb-mcp`) exposes the same connections to AI coding tools like Claude Code, Claude Desktop, and Cursor.
+HuginnDB is a cross-platform desktop client for **PostgreSQL**, **MySQL**, **SQLite**, **MongoDB**, and **Microsoft SQL Server**. It pairs a minimalist UI with a first-class cell editor and a Monaco-powered SQL workspace — the goal is to make routine database work feel as fluid as your text editor. A headless [MCP connector](docs/MCP.md) (`huginndb-mcp`) exposes the same connections to AI coding tools like Claude Code, Claude Desktop, and Cursor.
 
 </div>
 
@@ -49,7 +49,7 @@ It's named after [Huginn](https://en.wikipedia.org/wiki/Huginn_and_Muninn), one 
 
 ## Features
 
-- **Multi-driver connection manager.** PostgreSQL, MySQL, SQLite, and MongoDB, each with a per-driver dialog and the right defaults, plus SSH tunnelling for remote hosts.
+- **Multi-driver connection manager.** PostgreSQL, MySQL, SQLite, MongoDB, and SQL Server, each with a per-driver dialog and the right defaults, plus SSH tunnelling for remote hosts.
 - **Schema explorer.** Tree of databases → tables/views/collections → columns (with type badges and primary-key indicators) and indexes.
 - **Data browser.** Paginated, sortable, filterable grid built on [TanStack Table](https://tanstack.com/table). Inline cell edits are routed through the backend with PK-based safety.
 - **Expanded cell editor.** Pop any cell into a Monaco editor with auto-detected JSON / XML / SQL highlighting, format/beautify, live JSON validation, and an `F11` fullscreen toggle.
@@ -246,7 +246,8 @@ The full, current roadmap — what's shipped, what's open, ordered by priority
 
 1. Bulk row insert in the data browser (bulk delete already shipped).
 2. Schema diff and export (DDL extraction, side-by-side compare).
-3. More drivers — Microsoft SQL Server, ClickHouse, DuckDB.
+3. More drivers — ClickHouse, DuckDB (Microsoft SQL Server shipped; its DDL
+   surface is still pending).
 4. Tighter CSP for the webview.
 
 Have a different priority? Open a [feature request](.github/ISSUE_TEMPLATE/feature_request.md).

@@ -8,6 +8,48 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Añadido
+
+- **Driver de Microsoft SQL Server** — el quinto motor, pedido por usuarios
+  que usan HuginnDB contra SQL Server. Conectar (con soporte de túnel SSH),
+  explorar bases de datos/esquemas/tablas/vistas/índices con recuento de filas
+  y tamaños, ejecutar T-SQL en el editor, paginar/ordenar/filtrar la rejilla,
+  editar celdas, insertar y borrar filas, actualización masiva, y el panel de
+  usuarios/permisos. Las instancias nombradas (`HOST\SQLEXPRESS`) se resuelven
+  a través del SQL Browser, y un interruptor de "confiar en el certificado del
+  servidor" —activado por defecto— hace utilizables los certificados
+  autofirmados que presentan la mayoría de instalaciones on-premise. En las
+  compilaciones de Windows el diálogo de conexión ofrece además autenticación
+  Windows (NTLM) con un `DOMINIO\usuario` explícito; el modo se oculta en el
+  resto de plataformas porque el driver subyacente solo lo compila en Windows.
+- El servidor mínimo soportado es **SQL Server 2012**: la paginación usa
+  `OFFSET … ROWS FETCH NEXT … ROWS ONLY`, que no existe antes de esa versión.
+
+### Corregido
+
+- El clasificador que aplica la política de escritura del conector MCP trataba
+  dos sentencias T-SQL como lecturas: `SELECT … INTO <tabla>` (que crea una
+  tabla) y `EXEC`/`EXECUTE` (que puede renombrar objetos o ejecutar DDL
+  dinámico). Ahora ambas se clasifican como DDL, así que una conexión en nivel
+  `read-only` o `data` las rechaza.
+- La herramienta MCP `list_connections` derivaba el nombre del driver de una
+  representación `Debug`, así que una conexión MongoDB se reportaba como
+  `"mongo"` en lugar del `"mongodb"` que usa el resto de la aplicación.
+
+### Limitaciones conocidas (SQL Server)
+
+- El **editor de estructura es de solo lectura**: se muestran columnas, claves,
+  índices y claves ajenas, pero aplicar cambios requiere un generador de DDL
+  T-SQL que todavía no existe. Renombrar una tabla (`sp_rename`) y el **editor
+  de vistas** no están disponibles por el mismo motivo.
+- La **exportación/importación `.sql`** todavía no está disponible: necesita un
+  codificador de literales T-SQL y gestión de `IDENTITY_INSERT`.
+- No se ofrece autenticación integrada/SSPI (iniciar sesión con el usuario de
+  Windows actual sin escribir credenciales) ni tokens de Entra ID.
+- Una instancia nombrada no se puede combinar con un túnel SSH: el SQL Browser
+  es un servicio UDP aparte que el túnel no reenvía. Tuneliza el puerto TCP
+  propio de la instancia y deja el campo de instancia vacío.
+
 ## [1.12.1] — 2026-08-05
 
 ### Añadido
