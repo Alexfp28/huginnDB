@@ -22,7 +22,7 @@
 use crate::commands::query::{
     build_filter_clause_at, count_table_rows_inner, ColumnFilter, RowValue,
 };
-use crate::db::sql::quote_ident;
+use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{self, LogEntry, LogKind, LogSink};
 use crate::state::{AppState, DbPool};
@@ -44,25 +44,6 @@ fn driver_str(pool: &DbPool) -> &'static str {
         DbPool::Mysql(_) => "mysql",
         DbPool::Sqlite(_) => "sqlite",
         DbPool::Mongo(_) => "mongodb",
-    }
-}
-
-/// Build the driver-specific `schema.table` (or just `table`) string.
-/// Duplicated from `commands::query` (private there) rather than exposed —
-/// same trivial four-line helper `commands::dump`/`commands::mongo` each
-/// keep their own copy of.
-fn qualified_table(pool: &DbPool, schema: Option<&str>, table: &str) -> String {
-    match pool {
-        DbPool::Postgres(_) => {
-            let schema = schema.unwrap_or("public");
-            format!("{}.{}", quote_ident(true, schema), quote_ident(true, table))
-        }
-        DbPool::Mysql(_) => match schema {
-            Some(s) => format!("{}.{}", quote_ident(false, s), quote_ident(false, table)),
-            None => quote_ident(false, table),
-        },
-        DbPool::Sqlite(_) => quote_ident(true, table),
-        DbPool::Mongo(_) => table.to_string(),
     }
 }
 
@@ -119,8 +100,7 @@ fn validate_args(args: &BulkUpdateArgs) -> AppResult<()> {
 /// text) and [`apply_bulk_update`] (which executes it) via this single
 /// function, so the two can never diverge.
 fn build_update_statement(
-    pg: bool,
-    pg_or_sqlite: bool,
+    dialect: Dialect,
     qt: &str,
     filters: &[ColumnFilter],
     set_values: &[RowValue],
@@ -130,21 +110,14 @@ fn build_update_statement(
     let set_parts: Vec<String> = set_values
         .iter()
         .map(|rv| {
-            let col = quote_ident(pg_or_sqlite, &rv.column);
-            let ph = if pg {
-                let s = format!("${next}");
-                next += 1;
-                s
-            } else {
-                next += 1;
-                "?".to_string()
-            };
+            let col = dialect.quote_ident(&rv.column);
+            let ph = dialect.placeholder(next);
+            next += 1;
             binds.push(rv.value.clone());
             format!("{col} = {ph}")
         })
         .collect();
-    let (where_clause, where_binds, _) =
-        build_filter_clause_at(next, pg, pg_or_sqlite, filters, None, &[]);
+    let (where_clause, where_binds, _) = build_filter_clause_at(next, dialect, filters, None, &[]);
     binds.extend(where_binds);
     (
         format!("UPDATE {qt} SET {}{where_clause}", set_parts.join(", ")),
@@ -168,10 +141,9 @@ pub async fn preview_bulk_update(
     let statement = if matches!(&pool, DbPool::Mongo(_)) {
         crate::db::mongo::query::describe_bulk_update(&args.table, &args.filters, &args.set_values)
     } else {
-        let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-        let pg = matches!(&pool, DbPool::Postgres(_));
-        let qt = qualified_table(&pool, args.schema.as_deref(), &args.table);
-        build_update_statement(pg, pg_or_sqlite, &qt, &args.filters, &args.set_values).0
+        let dialect = Dialect::try_of(&pool)?;
+        let qt = dialect.qualify_defaulted(args.schema.as_deref(), &args.table);
+        build_update_statement(dialect, &qt, &args.filters, &args.set_values).0
     };
 
     let sink = log_bus::TauriSink::new(&app, window.label());
@@ -250,11 +222,9 @@ pub(crate) async fn apply_bulk_update_inner(
         return res;
     }
 
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let pg = matches!(&pool, DbPool::Postgres(_));
-    let qt = qualified_table(&pool, args.schema.as_deref(), &args.table);
-    let (sql, binds) =
-        build_update_statement(pg, pg_or_sqlite, &qt, &args.filters, &args.set_values);
+    let dialect = Dialect::try_of(&pool)?;
+    let qt = dialect.qualify_defaulted(args.schema.as_deref(), &args.table);
+    let (sql, binds) = build_update_statement(dialect, &qt, &args.filters, &args.set_values);
 
     let start = Instant::now();
     let outcome: Result<u64, sqlx::Error> = match &pool {

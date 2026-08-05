@@ -14,7 +14,7 @@
 //!   Used by both the "insert" and "duplicate" flows in the grid.
 
 use crate::commands::schema::list_columns_inner;
-use crate::db::sql::{is_read_only, quote_ident};
+use crate::db::sql::{is_read_only, Dialect};
 use crate::db::values::{
     mysql_columns, mysql_value, pg_columns, pg_value, sqlite_columns, sqlite_value,
 };
@@ -155,7 +155,7 @@ pub enum FilterOp {
 /// One column-level predicate applied by [`fetch_table_data`].
 ///
 /// Multiple filters are AND-composed. Identifiers are always quoted via
-/// [`quote_ident`]; values are sent as binds, never interpolated into the
+/// [`Dialect::quote_ident`]; values are sent as binds, never interpolated into the
 /// SQL string.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ColumnFilter {
@@ -180,7 +180,7 @@ pub struct ColumnFilter {
 ///
 /// The frontend sends an ordered list (`order[0]` is the primary sort key,
 /// `order[1]` the tie-breaker, …) so the data browser can sort by several
-/// columns at once. Identifiers are quoted via [`quote_ident`]; only the
+/// columns at once. Identifiers are quoted via [`Dialect::quote_ident`]; only the
 /// `ASC`/`DESC` keyword is interpolated, derived from the boolean.
 #[derive(Debug, Deserialize, Clone)]
 pub struct SortSpec {
@@ -738,23 +738,6 @@ fn escape_like(input: &str) -> String {
     out
 }
 
-/// `ESCAPE` clause that matches the `\` escape character emitted by
-/// [`escape_like`], rendered correctly for the target driver.
-///
-/// MySQL/MariaDB interprets `\` as an escape inside *string literals*, so the
-/// SQL text must carry `ESCAPE '\\'` (two backslashes → one literal backslash);
-/// the single-backslash form `ESCAPE '\'` leaves the literal unterminated and
-/// raises error 1064. Postgres and SQLite use standard-SQL string literals
-/// where `\` is itself, so `ESCAPE '\'` is the right text there. Returned with
-/// a leading space so callers can append it directly after the placeholder.
-fn like_escape_clause(is_mysql: bool) -> &'static str {
-    if is_mysql {
-        " ESCAPE '\\\\'"
-    } else {
-        " ESCAPE '\\'"
-    }
-}
-
 /// Upper bound on how many values a single `In` / `NotIn` filter may carry.
 ///
 /// Every value becomes one bind, so an unbounded list turns into an unbounded
@@ -793,14 +776,12 @@ fn validate_filters(filters: &[ColumnFilter]) -> AppResult<()> {
 /// are escaped against LIKE metacharacters and case-folded by the SQL
 /// engine (`ILIKE` on Postgres, default `LIKE` on MySQL/SQLite).
 fn build_filter_clause(
-    pg: bool,
-    pg_or_sqlite: bool,
+    dialect: Dialect,
     filters: &[ColumnFilter],
     search: Option<&str>,
     search_columns: &[String],
 ) -> (String, Vec<Option<String>>) {
-    let (clause, binds, _) =
-        build_filter_clause_at(1, pg, pg_or_sqlite, filters, search, search_columns);
+    let (clause, binds, _) = build_filter_clause_at(1, dialect, filters, search, search_columns);
     (clause, binds)
 }
 
@@ -816,8 +797,7 @@ fn build_filter_clause(
 /// threading is harmless there too.
 pub(crate) fn build_filter_clause_at(
     start_at: usize,
-    pg: bool,
-    pg_or_sqlite: bool,
+    dialect: Dialect,
     filters: &[ColumnFilter],
     search: Option<&str>,
     search_columns: &[String],
@@ -826,23 +806,18 @@ pub(crate) fn build_filter_clause_at(
     let mut parts: Vec<String> = Vec::new();
     let mut next_placeholder: usize = start_at;
 
-    // Next positional placeholder as a driver-appropriate string (`$N` on
-    // Postgres, `?` elsewhere), advancing the counter.
+    // Next positional placeholder for this dialect, advancing the counter.
     let placeholder = |next: &mut usize| -> String {
-        let ph = if pg {
-            format!("${next}")
-        } else {
-            "?".to_string()
-        };
+        let ph = dialect.placeholder(*next);
         *next += 1;
         ph
     };
-    let like_kw = if pg { "ILIKE" } else { "LIKE" };
-    let cast_to = if pg_or_sqlite { "TEXT" } else { "CHAR" };
-    let escape = like_escape_clause(!pg_or_sqlite);
+    let like_kw = dialect.like_kw();
+    let cast_to = dialect.cast_to_text();
+    let escape = dialect.like_escape_clause();
 
     for f in filters {
-        let col = quote_ident(pg_or_sqlite, &f.column);
+        let col = dialect.quote_ident(&f.column);
         match f.op {
             FilterOp::IsNull => parts.push(format!("{col} IS NULL")),
             FilterOp::IsNotNull => parts.push(format!("{col} IS NOT NULL")),
@@ -957,7 +932,7 @@ pub(crate) fn build_filter_clause_at(
                 // fold both sides to lower() so "not contains" stays
                 // case-insensitive like the positive matches.
                 let ph = placeholder(&mut next_placeholder);
-                if pg && matches!(f.op, FilterOp::NotContains) {
+                if dialect.not_like_needs_lower() && matches!(f.op, FilterOp::NotContains) {
                     parts.push(format!(
                         "lower(CAST({col} AS {cast_to})) NOT LIKE lower({ph}){escape}"
                     ));
@@ -975,7 +950,7 @@ pub(crate) fn build_filter_clause_at(
             let pattern = format!("%{}%", escape_like(q));
             let mut or_parts: Vec<String> = Vec::new();
             for col in search_columns {
-                let qcol = quote_ident(pg_or_sqlite, col);
+                let qcol = dialect.quote_ident(col);
                 let ph = placeholder(&mut next_placeholder);
                 or_parts.push(format!("CAST({qcol} AS {cast_to}) {like_kw} {ph}{escape}"));
                 binds.push(Some(pattern.clone()));
@@ -1108,8 +1083,7 @@ pub(crate) async fn fetch_table_data_inner(
     }
 
     let driver = driver_str(&pool);
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let pg = matches!(&pool, DbPool::Postgres(_));
+    let dialect = Dialect::try_of(&pool)?;
 
     // Build a multi-level `ORDER BY c1 ASC, c2 DESC, …`. Identifiers are
     // quoted; only the ASC/DESC keyword is interpolated (from the bool).
@@ -1120,7 +1094,7 @@ pub(crate) async fn fetch_table_data_inner(
             .iter()
             .map(|s| {
                 let dir = if s.desc { "DESC" } else { "ASC" };
-                format!("{} {}", quote_ident(pg_or_sqlite, &s.column), dir)
+                format!("{} {}", dialect.quote_ident(&s.column), dir)
             })
             .collect();
         format!(" ORDER BY {}", parts.join(", "))
@@ -1130,14 +1104,17 @@ pub(crate) async fn fetch_table_data_inner(
     let search_columns = search_columns.unwrap_or_default();
     let search_ref = search.as_deref().filter(|s| !s.is_empty());
     let (where_clause, where_binds) =
-        build_filter_clause(pg, pg_or_sqlite, &filters, search_ref, &search_columns);
+        build_filter_clause(dialect, &filters, search_ref, &search_columns);
 
-    let qt = qualified_table(&pool, schema.as_deref(), &table);
+    let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
 
     // LIMIT/OFFSET stay inline (they are integers we already parsed),
-    // so the filter binds are the only binds in the statement.
-    let data_sql =
-        format!("SELECT * FROM {qt}{where_clause}{order_clause} LIMIT {limit} OFFSET {offset}");
+    // so the filter binds are the only binds in the statement. The clause
+    // itself is dialect-specific: T-SQL has no LIMIT and its OFFSET/FETCH
+    // form requires an ORDER BY, which `paginate` supplies when the user
+    // hasn't sorted.
+    let page = dialect.paginate(limit, offset, !order_clause.is_empty());
+    let data_sql = format!("SELECT * FROM {qt}{where_clause}{order_clause}{page}");
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
     let start = Instant::now();
@@ -1428,8 +1405,7 @@ pub(crate) async fn count_table_rows_inner(
         return res;
     }
 
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let pg = matches!(&pool, DbPool::Postgres(_));
+    let dialect = Dialect::try_of(&pool)?;
 
     // Whole-table browse: try the engine estimate first. `try_estimate`
     // returns `None` when no usable estimate exists (SQLite always; a
@@ -1455,8 +1431,8 @@ pub(crate) async fn count_table_rows_inner(
 
     // Exact count: predicate present, or no estimate available.
     let (where_clause, where_binds) =
-        build_filter_clause(pg, pg_or_sqlite, &filters, search_ref, &search_columns);
-    let qt = qualified_table(&pool, schema.as_deref(), &table);
+        build_filter_clause(dialect, &filters, search_ref, &search_columns);
+    let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
     let start = Instant::now();
@@ -1539,7 +1515,11 @@ async fn try_estimate(
             // name to the relation's OID, so the estimate is bound to the same
             // table the data query reads.
             let schema = schema.unwrap_or("public");
-            let regclass = format!("{}.{}", quote_ident(true, schema), quote_ident(true, table));
+            let regclass = format!(
+                "{}.{}",
+                Dialect::Postgres.quote_ident(schema),
+                Dialect::Postgres.quote_ident(table)
+            );
             let sql = "SELECT reltuples::bigint FROM pg_class WHERE oid = $1::regclass";
             let start = Instant::now();
             let est: Option<i64> = sqlx::query_scalar::<_, i64>(sql)
@@ -1705,35 +1685,25 @@ pub(crate) async fn update_cell_inner(
         return res;
     }
 
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let pg = matches!(&pool, DbPool::Postgres(_));
+    let dialect = Dialect::try_of(&pool)?;
     // `schema` is consumed below to build `qt`; keep a copy for the catalog
     // fallback further down (only actually read when `column_type` is absent).
     let schema_for_catalog = schema.clone();
 
-    let qt = if let Some(s) = schema {
-        format!(
-            "{}.{}",
-            quote_ident(pg_or_sqlite, &s),
-            quote_ident(pg_or_sqlite, &table)
-        )
-    } else {
-        quote_ident(pg_or_sqlite, &table)
-    };
-    let col_id = quote_ident(pg_or_sqlite, &column);
+    let qt = dialect.qualify(schema.as_deref(), &table);
+    let col_id = dialect.quote_ident(&column);
 
-    // SET uses placeholder #1; the PK predicate consumes #2..=#N+1 on PG,
-    // and an unindexed `?` everywhere else.
+    // SET uses placeholder #1; the PK predicate consumes #2..=#N+1 on the
+    // dialects that number their placeholders.
     let where_clause = pk_columns
         .iter()
         .enumerate()
         .map(|(i, c)| {
-            let id = quote_ident(pg_or_sqlite, c);
-            if pg {
-                format!("{id} = ${}", i + 2)
-            } else {
-                format!("{id} = ?")
-            }
+            format!(
+                "{} = {}",
+                dialect.quote_ident(c),
+                dialect.placeholder(i + 2)
+            )
         })
         .collect::<Vec<_>>()
         .join(" AND ");
@@ -1746,7 +1716,7 @@ pub(crate) async fn update_cell_inner(
     // and `CAST(NULL AS UNSIGNED)` is still NULL so the set-NULL path is
     // unaffected. Only MySQL needs this; PG/SQLite cast textual literals to
     // their bit/blob types correctly on their own.
-    let is_mysql = matches!(&pool, DbPool::Mysql(_));
+    let is_mysql = dialect == Dialect::Mysql;
     // Same fallback as `insert_row`: if the frontend's `column_type` hint is
     // missing (stale/unloaded schema cache), fall back to a catalog lookup
     // rather than silently binding a MySQL BIT column as plain text (issue #15).
@@ -1766,12 +1736,10 @@ pub(crate) async fn update_cell_inner(
             .map(|t| t.trim().to_ascii_uppercase().starts_with("BIT"))
             .unwrap_or(false)
             || catalog_bit_cast);
-    let set_placeholder = if pg {
-        "$1".to_string()
-    } else if bit_cast {
-        "CAST(? AS UNSIGNED)".to_string()
+    let set_placeholder = if bit_cast {
+        format!("CAST({} AS UNSIGNED)", dialect.placeholder(1))
     } else {
-        "?".into()
+        dialect.placeholder(1)
     };
     let sql = format!("UPDATE {qt} SET {col_id} = {set_placeholder} WHERE {where_clause}");
     // Normalize the cell value for BIT columns: "true"/"false" must become
@@ -1997,13 +1965,12 @@ pub(crate) async fn delete_rows_inner(
         return res;
     }
 
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let pg = matches!(&pool, DbPool::Postgres(_));
+    let dialect = Dialect::try_of(&pool)?;
 
-    let qt = qualified_table(&pool, schema.as_deref(), &table);
+    let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let lhs = pk_columns
         .iter()
-        .map(|c| quote_ident(pg_or_sqlite, c))
+        .map(|c| dialect.quote_ident(c))
         .collect::<Vec<_>>()
         .join(", ");
     let mut counter = 0usize;
@@ -2013,12 +1980,8 @@ pub(crate) async fn delete_rows_inner(
             let placeholders = row
                 .iter()
                 .map(|_| {
-                    if pg {
-                        counter += 1;
-                        format!("${counter}")
-                    } else {
-                        "?".into()
-                    }
+                    counter += 1;
+                    dialect.placeholder(counter)
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -2162,18 +2125,15 @@ pub(crate) async fn insert_row_inner(
         return res;
     }
 
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let pg = matches!(&pool, DbPool::Postgres(_));
-    let is_mysql = matches!(&pool, DbPool::Mysql(_));
+    let dialect = Dialect::try_of(&pool)?;
+    let is_mysql = dialect == Dialect::Mysql;
 
-    let qt = qualified_table(&pool, schema.as_deref(), &table);
+    let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let cols: Vec<String> = values
         .iter()
-        .map(|v| quote_ident(pg_or_sqlite, &v.column))
+        .map(|v| dialect.quote_ident(&v.column))
         .collect();
-    let placeholders: Vec<String> = (1..=values.len())
-        .map(|i| if pg { format!("${i}") } else { "?".into() })
-        .collect();
+    let placeholders: Vec<String> = (1..=values.len()).map(|i| dialect.placeholder(i)).collect();
     let binds: Vec<Option<String>> = values.iter().map(|v| v.value.clone()).collect();
 
     // The frontend supplies `column_type` from whatever schema-cache/query-result
@@ -2237,7 +2197,7 @@ pub(crate) async fn insert_row_inner(
     let (sql_used, outcome): (String, Result<(Option<u64>, Value), sqlx::Error>) = match pool {
         DbPool::Postgres(p) => {
             let sql = match &pk_column {
-                Some(pk) => format!("{base_sql} RETURNING {}", quote_ident(true, pk)),
+                Some(pk) => format!("{base_sql} RETURNING {}", Dialect::Postgres.quote_ident(pk)),
                 None => base_sql,
             };
             let mut q = sqlx::query(&sql);
@@ -2342,7 +2302,7 @@ fn pick_label_column(cols: &[crate::commands::schema::ColumnInfo]) -> Option<Str
 /// in the data grid.
 ///
 /// Identifiers are validated against the live catalog via
-/// [`list_columns_inner`] before they reach [`quote_ident`] — keeps us
+/// [`list_columns_inner`] before they reach [`Dialect::quote_ident`] — keeps us
 /// aligned with the rule in `SECURITY.md` that `quote_ident` is only ever
 /// applied to catalog-sourced names. The optional `search` is passed as a
 /// bound LIKE/ILIKE pattern with escape handling.
@@ -2387,12 +2347,11 @@ pub async fn fetch_fk_options(
             "foreign-key lookups are not supported on MongoDB".into(),
         ));
     }
-    let pg = matches!(&pool, DbPool::Postgres(_));
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
+    let dialect = Dialect::try_of(&pool)?;
 
-    let qt = qualified_table(&pool, schema.as_deref(), &table);
-    let key_id = quote_ident(pg_or_sqlite, &key_column);
-    let label_id = label_col.as_ref().map(|c| quote_ident(pg_or_sqlite, c));
+    let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
+    let key_id = dialect.quote_ident(&key_column);
+    let label_id = label_col.as_ref().map(|c| dialect.quote_ident(c));
 
     // Projection: key first, label second (when present).
     let projection = match &label_id {
@@ -2404,11 +2363,11 @@ pub async fn fetch_fk_options(
     let mut binds: Vec<Option<String>> = Vec::new();
     let where_clause = if let Some(term) = search_term {
         let pattern = format!("%{}%", escape_like(term));
-        let like_kw = if pg { "ILIKE" } else { "LIKE" };
-        let cast_to = if pg_or_sqlite { "TEXT" } else { "CHAR" };
-        let escape = like_escape_clause(!pg_or_sqlite);
-        let ph1 = if pg { "$1".to_string() } else { "?".into() };
-        let ph2 = if pg { "$2".to_string() } else { "?".into() };
+        let like_kw = dialect.like_kw();
+        let cast_to = dialect.cast_to_text();
+        let escape = dialect.like_escape_clause();
+        let ph1 = dialect.placeholder(1);
+        let ph2 = dialect.placeholder(2);
         let mut parts = vec![format!(
             "CAST({key_id} AS {cast_to}) {like_kw} {ph1}{escape}"
         )];
@@ -2424,9 +2383,9 @@ pub async fn fetch_fk_options(
 
     // Request limit+1 so we can detect has_more without a second COUNT(*).
     let fetch_limit = limit.max(0).saturating_add(1);
-    let sql = format!(
-        "SELECT {projection} FROM {qt}{where_clause} ORDER BY {key_id} LIMIT {fetch_limit}"
-    );
+    // There is always an `ORDER BY`, so T-SQL's OFFSET/FETCH needs no filler.
+    let page = dialect.paginate(fetch_limit, 0, true);
+    let sql = format!("SELECT {projection} FROM {qt}{where_clause} ORDER BY {key_id}{page}");
 
     let mut options: Vec<FkOption> = match pool {
         DbPool::Postgres(p) => {
@@ -2511,24 +2470,6 @@ pub async fn fetch_fk_options(
     Ok(FkOptionsPage { options, has_more })
 }
 
-/// Build the driver-specific `schema.table` (or just `table`) string.
-fn qualified_table(pool: &DbPool, schema: Option<&str>, table: &str) -> String {
-    match pool {
-        DbPool::Postgres(_) => {
-            let schema = schema.unwrap_or("public");
-            format!("{}.{}", quote_ident(true, schema), quote_ident(true, table))
-        }
-        DbPool::Mysql(_) => match schema {
-            Some(s) => format!("{}.{}", quote_ident(false, s), quote_ident(false, table)),
-            None => quote_ident(false, table),
-        },
-        DbPool::Sqlite(_) => quote_ident(true, table),
-        // MongoDB never builds SQL-qualified names; commands dispatch to the
-        // mongo module before reaching here.
-        DbPool::Mongo(_) => table.to_string(),
-    }
-}
-
 #[cfg(test)]
 mod filter_tests {
     use super::*;
@@ -2572,7 +2513,7 @@ mod filter_tests {
             f("age", FilterOp::Gt, json!(5)),
             f("code", FilterOp::StartsWith, json!("x")),
         ];
-        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         // Postgres: ILIKE for contains/starts_with, TEXT cast, $N placeholders.
         assert!(
             clause.contains(r#"CAST("name" AS TEXT) ILIKE $1 ESCAPE"#),
@@ -2600,7 +2541,7 @@ mod filter_tests {
             f("qty", FilterOp::Lte, json!(10)),
             f("note", FilterOp::NotContains, json!("skip")),
         ];
-        let (clause, binds) = build_filter_clause(false, false, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Mysql, &filters, None, &[]);
         // MySQL: LIKE / NOT LIKE, CHAR cast, `?` placeholders, doubled escape.
         assert!(clause.contains("CAST(`name` AS CHAR) LIKE ?"), "{clause}");
         assert!(clause.contains("`qty` <= ?"), "{clause}");
@@ -2621,7 +2562,7 @@ mod filter_tests {
     #[test]
     fn between_builds_expected_postgres_sql() {
         let filters = vec![between("age", json!(18), json!(65))];
-        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(clause.contains(r#""age" BETWEEN $1 AND $2"#), "{clause}");
         assert_eq!(binds, vec![Some("18".to_string()), Some("65".to_string())]);
     }
@@ -2629,7 +2570,7 @@ mod filter_tests {
     #[test]
     fn between_builds_expected_mysql_and_sqlite_sql() {
         let filters = vec![between("age", json!(18), json!(65))];
-        let (clause, binds) = build_filter_clause(false, false, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Mysql, &filters, None, &[]);
         assert!(clause.contains("`age` BETWEEN ? AND ?"), "{clause}");
         assert_eq!(binds, vec![Some("18".to_string()), Some("65".to_string())]);
     }
@@ -2640,7 +2581,7 @@ mod filter_tests {
             f("a", FilterOp::IsNull, json!(null)),
             f("b", FilterOp::IsNotNull, json!(null)),
         ];
-        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(clause.contains(r#""a" IS NULL"#), "{clause}");
         assert!(clause.contains(r#""b" IS NOT NULL"#), "{clause}");
         assert!(binds.is_empty());
@@ -2653,7 +2594,7 @@ mod filter_tests {
             FilterOp::In,
             vec![json!(1), json!(2), json!(3)],
         )];
-        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(clause.contains(r#""id" IN ($1, $2, $3)"#), "{clause}");
         assert_eq!(
             binds,
@@ -2668,7 +2609,7 @@ mod filter_tests {
     #[test]
     fn in_uses_question_marks_on_mysql() {
         let filters = vec![in_list("id", FilterOp::In, vec![json!(1), json!(2)])];
-        let (clause, binds) = build_filter_clause(false, false, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Mysql, &filters, None, &[]);
         assert!(clause.contains("`id` IN (?, ?)"), "{clause}");
         assert_eq!(binds.len(), 2);
     }
@@ -2682,7 +2623,7 @@ mod filter_tests {
             FilterOp::In,
             vec![json!("a"), json!("b"), json!("a"), json!("a")],
         )];
-        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(clause.contains(r#""status" IN ($1, $2)"#), "{clause}");
         assert_eq!(
             binds,
@@ -2696,7 +2637,7 @@ mod filter_tests {
         // `col IN (…)` is never true for a NULL column, so a selected NULL row
         // would silently disappear from its own filter without this.
         let filters = vec![in_list("x", FilterOp::In, vec![json!(1), json!(null)])];
-        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(
             clause.contains(r#"("x" IN ($1) OR "x" IS NULL)"#),
             "{clause}"
@@ -2709,7 +2650,7 @@ mod filter_tests {
         // The classic NOT IN trap: 3VL would drop NULL rows the user never asked
         // to exclude.
         let filters = vec![in_list("x", FilterOp::NotIn, vec![json!(1)])];
-        let (clause, _) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, _) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(
             clause.contains(r#"("x" NOT IN ($1) OR "x" IS NULL)"#),
             "{clause}"
@@ -2721,7 +2662,7 @@ mod filter_tests {
         // Here the user *did* pick NULL, so 3VL's own exclusion is the wanted
         // behaviour and no extra branch is emitted.
         let filters = vec![in_list("x", FilterOp::NotIn, vec![json!(1), json!(null)])];
-        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(clause.contains(r#""x" NOT IN ($1)"#), "{clause}");
         assert!(!clause.contains("IS NULL"), "{clause}");
         assert_eq!(binds, vec![Some("1".to_string())]);
@@ -2733,7 +2674,7 @@ mod filter_tests {
         // worse than a never-true predicate: it would widen the result set to
         // the whole table.
         let filters = vec![in_list("x", FilterOp::In, vec![])];
-        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(clause.contains("1 = 0"), "{clause}");
         assert!(!clause.contains("IN ()"), "{clause}");
         assert!(binds.is_empty());
@@ -2742,12 +2683,12 @@ mod filter_tests {
     #[test]
     fn null_only_in_list_degrades_to_is_null() {
         let filters = vec![in_list("x", FilterOp::In, vec![json!(null)])];
-        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(clause.contains(r#""x" IS NULL"#), "{clause}");
         assert!(binds.is_empty());
 
         let filters = vec![in_list("x", FilterOp::NotIn, vec![json!(null)])];
-        let (clause, _) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, _) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(clause.contains(r#""x" IS NOT NULL"#), "{clause}");
     }
 
@@ -2760,7 +2701,7 @@ mod filter_tests {
             in_list("b", FilterOp::In, vec![json!(1), json!(2)]),
             f("c", FilterOp::Gt, json!(9)),
         ];
-        let (clause, binds) = build_filter_clause(true, true, &filters, None, &[]);
+        let (clause, binds) = build_filter_clause(Dialect::Postgres, &filters, None, &[]);
         assert!(clause.contains(r#""a" = $1"#), "{clause}");
         assert!(clause.contains(r#""b" IN ($2, $3)"#), "{clause}");
         assert!(clause.contains(r#""c" > $4"#), "{clause}");

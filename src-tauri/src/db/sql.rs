@@ -1,19 +1,183 @@
 //! Small SQL helpers shared across command handlers.
 
-/// Wrap `name` in the quoting characters appropriate for the driver.
+use crate::error::{AppError, AppResult};
+use crate::state::DbPool;
+
+/// The SQL dialect spoken by one connection.
 ///
-/// * `pg_or_sqlite = true`  → use double quotes (`"name"`).
-/// * `pg_or_sqlite = false` → use backticks (`` `name` ``), MySQL style.
+/// This is the single source of truth for every place the generated SQL has to
+/// differ per engine: identifier quoting, positional placeholders, the cast
+/// target used by text predicates, `LIKE` semantics and pagination. It
+/// deliberately has **no MongoDB variant** — Mongo is not a SQL dialect and
+/// every command dispatches it to [`crate::db::mongo`] before any SQL is built,
+/// so [`Dialect::try_of`] rejects it instead of inventing a meaningless answer.
 ///
-/// The function escapes any embedded quote characters by doubling them,
-/// matching the standard SQL identifier-quoting rules. Callers are still
-/// responsible for sourcing `name` from a trusted catalog query — this
-/// helper is for layout, not for sanitising arbitrary user input.
-pub fn quote_ident(pg_or_sqlite: bool, name: &str) -> String {
-    if pg_or_sqlite {
-        format!("\"{}\"", name.replace('"', "\"\""))
-    } else {
-        format!("`{}`", name.replace('`', "``"))
+/// It replaces the old `quote_ident(pg_or_sqlite: bool, …)` flag, which encoded
+/// a three-way choice in one bit and could not express a fourth engine (SQL
+/// Server quotes with `[brackets]`, numbers placeholders `@P1`, and has no
+/// `LIMIT`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dialect {
+    Postgres,
+    Mysql,
+    Sqlite,
+    MsSql,
+}
+
+impl Dialect {
+    /// The dialect of a live pool.
+    ///
+    /// `Err(UnsupportedDriver)` for MongoDB: callers that can reach a Mongo
+    /// pool must have handled it before asking for a dialect.
+    pub fn try_of(pool: &DbPool) -> AppResult<Self> {
+        match pool {
+            DbPool::Postgres(_) => Ok(Self::Postgres),
+            DbPool::Mysql(_) => Ok(Self::Mysql),
+            DbPool::Sqlite(_) => Ok(Self::Sqlite),
+            DbPool::Mongo(_) => Err(AppError::UnsupportedDriver(
+                "MongoDB does not speak SQL; this operation is SQL-only".into(),
+            )),
+        }
+    }
+
+    /// Wrap `name` in this dialect's identifier quotes, escaping any embedded
+    /// quote character by doubling it (the standard SQL rule, and the one SQL
+    /// Server follows for `]` inside brackets).
+    ///
+    /// Callers are still responsible for sourcing `name` from a trusted catalog
+    /// query — this is for layout, not for sanitising arbitrary user input. The
+    /// one sanctioned exception is the DDL builder, which validates every
+    /// user-entered name through [`crate::db::ddl::validate_ident`] first.
+    pub fn quote_ident(self, name: &str) -> String {
+        match self {
+            Self::Postgres | Self::Sqlite => format!("\"{}\"", name.replace('"', "\"\"")),
+            Self::Mysql => format!("`{}`", name.replace('`', "``")),
+            Self::MsSql => format!("[{}]", name.replace(']', "]]")),
+        }
+    }
+
+    /// The `index`-th (1-based) positional placeholder.
+    ///
+    /// Postgres and SQL Server number their placeholders, so the caller has to
+    /// thread a counter; MySQL/SQLite ignore `index` entirely.
+    pub fn placeholder(self, index: usize) -> String {
+        match self {
+            Self::Postgres => format!("${index}"),
+            Self::Mysql | Self::Sqlite => "?".to_string(),
+            Self::MsSql => format!("@P{index}"),
+        }
+    }
+
+    /// Cast target that turns any column into text, for the `LIKE`-based
+    /// filters. MySQL rejects `CAST(x AS TEXT)`; SQL Server needs a length.
+    pub fn cast_to_text(self) -> &'static str {
+        match self {
+            Self::Postgres | Self::Sqlite => "TEXT",
+            Self::Mysql => "CHAR",
+            Self::MsSql => "NVARCHAR(MAX)",
+        }
+    }
+
+    /// Keyword for a case-insensitive `LIKE`. Only Postgres has a dedicated
+    /// one; MySQL and SQL Server are case-insensitive through their default
+    /// collation, and SQLite's `LIKE` is ASCII-case-insensitive by default.
+    pub fn like_kw(self) -> &'static str {
+        match self {
+            Self::Postgres => "ILIKE",
+            Self::Mysql | Self::Sqlite | Self::MsSql => "LIKE",
+        }
+    }
+
+    /// Whether a *negated* case-insensitive match has to fold both sides with
+    /// `lower()`.
+    ///
+    /// `ILIKE` has no negated spelling that composes with the surrounding
+    /// `CAST(...)`, so on Postgres "not contains" is emitted as
+    /// `lower(CAST(col AS TEXT)) NOT LIKE lower($1)`. The other dialects get
+    /// case-insensitivity from the collation, so their plain `NOT LIKE` is
+    /// already case-insensitive.
+    pub fn not_like_needs_lower(self) -> bool {
+        matches!(self, Self::Postgres)
+    }
+
+    /// `ESCAPE` clause matching the `\` escape character the filter builder
+    /// emits, rendered correctly for this dialect.
+    ///
+    /// MySQL/MariaDB interprets `\` as an escape inside *string literals*, so
+    /// the SQL text must carry `ESCAPE '\\'` (two backslashes → one literal
+    /// backslash); the single-backslash form leaves the literal unterminated
+    /// and raises error 1064. The others use standard-SQL string literals where
+    /// `\` is itself. Returned with a leading space so callers can append it
+    /// straight after the placeholder.
+    pub fn like_escape_clause(self) -> &'static str {
+        match self {
+            Self::Mysql => " ESCAPE '\\\\'",
+            Self::Postgres | Self::Sqlite | Self::MsSql => " ESCAPE '\\'",
+        }
+    }
+
+    /// Trailing pagination clause, with a leading space, for a statement that
+    /// already carries `order_clause` (empty when the user hasn't sorted).
+    ///
+    /// SQL Server has no `LIMIT`: it needs `OFFSET n ROWS FETCH NEXT m ROWS
+    /// ONLY`, which is only legal after an `ORDER BY` — hence the
+    /// `ORDER BY (SELECT NULL)` filler when there is no user sort. That syntax
+    /// requires **SQL Server 2012 or newer**; 2008 and older would need a
+    /// `ROW_NUMBER()` window instead.
+    pub fn paginate(self, limit: i64, offset: i64, has_order_by: bool) -> String {
+        match self {
+            Self::Postgres | Self::Mysql | Self::Sqlite => {
+                format!(" LIMIT {limit} OFFSET {offset}")
+            }
+            Self::MsSql => {
+                let filler = if has_order_by {
+                    ""
+                } else {
+                    " ORDER BY (SELECT NULL)"
+                };
+                format!("{filler} OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY")
+            }
+        }
+    }
+
+    /// Whether this dialect namespaces objects under a schema. SQLite doesn't
+    /// (its `main`/`temp` prefixes are attached databases, not schemas), so
+    /// every qualifier builder skips it there.
+    pub fn has_schemas(self) -> bool {
+        !matches!(self, Self::Sqlite)
+    }
+
+    /// The schema assumed when the caller doesn't name one. `None` for MySQL
+    /// (the session's current database already scopes an unqualified name) and
+    /// SQLite (no schemas at all).
+    pub fn default_schema(self) -> Option<&'static str> {
+        match self {
+            Self::Postgres => Some("public"),
+            Self::MsSql => Some("dbo"),
+            Self::Mysql | Self::Sqlite => None,
+        }
+    }
+
+    /// `schema.table`, quoted — schema included only when this dialect has
+    /// schemas and the caller supplied a non-empty one.
+    pub fn qualify(self, schema: Option<&str>, table: &str) -> String {
+        match schema {
+            Some(s) if !s.is_empty() && self.has_schemas() => {
+                format!("{}.{}", self.quote_ident(s), self.quote_ident(table))
+            }
+            _ => self.quote_ident(table),
+        }
+    }
+
+    /// Like [`Self::qualify`], but falling back to [`Self::default_schema`]
+    /// when the caller passed none. Used by the data-browsing path, where an
+    /// unqualified Postgres name would resolve through `search_path` instead of
+    /// the schema the explorer actually showed.
+    pub fn qualify_defaulted(self, schema: Option<&str>, table: &str) -> String {
+        match schema {
+            Some(s) if !s.is_empty() => self.qualify(Some(s), table),
+            _ => self.qualify(self.default_schema(), table),
+        }
     }
 }
 
@@ -160,7 +324,76 @@ fn contains_word(haystack_lower: &str, word: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify, is_ddl, is_read_only, is_unfiltered_write, StmtClass};
+    use super::{classify, is_ddl, is_read_only, is_unfiltered_write, Dialect, StmtClass};
+
+    #[test]
+    fn quotes_identifiers_per_dialect() {
+        assert_eq!(Dialect::Postgres.quote_ident("tbl"), "\"tbl\"");
+        assert_eq!(Dialect::Sqlite.quote_ident("tbl"), "\"tbl\"");
+        assert_eq!(Dialect::Mysql.quote_ident("tbl"), "`tbl`");
+        assert_eq!(Dialect::MsSql.quote_ident("tbl"), "[tbl]");
+    }
+
+    #[test]
+    fn escapes_the_closing_quote_character_by_doubling_it() {
+        // A catalog can legitimately hand us an identifier containing the
+        // quote character; doubling it is the standard SQL escape and the one
+        // SQL Server uses for `]` inside brackets.
+        assert_eq!(Dialect::Postgres.quote_ident("we\"ird"), "\"we\"\"ird\"");
+        assert_eq!(Dialect::Mysql.quote_ident("we`ird"), "`we``ird`");
+        assert_eq!(Dialect::MsSql.quote_ident("we]ird"), "[we]]ird]");
+    }
+
+    #[test]
+    fn numbers_placeholders_only_where_the_dialect_does() {
+        assert_eq!(Dialect::Postgres.placeholder(3), "$3");
+        assert_eq!(Dialect::MsSql.placeholder(3), "@P3");
+        assert_eq!(Dialect::Mysql.placeholder(3), "?");
+        assert_eq!(Dialect::Sqlite.placeholder(3), "?");
+    }
+
+    #[test]
+    fn paginates_with_limit_offset_or_offset_fetch() {
+        assert_eq!(
+            Dialect::Postgres.paginate(50, 100, true),
+            " LIMIT 50 OFFSET 100"
+        );
+        // The ORDER BY is not optional in T-SQL's OFFSET/FETCH, so an unsorted
+        // browse gets a filler one.
+        assert_eq!(
+            Dialect::MsSql.paginate(50, 100, true),
+            " OFFSET 100 ROWS FETCH NEXT 50 ROWS ONLY"
+        );
+        assert_eq!(
+            Dialect::MsSql.paginate(50, 0, false),
+            " ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY"
+        );
+    }
+
+    #[test]
+    fn qualifies_names_per_dialect() {
+        assert_eq!(
+            Dialect::Postgres.qualify(Some("s"), "t"),
+            "\"s\".\"t\"".to_string()
+        );
+        assert_eq!(
+            Dialect::MsSql.qualify(Some("s"), "t"),
+            "[s].[t]".to_string()
+        );
+        assert_eq!(Dialect::Mysql.qualify(None, "t"), "`t`".to_string());
+        // SQLite has no schemas: a stray one is dropped rather than emitted as
+        // an attached-database prefix.
+        assert_eq!(Dialect::Sqlite.qualify(Some("main"), "t"), "\"t\"");
+        // The defaulted variant pins the engine's default schema so an
+        // unqualified name can't resolve through `search_path`.
+        assert_eq!(
+            Dialect::Postgres.qualify_defaulted(None, "t"),
+            "\"public\".\"t\""
+        );
+        assert_eq!(Dialect::MsSql.qualify_defaulted(None, "t"), "[dbo].[t]");
+        assert_eq!(Dialect::Mysql.qualify_defaulted(None, "t"), "`t`");
+        assert_eq!(Dialect::Sqlite.qualify_defaulted(None, "t"), "\"t\"");
+    }
 
     #[test]
     fn classifies_reads_as_read_only() {

@@ -5,7 +5,7 @@
 //! standard `information_schema` views where available, with `pg_*` /
 //! `sqlite_master` fallbacks for engine-specific metadata.
 
-use crate::db::sql::quote_ident;
+use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
 use serde::Serialize;
@@ -198,11 +198,11 @@ pub async fn create_database(
     let pool = pool_for(state.inner(), &connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
-            let sql = format!("CREATE DATABASE {}", quote_ident(true, &name));
+            let sql = format!("CREATE DATABASE {}", Dialect::Postgres.quote_ident(&name));
             sqlx::query(&sql).execute(&p).await?;
         }
         DbPool::Mysql(p) => {
-            let sql = format!("CREATE DATABASE {}", quote_ident(false, &name));
+            let sql = format!("CREATE DATABASE {}", Dialect::Mysql.quote_ident(&name));
             sqlx::query(&sql).execute(&p).await?;
         }
         DbPool::Sqlite(_) => {
@@ -256,11 +256,11 @@ pub async fn drop_database(
     let pool = pool_for(state.inner(), &connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
-            let sql = format!("DROP DATABASE {}", quote_ident(true, &name));
+            let sql = format!("DROP DATABASE {}", Dialect::Postgres.quote_ident(&name));
             sqlx::query(&sql).execute(&p).await?;
         }
         DbPool::Mysql(p) => {
-            let sql = format!("DROP DATABASE {}", quote_ident(false, &name));
+            let sql = format!("DROP DATABASE {}", Dialect::Mysql.quote_ident(&name));
             sqlx::query(&sql).execute(&p).await?;
         }
         DbPool::Sqlite(_) => {
@@ -868,7 +868,7 @@ pub async fn list_indexes_inner(
 /// has no schema concept).
 ///
 /// All identifiers are sourced from the schema explorer, which itself comes
-/// from a catalog query, so the [`quote_ident`] usage matches the rule in
+/// from a catalog query, so the [`Dialect::quote_ident`] usage matches the rule in
 /// `SECURITY.md` — never applied to free-form user input.
 #[tauri::command]
 pub async fn drop_table(
@@ -885,22 +885,8 @@ pub async fn drop_table(
             .await?;
         return Ok(());
     }
-    let qt = match (&pool, schema) {
-        (DbPool::Postgres(_), Some(s)) => {
-            format!("{}.{}", quote_ident(true, &s), quote_ident(true, &table))
-        }
-        (DbPool::Postgres(_), None) => format!(
-            "{}.{}",
-            quote_ident(true, "public"),
-            quote_ident(true, &table)
-        ),
-        (DbPool::Mysql(_), Some(s)) => {
-            format!("{}.{}", quote_ident(false, &s), quote_ident(false, &table))
-        }
-        (DbPool::Mysql(_), None) => quote_ident(false, &table),
-        (DbPool::Sqlite(_), _) => quote_ident(true, &table),
-        (DbPool::Mongo(_), _) => unreachable!("mongo dispatched above"),
-    };
+    let dialect = Dialect::try_of(&pool)?;
+    let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let sql = format!("DROP TABLE {qt}");
     match pool {
         DbPool::Postgres(p) => {
@@ -923,7 +909,7 @@ pub async fn drop_table(
 /// `TRUNCATE`, so a plain `DELETE FROM` clears it. MongoDB deletes every
 /// document (`delete_many({})`) rather than dropping the collection. Same
 /// catalog-sourced identifier guarantees as [`drop_table`] — `schema`/`table`
-/// come from the schema explorer, never free-form input, so [`quote_ident`]
+/// come from the schema explorer, never free-form input, so [`Dialect::quote_ident`]
 /// is used per the `SECURITY.md` rule.
 #[tauri::command]
 pub async fn empty_table(
@@ -940,22 +926,8 @@ pub async fn empty_table(
             .await?;
         return Ok(());
     }
-    let qt = match (&pool, schema) {
-        (DbPool::Postgres(_), Some(s)) => {
-            format!("{}.{}", quote_ident(true, &s), quote_ident(true, &table))
-        }
-        (DbPool::Postgres(_), None) => format!(
-            "{}.{}",
-            quote_ident(true, "public"),
-            quote_ident(true, &table)
-        ),
-        (DbPool::Mysql(_), Some(s)) => {
-            format!("{}.{}", quote_ident(false, &s), quote_ident(false, &table))
-        }
-        (DbPool::Mysql(_), None) => quote_ident(false, &table),
-        (DbPool::Sqlite(_), _) => quote_ident(true, &table),
-        (DbPool::Mongo(_), _) => unreachable!("mongo dispatched above"),
-    };
+    let dialect = Dialect::try_of(&pool)?;
+    let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     // SQLite has no TRUNCATE; DELETE FROM with no WHERE clears the table.
     let sql = match &pool {
         DbPool::Sqlite(_) => format!("DELETE FROM {qt}"),
@@ -1002,38 +974,41 @@ pub async fn rename_table(
             "renaming collections is not supported in this version".into(),
         ));
     }
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let new_ident = quote_ident(pg_or_sqlite, new_name.trim());
-    let sql = match &pool {
-        DbPool::Postgres(_) => {
-            let s = schema.unwrap_or_else(|| "public".into());
-            format!(
-                "ALTER TABLE {}.{} RENAME TO {}",
-                quote_ident(true, &s),
-                quote_ident(true, &table),
-                new_ident,
-            )
-        }
-        DbPool::Mysql(_) => match schema {
+    let dialect = Dialect::try_of(&pool)?;
+    let new_ident = dialect.quote_ident(new_name.trim());
+    let sql = match dialect {
+        Dialect::Postgres => format!(
+            "ALTER TABLE {} RENAME TO {}",
+            dialect.qualify_defaulted(schema.as_deref(), &table),
+            new_ident,
+        ),
+        Dialect::Mysql => match schema.as_deref() {
             Some(s) => format!(
-                "RENAME TABLE {}.{} TO {}.{}",
-                quote_ident(false, &s),
-                quote_ident(false, &table),
-                quote_ident(false, &s),
+                "RENAME TABLE {} TO {}.{}",
+                dialect.qualify(Some(s), &table),
+                dialect.quote_ident(s),
                 new_ident,
             ),
             None => format!(
                 "RENAME TABLE {} TO {}",
-                quote_ident(false, &table),
+                dialect.quote_ident(&table),
                 new_ident,
             ),
         },
-        DbPool::Sqlite(_) => format!(
+        Dialect::Sqlite => format!(
             "ALTER TABLE {} RENAME TO {}",
-            quote_ident(true, &table),
+            dialect.quote_ident(&table),
             new_ident,
         ),
-        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
+        // T-SQL renames through `EXEC sp_rename @old, @new, 'OBJECT'`, where
+        // both arguments are *strings* rather than identifiers — bound
+        // parameters, not quoted names. Wired up with the rest of the SQL
+        // Server DDL work.
+        Dialect::MsSql => {
+            return Err(AppError::UnsupportedDriver(
+                "renaming a table is not supported on SQL Server yet".into(),
+            ))
+        }
     };
     match pool {
         DbPool::Postgres(p) => {
@@ -1271,7 +1246,7 @@ pub async fn list_privileges_inner(
         DbPool::Mysql(p) => {
             // `user` is "user@host" as produced by list_users. SHOW GRANTS
             // requires the literal pair, quoted as MySQL string literals —
-            // not identifiers, so quote_ident does not apply here. The
+            // not identifiers, so identifier quoting does not apply here. The
             // source is always a catalog lookup (mysql.user), never
             // free-form input, but quotes are still escaped defensively.
             let (name, host) = user.rsplit_once('@').unwrap_or((user.as_str(), "%"));

@@ -8,8 +8,7 @@
 //! fundamentally different model), so every command here rejects it up
 //! front, matching [`crate::commands::structure`]'s existing Mongo guard.
 
-use crate::db::ddl::Driver;
-use crate::db::sql::quote_ident;
+use crate::db::sql::Dialect;
 use crate::db::view_ddl::{build_view_ddl, ViewDefinition};
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
@@ -23,17 +22,6 @@ fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
         .read()
         .get(id)
         .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
-fn driver_of(pool: &DbPool) -> AppResult<Driver> {
-    match pool {
-        DbPool::Postgres(_) => Ok(Driver::Postgres),
-        DbPool::Mysql(_) => Ok(Driver::Mysql),
-        DbPool::Sqlite(_) => Ok(Driver::Sqlite),
-        DbPool::Mongo(_) => Err(AppError::UnsupportedDriver(
-            "view editing is not supported on MongoDB".into(),
-        )),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +80,7 @@ pub async fn get_view_definition(
     view: String,
 ) -> AppResult<ViewDefinition> {
     let pool = pool_for(state.inner(), &connection_id)?;
-    driver_of(&pool)?;
+    Dialect::try_of(&pool)?;
     match pool {
         DbPool::Postgres(p) => {
             let schema = schema.unwrap_or_else(|| "public".into());
@@ -144,7 +132,7 @@ pub async fn get_view_definition(
                 query: strip_sqlite_view_header(&create_sql),
             })
         }
-        DbPool::Mongo(_) => unreachable!("mongo rejected by driver_of above"),
+        DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
     }
 }
 
@@ -174,9 +162,9 @@ pub async fn preview_view_change(
     args: ViewChangeArgs,
 ) -> AppResult<ViewPreview> {
     let pool = pool_for(state.inner(), &args.connection_id)?;
-    let driver = driver_of(&pool)?;
+    let dialect = Dialect::try_of(&pool)?;
     let (statements, drop_and_recreate) =
-        build_view_ddl(driver, args.original.as_ref(), &args.desired)?;
+        build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
     Ok(ViewPreview {
         statements,
         drop_and_recreate,
@@ -186,8 +174,8 @@ pub async fn preview_view_change(
 #[tauri::command]
 pub async fn apply_view_change(state: State<'_, AppState>, args: ViewChangeArgs) -> AppResult<()> {
     let pool = pool_for(state.inner(), &args.connection_id)?;
-    let driver = driver_of(&pool)?;
-    let (statements, _) = build_view_ddl(driver, args.original.as_ref(), &args.desired)?;
+    let dialect = Dialect::try_of(&pool)?;
+    let (statements, _) = build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
 
     match &pool {
         DbPool::Postgres(p) => {
@@ -236,39 +224,40 @@ pub async fn rename_view(
         ));
     }
     let pool = pool_for(state.inner(), &connection_id)?;
-    driver_of(&pool)?;
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let new_ident = quote_ident(pg_or_sqlite, new_name.trim());
-    let sql = match &pool {
-        DbPool::Postgres(_) => {
-            let s = schema.unwrap_or_else(|| "public".into());
-            format!(
-                "ALTER VIEW {}.{} RENAME TO {}",
-                quote_ident(true, &s),
-                quote_ident(true, &view),
-                new_ident
-            )
-        }
-        DbPool::Mysql(_) => match schema {
+    let dialect = Dialect::try_of(&pool)?;
+    let new_ident = dialect.quote_ident(new_name.trim());
+    let sql = match dialect {
+        Dialect::Postgres => format!(
+            "ALTER VIEW {} RENAME TO {}",
+            dialect.qualify_defaulted(schema.as_deref(), &view),
+            new_ident
+        ),
+        Dialect::Mysql => match schema.as_deref() {
             Some(s) => format!(
-                "RENAME TABLE {}.{} TO {}.{}",
-                quote_ident(false, &s),
-                quote_ident(false, &view),
-                quote_ident(false, &s),
+                "RENAME TABLE {} TO {}.{}",
+                dialect.qualify(Some(s), &view),
+                dialect.quote_ident(s),
                 new_ident
             ),
             None => format!(
                 "RENAME TABLE {} TO {}",
-                quote_ident(false, &view),
+                dialect.quote_ident(&view),
                 new_ident
             ),
         },
-        DbPool::Sqlite(_) => format!(
+        Dialect::Sqlite => format!(
             "ALTER TABLE {} RENAME TO {}",
-            quote_ident(true, &view),
+            dialect.quote_ident(&view),
             new_ident
         ),
-        DbPool::Mongo(_) => unreachable!("mongo rejected by driver_of above"),
+        // T-SQL renames through `EXEC sp_rename`, which also takes the new name
+        // as a bare string rather than an identifier — part of the deferred
+        // SQL Server view-editor work.
+        Dialect::MsSql => {
+            return Err(AppError::UnsupportedDriver(
+                "renaming a view is not supported on SQL Server yet".into(),
+            ))
+        }
     };
     match &pool {
         DbPool::Postgres(p) => {
@@ -280,7 +269,7 @@ pub async fn rename_view(
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(p).await?;
         }
-        DbPool::Mongo(_) => unreachable!("mongo rejected by driver_of above"),
+        DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
     }
     Ok(())
 }
@@ -293,26 +282,8 @@ pub async fn drop_view(
     view: String,
 ) -> AppResult<()> {
     let pool = pool_for(state.inner(), &connection_id)?;
-    driver_of(&pool)?;
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let qt = match (&pool, schema) {
-        (DbPool::Postgres(_), Some(s)) => {
-            format!("{}.{}", quote_ident(true, &s), quote_ident(true, &view))
-        }
-        (DbPool::Postgres(_), None) => {
-            format!(
-                "{}.{}",
-                quote_ident(true, "public"),
-                quote_ident(true, &view)
-            )
-        }
-        (DbPool::Mysql(_), Some(s)) => {
-            format!("{}.{}", quote_ident(false, &s), quote_ident(false, &view))
-        }
-        (DbPool::Mysql(_), None) => quote_ident(false, &view),
-        (DbPool::Sqlite(_), _) => quote_ident(pg_or_sqlite, &view),
-        (DbPool::Mongo(_), _) => unreachable!("mongo rejected by driver_of above"),
-    };
+    let dialect = Dialect::try_of(&pool)?;
+    let qt = dialect.qualify_defaulted(schema.as_deref(), &view);
     let sql = format!("DROP VIEW {qt}");
     match &pool {
         DbPool::Postgres(p) => {
@@ -324,7 +295,7 @@ pub async fn drop_view(
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(p).await?;
         }
-        DbPool::Mongo(_) => unreachable!("mongo rejected by driver_of above"),
+        DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
     }
     Ok(())
 }

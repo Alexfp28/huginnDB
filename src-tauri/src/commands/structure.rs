@@ -7,8 +7,9 @@
 //! table. The lean `list_columns` shape stays untouched for the explorer tree.
 
 use crate::db::ddl::{
-    build_ddl, sqlite_rebuild_required, ColumnDef, Driver, ForeignKeyDef, IndexDef, TableStructure,
+    build_ddl, sqlite_rebuild_required, ColumnDef, ForeignKeyDef, IndexDef, TableStructure,
 };
+use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
@@ -22,17 +23,6 @@ fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
         .read()
         .get(id)
         .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
-fn driver_of(pool: &DbPool) -> Driver {
-    match pool {
-        DbPool::Postgres(_) => Driver::Postgres,
-        DbPool::Mysql(_) => Driver::Mysql,
-        DbPool::Sqlite(_) => Driver::Sqlite,
-        // MongoDB has no SQL DDL driver; structure *editing* is not supported,
-        // and the callers below guard against it before reaching `driver_of`.
-        DbPool::Mongo(_) => unreachable!("mongo structure changes are rejected before driver_of"),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -469,10 +459,10 @@ pub async fn preview_structure_change(
             "structure editing is not supported on MongoDB in this version".into(),
         ));
     }
-    let driver = driver_of(&pool);
-    let statements = build_ddl(driver, args.original.as_ref(), &args.desired)?;
-    let rebuild =
-        driver == Driver::Sqlite && sqlite_rebuild_required(args.original.as_ref(), &args.desired);
+    let dialect = Dialect::try_of(&pool)?;
+    let statements = build_ddl(dialect, args.original.as_ref(), &args.desired)?;
+    let rebuild = dialect == Dialect::Sqlite
+        && sqlite_rebuild_required(args.original.as_ref(), &args.desired);
     Ok(StructurePreview {
         statements,
         rebuild,
@@ -501,8 +491,8 @@ pub(crate) async fn apply_structure_change_inner(
             "structure editing is not supported on MongoDB in this version".into(),
         ));
     }
-    let driver = driver_of(&pool);
-    let statements = build_ddl(driver, args.original.as_ref(), &args.desired)?;
+    let dialect = Dialect::try_of(&pool)?;
+    let statements = build_ddl(dialect, args.original.as_ref(), &args.desired)?;
 
     match &pool {
         DbPool::Postgres(p) => {

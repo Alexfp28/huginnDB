@@ -1,4 +1,4 @@
-//! Pure, driver-aware DDL generation for the visual table-structure editor.
+//! Pure, dialect-aware DDL generation for the visual table-structure editor.
 //!
 //! The editor sends the *desired* table structure (and, when editing, the
 //! original snapshot) to the backend; [`build_ddl`] diffs them and returns the
@@ -11,27 +11,9 @@
 //! before it is quoted, and `data_type` / `default` go through narrower
 //! validators. Nothing in this module executes SQL — it only builds strings.
 
+use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
-
-/// Which backend we're generating DDL for. Maps from the runtime `DbPool`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Driver {
-    Postgres,
-    Mysql,
-    Sqlite,
-}
-
-impl Driver {
-    fn pg_or_sqlite(self) -> bool {
-        matches!(self, Driver::Postgres | Driver::Sqlite)
-    }
-
-    /// Quote a *validated* identifier for this driver.
-    fn quote(self, ident: &str) -> String {
-        crate::db::sql::quote_ident(self.pg_or_sqlite(), ident)
-    }
-}
 
 // ---------------------------------------------------------------------------
 // DTOs — mirrored in src/types.ts (camelCase on the wire).
@@ -106,8 +88,8 @@ const MAX_IDENT_LEN: usize = 128;
 ///
 /// We reject empties, over-long names, and anything containing a quote /
 /// backtick / backslash / control character — those are the bytes that could
-/// break out of the quoting in [`Driver::quote`]. Ordinary names (letters,
-/// digits, underscore, spaces, unicode) are allowed; the per-driver quoting
+/// break out of the quoting in [`Dialect::quote_ident`]. Ordinary names (letters,
+/// digits, underscore, spaces, unicode) are allowed; the per-dialect quoting
 /// handles the rest.
 pub fn validate_ident(kind: &str, name: &str) -> AppResult<()> {
     if name.is_empty() {
@@ -227,15 +209,34 @@ fn validate_referential_action(action: &str) -> AppResult<()> {
 /// each is a complete statement) so the preview pane and the apply executor
 /// share one source of truth.
 pub fn build_ddl(
-    driver: Driver,
+    dialect: Dialect,
     original: Option<&TableStructure>,
     desired: &TableStructure,
 ) -> AppResult<Vec<String>> {
+    reject_unsupported(dialect)?;
     validate_structure(desired)?;
     match original {
-        None => build_create(driver, desired),
-        Some(orig) => build_alter(driver, orig, desired),
+        None => build_create(dialect, desired),
+        Some(orig) => build_alter(dialect, orig, desired),
     }
+}
+
+/// Refuse to generate DDL for a dialect this builder doesn't implement yet.
+///
+/// SQL Server reads and edits *data* fine, but T-SQL's DDL diverges enough
+/// (`IDENTITY(1,1)`, one `ALTER COLUMN` per change, `EXEC sp_rename`,
+/// `DROP INDEX … ON …`, and the default constraint that has to be dropped
+/// before its column) that it is a separate piece of work rather than a few
+/// extra match arms. Guarding here — and in [`build_create`], which
+/// [`crate::db::dump`] calls directly — means the `unreachable!` arms further
+/// down are genuinely unreachable rather than a silent wrong-SQL path.
+fn reject_unsupported(dialect: Dialect) -> AppResult<()> {
+    if dialect == Dialect::MsSql {
+        return Err(AppError::UnsupportedDriver(
+            "the structure editor does not support SQL Server yet".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_structure(s: &TableStructure) -> AppResult<()> {
@@ -291,23 +292,13 @@ fn validate_structure(s: &TableStructure) -> AppResult<()> {
     Ok(())
 }
 
-/// Qualified `schema.table` (or bare table) for the driver.
-fn qualified(driver: Driver, schema: Option<&str>, table: &str) -> String {
-    match schema {
-        Some(s) if !s.is_empty() && driver != Driver::Sqlite => {
-            format!("{}.{}", driver.quote(s), driver.quote(table))
-        }
-        _ => driver.quote(table),
-    }
-}
-
 /// Render a single column definition for a CREATE / ADD COLUMN clause.
-fn column_clause(driver: Driver, c: &ColumnDef, include_inline_pk: bool) -> String {
-    let mut parts = vec![driver.quote(&c.name), c.data_type.trim().to_string()];
+fn column_clause(dialect: Dialect, c: &ColumnDef, include_inline_pk: bool) -> String {
+    let mut parts = vec![dialect.quote_ident(&c.name), c.data_type.trim().to_string()];
 
-    // Auto-increment phrasing differs per driver.
-    match driver {
-        Driver::Mysql => {
+    // Auto-increment phrasing differs per dialect.
+    match dialect {
+        Dialect::Mysql => {
             if !c.nullable || c.is_primary_key {
                 parts.push("NOT NULL".into());
             }
@@ -315,7 +306,7 @@ fn column_clause(driver: Driver, c: &ColumnDef, include_inline_pk: bool) -> Stri
                 parts.push("AUTO_INCREMENT".into());
             }
         }
-        Driver::Sqlite => {
+        Dialect::Sqlite => {
             // For SQLite a single-column INTEGER PRIMARY KEY [AUTOINCREMENT]
             // must be declared inline; composite PKs use a table constraint.
             if include_inline_pk && c.is_primary_key {
@@ -328,7 +319,7 @@ fn column_clause(driver: Driver, c: &ColumnDef, include_inline_pk: bool) -> Stri
                 parts.push("NOT NULL".into());
             }
         }
-        Driver::Postgres => {
+        Dialect::Postgres => {
             if c.auto_increment {
                 // Prefer GENERATED identity over the legacy serial pseudo-type.
                 parts.push("GENERATED BY DEFAULT AS IDENTITY".into());
@@ -337,6 +328,7 @@ fn column_clause(driver: Driver, c: &ColumnDef, include_inline_pk: bool) -> Stri
                 parts.push("NOT NULL".into());
             }
         }
+        Dialect::MsSql => unreachable!("SQL Server is rejected by build_ddl / build_create"),
     }
 
     if let Some(d) = &c.default {
@@ -357,17 +349,18 @@ fn column_clause(driver: Driver, c: &ColumnDef, include_inline_pk: bool) -> Stri
 /// allowlist, which is meant to gate *user-typed* structure-editor input, not
 /// defaults already round-tripped from a live catalog (e.g. Postgres's
 /// `'foo'::text` cast-style defaults, which the allowlist would reject).
-pub(crate) fn build_create(driver: Driver, s: &TableStructure) -> AppResult<Vec<String>> {
-    let qt = qualified(driver, s.schema.as_deref(), &s.name);
+pub(crate) fn build_create(dialect: Dialect, s: &TableStructure) -> AppResult<Vec<String>> {
+    reject_unsupported(dialect)?;
+    let qt = dialect.qualify(s.schema.as_deref(), &s.name);
     let pk_cols: Vec<&ColumnDef> = s.columns.iter().filter(|c| c.is_primary_key).collect();
     // SQLite: a single INTEGER PRIMARY KEY AUTOINCREMENT must be inline.
     let sqlite_inline_pk =
-        driver == Driver::Sqlite && pk_cols.len() == 1 && pk_cols[0].auto_increment;
+        dialect == Dialect::Sqlite && pk_cols.len() == 1 && pk_cols[0].auto_increment;
 
     let mut col_lines: Vec<String> = s
         .columns
         .iter()
-        .map(|c| column_clause(driver, c, sqlite_inline_pk))
+        .map(|c| column_clause(dialect, c, sqlite_inline_pk))
         .collect();
 
     // Table-level PRIMARY KEY (skipped for the SQLite inline case and when
@@ -375,16 +368,16 @@ pub(crate) fn build_create(driver: Driver, s: &TableStructure) -> AppResult<Vec<
     if !pk_cols.is_empty() && !sqlite_inline_pk {
         let cols = pk_cols
             .iter()
-            .map(|c| driver.quote(&c.name))
+            .map(|c| dialect.quote_ident(&c.name))
             .collect::<Vec<_>>()
             .join(", ");
         col_lines.push(format!("PRIMARY KEY ({cols})"));
     }
 
     // SQLite requires FK clauses inline in CREATE TABLE.
-    if driver == Driver::Sqlite {
+    if dialect == Dialect::Sqlite {
         for fk in &s.foreign_keys {
-            col_lines.push(fk_clause(driver, fk, true));
+            col_lines.push(fk_clause(dialect, fk, true));
         }
     }
 
@@ -394,41 +387,41 @@ pub(crate) fn build_create(driver: Driver, s: &TableStructure) -> AppResult<Vec<
     )];
 
     // PG/MySQL: FKs as separate ALTER TABLE ADD CONSTRAINT statements.
-    if driver != Driver::Sqlite {
+    if dialect != Dialect::Sqlite {
         for fk in &s.foreign_keys {
             out.push(format!(
                 "ALTER TABLE {qt} ADD {}",
-                fk_clause(driver, fk, false)
+                fk_clause(dialect, fk, false)
             ));
         }
     }
 
     // Indexes (all drivers) as separate CREATE INDEX statements.
     for (i, idx) in s.indexes.iter().enumerate() {
-        out.push(create_index_stmt(driver, s, idx, i));
+        out.push(create_index_stmt(dialect, s, idx, i));
     }
     Ok(out)
 }
 
 /// A `[CONSTRAINT name] FOREIGN KEY (cols) REFERENCES tbl (cols) [ON …]`
 /// clause. `inline = true` omits nothing but is used inside CREATE TABLE.
-fn fk_clause(driver: Driver, fk: &ForeignKeyDef, _inline: bool) -> String {
+fn fk_clause(dialect: Dialect, fk: &ForeignKeyDef, _inline: bool) -> String {
     let cols = fk
         .columns
         .iter()
-        .map(|c| driver.quote(c))
+        .map(|c| dialect.quote_ident(c))
         .collect::<Vec<_>>()
         .join(", ");
     let ref_cols = fk
         .ref_columns
         .iter()
-        .map(|c| driver.quote(c))
+        .map(|c| dialect.quote_ident(c))
         .collect::<Vec<_>>()
         .join(", ");
-    let ref_tbl = qualified(driver, fk.ref_schema.as_deref(), &fk.ref_table);
+    let ref_tbl = dialect.qualify(fk.ref_schema.as_deref(), &fk.ref_table);
     let mut s = String::new();
     if let Some(name) = &fk.name {
-        s.push_str(&format!("CONSTRAINT {} ", driver.quote(name)));
+        s.push_str(&format!("CONSTRAINT {} ", dialect.quote_ident(name)));
     }
     s.push_str(&format!(
         "FOREIGN KEY ({cols}) REFERENCES {ref_tbl} ({ref_cols})"
@@ -442,13 +435,18 @@ fn fk_clause(driver: Driver, fk: &ForeignKeyDef, _inline: bool) -> String {
     s
 }
 
-fn create_index_stmt(driver: Driver, s: &TableStructure, idx: &IndexDef, ordinal: usize) -> String {
-    let qt = qualified(driver, s.schema.as_deref(), &s.name);
+fn create_index_stmt(
+    dialect: Dialect,
+    s: &TableStructure,
+    idx: &IndexDef,
+    ordinal: usize,
+) -> String {
+    let qt = dialect.qualify(s.schema.as_deref(), &s.name);
     let unique = if idx.unique { "UNIQUE " } else { "" };
     let cols = idx
         .columns
         .iter()
-        .map(|c| driver.quote(c))
+        .map(|c| dialect.quote_ident(c))
         .collect::<Vec<_>>()
         .join(", ");
     // Fall back to a deterministic generated name when none was supplied.
@@ -456,7 +454,7 @@ fn create_index_stmt(driver: Driver, s: &TableStructure, idx: &IndexDef, ordinal
         .name
         .clone()
         .unwrap_or_else(|| format!("{}_idx_{}", s.name, ordinal));
-    let qname = driver.quote(&name);
+    let qname = dialect.quote_ident(&name);
     format!("CREATE {unique}INDEX {qname} ON {qt} ({cols})")
 }
 
@@ -465,32 +463,33 @@ fn create_index_stmt(driver: Driver, s: &TableStructure, idx: &IndexDef, ordinal
 // ---------------------------------------------------------------------------
 
 fn build_alter(
-    driver: Driver,
+    dialect: Dialect,
     orig: &TableStructure,
     desired: &TableStructure,
 ) -> AppResult<Vec<String>> {
-    match driver {
-        Driver::Sqlite => build_alter_sqlite(orig, desired),
-        _ => build_alter_pg_mysql(driver, orig, desired),
+    match dialect {
+        Dialect::Sqlite => build_alter_sqlite(orig, desired),
+        Dialect::Postgres | Dialect::Mysql => build_alter_pg_mysql(dialect, orig, desired),
+        Dialect::MsSql => unreachable!("SQL Server is rejected by build_ddl"),
     }
 }
 
 fn build_alter_pg_mysql(
-    driver: Driver,
+    dialect: Dialect,
     orig: &TableStructure,
     desired: &TableStructure,
 ) -> AppResult<Vec<String>> {
-    let qt = qualified(driver, desired.schema.as_deref(), &desired.name);
+    let qt = dialect.qualify(desired.schema.as_deref(), &desired.name);
     let mut out = Vec::new();
 
     // 0. Table rename, if any — first, so every clause below (all built from
     // `qt`, i.e. `desired.name`) targets a table that actually exists by the
     // time it runs.
     if orig.name != desired.name {
-        let from = qualified(driver, orig.schema.as_deref(), &orig.name);
+        let from = dialect.qualify(orig.schema.as_deref(), &orig.name);
         out.push(format!(
             "ALTER TABLE {from} RENAME TO {}",
-            driver.quote(&desired.name)
+            dialect.quote_ident(&desired.name)
         ));
     }
 
@@ -504,8 +503,8 @@ fn build_alter_pg_mysql(
             if orig_name != &c.name {
                 out.push(format!(
                     "ALTER TABLE {qt} RENAME COLUMN {} TO {}",
-                    driver.quote(orig_name),
-                    driver.quote(&c.name)
+                    dialect.quote_ident(orig_name),
+                    dialect.quote_ident(&c.name)
                 ));
             }
         }
@@ -521,7 +520,7 @@ fn build_alter_pg_mysql(
         if !claimed.contains(oc.name.as_str()) {
             out.push(format!(
                 "ALTER TABLE {qt} DROP COLUMN {}",
-                driver.quote(&oc.name)
+                dialect.quote_ident(&oc.name)
             ));
         }
     }
@@ -533,14 +532,14 @@ fn build_alter_pg_mysql(
                 // New column.
                 out.push(format!(
                     "ALTER TABLE {qt} ADD COLUMN {}",
-                    column_clause(driver, c, false)
+                    column_clause(dialect, c, false)
                 ));
             }
             Some(orig_name) => {
                 let prev = orig_by_name.get(orig_name.as_str());
                 if let Some(prev) = prev {
                     if column_changed(prev, c) {
-                        out.extend(alter_column_stmts(driver, &qt, c));
+                        out.extend(alter_column_stmts(dialect, &qt, c));
                     }
                 }
             }
@@ -548,10 +547,10 @@ fn build_alter_pg_mysql(
     }
 
     // 4. Index diff (by name; unnamed indexes are treated as additive).
-    diff_indexes(driver, desired, orig, &qt, &mut out);
+    diff_indexes(dialect, desired, orig, &qt, &mut out);
 
     // 5. FK diff (by name).
-    diff_foreign_keys(driver, desired, orig, &qt, &mut out);
+    diff_foreign_keys(dialect, desired, orig, &qt, &mut out);
 
     Ok(out)
 }
@@ -564,17 +563,17 @@ fn column_changed(a: &ColumnDef, b: &ColumnDef) -> bool {
         || a.auto_increment != b.auto_increment
 }
 
-fn alter_column_stmts(driver: Driver, qt: &str, c: &ColumnDef) -> Vec<String> {
-    match driver {
-        Driver::Mysql => {
+fn alter_column_stmts(dialect: Dialect, qt: &str, c: &ColumnDef) -> Vec<String> {
+    match dialect {
+        Dialect::Mysql => {
             // MySQL carries the whole new definition in one MODIFY.
             vec![format!(
                 "ALTER TABLE {qt} MODIFY COLUMN {}",
-                column_clause(driver, c, false)
+                column_clause(dialect, c, false)
             )]
         }
-        Driver::Postgres => {
-            let col = driver.quote(&c.name);
+        Dialect::Postgres => {
+            let col = dialect.quote_ident(&c.name);
             let mut v = vec![format!(
                 "ALTER TABLE {qt} ALTER COLUMN {col} TYPE {}",
                 c.data_type.trim()
@@ -593,12 +592,13 @@ fn alter_column_stmts(driver: Driver, qt: &str, c: &ColumnDef) -> Vec<String> {
             }
             v
         }
-        Driver::Sqlite => unreachable!("SQLite alters go through build_alter_sqlite"),
+        Dialect::Sqlite => unreachable!("SQLite alters go through build_alter_sqlite"),
+        Dialect::MsSql => unreachable!("SQL Server is rejected by build_ddl"),
     }
 }
 
 fn diff_indexes(
-    driver: Driver,
+    dialect: Dialect,
     desired: &TableStructure,
     orig: &TableStructure,
     qt: &str,
@@ -619,7 +619,7 @@ fn diff_indexes(
     for idx in &orig.indexes {
         if let Some(n) = &idx.name {
             if !desired_names.contains(n.as_str()) {
-                out.push(drop_index_stmt(driver, qt, n));
+                out.push(drop_index_stmt(dialect, qt, n));
             }
         }
     }
@@ -630,22 +630,29 @@ fn diff_indexes(
             None => true,
         };
         if is_new {
-            out.push(create_index_stmt(driver, desired, idx, i));
+            out.push(create_index_stmt(dialect, desired, idx, i));
         }
     }
 }
 
-fn drop_index_stmt(driver: Driver, qt: &str, name: &str) -> String {
-    match driver {
-        Driver::Mysql => format!("ALTER TABLE {qt} DROP INDEX {}", driver.quote(name)),
+fn drop_index_stmt(dialect: Dialect, qt: &str, name: &str) -> String {
+    match dialect {
+        Dialect::Mysql => format!("ALTER TABLE {qt} DROP INDEX {}", dialect.quote_ident(name)),
         // PG: DROP INDEX is schema-qualified but operates on the index name,
         // not the table; the table qualifier isn't used. SQLite is similar.
-        _ => format!("DROP INDEX {}", driver.quote(name)),
+        Dialect::Postgres | Dialect::Sqlite => {
+            format!("DROP INDEX {}", dialect.quote_ident(name))
+        }
+        // T-SQL needs the table: `DROP INDEX ix ON tbl`. Spelled out rather
+        // than left to a catch-all so the arm is a deliberate choice — this is
+        // exactly the kind of statement that used to silently take the
+        // Postgres path and produce invalid SQL.
+        Dialect::MsSql => unreachable!("SQL Server is rejected by build_ddl"),
     }
 }
 
 fn diff_foreign_keys(
-    driver: Driver,
+    dialect: Dialect,
     desired: &TableStructure,
     orig: &TableStructure,
     qt: &str,
@@ -661,11 +668,20 @@ fn diff_foreign_keys(
     for fk in &orig.foreign_keys {
         if let Some(n) = &fk.name {
             if !desired_names.contains(n.as_str()) {
-                out.push(match driver {
-                    Driver::Mysql => {
-                        format!("ALTER TABLE {qt} DROP FOREIGN KEY {}", driver.quote(n))
+                out.push(match dialect {
+                    Dialect::Mysql => {
+                        format!(
+                            "ALTER TABLE {qt} DROP FOREIGN KEY {}",
+                            dialect.quote_ident(n)
+                        )
                     }
-                    _ => format!("ALTER TABLE {qt} DROP CONSTRAINT {}", driver.quote(n)),
+                    Dialect::Postgres | Dialect::Sqlite => {
+                        format!(
+                            "ALTER TABLE {qt} DROP CONSTRAINT {}",
+                            dialect.quote_ident(n)
+                        )
+                    }
+                    Dialect::MsSql => unreachable!("SQL Server is rejected by build_ddl"),
                 });
             }
         }
@@ -684,7 +700,7 @@ fn diff_foreign_keys(
         if is_new {
             out.push(format!(
                 "ALTER TABLE {qt} ADD {}",
-                fk_clause(driver, fk, false)
+                fk_clause(dialect, fk, false)
             ));
         }
     }
@@ -735,13 +751,13 @@ fn fk_signature(s: &TableStructure) -> Vec<(Vec<String>, String, Vec<String>)> {
 }
 
 fn build_alter_sqlite(orig: &TableStructure, desired: &TableStructure) -> AppResult<Vec<String>> {
-    let driver = Driver::Sqlite;
+    let dialect = Dialect::Sqlite;
     if sqlite_needs_rebuild(orig, desired) {
         return build_sqlite_rebuild(orig, desired);
     }
 
     // Simple, natively-supported path: rename / add / drop columns.
-    let qt = qualified(driver, None, &desired.name);
+    let qt = dialect.qualify(None, &desired.name);
     let mut out = Vec::new();
 
     // Table rename first, same reasoning as the PG/MySQL path above: `qt`
@@ -749,7 +765,7 @@ fn build_alter_sqlite(orig: &TableStructure, desired: &TableStructure) -> AppRes
     if orig.name != desired.name {
         out.push(format!(
             "ALTER TABLE {} RENAME TO {qt}",
-            qualified(driver, None, &orig.name)
+            dialect.qualify(None, &orig.name)
         ));
     }
 
@@ -758,8 +774,8 @@ fn build_alter_sqlite(orig: &TableStructure, desired: &TableStructure) -> AppRes
             if orig_name != &c.name {
                 out.push(format!(
                     "ALTER TABLE {qt} RENAME COLUMN {} TO {}",
-                    driver.quote(orig_name),
-                    driver.quote(&c.name)
+                    dialect.quote_ident(orig_name),
+                    dialect.quote_ident(&c.name)
                 ));
             }
         }
@@ -773,7 +789,7 @@ fn build_alter_sqlite(orig: &TableStructure, desired: &TableStructure) -> AppRes
         if !claimed.contains(oc.name.as_str()) {
             out.push(format!(
                 "ALTER TABLE {qt} DROP COLUMN {}",
-                driver.quote(&oc.name)
+                dialect.quote_ident(&oc.name)
             ));
         }
     }
@@ -781,12 +797,12 @@ fn build_alter_sqlite(orig: &TableStructure, desired: &TableStructure) -> AppRes
         if c.original_name.is_none() {
             out.push(format!(
                 "ALTER TABLE {qt} ADD COLUMN {}",
-                column_clause(driver, c, false)
+                column_clause(dialect, c, false)
             ));
         }
     }
     // Index diff is ALTER-free in SQLite (CREATE/DROP INDEX).
-    diff_indexes(driver, desired, orig, &qt, &mut out);
+    diff_indexes(dialect, desired, orig, &qt, &mut out);
     Ok(out)
 }
 
@@ -795,7 +811,7 @@ fn build_alter_sqlite(orig: &TableStructure, desired: &TableStructure) -> AppRes
 /// the transaction (SQLite requires `foreign_keys` to be changed outside a
 /// transaction); the executor runs the list verbatim.
 fn build_sqlite_rebuild(orig: &TableStructure, desired: &TableStructure) -> AppResult<Vec<String>> {
-    let driver = Driver::Sqlite;
+    let dialect = Dialect::Sqlite;
     let table = &desired.name;
     let tmp = format!("{table}__huginn_new");
     validate_ident("temp table", &tmp)?;
@@ -808,7 +824,7 @@ fn build_sqlite_rebuild(orig: &TableStructure, desired: &TableStructure) -> AppR
         indexes: vec![], // indexes recreated against the final name below
         foreign_keys: desired.foreign_keys.clone(),
     };
-    let create = build_create(driver, &tmp_struct)?;
+    let create = build_create(dialect, &tmp_struct)?;
 
     // Columns to copy: those that survive (matched by original_name), mapping
     // old name → new name. New columns are excluded from the SELECT and take
@@ -818,8 +834,8 @@ fn build_sqlite_rebuild(orig: &TableStructure, desired: &TableStructure) -> AppR
     for c in &desired.columns {
         if let Some(orig_name) = &c.original_name {
             if orig.columns.iter().any(|oc| &oc.name == orig_name) {
-                new_cols.push(driver.quote(&c.name));
-                old_cols.push(driver.quote(orig_name));
+                new_cols.push(dialect.quote_ident(&c.name));
+                old_cols.push(dialect.quote_ident(orig_name));
             }
         }
     }
@@ -828,9 +844,9 @@ fn build_sqlite_rebuild(orig: &TableStructure, desired: &TableStructure) -> AppR
     // rename below — the SELECT source and the DROP target must read from
     // there, not from `desired.name` (which, on a rename, doesn't exist as a
     // real table yet).
-    let qt = driver.quote(table);
-    let qt_orig = driver.quote(&orig.name);
-    let qtmp = driver.quote(&tmp);
+    let qt = dialect.quote_ident(table);
+    let qt_orig = dialect.quote_ident(&orig.name);
+    let qtmp = dialect.quote_ident(&tmp);
 
     let mut out = Vec::new();
     out.push("PRAGMA foreign_keys=OFF".to_string());
@@ -846,7 +862,7 @@ fn build_sqlite_rebuild(orig: &TableStructure, desired: &TableStructure) -> AppR
     out.push(format!("ALTER TABLE {qtmp} RENAME TO {qt}"));
     // Recreate indexes against the final table name.
     for (i, idx) in desired.indexes.iter().enumerate() {
-        out.push(create_index_stmt(driver, desired, idx, i));
+        out.push(create_index_stmt(dialect, desired, idx, i));
     }
     out.push("PRAGMA foreign_keys=ON".to_string());
     Ok(out)
@@ -925,7 +941,7 @@ mod tests {
         c.is_primary_key = true;
         c.nullable = false;
         c.auto_increment = true;
-        let stmts = build_ddl(Driver::Postgres, None, &table("users", vec![c])).unwrap();
+        let stmts = build_ddl(Dialect::Postgres, None, &table("users", vec![c])).unwrap();
         assert_eq!(stmts.len(), 1);
         assert!(stmts[0].contains("CREATE TABLE \"users\""));
         assert!(stmts[0].contains("GENERATED BY DEFAULT AS IDENTITY"));
@@ -939,7 +955,7 @@ mod tests {
         desired_col.name = "b".into(); // rename a -> b, retype int -> bigint
         desired_col.nullable = false;
         let desired = table("t", vec![desired_col]);
-        let stmts = build_ddl(Driver::Mysql, Some(&orig), &desired).unwrap();
+        let stmts = build_ddl(Dialect::Mysql, Some(&orig), &desired).unwrap();
         assert!(stmts.iter().any(|s| s.contains("RENAME COLUMN `a` TO `b`")));
         assert!(stmts
             .iter()
@@ -950,7 +966,7 @@ mod tests {
     fn postgres_add_and_drop_column() {
         let orig = table("t", vec![existing("keep", "int"), existing("gone", "text")]);
         let desired = table("t", vec![existing("keep", "int"), col("fresh", "text")]);
-        let stmts = build_ddl(Driver::Postgres, Some(&orig), &desired).unwrap();
+        let stmts = build_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
         assert!(stmts.iter().any(|s| s.contains("DROP COLUMN \"gone\"")));
         assert!(stmts
             .iter()
@@ -963,7 +979,7 @@ mod tests {
         let mut renamed = existing("a", "TEXT");
         renamed.name = "b".into();
         let desired = table("t", vec![renamed, col("c", "TEXT")]);
-        let stmts = build_ddl(Driver::Sqlite, Some(&orig), &desired).unwrap();
+        let stmts = build_ddl(Dialect::Sqlite, Some(&orig), &desired).unwrap();
         assert!(stmts
             .iter()
             .any(|s| s.contains("RENAME COLUMN \"a\" TO \"b\"")));
@@ -976,7 +992,7 @@ mod tests {
         let orig = table("t", vec![existing("a", "TEXT"), existing("b", "TEXT")]);
         let desired = table("t", vec![existing("a", "INTEGER"), existing("b", "TEXT")]);
         assert!(sqlite_rebuild_required(Some(&orig), &desired));
-        let stmts = build_ddl(Driver::Sqlite, Some(&orig), &desired).unwrap();
+        let stmts = build_ddl(Dialect::Sqlite, Some(&orig), &desired).unwrap();
         assert_eq!(stmts.first().unwrap(), "PRAGMA foreign_keys=OFF");
         assert_eq!(stmts.last().unwrap(), "PRAGMA foreign_keys=ON");
         assert!(stmts
@@ -993,7 +1009,7 @@ mod tests {
     fn mysql_table_rename_only() {
         let orig = table("old_name", vec![existing("a", "int")]);
         let desired = table("new_name", vec![existing("a", "int")]);
-        let stmts = build_ddl(Driver::Mysql, Some(&orig), &desired).unwrap();
+        let stmts = build_ddl(Dialect::Mysql, Some(&orig), &desired).unwrap();
         assert_eq!(stmts, vec!["ALTER TABLE `old_name` RENAME TO `new_name`"]);
     }
 
@@ -1001,7 +1017,7 @@ mod tests {
     fn sqlite_table_rename_only() {
         let orig = table("old_name", vec![existing("a", "TEXT")]);
         let desired = table("new_name", vec![existing("a", "TEXT")]);
-        let stmts = build_ddl(Driver::Sqlite, Some(&orig), &desired).unwrap();
+        let stmts = build_ddl(Dialect::Sqlite, Some(&orig), &desired).unwrap();
         assert_eq!(
             stmts,
             vec!["ALTER TABLE \"old_name\" RENAME TO \"new_name\""]
@@ -1016,7 +1032,7 @@ mod tests {
         // not the not-yet-existing desired one.
         let orig = table("old_name", vec![existing("a", "TEXT")]);
         let desired = table("new_name", vec![existing("a", "INTEGER")]);
-        let stmts = build_ddl(Driver::Sqlite, Some(&orig), &desired).unwrap();
+        let stmts = build_ddl(Dialect::Sqlite, Some(&orig), &desired).unwrap();
         assert!(stmts
             .iter()
             .any(|s| s.contains("INSERT INTO \"new_name__huginn_new\"")
@@ -1053,7 +1069,7 @@ mod tests {
             on_delete: Some("CASCADE".into()),
             on_update: None,
         });
-        let stmts = build_ddl(Driver::Postgres, None, &s).unwrap();
+        let stmts = build_ddl(Dialect::Postgres, None, &s).unwrap();
         assert!(stmts
             .iter()
             .any(|s| s.contains("CREATE INDEX \"idx_user\" ON \"orders\" (\"user_id\")")));
@@ -1064,6 +1080,6 @@ mod tests {
 
     #[test]
     fn empty_table_rejected() {
-        assert!(build_ddl(Driver::Postgres, None, &table("t", vec![])).is_err());
+        assert!(build_ddl(Dialect::Postgres, None, &table("t", vec![])).is_err());
     }
 }
