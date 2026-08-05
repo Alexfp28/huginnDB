@@ -41,6 +41,7 @@ fn driver_str(pool: &DbPool) -> &'static str {
         DbPool::Mysql(_) => "mysql",
         DbPool::Sqlite(_) => "sqlite",
         DbPool::Mongo(_) => "mongodb",
+        DbPool::MsSql(_) => "sqlserver",
     }
 }
 
@@ -441,9 +442,24 @@ pub(crate) async fn execute_with_state(
             sql,
             start,
             match &pool {
-                DbPool::Postgres(p) => p.execute(sql).await.map(|r| r.rows_affected()),
-                DbPool::Mysql(p) => p.execute(sql).await.map(|r| r.rows_affected()),
-                DbPool::Sqlite(p) => p.execute(sql).await.map(|r| r.rows_affected()),
+                DbPool::Postgres(p) => p
+                    .execute(sql)
+                    .await
+                    .map(|r| r.rows_affected())
+                    .map_err(AppError::from),
+                DbPool::Mysql(p) => p
+                    .execute(sql)
+                    .await
+                    .map(|r| r.rows_affected())
+                    .map_err(AppError::from),
+                DbPool::Sqlite(p) => p
+                    .execute(sql)
+                    .await
+                    .map(|r| r.rows_affected())
+                    .map_err(AppError::from),
+                // `tiberius` has only the unprepared path for parameterless
+                // SQL, which is exactly what the editor needs here.
+                DbPool::MsSql(p) => p.execute_simple(sql).await,
                 DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
             }
         );
@@ -498,6 +514,27 @@ pub(crate) async fn execute_with_state(
                 sqlx::query(sql).fetch_all(&p).await
             );
             sqlite_result(&rows)
+        }
+        DbPool::MsSql(p) => {
+            // A T-SQL batch can return several result sets; the grid shows one,
+            // so take the first non-empty one (a `SELECT` preceded by e.g. a
+            // `SET NOCOUNT ON` would otherwise look empty).
+            let sets = try_sql_sink!(
+                sink,
+                connection_id,
+                driver,
+                sql,
+                start,
+                p.query_sets(sql).await
+            );
+            let rows = sets.into_iter().find(|s| !s.is_empty()).unwrap_or_default();
+            let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
+            (
+                cols.into_iter()
+                    .map(|(name, data_type)| ColumnMeta { name, data_type })
+                    .collect::<Vec<_>>(),
+                data,
+            )
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
@@ -676,6 +713,73 @@ pub(crate) async fn execute_batch_inner(
         }};
     }
 
+    // Same loop for SQL Server, over one pooled TDS session. It cannot share
+    // `drive!` because that macro is written against `sqlx::query` and an
+    // `Executor`; everything else about the shape (per-statement outcome, break
+    // on first error, remember the last SELECT) is identical.
+    macro_rules! drive_mssql {
+        ($client:expr) => {{
+            for (index, raw) in statements.iter().enumerate() {
+                let sql = raw.trim();
+                if sql.is_empty() {
+                    continue;
+                }
+                let is_select = is_read_only(sql);
+                let start = Instant::now();
+                let outcome: AppResult<(u64, Option<QueryResult>)> = if is_select {
+                    $client.simple_query_sets(sql).await.map(|sets| {
+                        let rows = sets.into_iter().find(|s| !s.is_empty()).unwrap_or_default();
+                        let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
+                        let ra = data.len() as u64;
+                        (
+                            ra,
+                            Some(QueryResult {
+                                columns: cols
+                                    .into_iter()
+                                    .map(|(name, data_type)| ColumnMeta { name, data_type })
+                                    .collect(),
+                                rows: data,
+                                rows_affected: ra,
+                                elapsed_ms: start.elapsed().as_millis() as u64,
+                                total: None,
+                            }),
+                        )
+                    })
+                } else {
+                    $client.simple_execute(sql).await.map(|ra| (ra, None))
+                };
+                match outcome {
+                    Ok((ra, result)) => {
+                        total_affected += ra;
+                        if result.is_some() {
+                            last_result = result;
+                        }
+                        log_sql_sink(sink, &connection_id, driver, sql, start, Some(ra), None);
+                        outcomes.push(StmtOutcome {
+                            index,
+                            preview: stmt_preview(sql),
+                            rows_affected: ra,
+                            is_select,
+                            error: None,
+                        });
+                    }
+                    Err(e) => {
+                        let msg = e.to_string();
+                        log_sql_sink(sink, &connection_id, driver, sql, start, None, Some(&msg));
+                        outcomes.push(StmtOutcome {
+                            index,
+                            preview: stmt_preview(sql),
+                            rows_affected: 0,
+                            is_select,
+                            error: Some(msg),
+                        });
+                        break;
+                    }
+                }
+            }
+        }};
+    }
+
     let acquire_start = Instant::now();
     match &pool {
         DbPool::Postgres(p) => {
@@ -710,6 +814,17 @@ pub(crate) async fn execute_batch_inner(
                 p.acquire().await
             );
             drive!(conn, sqlite_result);
+        }
+        DbPool::MsSql(p) => {
+            let mut client = try_sql_sink!(
+                sink,
+                &connection_id,
+                driver,
+                "(batch)",
+                acquire_start,
+                p.acquire().await
+            );
+            drive_mssql!(client);
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     }
@@ -1212,6 +1327,23 @@ pub(crate) async fn fetch_table_data_inner(
                 .collect();
             (columns, data)
         }
+        DbPool::MsSql(p) => {
+            let rows = try_sql_sink!(
+                sink,
+                &connection_id,
+                driver,
+                &data_sql,
+                start,
+                p.query_all(&data_sql, &where_binds).await
+            );
+            let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
+            (
+                cols.into_iter()
+                    .map(|(name, data_type)| ColumnMeta { name, data_type })
+                    .collect::<Vec<_>>(),
+                data,
+            )
+        }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
     let elapsed_ms = start.elapsed().as_millis() as u64;
@@ -1242,22 +1374,23 @@ pub(crate) async fn fetch_table_data_inner(
                     for b in &where_binds {
                         q = q.bind(b);
                     }
-                    q.fetch_optional(p).await
+                    q.fetch_optional(p).await.map_err(AppError::from)
                 }
                 DbPool::Mysql(p) => {
                     let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
                     for b in &where_binds {
                         q = q.bind(b);
                     }
-                    q.fetch_optional(p).await
+                    q.fetch_optional(p).await.map_err(AppError::from)
                 }
                 DbPool::Sqlite(p) => {
                     let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
                     for b in &where_binds {
                         q = q.bind(b);
                     }
-                    q.fetch_optional(p).await
+                    q.fetch_optional(p).await.map_err(AppError::from)
                 }
+                DbPool::MsSql(p) => p.scalar(&count_sql, &where_binds).await,
                 DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
             }
         );
@@ -1448,22 +1581,23 @@ pub(crate) async fn count_table_rows_inner(
                 for b in &where_binds {
                     q = q.bind(b);
                 }
-                q.fetch_optional(p).await
+                q.fetch_optional(p).await.map_err(AppError::from)
             }
             DbPool::Mysql(p) => {
                 let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
                 for b in &where_binds {
                     q = q.bind(b);
                 }
-                q.fetch_optional(p).await
+                q.fetch_optional(p).await.map_err(AppError::from)
             }
             DbPool::Sqlite(p) => {
                 let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
                 for b in &where_binds {
                     q = q.bind(b);
                 }
-                q.fetch_optional(p).await
+                q.fetch_optional(p).await.map_err(AppError::from)
             }
+            DbPool::MsSql(p) => p.scalar(&count_sql, &where_binds).await,
             DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
         }
     );
@@ -1561,6 +1695,13 @@ async fn try_estimate(
             // 0 is ambiguous (genuinely empty vs stale stats on a new InnoDB
             // table) — confirm it with an exact count rather than showing ~0.
             est.filter(|&v| v > 0).map(|v| v as u64)
+        }
+        DbPool::MsSql(p) => {
+            // `sys.dm_db_partition_stats` is the SQL Server equivalent of
+            // `reltuples`: maintained by the engine, no scan. It needs VIEW
+            // DATABASE STATE, and the helper returns `None` when that is
+            // missing — same "fall through to an exact count" contract.
+            crate::db::mssql::schema::estimate_rows(p, schema, table).await
         }
         // No cheap estimate; caller does an exact COUNT(*).
         DbPool::Sqlite(_) => None,
@@ -1738,6 +1879,10 @@ pub(crate) async fn update_cell_inner(
             || catalog_bit_cast);
     let set_placeholder = if bit_cast {
         format!("CAST({} AS UNSIGNED)", dialect.placeholder(1))
+    } else if dialect == Dialect::MsSql {
+        // The same "text literal, wrong coercion" problem MySQL BIT has, for
+        // SQL Server's binary family — see `db::mssql::binary_convert`.
+        crate::db::mssql::binary_convert(column_type.as_deref(), &dialect.placeholder(1))
     } else {
         dialect.placeholder(1)
     };
@@ -1760,7 +1905,7 @@ pub(crate) async fn update_cell_inner(
     // was sent on composite-PK tables — this is the belt-and-braces
     // assertion that catches any future regression of that family.
     let start = Instant::now();
-    let res: Result<u64, sqlx::Error> = async {
+    let res: AppResult<u64> = async {
         match &pool {
             DbPool::Postgres(p) => {
                 let mut tx = p.begin().await?;
@@ -1771,7 +1916,7 @@ pub(crate) async fn update_cell_inner(
                 let affected = q.execute(&mut *tx).await?.rows_affected();
                 if affected > 1 {
                     tx.rollback().await?;
-                    return Err(sqlx::Error::Protocol(format!(
+                    return Err(AppError::InvalidInput(format!(
                         "update_cell refused: {affected} rows matched the supplied \
                          primary key (composite PK incomplete?) — transaction rolled back"
                     )));
@@ -1788,7 +1933,7 @@ pub(crate) async fn update_cell_inner(
                 let affected = q.execute(&mut *tx).await?.rows_affected();
                 if affected > 1 {
                     tx.rollback().await?;
-                    return Err(sqlx::Error::Protocol(format!(
+                    return Err(AppError::InvalidInput(format!(
                         "update_cell refused: {affected} rows matched the supplied \
                          primary key (composite PK incomplete?) — transaction rolled back"
                     )));
@@ -1805,12 +1950,41 @@ pub(crate) async fn update_cell_inner(
                 let affected = q.execute(&mut *tx).await?.rows_affected();
                 if affected > 1 {
                     tx.rollback().await?;
-                    return Err(sqlx::Error::Protocol(format!(
+                    return Err(AppError::InvalidInput(format!(
                         "update_cell refused: {affected} rows matched the supplied \
                          primary key (composite PK incomplete?) — transaction rolled back"
                     )));
                 }
                 tx.commit().await?;
+                Ok(affected)
+            }
+            DbPool::MsSql(p) => {
+                // `tiberius` has no transaction handle: `BEGIN`/`COMMIT`/
+                // `ROLLBACK` are statements on the session, which is why this
+                // arm holds one `PooledClient` for the whole sequence instead
+                // of using the pool's one-shot helpers.
+                let mut binds = Vec::with_capacity(pk_strs.len() + 1);
+                binds.push(effective_value.clone());
+                binds.extend(pk_strs.iter().cloned());
+                let mut c = p.acquire().await?;
+                c.simple_execute("BEGIN TRANSACTION").await?;
+                let affected = match c.execute(&sql, &binds).await {
+                    Ok(n) => n,
+                    Err(e) => {
+                        // Best-effort unwind: if the rollback also fails the
+                        // session is already poisoned and never reused.
+                        let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
+                        return Err(e);
+                    }
+                };
+                if affected > 1 {
+                    c.simple_execute("ROLLBACK TRANSACTION").await?;
+                    return Err(AppError::InvalidInput(format!(
+                        "update_cell refused: {affected} rows matched the supplied \
+                         primary key (composite PK incomplete?) — transaction rolled back"
+                    )));
+                }
+                c.simple_execute("COMMIT TRANSACTION").await?;
                 Ok(affected)
             }
             DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
@@ -2010,22 +2184,32 @@ pub(crate) async fn delete_rows_inner(
                 for b in &binds {
                     q = q.bind(b);
                 }
-                q.execute(&p).await.map(|r| r.rows_affected())
+                q.execute(&p)
+                    .await
+                    .map(|r| r.rows_affected())
+                    .map_err(AppError::from)
             }
             DbPool::Mysql(p) => {
                 let mut q = sqlx::query(&sql);
                 for b in &binds {
                     q = q.bind(b);
                 }
-                q.execute(&p).await.map(|r| r.rows_affected())
+                q.execute(&p)
+                    .await
+                    .map(|r| r.rows_affected())
+                    .map_err(AppError::from)
             }
             DbPool::Sqlite(p) => {
                 let mut q = sqlx::query(&sql);
                 for b in &binds {
                     q = q.bind(b);
                 }
-                q.execute(&p).await.map(|r| r.rows_affected())
+                q.execute(&p)
+                    .await
+                    .map(|r| r.rows_affected())
+                    .map_err(AppError::from)
             }
+            DbPool::MsSql(p) => p.execute_params(&sql, &binds).await,
             DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
         }
     );
@@ -2133,7 +2317,20 @@ pub(crate) async fn insert_row_inner(
         .iter()
         .map(|v| dialect.quote_ident(&v.column))
         .collect();
-    let placeholders: Vec<String> = (1..=values.len()).map(|i| dialect.placeholder(i)).collect();
+    let placeholders: Vec<String> = values
+        .iter()
+        .enumerate()
+        .map(|(i, rv)| {
+            let ph = dialect.placeholder(i + 1);
+            if dialect == Dialect::MsSql {
+                // Binary columns need the hex-string conversion; every other
+                // type coerces correctly from text (see `db::mssql`).
+                crate::db::mssql::binary_convert(rv.column_type.as_deref(), &ph)
+            } else {
+                ph
+            }
+        })
+        .collect();
     let binds: Vec<Option<String>> = values.iter().map(|v| v.value.clone()).collect();
 
     // The frontend supplies `column_type` from whatever schema-cache/query-result
@@ -2194,7 +2391,7 @@ pub(crate) async fn insert_row_inner(
     // Postgres optionally tacks on RETURNING to recover the generated PK;
     // MySQL/SQLite use `last_insert_*` instead.
     let start = Instant::now();
-    let (sql_used, outcome): (String, Result<(Option<u64>, Value), sqlx::Error>) = match pool {
+    let (sql_used, outcome): (String, AppResult<(Option<u64>, Value)>) = match pool {
         DbPool::Postgres(p) => {
             let sql = match &pk_column {
                 Some(pk) => format!("{base_sql} RETURNING {}", Dialect::Postgres.quote_ident(pk)),
@@ -2205,14 +2402,18 @@ pub(crate) async fn insert_row_inner(
                 q = q.bind(b);
             }
             let outcome = if pk_column.is_some() {
-                q.fetch_all(&p).await.map(|rows| {
-                    let returned = rows.first().map(|r| pg_value(r, 0)).unwrap_or(Value::Null);
-                    (Some(rows.len() as u64), returned)
-                })
+                q.fetch_all(&p)
+                    .await
+                    .map(|rows| {
+                        let returned = rows.first().map(|r| pg_value(r, 0)).unwrap_or(Value::Null);
+                        (Some(rows.len() as u64), returned)
+                    })
+                    .map_err(AppError::from)
             } else {
                 q.execute(&p)
                     .await
                     .map(|r| (Some(r.rows_affected()), Value::Null))
+                    .map_err(AppError::from)
             };
             (sql, outcome)
         }
@@ -2226,15 +2427,19 @@ pub(crate) async fn insert_row_inner(
             for b in &mysql_binds {
                 q = q.bind(b);
             }
-            let outcome = q.execute(&p).await.map(|r| {
-                let id = r.last_insert_id();
-                let returned = if id == 0 {
-                    Value::Null
-                } else {
-                    Value::from(id)
-                };
-                (Some(r.rows_affected()), returned)
-            });
+            let outcome = q
+                .execute(&p)
+                .await
+                .map(|r| {
+                    let id = r.last_insert_id();
+                    let returned = if id == 0 {
+                        Value::Null
+                    } else {
+                        Value::from(id)
+                    };
+                    (Some(r.rows_affected()), returned)
+                })
+                .map_err(AppError::from);
             (mysql_sql, outcome)
         }
         DbPool::Sqlite(p) => {
@@ -2245,8 +2450,56 @@ pub(crate) async fn insert_row_inner(
             let outcome = q
                 .execute(&p)
                 .await
-                .map(|r| (Some(r.rows_affected()), Value::from(r.last_insert_rowid())));
+                .map(|r| (Some(r.rows_affected()), Value::from(r.last_insert_rowid())))
+                .map_err(AppError::from);
             (base_sql, outcome)
+        }
+        DbPool::MsSql(p) if pk_column.is_none() => {
+            let outcome = p
+                .execute_params(&base_sql, &binds)
+                .await
+                .map(|n| (Some(n), Value::Null));
+            (base_sql, outcome)
+        }
+        DbPool::MsSql(p) => {
+            // Guarded by the arm above, so the PK is present here.
+            let pk = pk_column.as_deref().unwrap_or_default();
+            // `OUTPUT INSERTED.<pk>` is the closest thing T-SQL has to
+            // `RETURNING`, and unlike `SCOPE_IDENTITY()` it also recovers a
+            // non-identity generated key (a `uniqueidentifier` defaulting to
+            // `newid()`, a sequence default). It is rejected outright on a
+            // table carrying triggers (error 334), so that one case falls back
+            // to `SCOPE_IDENTITY()` — which only knows about IDENTITY columns,
+            // but a trigger-bearing table is exactly where that is the
+            // conventional answer anyway.
+            let output_sql = format!(
+                "INSERT INTO {qt} ({}) OUTPUT INSERTED.{} VALUES ({})",
+                cols.join(", "),
+                Dialect::MsSql.quote_ident(pk),
+                placeholders.join(", ")
+            );
+            match p.query_all(&output_sql, &binds).await {
+                Ok(rows) => {
+                    let returned = rows
+                        .first()
+                        .map(|r| crate::db::mssql::values::mssql_value(r, 0))
+                        .unwrap_or(Value::Null);
+                    (output_sql, Ok((Some(rows.len() as u64), returned)))
+                }
+                Err(e) if crate::db::mssql::is_output_clause_conflict(&e) => {
+                    let fallback_sql =
+                        format!("{base_sql}; SELECT CAST(SCOPE_IDENTITY() AS bigint) AS [id]");
+                    let outcome = p.query_all(&fallback_sql, &binds).await.map(|rows| {
+                        let returned = rows
+                            .first()
+                            .map(|r| crate::db::mssql::values::mssql_value(r, 0))
+                            .unwrap_or(Value::Null);
+                        (Some(1), returned)
+                    });
+                    (fallback_sql, outcome)
+                }
+                Err(e) => (output_sql, Err(e)),
+            }
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
@@ -2447,6 +2700,26 @@ pub async fn fetch_fk_options(
                     let v = value_to_dropdown_string(&sqlite_value(r, 0));
                     let lbl = if label_id.is_some() {
                         match sqlite_value(r, 1) {
+                            Value::Null => None,
+                            other => Some(value_to_dropdown_string(&other)),
+                        }
+                    } else {
+                        None
+                    };
+                    FkOption {
+                        value: v,
+                        label: lbl,
+                    }
+                })
+                .collect()
+        }
+        DbPool::MsSql(p) => {
+            let rows = p.query_all(&sql, &binds).await?;
+            rows.iter()
+                .map(|r| {
+                    let v = value_to_dropdown_string(&crate::db::mssql::values::mssql_value(r, 0));
+                    let lbl = if label_id.is_some() {
+                        match crate::db::mssql::values::mssql_value(r, 1) {
                             Value::Null => None,
                             other => Some(value_to_dropdown_string(&other)),
                         }

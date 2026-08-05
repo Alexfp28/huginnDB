@@ -32,6 +32,49 @@ pub enum Driver {
     /// `Driver` union and the conventional driver name.
     #[serde(rename = "mongodb")]
     Mongo,
+    /// Microsoft SQL Server, over TDS via `tiberius` (see [`crate::db::mssql`]).
+    /// `sqlx` has no MSSQL driver, so this one carries its own client and
+    /// session pool, but unlike MongoDB it speaks SQL and therefore shares the
+    /// whole SQL command path via [`crate::db::sql::Dialect::MsSql`].
+    /// Serialised as `"sqlserver"` to match the frontend `Driver` union.
+    #[serde(rename = "sqlserver")]
+    MsSql,
+}
+
+/// How a SQL Server connection authenticates.
+///
+/// `Sql` is a SQL Server login (username + password stored in the OS keychain
+/// like every other driver). `Windows` is NTLM with an explicit
+/// `DOMAIN\user` + password — supported only by Windows builds, because
+/// `tiberius`'s `AuthMethod::Windows` is `cfg(windows)`-gated. Integrated /
+/// SSPI (authenticate as the logged-in Windows user with no credentials typed)
+/// and Entra ID tokens are deliberately not offered yet.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum MsSqlAuth {
+    #[default]
+    Sql,
+    Windows,
+}
+
+/// SQL Server-specific connection settings.
+///
+/// Nested (like [`SshTunnel`]) rather than flattened into
+/// [`ConnectionProfile`], so the other four drivers' profiles don't carry three
+/// fields that mean nothing to them.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MsSqlOptions {
+    /// Named instance (`SQLEXPRESS` in `HOST\SQLEXPRESS`). When set, the port
+    /// is discovered through the SQL Browser instead of being used as given.
+    #[serde(default)]
+    pub instance: Option<String>,
+    /// Accept the server's TLS certificate without validating it. Most on-prem
+    /// instances present a self-signed certificate, so an encrypted connection
+    /// to them cannot be established without this.
+    #[serde(default)]
+    pub trust_server_certificate: bool,
+    #[serde(default)]
+    pub auth: MsSqlAuth,
 }
 
 /// How far the headless MCP connector (`huginndb-mcp`) may go when writing to
@@ -134,6 +177,12 @@ pub struct ConnectionProfile {
     /// for the SQL drivers.
     #[serde(default)]
     pub auth_source: Option<String>,
+    /// SQL Server-specific settings (named instance, certificate trust, auth
+    /// mode). `None` for every other driver, and for a SQL Server profile that
+    /// predates the field — [`MsSqlOptions::default`] is the plain
+    /// SQL-login-over-an-explicit-port case.
+    #[serde(default)]
+    pub mssql: Option<MsSqlOptions>,
     /// Session-only profile that must never be persisted to `profiles.json`.
     /// Set for ad-hoc connections opened from the CLI (`--host …`): they live
     /// in `state.profiles` in memory so the explorer / tabs / `pool_for` treat
@@ -267,6 +316,11 @@ pub enum DbPool {
     /// connection pooling — but it is `Clone` (cheap, `Arc`-backed) so it slots
     /// into the same [`ActiveConnections`] map and `pool_for` lookup pattern.
     Mongo(MongoConn),
+    /// A SQL Server session pool (see [`crate::db::mssql::MsSqlPool`]). Not a
+    /// `sqlx` pool — `tiberius` has none of its own, so this is ours — but
+    /// `Clone` and `Arc`-backed like the rest, so it slots into
+    /// [`ActiveConnections`] unchanged.
+    MsSql(crate::db::mssql::MsSqlPool),
 }
 
 /// A live MongoDB client plus the database a given connection handle targets.

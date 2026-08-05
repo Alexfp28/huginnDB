@@ -80,6 +80,11 @@ pub async fn get_view_definition(
     view: String,
 ) -> AppResult<ViewDefinition> {
     let pool = pool_for(state.inner(), &connection_id)?;
+    if matches!(&pool, DbPool::MsSql(_)) {
+        return Err(AppError::UnsupportedDriver(
+            "the view editor does not support SQL Server yet".into(),
+        ));
+    }
     Dialect::try_of(&pool)?;
     match pool {
         DbPool::Postgres(p) => {
@@ -132,6 +137,7 @@ pub async fn get_view_definition(
                 query: strip_sqlite_view_header(&create_sql),
             })
         }
+        DbPool::MsSql(_) => unreachable!("sql server rejected above"),
         DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
     }
 }
@@ -198,6 +204,8 @@ pub async fn apply_view_change(state: State<'_, AppState>, args: ViewChangeArgs)
                 sqlx::query(stmt).execute(p).await?;
             }
         }
+        // Rejected earlier by `build_view_ddl`, so no statements exist here.
+        DbPool::MsSql(_) => unreachable!("sql server rejected by build_view_ddl"),
         DbPool::Mongo(_) => unreachable!("mongo rejected above"),
     }
     Ok(())
@@ -269,6 +277,7 @@ pub async fn rename_view(
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(p).await?;
         }
+        DbPool::MsSql(_) => unreachable!("sql server rejected above"),
         DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
     }
     Ok(())
@@ -286,6 +295,11 @@ pub async fn drop_view(
     let qt = dialect.qualify_defaulted(schema.as_deref(), &view);
     let sql = format!("DROP VIEW {qt}");
     match &pool {
+        // Dropping a view is plain, portable DDL — supported even though
+        // *editing* one isn't yet (see `build_view_ddl`).
+        DbPool::MsSql(p) => {
+            p.execute_simple(&sql).await?;
+        }
         DbPool::Postgres(p) => {
             sqlx::query(&sql).execute(p).await?;
         }

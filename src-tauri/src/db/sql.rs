@@ -34,6 +34,7 @@ impl Dialect {
             DbPool::Postgres(_) => Ok(Self::Postgres),
             DbPool::Mysql(_) => Ok(Self::Mysql),
             DbPool::Sqlite(_) => Ok(Self::Sqlite),
+            DbPool::MsSql(_) => Ok(Self::MsSql),
             DbPool::Mongo(_) => Err(AppError::UnsupportedDriver(
                 "MongoDB does not speak SQL; this operation is SQL-only".into(),
             )),

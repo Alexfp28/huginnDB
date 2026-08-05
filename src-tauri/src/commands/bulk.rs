@@ -44,6 +44,7 @@ fn driver_str(pool: &DbPool) -> &'static str {
         DbPool::Mysql(_) => "mysql",
         DbPool::Sqlite(_) => "sqlite",
         DbPool::Mongo(_) => "mongodb",
+        DbPool::MsSql(_) => "sqlserver",
     }
 }
 
@@ -227,28 +228,38 @@ pub(crate) async fn apply_bulk_update_inner(
     let (sql, binds) = build_update_statement(dialect, &qt, &args.filters, &args.set_values);
 
     let start = Instant::now();
-    let outcome: Result<u64, sqlx::Error> = match &pool {
+    let outcome: AppResult<u64> = match &pool {
         DbPool::Postgres(p) => {
             let mut q = sqlx::query(&sql);
             for b in &binds {
                 q = q.bind(b);
             }
-            q.execute(p).await.map(|r| r.rows_affected())
+            q.execute(p)
+                .await
+                .map(|r| r.rows_affected())
+                .map_err(AppError::from)
         }
         DbPool::Mysql(p) => {
             let mut q = sqlx::query(&sql);
             for b in &binds {
                 q = q.bind(b);
             }
-            q.execute(p).await.map(|r| r.rows_affected())
+            q.execute(p)
+                .await
+                .map(|r| r.rows_affected())
+                .map_err(AppError::from)
         }
         DbPool::Sqlite(p) => {
             let mut q = sqlx::query(&sql);
             for b in &binds {
                 q = q.bind(b);
             }
-            q.execute(p).await.map(|r| r.rows_affected())
+            q.execute(p)
+                .await
+                .map(|r| r.rows_affected())
+                .map_err(AppError::from)
         }
+        DbPool::MsSql(p) => p.execute_params(&sql, &binds).await,
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
 
@@ -270,5 +281,5 @@ pub(crate) async fn apply_bulk_update_inner(
                 .error(e.to_string()),
         ),
     }
-    Ok(outcome?)
+    outcome
 }

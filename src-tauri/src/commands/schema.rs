@@ -144,6 +144,9 @@ pub async fn list_databases_inner(
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_databases(conn).await;
     }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_databases(p).await;
+    }
     let names: Vec<String> = match pool {
         DbPool::Postgres(p) => {
             sqlx::query_scalar(
@@ -167,6 +170,7 @@ pub async fn list_databases_inner(
         // SQLite is single-file; pretend the file is one schema named "main".
         DbPool::Sqlite(_) => vec!["main".to_string()],
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(names
         .into_iter()
@@ -214,6 +218,10 @@ pub async fn create_database(
             return Err(AppError::InvalidInput(
                 "MongoDB creates databases implicitly on first write".into(),
             ));
+        }
+        DbPool::MsSql(p) => {
+            let sql = format!("CREATE DATABASE {}", Dialect::MsSql.quote_ident(&name));
+            p.acquire().await?.simple_execute(&sql).await?;
         }
     }
     Ok(())
@@ -272,6 +280,10 @@ pub async fn drop_database(
             return Err(AppError::InvalidInput(
                 "Dropping a MongoDB database isn't supported here".into(),
             ));
+        }
+        DbPool::MsSql(p) => {
+            let sql = format!("DROP DATABASE {}", Dialect::MsSql.quote_ident(&name));
+            p.acquire().await?.simple_execute(&sql).await?;
         }
     }
     Ok(())
@@ -345,6 +357,9 @@ pub async fn list_tables_inner(state: &AppState, connection_id: &str) -> AppResu
     let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_collections(conn).await;
+    }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_tables(p).await;
     }
     let tables = match pool {
         DbPool::Postgres(p) => {
@@ -516,6 +531,7 @@ pub async fn list_tables_inner(state: &AppState, connection_id: &str) -> AppResu
             out
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(tables)
 }
@@ -551,6 +567,9 @@ pub async fn list_columns_inner(
     let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::infer_columns(conn, &table).await;
+    }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_columns(p, schema.as_deref(), &table).await;
     }
     let cols = match pool {
         DbPool::Postgres(p) => {
@@ -753,6 +772,7 @@ pub async fn list_columns_inner(
                 .collect()
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(cols)
 }
@@ -779,6 +799,9 @@ pub async fn list_indexes_inner(
     let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_indexes(conn, &table).await;
+    }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_indexes(p, schema.as_deref(), &table).await;
     }
     let idx = match pool {
         DbPool::Postgres(p) => {
@@ -859,6 +882,7 @@ pub async fn list_indexes_inner(
             out
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(idx)
 }
@@ -897,6 +921,9 @@ pub async fn drop_table(
         }
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::MsSql(p) => {
+            p.acquire().await?.simple_execute(&sql).await?;
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     }
@@ -942,6 +969,9 @@ pub async fn empty_table(
         }
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::MsSql(p) => {
+            p.acquire().await?.simple_execute(&sql).await?;
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     }
@@ -1020,6 +1050,9 @@ pub async fn rename_table(
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(&p).await?;
         }
+        DbPool::MsSql(p) => {
+            p.acquire().await?.simple_execute(&sql).await?;
+        }
         DbPool::Mongo(_) => unreachable!("mongo rejected above"),
     }
     Ok(())
@@ -1056,6 +1089,9 @@ pub async fn server_version_inner(state: &AppState, connection_id: &str) -> AppR
         let ver = info.get_str("version").unwrap_or("?");
         return Ok(format!("mongodb {ver}"));
     }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::server_version(p).await;
+    }
     let version = match pool {
         DbPool::Postgres(p) => {
             let raw: String = sqlx::query_scalar("SELECT version()").fetch_one(&p).await?;
@@ -1080,6 +1116,7 @@ pub async fn server_version_inner(state: &AppState, connection_id: &str) -> AppR
             format!("sqlite {raw}")
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(version)
 }
@@ -1104,6 +1141,9 @@ pub async fn list_users_inner(state: &AppState, connection_id: &str) -> AppResul
     let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_users(conn).await;
+    }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_users(p).await;
     }
     let users = match pool {
         DbPool::Postgres(p) => {
@@ -1199,6 +1239,7 @@ pub async fn list_users_inner(state: &AppState, connection_id: &str) -> AppResul
         // SQLite has no user/permission model.
         DbPool::Sqlite(_) => vec![],
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(users)
 }
@@ -1223,6 +1264,9 @@ pub async fn list_privileges_inner(
     let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_privileges(conn, &user).await;
+    }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_privileges(p, &user).await;
     }
     let privs = match pool {
         DbPool::Postgres(p) => {
@@ -1267,6 +1311,7 @@ pub async fn list_privileges_inner(
         }
         DbPool::Sqlite(_) => vec![],
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(privs)
 }

@@ -55,6 +55,12 @@ pub async fn get_table_structure_inner(
         DbPool::Sqlite(p) => sqlite_structure(&p, table).await,
         // Read-only structure for MongoDB: inferred fields + real indexes.
         DbPool::Mongo(conn) => crate::db::mongo::schema::table_structure(&conn, &table).await,
+        // Read-only for SQL Server too in this version: the catalog gives us
+        // the full structure, but the DDL builder can't express T-SQL yet, so
+        // `preview`/`apply` below refuse it.
+        DbPool::MsSql(p) => {
+            crate::db::mssql::schema::table_structure(&p, schema.as_deref(), &table).await
+        }
     }
 }
 
@@ -520,6 +526,9 @@ pub(crate) async fn apply_structure_change_inner(
                 sqlx::query(stmt).execute(p).await?;
             }
         }
+        // Rejected earlier by `build_ddl` (see `db::ddl::reject_unsupported`),
+        // so the statement list above was never produced for SQL Server.
+        DbPool::MsSql(_) => unreachable!("sql server rejected by build_ddl"),
         DbPool::Mongo(_) => unreachable!("mongo rejected above"),
     }
     Ok(())

@@ -137,6 +137,15 @@ pub async fn export_databases(
                 let table_filter = target.tables.as_deref();
                 export_sqlite(&mut w, &p, table_filter, data_mode).await?
             }
+            // SQL Server export needs its own literal encoder (`0x…` binaries,
+            // `N'…'` unicode strings) plus `SET IDENTITY_INSERT` bracketing
+            // instead of the sequence/auto-increment resync the others do —
+            // deferred, so refuse rather than emit a dump that won't load.
+            DbPool::MsSql(_) => {
+                return Err(AppError::UnsupportedDriver(
+                    "database export is not supported for SQL Server yet".into(),
+                ))
+            }
             DbPool::Mongo(_) => unreachable!("rejected above"),
         }
     }
@@ -204,6 +213,11 @@ pub async fn export_table(
     )?;
 
     match pool {
+        DbPool::MsSql(_) => {
+            return Err(AppError::UnsupportedDriver(
+                "table export is not supported for SQL Server yet".into(),
+            ))
+        }
         DbPool::Postgres(p) => export_pg(&mut w, &p, &tables, DataMode::Insert).await?,
         DbPool::Mysql(p) => export_mysql(&mut w, &p, &tables, DataMode::Insert).await?,
         DbPool::Sqlite(p) => {
@@ -245,6 +259,11 @@ pub async fn export_table_rows(
                 .into(),
         ));
     }
+    if matches!(&pool, DbPool::MsSql(_)) {
+        return Err(AppError::UnsupportedDriver(
+            "row export is not supported for SQL Server yet".into(),
+        ));
+    }
     let dialect = Dialect::try_of(&pool)?;
     let search_columns = search_columns.unwrap_or_default();
     let search_ref = search.as_deref().filter(|s| !s.is_empty());
@@ -277,6 +296,7 @@ pub async fn export_table_rows(
     // fetched rows' own metadata — the same technique `export_sqlite` already
     // uses for its per-row dump.
     match &pool {
+        DbPool::MsSql(_) => unreachable!("sql server rejected above"),
         DbPool::Postgres(p) => {
             let mut q = sqlx::query(&select_sql);
             for b in &binds {

@@ -38,6 +38,7 @@ fn driver_str(driver: Driver) -> &'static str {
         Driver::Mysql => "mysql",
         Driver::Sqlite => "sqlite",
         Driver::Mongo => "mongodb",
+        Driver::MsSql => "sqlserver",
     }
 }
 

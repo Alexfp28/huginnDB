@@ -1134,6 +1134,7 @@ mod tests {
                 ssh_tunnel: None,
                 connection_string: None,
                 auth_source: None,
+                mssql: None,
                 ephemeral: false,
                 group: None,
                 visible_databases: None,

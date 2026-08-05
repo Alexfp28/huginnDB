@@ -104,6 +104,9 @@ async fn ping(pool: &DbPool) -> AppResult<()> {
         DbPool::Mysql(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
         DbPool::Sqlite(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
         DbPool::Mongo(conn) => crate::db::mongo::schema::ping(conn).await?,
+        // Runs `SELECT 1` on a pooled session; a dead session is discarded by
+        // the pool rather than handed to the next caller (see `db::mssql`).
+        DbPool::MsSql(p) => p.ping().await?,
     };
     Ok(())
 }

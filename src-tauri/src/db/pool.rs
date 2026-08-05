@@ -101,6 +101,9 @@ pub fn build_url(profile: &ConnectionProfile, password: &str, host: &str, port: 
         // ever reaching here. Returning the raw connection string keeps the
         // match total without inventing a meaningless SQL URL.
         Driver::Mongo => profile.connection_string.clone().unwrap_or_default(),
+        // Same story for SQL Server: `tiberius` is configured through a
+        // `Config` builder in `crate::db::mssql::open_pool`, not a URL.
+        Driver::MsSql => String::new(),
     }
 }
 
@@ -124,6 +127,13 @@ pub async fn open_pool(
     // built entirely in the mongo module.
     if matches!(profile.driver, Driver::Mongo) {
         return crate::db::mongo::open_pool(profile, password, ssh_secret, known_hosts).await;
+    }
+    // SQL Server likewise builds its own client (and its own session pool, since
+    // `tiberius` has none). It *does* tunnel over SSH, so unlike the Mongo arm
+    // this one still goes through `db::ssh` — inside `mssql::open_pool`, which
+    // owns the tunnel-vs-named-instance interaction.
+    if matches!(profile.driver, Driver::MsSql) {
+        return crate::db::mssql::open_pool(profile, password, ssh_secret, known_hosts).await;
     }
 
     // SQLite is a local file; tunnels don't apply. For network drivers,
@@ -154,8 +164,10 @@ pub async fn open_pool(
                 .connect(&url)
                 .await?,
         ),
-        // MongoDB is handled by the early return at the top of this function.
+        // MongoDB and SQL Server are handled by the early returns at the top of
+        // this function.
         Driver::Mongo => unreachable!("mongo handled by db::mongo::open_pool"),
+        Driver::MsSql => unreachable!("sql server handled by db::mssql::open_pool"),
         Driver::Sqlite => DbPool::Sqlite(
             SqlitePoolOptions::new()
                 .max_connections(MAX_CONNECTIONS_SQLITE)
@@ -182,6 +194,7 @@ pub async fn smoke_test(
         DbPool::Mysql(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
         DbPool::Sqlite(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
         DbPool::Mongo(conn) => crate::db::mongo::schema::ping(conn).await?,
+        DbPool::MsSql(p) => p.ping().await?,
     };
     Ok(())
 }
