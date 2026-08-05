@@ -30,10 +30,13 @@ const DRIVER_LOGO: Record<
     needsLightBacking: true,
   },
   mongodb: { src: "/image/db/mongodb.svg", label: "MongoDB" },
-  // Not the official Microsoft mark: a neutral database glyph in SQL Server's
-  // brand red, so the tile reads as "a database engine" without shipping a
-  // trademarked logo. Swap in the simple-icons `microsoftsqlserver` file if
-  // brand parity with the other four is wanted.
+  // The SQL Server product mark. Unlike the other four this one isn't a
+  // simple-icons single-path glyph — it's the full gradient artwork (~25 KB,
+  // several `linearGradient` defs), which is fine here because it's bundled
+  // rather than fetched and each icon loads in its own `<img>` document, so
+  // its `id="a"`-style gradient ids can't collide with the page or with
+  // another icon. No `needsLightBacking`: the mark spans mid-grey to red, so
+  // it doesn't disappear into `--muted` the way SQLite's uniform navy does.
   sqlserver: { src: "/image/db/sqlserver.svg", label: "SQL Server" },
 };
 

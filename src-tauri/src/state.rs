@@ -178,8 +178,11 @@ pub struct ConnectionProfile {
     /// Whether the driver should negotiate TLS.
     #[serde(default)]
     pub ssl: bool,
-    /// Optional SSH tunnel configuration. Not yet wired up; reserved for
-    /// the next alpha release.
+    /// Optional SSH tunnel configuration. When set,
+    /// [`crate::db::pool::open_pool`] brings the tunnel up first and points the
+    /// driver at `127.0.0.1:<local-port>` — see [`SshTunnel`] and
+    /// [`crate::db::ssh`]. Ignored for SQLite (a local file has nothing to
+    /// tunnel to).
     #[serde(default)]
     pub ssh_tunnel: Option<SshTunnel>,
     /// Raw connection URI, used by MongoDB as the primary connection input.
