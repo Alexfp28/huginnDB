@@ -38,16 +38,6 @@ fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
         .ok_or_else(|| AppError::NotConnected(id.to_string()))
 }
 
-fn driver_str(pool: &DbPool) -> &'static str {
-    match pool {
-        DbPool::Postgres(_) => "postgres",
-        DbPool::Mysql(_) => "mysql",
-        DbPool::Sqlite(_) => "sqlite",
-        DbPool::Mongo(_) => "mongodb",
-        DbPool::MsSql(_) => "sqlserver",
-    }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BulkUpdateArgs {
@@ -189,7 +179,7 @@ pub(crate) async fn apply_bulk_update_inner(
 ) -> AppResult<u64> {
     validate_args(&args)?;
     let pool = pool_for(state, &args.connection_id)?;
-    let driver = driver_str(&pool);
+    let driver = pool.driver_name();
 
     // MongoDB: update_many over the same filter shape fetch_collection_data
     // already understands, with a $set built from set_values.

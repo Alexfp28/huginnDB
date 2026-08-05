@@ -33,18 +33,6 @@ use std::collections::HashSet;
 use std::time::Instant;
 use tauri::{AppHandle, State};
 
-/// Driver label used by the Console panel. Kept local so we don't leak
-/// the `DbPool` enum's `Debug` formatting into a user-facing string.
-fn driver_str(pool: &DbPool) -> &'static str {
-    match pool {
-        DbPool::Postgres(_) => "postgres",
-        DbPool::Mysql(_) => "mysql",
-        DbPool::Sqlite(_) => "sqlite",
-        DbPool::Mongo(_) => "mongodb",
-        DbPool::MsSql(_) => "sqlserver",
-    }
-}
-
 /// Build the SQL [`LogEntry`] shared by the window- and sink-targeted
 /// emitters below, so the field population lives in exactly one place.
 #[allow(clippy::too_many_arguments)]
@@ -389,7 +377,7 @@ pub(crate) async fn execute_with_state(
     sql: &str,
 ) -> AppResult<QueryResult> {
     let pool = pool_for(state, connection_id)?;
-    let driver = driver_str(&pool);
+    let driver = pool.driver_name();
     let start = Instant::now();
 
     // MongoDB: parse + run the mongosh-style statement in the mongo module,
@@ -599,7 +587,7 @@ pub(crate) async fn execute_batch_inner(
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
     let pool = pool_for(state, &connection_id)?;
-    let driver = driver_str(&pool);
+    let driver = pool.driver_name();
 
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::query::execute_batch(conn, &statements, sink, &connection_id)
@@ -1197,7 +1185,7 @@ pub(crate) async fn fetch_table_data_inner(
         return result;
     }
 
-    let driver = driver_str(&pool);
+    let driver = pool.driver_name();
     let dialect = Dialect::try_of(&pool)?;
 
     // Build a multi-level `ORDER BY c1 ASC, c2 DESC, …`. Identifiers are
@@ -1487,7 +1475,7 @@ pub(crate) async fn count_table_rows_inner(
     search_columns: Option<Vec<String>>,
 ) -> AppResult<CountResult> {
     let pool = pool_for(state, &connection_id)?;
-    let driver = driver_str(&pool);
+    let driver = pool.driver_name();
 
     let filters = filters.unwrap_or_default();
     let search_columns = search_columns.unwrap_or_default();
@@ -1786,7 +1774,7 @@ pub(crate) async fn update_cell_inner(
     }
 
     let pool = pool_for(state, &connection_id)?;
-    let driver = driver_str(&pool);
+    let driver = pool.driver_name();
 
     // MongoDB: update one field of the document addressed by `_id` ($set). The
     // PK is always `_id`, so the first pk value is the id; `column_type` is the
@@ -2105,7 +2093,7 @@ pub(crate) async fn delete_rows_inner(
     }
 
     let pool = pool_for(state, &connection_id)?;
-    let driver = driver_str(&pool);
+    let driver = pool.driver_name();
 
     // MongoDB: delete by `_id` ({_id: {$in: [...]}}). Each pk tuple is a single
     // `_id` value.
@@ -2279,7 +2267,7 @@ pub(crate) async fn insert_row_inner(
         ));
     }
     let pool = pool_for(state, &connection_id)?;
-    let driver = driver_str(&pool);
+    let driver = pool.driver_name();
 
     // MongoDB: insert one document built from the column/value pairs; returns
     // the generated `_id`.

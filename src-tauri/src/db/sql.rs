@@ -263,30 +263,62 @@ pub enum StmtClass {
 
 /// Best-effort classification of a statement as DDL (schema/privilege change).
 ///
-/// Same first-keyword heuristic as [`is_read_only`]. `TRUNCATE` is grouped
-/// with DDL rather than DML on purpose: it is an irreversible whole-table
-/// operation, so it belongs behind the strictest (`full`) tier, not the
-/// row-level `data` tier.
+/// Mostly the same first-keyword heuristic as [`is_read_only`]. `TRUNCATE` is
+/// grouped with DDL rather than DML on purpose: it is an irreversible
+/// whole-table operation, so it belongs behind the strictest (`full`) tier, not
+/// the row-level `data` tier.
+///
+/// Two additions exist for T-SQL, whose statement vocabulary the plain
+/// keyword-prefix rule classifies too leniently:
+///
+/// * **`EXEC` / `EXECUTE`** is opaque. `EXEC sp_rename …` renames an object and
+///   `EXEC('DROP TABLE t')` runs arbitrary text, so a procedure call cannot be
+///   assumed to be data-only. It is put behind the `full` tier, which means a
+///   read-only `EXEC sp_help` is refused too — the safe direction for a
+///   security boundary.
+/// * **`SELECT … INTO t`** creates a table. It starts with `select`, so the
+///   prefix rule alone reports a read.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub fn is_ddl(sql: &str) -> bool {
     let head = skip_leading_noise(sql).to_ascii_lowercase();
-    const DDL_PREFIXES: [&str; 8] = [
-        "create", "drop", "alter", "truncate", "rename", "grant", "revoke", "comment",
+    const DDL_PREFIXES: [&str; 10] = [
+        "create", "drop", "alter", "truncate", "rename", "grant", "revoke", "comment", "exec",
+        "execute",
     ];
-    DDL_PREFIXES.iter().any(|p| head.starts_with(p))
+    DDL_PREFIXES.iter().any(|p| head.starts_with(p)) || is_select_into(&head)
 }
 
-/// Classify a single statement into the write tier it requires. Reads win
-/// first (so a read never counts as a write), then DDL, then everything else
-/// is treated as row-level DML — the conservative default, since an
-/// unrecognised non-read statement must not slip in under a read-only or
-/// data-only policy.
+/// Whether an already-lowercased, comment-stripped statement is T-SQL's
+/// table-creating `SELECT … INTO <table> FROM …`.
+///
+/// `INTO` is matched as a whole word anywhere in the statement rather than
+/// positionally, so a literal or alias that merely contains the word can push a
+/// genuine read into the DDL tier. That is the deliberate direction: the cost is
+/// a refused `SELECT 'into'` under a restricted MCP policy, whereas the
+/// opposite error would let a statement that creates a table pass as a read.
+/// [`is_read_only`] is intentionally *not* changed by this — it also drives
+/// whether the GUI fetches a result set, and there a false positive would blank
+/// the grid for an ordinary query.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+fn is_select_into(head_lower: &str) -> bool {
+    (head_lower.starts_with("select") || head_lower.starts_with("with"))
+        && contains_word(head_lower, "into")
+}
+
+/// Classify a single statement into the write tier it requires.
+///
+/// DDL is checked first, then reads, then everything else falls to row-level
+/// DML — the conservative default, since an unrecognised non-read statement
+/// must not slip in under a read-only or data-only policy. The DDL-first order
+/// matters: [`is_ddl`] catches statements that *look* like reads by their first
+/// keyword but change schema (`SELECT … INTO`), and it must win over
+/// [`is_read_only`] for those.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub fn classify(sql: &str) -> StmtClass {
-    if is_read_only(sql) {
-        StmtClass::Read
-    } else if is_ddl(sql) {
+    if is_ddl(sql) {
         StmtClass::Ddl
+    } else if is_read_only(sql) {
+        StmtClass::Read
     } else {
         StmtClass::DataWrite
     }
@@ -471,11 +503,35 @@ mod tests {
         assert_eq!(classify("TRUNCATE t"), StmtClass::Ddl);
         assert_eq!(classify("GRANT SELECT ON t TO u"), StmtClass::Ddl);
         // An unrecognised non-read statement is conservatively DataWrite so it
-        // can never pass under a read-only policy.
+        // can never pass under a read-only policy. `MERGE INTO` is DML, not
+        // DDL, even though it carries the `INTO` that `SELECT … INTO` is
+        // detected by — the `select`/`with` prefix requirement keeps them
+        // apart.
         assert_eq!(
             classify("MERGE INTO t USING s ON (t.id = s.id)"),
             StmtClass::DataWrite
         );
+    }
+
+    #[test]
+    fn t_sql_statements_that_look_like_reads_are_classified_as_ddl() {
+        // `SELECT … INTO` creates a table; the first-keyword rule alone reads
+        // it as a plain SELECT, which would let it through a read-only MCP
+        // policy.
+        assert_eq!(
+            classify("SELECT * INTO archive FROM orders"),
+            StmtClass::Ddl
+        );
+        assert_eq!(
+            classify("with x as (select 1) select * into t from x"),
+            StmtClass::Ddl
+        );
+        // A procedure call is opaque: it can rename objects or run dynamic
+        // DDL, so it sits behind the strictest tier.
+        assert_eq!(classify("EXEC sp_rename 'a', 'b'"), StmtClass::Ddl);
+        assert_eq!(classify("execute dbo.DoSomething"), StmtClass::Ddl);
+        // A plain SELECT with no INTO stays a read.
+        assert_eq!(classify("SELECT TOP 10 * FROM orders"), StmtClass::Read);
     }
 
     #[test]

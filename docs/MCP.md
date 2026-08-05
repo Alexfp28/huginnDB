@@ -189,7 +189,7 @@ Flags accept both `--flag value` and `--flag=value`.
 | `list_tables` | Tables and views, with approximate row counts and sizes. |
 | `describe_table` | Full structure: columns, types, nullability, PK, FKs, indexes. |
 | `list_indexes` | Indexes on a table and the columns each covers. |
-| `run_query` | Run a single statement (SQL for Postgres/MySQL/SQLite, mongosh-style for MongoDB). Reads always work; writes require the connection's write policy to allow them (`data` for DML, `full` for DDL). |
+| `run_query` | Run a single statement (SQL for Postgres/MySQL/SQLite/SQL Server, mongosh-style for MongoDB). Reads always work; writes require the connection's write policy to allow them (`data` for DML, `full` for DDL). |
 | `browse_table` | Browse one page of rows without writing SQL. |
 | `server_version` | The connected engine and version. |
 | `list_users` / `list_privileges` | Server-side users/roles and their grants. |
@@ -257,5 +257,10 @@ only needed when `list_connections` shows an empty `database`.
 
 ## Supported drivers
 
-PostgreSQL, MySQL, SQLite, and MongoDB — the same drivers as the desktop app,
-via the same backend code.
+PostgreSQL, MySQL, SQLite, MongoDB, and Microsoft SQL Server — the same
+drivers as the desktop app, via the same backend code.
+
+The read tools work identically across all of them. The write tools
+(`insert_row`, `update_cell`, `delete_rows`) do too, but `apply_structure_change`
+is SQL-only and additionally unsupported on SQL Server, whose T-SQL DDL builder
+is not written yet — it returns an "unsupported driver" error there.

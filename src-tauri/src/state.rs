@@ -41,6 +41,26 @@ pub enum Driver {
     MsSql,
 }
 
+impl Driver {
+    /// The driver's wire name — the same string `serde` writes to
+    /// `profiles.json` and the frontend's `Driver` union uses.
+    ///
+    /// Every user-visible driver label goes through here: the Console panel's
+    /// per-entry tag and the MCP `list_connections` tool. Before this existed
+    /// the Console built the string with three duplicated `match` helpers and
+    /// the MCP tool used `format!("{:?}")`, which reported `"mongo"` where the
+    /// profile said `"mongodb"` — a Debug repr is not a wire format.
+    pub fn wire_name(self) -> &'static str {
+        match self {
+            Self::Postgres => "postgres",
+            Self::Mysql => "mysql",
+            Self::Sqlite => "sqlite",
+            Self::Mongo => "mongodb",
+            Self::MsSql => "sqlserver",
+        }
+    }
+}
+
 /// How a SQL Server connection authenticates.
 ///
 /// `Sql` is a SQL Server login (username + password stored in the OS keychain
@@ -321,6 +341,20 @@ pub enum DbPool {
     /// `Clone` and `Arc`-backed like the rest, so it slots into
     /// [`ActiveConnections`] unchanged.
     MsSql(crate::db::mssql::MsSqlPool),
+}
+
+impl DbPool {
+    /// The wire name of the driver behind this pool — see
+    /// [`Driver::wire_name`], which this mirrors for the runtime side.
+    pub fn driver_name(&self) -> &'static str {
+        match self {
+            Self::Postgres(_) => Driver::Postgres.wire_name(),
+            Self::Mysql(_) => Driver::Mysql.wire_name(),
+            Self::Sqlite(_) => Driver::Sqlite.wire_name(),
+            Self::Mongo(_) => Driver::Mongo.wire_name(),
+            Self::MsSql(_) => Driver::MsSql.wire_name(),
+        }
+    }
 }
 
 /// A live MongoDB client plus the database a given connection handle targets.
