@@ -57,3 +57,27 @@ export function driverMismatchHint(error: string): string | null {
   }
   return null;
 }
+
+/**
+ * Marker the backend prefixes onto a connection-limit refusal.
+ *
+ * Errors cross the IPC boundary as plain strings, so this is the only thing we
+ * can match on. Must stay in sync with `TOO_MANY_CONNECTIONS_TAG` in
+ * `src-tauri/src/error.rs`.
+ */
+const TOO_MANY_CONNECTIONS_TAG = "too many connections";
+
+/**
+ * Whether `error` is the server (or our own pool) refusing a connection
+ * because the limit is reached.
+ *
+ * The distinction matters because it is the one connection failure with a
+ * *client-side* remedy — release pools, lower the ceiling, close a database
+ * view — and because it must stop the caller from retrying. The schema
+ * explorer's cross-database search in particular re-fires its whole fan-out on
+ * every keystroke; without this check it hammers a server that is already
+ * turning it away.
+ */
+export function isTooManyConnections(error: unknown): boolean {
+  return String(error).toLowerCase().includes(TOO_MANY_CONNECTIONS_TAG);
+}

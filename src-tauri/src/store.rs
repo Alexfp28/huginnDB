@@ -85,6 +85,7 @@ mod tests {
             group: None,
             visible_databases: None,
             mcp_write: Default::default(),
+            max_connections: None,
             origin_id: None,
         }
     }

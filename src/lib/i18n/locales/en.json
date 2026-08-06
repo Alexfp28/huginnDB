@@ -143,7 +143,10 @@
       "connectionStringPlaceholder": "mongodb://localhost:27017  or  mongodb+srv://user:pass@cluster.mongodb.net/db",
       "connectionStringHint": "Built automatically from the fields above. The password is stored securely and is not embedded.",
       "editConnectionString": "Edit connection string",
-      "connectionStringWarning": "Editing the connection string by hand can introduce errors — double-check it. Use this for Atlas (mongodb+srv://), replica sets, or extra URI options the form doesn't cover."
+      "connectionStringWarning": "Editing the connection string by hand can introduce errors — double-check it. Use this for Atlas (mongodb+srv://), replica sets, or extra URI options the form doesn't cover.",
+      "maxConnections": "Max connections",
+      "maxConnectionsHint": "Leave blank to use the global preference. Set this when the server itself is the constraint — it travels with the connection to exports and to the MCP connector.",
+      "maxConnectionsPlaceholder": "default"
     },
     "ssh": {
       "enable": "Connect through SSH tunnel",
@@ -252,6 +255,8 @@
     "openedMailClient": "Opened a pre-filled email in your mail app"
   },
   "schema": {
+    "releaseIdlePools": "Release idle pools",
+    "releasedIdlePools": "Closed {{count}} idle database pool(s).",
     "loading": "Loading schema…",
     "title": "Schema",
     "refresh": "Refresh",
@@ -708,6 +713,10 @@
         "label": "Data grid",
         "desc": "Tables & paging"
       },
+      "connections": {
+        "label": "Connections",
+        "desc": "Pools & limits"
+      },
       "appearance": {
         "label": "Appearance",
         "desc": "Themes & colours"
@@ -893,6 +902,34 @@
       "patchNotesCurrent": "installed",
       "patchNotesNone": "No notes for this version.",
       "patchNotesViewOnGitHub": "View full changelog on GitHub"
+    },
+    "connections": {
+      "live": {
+        "label": "Open right now",
+        "desc": "Pools HuginnDB is holding against your servers. Other clients on this machine — IDE data sources, application connection pools, huginndb-mcp sidecars — count against the same server limits.",
+        "value": "{{connections}} connection(s), {{views}} database view(s)"
+      },
+      "maxConnections": {
+        "label": "Max connections per connection",
+        "desc": "Ceiling for one connection's pool. A single server that needs a different budget is better set on the connection itself, where it also travels to exports and to the MCP connector."
+      },
+      "childMaxConnections": {
+        "label": "Max connections per database view",
+        "desc": "Browsing a multi-database server opens a separate pool per database. Keep this low — it multiplies by the number of databases you open."
+      },
+      "maxChildPools": {
+        "label": "Max open database views",
+        "desc": "Longest-unused database views are closed past this limit. 0 means unlimited."
+      },
+      "childIdleTtl": {
+        "label": "Close idle database views after",
+        "desc": "Seconds a database view may go untouched before its pool is closed. It reopens by itself the next time you use it. 0 disables this."
+      },
+      "keepalive": {
+        "label": "Keepalive interval",
+        "desc": "Seconds between liveness pings. The ping holds one connection open per connection so the next click is instant and dropped connections are detected early. 0 turns it off."
+      },
+      "footnote": "Lowering these takes effect the next time a pool is opened; existing pools keep the limits they were opened with. Reconnect to apply them immediately."
     }
   },
   "transfer": {

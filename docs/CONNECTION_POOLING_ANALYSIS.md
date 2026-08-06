@@ -1,7 +1,10 @@
 # Connection & pool management — analysis and proposed architecture
 
-Status: **analysis only**, no code changed. Written against `1.12.1`
-(`3e1c0a1`).
+Status: written against `1.12.1` (`3e1c0a1`) as an analysis. **P0 and most of
+P1 have since shipped** — see §5 for what landed and what is still open, and the
+`Unreleased` section of `CHANGELOG.md` for the user-facing summary. The
+findings below are kept as written so the reasoning behind each change stays
+readable; §5 marks each one's current state.
 
 Motivation: several users report `FATAL: sorry, too many connections already`
 (Postgres) / `ER_CON_COUNT_ERROR` (MySQL) on servers they share with other
@@ -381,39 +384,50 @@ fan-out (F2) **stop** instead of re-firing on the next keystroke.
 
 ---
 
-## 5. Proposed sequencing
+## 5. Sequencing, and what has shipped
 
-### P0 — ship independently, no refactor (days)
+### P0 — ship independently, no refactor — **done**
 
 | Change | Files | Kills |
 | --- | --- | --- |
-| Bound the search fan-out to 2–3 concurrent, and prompt beyond N databases | `SchemaExplorer.tsx:902` | F2 |
-| Set `max_pool_size` on the Mongo client (propose 5, matching SQL) | `mongo/mod.rs:88` | F6 |
-| Sidecar `--max-connections`, default 2 + idle pool shutdown | `mcp/mod.rs` | F4 (partly) |
-| Classify `too many connections`; circuit-break the fan-out | `error.rs`, `connectFlow.ts` | F8 |
-| Smaller child pools: `max_connections: 2` for `::db::` children | `pool.rs`, `connection.rs:611` | F1 (partly) |
-| Document the multi-process footprint | `docs/MCP.md` | — |
+| Bound the search fan-out to 3 concurrent, draining as a queue | `SchemaExplorer.tsx` | F2 ✅ |
+| Set `max_pool_size` on the Mongo client (same budget as SQL) | `mongo/mod.rs` | F6 ✅ |
+| Sidecar `--max-connections`, default 2 + idle pool shutdown | `mcp/mod.rs` | F4 ✅ (single-budget still open) |
+| Classify `too many connections`; circuit-break the fan-out | `error.rs`, `driver.ts`, `SchemaExplorer.tsx` | F8 ✅ |
+| Smaller child pools: `max_connections: 2` for `::db::` children | `pool.rs`, `connection.rs` | F1 ✅ (partly) |
+| Document the multi-process footprint | `docs/MCP.md` | ✅ |
 
-The child-pool change alone takes the 12-database ceiling from 65 to 29.
+The child-pool change alone takes the 12-database ceiling from 65 to 29; with
+the per-connection view cap of 8 it lands at 21.
 
-### P1 — bounded lifecycle (1–2 weeks)
+### P1 — bounded lifecycle — **mostly done**
 
-- Consolidate the seven `pool_for` into one, with `last_used` tracking (F12).
-- Idle child-pool reaper: TTL + LRU cap (F3).
-- Make `disconnect` `async` and `close().await` each pool with a timeout;
-  same in the environment-switch teardown; add an app-exit close hook (F9).
-- Explicit `min_connections(0)` / `idle_timeout` / `max_lifetime` /
-  `acquire_timeout` on every `PoolOptions`, so the values are deliberate and
-  reviewable rather than inherited (§1.1).
-- Keepalive only where it earns its keep: tunnelled connections always, plain
-  TCP only when the connection has been idle past a threshold, and make the
-  interval a preference with `0` = off (F7).
-- `connections` preferences + `ConnectionProfile.max_connections` + the
-  Settings visibility panel (F10).
+- ✅ Idle child-pool reaper: TTL + per-parent LRU cap (`pool_reaper.rs`), plus a
+  manual `release_idle_pools` for the recovery action (F3).
+- ✅ `disconnect` is `async` and closes each pool with an awaited, timed-out
+  `close()`; the same path is used by the child sweep (F9).
+- ✅ Explicit `min_connections(0)` / `idle_timeout` / `max_lifetime` /
+  `acquire_timeout` on every `PoolOptions`, via one shared `tuned()` helper so
+  the four driver call sites cannot drift (§1.1).
+- ✅ `connections` preferences, `ConnectionProfile.max_connections`, and the
+  Settings → Connections panel with live pool counts (F10).
+- ✅ Keepalive interval is a preference (`0` = off) and a tick is skipped when
+  the user's own traffic already proved liveness (F7). Still holding one socket
+  per open connection by design — see the preference's docs for the tradeoff.
+- ⬜ Consolidate the seven `pool_for` into one (F12). Sidestepped rather than
+  done: `last_used` is stamped inside `ActiveConnections::get`, which all seven
+  already funnel through, so the tracking is correct without the refactor. The
+  duplication itself is still there.
+- ⬜ App-exit close hook. Process exit closes the sockets anyway; this only
+  matters behind a pooler or tunnel.
+- ⬜ Cap the export/import dialogs' per-database pools (F11). The reaper now
+  bounds them after the fact, which is most of the value.
 
-### P2 — the endpoint layer (the actual refactor)
+### P2 — the endpoint layer (the actual refactor) — **open**
 
-- Endpoint key + registry, per-endpoint semaphore (F5).
+- Endpoint key + registry, per-endpoint semaphore (F5). Still the one finding
+  P0/P1 did not touch: budgets are now *small*, but they still stack per
+  profile rather than per server.
 - MySQL: collapse per-database child pools into one endpoint pool (F1).
 - Postgres: keep per-database pools, share the endpoint budget.
 

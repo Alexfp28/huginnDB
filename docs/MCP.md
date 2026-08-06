@@ -175,10 +175,40 @@ The tools then show up under the `huginndb` server inside Codex.
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(none)* | Profile ids the server may reach. **Opt-in**: with none set, nothing is exposed. |
 | `--max-rows <n>` | `1000` | Upper bound on rows returned by a single `run_query` / `browse_table` call, so a tool call can't dump a whole table into the model's context. |
+| `--max-connections <n>` | `2` | Pool ceiling per exposed connection. See [Connection footprint](#connection-footprint) — the default is deliberately well below the desktop app's. A profile that pins its own limit in HuginnDB still wins when it is the stricter of the two. |
 | `--read-only[=true\|false]` | `false` | Global kill-switch: force **every** connection to read-only regardless of its saved write policy. A quick way to expose the connector in a guaranteed-safe mode without touching any profile. |
 | `--allow-writes` | — | **Deprecated and ignored.** Writes are now governed per connection by the write policy set in Settings → MCP (see [Security](#security)); this flag no longer grants anything and only prints a one-time deprecation notice. |
 
 Flags accept both `--flag value` and `--flag=value`.
+
+## Connection footprint
+
+The connector is a **separate process** from the HuginnDB desktop app, with its
+own connection pools. It does not share the app's. That has a consequence worth
+knowing before you point it at a database somebody else is also using:
+
+- Every MCP client that has `huginndb-mcp` configured spawns **its own copy**.
+  Claude Code and Claude Desktop configured against the same profile means two
+  processes, each with its own pool.
+- Those pools are additional to the desktop app's, to your IDE's data source,
+  and to any application backend pointing at the same server. They all count
+  against the same server-side `max_connections`.
+
+Two defaults keep that bounded:
+
+- **`--max-connections` defaults to `2`** per exposed connection, rather than
+  the desktop app's `5`. MCP is request/response over stdio and tools are
+  dispatched one at a time, so a bigger pool buys nothing here.
+- **Idle pools are closed after 5 minutes** with no tool call. The connector is
+  long-lived but its work is bursty; a pool opened for one question is not held
+  for the rest of the week. It reopens transparently on the next call.
+
+If a server is still tight, set a per-connection ceiling in HuginnDB
+(Settings → Connections, or the connection's own **Max connections** field).
+It is stored in `profiles.json`, which this connector reads, so it applies to
+the sidecar with no extra configuration. Settings → Connections also shows how
+many pools the desktop app is holding right now, and can release the
+per-database ones on demand.
 
 ## Tools
 

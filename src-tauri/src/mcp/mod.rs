@@ -37,6 +37,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -52,6 +53,41 @@ use crate::state::{ActivePool, AppState, McpWritePolicy};
 /// Default cap on rows returned by a single `run_query` / `browse_table` call.
 const DEFAULT_MAX_ROWS: i64 = 1000;
 
+/// Default pool ceiling per exposed connection, overridable with
+/// `--max-connections`.
+///
+/// Deliberately far below the desktop app's default. This process is one of
+/// *several* clients competing for the same server: the user is also running
+/// the HuginnDB GUI, very likely a JetBrains data source, quite possibly an
+/// application backend with its own pool — and one of these sidecars per MCP
+/// client, since each spawns its own. Inheriting the GUI's budget meant a user
+/// with Claude Code and Claude Desktop configured silently added two more
+/// five-connection budgets that nothing in the product disclosed.
+///
+/// Two is enough by construction: MCP is request/response over stdio and tools
+/// are dispatched one at a time, so the second slot only ever covers an
+/// overlapping keepalive-style probe. It is also
+/// [`crate::db::pool::MIN_MAX_CONNECTIONS`], the floor below which a pool stops
+/// being safely usable.
+const DEFAULT_MAX_CONNECTIONS: u32 = 2;
+
+/// How long a pool may go untouched before this process closes it.
+///
+/// The sidecar is long-lived — it lives as long as the MCP client keeps it,
+/// which is days — but its *work* is bursty: a few tool calls, then nothing
+/// until the user asks the model something else. Before 1.13.0 nothing ever
+/// removed a pool once opened, so a single question at 09:00 held a pool for
+/// the rest of the week.
+///
+/// Unlike the desktop app, this reaper closes **top-level** pools too. There is
+/// no user watching a connection indicator here and nothing to invalidate;
+/// `ensure_connected` transparently reopens on the next call, at the cost of
+/// one connect.
+const POOL_IDLE_TTL: Duration = Duration::from_secs(300);
+
+/// How often the idle-pool sweep runs.
+const POOL_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+
 /// Runtime configuration parsed from the process arguments.
 struct Config {
     /// Profile ids the client is allowed to reach. Opt-in: empty means
@@ -65,6 +101,13 @@ struct Config {
     read_only: bool,
     /// Upper bound on rows returned per call.
     max_rows: i64,
+    /// Pool ceiling per exposed connection (`--max-connections`). See
+    /// [`DEFAULT_MAX_CONNECTIONS`] for why this process defaults lower than
+    /// the desktop app. A profile that pins its own
+    /// [`crate::state::ConnectionProfile::max_connections`] still wins when it
+    /// is the *smaller* of the two — the flag raises the sidecar's own default,
+    /// it never overrides a limit the user recorded against the server.
+    max_connections: u32,
     /// Whether the deprecated `--allow-writes` flag was seen, so `serve` can
     /// emit a one-time deprecation notice. It no longer grants anything — the
     /// per-connection [`McpWritePolicy`] (Settings → MCP) is the sole authority.
@@ -80,6 +123,7 @@ impl Config {
         let mut allowed = HashSet::new();
         let mut read_only = false;
         let mut max_rows = DEFAULT_MAX_ROWS;
+        let mut max_connections = DEFAULT_MAX_CONNECTIONS;
         let mut saw_allow_writes = false;
 
         let args: Vec<String> = argv.iter().skip(1).cloned().collect();
@@ -121,6 +165,13 @@ impl Config {
                         }
                     }
                 }
+                "--max-connections" => {
+                    if let Some(v) = value(&mut iter).and_then(|v| v.parse::<u32>().ok()) {
+                        if v > 0 {
+                            max_connections = v;
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -129,6 +180,7 @@ impl Config {
             allowed,
             read_only,
             max_rows,
+            max_connections,
             saw_allow_writes,
         }
     }
@@ -473,14 +525,22 @@ impl Huginn {
             None => None,
         };
         let known_hosts = self.state.known_hosts.clone();
+        // The profile's own ceiling still applies, and wins when it is the
+        // stricter of the two: `--max-connections` expresses what this sidecar
+        // is willing to take, `profile.max_connections` expresses what the
+        // server can give. Taking the minimum honours both.
+        let limits = crate::db::pool::PoolLimits::top_level(&profile, self.config.max_connections);
+        let limits = crate::db::pool::PoolLimits {
+            max_connections: limits.max_connections.min(self.config.max_connections),
+        };
         let (pool, ssh_handle) =
-            crate::db::pool::open_pool(&profile, &password, ssh_secret, known_hosts).await?;
+            crate::db::pool::open_pool(&profile, &password, ssh_secret, known_hosts, limits)
+                .await?;
         self.state.connections.write().insert(
             profile.id.clone(),
             ActivePool {
-                pool,
                 _ssh: ssh_handle,
-                _keepalive: None,
+                ..ActivePool::bare(pool)
             },
         );
         Ok(())
@@ -1005,6 +1065,51 @@ impl ServerHandler for Huginn {
 /// Builds a headless [`AppState`] (loading `profiles.json` / prefs /
 /// known-hosts from disk with no Tauri involvement), parses config from the
 /// process arguments, and serves the tool router on stdin/stdout.
+/// Close pools this process hasn't used in [`POOL_IDLE_TTL`].
+///
+/// The sidecar's counterpart to [`crate::pool_reaper`], with one deliberate
+/// difference: it reaps **every** pool, top-level included. The desktop app
+/// can't, because a connection the user sees as connected must stay connected;
+/// here there is no such contract, and `ensure_connected` reopens on demand.
+///
+/// Runs unconditionally rather than behind a flag: there is no configuration
+/// under which holding a pool open across an idle hour is the behaviour
+/// anyone wants from a background process.
+fn spawn_idle_pool_reaper(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(POOL_SWEEP_INTERVAL).await;
+            let ttl_millis = POOL_IDLE_TTL.as_millis() as u64;
+            let victims = state
+                .connections
+                .read()
+                .idle_pools(crate::state::now_millis(), ttl_millis);
+            if victims.is_empty() {
+                continue;
+            }
+            // Remove under the lock, close outside it — `close_pool` awaits,
+            // and a `parking_lot` guard must never be held across an await.
+            let removed: Vec<_> = {
+                let mut conns = state.connections.write();
+                victims
+                    .iter()
+                    .filter_map(|id| conns.remove(id).map(|active| (id.clone(), active)))
+                    .collect()
+            };
+            for (id, active) in removed {
+                crate::db::pool::close_pool(
+                    &active.pool,
+                    crate::db::pool::PoolOwnership::for_id(&id),
+                    crate::db::pool::CLOSE_TIMEOUT,
+                )
+                .await;
+                // stderr, not stdout: stdout is the JSON-RPC channel.
+                eprintln!("[huginndb-mcp] closed idle pool for connection {id}");
+            }
+        }
+    });
+}
+
 pub async fn serve() -> anyhow::Result<()> {
     let argv: Vec<String> = std::env::args().collect();
     let config = Config::from_args(&argv);
@@ -1025,7 +1130,8 @@ pub async fn serve() -> anyhow::Result<()> {
         let mut ids: Vec<&String> = config.allowed.iter().collect();
         ids.sort();
         eprintln!(
-            "[huginndb-mcp] exposing {} connection(s): {} (write policy: per-connection{}, max-rows: {})",
+            "[huginndb-mcp] exposing {} connection(s): {} (write policy: per-connection{}, \
+             max-rows: {}, max-connections: {} per connection, idle pools closed after {}s)",
             ids.len(),
             ids.iter()
                 .map(|s| s.as_str())
@@ -1037,10 +1143,13 @@ pub async fn serve() -> anyhow::Result<()> {
                 ""
             },
             config.max_rows,
+            config.max_connections,
+            POOL_IDLE_TTL.as_secs(),
         );
     }
 
     let state = Arc::new(AppState::new());
+    spawn_idle_pool_reaper(state.clone());
     let server = Huginn::new(state, Arc::new(config));
     let service = server.serve(rmcp::transport::stdio()).await?;
     service.waiting().await?;
@@ -1067,6 +1176,33 @@ mod tests {
         assert!(!c.read_only);
         assert!(!c.saw_allow_writes);
         assert_eq!(c.max_rows, DEFAULT_MAX_ROWS);
+        assert_eq!(
+            c.max_connections, DEFAULT_MAX_CONNECTIONS,
+            "the sidecar must default well below the desktop app: it is one of \
+             several processes sharing the user's connection budget"
+        );
+    }
+
+    #[test]
+    fn config_parses_max_connections_in_both_spellings() {
+        assert_eq!(
+            Config::from_args(&args(&["--max-connections", "4"])).max_connections,
+            4
+        );
+        assert_eq!(
+            Config::from_args(&args(&["--max-connections=7"])).max_connections,
+            7
+        );
+        // Garbage and zero leave the default in place rather than producing a
+        // pool that can't hand out a connection.
+        assert_eq!(
+            Config::from_args(&args(&["--max-connections", "0"])).max_connections,
+            DEFAULT_MAX_CONNECTIONS
+        );
+        assert_eq!(
+            Config::from_args(&args(&["--max-connections", "lots"])).max_connections,
+            DEFAULT_MAX_CONNECTIONS
+        );
     }
 
     #[test]
@@ -1138,6 +1274,7 @@ mod tests {
                 group: None,
                 visible_databases: None,
                 mcp_write: policy,
+                max_connections: None,
                 origin_id: None,
             });
         let mut allowed = HashSet::new();
@@ -1148,6 +1285,7 @@ mod tests {
                 allowed,
                 read_only,
                 max_rows: DEFAULT_MAX_ROWS,
+                max_connections: DEFAULT_MAX_CONNECTIONS,
                 saw_allow_writes: false,
             }),
         )
@@ -1207,14 +1345,10 @@ mod tests {
         let client = mongo_client().await;
         huginn.state.connections.write().insert(
             "mongo-conn".to_string(),
-            ActivePool {
-                pool: DbPool::Mongo(crate::state::MongoConn {
-                    client,
-                    database: None,
-                }),
-                _ssh: None,
-                _keepalive: None,
-            },
+            ActivePool::bare(DbPool::Mongo(crate::state::MongoConn {
+                client,
+                database: None,
+            })),
         );
 
         let target = huginn
@@ -1328,11 +1462,7 @@ mod tests {
         let state = AppState::new();
         state.connections.write().insert(
             "test-conn".to_string(),
-            ActivePool {
-                pool: DbPool::Sqlite(pool),
-                _ssh: None,
-                _keepalive: None,
-            },
+            ActivePool::bare(DbPool::Sqlite(pool)),
         );
 
         // list_tables_inner sees the table.

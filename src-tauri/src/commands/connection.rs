@@ -1,6 +1,8 @@
 //! Connection-profile and lifecycle commands.
 
-use crate::db::pool::{open_pool, smoke_test};
+use crate::db::pool::{
+    close_pool, open_pool, smoke_test, PoolLimits, PoolOwnership, CLOSE_TIMEOUT,
+};
 use crate::error::{AppError, AppResult};
 use crate::keychain;
 use crate::log_bus::{self, LogEntry, LogKind};
@@ -11,7 +13,7 @@ use crate::transfer::{
     ConflictAction, ConflictResolution, ExportFile, ExportMetadata, ExportedProfile,
     ExportedSecret, ImportAnalysis, ImportConflict, ImportResult,
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
@@ -64,6 +66,47 @@ fn log_connection(
         entry = entry.error(e);
     }
     log_bus::emit(app, window_label, entry);
+}
+
+/// Resolve the pool sizing for a top-level connection to `profile`, and the
+/// keepalive interval, from the live preferences.
+///
+/// Read together under one lock so a preference change can't be observed
+/// half-applied, and resolved at *connect* time rather than being baked into a
+/// constant — which is what makes both the global preference and the
+/// per-profile [`ConnectionProfile::max_connections`] override take effect on
+/// the next connection rather than the next release.
+fn top_level_pool_policy(state: &AppState, profile: &ConnectionProfile) -> (PoolLimits, Duration) {
+    let prefs = state.prefs.read();
+    (
+        PoolLimits::top_level(profile, prefs.connections.max_connections),
+        Duration::from_secs(u64::from(prefs.connections.keepalive_secs)),
+    )
+}
+
+/// Add HuginnDB's own pool footprint to a connection-limit refusal.
+///
+/// A bare "FATAL: sorry, too many connections already" tells the user their
+/// server is full and nothing about what to do — least of all that the client
+/// showing them the error is holding fourteen pools of its own. Quoting the
+/// count turns it into something they can act on, and naming the other usual
+/// occupants heads off the wrong conclusion, since HuginnDB is frequently the
+/// marginal straw rather than the main consumer.
+///
+/// Any other error passes through untouched.
+fn annotate_connection_limit(state: &AppState, error: AppError) -> AppError {
+    if !error.is_too_many_connections() {
+        return error;
+    }
+    let AppError::TooManyConnections(detail) = &error else {
+        return error;
+    };
+    let (connections, views) = state.connections.read().counts();
+    AppError::TooManyConnections(format!(
+        "{detail} — HuginnDB is currently holding {connections} connection pool(s) and {views} \
+         per-database pool(s). Other clients on this machine (IDE data sources, application \
+         connection pools, huginndb-mcp sidecars) count against the same server limit."
+    ))
 }
 
 /// Look up the password for `profile` from the OS keychain.
@@ -334,6 +377,7 @@ pub async fn connect(
     };
 
     let known_hosts = state.known_hosts.clone();
+    let (limits, keepalive_interval) = top_level_pool_policy(state.inner(), &profile);
     let start = Instant::now();
     log_connection(
         &app,
@@ -341,11 +385,12 @@ pub async fn connect(
         &id,
         profile.driver,
         &format!(
-            "connect: opening {} pool to {}:{}/{}",
+            "connect: opening {} pool to {}:{}/{} (max {} connections)",
             driver_str(profile.driver),
             profile.host,
             profile.port,
-            profile.database
+            profile.database,
+            limits.max_connections
         ),
         None,
         None,
@@ -353,7 +398,7 @@ pub async fn connect(
     // Clone the secrets before `open_pool` consumes `ssh`, so we can stash
     // them for child pools (open_database_view) on success.
     let ssh_for_cache = ssh.clone();
-    let opened = open_pool(&profile, &pw, ssh, known_hosts).await;
+    let opened = open_pool(&profile, &pw, ssh, known_hosts, limits).await;
     match opened {
         Ok((pool, ssh_handle)) => {
             // Cache the secrets used for this profile, session-only, so a
@@ -387,13 +432,20 @@ pub async fn connect(
                     );
                 }
             }
-            let keepalive = crate::keepalive::spawn(app.clone(), id.clone(), pool.clone());
+            let active = ActivePool::bare(pool.clone());
+            let keepalive = crate::keepalive::spawn(
+                app.clone(),
+                id.clone(),
+                pool,
+                keepalive_interval,
+                active.last_used.clone(),
+            );
             state.connections.write().insert(
                 id.clone(),
                 ActivePool {
-                    pool,
                     _ssh: ssh_handle,
-                    _keepalive: Some(keepalive),
+                    _keepalive: keepalive,
+                    ..active
                 },
             );
             log_connection(
@@ -414,6 +466,7 @@ pub async fn connect(
             Ok(())
         }
         Err(e) => {
+            let e = annotate_connection_limit(state.inner(), e);
             let msg = e.to_string();
             log_connection(
                 &app,
@@ -429,11 +482,23 @@ pub async fn connect(
     }
 }
 
-/// Drop the active pool for `id`, if any. Also drops every synthetic
+/// Close the active pool for `id`, if any. Also closes every synthetic
 /// per-database pool registered as `<id>::db::<db>` so multi-DB browsing
 /// sessions don't leak when the parent connection is closed.
+///
+/// `async` since 1.13.0, and the pools are now closed with an awaited
+/// [`close_pool`] rather than left to `Drop`. The old synchronous version could
+/// only remove the entries from the map and hope; that is fine on a healthy
+/// LAN but not through a pooler or an SSH tunnel, and specifically not in the
+/// back-to-back teardown/setup bursts this app produces — a reconnect after a
+/// lost connection, or an environment switch closing every pool before
+/// restoring the next environment's. There, the outgoing sessions could still
+/// be attached to the server when the incoming ones asked for slots, briefly
+/// doubling the connection budget at the exact moment it was tightest.
+///
+/// The frontend needed no change: `invoke` already returned a promise.
 #[tauri::command]
-pub fn disconnect(
+pub async fn disconnect(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
@@ -443,21 +508,11 @@ pub fn disconnect(
     // parent's entry, so a single remove covers them).
     state.session_secrets.write().remove(&id);
     let removed = state.connections.write().remove(&id);
-    // Sweep synthetic children. We collect ids first to avoid holding the
-    // write lock while iterating (remove() takes &mut self).
-    let prefix = format!("{id}::db::");
-    let children: Vec<String> = state
-        .connections
-        .read()
-        .ids()
-        .into_iter()
-        .filter(|cid| cid.starts_with(&prefix))
-        .collect();
-    {
-        let mut conns = state.connections.write();
-        for cid in &children {
-            conns.remove(cid);
-        }
+    // Sweep synthetic children first, so the parent's tunnel (which they ride
+    // on) is still up while they close.
+    let children = crate::pool_reaper::close_children(state.inner(), &id).await;
+    if let Some(active) = &removed {
+        close_pool(&active.pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
     }
     if removed.is_some() || !children.is_empty() {
         // Driver is not tracked separately for active pools; look it up
@@ -512,14 +567,10 @@ pub async fn resolve_mongo_database_view(
         client: conn.client.clone(),
         database: Some(database.to_string()),
     });
-    state.connections.write().insert(
-        child_id.clone(),
-        ActivePool {
-            pool: child_pool,
-            _ssh: None,
-            _keepalive: None,
-        },
-    );
+    state
+        .connections
+        .write()
+        .insert(child_id.clone(), ActivePool::bare(child_pool));
     Ok(child_id)
 }
 
@@ -598,24 +649,68 @@ pub async fn open_database_view(
         None => resolve_ssh_secret(&parent)?,
     };
     let known_hosts = state.known_hosts.clone();
+    let (limits, max_child_pools) = {
+        let prefs = state.prefs.read();
+        (
+            PoolLimits::child(
+                &parent,
+                prefs.connections.max_connections,
+                prefs.connections.child_max_connections,
+            ),
+            prefs.connections.max_child_pools,
+        )
+    };
+
+    // Enforce the per-connection child cap *before* opening, not after: the
+    // point is to never exceed the budget, and the case that trips servers is
+    // precisely the burst — the schema explorer's cross-database search
+    // fanning out across every database at once. Waiting for the reaper's
+    // next sweep would let the whole fan-out land first.
+    if max_child_pools > 0 {
+        let over_cap: Vec<String> = {
+            let conns = state.connections.read();
+            let existing = conns.children_by_lru(&parent_id);
+            // `+ 1` accounts for the child we are about to add.
+            let excess = (existing.len() + 1).saturating_sub(max_child_pools as usize);
+            existing.into_iter().take(excess).collect()
+        };
+        for victim in over_cap {
+            let removed = state.connections.write().remove(&victim);
+            if let Some(active) = removed {
+                close_pool(&active.pool, PoolOwnership::BorrowedView, CLOSE_TIMEOUT).await;
+                log_connection(
+                    &app,
+                    window_label,
+                    &victim,
+                    parent.driver,
+                    "open_database_view: closed least-recently-used database pool to stay under the cap",
+                    None,
+                    None,
+                );
+            }
+        }
+    }
+
     let start = Instant::now();
     log_connection(
         &app,
         window_label,
         &child_id,
         parent.driver,
-        &format!("open_database_view: {database}"),
+        &format!(
+            "open_database_view: {database} (max {} connections)",
+            limits.max_connections
+        ),
         None,
         None,
     );
-    match open_pool(&child, &pw, ssh, known_hosts).await {
+    match open_pool(&child, &pw, ssh, known_hosts, limits).await {
         Ok((pool, ssh_handle)) => {
             state.connections.write().insert(
                 child_id.clone(),
                 ActivePool {
-                    pool,
                     _ssh: ssh_handle,
-                    _keepalive: None,
+                    ..ActivePool::bare(pool)
                 },
             );
             log_connection(
@@ -630,6 +725,7 @@ pub async fn open_database_view(
             Ok(child_id)
         }
         Err(e) => {
+            let e = annotate_connection_limit(state.inner(), e);
             let msg = e.to_string();
             log_connection(
                 &app,
@@ -650,6 +746,71 @@ pub async fn open_database_view(
 #[tauri::command]
 pub fn active_connections(state: State<'_, AppState>) -> AppResult<Vec<String>> {
     Ok(state.connections.read().ids())
+}
+
+/// How many pools HuginnDB is holding right now, split by kind.
+///
+/// Exists because "too many connections" is only an actionable error if the
+/// user can see their own contribution to it. Surfaced in Settings →
+/// Connections and quoted in the error toast.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolStats {
+    /// Pools for connections the user explicitly opened.
+    pub connections: usize,
+    /// Synthetic `<parent>::db::<name>` pools opened by browsing databases.
+    pub database_views: usize,
+}
+
+/// Snapshot of the current pool footprint. See [`PoolStats`].
+#[tauri::command]
+pub fn connection_pool_stats(state: State<'_, AppState>) -> AppResult<PoolStats> {
+    let (connections, database_views) = state.connections.read().counts();
+    Ok(PoolStats {
+        connections,
+        database_views,
+    })
+}
+
+/// Close every synthetic per-database pool that isn't in use right now,
+/// keeping the top-level connections the user opened.
+///
+/// The manual counterpart to [`crate::pool_reaper`]'s TTL sweep: the recovery
+/// action offered when a server refuses a connection because it is full. Each
+/// closed view reopens transparently the next time the user touches that
+/// database, so this is safe to invoke at any time — the cost is one round
+/// trip, not lost state.
+///
+/// Returns how many pools were closed.
+#[tauri::command]
+pub async fn release_idle_pools(app: AppHandle, state: State<'_, AppState>) -> AppResult<usize> {
+    // `idle_children(0)` is every child, since `last_used` is only stamped on
+    // resolution and a pool being *resolved* right now still returns a
+    // non-negative age. A query already in flight holds a cloned `DbPool`, so
+    // closing the pool here cannot cut it off mid-statement: `close` waits for
+    // checked-out connections to be returned.
+    let victims = state
+        .connections
+        .read()
+        .idle_children(crate::state::now_millis(), 0);
+    let removed: Vec<_> = {
+        let mut conns = state.connections.write();
+        victims
+            .iter()
+            .filter_map(|id| conns.remove(id).map(|active| (id.clone(), active)))
+            .collect()
+    };
+    let count = removed.len();
+    for (id, active) in removed {
+        close_pool(&active.pool, PoolOwnership::BorrowedView, CLOSE_TIMEOUT).await;
+        log_bus::broadcast(
+            &app,
+            LogEntry::new(LogKind::Connection)
+                .connection_id(id)
+                .message("released per-database pool on request"),
+        );
+    }
+    Ok(count)
 }
 
 /// Forget the trusted SSH host-key fingerprint for `host:port`. The next
@@ -1114,14 +1275,10 @@ mod tests {
         let client = mongo_client().await;
         state.connections.write().insert(
             "parent".to_string(),
-            ActivePool {
-                pool: crate::state::DbPool::Mongo(MongoConn {
-                    client: client.clone(),
-                    database: None,
-                }),
-                _ssh: None,
-                _keepalive: None,
-            },
+            ActivePool::bare(crate::state::DbPool::Mongo(MongoConn {
+                client: client.clone(),
+                database: None,
+            })),
         );
 
         let child_id = resolve_mongo_database_view(&state, "parent", "mydb")

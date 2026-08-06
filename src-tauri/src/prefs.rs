@@ -33,6 +33,9 @@ pub struct Preferences {
     pub editor: EditorPrefs,
     pub grid: GridPrefs,
     pub ui: UiPrefs,
+    /// How many database connections HuginnDB is allowed to hold, and for how
+    /// long. See [`ConnectionPrefs`].
+    pub connections: ConnectionPrefs,
     /// User-rebound keyboard shortcuts, keyed by action id (e.g.
     /// `"openSettings"`, `"expandSelectedCell"`) to a combo string (e.g.
     /// `"Ctrl+K"`, `"Space"`). Missing entries fall back to that action's
@@ -150,6 +153,58 @@ pub struct UiPrefs {
     pub connection_group_expand_mode: String,
 }
 
+/// Connection-pool policy.
+///
+/// Until 1.13.0 none of this was configurable and most of it wasn't even
+/// stated: pools were built with a hardcoded ceiling and `sqlx`'s implicit
+/// defaults for everything else. That was survivable while HuginnDB was the
+/// only thing talking to a server, and stopped being survivable once the same
+/// database was also serving a JetBrains data source, an application backend's
+/// own pool, and one `huginndb-mcp` sidecar per MCP client.
+///
+/// The values here are the *global* fallback. A single server that needs a
+/// different budget is better expressed per profile
+/// ([`crate::state::ConnectionProfile::max_connections`]), which travels with
+/// the connection and is also honoured by the headless sidecar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ConnectionPrefs {
+    /// Ceiling for a top-level connection's pool. Clamped into
+    /// `[MIN_MAX_CONNECTIONS, MAX_MAX_CONNECTIONS]` at use time.
+    pub max_connections: u32,
+    /// Ceiling for each synthetic per-database child pool. Kept low on purpose:
+    /// these are the pools that multiply with the number of databases browsed.
+    pub child_max_connections: u32,
+    /// How long a child pool may go untouched before the reaper closes it, in
+    /// seconds. `0` disables reaping entirely (children then live until their
+    /// parent disconnects, the pre-1.13.0 behaviour).
+    pub child_idle_ttl_secs: u32,
+    /// Most child pools any one connection may hold at once; the
+    /// longest-unused are closed past this. `0` means unlimited.
+    pub max_child_pools: u32,
+    /// Keepalive ping interval in seconds. `0` disables the heartbeat.
+    ///
+    /// The heartbeat holds one connection per top-level pool alive
+    /// indefinitely — it pings more often than [`crate::db::pool::IDLE_TIMEOUT`]
+    /// reaps, by design, so the next thing the user clicks is instant and so a
+    /// dropped connection is discovered before a query hits it. That is a
+    /// defensible one-socket-per-open-connection cost, but on a server the user
+    /// is rationing it may not be, hence the off switch.
+    pub keepalive_secs: u32,
+}
+
+impl Default for ConnectionPrefs {
+    fn default() -> Self {
+        Self {
+            max_connections: crate::db::pool::DEFAULT_MAX_CONNECTIONS,
+            child_max_connections: crate::db::pool::DEFAULT_CHILD_MAX_CONNECTIONS,
+            child_idle_ttl_secs: 300,
+            max_child_pools: 8,
+            keepalive_secs: crate::keepalive::DEFAULT_KEEPALIVE_INTERVAL.as_secs() as u32,
+        }
+    }
+}
+
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -157,6 +212,7 @@ impl Default for Preferences {
             editor: EditorPrefs::default(),
             grid: GridPrefs::default(),
             ui: UiPrefs::default(),
+            connections: ConnectionPrefs::default(),
             keybindings: HashMap::new(),
         }
     }

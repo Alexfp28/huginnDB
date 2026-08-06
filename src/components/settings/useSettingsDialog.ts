@@ -12,6 +12,7 @@ export type SettingsSection =
   | "general"
   | "editor"
   | "grid"
+  | "connections"
   | "appearance"
   | "shortcuts"
   | "origins"

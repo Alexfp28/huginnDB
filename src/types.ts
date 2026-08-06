@@ -92,6 +92,19 @@ export interface ConnectionProfile {
    *  `McpWritePolicy` in Rust. */
   mcp_write?: McpWritePolicy;
   /**
+   * Ceiling on how many simultaneous connections HuginnDB may hold against
+   * this server, overriding the global `connections.maxConnections`
+   * preference. `null`/absent means "use the preference".
+   *
+   * Lives on the profile rather than in preferences because connection
+   * capacity is a fact about a *server*: it then travels with the connection
+   * through export/import and shared origins, and the headless MCP sidecar
+   * honours it for free since it reads the same `profiles.json`. Clamped
+   * backend-side, so an out-of-range value here is corrected rather than
+   * rejected.
+   */
+  max_connections?: number | null;
+  /**
    * Set when this profile came from a shared origin (#108). Such a profile is
    * **read-only in the UI**: it mirrors an entry in a file somebody else
    * curates, so a local edit would be silently undone by the next sync.
@@ -488,6 +501,8 @@ export interface Preferences {
   editor: EditorPrefs;
   grid: GridPrefs;
   ui: UiPrefs;
+  /** Connection-pool policy. See {@link ConnectionPrefs}. */
+  connections: ConnectionPrefs;
   /**
    * User-rebound keyboard shortcuts, keyed by action id to a combo string
    * (e.g. `"Ctrl+K"`, `"Space"`). A missing entry means "use that action's
@@ -495,6 +510,41 @@ export interface Preferences {
    * single source of truth for default combos.
    */
   keybindings: Record<string, string>;
+}
+
+/**
+ * How many database connections HuginnDB may hold, and for how long.
+ *
+ * These are the *global* fallbacks; a single server that needs a different
+ * budget is better expressed per profile via
+ * {@link ConnectionProfile.max_connections}, which travels with the connection
+ * and is also honoured by the headless MCP sidecar.
+ *
+ * Mirrors `ConnectionPrefs` in `src-tauri/src/prefs.rs`.
+ */
+export interface ConnectionPrefs {
+  /** Ceiling for a top-level connection's pool. Clamped to 2..64 backend-side. */
+  maxConnections: number;
+  /**
+   * Ceiling for each synthetic `<parent>::db::<name>` pool. Kept low on
+   * purpose: these are the pools that multiply with the number of databases
+   * browsed on one server.
+   */
+  childMaxConnections: number;
+  /** Seconds a per-database pool may go untouched before it is closed. `0` disables reaping. */
+  childIdleTtlSecs: number;
+  /** Most per-database pools one connection may hold; longest-unused are closed past this. `0` = unlimited. */
+  maxChildPools: number;
+  /** Keepalive ping interval in seconds. `0` disables the heartbeat. */
+  keepaliveSecs: number;
+}
+
+/** Live pool footprint, from the `connection_pool_stats` command. */
+export interface PoolStats {
+  /** Pools for connections the user explicitly opened. */
+  connections: number;
+  /** Synthetic per-database pools opened by browsing databases. */
+  databaseViews: number;
 }
 
 export interface EditorPrefs {

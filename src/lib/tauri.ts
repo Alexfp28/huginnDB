@@ -34,6 +34,7 @@ import type {
   McpConnectorInfo,
   ImportResult,
   IndexInfo,
+  PoolStats,
   Preferences,
   PrivilegeInfo,
   QueryResult,
@@ -126,6 +127,26 @@ export const api = {
    */
   databaseViewId: (parentId: string, database: string) =>
     `${parentId}::db::${database}`,
+
+  /**
+   * How many pools the backend is holding right now, split into top-level
+   * connections and synthetic per-database views.
+   *
+   * Surfaced in Settings → Connections, because "too many connections" is only
+   * an actionable error if the user can see their own contribution to it.
+   */
+  connectionPoolStats: () => invoke<PoolStats>("connection_pool_stats"),
+
+  /**
+   * Close every per-database pool, keeping the top-level connections the user
+   * opened. Returns how many were closed.
+   *
+   * The manual counterpart to the backend's idle-pool reaper, and the recovery
+   * action offered when a server refuses a connection because it is full. Safe
+   * at any time: each closed view reopens transparently the next time that
+   * database is touched, at the cost of one round trip — no state is lost.
+   */
+  releaseIdlePools: () => invoke<number>("release_idle_pools"),
 
   /**
    * Forget the trusted SSH host-key fingerprint for `host:port`. Returns

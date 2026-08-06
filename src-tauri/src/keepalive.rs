@@ -28,14 +28,24 @@ use crate::error::AppResult;
 use crate::log_bus::{self, LogEntry, LogKind};
 use crate::state::DbPool;
 use serde::Serialize;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
-/// How often each active connection is pinged. Short enough to stay well
-/// under common NAT/load-balancer idle timeouts (typically 5+ minutes),
-/// long enough that the ping traffic is negligible.
-const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(180);
+/// Default ping interval. Short enough to stay well under common
+/// NAT/load-balancer idle timeouts (typically 5+ minutes), long enough that
+/// the ping traffic is negligible.
+///
+/// User-overridable via `connections.keepaliveSecs` (`0` disables the
+/// heartbeat). Note the deliberate relationship with
+/// [`crate::db::pool::IDLE_TIMEOUT`]: pinging more often than the pool reaps
+/// means one connection per active pool never goes idle long enough to be
+/// closed. That is the point — the next click is instant and a dead connection
+/// is found before a query hits it — but it is a real, permanent socket per
+/// open connection, which is why it can be turned off.
+pub const DEFAULT_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(180);
 
 /// Tauri event name the frontend subscribes to.
 pub const CONNECTION_LOST_EVENT: &str = "huginndb://connection-lost";
@@ -60,18 +70,40 @@ impl Drop for KeepaliveHandle {
     }
 }
 
-/// Spawn a background task that pings `pool` every [`KEEPALIVE_INTERVAL`].
+/// Spawn a background task that pings `pool` every `interval`.
+///
 /// A failed ping is reported once via [`CONNECTION_LOST_EVENT`] and ends
 /// the loop — the pool is left in place (still broken) until the user
 /// reconnects, which opens a fresh pool and starts a new heartbeat.
-pub fn spawn(app: AppHandle, connection_id: String, pool: DbPool) -> KeepaliveHandle {
+///
+/// `last_used` is the [`crate::state::ActivePool`]'s usage stamp; a tick whose
+/// interval the user's own queries already spanned is skipped, since traffic
+/// that just succeeded is better proof of liveness than a `SELECT 1` and there
+/// is no reason to pay for both.
+///
+/// Returns `None` when `interval` is zero — the user has turned the heartbeat
+/// off — so no task is spawned at all.
+pub fn spawn(
+    app: AppHandle,
+    connection_id: String,
+    pool: DbPool,
+    interval: Duration,
+    last_used: Arc<AtomicU64>,
+) -> Option<KeepaliveHandle> {
+    if interval.is_zero() {
+        return None;
+    }
     let cancel = CancellationToken::new();
     let cancel_loop = cancel.clone();
     tokio::spawn(async move {
         loop {
             tokio::select! {
                 _ = cancel_loop.cancelled() => return,
-                _ = tokio::time::sleep(KEEPALIVE_INTERVAL) => {}
+                _ = tokio::time::sleep(interval) => {}
+            }
+            let idle = crate::state::now_millis().saturating_sub(last_used.load(Ordering::Relaxed));
+            if idle < interval.as_millis() as u64 {
+                continue;
             }
             if let Err(e) = ping(&pool).await {
                 let msg = e.to_string();
@@ -93,7 +125,7 @@ pub fn spawn(app: AppHandle, connection_id: String, pool: DbPool) -> KeepaliveHa
             }
         }
     });
-    KeepaliveHandle { cancel }
+    Some(KeepaliveHandle { cancel })
 }
 
 /// One lightweight round-trip per driver — cheap enough to run every tick

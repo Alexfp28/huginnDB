@@ -45,6 +45,7 @@ pub async fn open_pool(
     password: &str,
     ssh_secret: Option<String>,
     known_hosts: SharedKnownHosts,
+    limits: crate::db::pool::PoolLimits,
 ) -> AppResult<(DbPool, Option<SshTunnelHandle>)> {
     // Primary input is the connection string; fall back to assembling one from
     // the discrete fields when it is absent.
@@ -89,6 +90,25 @@ pub async fn open_pool(
     // Fail fast in the UI instead of waiting out the 30 s default.
     options.server_selection_timeout = Some(Duration::from_secs(8));
     options.app_name = Some("HuginnDB".to_string());
+
+    // Bound the driver's own pool to the same budget the SQL drivers get.
+    //
+    // Without this the `mongodb` crate's default applies: `maxPoolSize` 100
+    // **per host**, so a three-node replica set was a ceiling of 300 sockets
+    // from one connection — a 20x divergence from the SQL drivers' five, by
+    // omission rather than by decision. It rarely bit on a self-hosted server
+    // (whose own limit is high) but it is exactly what trips an Atlas tier cap,
+    // and it turns a replica-set failover into a connection storm.
+    //
+    // `min_pool_size(0)` matches `min_connections(0)` on the sqlx side: an
+    // untouched client should decay to nothing rather than hold a floor. Note
+    // this budget is per *client*, and a per-database "view"
+    // (`resolve_mongo_database_view`) reuses the parent's client rather than
+    // building another — so unlike the SQL drivers, browsing N databases here
+    // costs nothing extra.
+    options.max_pool_size = Some(limits.max_connections);
+    options.min_pool_size = Some(0);
+    options.max_idle_time = Some(crate::db::pool::IDLE_TIMEOUT);
 
     // Inject a keychain-sourced password when the URI carried none (URI-primary
     // mode where the secret is stored separately rather than embedded). The

@@ -92,7 +92,20 @@ import {
   ImportSqlDialog,
   type ImportScope,
 } from "@/components/schema/dialogs/ImportSqlDialog";
+import { isTooManyConnections } from "@/lib/db/driver";
 import type { Driver, TableInfo } from "@/types";
+
+/**
+ * How many databases the cross-database search may open at once.
+ *
+ * Every `openDatabaseView` is a separate connection pool against the same
+ * server, so an unbounded fan-out here is indistinguishable from a
+ * denial-of-service against a database the user shares with their IDE, their
+ * application backend and any MCP sidecars. Three keeps the search feeling
+ * responsive on a server with a handful of databases while making the
+ * nineteen-database case a queue rather than a burst.
+ */
+const PREFETCH_CONCURRENCY = 3;
 
 /**
  * Match a table/database name against the filter box. HeidiSQL-style: the
@@ -898,9 +911,28 @@ function MultiDbExplorer({
   // twice. Failures are swallowed — the matching computation just won't include
   // that DB until the user retries. Limit to needle length >= 2 to avoid a full
   // fan-out on a single typed character, and scope to the active/visible set.
+  //
+  // **Bounded since 1.13.0.** This loop used to start every database at once.
+  // Each `openDatabaseView` opens a whole separate connection pool, so on a
+  // server with nineteen databases one keystroke fired nineteen simultaneous
+  // connection attempts — a burst large enough on its own to exhaust a shared
+  // server's connection limit, and the single most likely trigger behind the
+  // "too many connections" reports. It now runs at most
+  // `PREFETCH_CONCURRENCY` at a time; `pumpTick` re-runs this effect as each
+  // one settles so the queue keeps draining. (The effect's `byConnection`
+  // dependency covers the success path on its own, but not a failure, which
+  // touches no store — hence an explicit tick rather than relying on it.)
   const inFlightPrefetch = useRef<Set<string>>(new Set());
+  const [pumpTick, setPumpTick] = useState(0);
+  // Circuit breaker: once the server says it is full, stop. Without this the
+  // fan-out re-fires on the next keystroke against a server already refusing
+  // it, which turns one failure into a stream of them and delays recovery.
+  const [limitReached, setLimitReached] = useState(false);
   useEffect(() => {
-    if (debouncedNeedle.length < 2 || !cs) return;
+    setLimitReached(false);
+  }, [parentId]);
+  useEffect(() => {
+    if (debouncedNeedle.length < 2 || !cs || limitReached) return;
     // When a database is active, only prefetch that one — avoids a full
     // fan-out across every database on large servers during scoped searches.
     const dbsToWarm = (
@@ -909,6 +941,7 @@ function MultiDbExplorer({
         : cs.databases
     ).filter((db) => !visibleSet || visibleSet.has(db.name));
     for (const db of dbsToWarm) {
+      if (inFlightPrefetch.current.size >= PREFETCH_CONCURRENCY) break;
       const childId = `${parentId}::db::${db.name}`;
       const childCs = byConnection[childId];
       if (childCs?.initialized || childCs?.loading) continue;
@@ -917,18 +950,42 @@ function MultiDbExplorer({
       api
         .openDatabaseView(parentId, db.name)
         .then((resolvedId) => refresh(resolvedId))
-        .catch(() => {
-          // Silent: a failed prefetch is reported via the database's
-          // own subtree the next time the user expands it.
+        .catch((e) => {
+          // Silent, except for the one failure the user can act on: a
+          // connection-limit refusal means every remaining database in the
+          // queue would fail the same way.
+          if (isTooManyConnections(e)) {
+            setLimitReached(true);
+            toast.error(String(e), {
+              action: {
+                label: t("schema.releaseIdlePools"),
+                onClick: () => {
+                  void api
+                    .releaseIdlePools()
+                    .then((closed) => {
+                      toast.success(
+                        t("schema.releasedIdlePools", { count: closed }),
+                      );
+                      setLimitReached(false);
+                    })
+                    .catch((err) => toast.error(String(err)));
+                },
+              },
+            });
+          }
         })
         .finally(() => {
           inFlightPrefetch.current.delete(childId);
+          setPumpTick((n) => n + 1);
         });
     }
   }, [
     debouncedNeedle,
     cs,
     byConnection,
+    pumpTick,
+    limitReached,
+    t,
     parentId,
     refresh,
     activeDatabaseName,

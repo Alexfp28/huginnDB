@@ -163,6 +163,24 @@ pub struct ConnectionProfile {
     /// app stores it opaquely. See [`McpWritePolicy`].
     #[serde(default)]
     pub mcp_write: McpWritePolicy,
+    /// Ceiling on how many simultaneous connections HuginnDB may hold against
+    /// this server, overriding the global `connections.maxConnections`
+    /// preference. `None` (the default, and every profile written before this
+    /// field existed) means "use the preference".
+    ///
+    /// Connection capacity is a fact about a *server*, not about a session,
+    /// which is why it lives on the profile rather than in `prefs.json`:
+    /// a shared staging box that tolerates three sessions needs that recorded
+    /// next to its host and port. Two things fall out of that placement for
+    /// free — it exports/imports with the profile ([`crate::transfer`]) and
+    /// syncs through shared origins, and the headless MCP sidecar honours it
+    /// without any extra plumbing, because it reads the same `profiles.json`.
+    ///
+    /// Clamped at use time by [`crate::db::pool::PoolLimits`]; a value below
+    /// the floor there is raised rather than rejected, so a hand-edited `0`
+    /// can't produce a pool that deadlocks.
+    #[serde(default)]
+    pub max_connections: Option<u32>,
     /// Id of the shared origin this profile was imported from (#108), or `None`
     /// for a profile the user created locally.
     ///
@@ -282,6 +300,20 @@ pub struct MongoConn {
     pub database: Option<String>,
 }
 
+/// Monotonic milliseconds since the first call, used to timestamp pool usage.
+///
+/// Deliberately not wall-clock: the reaper compares ages, and a system clock
+/// that jumps (NTP correction, suspend/resume, a user changing the timezone)
+/// would make a `SystemTime` delta either negative or enormous, and reap live
+/// pools out from under an active session either way.
+pub fn now_millis() -> u64 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_millis() as u64
+}
+
 /// A live database pool plus, optionally, the SSH tunnel that fronts it.
 ///
 /// Kept together so the tunnel is dropped (and its local listener freed)
@@ -295,6 +327,48 @@ pub struct ActivePool {
     /// synthetic per-database pools opened by `open_database_view`, which
     /// deliberately don't get their own heartbeat.
     pub _keepalive: Option<crate::keepalive::KeepaliveHandle>,
+    /// [`now_millis`] at the last [`ActiveConnections::get`] — i.e. the last
+    /// time any command resolved this pool in order to use it.
+    ///
+    /// `Arc<AtomicU64>` rather than a plain field for two reasons: `get` takes
+    /// `&self` (every command path goes through a read lock, and taking a
+    /// write lock just to stamp a timestamp would serialise all query
+    /// dispatch), and the keepalive task holds a clone so it can skip a tick
+    /// whose liveness the user's own traffic already proved.
+    ///
+    /// Fed by `get`, which is the single choke point every one of the
+    /// per-module `pool_for` helpers funnels through — so this stays accurate
+    /// without touching any of them.
+    pub last_used: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl ActivePool {
+    /// A pool with no tunnel and no heartbeat, stamped as used right now — the
+    /// shape every synthetic per-database child and every headless (MCP) pool
+    /// takes.
+    pub fn bare(pool: DbPool) -> Self {
+        Self {
+            pool,
+            _ssh: None,
+            _keepalive: None,
+            last_used: Arc::new(std::sync::atomic::AtomicU64::new(now_millis())),
+        }
+    }
+
+    /// [`now_millis`] value at the last use.
+    pub fn last_used_millis(&self) -> u64 {
+        self.last_used.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// How long this pool has been idle, as of `now`.
+    ///
+    /// `now` is passed in rather than read here so the eviction policy is a
+    /// pure function of its inputs: [`now_millis`] is anchored to the first
+    /// call in the process, which for a unit test is the test itself, leaving
+    /// no room to express "this pool was last used ten seconds ago".
+    pub fn idle_millis_at(&self, now: u64) -> u64 {
+        now.saturating_sub(self.last_used_millis())
+    }
 }
 
 /// Map of profile-id → live pool.
@@ -313,6 +387,10 @@ impl ActiveConnections {
     /// Remove the pool for `id`, if any. The pool and any associated SSH
     /// tunnel will be dropped (and gracefully closed) when the last clone
     /// goes out of scope.
+    ///
+    /// Prefer routing removals through [`crate::db::pool::close_pool`] so the
+    /// driver gets an awaited, graceful shutdown instead of a bare `Drop` —
+    /// see that function's docs for why the difference is load-bearing.
     pub fn remove(&mut self, id: &str) -> Option<ActivePool> {
         self.inner.remove(id)
     }
@@ -320,8 +398,76 @@ impl ActiveConnections {
     /// Cheap, cloning lookup. Pools are themselves cheap to clone; the
     /// tunnel handle stays owned by the [`ActivePool`] so query workers
     /// don't need to know it exists.
+    ///
+    /// **Also stamps `last_used`.** Every command that touches a database goes
+    /// through here (via its module's `pool_for`), which makes this the one
+    /// place that can keep the idle reaper honest. A lookup that must *not*
+    /// count as use — the reaper's own bookkeeping — reads `inner` directly
+    /// through the accessors below instead.
     pub fn get(&self, id: &str) -> Option<DbPool> {
-        self.inner.get(id).map(|a| a.pool.clone())
+        self.inner.get(id).map(|a| {
+            a.last_used
+                .store(now_millis(), std::sync::atomic::Ordering::Relaxed);
+            a.pool.clone()
+        })
+    }
+
+    /// Synthetic per-database children of `parent_id`, oldest use first.
+    ///
+    /// The ordering is what makes the per-parent cap an LRU rather than an
+    /// arbitrary eviction: callers take from the front.
+    pub fn children_by_lru(&self, parent_id: &str) -> Vec<String> {
+        let prefix = format!("{parent_id}::db::");
+        let mut children: Vec<(&String, u64)> = self
+            .inner
+            .iter()
+            .filter(|(id, _)| id.starts_with(&prefix))
+            .map(|(id, active)| (id, active.last_used_millis()))
+            .collect();
+        // Oldest use first == longest idle first. Ties broken by id so the
+        // order is deterministic; a `HashMap` iteration order is not, and an
+        // eviction that picks a different victim on each run is untestable and
+        // unexplainable to the user.
+        children.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(b.0)));
+        children.into_iter().map(|(id, _)| id.clone()).collect()
+    }
+
+    /// Every synthetic per-database child pool (any parent) idle for at least
+    /// `ttl_millis` as of `now`. Top-level pools are never returned: they
+    /// represent a connection the user explicitly opened and are only closed by
+    /// an explicit disconnect.
+    pub fn idle_children(&self, now: u64, ttl_millis: u64) -> Vec<String> {
+        self.inner
+            .iter()
+            .filter(|(id, active)| {
+                id.contains("::db::") && active.idle_millis_at(now) >= ttl_millis
+            })
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// Every pool — top-level included — idle for at least `ttl_millis`.
+    ///
+    /// Only the headless MCP sidecar uses this: it has no user watching a
+    /// connection indicator, so an untouched pool there is pure cost. The
+    /// desktop app deliberately keeps top-level pools until disconnect — hence
+    /// the dead-code allowance in a normal `pnpm tauri:build`, matching the
+    /// `McpWritePolicy` helpers above.
+    #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+    pub fn idle_pools(&self, now: u64, ttl_millis: u64) -> Vec<String> {
+        self.inner
+            .iter()
+            .filter(|(_, active)| active.idle_millis_at(now) >= ttl_millis)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// How many pools are live right now, split into top-level and synthetic
+    /// per-database children. Feeds the connection-limit error message, which
+    /// is only actionable if it can tell the user what HuginnDB itself holds.
+    pub fn counts(&self) -> (usize, usize) {
+        let children = self.inner.keys().filter(|id| id.contains("::db::")).count();
+        (self.inner.len() - children, children)
     }
 
     /// Whether `id` already has a live pool. Used by `connect` to make
