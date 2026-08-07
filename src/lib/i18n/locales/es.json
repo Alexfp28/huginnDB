@@ -144,8 +144,8 @@
       "connectionStringHint": "Se construye automáticamente a partir de los campos de arriba. La contraseña se guarda de forma segura y no se incrusta en la cadena.",
       "editConnectionString": "Editar cadena de conexión",
       "connectionStringWarning": "Editar la cadena de conexión a mano puede introducir errores — revísala con cuidado. Úsalo para Atlas (mongodb+srv://), replica sets u opciones de la URI que el formulario no cubre.",
-      "maxConnections": "Máximo de conexiones",
-      "maxConnectionsHint": "Déjalo en blanco para usar la preferencia global. Ponlo cuando el límite lo imponga el propio servidor: viaja con la conexión a las exportaciones y al conector MCP.",
+      "maxConnections": "Máximo de conexiones para este servidor",
+      "maxConnectionsHint": "Total de conexiones que HuginnDB puede mantener contra este servidor, compartido con todas sus vistas de base de datos. En blanco usa la preferencia global. Viaja con la conexión a las exportaciones y al conector MCP.",
       "maxConnectionsPlaceholder": "por defecto"
     },
     "ssh": {
@@ -906,16 +906,17 @@
     "connections": {
       "live": {
         "label": "Abiertas ahora mismo",
-        "desc": "Pools que HuginnDB mantiene contra tus servidores. Otros clientes de esta máquina — orígenes de datos del IDE, pools de conexiones de aplicaciones, sidecars de huginndb-mcp — cuentan contra los mismos límites del servidor.",
-        "value": "{{connections}} conexión(es), {{views}} vista(s) de base de datos"
+        "desc": "Conexiones que HuginnDB mantiene contra tus servidores. Otros clientes de esta máquina — orígenes de datos del IDE, pools de conexiones de aplicaciones, sidecars de huginndb-mcp — cuentan contra los mismos límites del servidor.",
+        "value": "{{connections}} conexión(es), {{views}} vista(s) de base de datos",
+        "endpoint": "{{inUse}} de {{budget}} reservadas"
       },
       "maxConnections": {
-        "label": "Máximo de conexiones por conexión",
-        "desc": "Techo del pool de una conexión. Si un servidor concreto necesita otro presupuesto, es mejor fijarlo en la propia conexión: así viaja también a las exportaciones y al conector MCP."
+        "label": "Máximo de conexiones por servidor",
+        "desc": "El total que HuginnDB gastará contra un servidor, compartido por todas las conexiones y vistas de base de datos que lleguen a él. Si un servidor necesita otro presupuesto, es mejor fijarlo en la propia conexión: así viaja también a las exportaciones y al conector MCP."
       },
       "childMaxConnections": {
         "label": "Máximo de conexiones por vista de base de datos",
-        "desc": "Explorar un servidor multi-base abre un pool aparte por cada base de datos. Mantenlo bajo: se multiplica por el número de bases que abras."
+        "desc": "Explorar un servidor multi-base abre un pool aparte por cada base de datos, que sale del mismo presupuesto del servidor. Mantenlo bajo: se multiplica por el número de bases que abras."
       },
       "maxChildPools": {
         "label": "Máximo de vistas de base de datos abiertas",
@@ -929,7 +930,7 @@
         "label": "Intervalo de keepalive",
         "desc": "Segundos entre pings de comprobación. El ping mantiene una conexión abierta por conexión para que el siguiente clic sea instantáneo y las caídas se detecten pronto. 0 lo desactiva."
       },
-      "footnote": "Bajar estos valores se aplica al abrir el siguiente pool; los pools ya abiertos conservan los límites con los que se crearon. Reconecta para aplicarlos al momento."
+      "footnote": "Los límites se aplican al abrir un pool; los ya abiertos conservan lo que se les concedió. Reconecta para aplicarlos al momento. Cuando se agota el presupuesto de un servidor, abrir una vista cierra la que hace más tiempo que no usas en lugar de fallar."
     }
   },
   "transfer": {

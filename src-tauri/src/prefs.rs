@@ -169,7 +169,13 @@ pub struct UiPrefs {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ConnectionPrefs {
-    /// Ceiling for a top-level connection's pool. Clamped into
+    /// **Total** connections HuginnDB may hold against one server endpoint,
+    /// shared by every profile and every database view that reaches it.
+    ///
+    /// This was a per-*pool* ceiling before 1.13.0, which is precisely why the
+    /// footprint was unbounded: three profiles pointing at the same host each
+    /// got their own allowance and nothing could see the sum. See
+    /// [`crate::db::endpoint`]. Clamped into
     /// `[MIN_MAX_CONNECTIONS, MAX_MAX_CONNECTIONS]` at use time.
     pub max_connections: u32,
     /// Ceiling for each synthetic per-database child pool. Kept low on purpose:
@@ -196,7 +202,7 @@ pub struct ConnectionPrefs {
 impl Default for ConnectionPrefs {
     fn default() -> Self {
         Self {
-            max_connections: crate::db::pool::DEFAULT_MAX_CONNECTIONS,
+            max_connections: crate::db::pool::DEFAULT_ENDPOINT_BUDGET,
             child_max_connections: crate::db::pool::DEFAULT_CHILD_MAX_CONNECTIONS,
             child_idle_ttl_secs: 300,
             max_child_pools: 8,

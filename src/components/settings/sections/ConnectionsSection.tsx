@@ -81,24 +81,46 @@ export function ConnectionsSection() {
         label={t("settings.connections.live.label")}
         description={t("settings.connections.live.desc")}
       >
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-xs tabular-nums text-muted-foreground">
-            {stats
-              ? t("settings.connections.live.value", {
-                  connections: stats.connections,
-                  views: stats.databaseViews,
-                })
-              : "—"}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            disabled={releasing || !stats || stats.databaseViews === 0}
-            onClick={() => void release()}
-          >
-            {t("schema.releaseIdlePools")}
-          </Button>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+              {stats
+                ? t("settings.connections.live.value", {
+                    connections: stats.connections,
+                    views: stats.databaseViews,
+                  })
+                : "—"}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              disabled={releasing || !stats || stats.databaseViews === 0}
+              onClick={() => void release()}
+            >
+              {t("schema.releaseIdlePools")}
+            </Button>
+          </div>
+          {/* Per-server rows. The two counts above are per *pool*, and one
+              server can back several of them — this is the breakdown that
+              matches what the server's own `max_connections` is counting. */}
+          {stats && stats.endpoints.length > 0 && (
+            <ul className="space-y-0.5 text-right">
+              {stats.endpoints.map((e) => (
+                <li
+                  key={e.label}
+                  className="font-mono text-[11px] tabular-nums text-muted-foreground"
+                >
+                  {e.label}
+                  {" · "}
+                  {t("settings.connections.live.endpoint", {
+                    inUse: e.inUse,
+                    budget: connections.maxConnections,
+                  })}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </PrefRow>
 

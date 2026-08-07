@@ -241,6 +241,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn views_on_an_endpoint_are_offered_oldest_first_and_scoped_to_it() {
+        // The ordering `open_database_view` reclaims by when a server's budget
+        // is spent. Scoping matters as much as ordering: closing a view on an
+        // unrelated server frees capacity nobody is waiting for.
+        use crate::db::endpoint::{EndpointKey, EndpointRegistry};
+        use crate::state::{ConnectionProfile, Driver};
+        use std::sync::Arc;
+
+        fn profile(host: &str) -> ConnectionProfile {
+            ConnectionProfile {
+                id: "p".into(),
+                name: "p".into(),
+                driver: Driver::Postgres,
+                host: host.into(),
+                port: 5432,
+                database: String::new(),
+                username: "u".into(),
+                ssl: false,
+                ssh_tunnel: None,
+                connection_string: None,
+                auth_source: None,
+                ephemeral: false,
+                group: None,
+                visible_databases: None,
+                mcp_write: Default::default(),
+                max_connections: None,
+                origin_id: None,
+            }
+        }
+
+        let state = AppState::new();
+        let registry = Arc::new(EndpointRegistry::default());
+        let alpha = EndpointKey::for_profile(&profile("alpha")).unwrap();
+        let beta = EndpointKey::for_profile(&profile("beta")).unwrap();
+
+        let insert_view = |id: &str, key: &EndpointKey, idle: u64| {
+            let grant = registry.reserve(key, 2, 100, 1).unwrap();
+            let active = ActivePool {
+                _endpoint: Some(grant),
+                ..ActivePool::bare(dummy_pool())
+            };
+            active
+                .last_used
+                .store(NOW.saturating_sub(idle), Ordering::Relaxed);
+            state.connections.write().insert(id.to_string(), active);
+        };
+        insert_view("p::db::recent", &alpha, 100);
+        insert_view("p::db::stale", &alpha, 900);
+        insert_view("p::db::middle", &alpha, 500);
+        insert_view("other::db::elsewhere", &beta, 9_999);
+
+        assert_eq!(
+            state.connections.read().views_on_endpoint_by_lru(&alpha),
+            vec![
+                "p::db::stale".to_string(),
+                "p::db::middle".to_string(),
+                "p::db::recent".to_string(),
+            ],
+            "longest-unused first, and the other server's view is not a candidate"
+        );
+    }
+
+    #[tokio::test]
     async fn cap_is_per_parent_not_global() {
         let state = AppState::new();
         insert(&state, "one", 0);

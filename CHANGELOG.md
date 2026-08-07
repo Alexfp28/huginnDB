@@ -15,18 +15,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   currently holding, with a button to release the per-database ones. That
   visibility is half the point: `too many connections` is only actionable if
   you can see your own contribution to it.
-- **Per-connection limit** — connections now have a **Max connections** field
-  (Advanced, in the connection dialog). Connection capacity is a fact about a
-  *server*, so it lives on the connection: it travels with profile
-  export/import, syncs through shared origins, and the `huginndb-mcp` sidecar
-  honours it automatically because it reads the same `profiles.json`. Blank
-  means "use the global preference".
+- **Per-server connection budgets.** The unit of accounting is now the server
+  endpoint, not the saved connection. `Max connections per server` is the whole
+  allowance HuginnDB will spend against one host, shared by every connection and
+  every database view that reaches it — so three connections pointing at the
+  same Postgres box no longer get three independent allowances, which is exactly
+  how the footprint managed to be unbounded. Two connections behind *different*
+  SSH tunnels that both name `localhost:5432` are correctly treated as different
+  servers; two connecting as different users are correctly treated as the same
+  one, since the server's limit is global.
+  When a server's allowance is spent, opening a database view **closes the view
+  you used least recently on that same server** rather than failing — so
+  browsing a twelve-database server under a ten-connection budget still works.
+  If there is genuinely nothing to reclaim, the error names the budget and where
+  to raise it instead of surfacing a driver string.
+- **Per-connection limit** — connections now have a **Max connections for this
+  server** field. Connection capacity is a fact about a *server*, so it lives on
+  the connection: it travels with profile export/import, syncs through shared
+  origins, and the `huginndb-mcp` sidecar honours it automatically because it
+  reads the same `profiles.json`. Blank means "use the global preference".
 - **`huginndb-mcp --max-connections <n>`** — pool ceiling per exposed
   connection for the headless connector, defaulting to `2`. See the new
   "Connection footprint" section in `docs/MCP.md`.
 - `docs/CONNECTION_POOLING_ANALYSIS.md` — the audit these changes come from:
   how the engine allocated connections, worst-case arithmetic, ranked findings,
   and the endpoint-centric architecture the remaining work is heading towards.
+
+### Changed
+
+- **`connections.maxConnections` changed meaning** from "ceiling for a single
+  pool" to "total for one server". Nothing was released with the old meaning, so
+  no migration is needed; the default moved from 5 to 10 accordingly, since it
+  now covers a connection plus its database views rather than one pool. A
+  top-level connection asks for at most 5 of that allowance and deliberately
+  leaves room for a database view, so pinning a tight budget on a connection
+  can't make its own databases unopenable.
 
 ### Fixed
 

@@ -20,42 +20,57 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::time::Duration;
 
-/// Default ceiling for a **top-level** pool against a server-backed driver.
+/// Default **total** budget for one server endpoint.
+///
+/// The unit changed in 1.13.0. This used to be the ceiling for a single pool,
+/// which meant three profiles pointing at one Postgres box each got their own
+/// independent five and nothing anywhere could see the total. It is now the
+/// whole allowance HuginnDB will spend against a server, shared by every
+/// profile and every database view that reaches it — see
+/// [`crate::db::endpoint`].
+///
+/// Ten leaves room for a top-level connection at its full
+/// [`TOP_LEVEL_REQUEST`] plus a couple of database views, which is what
+/// ordinary browsing actually uses. Overridable globally
+/// (`connections.maxConnections`) and per profile
+/// ([`ConnectionProfile::max_connections`]).
+pub const DEFAULT_ENDPOINT_BUDGET: u32 = 10;
+
+/// What a top-level pool asks for when the budget is comfortable.
 ///
 /// Kept conservative because HuginnDB is a single-user desktop client; we
-/// don't expect more than a couple of in-flight queries at once. Overridable
-/// globally (`connections.maxConnections`) and per profile
-/// ([`ConnectionProfile::max_connections`]).
-pub const DEFAULT_MAX_CONNECTIONS: u32 = 5;
+/// don't expect more than a couple of in-flight queries at once. The actual
+/// grant may be smaller — see [`top_level_request`].
+pub const TOP_LEVEL_REQUEST: u32 = 5;
 
 /// Default ceiling for a **synthetic per-database child** pool
 /// (`<parent>::db::<name>`, see `commands::connection::open_database_view`).
 ///
-/// Deliberately much smaller than [`DEFAULT_MAX_CONNECTIONS`], because these
-/// are the pools that *multiply*: one per database the user browses, against
-/// the same server. Five apiece is how a twelve-database server turned into a
-/// ceiling of sixty-five backends from a single window. A child pool serves
-/// schema introspection and one grid at a time; two is enough for that, and
-/// still above [`MIN_MAX_CONNECTIONS`].
+/// Deliberately much smaller than [`TOP_LEVEL_REQUEST`], because these are the
+/// pools that *multiply*: one per database the user browses, against the same
+/// server. Five apiece is how a twelve-database server turned into a ceiling of
+/// sixty-five backends from a single window. A child pool serves schema
+/// introspection and one grid at a time; two is enough for that, and still
+/// above [`MIN_MAX_CONNECTIONS`].
 pub const DEFAULT_CHILD_MAX_CONNECTIONS: u32 = 2;
 
-/// Floor for any server-backed pool.
+/// Floor for any server-backed pool that will be used interactively.
 ///
 /// Not cosmetic: `commands::query::run_batch` holds one connection checked out
 /// for the whole of a multi-statement batch (so `BEGIN`/`SET`/`COMMIT` share a
 /// session), and a background schema refresh that lands during a long batch
 /// would deadlock against a single-connection pool waiting on
-/// [`ACQUIRE_TIMEOUT`]. Two is the smallest pool that stays usable
-/// interactively, so a hand-edited `0` or `1` is raised to it rather than
-/// honoured.
+/// [`ACQUIRE_TIMEOUT`]. Two is the smallest pool that stays usable, so a
+/// budget with only one slot left refuses rather than handing out a pool that
+/// can deadlock.
 pub const MIN_MAX_CONNECTIONS: u32 = 2;
 
-/// Sanity ceiling on a user-supplied override. Past this the user wants a
+/// Sanity ceiling on a user-supplied budget. Past this the user wants a
 /// server-side pooler, not a bigger desktop client.
 pub const MAX_MAX_CONNECTIONS: u32 = 64;
 
 /// SQLite is single-file and benefits from a small pool to avoid lock
-/// contention on writes.
+/// contention on writes. Not metered: there is no server to run out.
 const MAX_CONNECTIONS_SQLITE: u32 = 1;
 
 /// How long an idle connection may sit in a pool before it is closed.
@@ -79,47 +94,56 @@ pub const MAX_LIFETIME: Duration = Duration::from_secs(1800);
 /// the same actionable error as the server refusing us.
 pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// The server budget in force for `profile`: its own override when it has one,
+/// else the global preference. Clamped into the supported range, so a
+/// hand-edited `0` in `profiles.json` can't make a connection unopenable.
+pub fn endpoint_budget(profile: &ConnectionProfile, preference: u32) -> u32 {
+    profile
+        .max_connections
+        .unwrap_or(preference)
+        .clamp(MIN_MAX_CONNECTIONS, MAX_MAX_CONNECTIONS)
+}
+
+/// How many connections a top-level pool should ask for against a server whose
+/// total allowance is `budget`.
+///
+/// Leaves `child_request` behind so that opening a connection does not, by
+/// itself, make the first database view unopenable. Without this a profile
+/// pinned to a tight budget would have its parent pool swallow the lot and
+/// every `open_database_view` would fail — a confusing way to spend a limit the
+/// user set to be helpful. Never drops below [`MIN_MAX_CONNECTIONS`]: when the
+/// budget genuinely cannot fit both, the parent wins and the view reports the
+/// exhaustion honestly.
+pub fn top_level_request(budget: u32, child_request: u32) -> u32 {
+    budget
+        .saturating_sub(child_request)
+        .clamp(MIN_MAX_CONNECTIONS, TOP_LEVEL_REQUEST)
+}
+
 /// Resolved sizing for one pool.
 ///
-/// Threaded through [`open_pool`] instead of read from a constant so that the
-/// three kinds of pool HuginnDB opens — a top-level connection, a synthetic
-/// per-database child, and a throwaway credentials probe — can differ, and so
-/// that the per-profile and global overrides apply at exactly one place.
+/// Constructed from an [`crate::db::endpoint::EndpointGrant`] rather than from
+/// a constant, so a pool is never larger than the share of its server it was
+/// actually granted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PoolLimits {
     pub max_connections: u32,
 }
 
 impl PoolLimits {
-    /// Clamp an arbitrary requested ceiling into the supported range.
-    fn clamped(requested: u32) -> Self {
+    /// Size a pool to what the endpoint granted it.
+    pub fn granted(amount: u32) -> Self {
         Self {
-            max_connections: requested.clamp(MIN_MAX_CONNECTIONS, MAX_MAX_CONNECTIONS),
+            max_connections: amount,
         }
     }
 
-    /// Limits for a top-level connection: the profile's own override if it has
-    /// one, else the global preference.
-    pub fn top_level(profile: &ConnectionProfile, preference: u32) -> Self {
-        Self::clamped(profile.max_connections.unwrap_or(preference))
-    }
-
-    /// Limits for a synthetic per-database child.
-    ///
-    /// Takes the *smaller* of the child default and whatever the parent
-    /// connection resolved to, so lowering a profile's ceiling lowers its
-    /// children too — but raising it never inflates them past the child
-    /// default. Children are the multiplying kind of pool; the override exists
-    /// to let a user open a bigger *connection*, not twelve bigger ones.
-    pub fn child(profile: &ConnectionProfile, preference: u32, child_preference: u32) -> Self {
-        let parent = Self::top_level(profile, preference).max_connections;
-        Self::clamped(child_preference.min(parent))
-    }
-
     /// Limits for a short-lived pool that only has to prove the credentials
-    /// work ("Test connection"). One connection, one `SELECT 1`, then closed.
-    /// Not clamped — the floor exists to keep *interactive* pools usable, and
-    /// nothing interactive ever runs against this one.
+    /// work ("Test connection"). One connection, one `SELECT 1`, then closed —
+    /// so it is reserved with a floor of one rather than
+    /// [`MIN_MAX_CONNECTIONS`]: nothing interactive runs against it, so it
+    /// cannot deadlock, and "Test" is a button users press repeatedly while
+    /// fixing a typo against the very server they are struggling to get into.
     pub fn probe() -> Self {
         Self { max_connections: 1 }
     }
@@ -127,7 +151,7 @@ impl PoolLimits {
 
 impl Default for PoolLimits {
     fn default() -> Self {
-        Self::clamped(DEFAULT_MAX_CONNECTIONS)
+        Self::granted(TOP_LEVEL_REQUEST)
     }
 }
 
@@ -469,42 +493,38 @@ mod tests {
 
     #[test]
     fn the_profile_override_beats_the_global_preference() {
-        assert_eq!(
-            PoolLimits::top_level(&profile(Some(3)), 10).max_connections,
-            3
-        );
-        assert_eq!(
-            PoolLimits::top_level(&profile(None), 10).max_connections,
-            10
-        );
+        assert_eq!(endpoint_budget(&profile(Some(3)), 10), 3);
+        assert_eq!(endpoint_budget(&profile(None), 10), 10);
     }
 
     #[test]
-    fn limits_are_clamped_into_a_usable_range() {
+    fn budgets_are_clamped_into_a_usable_range() {
         // Below the floor a batch holding a connection would deadlock the next
         // acquire, so a hand-edited 0/1 is raised rather than honoured.
+        assert_eq!(endpoint_budget(&profile(Some(0)), 10), MIN_MAX_CONNECTIONS);
         assert_eq!(
-            PoolLimits::top_level(&profile(Some(0)), 5).max_connections,
-            MIN_MAX_CONNECTIONS
-        );
-        assert_eq!(
-            PoolLimits::top_level(&profile(Some(9_000)), 5).max_connections,
+            endpoint_budget(&profile(Some(9_000)), 10),
             MAX_MAX_CONNECTIONS
         );
     }
 
     #[test]
-    fn a_child_never_exceeds_its_parent_but_is_not_inflated_by_it() {
-        // Raising a profile's ceiling must not multiply across every database
-        // the user browses: the child default still caps it.
-        assert_eq!(
-            PoolLimits::child(&profile(Some(20)), 5, DEFAULT_CHILD_MAX_CONNECTIONS).max_connections,
-            DEFAULT_CHILD_MAX_CONNECTIONS
-        );
-        // Lowering it, on the other hand, must lower the children too.
-        assert_eq!(
-            PoolLimits::child(&profile(Some(2)), 5, 4).max_connections,
-            MIN_MAX_CONNECTIONS
-        );
+    fn a_top_level_pool_leaves_room_for_a_database_view() {
+        // Comfortable budget: the parent takes its full request and half the
+        // server's allowance is still free for views.
+        assert_eq!(top_level_request(10, 2), TOP_LEVEL_REQUEST);
+        // Tight budget: the parent gives ground so the first view can open at
+        // all, which is the case that used to fail confusingly.
+        assert_eq!(top_level_request(4, 2), 2);
+        assert_eq!(top_level_request(6, 2), 4);
+    }
+
+    #[test]
+    fn a_top_level_pool_never_shrinks_below_the_floor() {
+        // No budget can fit both a usable parent and a usable view here; the
+        // parent wins and the view reports the exhaustion honestly rather than
+        // the parent becoming deadlock-prone to make room.
+        assert_eq!(top_level_request(2, 2), MIN_MAX_CONNECTIONS);
+        assert_eq!(top_level_request(3, 2), MIN_MAX_CONNECTIONS);
     }
 }

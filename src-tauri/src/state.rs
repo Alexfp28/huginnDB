@@ -19,7 +19,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Database backend selected for a [`ConnectionProfile`].
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+///
+/// `PartialEq`/`Eq`/`Hash` so it can take part in
+/// [`crate::db::endpoint::EndpointKey`], which keys the per-server budget map.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Driver {
     Postgres,
@@ -327,6 +330,15 @@ pub struct ActivePool {
     /// synthetic per-database pools opened by `open_database_view`, which
     /// deliberately don't get their own heartbeat.
     pub _keepalive: Option<crate::keepalive::KeepaliveHandle>,
+    /// This pool's reservation against its server's connection budget (see
+    /// [`crate::db::endpoint`]). `None` for the pools that spend no budget: a
+    /// SQLite file, and a Mongo per-database view that reuses its parent's
+    /// client.
+    ///
+    /// Held here purely so it lives exactly as long as the pool does — the
+    /// grant releases on `Drop`, which is what keeps the four different
+    /// removal paths from having to remember to give the budget back.
+    pub _endpoint: Option<crate::db::endpoint::EndpointGrant>,
     /// [`now_millis`] at the last [`ActiveConnections::get`] — i.e. the last
     /// time any command resolved this pool in order to use it.
     ///
@@ -351,8 +363,14 @@ impl ActivePool {
             pool,
             _ssh: None,
             _keepalive: None,
+            _endpoint: None,
             last_used: Arc::new(std::sync::atomic::AtomicU64::new(now_millis())),
         }
+    }
+
+    /// The server budget this pool draws on, if it draws on one.
+    pub fn endpoint_key(&self) -> Option<&crate::db::endpoint::EndpointKey> {
+        self._endpoint.as_ref().map(|g| g.key())
     }
 
     /// [`now_millis`] value at the last use.
@@ -444,6 +462,24 @@ impl ActiveConnections {
             })
             .map(|(id, _)| id.clone())
             .collect()
+    }
+
+    /// Synthetic per-database views drawing on `key`, longest-unused first.
+    ///
+    /// Feeds the reclaim step in `open_database_view`: when a server's budget
+    /// is spent, closing the view the user looked at least recently is a far
+    /// better answer than refusing to open the one they just clicked. Scoped to
+    /// a single endpoint on purpose — evicting a view on an unrelated server
+    /// would free nothing that the caller is waiting for.
+    pub fn views_on_endpoint_by_lru(&self, key: &crate::db::endpoint::EndpointKey) -> Vec<String> {
+        let mut views: Vec<(&String, u64)> = self
+            .inner
+            .iter()
+            .filter(|(id, active)| id.contains("::db::") && active.endpoint_key() == Some(key))
+            .map(|(id, active)| (id, active.last_used_millis()))
+            .collect();
+        views.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(b.0)));
+        views.into_iter().map(|(id, _)| id.clone()).collect()
     }
 
     /// Every pool — top-level included — idle for at least `ttl_millis`.
@@ -538,6 +574,10 @@ pub struct AppState {
     pub connections: Arc<RwLock<ActiveConnections>>,
     /// Session-only secrets keyed by profile id (see [`SessionSecret`]).
     pub session_secrets: Arc<RwLock<HashMap<String, SessionSecret>>>,
+    /// Per-server connection budgets. See [`crate::db::endpoint`] — this is
+    /// what stops two profiles pointing at the same host from getting two
+    /// independent allowances.
+    pub endpoints: Arc<crate::db::endpoint::EndpointRegistry>,
     /// Persisted profiles loaded from disk.
     pub profiles: Arc<RwLock<Vec<ConnectionProfile>>>,
     /// User-tunable preferences loaded from `prefs.json`.
@@ -593,6 +633,7 @@ impl AppState {
         Self {
             connections: Arc::new(RwLock::new(ActiveConnections::default())),
             session_secrets: Arc::new(RwLock::new(HashMap::new())),
+            endpoints: Arc::new(crate::db::endpoint::EndpointRegistry::default()),
             profiles: Arc::new(RwLock::new(profiles)),
             prefs: Arc::new(RwLock::new(prefs)),
             tab_state: Arc::new(RwLock::new(tab_state)),

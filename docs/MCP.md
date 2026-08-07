@@ -175,7 +175,7 @@ The tools then show up under the `huginndb` server inside Codex.
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(none)* | Profile ids the server may reach. **Opt-in**: with none set, nothing is exposed. |
 | `--max-rows <n>` | `1000` | Upper bound on rows returned by a single `run_query` / `browse_table` call, so a tool call can't dump a whole table into the model's context. |
-| `--max-connections <n>` | `2` | Pool ceiling per exposed connection. See [Connection footprint](#connection-footprint) — the default is deliberately well below the desktop app's. A profile that pins its own limit in HuginnDB still wins when it is the stricter of the two. |
+| `--max-connections <n>` | `2` | Budget per **server**, within this process. See [Connection footprint](#connection-footprint) — the default is deliberately well below the desktop app's. A connection that pins its own limit in HuginnDB still wins when it is the stricter of the two. |
 | `--read-only[=true\|false]` | `false` | Global kill-switch: force **every** connection to read-only regardless of its saved write policy. A quick way to expose the connector in a guaranteed-safe mode without touching any profile. |
 | `--allow-writes` | — | **Deprecated and ignored.** Writes are now governed per connection by the write policy set in Settings → MCP (see [Security](#security)); this flag no longer grants anything and only prints a one-time deprecation notice. |
 
@@ -198,7 +198,9 @@ Two defaults keep that bounded:
 
 - **`--max-connections` defaults to `2`** per exposed connection, rather than
   the desktop app's `5`. MCP is request/response over stdio and tools are
-  dispatched one at a time, so a bigger pool buys nothing here.
+  dispatched one at a time, so a bigger pool buys nothing here. It is also a
+  *per-server* budget within this process: two exposed connections pointing at
+  the same host share it rather than getting one each.
 - **Idle pools are closed after 5 minutes** with no tool call. The connector is
   long-lived but its work is bursty; a pool opened for one question is not held
   for the rest of the week. It reopens transparently on the next call.

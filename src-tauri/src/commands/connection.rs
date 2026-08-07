@@ -1,7 +1,9 @@
 //! Connection-profile and lifecycle commands.
 
+use crate::db::endpoint::{EndpointExhausted, EndpointGrant, EndpointKey};
 use crate::db::pool::{
-    close_pool, open_pool, smoke_test, PoolLimits, PoolOwnership, CLOSE_TIMEOUT,
+    close_pool, endpoint_budget, open_pool, smoke_test, top_level_request, PoolLimits,
+    PoolOwnership, CLOSE_TIMEOUT, MIN_MAX_CONNECTIONS,
 };
 use crate::error::{AppError, AppResult};
 use crate::keychain;
@@ -68,20 +70,75 @@ fn log_connection(
     log_bus::emit(app, window_label, entry);
 }
 
-/// Resolve the pool sizing for a top-level connection to `profile`, and the
-/// keepalive interval, from the live preferences.
+/// The connection-pool preferences, read once under a single lock so a change
+/// can't be observed half-applied.
 ///
-/// Read together under one lock so a preference change can't be observed
-/// half-applied, and resolved at *connect* time rather than being baked into a
-/// constant — which is what makes both the global preference and the
-/// per-profile [`ConnectionProfile::max_connections`] override take effect on
-/// the next connection rather than the next release.
-fn top_level_pool_policy(state: &AppState, profile: &ConnectionProfile) -> (PoolLimits, Duration) {
+/// Read at *connect* time rather than baked into constants: that is what makes
+/// the global preference and the per-profile
+/// [`ConnectionProfile::max_connections`] override take effect on the next
+/// connection rather than the next release.
+struct PoolPolicy {
+    /// Total connections allowed against this profile's server.
+    budget: u32,
+    /// What a per-database view asks for.
+    child_request: u32,
+    keepalive: Duration,
+}
+
+fn pool_policy(state: &AppState, profile: &ConnectionProfile) -> PoolPolicy {
     let prefs = state.prefs.read();
-    (
-        PoolLimits::top_level(profile, prefs.connections.max_connections),
-        Duration::from_secs(u64::from(prefs.connections.keepalive_secs)),
-    )
+    PoolPolicy {
+        budget: endpoint_budget(profile, prefs.connections.max_connections),
+        child_request: prefs.connections.child_max_connections,
+        keepalive: Duration::from_secs(u64::from(prefs.connections.keepalive_secs)),
+    }
+}
+
+/// Turn a refused reservation into an error that names the server and our own
+/// share of it.
+///
+/// Distinct from [`annotate_connection_limit`], which decorates a refusal that
+/// came back *from* the server: this one never reached the wire. Saying so
+/// matters — the remedy is HuginnDB's own setting, not the DBA's.
+fn exhausted_to_error(e: EndpointExhausted) -> AppError {
+    AppError::TooManyConnections(format!(
+        "HuginnDB's own budget for {} is spent ({}/{} connections in use). Raise it in \
+         Settings → Connections or on this connection, or close a database view.",
+        e.label, e.in_use, e.budget
+    ))
+}
+
+/// Reserve capacity for a top-level pool against `profile`'s server.
+///
+/// `Ok(None)` means the profile has no server to ration (SQLite) — not that the
+/// reservation failed.
+fn reserve_top_level(
+    state: &AppState,
+    profile: &ConnectionProfile,
+    policy: &PoolPolicy,
+) -> AppResult<Option<EndpointGrant>> {
+    let Some(key) = EndpointKey::for_profile(profile) else {
+        return Ok(None);
+    };
+    state
+        .endpoints
+        .reserve(
+            &key,
+            top_level_request(policy.budget, policy.child_request),
+            policy.budget,
+            MIN_MAX_CONNECTIONS,
+        )
+        .map(Some)
+        .map_err(exhausted_to_error)
+}
+
+/// Pool sizing implied by a grant. SQLite (`None`) is fixed at one connection
+/// inside `open_pool` regardless of what is passed here.
+fn limits_for(grant: &Option<EndpointGrant>) -> PoolLimits {
+    match grant {
+        Some(g) => PoolLimits::granted(g.amount()),
+        None => PoolLimits::default(),
+    }
 }
 
 /// Add HuginnDB's own pool footprint to a connection-limit refusal.
@@ -289,6 +346,23 @@ pub async fn test_connection(
     }
 
     let known_hosts = state.known_hosts.clone();
+    // Meter the probe too. It is one connection for a couple of seconds, but
+    // "Test" is a button people press repeatedly while fixing a typo — against
+    // the very server they are already struggling to get into. Floor of one:
+    // nothing interactive runs on this pool, so it cannot deadlock the way an
+    // undersized working pool would. The grant lives to the end of the command.
+    let _probe_grant = match EndpointKey::for_profile(&profile) {
+        Some(key) => {
+            let budget = endpoint_budget(&profile, state.prefs.read().connections.max_connections);
+            Some(
+                state
+                    .endpoints
+                    .reserve(&key, 1, budget, 1)
+                    .map_err(exhausted_to_error)?,
+            )
+        }
+        None => None,
+    };
     let start = Instant::now();
     log_connection(
         &app,
@@ -377,7 +451,12 @@ pub async fn connect(
     };
 
     let known_hosts = state.known_hosts.clone();
-    let (limits, keepalive_interval) = top_level_pool_policy(state.inner(), &profile);
+    let policy = pool_policy(state.inner(), &profile);
+    // Reserve the server's capacity *before* dialling. Failing here costs
+    // nothing and reports a limit the user controls; failing at the server
+    // costs a round trip and reports one they may not.
+    let grant = reserve_top_level(state.inner(), &profile, &policy)?;
+    let limits = limits_for(&grant);
     let start = Instant::now();
     log_connection(
         &app,
@@ -437,7 +516,7 @@ pub async fn connect(
                 app.clone(),
                 id.clone(),
                 pool,
-                keepalive_interval,
+                policy.keepalive,
                 active.last_used.clone(),
             );
             state.connections.write().insert(
@@ -445,6 +524,7 @@ pub async fn connect(
                 ActivePool {
                     _ssh: ssh_handle,
                     _keepalive: keepalive,
+                    _endpoint: grant,
                     ..active
                 },
             );
@@ -533,6 +613,38 @@ pub async fn disconnect(
         );
     }
     Ok(())
+}
+
+/// Close and forget one synthetic per-database view, logging why.
+///
+/// Shared by the two reclaim paths in `open_database_view` — the per-connection
+/// view cap and the per-server budget — so both release the pool *and* its
+/// endpoint grant the same way. The grant rides on the `ActivePool` and
+/// releases when this drops it, which is why neither caller has to think about
+/// the budget bookkeeping.
+async fn close_view(
+    app: &AppHandle,
+    state: &AppState,
+    window_label: &str,
+    driver: Driver,
+    id: &str,
+    reason: &str,
+) {
+    let removed = state.connections.write().remove(id);
+    if let Some(active) = removed {
+        close_pool(&active.pool, PoolOwnership::BorrowedView, CLOSE_TIMEOUT).await;
+        log_connection(
+            app,
+            window_label,
+            id,
+            driver,
+            &format!(
+                "open_database_view: closed least-recently-used database pool ({reason} reached)"
+            ),
+            None,
+            None,
+        );
+    }
 }
 
 /// Synthetic connection id for a per-database browse session under
@@ -649,19 +761,10 @@ pub async fn open_database_view(
         None => resolve_ssh_secret(&parent)?,
     };
     let known_hosts = state.known_hosts.clone();
-    let (limits, max_child_pools) = {
-        let prefs = state.prefs.read();
-        (
-            PoolLimits::child(
-                &parent,
-                prefs.connections.max_connections,
-                prefs.connections.child_max_connections,
-            ),
-            prefs.connections.max_child_pools,
-        )
-    };
+    let policy = pool_policy(state.inner(), &parent);
+    let max_child_pools = state.prefs.read().connections.max_child_pools;
 
-    // Enforce the per-connection child cap *before* opening, not after: the
+    // Enforce the per-connection view cap *before* opening, not after: the
     // point is to never exceed the budget, and the case that trips servers is
     // precisely the burst — the schema explorer's cross-database search
     // fanning out across every database at once. Waiting for the reaper's
@@ -675,21 +778,62 @@ pub async fn open_database_view(
             existing.into_iter().take(excess).collect()
         };
         for victim in over_cap {
-            let removed = state.connections.write().remove(&victim);
-            if let Some(active) = removed {
-                close_pool(&active.pool, PoolOwnership::BorrowedView, CLOSE_TIMEOUT).await;
-                log_connection(
-                    &app,
-                    window_label,
-                    &victim,
-                    parent.driver,
-                    "open_database_view: closed least-recently-used database pool to stay under the cap",
-                    None,
-                    None,
-                );
-            }
+            close_view(
+                &app,
+                state.inner(),
+                window_label,
+                parent.driver,
+                &victim,
+                "cap",
+            )
+            .await;
         }
     }
+
+    // Reserve this view's share of the *server's* budget, reclaiming from our
+    // own idle views on that same server before giving up. This is what makes
+    // browsing a twelve-database server work under a budget that can't hold
+    // twelve views at once: the view the user hasn't looked at in a while pays
+    // for the one they just clicked, instead of the click failing.
+    //
+    // Only views on the same endpoint are eligible — evicting one on an
+    // unrelated server would free capacity nobody is waiting for.
+    let grant = match EndpointKey::for_profile(&parent) {
+        None => None,
+        Some(key) => {
+            let request = policy.child_request.max(MIN_MAX_CONNECTIONS);
+            let mut reclaimable = state.connections.read().views_on_endpoint_by_lru(&key);
+            // Never reclaim the view we are opening (it can't be live yet) nor,
+            // more importantly, one that a caller is mid-query against — the
+            // LRU ordering already puts those last, so taking from the front is
+            // the least disruptive order available.
+            reclaimable.retain(|id| id != &child_id);
+            loop {
+                match state
+                    .endpoints
+                    .reserve(&key, request, policy.budget, MIN_MAX_CONNECTIONS)
+                {
+                    Ok(g) => break Some(g),
+                    Err(exhausted) => {
+                        let Some(victim) = reclaimable.first().cloned() else {
+                            return Err(exhausted_to_error(exhausted));
+                        };
+                        reclaimable.remove(0);
+                        close_view(
+                            &app,
+                            state.inner(),
+                            window_label,
+                            parent.driver,
+                            &victim,
+                            "budget",
+                        )
+                        .await;
+                    }
+                }
+            }
+        }
+    };
+    let limits = limits_for(&grant);
 
     let start = Instant::now();
     log_connection(
@@ -710,6 +854,7 @@ pub async fn open_database_view(
                 child_id.clone(),
                 ActivePool {
                     _ssh: ssh_handle,
+                    _endpoint: grant,
                     ..ActivePool::bare(pool)
                 },
             );
@@ -760,6 +905,20 @@ pub struct PoolStats {
     pub connections: usize,
     /// Synthetic `<parent>::db::<name>` pools opened by browsing databases.
     pub database_views: usize,
+    /// Per-server reservations. This is the row that actually answers "how
+    /// many connections am I holding against *that* box" — the two counts
+    /// above are per-pool and a server may back several of them.
+    pub endpoints: Vec<EndpointUsage>,
+}
+
+/// One server's share of the connection footprint.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EndpointUsage {
+    /// `host:port`, plus the SSH tunnel when there is one.
+    pub label: String,
+    /// Connections reserved against it right now.
+    pub in_use: u32,
 }
 
 /// Snapshot of the current pool footprint. See [`PoolStats`].
@@ -769,6 +928,12 @@ pub fn connection_pool_stats(state: State<'_, AppState>) -> AppResult<PoolStats>
     Ok(PoolStats {
         connections,
         database_views,
+        endpoints: state
+            .endpoints
+            .usage()
+            .into_iter()
+            .map(|(label, in_use)| EndpointUsage { label, in_use })
+            .collect(),
     })
 }
 

@@ -1,10 +1,10 @@
 # Connection & pool management — analysis and proposed architecture
 
-Status: written against `1.12.1` (`3e1c0a1`) as an analysis. **P0 and most of
-P1 have since shipped** — see §5 for what landed and what is still open, and the
-`Unreleased` section of `CHANGELOG.md` for the user-facing summary. The
-findings below are kept as written so the reasoning behind each change stays
-readable; §5 marks each one's current state.
+Status: written against `1.12.1` (`3e1c0a1`) as an analysis. **P0, most of P1
+and the P2 endpoint layer have since shipped** — see §5 for what landed and what
+is still open, and the `Unreleased` section of `CHANGELOG.md` for the
+user-facing summary. The findings below are kept as written so the reasoning
+behind each change stays readable; §5 marks each one's current state.
 
 Motivation: several users report `FATAL: sorry, too many connections already`
 (Postgres) / `ER_CON_COUNT_ERROR` (MySQL) on servers they share with other
@@ -251,6 +251,7 @@ for connection-storm behaviour during replica-set failover.
 | F3 | Child pools are never evicted (no TTL, no LRU, no cap) | **High** | `connection.rs:448` |
 | F4 | MCP sidecar is a second uncoordinated budget, ×N clients | **High** | `mcp/mod.rs:452` |
 | F5 | No per-endpoint accounting; per-profile budgets stack | **High** | `state.rs:302` |
+| | *(fixed — `db/endpoint.rs`)* | | |
 | F6 | MongoDB pool is unbounded (driver default 100/host) | **Medium** | `mongo/mod.rs:43` |
 | F7 | Keepalive (180 s) defeats idle reaping (600 s) | **Medium** | `keepalive.rs:38` |
 | F8 | `too many connections` is unclassified; retry paths re-fire | **Medium** | `connectFlow.ts:37` |
@@ -423,13 +424,43 @@ the per-connection view cap of 8 it lands at 21.
 - ⬜ Cap the export/import dialogs' per-database pools (F11). The reaper now
   bounds them after the fact, which is most of the value.
 
-### P2 — the endpoint layer (the actual refactor) — **open**
+### P2 — the endpoint layer — **shipped, minus the MySQL collapse**
 
-- Endpoint key + registry, per-endpoint semaphore (F5). Still the one finding
-  P0/P1 did not touch: budgets are now *small*, but they still stack per
-  profile rather than per server.
-- MySQL: collapse per-database child pools into one endpoint pool (F1).
-- Postgres: keep per-database pools, share the endpoint budget.
+- ✅ Endpoint key + registry (`db/endpoint.rs`), and per-endpoint budgets
+  (F5). `connections.maxConnections` changed meaning from "ceiling for one
+  pool" to "total for one server", which is the whole point of the layer: every
+  pool that will really open connections now reserves from its server's
+  allowance and holds an RAII `EndpointGrant` that releases on `Drop`.
+- ✅ Postgres (and MySQL, and Mongo) keep per-database pools but share the
+  endpoint budget, as designed.
+- ✅ Better than the original sketch: when a server's budget is spent,
+  `open_database_view` **reclaims** from HuginnDB's own least-recently-used
+  views *on that same endpoint* before giving up. Browsing a twelve-database
+  server under a ten-connection budget therefore works — the view you haven't
+  looked at in a while pays for the one you just clicked — instead of the
+  twelfth click failing.
+- ⬜ **MySQL: collapse per-database views into one endpoint pool** (F1's
+  remainder). Deliberately deferred. A MySQL connection isn't database-bound,
+  so one pool per server is expressible — but it means either `USE` on checkout
+  (stateful, and hostile to a shared pool: any connection could be left
+  pointing anywhere) or fully-qualifying `` `db`.`table` `` in every generated
+  statement, which touches every SQL builder and still leaves user-typed SQL in
+  the query editor needing a bound database. The endpoint budget already caps
+  the *connections*, which was the actual complaint; what the collapse saves on
+  top is pool *objects*. Not worth that blast radius without integration tests
+  against a real MySQL server.
+
+**Admission control, not checkout interception.** The reservation is taken when
+a pool is opened, sized by that pool's ceiling — not per connection checkout.
+Intercepting checkouts would mean wrapping every `execute`/`fetch` in the
+command layer, hundreds of call sites each a chance to forget, and would still
+not bound what a pool is *allowed* to grow to. Reserving up front is coarser (a
+pool that never fills holds budget it isn't using) but gives a guarantee that is
+easy to reason about and impossible to bypass: HuginnDB never has more than
+`budget` connections' worth of pool capacity open against one server, however
+many profiles or database views point at it. The slack is bounded by the same
+things that bound everything else here — pools are small, and idle ones are
+reaped.
 
 ### P3 — cross-process
 
@@ -465,11 +496,13 @@ the per-connection view cap of 8 it lands at 21.
    safer but touches every SQL builder, and user-typed SQL in the query editor
    still needs a bound database. Likely answer: qualify what we generate, and
    `USE` on checkout for the query editor's own connection.
-2. **Does the endpoint key include the username?** Two profiles as different
-   users are different sessions server-side and must not share a pool — so yes.
-   But it means "same server, two users" still stacks budgets, and the *server*
-   limit is global. The semaphore may need to be keyed on `(host, port)` while
-   the pool is keyed on the full tuple.
+2. ~~**Does the endpoint key include the username?**~~ Resolved: **no**. The
+   key is `(driver, host, port, tunnel)`. Since the layer meters budget rather
+   than sharing pools, and a server's limit is global, two profiles connecting
+   as different users must compete for the same allowance rather than each
+   getting their own. (Two profiles behind *different SSH tunnels* naming the
+   same `localhost:5432` are still separate endpoints — each tunnel resolves its
+   remote relative to its own SSH host.)
 3. **How aggressive should the child TTL be?** Five minutes is a guess. Worth
    instrumenting before picking.
 4. **Should `visible_databases` gate pool creation, not just display?** Today

@@ -525,13 +525,33 @@ impl Huginn {
             None => None,
         };
         let known_hosts = self.state.known_hosts.clone();
-        // The profile's own ceiling still applies, and wins when it is the
-        // stricter of the two: `--max-connections` expresses what this sidecar
-        // is willing to take, `profile.max_connections` expresses what the
-        // server can give. Taking the minimum honours both.
-        let limits = crate::db::pool::PoolLimits::top_level(&profile, self.config.max_connections);
-        let limits = crate::db::pool::PoolLimits {
-            max_connections: limits.max_connections.min(self.config.max_connections),
+        // Two limits apply and the stricter wins. `--max-connections` is what
+        // *this process* is willing to take; the profile's own
+        // `max_connections` is the whole budget the user says that **server**
+        // can give. The reservation then shares that budget across every pool
+        // this process holds against the same host — the same endpoint
+        // accounting the desktop app does, in this process's own registry,
+        // since the two cannot see each other's pools.
+        let budget = crate::db::pool::endpoint_budget(&profile, self.config.max_connections)
+            .min(self.config.max_connections);
+        let grant = match crate::db::endpoint::EndpointKey::for_profile(&profile) {
+            Some(key) => Some(
+                self.state
+                    .endpoints
+                    .reserve(&key, budget, budget, 1)
+                    .map_err(|e| {
+                        crate::error::AppError::TooManyConnections(format!(
+                            "this MCP connector's budget for {} is spent ({}/{} in use). Raise \
+                             --max-connections, or the connection's limit in HuginnDB.",
+                            e.label, e.in_use, e.budget
+                        ))
+                    })?,
+            ),
+            None => None,
+        };
+        let limits = match &grant {
+            Some(g) => crate::db::pool::PoolLimits::granted(g.amount()),
+            None => crate::db::pool::PoolLimits::default(),
         };
         let (pool, ssh_handle) =
             crate::db::pool::open_pool(&profile, &password, ssh_secret, known_hosts, limits)
@@ -540,6 +560,7 @@ impl Huginn {
             profile.id.clone(),
             ActivePool {
                 _ssh: ssh_handle,
+                _endpoint: grant,
                 ..ActivePool::bare(pool)
             },
         );

@@ -75,7 +75,7 @@ const DEFAULT_PREFS: Preferences = {
   // used before `hydrate()` lands — the backend is the source of truth and
   // re-applies its own defaults for any field an older `prefs.json` omits.
   connections: {
-    maxConnections: 5,
+    maxConnections: 10,
     childMaxConnections: 2,
     childIdleTtlSecs: 300,
     maxChildPools: 8,

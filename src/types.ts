@@ -92,9 +92,12 @@ export interface ConnectionProfile {
    *  `McpWritePolicy` in Rust. */
   mcp_write?: McpWritePolicy;
   /**
-   * Ceiling on how many simultaneous connections HuginnDB may hold against
-   * this server, overriding the global `connections.maxConnections`
-   * preference. `null`/absent means "use the preference".
+   * Total connections HuginnDB may hold against this server, overriding the
+   * global `connections.maxConnections` preference. `null`/absent means "use
+   * the preference".
+   *
+   * A *budget for the server*, not a size for one pool: every database view on
+   * the same host draws from it too.
    *
    * Lives on the profile rather than in preferences because connection
    * capacity is a fact about a *server*: it then travels with the connection
@@ -523,7 +526,14 @@ export interface Preferences {
  * Mirrors `ConnectionPrefs` in `src-tauri/src/prefs.rs`.
  */
 export interface ConnectionPrefs {
-  /** Ceiling for a top-level connection's pool. Clamped to 2..64 backend-side. */
+  /**
+   * **Total** connections HuginnDB may hold against one server, shared by
+   * every connection and every database view that reaches it.
+   *
+   * A per-*pool* ceiling before 1.13.0, which is exactly why the footprint was
+   * unbounded: three connections to the same host each got their own
+   * allowance. Clamped to 2..64 backend-side.
+   */
   maxConnections: number;
   /**
    * Ceiling for each synthetic `<parent>::db::<name>` pool. Kept low on
@@ -545,6 +555,20 @@ export interface PoolStats {
   connections: number;
   /** Synthetic per-database pools opened by browsing databases. */
   databaseViews: number;
+  /**
+   * Per-server reservations — the row that actually answers "how many
+   * connections am I holding against *that* box", since one server can back
+   * several pools.
+   */
+  endpoints: EndpointUsage[];
+}
+
+/** One server's share of the connection footprint. */
+export interface EndpointUsage {
+  /** `host:port`, plus the SSH tunnel when there is one. */
+  label: string;
+  /** Connections reserved against it right now. */
+  inUse: number;
 }
 
 export interface EditorPrefs {

@@ -4,6 +4,8 @@
 //! through the `mongodb` crate (since 1.1.0). The submodules here hold the
 //! logic that is independent of which Tauri command is invoking it:
 //!
+//! * [`endpoint`] — per-server connection budgets, so pools stop being
+//!   accounted for per profile.
 //! * [`pool`] — open/close pools and build connection options per driver.
 //! * [`values`] — decode `sqlx` rows into `serde_json::Value`. The
 //!   driver-specific type quirks documented here are load-bearing; read the
@@ -19,6 +21,7 @@
 
 pub mod ddl;
 pub mod dump;
+pub mod endpoint;
 pub mod mongo;
 pub mod pool;
 pub mod sql;
