@@ -48,9 +48,13 @@ fn driver_str(driver: Driver) -> &'static str {
 /// Emit a `connection` log entry. Used for `connect`, `disconnect`, and
 /// `test_connection` so the Console panel can show the actual lifecycle
 /// boundary that's currently invisible to the user.
+/// `window_label` of `None` broadcasts to every window instead of targeting
+/// one — correct for an action with no originating window, such as a connection
+/// the MCP bridge opened on a sidecar's behalf. Every Console should see that,
+/// the same way they all see the keepalive's connection-lost entries.
 fn log_connection(
     app: &AppHandle,
-    window_label: &str,
+    window_label: Option<&str>,
     connection_id: &str,
     driver: Driver,
     message: &str,
@@ -67,7 +71,10 @@ fn log_connection(
     if let Some(e) = error {
         entry = entry.error(e);
     }
-    log_bus::emit(app, window_label, entry);
+    match window_label {
+        Some(label) => log_bus::emit(app, label, entry),
+        None => log_bus::broadcast(app, entry),
+    }
 }
 
 /// The connection-pool preferences, read once under a single lock so a change
@@ -320,7 +327,7 @@ pub async fn test_connection(
     password: Option<String>,
     ssh_secret: Option<String>,
 ) -> AppResult<String> {
-    let window_label = window.label();
+    let window_label = Some(window.label());
     let pw = match password {
         Some(p) => p,
         None => resolve_password(&profile)?,
@@ -414,7 +421,34 @@ pub async fn connect(
     password: Option<String>,
     ssh_secret: Option<String>,
 ) -> AppResult<()> {
-    let window_label = window.label();
+    connect_inner(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &id,
+        password,
+        ssh_secret,
+    )
+    .await
+}
+
+/// The body of [`connect`], reusable from a context with no window.
+///
+/// Extracted for the MCP bridge (`crate::bridge::server`), which opens pools on
+/// a sidecar's behalf: it has an `AppHandle` but no originating window, and it
+/// must go through *exactly* this path rather than a parallel one — the
+/// endpoint reservation, the keepalive, the session-secret cache and the
+/// cross-window `connection-opened` event are all things a second
+/// implementation would drift on.
+pub(crate) async fn connect_inner(
+    app: &AppHandle,
+    state: &AppState,
+    window_label: Option<&str>,
+    id: &str,
+    password: Option<String>,
+    ssh_secret: Option<String>,
+) -> AppResult<()> {
+    let id = id.to_string();
     let profile = state
         .profiles
         .read()
@@ -430,7 +464,7 @@ pub async fn connect(
     // tunnel) out from under the window that's using it. Reuse it instead.
     if state.connections.read().contains(&id) {
         log_connection(
-            &app,
+            app,
             window_label,
             &id,
             profile.driver,
@@ -451,15 +485,15 @@ pub async fn connect(
     };
 
     let known_hosts = state.known_hosts.clone();
-    let policy = pool_policy(state.inner(), &profile);
+    let policy = pool_policy(state, &profile);
     // Reserve the server's capacity *before* dialling. Failing here costs
     // nothing and reports a limit the user controls; failing at the server
     // costs a round trip and reports one they may not.
-    let grant = reserve_top_level(state.inner(), &profile, &policy)?;
+    let grant = reserve_top_level(state, &profile, &policy)?;
     let limits = limits_for(&grant);
     let start = Instant::now();
     log_connection(
-        &app,
+        app,
         window_label,
         &id,
         profile.driver,
@@ -498,7 +532,7 @@ pub async fn connect(
             if let (Some(handle), Some(tunnel)) = (&ssh_handle, &profile.ssh_tunnel) {
                 if tunnel.local_port != 0 && handle.local_port != tunnel.local_port {
                     log_connection(
-                        &app,
+                        app,
                         window_label,
                         &id,
                         profile.driver,
@@ -529,7 +563,7 @@ pub async fn connect(
                 },
             );
             log_connection(
-                &app,
+                app,
                 window_label,
                 &id,
                 profile.driver,
@@ -546,10 +580,10 @@ pub async fn connect(
             Ok(())
         }
         Err(e) => {
-            let e = annotate_connection_limit(state.inner(), e);
+            let e = annotate_connection_limit(state, e);
             let msg = e.to_string();
             log_connection(
-                &app,
+                app,
                 window_label,
                 &id,
                 profile.driver,
@@ -604,7 +638,15 @@ pub async fn disconnect(
             .find(|p| p.id == id)
             .map(|p| p.driver)
             .unwrap_or(Driver::Sqlite);
-        log_connection(&app, window.label(), &id, driver, "disconnect", None, None);
+        log_connection(
+            &app,
+            Some(window.label()),
+            &id,
+            driver,
+            "disconnect",
+            None,
+            None,
+        );
         let _ = app.emit(
             CONNECTION_CLOSED_EVENT,
             ConnectionSyncPayload {
@@ -625,7 +667,7 @@ pub async fn disconnect(
 async fn close_view(
     app: &AppHandle,
     state: &AppState,
-    window_label: &str,
+    window_label: Option<&str>,
     driver: Driver,
     id: &str,
     reason: &str,
@@ -708,7 +750,7 @@ pub async fn open_database_view(
     parent_id: String,
     database: String,
 ) -> AppResult<String> {
-    let window_label = window.label();
+    let window_label = Some(window.label());
     let child_id = database_view_id(&parent_id, &database);
     if state.connections.read().get(&child_id).is_some() {
         return Ok(child_id);
@@ -909,6 +951,11 @@ pub struct PoolStats {
     /// many connections am I holding against *that* box" — the two counts
     /// above are per-pool and a server may back several of them.
     pub endpoints: Vec<EndpointUsage>,
+    /// Loopback port the MCP bridge is listening on, or `None` when it is off.
+    /// Shown in Settings so a user who gets a firewall prompt, or who is
+    /// wondering why an MCP client can't attach, can see the actual state
+    /// rather than infer it from a checkbox.
+    pub mcp_bridge_port: Option<u16>,
 }
 
 /// One server's share of the connection footprint.
@@ -934,6 +981,7 @@ pub fn connection_pool_stats(state: State<'_, AppState>) -> AppResult<PoolStats>
             .into_iter()
             .map(|(label, in_use)| EndpointUsage { label, in_use })
             .collect(),
+        mcp_bridge_port: state.mcp_bridge.lock().as_ref().map(|h| h.port),
     })
 }
 

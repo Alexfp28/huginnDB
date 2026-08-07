@@ -13,9 +13,12 @@ with their own config quirks worth documenting; anything else that speaks MCP
 (an editor's built-in agent, a custom harness, …) works the same way once you
 point it at the binary.
 
-It is a **separate process**. It does not share the running desktop app's open
-connections; it opens its own pools lazily, on demand, and only for the
-connections you explicitly expose. Each exposed connection has a **write
+It is a **separate process**. By default it opens its own pools lazily, on
+demand, and only for the connections you explicitly expose — it does not share
+the running desktop app's. It *can*, if you turn on **Settings → Connections →
+Share pools with the MCP connector**, which gives the whole machine a single
+connection budget per server; see [Sharing the app's
+pools](#sharing-the-apps-pools). Each exposed connection has a **write
 policy** — `read-only` (the default), `data`, or `full` — set per connection in
 **Settings → MCP**; reads always work, and writes only succeed when that
 connection's policy allows them. See [Security](#security).
@@ -204,6 +207,25 @@ Two defaults keep that bounded:
 - **Idle pools are closed after 5 minutes** with no tool call. The connector is
   long-lived but its work is bursty; a pool opened for one question is not held
   for the rest of the week. It reopens transparently on the next call.
+
+### Sharing the app's pools
+
+If the desktop app is running, it can serve the connector's queries out of its
+*own* pools instead — turn on **Settings → Connections → Share pools with the
+MCP connector**. Then:
+
+- The whole machine has one budget per server. The app owns every connection;
+  the connector (and every other connector, one per MCP client) opens none.
+- The connector's activity shows up in the app's **Console** live — every
+  browse, query and write, as it happens — instead of only in `mcp-audit.log`
+  after the fact. Writes are still audited to that file too.
+- The write policy is re-checked by the app, independently of the connector's
+  own check.
+
+It is **off by default**, because it opens a listener (loopback only,
+token-protected) that fronts every database you have saved. When the app isn't
+running — or the setting is off — the connector opens its own pools exactly as
+described above, and says so on stderr if it loses the app mid-session.
 
 If a server is still tight, set a per-connection ceiling in HuginnDB
 (Settings → Connections, or the connection's own **Max connections** field).

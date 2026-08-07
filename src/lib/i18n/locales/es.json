@@ -930,7 +930,11 @@
         "label": "Intervalo de keepalive",
         "desc": "Segundos entre pings de comprobación. El ping mantiene una conexión abierta por conexión para que el siguiente clic sea instantáneo y las caídas se detecten pronto. 0 lo desactiva."
       },
-      "footnote": "Los límites se aplican al abrir un pool; los ya abiertos conservan lo que se les concedió. Reconecta para aplicarlos al momento. Cuando se agota el presupuesto de un servidor, abrir una vista cierra la que hace más tiempo que no usas en lugar de fallar."
+      "footnote": "Los límites se aplican al abrir un pool; los ya abiertos conservan lo que se les concedió. Reconecta para aplicarlos al momento. Cuando se agota el presupuesto de un servidor, abrir una vista cierra la que hace más tiempo que no usas en lugar de fallar.",
+      "mcpBridge": {
+        "label": "Compartir pools con el conector MCP",
+        "desc": "Permite que un sidecar huginndb-mcp en ejecución use las conexiones de esta app en lugar de abrir las suyas, de modo que toda la máquina comparta un presupuesto por servidor — y su actividad aparezca en la Consola en tiempo real. Abre un listener en localhost protegido por token. Desactivado por defecto."
+      }
     }
   },
   "transfer": {

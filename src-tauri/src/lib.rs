@@ -16,6 +16,7 @@
 //! * [`error`] — common error type, serialised to the frontend.
 
 mod app_identity;
+mod bridge;
 mod commands;
 mod db;
 mod error;
@@ -248,6 +249,14 @@ pub fn run() {
         // behind by a connection that was opened and closed again.
         .setup(|app| {
             pool_reaper::spawn(app.handle().clone());
+            // The MCP bridge is off unless the user turned it on; `reconcile`
+            // is a no-op in that case. Spawned rather than awaited so a
+            // filesystem hiccup writing the discovery file can't delay the
+            // window appearing.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                bridge::server::reconcile(&handle).await;
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

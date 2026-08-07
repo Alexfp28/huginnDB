@@ -188,6 +188,15 @@ pub struct ConnectionPrefs {
     /// Most child pools any one connection may hold at once; the
     /// longest-unused are closed past this. `0` means unlimited.
     pub max_child_pools: u32,
+    /// Whether the desktop app runs the local MCP bridge, letting a
+    /// `huginndb-mcp` sidecar borrow the app's pools instead of opening its own
+    /// (see [`crate::bridge`]).
+    ///
+    /// **Off by default.** The bridge fronts every database the user has saved,
+    /// and a listening socket that does that is not something to switch on
+    /// behind someone's back — however narrow the exposure (loopback only,
+    /// token-gated, write policy re-checked server-side).
+    pub mcp_bridge: bool,
     /// Keepalive ping interval in seconds. `0` disables the heartbeat.
     ///
     /// The heartbeat holds one connection per top-level pool alive
@@ -204,6 +213,7 @@ impl Default for ConnectionPrefs {
         Self {
             max_connections: crate::db::pool::DEFAULT_ENDPOINT_BUDGET,
             child_max_connections: crate::db::pool::DEFAULT_CHILD_MAX_CONNECTIONS,
+            mcp_bridge: false,
             child_idle_ttl_secs: 300,
             max_child_pools: 8,
             keepalive_secs: crate::keepalive::DEFAULT_KEEPALIVE_INTERVAL.as_secs() as u32,

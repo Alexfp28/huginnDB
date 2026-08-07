@@ -545,6 +545,12 @@ export interface ConnectionPrefs {
   childIdleTtlSecs: number;
   /** Most per-database pools one connection may hold; longest-unused are closed past this. `0` = unlimited. */
   maxChildPools: number;
+  /**
+   * Whether the app runs the local MCP bridge, letting a `huginndb-mcp` sidecar
+   * borrow the app's pools instead of opening its own. Off by default — it is a
+   * listening socket fronting every saved database, so it is opt-in.
+   */
+  mcpBridge: boolean;
   /** Keepalive ping interval in seconds. `0` disables the heartbeat. */
   keepaliveSecs: number;
 }
@@ -561,6 +567,8 @@ export interface PoolStats {
    * several pools.
    */
   endpoints: EndpointUsage[];
+  /** Loopback port the MCP bridge is listening on; `null` when it is off. */
+  mcpBridgePort?: number | null;
 }
 
 /** One server's share of the connection footprint. */

@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   usePreferences,
   selectConnectionPrefs,
@@ -228,6 +229,27 @@ export function ConnectionsSection() {
           }
           className="h-8 w-24 text-right font-mono text-xs"
         />
+      </PrefRow>
+
+      <PrefRow
+        label={t("settings.connections.mcpBridge.label")}
+        description={t("settings.connections.mcpBridge.desc")}
+      >
+        <div className="flex items-center gap-3">
+          {/* The bound port, not just the toggle: a user chasing a firewall
+              prompt or an MCP client that won't attach needs the actual state,
+              which can differ from the checkbox if the listener failed to
+              start. */}
+          {stats?.mcpBridgePort != null && (
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+              127.0.0.1:{stats.mcpBridgePort}
+            </span>
+          )}
+          <Switch
+            checked={connections.mcpBridge}
+            onCheckedChange={(v) => updateConnections({ mcpBridge: v })}
+          />
+        </div>
       </PrefRow>
 
       <p className="pt-3 text-[11px] leading-relaxed text-muted-foreground">

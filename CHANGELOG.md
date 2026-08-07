@@ -37,6 +37,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **`huginndb-mcp --max-connections <n>`** — pool ceiling per exposed
   connection for the headless connector, defaulting to `2`. See the new
   "Connection footprint" section in `docs/MCP.md`.
+- **Pool sharing with the MCP connector** (Settings → Connections → *Share
+  pools with the MCP connector*, off by default). With it on, a running
+  `huginndb-mcp` sidecar stops opening its own pools and asks the desktop app to
+  run its queries instead. The machine then has **one budget per server**
+  however many MCP clients are configured — until now each spawned its own
+  sidecar with its own pools, invisible to the app and to each other. Two
+  further consequences worth the switch on their own: the connector's activity
+  appears in the app's **Console live**, every browse and write as it happens
+  rather than only in `mcp-audit.log` afterwards; and the app re-checks each
+  connection's write policy itself, independently of the sidecar's own check.
+  The transport is a loopback-only listener with a per-run token kept in a
+  `0600` file next to `profiles.json`. When the app isn't running, or the
+  setting is off, the connector behaves exactly as before.
 - `docs/CONNECTION_POOLING_ANALYSIS.md` — the audit these changes come from:
   how the engine allocated connections, worst-case arithmetic, ranked findings,
   and the endpoint-centric architecture the remaining work is heading towards.

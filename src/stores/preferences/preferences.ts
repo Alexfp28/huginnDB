@@ -79,6 +79,7 @@ const DEFAULT_PREFS: Preferences = {
     childMaxConnections: 2,
     childIdleTtlSecs: 300,
     maxChildPools: 8,
+    mcpBridge: false,
     keepaliveSecs: 180,
   },
   keybindings: {},

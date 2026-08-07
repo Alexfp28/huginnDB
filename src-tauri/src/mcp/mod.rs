@@ -45,6 +45,7 @@ use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabiliti
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt};
 use serde::Deserialize;
 
+use crate::bridge::protocol::BridgeRequest;
 use crate::db::sql::StmtClass;
 use crate::error::AppResult;
 use crate::log_bus::{LogEntry, LogSink, NoopSink};
@@ -408,8 +409,44 @@ mod args {
 #[derive(Clone)]
 pub struct Huginn {
     state: Arc<AppState>,
+    /// Live connection to a running desktop app, when the bridge is enabled
+    /// and reachable. `None` means this process owns its own pools, exactly as
+    /// it did before the bridge existed.
+    bridge: Option<Arc<crate::bridge::client::BridgeClient>>,
     config: Arc<Config>,
     tool_router: ToolRouter<Self>,
+}
+
+/// Audit entry for a write that was executed by the desktop app on this
+/// sidecar's behalf.
+///
+/// The local path is audited from inside the `_inner` functions, which see the
+/// real SQL and row counts. A bridged write is executed elsewhere, so what we
+/// can honestly record is the *request we sent* — which is arguably the more
+/// useful provenance line for an audit log whose subject is "what did the AI
+/// ask for".
+fn audit_entry(request: &BridgeRequest, error: Option<&str>) -> LogEntry {
+    let mut entry = LogEntry::new(crate::log_bus::LogKind::Sql)
+        .message(format!("mcp bridge: {}", request.label()))
+        .sql(format!("[via bridge] {}", request.label()));
+    if let Some(id) = bridged_connection_id(request) {
+        entry = entry.connection_id(id);
+    }
+    if let Some(e) = error {
+        entry = entry.error(e);
+    }
+    entry
+}
+
+/// The connection a bridged write targeted, for the audit line.
+fn bridged_connection_id(request: &BridgeRequest) -> Option<String> {
+    match request {
+        BridgeRequest::RunStatement { policy_id, .. }
+        | BridgeRequest::InsertRow { policy_id, .. }
+        | BridgeRequest::UpdateCell { policy_id, .. }
+        | BridgeRequest::DeleteRows { policy_id, .. } => Some(policy_id.clone()),
+        _ => None,
+    }
 }
 
 /// Serialise a backend DTO into a text tool result.
@@ -488,12 +525,67 @@ impl LogSink for AuditSink {
 
 #[tool_router]
 impl Huginn {
-    fn new(state: Arc<AppState>, config: Arc<Config>) -> Self {
+    fn new(
+        state: Arc<AppState>,
+        config: Arc<Config>,
+        bridge: Option<Arc<crate::bridge::client::BridgeClient>>,
+    ) -> Self {
         Self {
             state,
             config,
+            bridge,
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Run one data-path call, through the desktop app when the bridge is up
+    /// and against this process's own pools otherwise.
+    ///
+    /// `audit` marks a call that must land in `mcp-audit.log`. On the local
+    /// path the `_inner` function does that itself through the sink it is
+    /// handed; on the bridged path execution happens in the *app*, so the entry
+    /// is written here instead — losing the audit trail because a write was
+    /// proxied would be a straight regression of a documented security feature.
+    /// What gets recorded there describes the request this sidecar sent, which
+    /// is arguably the better provenance anyway.
+    async fn call(&self, request: BridgeRequest, audit: bool) -> AppResult<serde_json::Value> {
+        use crate::bridge::client::BridgeError;
+        if let Some(bridge) = &self.bridge {
+            match bridge.call(&request).await {
+                Ok(value) => {
+                    if audit {
+                        AuditSink::new().log(audit_entry(&request, None));
+                    }
+                    return Ok(value);
+                }
+                Err(BridgeError::Remote(message)) => {
+                    // The app answered, and the answer was a failure. Report it:
+                    // re-running against a local pool could double-apply a write
+                    // whose reply was merely lost. See `BridgeClient::call`.
+                    if audit {
+                        AuditSink::new().log(audit_entry(&request, Some(&message)));
+                    }
+                    return Err(crate::error::AppError::InvalidInput(message));
+                }
+                Err(BridgeError::Unreachable(why)) => {
+                    // The request never left this process — the app shut down,
+                    // or was never there. Falling through to a local pool is
+                    // safe precisely because nothing was sent. Say so on stderr
+                    // (stdout is the JSON-RPC channel): the user's connection
+                    // footprint just changed shape, and silently growing a
+                    // second budget is the thing this whole bridge exists to
+                    // avoid doing invisibly.
+                    eprintln!(
+                        "[huginndb-mcp] the HuginnDB app is no longer serving the bridge \
+                         ({why}); falling back to this process's own connection pools"
+                    );
+                }
+            }
+        }
+        let audit_sink = AuditSink::new();
+        let noop = NoopSink;
+        let sink: &dyn LogSink = if audit { &audit_sink } else { &noop };
+        crate::bridge::exec::execute(&self.state, sink, &request).await
     }
 
     /// Ensure a live pool exists for `id`, opening one lazily on first use.
@@ -506,6 +598,24 @@ impl Huginn {
             return Err(crate::error::AppError::InvalidInput(format!(
                 "connection {id:?} is not exposed to this MCP server (pass --connections {id})"
             )));
+        }
+        // With the bridge up, pool ownership belongs to the desktop app: ask it
+        // to open the connection and keep none of our own. The local
+        // `contains` check below is deliberately *not* consulted first — this
+        // process holds no pool in that mode, so it would always miss.
+        if self.bridge.is_some() {
+            match self
+                .call(
+                    BridgeRequest::EnsureConnected {
+                        connection_id: id.to_string(),
+                    },
+                    false,
+                )
+                .await
+            {
+                Ok(_) => return Ok(()),
+                Err(e) => return Err(e),
+            }
         }
         if self.state.connections.read().contains(id) {
             return Ok(());
@@ -586,20 +696,37 @@ impl Huginn {
         connection_id: &str,
         schema: Option<&str>,
     ) -> Result<String, ErrorData> {
-        let is_mongo = matches!(
-            self.state.connections.read().get(connection_id),
-            Some(crate::state::DbPool::Mongo(_))
-        );
+        // Asked of whoever owns the pool: with the bridge up that is the app,
+        // and this process's own connection map is empty.
+        let is_mongo = self
+            .call(
+                BridgeRequest::IsMongo {
+                    connection_id: connection_id.to_string(),
+                },
+                false,
+            )
+            .await
+            .map_err(to_err)?
+            .as_bool()
+            .unwrap_or(false);
         match schema {
-            Some(db) if is_mongo && !db.is_empty() => {
-                crate::commands::connection::resolve_mongo_database_view(
-                    &self.state,
-                    connection_id,
-                    db,
+            Some(db) if is_mongo && !db.is_empty() => self
+                .call(
+                    BridgeRequest::ResolveMongoTarget {
+                        connection_id: connection_id.to_string(),
+                        database: db.to_string(),
+                    },
+                    false,
                 )
                 .await
-                .map_err(to_err)
-            }
+                .map_err(to_err)?
+                .as_str()
+                .map(str::to_string)
+                .ok_or_else(|| {
+                    to_err(crate::error::AppError::InvalidInput(
+                        "resolve_mongo_target returned a non-string id".into(),
+                    ))
+                }),
             _ => Ok(connection_id.to_string()),
         }
     }
@@ -705,7 +832,13 @@ impl Huginn {
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
-        let out = crate::commands::schema::list_databases_inner(&self.state, &a.connection_id)
+        let out = self
+            .call(
+                BridgeRequest::ListDatabases {
+                    connection_id: a.connection_id,
+                },
+                false,
+            )
             .await
             .map_err(to_err)?;
         ok_json(&out)
@@ -726,7 +859,13 @@ impl Huginn {
         let target = self
             .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
             .await?;
-        let out = crate::commands::schema::list_tables_inner(&self.state, &target)
+        let out = self
+            .call(
+                BridgeRequest::ListTables {
+                    connection_id: target,
+                },
+                false,
+            )
             .await
             .map_err(to_err)?;
         ok_json(&out)
@@ -744,14 +883,17 @@ impl Huginn {
         let target = self
             .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
             .await?;
-        let out = crate::commands::structure::get_table_structure_inner(
-            &self.state,
-            &target,
-            a.schema,
-            a.table,
-        )
-        .await
-        .map_err(to_err)?;
+        let out = self
+            .call(
+                BridgeRequest::GetTableStructure {
+                    connection_id: target,
+                    schema: a.schema,
+                    table: a.table,
+                },
+                false,
+            )
+            .await
+            .map_err(to_err)?;
         ok_json(&out)
     }
 
@@ -766,10 +908,17 @@ impl Huginn {
         let target = self
             .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
             .await?;
-        let out =
-            crate::commands::schema::list_indexes_inner(&self.state, &target, a.schema, a.table)
-                .await
-                .map_err(to_err)?;
+        let out = self
+            .call(
+                BridgeRequest::ListIndexes {
+                    connection_id: target,
+                    schema: a.schema,
+                    table: a.table,
+                },
+                false,
+            )
+            .await
+            .map_err(to_err)?;
         ok_json(&out)
     }
 
@@ -838,17 +987,19 @@ impl Huginn {
         self.require_class(&a.connection_id, class)?;
 
         // Reads are not audited; writes append to mcp-audit.log.
-        let audit = AuditSink::new();
-        let noop = NoopSink;
-        let sink: &dyn LogSink = if class == StmtClass::Read {
-            &noop
-        } else {
-            &audit
-        };
-        let mut result =
-            crate::commands::query::execute_with_state(sink, &self.state, &target, &a.sql)
-                .await
-                .map_err(to_err)?;
+        let value = self
+            .call(
+                BridgeRequest::RunStatement {
+                    connection_id: target,
+                    policy_id: a.connection_id.clone(),
+                    sql: a.sql.clone(),
+                },
+                class != StmtClass::Read,
+            )
+            .await
+            .map_err(to_err)?;
+        let mut result: crate::commands::query::QueryResult =
+            serde_json::from_value(value).map_err(|e| to_err(crate::error::AppError::from(e)))?;
         truncate_rows(&mut result, self.config.max_rows);
         ok_json(&result)
     }
@@ -871,22 +1022,21 @@ impl Huginn {
             .unwrap_or(self.config.max_rows)
             .clamp(1, self.config.max_rows);
         let offset = a.offset.unwrap_or(0).max(0);
-        let result = crate::commands::query::fetch_table_data_inner(
-            &NoopSink,
-            &self.state,
-            target,
-            a.schema,
-            a.table,
-            limit,
-            offset,
-            None,
-            None,
-            None,
-            None,
-            Some(true),
-        )
-        .await
-        .map_err(to_err)?;
+        let result = self
+            .call(
+                BridgeRequest::FetchTableData {
+                    connection_id: target,
+                    policy_id: a.connection_id,
+                    schema: a.schema,
+                    table: a.table,
+                    limit,
+                    offset,
+                    with_count: Some(true),
+                },
+                false,
+            )
+            .await
+            .map_err(to_err)?;
         ok_json(&result)
     }
 
@@ -898,7 +1048,13 @@ impl Huginn {
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
-        let out = crate::commands::schema::server_version_inner(&self.state, &a.connection_id)
+        let out = self
+            .call(
+                BridgeRequest::ServerVersion {
+                    connection_id: a.connection_id,
+                },
+                false,
+            )
             .await
             .map_err(to_err)?;
         ok_json(&out)
@@ -912,7 +1068,13 @@ impl Huginn {
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
-        let out = crate::commands::schema::list_users_inner(&self.state, &a.connection_id)
+        let out = self
+            .call(
+                BridgeRequest::ListUsers {
+                    connection_id: a.connection_id,
+                },
+                false,
+            )
             .await
             .map_err(to_err)?;
         ok_json(&out)
@@ -926,10 +1088,16 @@ impl Huginn {
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
-        let out =
-            crate::commands::schema::list_privileges_inner(&self.state, &a.connection_id, a.user)
-                .await
-                .map_err(to_err)?;
+        let out = self
+            .call(
+                BridgeRequest::ListPrivileges {
+                    connection_id: a.connection_id,
+                    user: a.user,
+                },
+                false,
+            )
+            .await
+            .map_err(to_err)?;
         ok_json(&out)
     }
 
@@ -953,7 +1121,7 @@ impl Huginn {
         // See the comment in `run_query`: policy is checked against the real
         // profile id, not the resolved (possibly synthetic per-database) target.
         self.require_class(&a.connection_id, StmtClass::DataWrite)?;
-        let values = a
+        let values: Vec<crate::commands::query::RowValue> = a
             .values
             .into_iter()
             .map(|v| crate::commands::query::RowValue {
@@ -962,17 +1130,21 @@ impl Huginn {
                 column_type: v.column_type,
             })
             .collect();
-        let out = crate::commands::query::insert_row_inner(
-            &AuditSink::new(),
-            &self.state,
-            target,
-            a.schema,
-            a.table,
-            a.pk_column,
-            values,
-        )
-        .await
-        .map_err(to_err)?;
+        let out = self
+            .call(
+                BridgeRequest::InsertRow {
+                    connection_id: target,
+                    policy_id: a.connection_id,
+                    schema: a.schema,
+                    table: a.table,
+                    pk_column: a.pk_column,
+                    values: serde_json::to_value(values)
+                        .map_err(|e| to_err(crate::error::AppError::from(e)))?,
+                },
+                true,
+            )
+            .await
+            .map_err(to_err)?;
         ok_json(&out)
     }
 
@@ -994,20 +1166,23 @@ impl Huginn {
         // See the comment in `run_query`: policy is checked against the real
         // profile id, not the resolved (possibly synthetic per-database) target.
         self.require_class(&a.connection_id, StmtClass::DataWrite)?;
-        let out = crate::commands::query::update_cell_inner(
-            &AuditSink::new(),
-            &self.state,
-            target,
-            a.schema,
-            a.table,
-            a.pk_columns,
-            a.pk_values,
-            a.column,
-            a.value,
-            a.column_type,
-        )
-        .await
-        .map_err(to_err)?;
+        let out = self
+            .call(
+                BridgeRequest::UpdateCell {
+                    connection_id: target,
+                    policy_id: a.connection_id,
+                    schema: a.schema,
+                    table: a.table,
+                    pk_columns: a.pk_columns,
+                    pk_values: a.pk_values,
+                    column: a.column,
+                    value: a.value,
+                    column_type: a.column_type,
+                },
+                true,
+            )
+            .await
+            .map_err(to_err)?;
         ok_json(&out)
     }
 
@@ -1029,17 +1204,20 @@ impl Huginn {
         // See the comment in `run_query`: policy is checked against the real
         // profile id, not the resolved (possibly synthetic per-database) target.
         self.require_class(&a.connection_id, StmtClass::DataWrite)?;
-        let out = crate::commands::query::delete_rows_inner(
-            &AuditSink::new(),
-            &self.state,
-            target,
-            a.schema,
-            a.table,
-            a.pk_columns,
-            a.pk_value_rows,
-        )
-        .await
-        .map_err(to_err)?;
+        let out = self
+            .call(
+                BridgeRequest::DeleteRows {
+                    connection_id: target,
+                    policy_id: a.connection_id,
+                    schema: a.schema,
+                    table: a.table,
+                    pk_columns: a.pk_columns,
+                    pk_value_rows: a.pk_value_rows,
+                },
+                true,
+            )
+            .await
+            .map_err(to_err)?;
         ok_json(&out)
     }
 }
@@ -1170,8 +1348,25 @@ pub async fn serve() -> anyhow::Result<()> {
     }
 
     let state = Arc::new(AppState::new());
+
+    // Attach to a running desktop app when its bridge is up, so this process
+    // borrows the app's pools instead of opening its own. `None` — no app, or
+    // the bridge disabled — is the ordinary case and keeps the pre-bridge
+    // behaviour exactly.
+    let allowed: Vec<String> = config.allowed.iter().cloned().collect();
+    let bridge = crate::bridge::client::BridgeClient::connect(allowed)
+        .await
+        .map(Arc::new);
+    if bridge.is_some() {
+        eprintln!(
+            "[huginndb-mcp] attached to the running HuginnDB app: it owns the connection pools,              and this session's activity appears in its Console"
+        );
+    }
+    // The local reaper only matters when we own pools. With the bridge up it
+    // has nothing to sweep, but the app can go away mid-session and this
+    // process falls back — so it stays armed either way.
     spawn_idle_pool_reaper(state.clone());
-    let server = Huginn::new(state, Arc::new(config));
+    let server = Huginn::new(state, Arc::new(config), bridge);
     let service = server.serve(rmcp::transport::stdio()).await?;
     service.waiting().await?;
     Ok(())
@@ -1309,6 +1504,9 @@ mod tests {
                 max_connections: DEFAULT_MAX_CONNECTIONS,
                 saw_allow_writes: false,
             }),
+            // No bridge: these tests exercise the local path, which is what a
+            // sidecar runs when no desktop app is serving.
+            None,
         )
     }
 

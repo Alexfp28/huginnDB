@@ -1,7 +1,7 @@
 # Connection & pool management — analysis and proposed architecture
 
-Status: written against `1.12.1` (`3e1c0a1`) as an analysis. **P0, most of P1
-and the P2 endpoint layer have since shipped** — see §5 for what landed and what
+Status: written against `1.12.1` (`3e1c0a1`) as an analysis. **P0, most of P1,
+the P2 endpoint layer and the P3 bridge have since shipped** — see §5 for what landed and what
 is still open, and the `Unreleased` section of `CHANGELOG.md` for the
 user-facing summary. The findings below are kept as written so the reasoning
 behind each change stays readable; §5 marks each one's current state.
@@ -462,10 +462,32 @@ many profiles or database views point at it. The slack is bounded by the same
 things that bound everything else here — pools are small, and idle ones are
 reaped.
 
-### P3 — cross-process
+### P3 — cross-process — **shipped**
 
-- Sidecar proxies to the running app over local IPC (§4.3.3), with a direct
-  fallback.
+- ✅ The sidecar proxies to the running app over local IPC (§4.3.3), with a
+  direct fallback (`src-tauri/src/bridge/`). Opt-in
+  (`connections.mcpBridge`, default off) because it opens a listener that
+  fronts every saved database.
+- Two design points worth recording, both departures from the sketch in §4.3.3:
+  - **Loopback TCP + token, not a Unix socket.** A Unix socket gives peer
+    credentials for free — on Linux and macOS. HuginnDB's primary platform is
+    Windows, where the equivalent is a named pipe with an entirely different API
+    that cannot be compiled or tested from a Unix box. Shipping the strong path
+    only where it can be tested, and an untested `#[cfg(windows)]` branch on the
+    platform most users are on, is the wrong trade for a project that has
+    already been burnt twice by Windows-only build paths (gotchas #20, #21). The
+    token file is `0600`, so another local user can reach the port but cannot
+    authenticate.
+  - **The fallback rule is the load-bearing detail.** A transport failure falls
+    back to a local pool; a failure *reported by the app* does not, because
+    re-running a write whose reply was merely lost would double-apply it. What
+    makes the fallback provably safe is the newline framing: the newline is a
+    separate write from the payload, so any send error leaves an incomplete line
+    the app can never parse into a request. If that framing changes, the
+    reasoning goes with it.
+- Both sides run the same executor (`bridge/exec.rs`) rather than two
+  transcriptions of the same fifteen calls — drift there would only surface
+  when the app happened not to be running.
 
 ---
 

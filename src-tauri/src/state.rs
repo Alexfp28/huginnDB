@@ -65,12 +65,10 @@ pub enum McpWritePolicy {
     Full,
 }
 
-// These helpers are consumed only by the headless MCP connector's enforcement
-// path (`crate::mcp`), which is gated behind the `mcp` feature. Without the
-// gate they'd be flagged dead-code in a normal `pnpm tauri:build` (the enum and
-// its `Default` are still used — they're the persisted `ConnectionProfile`
-// field — but nothing calls `allows`/`label` there).
-#[cfg(feature = "mcp")]
+// Consumed by the headless connector's enforcement path (`crate::mcp`) and,
+// since the MCP bridge landed, by `crate::bridge::server` — which re-checks the
+// policy inside the *desktop app*, built without the `mcp` feature. That second
+// caller is why these are no longer gated behind it.
 impl McpWritePolicy {
     /// Whether a statement of the given tier is permitted under this policy.
     /// `ReadOnly` admits only reads; `Data` adds row-level DML; `Full` adds
@@ -578,6 +576,13 @@ pub struct AppState {
     /// what stops two profiles pointing at the same host from getting two
     /// independent allowances.
     pub endpoints: Arc<crate::db::endpoint::EndpointRegistry>,
+    /// The running MCP bridge listener, when enabled. `None` means the bridge
+    /// is off and any sidecar falls back to its own pools.
+    ///
+    /// A `parking_lot::Mutex` rather than an `RwLock` because it is only ever
+    /// swapped, never read concurrently under load; dropping the handle is what
+    /// stops the listener and removes the discovery file.
+    pub mcp_bridge: parking_lot::Mutex<Option<crate::bridge::server::BridgeHandle>>,
     /// Persisted profiles loaded from disk.
     pub profiles: Arc<RwLock<Vec<ConnectionProfile>>>,
     /// User-tunable preferences loaded from `prefs.json`.
@@ -634,6 +639,7 @@ impl AppState {
             connections: Arc::new(RwLock::new(ActiveConnections::default())),
             session_secrets: Arc::new(RwLock::new(HashMap::new())),
             endpoints: Arc::new(crate::db::endpoint::EndpointRegistry::default()),
+            mcp_bridge: parking_lot::Mutex::new(None),
             profiles: Arc::new(RwLock::new(profiles)),
             prefs: Arc::new(RwLock::new(prefs)),
             tab_state: Arc::new(RwLock::new(tab_state)),

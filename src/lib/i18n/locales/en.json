@@ -930,7 +930,11 @@
         "label": "Keepalive interval",
         "desc": "Seconds between liveness pings. The ping holds one connection open per connection so the next click is instant and dropped connections are detected early. 0 turns it off."
       },
-      "footnote": "Limits apply when a pool is opened; pools already open keep what they were granted. Reconnect to apply them immediately. When a server's allowance is spent, opening a database view closes the one you used least recently rather than failing."
+      "footnote": "Limits apply when a pool is opened; pools already open keep what they were granted. Reconnect to apply them immediately. When a server's allowance is spent, opening a database view closes the one you used least recently rather than failing.",
+      "mcpBridge": {
+        "label": "Share pools with the MCP connector",
+        "desc": "Let a running huginndb-mcp sidecar use this app's connections instead of opening its own, so the whole machine shares one budget per server — and its activity appears in the Console as it happens. Opens a token-protected listener on localhost. Off by default."
+      }
     }
   },
   "transfer": {
