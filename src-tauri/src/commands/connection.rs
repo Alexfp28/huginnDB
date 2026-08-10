@@ -1,6 +1,10 @@
 //! Connection-profile and lifecycle commands.
 
-use crate::db::pool::{open_pool, smoke_test};
+use crate::db::endpoint::{EndpointExhausted, EndpointGrant, EndpointKey};
+use crate::db::pool::{
+    close_pool, endpoint_budget, open_pool, smoke_test, top_level_request, PoolLimits,
+    PoolOwnership, CLOSE_TIMEOUT, MIN_MAX_CONNECTIONS,
+};
 use crate::error::{AppError, AppResult};
 use crate::keychain;
 use crate::log_bus::{self, LogEntry, LogKind};
@@ -11,7 +15,7 @@ use crate::transfer::{
     ConflictAction, ConflictResolution, ExportFile, ExportMetadata, ExportedProfile,
     ExportedSecret, ImportAnalysis, ImportConflict, ImportResult,
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
@@ -44,9 +48,13 @@ fn driver_str(driver: Driver) -> &'static str {
 /// Emit a `connection` log entry. Used for `connect`, `disconnect`, and
 /// `test_connection` so the Console panel can show the actual lifecycle
 /// boundary that's currently invisible to the user.
+/// `window_label` of `None` broadcasts to every window instead of targeting
+/// one — correct for an action with no originating window, such as a connection
+/// the MCP bridge opened on a sidecar's behalf. Every Console should see that,
+/// the same way they all see the keepalive's connection-lost entries.
 fn log_connection(
     app: &AppHandle,
-    window_label: &str,
+    window_label: Option<&str>,
     connection_id: &str,
     driver: Driver,
     message: &str,
@@ -63,7 +71,106 @@ fn log_connection(
     if let Some(e) = error {
         entry = entry.error(e);
     }
-    log_bus::emit(app, window_label, entry);
+    match window_label {
+        Some(label) => log_bus::emit(app, label, entry),
+        None => log_bus::broadcast(app, entry),
+    }
+}
+
+/// The connection-pool preferences, read once under a single lock so a change
+/// can't be observed half-applied.
+///
+/// Read at *connect* time rather than baked into constants: that is what makes
+/// the global preference and the per-profile
+/// [`ConnectionProfile::max_connections`] override take effect on the next
+/// connection rather than the next release.
+struct PoolPolicy {
+    /// Total connections allowed against this profile's server.
+    budget: u32,
+    /// What a per-database view asks for.
+    child_request: u32,
+    keepalive: Duration,
+}
+
+fn pool_policy(state: &AppState, profile: &ConnectionProfile) -> PoolPolicy {
+    let prefs = state.prefs.read();
+    PoolPolicy {
+        budget: endpoint_budget(profile, prefs.connections.max_connections),
+        child_request: prefs.connections.child_max_connections,
+        keepalive: Duration::from_secs(u64::from(prefs.connections.keepalive_secs)),
+    }
+}
+
+/// Turn a refused reservation into an error that names the server and our own
+/// share of it.
+///
+/// Distinct from [`annotate_connection_limit`], which decorates a refusal that
+/// came back *from* the server: this one never reached the wire. Saying so
+/// matters — the remedy is HuginnDB's own setting, not the DBA's.
+fn exhausted_to_error(e: EndpointExhausted) -> AppError {
+    AppError::TooManyConnections(format!(
+        "HuginnDB's own budget for {} is spent ({}/{} connections in use). Raise it in \
+         Settings → Connections or on this connection, or close a database view.",
+        e.label, e.in_use, e.budget
+    ))
+}
+
+/// Reserve capacity for a top-level pool against `profile`'s server.
+///
+/// `Ok(None)` means the profile has no server to ration (SQLite) — not that the
+/// reservation failed.
+fn reserve_top_level(
+    state: &AppState,
+    profile: &ConnectionProfile,
+    policy: &PoolPolicy,
+) -> AppResult<Option<EndpointGrant>> {
+    let Some(key) = EndpointKey::for_profile(profile) else {
+        return Ok(None);
+    };
+    state
+        .endpoints
+        .reserve(
+            &key,
+            top_level_request(policy.budget, policy.child_request),
+            policy.budget,
+            MIN_MAX_CONNECTIONS,
+        )
+        .map(Some)
+        .map_err(exhausted_to_error)
+}
+
+/// Pool sizing implied by a grant. SQLite (`None`) is fixed at one connection
+/// inside `open_pool` regardless of what is passed here.
+fn limits_for(grant: &Option<EndpointGrant>) -> PoolLimits {
+    match grant {
+        Some(g) => PoolLimits::granted(g.amount()),
+        None => PoolLimits::default(),
+    }
+}
+
+/// Add HuginnDB's own pool footprint to a connection-limit refusal.
+///
+/// A bare "FATAL: sorry, too many connections already" tells the user their
+/// server is full and nothing about what to do — least of all that the client
+/// showing them the error is holding fourteen pools of its own. Quoting the
+/// count turns it into something they can act on, and naming the other usual
+/// occupants heads off the wrong conclusion, since HuginnDB is frequently the
+/// marginal straw rather than the main consumer.
+///
+/// Any other error passes through untouched.
+fn annotate_connection_limit(state: &AppState, error: AppError) -> AppError {
+    if !error.is_too_many_connections() {
+        return error;
+    }
+    let AppError::TooManyConnections(detail) = &error else {
+        return error;
+    };
+    let (connections, views) = state.connections.read().counts();
+    AppError::TooManyConnections(format!(
+        "{detail} — HuginnDB is currently holding {connections} connection pool(s) and {views} \
+         per-database pool(s). Other clients on this machine (IDE data sources, application \
+         connection pools, huginndb-mcp sidecars) count against the same server limit."
+    ))
 }
 
 /// Look up the password for `profile` from the OS keychain.
@@ -220,7 +327,7 @@ pub async fn test_connection(
     password: Option<String>,
     ssh_secret: Option<String>,
 ) -> AppResult<String> {
-    let window_label = window.label();
+    let window_label = Some(window.label());
     let pw = match password {
         Some(p) => p,
         None => resolve_password(&profile)?,
@@ -246,6 +353,23 @@ pub async fn test_connection(
     }
 
     let known_hosts = state.known_hosts.clone();
+    // Meter the probe too. It is one connection for a couple of seconds, but
+    // "Test" is a button people press repeatedly while fixing a typo — against
+    // the very server they are already struggling to get into. Floor of one:
+    // nothing interactive runs on this pool, so it cannot deadlock the way an
+    // undersized working pool would. The grant lives to the end of the command.
+    let _probe_grant = match EndpointKey::for_profile(&profile) {
+        Some(key) => {
+            let budget = endpoint_budget(&profile, state.prefs.read().connections.max_connections);
+            Some(
+                state
+                    .endpoints
+                    .reserve(&key, 1, budget, 1)
+                    .map_err(exhausted_to_error)?,
+            )
+        }
+        None => None,
+    };
     let start = Instant::now();
     log_connection(
         &app,
@@ -297,7 +421,34 @@ pub async fn connect(
     password: Option<String>,
     ssh_secret: Option<String>,
 ) -> AppResult<()> {
-    let window_label = window.label();
+    connect_inner(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &id,
+        password,
+        ssh_secret,
+    )
+    .await
+}
+
+/// The body of [`connect`], reusable from a context with no window.
+///
+/// Extracted for the MCP bridge (`crate::bridge::server`), which opens pools on
+/// a sidecar's behalf: it has an `AppHandle` but no originating window, and it
+/// must go through *exactly* this path rather than a parallel one — the
+/// endpoint reservation, the keepalive, the session-secret cache and the
+/// cross-window `connection-opened` event are all things a second
+/// implementation would drift on.
+pub(crate) async fn connect_inner(
+    app: &AppHandle,
+    state: &AppState,
+    window_label: Option<&str>,
+    id: &str,
+    password: Option<String>,
+    ssh_secret: Option<String>,
+) -> AppResult<()> {
+    let id = id.to_string();
     let profile = state
         .profiles
         .read()
@@ -313,7 +464,7 @@ pub async fn connect(
     // tunnel) out from under the window that's using it. Reuse it instead.
     if state.connections.read().contains(&id) {
         log_connection(
-            &app,
+            app,
             window_label,
             &id,
             profile.driver,
@@ -334,18 +485,25 @@ pub async fn connect(
     };
 
     let known_hosts = state.known_hosts.clone();
+    let policy = pool_policy(state, &profile);
+    // Reserve the server's capacity *before* dialling. Failing here costs
+    // nothing and reports a limit the user controls; failing at the server
+    // costs a round trip and reports one they may not.
+    let grant = reserve_top_level(state, &profile, &policy)?;
+    let limits = limits_for(&grant);
     let start = Instant::now();
     log_connection(
-        &app,
+        app,
         window_label,
         &id,
         profile.driver,
         &format!(
-            "connect: opening {} pool to {}:{}/{}",
+            "connect: opening {} pool to {}:{}/{} (max {} connections)",
             driver_str(profile.driver),
             profile.host,
             profile.port,
-            profile.database
+            profile.database,
+            limits.max_connections
         ),
         None,
         None,
@@ -353,7 +511,7 @@ pub async fn connect(
     // Clone the secrets before `open_pool` consumes `ssh`, so we can stash
     // them for child pools (open_database_view) on success.
     let ssh_for_cache = ssh.clone();
-    let opened = open_pool(&profile, &pw, ssh, known_hosts).await;
+    let opened = open_pool(&profile, &pw, ssh, known_hosts, limits).await;
     match opened {
         Ok((pool, ssh_handle)) => {
             // Cache the secrets used for this profile, session-only, so a
@@ -374,7 +532,7 @@ pub async fn connect(
             if let (Some(handle), Some(tunnel)) = (&ssh_handle, &profile.ssh_tunnel) {
                 if tunnel.local_port != 0 && handle.local_port != tunnel.local_port {
                     log_connection(
-                        &app,
+                        app,
                         window_label,
                         &id,
                         profile.driver,
@@ -387,17 +545,25 @@ pub async fn connect(
                     );
                 }
             }
-            let keepalive = crate::keepalive::spawn(app.clone(), id.clone(), pool.clone());
+            let active = ActivePool::bare(pool.clone());
+            let keepalive = crate::keepalive::spawn(
+                app.clone(),
+                id.clone(),
+                pool,
+                policy.keepalive,
+                active.last_used.clone(),
+            );
             state.connections.write().insert(
                 id.clone(),
                 ActivePool {
-                    pool,
                     _ssh: ssh_handle,
-                    _keepalive: Some(keepalive),
+                    _keepalive: keepalive,
+                    _endpoint: grant,
+                    ..active
                 },
             );
             log_connection(
-                &app,
+                app,
                 window_label,
                 &id,
                 profile.driver,
@@ -414,9 +580,10 @@ pub async fn connect(
             Ok(())
         }
         Err(e) => {
+            let e = annotate_connection_limit(state, e);
             let msg = e.to_string();
             log_connection(
-                &app,
+                app,
                 window_label,
                 &id,
                 profile.driver,
@@ -429,11 +596,23 @@ pub async fn connect(
     }
 }
 
-/// Drop the active pool for `id`, if any. Also drops every synthetic
+/// Close the active pool for `id`, if any. Also closes every synthetic
 /// per-database pool registered as `<id>::db::<db>` so multi-DB browsing
 /// sessions don't leak when the parent connection is closed.
+///
+/// `async` since 1.13.0, and the pools are now closed with an awaited
+/// [`close_pool`] rather than left to `Drop`. The old synchronous version could
+/// only remove the entries from the map and hope; that is fine on a healthy
+/// LAN but not through a pooler or an SSH tunnel, and specifically not in the
+/// back-to-back teardown/setup bursts this app produces — a reconnect after a
+/// lost connection, or an environment switch closing every pool before
+/// restoring the next environment's. There, the outgoing sessions could still
+/// be attached to the server when the incoming ones asked for slots, briefly
+/// doubling the connection budget at the exact moment it was tightest.
+///
+/// The frontend needed no change: `invoke` already returned a promise.
 #[tauri::command]
-pub fn disconnect(
+pub async fn disconnect(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
@@ -443,21 +622,11 @@ pub fn disconnect(
     // parent's entry, so a single remove covers them).
     state.session_secrets.write().remove(&id);
     let removed = state.connections.write().remove(&id);
-    // Sweep synthetic children. We collect ids first to avoid holding the
-    // write lock while iterating (remove() takes &mut self).
-    let prefix = format!("{id}::db::");
-    let children: Vec<String> = state
-        .connections
-        .read()
-        .ids()
-        .into_iter()
-        .filter(|cid| cid.starts_with(&prefix))
-        .collect();
-    {
-        let mut conns = state.connections.write();
-        for cid in &children {
-            conns.remove(cid);
-        }
+    // Sweep synthetic children first, so the parent's tunnel (which they ride
+    // on) is still up while they close.
+    let children = crate::pool_reaper::close_children(state.inner(), &id).await;
+    if let Some(active) = &removed {
+        close_pool(&active.pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
     }
     if removed.is_some() || !children.is_empty() {
         // Driver is not tracked separately for active pools; look it up
@@ -469,7 +638,15 @@ pub fn disconnect(
             .find(|p| p.id == id)
             .map(|p| p.driver)
             .unwrap_or(Driver::Sqlite);
-        log_connection(&app, window.label(), &id, driver, "disconnect", None, None);
+        log_connection(
+            &app,
+            Some(window.label()),
+            &id,
+            driver,
+            "disconnect",
+            None,
+            None,
+        );
         let _ = app.emit(
             CONNECTION_CLOSED_EVENT,
             ConnectionSyncPayload {
@@ -478,6 +655,38 @@ pub fn disconnect(
         );
     }
     Ok(())
+}
+
+/// Close and forget one synthetic per-database view, logging why.
+///
+/// Shared by the two reclaim paths in `open_database_view` — the per-connection
+/// view cap and the per-server budget — so both release the pool *and* its
+/// endpoint grant the same way. The grant rides on the `ActivePool` and
+/// releases when this drops it, which is why neither caller has to think about
+/// the budget bookkeeping.
+async fn close_view(
+    app: &AppHandle,
+    state: &AppState,
+    window_label: Option<&str>,
+    driver: Driver,
+    id: &str,
+    reason: &str,
+) {
+    let removed = state.connections.write().remove(id);
+    if let Some(active) = removed {
+        close_pool(&active.pool, PoolOwnership::BorrowedView, CLOSE_TIMEOUT).await;
+        log_connection(
+            app,
+            window_label,
+            id,
+            driver,
+            &format!(
+                "open_database_view: closed least-recently-used database pool ({reason} reached)"
+            ),
+            None,
+            None,
+        );
+    }
 }
 
 /// Synthetic connection id for a per-database browse session under
@@ -512,14 +721,10 @@ pub async fn resolve_mongo_database_view(
         client: conn.client.clone(),
         database: Some(database.to_string()),
     });
-    state.connections.write().insert(
-        child_id.clone(),
-        ActivePool {
-            pool: child_pool,
-            _ssh: None,
-            _keepalive: None,
-        },
-    );
+    state
+        .connections
+        .write()
+        .insert(child_id.clone(), ActivePool::bare(child_pool));
     Ok(child_id)
 }
 
@@ -545,7 +750,7 @@ pub async fn open_database_view(
     parent_id: String,
     database: String,
 ) -> AppResult<String> {
-    let window_label = window.label();
+    let window_label = Some(window.label());
     let child_id = database_view_id(&parent_id, &database);
     if state.connections.read().get(&child_id).is_some() {
         return Ok(child_id);
@@ -598,24 +803,101 @@ pub async fn open_database_view(
         None => resolve_ssh_secret(&parent)?,
     };
     let known_hosts = state.known_hosts.clone();
+    let policy = pool_policy(state.inner(), &parent);
+    let max_child_pools = state.prefs.read().connections.max_child_pools;
+
+    // Enforce the per-connection view cap *before* opening, not after: the
+    // point is to never exceed the budget, and the case that trips servers is
+    // precisely the burst — the schema explorer's cross-database search
+    // fanning out across every database at once. Waiting for the reaper's
+    // next sweep would let the whole fan-out land first.
+    if max_child_pools > 0 {
+        let over_cap: Vec<String> = {
+            let conns = state.connections.read();
+            let existing = conns.children_by_lru(&parent_id);
+            // `+ 1` accounts for the child we are about to add.
+            let excess = (existing.len() + 1).saturating_sub(max_child_pools as usize);
+            existing.into_iter().take(excess).collect()
+        };
+        for victim in over_cap {
+            close_view(
+                &app,
+                state.inner(),
+                window_label,
+                parent.driver,
+                &victim,
+                "cap",
+            )
+            .await;
+        }
+    }
+
+    // Reserve this view's share of the *server's* budget, reclaiming from our
+    // own idle views on that same server before giving up. This is what makes
+    // browsing a twelve-database server work under a budget that can't hold
+    // twelve views at once: the view the user hasn't looked at in a while pays
+    // for the one they just clicked, instead of the click failing.
+    //
+    // Only views on the same endpoint are eligible — evicting one on an
+    // unrelated server would free capacity nobody is waiting for.
+    let grant = match EndpointKey::for_profile(&parent) {
+        None => None,
+        Some(key) => {
+            let request = policy.child_request.max(MIN_MAX_CONNECTIONS);
+            let mut reclaimable = state.connections.read().views_on_endpoint_by_lru(&key);
+            // Never reclaim the view we are opening (it can't be live yet) nor,
+            // more importantly, one that a caller is mid-query against — the
+            // LRU ordering already puts those last, so taking from the front is
+            // the least disruptive order available.
+            reclaimable.retain(|id| id != &child_id);
+            loop {
+                match state
+                    .endpoints
+                    .reserve(&key, request, policy.budget, MIN_MAX_CONNECTIONS)
+                {
+                    Ok(g) => break Some(g),
+                    Err(exhausted) => {
+                        let Some(victim) = reclaimable.first().cloned() else {
+                            return Err(exhausted_to_error(exhausted));
+                        };
+                        reclaimable.remove(0);
+                        close_view(
+                            &app,
+                            state.inner(),
+                            window_label,
+                            parent.driver,
+                            &victim,
+                            "budget",
+                        )
+                        .await;
+                    }
+                }
+            }
+        }
+    };
+    let limits = limits_for(&grant);
+
     let start = Instant::now();
     log_connection(
         &app,
         window_label,
         &child_id,
         parent.driver,
-        &format!("open_database_view: {database}"),
+        &format!(
+            "open_database_view: {database} (max {} connections)",
+            limits.max_connections
+        ),
         None,
         None,
     );
-    match open_pool(&child, &pw, ssh, known_hosts).await {
+    match open_pool(&child, &pw, ssh, known_hosts, limits).await {
         Ok((pool, ssh_handle)) => {
             state.connections.write().insert(
                 child_id.clone(),
                 ActivePool {
-                    pool,
                     _ssh: ssh_handle,
-                    _keepalive: None,
+                    _endpoint: grant,
+                    ..ActivePool::bare(pool)
                 },
             );
             log_connection(
@@ -630,6 +912,7 @@ pub async fn open_database_view(
             Ok(child_id)
         }
         Err(e) => {
+            let e = annotate_connection_limit(state.inner(), e);
             let msg = e.to_string();
             log_connection(
                 &app,
@@ -650,6 +933,97 @@ pub async fn open_database_view(
 #[tauri::command]
 pub fn active_connections(state: State<'_, AppState>) -> AppResult<Vec<String>> {
     Ok(state.connections.read().ids())
+}
+
+/// How many pools HuginnDB is holding right now, split by kind.
+///
+/// Exists because "too many connections" is only an actionable error if the
+/// user can see their own contribution to it. Surfaced in Settings →
+/// Connections and quoted in the error toast.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolStats {
+    /// Pools for connections the user explicitly opened.
+    pub connections: usize,
+    /// Synthetic `<parent>::db::<name>` pools opened by browsing databases.
+    pub database_views: usize,
+    /// Per-server reservations. This is the row that actually answers "how
+    /// many connections am I holding against *that* box" — the two counts
+    /// above are per-pool and a server may back several of them.
+    pub endpoints: Vec<EndpointUsage>,
+    /// Loopback port the MCP bridge is listening on, or `None` when it is off.
+    /// Shown in Settings so a user who gets a firewall prompt, or who is
+    /// wondering why an MCP client can't attach, can see the actual state
+    /// rather than infer it from a checkbox.
+    pub mcp_bridge_port: Option<u16>,
+}
+
+/// One server's share of the connection footprint.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EndpointUsage {
+    /// `host:port`, plus the SSH tunnel when there is one.
+    pub label: String,
+    /// Connections reserved against it right now.
+    pub in_use: u32,
+}
+
+/// Snapshot of the current pool footprint. See [`PoolStats`].
+#[tauri::command]
+pub fn connection_pool_stats(state: State<'_, AppState>) -> AppResult<PoolStats> {
+    let (connections, database_views) = state.connections.read().counts();
+    Ok(PoolStats {
+        connections,
+        database_views,
+        endpoints: state
+            .endpoints
+            .usage()
+            .into_iter()
+            .map(|(label, in_use)| EndpointUsage { label, in_use })
+            .collect(),
+        mcp_bridge_port: state.mcp_bridge.lock().as_ref().map(|h| h.port),
+    })
+}
+
+/// Close every synthetic per-database pool that isn't in use right now,
+/// keeping the top-level connections the user opened.
+///
+/// The manual counterpart to [`crate::pool_reaper`]'s TTL sweep: the recovery
+/// action offered when a server refuses a connection because it is full. Each
+/// closed view reopens transparently the next time the user touches that
+/// database, so this is safe to invoke at any time — the cost is one round
+/// trip, not lost state.
+///
+/// Returns how many pools were closed.
+#[tauri::command]
+pub async fn release_idle_pools(app: AppHandle, state: State<'_, AppState>) -> AppResult<usize> {
+    // `idle_children(0)` is every child, since `last_used` is only stamped on
+    // resolution and a pool being *resolved* right now still returns a
+    // non-negative age. A query already in flight holds a cloned `DbPool`, so
+    // closing the pool here cannot cut it off mid-statement: `close` waits for
+    // checked-out connections to be returned.
+    let victims = state
+        .connections
+        .read()
+        .idle_children(crate::state::now_millis(), 0);
+    let removed: Vec<_> = {
+        let mut conns = state.connections.write();
+        victims
+            .iter()
+            .filter_map(|id| conns.remove(id).map(|active| (id.clone(), active)))
+            .collect()
+    };
+    let count = removed.len();
+    for (id, active) in removed {
+        close_pool(&active.pool, PoolOwnership::BorrowedView, CLOSE_TIMEOUT).await;
+        log_bus::broadcast(
+            &app,
+            LogEntry::new(LogKind::Connection)
+                .connection_id(id)
+                .message("released per-database pool on request"),
+        );
+    }
+    Ok(count)
 }
 
 /// Forget the trusted SSH host-key fingerprint for `host:port`. The next
@@ -1114,14 +1488,10 @@ mod tests {
         let client = mongo_client().await;
         state.connections.write().insert(
             "parent".to_string(),
-            ActivePool {
-                pool: crate::state::DbPool::Mongo(MongoConn {
-                    client: client.clone(),
-                    database: None,
-                }),
-                _ssh: None,
-                _keepalive: None,
-            },
+            ActivePool::bare(crate::state::DbPool::Mongo(MongoConn {
+                client: client.clone(),
+                database: None,
+            })),
         );
 
         let child_id = resolve_mongo_database_view(&state, "parent", "mydb")

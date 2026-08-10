@@ -143,7 +143,10 @@
       "connectionStringPlaceholder": "mongodb://localhost:27017  or  mongodb+srv://user:pass@cluster.mongodb.net/db",
       "connectionStringHint": "Built automatically from the fields above. The password is stored securely and is not embedded.",
       "editConnectionString": "Edit connection string",
-      "connectionStringWarning": "Editing the connection string by hand can introduce errors — double-check it. Use this for Atlas (mongodb+srv://), replica sets, or extra URI options the form doesn't cover."
+      "connectionStringWarning": "Editing the connection string by hand can introduce errors — double-check it. Use this for Atlas (mongodb+srv://), replica sets, or extra URI options the form doesn't cover.",
+      "maxConnections": "Max connections for this server",
+      "maxConnectionsHint": "Total connections HuginnDB may hold against this server, shared with every database view on it. Blank uses the global preference. It travels with the connection to exports and to the MCP connector.",
+      "maxConnectionsPlaceholder": "default"
     },
     "ssh": {
       "enable": "Connect through SSH tunnel",
@@ -252,6 +255,8 @@
     "openedMailClient": "Opened a pre-filled email in your mail app"
   },
   "schema": {
+    "releaseIdlePools": "Release idle pools",
+    "releasedIdlePools": "Closed {{count}} idle database pool(s).",
     "loading": "Loading schema…",
     "title": "Schema",
     "refresh": "Refresh",
@@ -708,6 +713,10 @@
         "label": "Data grid",
         "desc": "Tables & paging"
       },
+      "connections": {
+        "label": "Connections",
+        "desc": "Pools & limits"
+      },
       "appearance": {
         "label": "Appearance",
         "desc": "Themes & colours"
@@ -893,6 +902,39 @@
       "patchNotesCurrent": "installed",
       "patchNotesNone": "No notes for this version.",
       "patchNotesViewOnGitHub": "View full changelog on GitHub"
+    },
+    "connections": {
+      "live": {
+        "label": "Open right now",
+        "desc": "Connections HuginnDB is holding against your servers. Other clients on this machine — IDE data sources, application connection pools, huginndb-mcp sidecars — count against the same server limits.",
+        "value": "{{connections}} connection(s), {{views}} database view(s)",
+        "endpoint": "{{inUse}} of {{budget}} reserved"
+      },
+      "maxConnections": {
+        "label": "Max connections per server",
+        "desc": "The whole allowance HuginnDB will spend against one server, shared by every connection and database view that reaches it. A server that needs a different budget is better set on the connection itself, where it also travels to exports and to the MCP connector."
+      },
+      "childMaxConnections": {
+        "label": "Max connections per database view",
+        "desc": "Browsing a multi-database server opens a separate pool per database, drawing on the same per-server allowance. Keep this low — it multiplies by the number of databases you open."
+      },
+      "maxChildPools": {
+        "label": "Max open database views",
+        "desc": "Longest-unused database views are closed past this limit. 0 means unlimited."
+      },
+      "childIdleTtl": {
+        "label": "Close idle database views after",
+        "desc": "Seconds a database view may go untouched before its pool is closed. It reopens by itself the next time you use it. 0 disables this."
+      },
+      "keepalive": {
+        "label": "Keepalive interval",
+        "desc": "Seconds between liveness pings. The ping holds one connection open per connection so the next click is instant and dropped connections are detected early. 0 turns it off."
+      },
+      "footnote": "Limits apply when a pool is opened; pools already open keep what they were granted. Reconnect to apply them immediately. When a server's allowance is spent, opening a database view closes the one you used least recently rather than failing.",
+      "mcpBridge": {
+        "label": "Share pools with the MCP connector",
+        "desc": "Let a running huginndb-mcp sidecar use this app's connections instead of opening its own, so the whole machine shares one budget per server — and its activity appears in the Console as it happens. Opens a token-protected listener on localhost. Off by default."
+      }
     }
   },
   "transfer": {

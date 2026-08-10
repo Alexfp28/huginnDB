@@ -143,7 +143,10 @@
       "connectionStringPlaceholder": "mongodb://localhost:27017  o  mongodb+srv://user:pass@cluster.mongodb.net/db",
       "connectionStringHint": "Se construye automáticamente a partir de los campos de arriba. La contraseña se guarda de forma segura y no se incrusta en la cadena.",
       "editConnectionString": "Editar cadena de conexión",
-      "connectionStringWarning": "Editar la cadena de conexión a mano puede introducir errores — revísala con cuidado. Úsalo para Atlas (mongodb+srv://), replica sets u opciones de la URI que el formulario no cubre."
+      "connectionStringWarning": "Editar la cadena de conexión a mano puede introducir errores — revísala con cuidado. Úsalo para Atlas (mongodb+srv://), replica sets u opciones de la URI que el formulario no cubre.",
+      "maxConnections": "Máximo de conexiones para este servidor",
+      "maxConnectionsHint": "Total de conexiones que HuginnDB puede mantener contra este servidor, compartido con todas sus vistas de base de datos. En blanco usa la preferencia global. Viaja con la conexión a las exportaciones y al conector MCP.",
+      "maxConnectionsPlaceholder": "por defecto"
     },
     "ssh": {
       "enable": "Conectar vía túnel SSH",
@@ -252,6 +255,8 @@
     "openedMailClient": "Se abrió un correo pre-rellenado en tu aplicación de correo"
   },
   "schema": {
+    "releaseIdlePools": "Liberar pools inactivos",
+    "releasedIdlePools": "Se han cerrado {{count}} pool(s) de base de datos inactivos.",
     "loading": "Cargando esquema…",
     "title": "Esquema",
     "refresh": "Actualizar",
@@ -708,6 +713,10 @@
         "label": "Tabla de datos",
         "desc": "Filas y paginación"
       },
+      "connections": {
+        "label": "Conexiones",
+        "desc": "Pools y límites"
+      },
       "appearance": {
         "label": "Apariencia",
         "desc": "Temas y colores"
@@ -893,6 +902,39 @@
       "patchNotesCurrent": "instalada",
       "patchNotesNone": "No hay notas para esta versión.",
       "patchNotesViewOnGitHub": "Ver el changelog completo en GitHub"
+    },
+    "connections": {
+      "live": {
+        "label": "Abiertas ahora mismo",
+        "desc": "Conexiones que HuginnDB mantiene contra tus servidores. Otros clientes de esta máquina — orígenes de datos del IDE, pools de conexiones de aplicaciones, sidecars de huginndb-mcp — cuentan contra los mismos límites del servidor.",
+        "value": "{{connections}} conexión(es), {{views}} vista(s) de base de datos",
+        "endpoint": "{{inUse}} de {{budget}} reservadas"
+      },
+      "maxConnections": {
+        "label": "Máximo de conexiones por servidor",
+        "desc": "El total que HuginnDB gastará contra un servidor, compartido por todas las conexiones y vistas de base de datos que lleguen a él. Si un servidor necesita otro presupuesto, es mejor fijarlo en la propia conexión: así viaja también a las exportaciones y al conector MCP."
+      },
+      "childMaxConnections": {
+        "label": "Máximo de conexiones por vista de base de datos",
+        "desc": "Explorar un servidor multi-base abre un pool aparte por cada base de datos, que sale del mismo presupuesto del servidor. Mantenlo bajo: se multiplica por el número de bases que abras."
+      },
+      "maxChildPools": {
+        "label": "Máximo de vistas de base de datos abiertas",
+        "desc": "Las vistas que llevan más tiempo sin usarse se cierran al superar este límite. 0 significa sin límite."
+      },
+      "childIdleTtl": {
+        "label": "Cerrar vistas inactivas tras",
+        "desc": "Segundos que una vista de base de datos puede pasar sin usarse antes de cerrar su pool. Se reabre sola la próxima vez que la uses. 0 lo desactiva."
+      },
+      "keepalive": {
+        "label": "Intervalo de keepalive",
+        "desc": "Segundos entre pings de comprobación. El ping mantiene una conexión abierta por conexión para que el siguiente clic sea instantáneo y las caídas se detecten pronto. 0 lo desactiva."
+      },
+      "footnote": "Los límites se aplican al abrir un pool; los ya abiertos conservan lo que se les concedió. Reconecta para aplicarlos al momento. Cuando se agota el presupuesto de un servidor, abrir una vista cierra la que hace más tiempo que no usas en lugar de fallar.",
+      "mcpBridge": {
+        "label": "Compartir pools con el conector MCP",
+        "desc": "Permite que un sidecar huginndb-mcp en ejecución use las conexiones de esta app en lugar de abrir las suyas, de modo que toda la máquina comparta un presupuesto por servidor — y su actividad aparezca en la Consola en tiempo real. Abre un listener en localhost protegido por token. Desactivado por defecto."
+      }
     }
   },
   "transfer": {

@@ -21,6 +21,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Cable,
+  Network,
   Cog,
   FolderSync,
   FileText,
@@ -48,6 +49,7 @@ import {
 import { GeneralSection } from "@/components/settings/sections/GeneralSection";
 import { EditorSection } from "@/components/settings/sections/EditorSection";
 import { GridSection } from "@/components/settings/sections/GridSection";
+import { ConnectionsSection } from "@/components/settings/sections/ConnectionsSection";
 import { AppearanceSection } from "@/components/settings/sections/AppearanceSection";
 import { ShortcutsSection } from "@/components/settings/sections/ShortcutsSection";
 import { McpSection } from "@/components/settings/sections/McpSection";
@@ -67,6 +69,7 @@ const SECTIONS: {
   { id: "general", icon: Cog },
   { id: "editor", icon: FileText },
   { id: "grid", icon: Table2 },
+  { id: "connections", icon: Network },
   { id: "appearance", icon: Palette },
   { id: "shortcuts", icon: Keyboard },
   { id: "origins", icon: FolderSync },
@@ -153,6 +156,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             {section === "general" && <GeneralSection />}
             {section === "editor" && <EditorSection />}
             {section === "grid" && <GridSection />}
+            {section === "connections" && <ConnectionsSection />}
             {section === "appearance" && <AppearanceSection />}
             {section === "shortcuts" && <ShortcutsSection />}
             {section === "origins" && <OriginsSection />}

@@ -194,7 +194,9 @@ pub struct SortSpec {
 /// We use parallel positional encoding (`Vec<RowValue>`) instead of a
 /// `HashMap` so column order is preserved verbatim from the frontend —
 /// otherwise we cannot pair columns with their placeholders deterministically.
-#[derive(Debug, Deserialize)]
+/// `Serialize` as well, for the same reason as [`QueryResult`]: the bridge
+/// carries these to whichever process owns the pool.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RowValue {
     pub column: String,
     /// Always a string or `null`. The cell editor and `RowEditor` dialog
@@ -209,7 +211,11 @@ pub struct RowValue {
 }
 
 /// Result set returned to the frontend.
-#[derive(Debug, Serialize)]
+///
+/// `Deserialize` as well as `Serialize` since the MCP bridge sends this back
+/// across a process boundary: the sidecar re-reads it to apply its `--max-rows`
+/// cap before handing it to the model.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct QueryResult {
     /// Columns of the result set, in order.
     pub columns: Vec<ColumnMeta>,
@@ -225,8 +231,9 @@ pub struct QueryResult {
     pub total: Option<u64>,
 }
 
-/// Column descriptor in a [`QueryResult`].
-#[derive(Debug, Serialize)]
+/// Column descriptor in a [`QueryResult`]. `Deserialize` for the same reason
+/// as its parent — it crosses the MCP bridge.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ColumnMeta {
     pub name: String,
     pub data_type: String,

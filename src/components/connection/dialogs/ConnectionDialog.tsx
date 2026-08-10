@@ -147,6 +147,11 @@ export function ConnectionDialog({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [ssl, setSsl] = useState(false);
+  /** Per-server pool ceiling, as typed. Kept as a string so the field can be
+   *  *empty*, which is the meaningful "no override — use the global
+   *  preference" state and is not expressible with a number input bound to a
+   *  number. Parsed on save; anything unparseable saves as `null`. */
+  const [maxConnections, setMaxConnections] = useState("");
   /** MongoDB connection URI. In form mode this is the *raw-edit buffer* used
    *  only when `mongoUriManual` is on; otherwise the URI is derived from the
    *  discrete fields via `buildMongoUri`. */
@@ -200,6 +205,9 @@ export function ConnectionDialog({
       setDatabase(p.database);
       setUsername(p.username);
       setSsl(p.ssl);
+      setMaxConnections(
+        p.max_connections == null ? "" : String(p.max_connections),
+      );
       setConnectionString(p.connection_string ?? "");
       setAuthSource(p.auth_source ?? "");
       setPassword("");
@@ -265,6 +273,7 @@ export function ConnectionDialog({
       setUsername("");
       setPassword("");
       setSsl(false);
+      setMaxConnections("");
       setConnectionString("");
       setAuthSource("");
       setMongoUriManual(false);
@@ -525,7 +534,16 @@ export function ConnectionDialog({
   );
 
   function buildProfile(): ConnectionProfile {
+    // Start from the stored profile so fields this form doesn't edit survive a
+    // save. `save_profile` replaces the whole record, so anything omitted here
+    // is *erased* — which silently reset `mcp_write` to read-only and dropped
+    // `visible_databases` every time a connection was edited. Spreading first
+    // and overriding below fixes that for the existing fields as well as for
+    // `max_connections`.
+    const stored = editingId ? profiles.find((p) => p.id === editingId) : undefined;
+    const parsedMax = Number.parseInt(maxConnections, 10);
     return {
+      ...stored,
       id: editingId ?? draftId,
       name,
       group: group.trim() || null,
@@ -544,6 +562,7 @@ export function ConnectionDialog({
         driver === "mongodb" && !mongoUriManual
           ? authSource.trim() || null
           : null,
+      max_connections: Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : null,
     };
   }
 
@@ -1164,6 +1183,21 @@ export function ConnectionDialog({
                           </Label>
                           <Switch checked={ssl} onCheckedChange={setSsl} />
                         </div>
+                        <Field
+                          label={t("connectionDialog.fields.maxConnections")}
+                          hint={t("connectionDialog.fields.maxConnectionsHint")}
+                        >
+                          <Input
+                            type="number"
+                            min={2}
+                            max={64}
+                            value={maxConnections}
+                            onChange={(e) => setMaxConnections(e.target.value)}
+                            placeholder={t(
+                              "connectionDialog.fields.maxConnectionsPlaceholder",
+                            )}
+                          />
+                        </Field>
                       </>
                     ) : (
                       <Field label={t("connectionDialog.fields.sqlitePath")}>
@@ -1469,9 +1503,13 @@ export function ConnectionDialog({
 
 function Field({
   label,
+  hint,
   children,
 }: {
   label: string;
+  /** Optional one-line explanation under the control, for a field whose label
+   *  can't carry the whole meaning (e.g. what leaving it blank does). */
+  hint?: string;
   children: React.ReactNode;
 }) {
   // `min-w-0` lets the field shrink inside flex/grid parents instead of forcing
@@ -1480,6 +1518,9 @@ function Field({
     <div className="grid min-w-0 gap-1">
       <Label>{label}</Label>
       {children}
+      {hint && (
+        <p className="text-[11px] leading-snug text-muted-foreground">{hint}</p>
+      )}
     </div>
   );
 }

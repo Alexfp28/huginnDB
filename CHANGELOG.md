@@ -6,6 +6,112 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Settings → Connections** — a new preferences section for the connection
+  pool: the ceiling for a connection and for a per-database view, how many
+  database views one connection may keep open, how long an unused one survives,
+  and the keepalive interval. It also shows, live, how many pools HuginnDB is
+  currently holding, with a button to release the per-database ones. That
+  visibility is half the point: `too many connections` is only actionable if
+  you can see your own contribution to it.
+- **Per-server connection budgets.** The unit of accounting is now the server
+  endpoint, not the saved connection. `Max connections per server` is the whole
+  allowance HuginnDB will spend against one host, shared by every connection and
+  every database view that reaches it — so three connections pointing at the
+  same Postgres box no longer get three independent allowances, which is exactly
+  how the footprint managed to be unbounded. Two connections behind *different*
+  SSH tunnels that both name `localhost:5432` are correctly treated as different
+  servers; two connecting as different users are correctly treated as the same
+  one, since the server's limit is global.
+  When a server's allowance is spent, opening a database view **closes the view
+  you used least recently on that same server** rather than failing — so
+  browsing a twelve-database server under a ten-connection budget still works.
+  If there is genuinely nothing to reclaim, the error names the budget and where
+  to raise it instead of surfacing a driver string.
+- **Per-connection limit** — connections now have a **Max connections for this
+  server** field. Connection capacity is a fact about a *server*, so it lives on
+  the connection: it travels with profile export/import, syncs through shared
+  origins, and the `huginndb-mcp` sidecar honours it automatically because it
+  reads the same `profiles.json`. Blank means "use the global preference".
+- **`huginndb-mcp --max-connections <n>`** — pool ceiling per exposed
+  connection for the headless connector, defaulting to `2`. See the new
+  "Connection footprint" section in `docs/MCP.md`.
+- **Pool sharing with the MCP connector** (Settings → Connections → *Share
+  pools with the MCP connector*, off by default). With it on, a running
+  `huginndb-mcp` sidecar stops opening its own pools and asks the desktop app to
+  run its queries instead. The machine then has **one budget per server**
+  however many MCP clients are configured — until now each spawned its own
+  sidecar with its own pools, invisible to the app and to each other. Two
+  further consequences worth the switch on their own: the connector's activity
+  appears in the app's **Console live**, every browse and write as it happens
+  rather than only in `mcp-audit.log` afterwards; and the app re-checks each
+  connection's write policy itself, independently of the sidecar's own check.
+  The transport is a loopback-only listener with a per-run token kept in a
+  `0600` file next to `profiles.json`. When the app isn't running, or the
+  setting is off, the connector behaves exactly as before.
+- `docs/CONNECTION_POOLING_ANALYSIS.md` — the audit these changes come from:
+  how the engine allocated connections, worst-case arithmetic, ranked findings,
+  and the endpoint-centric architecture the remaining work is heading towards.
+
+### Changed
+
+- **`connections.maxConnections` changed meaning** from "ceiling for a single
+  pool" to "total for one server". Nothing was released with the old meaning, so
+  no migration is needed; the default moved from 5 to 10 accordingly, since it
+  now covers a connection plus its database views rather than one pool. A
+  top-level connection asks for at most 5 of that allowance and deliberately
+  leaves room for a database view, so pinning a tight budget on a connection
+  can't make its own databases unopenable.
+
+### Fixed
+
+- **`too many connections` on shared servers.** HuginnDB's connection footprint
+  was unbounded, invisible, and multiplied across processes it did not
+  coordinate with — which on a database also serving a JetBrains data source, an
+  application backend's pool and one or more MCP sidecars was frequently the
+  straw that broke the server. Several things were wrong at once:
+  - Browsing a multi-database server opened a **whole extra pool per database**,
+    each with its own independent ceiling of five, and nothing ever closed them
+    short of disconnecting the parent connection. A server with twelve databases
+    was a ceiling of ~65 backends from a single window, held until the app
+    closed. Per-database pools are now capped at **2** connections, limited to
+    **8 open views** per connection (longest-unused closed first), and closed
+    automatically after **5 minutes** unused. They reopen transparently on next
+    use, so nothing is lost but the round trip.
+  - The schema explorer's cross-database search fanned out `openDatabaseView`
+    across **every** visible database at once — on a nineteen-database server, a
+    single keystroke was nineteen simultaneous connection attempts. It now runs
+    at most three at a time and drains as a queue.
+  - The MongoDB client set no pool bound at all, inheriting the driver's default
+    of **100 per host** — a 20x divergence from the SQL drivers, by omission. It
+    now takes the same budget as everything else.
+  - Pools were torn down by `Drop` rather than an awaited close, so a
+    reconnect or an environment switch could transiently hold both the outgoing
+    and incoming sessions. Disconnect (and every other teardown path) now closes
+    gracefully, with a timeout so a dead server can't stall it.
+  - `min_connections` / `idle_timeout` / `max_lifetime` / `acquire_timeout` were
+    left to `sqlx`'s implicit defaults. They are now set explicitly, and the idle
+    timeout shortened to 5 minutes so an untouched pool gives its sockets back.
+  - "Test connection" opened a five-connection pool to run one `SELECT 1`. It
+    now opens one, and closes it.
+- **The MCP connector never released a pool** for the lifetime of its process —
+  which is however long the MCP client keeps it, typically days. It now closes
+  pools unused for five minutes and defaults to a ceiling of 2 rather than
+  inheriting the desktop app's 5.
+- **`too many connections` is now recognised as such** rather than surfacing as
+  an opaque driver string: Postgres `53300`/`53400`, MySQL `1040`/`1203`, the
+  MongoDB pool timeout, and our own pool's acquire timeout. The message reports
+  how many pools HuginnDB itself is holding and notes that other clients on the
+  machine share the server's limit; the search fan-out stops instead of
+  re-firing against a server that is already refusing it, and offers to release
+  idle pools and retry.
+- **Editing a connection silently reset fields the dialog doesn't show.**
+  `save_profile` replaces the whole record, and the dialog rebuilt it from form
+  state only — so saving a connection wiped its MCP write policy back to
+  read-only and dropped its visible-databases subset. The dialog now preserves
+  the stored profile's fields it doesn't edit.
+
 ## [1.12.1] — 2026-08-05
 
 ### Added

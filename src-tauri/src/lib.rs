@@ -16,6 +16,7 @@
 //! * [`error`] — common error type, serialised to the frontend.
 
 mod app_identity;
+mod bridge;
 mod commands;
 mod db;
 mod error;
@@ -29,6 +30,7 @@ mod log_bus;
 /// data-path functions the desktop commands share.
 #[cfg(feature = "mcp")]
 pub mod mcp;
+mod pool_reaper;
 mod prefs;
 mod ssh_known_hosts;
 mod state;
@@ -242,6 +244,21 @@ pub fn run() {
         // reporter relies on this: `window.open` is a no-op in the WebView.
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new_with_args(parse_startup_args()))
+        // Background eviction of idle per-database pools. Started here rather
+        // than lazily on first connect so the sweep also covers pools left
+        // behind by a connection that was opened and closed again.
+        .setup(|app| {
+            pool_reaper::spawn(app.handle().clone());
+            // The MCP bridge is off unless the user turned it on; `reconcile`
+            // is a no-op in that case. Spawned rather than awaited so a
+            // filesystem hiccup writing the discovery file can't delay the
+            // window appearing.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                bridge::server::reconcile(&handle).await;
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::connection::list_profiles,
             commands::connection::save_profile,
@@ -250,6 +267,8 @@ pub fn run() {
             commands::connection::connect,
             commands::connection::disconnect,
             commands::connection::active_connections,
+            commands::connection::connection_pool_stats,
+            commands::connection::release_idle_pools,
             commands::connection::open_database_view,
             commands::connection::forget_host_key,
             commands::connection::get_host_key,

@@ -32,7 +32,7 @@ pub fn get_preferences(state: State<'_, AppState>) -> AppResult<Preferences> {
 /// are merged client-side. This keeps the wire shape trivial and lets us
 /// keep the on-disk file as a faithful mirror of frontend state.
 #[tauri::command]
-pub fn update_preferences(
+pub async fn update_preferences(
     app: AppHandle,
     state: State<'_, AppState>,
     prefs: Preferences,
@@ -43,6 +43,13 @@ pub fn update_preferences(
     }
     prefs::save_preferences(&prefs)?;
     let _ = app.emit(PREFS_CHANGED_EVENT, prefs);
+    // Most preferences take effect just by being readable, but the MCP bridge
+    // owns a socket: toggling it has to actually start or stop the listener.
+    // `reconcile` is idempotent and cheap when nothing changed, so it runs on
+    // every write rather than trying to detect which field moved — the
+    // preferences arrive as a whole snapshot, so there is no diff to inspect.
+    // `async` for this one reason; the command's IPC shape is unchanged.
+    crate::bridge::server::reconcile(&app).await;
     Ok(())
 }
 

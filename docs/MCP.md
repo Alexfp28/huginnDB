@@ -13,9 +13,12 @@ with their own config quirks worth documenting; anything else that speaks MCP
 (an editor's built-in agent, a custom harness, …) works the same way once you
 point it at the binary.
 
-It is a **separate process**. It does not share the running desktop app's open
-connections; it opens its own pools lazily, on demand, and only for the
-connections you explicitly expose. Each exposed connection has a **write
+It is a **separate process**. By default it opens its own pools lazily, on
+demand, and only for the connections you explicitly expose — it does not share
+the running desktop app's. It *can*, if you turn on **Settings → Connections →
+Share pools with the MCP connector**, which gives the whole machine a single
+connection budget per server; see [Sharing the app's
+pools](#sharing-the-apps-pools). Each exposed connection has a **write
 policy** — `read-only` (the default), `data`, or `full` — set per connection in
 **Settings → MCP**; reads always work, and writes only succeed when that
 connection's policy allows them. See [Security](#security).
@@ -175,10 +178,61 @@ The tools then show up under the `huginndb` server inside Codex.
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(none)* | Profile ids the server may reach. **Opt-in**: with none set, nothing is exposed. |
 | `--max-rows <n>` | `1000` | Upper bound on rows returned by a single `run_query` / `browse_table` call, so a tool call can't dump a whole table into the model's context. |
+| `--max-connections <n>` | `2` | Budget per **server**, within this process. See [Connection footprint](#connection-footprint) — the default is deliberately well below the desktop app's. A connection that pins its own limit in HuginnDB still wins when it is the stricter of the two. |
 | `--read-only[=true\|false]` | `false` | Global kill-switch: force **every** connection to read-only regardless of its saved write policy. A quick way to expose the connector in a guaranteed-safe mode without touching any profile. |
 | `--allow-writes` | — | **Deprecated and ignored.** Writes are now governed per connection by the write policy set in Settings → MCP (see [Security](#security)); this flag no longer grants anything and only prints a one-time deprecation notice. |
 
 Flags accept both `--flag value` and `--flag=value`.
+
+## Connection footprint
+
+The connector is a **separate process** from the HuginnDB desktop app, with its
+own connection pools. It does not share the app's. That has a consequence worth
+knowing before you point it at a database somebody else is also using:
+
+- Every MCP client that has `huginndb-mcp` configured spawns **its own copy**.
+  Claude Code and Claude Desktop configured against the same profile means two
+  processes, each with its own pool.
+- Those pools are additional to the desktop app's, to your IDE's data source,
+  and to any application backend pointing at the same server. They all count
+  against the same server-side `max_connections`.
+
+Two defaults keep that bounded:
+
+- **`--max-connections` defaults to `2`** per exposed connection, rather than
+  the desktop app's `5`. MCP is request/response over stdio and tools are
+  dispatched one at a time, so a bigger pool buys nothing here. It is also a
+  *per-server* budget within this process: two exposed connections pointing at
+  the same host share it rather than getting one each.
+- **Idle pools are closed after 5 minutes** with no tool call. The connector is
+  long-lived but its work is bursty; a pool opened for one question is not held
+  for the rest of the week. It reopens transparently on the next call.
+
+### Sharing the app's pools
+
+If the desktop app is running, it can serve the connector's queries out of its
+*own* pools instead — turn on **Settings → Connections → Share pools with the
+MCP connector**. Then:
+
+- The whole machine has one budget per server. The app owns every connection;
+  the connector (and every other connector, one per MCP client) opens none.
+- The connector's activity shows up in the app's **Console** live — every
+  browse, query and write, as it happens — instead of only in `mcp-audit.log`
+  after the fact. Writes are still audited to that file too.
+- The write policy is re-checked by the app, independently of the connector's
+  own check.
+
+It is **off by default**, because it opens a listener (loopback only,
+token-protected) that fronts every database you have saved. When the app isn't
+running — or the setting is off — the connector opens its own pools exactly as
+described above, and says so on stderr if it loses the app mid-session.
+
+If a server is still tight, set a per-connection ceiling in HuginnDB
+(Settings → Connections, or the connection's own **Max connections** field).
+It is stored in `profiles.json`, which this connector reads, so it applies to
+the sidecar with no extra configuration. Settings → Connections also shows how
+many pools the desktop app is holding right now, and can release the
+per-database ones on demand.
 
 ## Tools
 

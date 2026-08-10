@@ -15,12 +15,33 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum AppError {
     /// SQL driver or pool failure surfaced by `sqlx`.
+    ///
+    /// Deliberately **not** `#[from]`: the manual `From<sqlx::Error>` impl
+    /// below classifies connection-limit failures into
+    /// [`Self::TooManyConnections`] first. Routing every `?` through that one
+    /// conversion is what makes the classification exhaustive — a `#[from]`
+    /// here would silently bypass it at any call site that didn't opt in.
     #[error("database error: {0}")]
-    Database(#[from] sqlx::Error),
+    Database(sqlx::Error),
 
     /// MongoDB driver, command, or BSON failure surfaced by the `mongodb` crate.
+    /// Same reasoning as [`Self::Database`] for the manual conversion.
     #[error("mongodb error: {0}")]
-    Mongo(#[from] mongodb::error::Error),
+    Mongo(mongodb::error::Error),
+
+    /// The server refused the connection because it is at its connection
+    /// limit (Postgres `53300`/`53400`, MySQL `1040`/`1203`), or the driver's
+    /// own pool timed out waiting for a slot.
+    ///
+    /// Split out of [`Self::Database`] / [`Self::Mongo`] because it is the one
+    /// driver failure the *client* can act on: HuginnDB knows how many pools
+    /// it is holding and can offer to release them. The frontend keys its
+    /// "close idle pools and retry" affordance — and the circuit breaker that
+    /// stops the schema explorer's cross-database fan-out from re-firing
+    /// against an already-saturated server — off this variant, matched via the
+    /// [`TOO_MANY_CONNECTIONS_TAG`] marker the message carries.
+    #[error("{TOO_MANY_CONNECTIONS_TAG}: {0}")]
+    TooManyConnections(String),
 
     /// OS keychain failure (Credential Manager / libsecret / Keychain).
     #[error("keyring error: {0}")]
@@ -67,6 +88,115 @@ pub enum AppError {
     /// Tauri window-management failure (e.g. creating a new window).
     #[error("window error: {0}")]
     Window(#[from] tauri::Error),
+}
+
+/// Stable marker prefixed to every [`AppError::TooManyConnections`] message.
+///
+/// Errors cross the IPC boundary as plain strings (see the [`Serialize`] impl
+/// below), so this is the only thing the frontend can match on. Changing it
+/// breaks `isTooManyConnections` in `src/lib/db/driver.ts` — keep the two in
+/// sync.
+pub const TOO_MANY_CONNECTIONS_TAG: &str = "too many connections";
+
+/// Substrings that identify a connection-limit refusal in a driver's own
+/// message. Checked case-insensitively as a fallback for the drivers whose
+/// structured error codes don't cleanly single the condition out.
+///
+/// MySQL is the reason this list exists: `ER_CON_COUNT_ERROR` (1040) reports
+/// SQLSTATE `08004`, which is the generic "server rejected the connection",
+/// and `ER_TOO_MANY_USER_CONNECTIONS` (1203) reports `42000`, which is the
+/// generic syntax/access class — neither is specific enough to match on. The
+/// error *numbers* are, and we check those first via a downcast; the text
+/// check then covers the pre-auth path, where the failure can arrive before
+/// there is a structured `DatabaseError` at all.
+const TOO_MANY_CONNECTIONS_NEEDLES: &[&str] = &[
+    // Postgres
+    "too many connections",
+    "remaining connection slots are reserved",
+    // MySQL / MariaDB
+    "too many connections",
+    "max_user_connections",
+    // Generic pooler phrasing (pgbouncer: "no more connections allowed")
+    "no more connections allowed",
+];
+
+/// Whether `message` looks like a connection-limit refusal.
+fn message_signals_connection_limit(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    TOO_MANY_CONNECTIONS_NEEDLES
+        .iter()
+        .any(|needle| lowered.contains(needle))
+}
+
+/// Classify a `sqlx` error as a connection-limit refusal, returning the detail
+/// to surface when it is one.
+///
+/// Postgres is matched on SQLSTATE, which is unambiguous: `53300`
+/// (`too_many_connections`) and `53400` (`configuration_limit_exceeded`).
+/// MySQL is matched on the driver error number, since its SQLSTATE isn't
+/// specific (see [`TOO_MANY_CONNECTIONS_NEEDLES`]). Everything else falls back
+/// to the message scan, which also covers `PoolTimedOut` — our *own* pool
+/// giving up waiting, which is the same class of problem from the user's point
+/// of view even though no server said so.
+fn sqlx_connection_limit_detail(error: &sqlx::Error) -> Option<String> {
+    if let sqlx::Error::Database(db) = error {
+        if matches!(db.code().as_deref(), Some("53300") | Some("53400")) {
+            return Some(db.message().to_string());
+        }
+        if let Some(my) = db.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>() {
+            if matches!(my.number(), 1040 | 1203) {
+                return Some(db.message().to_string());
+            }
+        }
+        if message_signals_connection_limit(db.message()) {
+            return Some(db.message().to_string());
+        }
+        return None;
+    }
+    let rendered = error.to_string();
+    if message_signals_connection_limit(&rendered) {
+        return Some(rendered);
+    }
+    // Our own pool ran out of slots waiting for one to free up. Not the
+    // server's limit, but the user-facing remedy is identical: fewer pools, or
+    // a bigger ceiling.
+    if matches!(error, sqlx::Error::PoolTimedOut) {
+        return Some(
+            "HuginnDB's own connection pool timed out waiting for a free slot".to_string(),
+        );
+    }
+    None
+}
+
+impl From<sqlx::Error> for AppError {
+    fn from(error: sqlx::Error) -> Self {
+        match sqlx_connection_limit_detail(&error) {
+            Some(detail) => AppError::TooManyConnections(detail),
+            None => AppError::Database(error),
+        }
+    }
+}
+
+impl From<mongodb::error::Error> for AppError {
+    fn from(error: mongodb::error::Error) -> Self {
+        // The driver has no dedicated "server is full" error kind we can match
+        // structurally; a saturated deployment surfaces either as a
+        // wait-queue timeout on the client pool or as a server-selection
+        // failure whose message carries the reason. The text scan covers both.
+        let rendered = error.to_string();
+        if message_signals_connection_limit(&rendered) || rendered.contains("wait queue timeout") {
+            return AppError::TooManyConnections(rendered);
+        }
+        AppError::Mongo(error)
+    }
+}
+
+impl AppError {
+    /// Whether this error is the connection-limit refusal callers may want to
+    /// react to (release idle pools, stop retrying) rather than just report.
+    pub fn is_too_many_connections(&self) -> bool {
+        matches!(self, AppError::TooManyConnections(_))
+    }
 }
 
 impl Serialize for AppError {
