@@ -809,6 +809,21 @@ export interface LaunchState {
    * declared in the Rust `LaunchState` too or serde drops it (gotcha #14).
    */
   visibleConnections: string[] | null;
+  /**
+   * Per-connection override of `ConnectionProfile.visible_databases`, keyed by
+   * connection id.
+   *
+   * The profile keeps its value as the **default** (it travels with export /
+   * import and shared origins); an entry here wins for this environment only.
+   * Key present → override; key absent → fall back to the profile. The value is
+   * nullable because `null` is itself an override — "show all *here*", which is
+   * the only way an environment can widen a subset its profile narrows.
+   *
+   * Resolve it with `useVisibleDatabases` rather than reading either layer
+   * directly. Must be declared in the Rust `LaunchState` too or serde drops it
+   * (gotcha #14).
+   */
+  databaseVisibility: Record<string, string[] | null>;
 }
 
 export interface PersistedTab {

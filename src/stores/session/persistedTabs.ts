@@ -262,6 +262,7 @@ export function persistLaunchState(
       activeTabId: useTabs.getState().activeId,
       collapsedConnections: useUi.getState().collapsedConnections,
       visibleConnections: useUi.getState().visibleConnections,
+      databaseVisibility: useUi.getState().databaseVisibility,
     })
     .catch((err) => {
       console.error("[persistedTabs] launch-state save failed:", err);

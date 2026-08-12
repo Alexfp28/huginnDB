@@ -272,9 +272,11 @@ export default function App() {
     refreshConnections();
   }, [refreshConnections]);
 
-  // Launch restore (main window only, `reconnectOnLaunch` on): load the
-  // environment list, then bring the active environment's session up —
-  // reconnect what was live, restore the pane layout, restore focus.
+  // Launch restore (main window only): load the environment list, then bring
+  // the active environment's session up — its view filters always, and with
+  // `reconnectOnLaunch` on, also reconnect what was live, restore the pane
+  // layout and restore focus. (The filters sit before that gate inside
+  // `restoreSession`: they say how the environment looks, not what it reopens.)
   //
   // The sequence itself lives in `useEnvironments.restoreSession` because
   // entering an environment at launch and entering one via the switcher are the

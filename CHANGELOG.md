@@ -66,6 +66,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **"Databases to show" no longer leaks between environments.** The subset was
+  stored on the connection, and a connection is global — so restricting a shared
+  test server to one client's database while inside a "Producción" environment
+  also hid every other database from the environment that server actually
+  belongs to. The picker now asks where the choice applies: **this environment**
+  (the default) keeps it local, so the same connection can show every replica in
+  one environment and a single database in another; **all environments** saves it
+  on the connection as before, which is also the value that travels through
+  profile export/import and shared origins. An environment without its own choice
+  follows the connection's, so nothing changes until you pick otherwise, and
+  existing subsets keep working untouched. A connection published by a shared
+  origin is read-only, so only the local scope is offered for it — previously its
+  databases could not be filtered at all without the next sync undoing it.
+  Connections are deliberately **not** cloned per environment: that would
+  duplicate credentials and keychain entries and open a second pool against one
+  server. Only the view of them is scoped.
+- **The connection tree's filters now survive with auto-reconnect off.** Which
+  connections are shown, which rows are folded, and the new per-environment
+  database subsets are restored when an environment is entered regardless of the
+  *Reconnect on launch* preference. They describe how an environment looks, not
+  what it reopens; behind that gate, entering an environment with reconnect off
+  left the previous one's filters on screen.
 - **`too many connections` on shared servers.** HuginnDB's connection footprint
   was unbounded, invisible, and multiplied across processes it did not
   coordinate with — which on a database also serving a JetBrains data source, an

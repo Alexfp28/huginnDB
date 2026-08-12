@@ -343,7 +343,15 @@
       "count": "{{selected}} de {{total}} seleccionadas",
       "subsetActive": "Mostrando {{count}} de {{total}} bases de datos",
       "selectAll": "Seleccionar todas",
-      "deselectAll": "Deseleccionar todas"
+      "deselectAll": "Deseleccionar todas",
+      "subsetActiveLocal": "Mostrando {{count}} de {{total}} bases de datos (este entorno)",
+      "scopeLabel": "Aplicar en",
+      "scopeEnvironment": "Este entorno",
+      "scopeProfile": "Todos los entornos",
+      "scopeEnvironmentHint": "Solo este entorno ve el subconjunto. La misma conexión mantiene su elección en los demás.",
+      "scopeProfileHint": "Se guarda en la conexión, así que lo siguen todos los entornos que no tengan su propia elección. También viaja con la exportación y los orígenes compartidos.",
+      "scopeOriginHint": "Esta conexión viene de un origen compartido y no se puede editar en local, así que el subconjunto se guarda solo en este entorno.",
+      "useProfileDefault": "Usar el subconjunto de la conexión"
     },
     "dropDatabase": {
       "confirm": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor. No se puede deshacer."
