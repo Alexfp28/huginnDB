@@ -261,6 +261,7 @@ mod tests {
             visible_databases: None,
             mcp_write: Default::default(),
             max_connections: None,
+            mssql: None,
             origin_id: None,
         }
     }

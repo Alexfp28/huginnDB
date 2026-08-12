@@ -8,8 +8,163 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Añadido
+
+- **Driver de Microsoft SQL Server** — el quinto motor, pedido por usuarios
+  que usan HuginnDB contra SQL Server. Conectar (con soporte de túnel SSH),
+  explorar bases de datos/esquemas/tablas/vistas/índices con recuento de filas
+  y tamaños, ejecutar T-SQL en el editor, paginar/ordenar/filtrar la rejilla,
+  editar celdas, insertar y borrar filas, actualización masiva, y el panel de
+  usuarios/permisos. Las instancias nombradas (`HOST\SQLEXPRESS`) se resuelven
+  a través del SQL Browser, y un interruptor de "confiar en el certificado del
+  servidor" —activado por defecto— hace utilizables los certificados
+  autofirmados que presentan la mayoría de instalaciones on-premise. En las
+  compilaciones de Windows el diálogo de conexión ofrece además autenticación
+  Windows (NTLM) con un `DOMINIO\usuario` explícito; el modo se oculta en el
+  resto de plataformas porque el driver subyacente solo lo compila en Windows.
+- El servidor mínimo soportado es **SQL Server 2012**: la paginación usa
+  `OFFSET … ROWS FETCH NEXT … ROWS ONLY`, que no existe antes de esa versión.
+- El motor nuevo entra en la contabilidad de conexiones descrita más abajo en
+  vez de dimensionarse por su cuenta: `tiberius` no trae pool, así que el pool
+  de sesiones propio de HuginnDB toma la misma asignación por servidor que
+  cualquier otro driver, se cierra explícitamente al desconectar en lugar de
+  esperar a que se libere solo, y suelta las sesiones que llevan cinco minutos
+  sin usarse.
+- **Ajustes → Conexiones** — una sección de preferencias nueva para el pool de
+  conexiones: el techo de una conexión y el de una vista por base de datos,
+  cuántas vistas por base de datos puede mantener abiertas una conexión,
+  cuánto sobrevive una sin usar y el intervalo del keepalive. Muestra también,
+  en vivo, cuántos pools está manteniendo HuginnDB, con un botón para liberar
+  los de por base de datos. Esa visibilidad es la mitad del asunto: un
+  `too many connections` solo es accionable si puedes ver tu propia
+  aportación al problema.
+- **Presupuesto de conexiones por servidor.** La unidad de contabilidad pasa a
+  ser el servidor, no la conexión guardada. `Máximo de conexiones por
+  servidor` es toda la asignación que HuginnDB gastará contra un host,
+  compartida por cada conexión y cada vista por base de datos que llegue a él
+  — así que tres conexiones apuntando a la misma máquina PostgreSQL ya no
+  reciben tres asignaciones independientes, que es exactamente cómo la huella
+  llegó a no tener límite. Dos conexiones detrás de túneles SSH *distintos*
+  que ambas dicen `localhost:5432` se tratan correctamente como servidores
+  distintos; dos que conectan con usuarios distintos se tratan correctamente
+  como el mismo, porque el límite del servidor es global.
+  Cuando se agota la asignación de un servidor, abrir una vista de base de
+  datos **cierra la vista que lleves más tiempo sin usar en ese mismo
+  servidor** en vez de fallar — así explorar un servidor de doce bases de
+  datos con un presupuesto de diez conexiones sigue funcionando. Si de verdad
+  no hay nada que reclamar, el error nombra el presupuesto y dónde subirlo en
+  lugar de soltar una cadena del driver.
+- **Límite por conexión** — las conexiones tienen ahora un campo **Máximo de
+  conexiones para este servidor**. La capacidad de conexión es un hecho del
+  *servidor*, así que vive en la conexión: viaja con la exportación/
+  importación de perfiles, se sincroniza por orígenes compartidos y el sidecar
+  `huginndb-mcp` lo respeta automáticamente porque lee el mismo
+  `profiles.json`. Vacío significa "usa la preferencia global".
+- **`huginndb-mcp --max-connections <n>`** — techo del pool por conexión
+  expuesta para el conector headless, con `2` por defecto. Ver la nueva
+  sección "Connection footprint" en `docs/MCP.md`.
+- **Compartir pools con el conector MCP** (Ajustes → Conexiones → *Compartir
+  pools con el conector MCP*, desactivado por defecto). Con la opción
+  activada, un sidecar `huginndb-mcp` en marcha deja de abrir sus propios
+  pools y pide a la aplicación de escritorio que ejecute sus consultas. La
+  máquina pasa entonces a tener **un presupuesto por servidor** por muchos
+  clientes MCP que estén configurados — hasta ahora cada uno lanzaba su propio
+  sidecar con sus propios pools, invisibles para la aplicación y entre sí. Dos
+  consecuencias más que ya justifican el interruptor por sí solas: la
+  actividad del conector aparece en la **Consola de la aplicación en vivo**,
+  cada lectura y cada escritura según ocurren en vez de solo después en
+  `mcp-audit.log`; y la aplicación vuelve a comprobar por su cuenta la
+  política de escritura de cada conexión, con independencia de la comprobación
+  del propio sidecar. El transporte es un listener solo de loopback con un
+  token por ejecución guardado en un fichero `0600` junto a `profiles.json`.
+  Cuando la aplicación no está en marcha, o la opción está desactivada, el
+  conector se comporta exactamente igual que antes.
+- `docs/CONNECTION_POOLING_ANALYSIS.md` — la auditoría de la que salen estos
+  cambios: cómo asignaba conexiones el motor, la aritmética del peor caso, los
+  hallazgos ordenados por gravedad y la arquitectura centrada en el servidor
+  hacia la que apunta el trabajo restante.
+- **Vista lista editable.** La vista de una tarjeta por fila deja de ser de
+  solo lectura: ahora es un editor de documentos con la forma que hizo
+  familiar MongoDB Compass. Los objetos y arrays anidados llegan **plegados** y
+  se abren bajo demanda, cada campo es una línea numerada con su tipo en el
+  margen derecho, y **hacer doble clic en un valor lo edita ahí mismo** (Enter
+  o perder el foco confirma, Esc cancela, ∅ escribe NULL). El botón de
+  expandir eleva el campo al mismo editor Monaco que usa la vista de tabla
+  —modal o acoplado, siguiendo la preferencia `cellEditorMode` existente—, que
+  es como se edita un subdocumento entero como JSON.
+  En MongoDB el margen de tipos es un **selector**: elegir un tipo reescribe el
+  campo como ese tipo BSON (el vocabulario completo de Compass — `Binary`,
+  `UUID`, `Code`, `Timestamp`, `MinKey`/`MaxKey`, `BSONRegExp`, `BSONSymbol`,
+  `Undefined` y los ya soportados), se pueden **añadir** campos (un `$set`
+  sobre una ruta nueva, incluso dentro de un objeto anidado o añadido a un
+  array) y **borrarlos** (un comando `unset_field` nuevo que emite `$unset`,
+  detrás de la confirmación de acciones destructivas). El `_id` de un
+  documento sigue siendo de solo lectura: un `$set` sobre él falla en el
+  servidor, así que ofrecer la edición solo produciría un error.
+  Editar un campo **anidado** lo direcciona por su ruta de actualización
+  (`customData.format`, `tags.2`), de modo que un valor dentro de un
+  subdocumento se escribe sin reescribir el documento que lo rodea.
+- **Los resultados de MongoDB llevan ahora sus tipos BSON reales.**
+  `QueryResult` gana un campo `row_types`: un árbol de tipos por celda que
+  refleja la estructura del valor (`bson_type_tree`). El JSON de
+  visualización es deliberadamente lossy — `Int32`, `Int64` y `Double` llegan
+  todos como número JSON, y `ObjectId`, `Date` y `Decimal128` todos como
+  cadena—, así que sin esto la vista lista habría tenido que adivinar el tipo
+  a partir del valor y habría reescrito un `Long` como `Int` la primera vez
+  que alguien corrigiera una errata en un campo sin relación. Los drivers SQL
+  lo dejan sin poner; sus tipos de columna nunca fueron ambiguos.
+
+### Cambiado
+
+- **La vista lista funciona en todos los drivers.** Salió en la 1.11.0 como
+  una representación exclusiva de MongoDB, pero el problema que resuelve —una
+  fila ancha o anidada que se desplaza horizontalmente y aplasta sus valores
+  anidados en una línea ilegible— no es exclusivo de MongoDB: una tabla de 40
+  columnas, o una fila con una columna `jsonb` grande, tiene exactamente la
+  misma forma. El interruptor de la barra de herramientas se ofrece ahora
+  también en PostgreSQL/MySQL/SQLite, los valores son editables ahí por el
+  mismo camino `update_cell` que la vista de tabla, y los valores anidados
+  dentro de una columna JSON se pliegan como un subdocumento. Las tres
+  acciones que solo tienen sentido en una base de datos documental —añadir
+  campo, borrar campo, cambiar tipo— siguen ocultas en SQL, donde el conjunto
+  de columnas de una fila pertenece a la tabla, no a la fila.
+- **La preferencia de modo de vista se movió a Ajustes → Apariencia**, a un
+  grupo nuevo **Vista de datos**, y perdió su redacción específica de MongoDB.
+  Está junto al editor de temas porque responde a la misma pregunta ("qué
+  aspecto tiene esto") en vez de a "cómo se comporta la rejilla", y ahora
+  lleva tres opciones de la vista lista: si los valores anidados empiezan
+  desplegados, si se muestra el margen de tipos y si los campos van numerados.
+  La clave almacenada (`grid.documentViewMode`) no cambia, así que una
+  elección existente sobrevive.
+- **`connections.maxConnections` cambia de significado**: de "techo de un
+  único pool" a "total para un servidor". No se publicó nada con el
+  significado antiguo, así que no hace falta migración; el valor por defecto
+  pasó de 5 a 10 en consecuencia, porque ahora cubre una conexión más sus
+  vistas por base de datos en lugar de un solo pool. Una conexión de primer
+  nivel pide como mucho 5 de esa asignación y deja sitio a propósito para una
+  vista de base de datos, de modo que fijar un presupuesto ajustado en una
+  conexión no puede volver imposible abrir sus propias bases de datos.
+
 ### Corregido
 
+- **Una columna estrecha de la rejilla ya no esconde el nombre del campo en
+  favor de su tipo.** La cabecera pone el nombre y el tipo de dato en una
+  línea, y ambos eran elementos flex normales — pero solo el nombre podía
+  encogerse, porque `truncate` es lo que permite a un elemento flex bajar de
+  su ancho de contenido. Así que lo primero que tiraba una columna demasiado
+  estrecha era justo la parte que la identifica: una columna `BOOLEAN` se
+  quedaba en un escueto "BOOL", sin nada del nombre. Ahora la prioridad está
+  invertida: primero se recorta el tipo, hasta desaparecer, y el nombre solo
+  empieza a elidirse cuando ya no queda tipo.
+- **El tooltip de la cabecera de columna describe el campo en vez de anunciar
+  acciones de ordenación.** Ahora muestra el nombre completo (lo que recorta
+  una columna estrecha), el tipo completo, la clave primaria/ajena con la
+  `tabla.columna` referenciada, la nulabilidad cuando el catálogo la conoce y
+  el estado de ordenación actual — y está traducido, cosa que nunca estuvo. El
+  texto antiguo ofrecía "Ctrl/Cmd+clic para añadir una columna", que se leía
+  como una oferta de *crear* una columna: incorrecto, y alarmante en una
+  ventana que además ejecuta DDL. La ordenación sigue siendo descubrible por
+  la flecha de cada cabecera.
 - **"Bases de datos a mostrar" ya no se filtra entre entornos.** El
   subconjunto se guardaba en la conexión, y una conexión es global: al
   restringir un servidor de pruebas compartido a la base de datos de un
@@ -36,6 +191,83 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   arrancar*. Describen cómo se ve un entorno, no qué reabre; detrás de esa
   condición, entrar en un entorno con la reconexión desactivada dejaba en
   pantalla los filtros del entorno anterior.
+- **`too many connections` en servidores compartidos.** La huella de
+  conexiones de HuginnDB no tenía límite, era invisible y se multiplicaba
+  entre procesos que no se coordinaban entre sí — lo que, en una base de datos
+  que además servía a un origen de datos de JetBrains, al pool del backend de
+  una aplicación y a uno o varios sidecars MCP, era con frecuencia la gota que
+  colmaba el vaso. Había varias cosas mal a la vez:
+  - Explorar un servidor multi-BD abría **un pool entero extra por base de
+    datos**, cada uno con su propio techo independiente de cinco, y nada los
+    cerraba nunca salvo desconectar la conexión padre. Un servidor con doce
+    bases de datos eran ~65 conexiones de techo desde una sola ventana,
+    mantenidas hasta cerrar la aplicación. Los pools por base de datos están
+    ahora limitados a **2** conexiones, con un máximo de **8 vistas abiertas**
+    por conexión (se cierra primero la que lleva más tiempo sin usarse) y se
+    cierran automáticamente tras **5 minutos** sin uso. Se reabren de forma
+    transparente al volver a usarlas, así que no se pierde nada salvo el
+    viaje de ida y vuelta.
+  - La búsqueda entre bases de datos del explorador de esquema lanzaba
+    `openDatabaseView` contra **todas** las bases visibles a la vez — en un
+    servidor de diecinueve bases, una sola pulsación eran diecinueve intentos
+    de conexión simultáneos. Ahora ejecuta como mucho tres a la vez y vacía el
+    resto como una cola.
+  - El cliente de MongoDB no fijaba ningún límite de pool, heredando el valor
+    por defecto del driver de **100 por host** — una divergencia de 20x
+    respecto a los drivers SQL, por omisión. Ahora toma el mismo presupuesto
+    que todo lo demás.
+  - Los pools se desmontaban por `Drop` en vez de con un cierre esperado, así
+    que una reconexión o un cambio de entorno podía mantener a la vez, de
+    forma transitoria, la sesión saliente y la entrante. Desconectar (y
+    cualquier otro camino de desmontaje) cierra ahora de forma ordenada, con
+    un tiempo límite para que un servidor muerto no lo bloquee.
+  - `min_connections` / `idle_timeout` / `max_lifetime` / `acquire_timeout`
+    quedaban en los valores implícitos de `sqlx`. Ahora se fijan
+    explícitamente, y el tiempo de inactividad se acortó a 5 minutos para que
+    un pool sin tocar devuelva sus sockets.
+  - "Probar conexión" abría un pool de cinco conexiones para ejecutar un solo
+    `SELECT 1`. Ahora abre una, y la cierra.
+- **El conector MCP nunca liberaba un pool** durante toda la vida de su
+  proceso — que es lo que el cliente MCP lo mantenga, típicamente días. Ahora
+  cierra los pools que lleven cinco minutos sin usarse y su techo por defecto
+  es 2 en vez de heredar el 5 de la aplicación de escritorio.
+- **`too many connections` se reconoce ahora como tal** en vez de aparecer
+  como una cadena opaca del driver: Postgres `53300`/`53400`, MySQL
+  `1040`/`1203`, el tiempo de espera del pool de MongoDB y el de adquisición
+  de nuestro propio pool. El mensaje informa de cuántos pools está manteniendo
+  el propio HuginnDB y señala que otros clientes de la máquina comparten el
+  límite del servidor; la búsqueda en abanico se detiene en vez de volver a
+  dispararse contra un servidor que ya la está rechazando, y ofrece liberar
+  los pools inactivos y reintentar.
+- **Editar una conexión reseteaba en silencio campos que el diálogo no
+  muestra.** `save_profile` reemplaza el registro entero, y el diálogo lo
+  reconstruía solo a partir del estado del formulario — así que guardar una
+  conexión devolvía su política de escritura MCP a solo lectura y perdía su
+  subconjunto de bases visibles. El diálogo conserva ahora los campos del
+  perfil almacenado que no edita.
+- El clasificador que aplica la política de escritura del conector MCP trataba
+  dos sentencias T-SQL como lecturas: `SELECT … INTO <tabla>` (que crea una
+  tabla) y `EXEC`/`EXECUTE` (que puede renombrar objetos o ejecutar DDL
+  dinámico). Ahora ambas se clasifican como DDL, así que una conexión en nivel
+  `read-only` o `data` las rechaza.
+- La herramienta MCP `list_connections` derivaba el nombre del driver de una
+  representación `Debug`, así que una conexión MongoDB se reportaba como
+  `"mongo"` en lugar del `"mongodb"` que usa el resto de la aplicación.
+
+### Limitaciones conocidas (SQL Server)
+
+- El **editor de estructura es de solo lectura**: se muestran columnas, claves,
+  índices y claves ajenas, pero aplicar cambios requiere un generador de DDL
+  T-SQL que todavía no existe. Renombrar una tabla (`sp_rename`) y el **editor
+  de vistas** no están disponibles por el mismo motivo.
+- La **exportación/importación `.sql`** todavía no está disponible: necesita un
+  codificador de literales T-SQL y gestión de `IDENTITY_INSERT`.
+- No se ofrece autenticación integrada/SSPI (iniciar sesión con el usuario de
+  Windows actual sin escribir credenciales) ni tokens de Entra ID.
+- Una instancia nombrada no se puede combinar con un túnel SSH: el SQL Browser
+  es un servicio UDP aparte que el túnel no reenvía. Tuneliza el puerto TCP
+  propio de la instancia y deja el campo de instancia vacío.
+
 
 ## [1.12.1] — 2026-08-05
 

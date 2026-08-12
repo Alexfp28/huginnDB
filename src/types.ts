@@ -6,7 +6,33 @@
  */
 
 /** Database backend supported by a profile. */
-export type Driver = "postgres" | "mysql" | "sqlite" | "mongodb";
+export type Driver = "postgres" | "mysql" | "sqlite" | "mongodb" | "sqlserver";
+
+/**
+ * How a SQL Server connection authenticates. `sql` is an ordinary SQL Server
+ * login; `windows` is NTLM with an explicit `DOMAIN\user` + password and is
+ * only available in Windows builds (the underlying driver gates it at compile
+ * time), so the dialog hides it elsewhere.
+ */
+export type MsSqlAuth = "sql" | "windows";
+
+/**
+ * SQL Server-specific connection settings. Nested like {@link SshTunnel} so
+ * the other four drivers' profiles don't carry fields that mean nothing to
+ * them. Mirrors `state::MsSqlOptions` — a field missing here is silently
+ * dropped on the IPC round-trip.
+ */
+export interface MsSqlOptions {
+  /** Named instance (the `SQLEXPRESS` of `HOST\SQLEXPRESS`). When set, the
+   *  port is discovered through the SQL Browser instead of being used as
+   *  given, so the port field is ignored. */
+  instance?: string | null;
+  /** Accept the server's TLS certificate without validating it. Required in
+   *  practice for the self-signed certificates most on-prem instances
+   *  present. */
+  trust_server_certificate?: boolean;
+  auth?: MsSqlAuth;
+}
 
 /**
  * Authentication method for the SSH tunnel. The actual secret (password or
@@ -72,6 +98,11 @@ export interface ConnectionProfile {
    *  option; it is persisted separately so the CLI fallback (no URI) and the
    *  form repopulation have it explicitly. `null`/absent for the SQL drivers. */
   auth_source?: string | null;
+  /** SQL Server-specific settings (named instance, certificate trust, auth
+   *  mode). `null`/absent for every other driver, and for a SQL Server profile
+   *  saved before the field existed — the defaults are the plain
+   *  SQL-login-over-an-explicit-port case. */
+  mssql?: MsSqlOptions | null;
   /** Session-only profile (e.g. a CLI ad-hoc connection) that the backend
    *  keeps in memory but never writes to `profiles.json`. */
   ephemeral?: boolean;

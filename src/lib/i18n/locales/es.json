@@ -138,6 +138,13 @@
       "ssl": "SSL",
       "sqlitePath": "Ruta del fichero de base de datos",
       "sqlitePathPlaceholder": "C:\\ruta\\al\\fichero.db",
+      "mssqlInstance": "Nombre de instancia (opcional)",
+      "mssqlInstancePlaceholder": "SQLEXPRESS",
+      "mssqlTrustCert": "Confiar en el certificado del servidor",
+      "mssqlTrustCertHint": "Necesario para los certificados autofirmados que usan la mayoría de instalaciones on-premise.",
+      "mssqlAuth": "Autenticación",
+      "mssqlAuth_sql": "Inicio de sesión de SQL Server",
+      "mssqlAuth_windows": "Windows (NTLM)",
       "authSource": "Origen de autenticación",
       "authSourcePlaceholder": "admin",
       "connectionString": "Cadena de conexión",
@@ -630,7 +637,8 @@
       "refColumns": "columnas referenciadas",
       "add": "Añadir clave foránea"
     },
-    "readOnlyMongo": "Solo lectura (MongoDB)"
+    "readOnlyMongo": "Solo lectura (MongoDB)",
+    "readOnlySqlServer": "Solo lectura (SQL Server)"
   },
   "view": {
     "loading": "Cargando vista…",

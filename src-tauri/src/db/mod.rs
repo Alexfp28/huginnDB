@@ -1,8 +1,10 @@
 //! Database abstraction layer.
 //!
-//! Four backends: PostgreSQL, MySQL and SQLite through [`sqlx`], plus MongoDB
-//! through the `mongodb` crate (since 1.1.0). The submodules here hold the
-//! logic that is independent of which Tauri command is invoking it:
+//! Five backends: PostgreSQL, MySQL and SQLite through [`sqlx`], plus MongoDB
+//! through the `mongodb` crate (since 1.1.0) and Microsoft SQL Server through
+//! `tiberius` — `sqlx` has no MSSQL driver, so that one brings its own client
+//! and connection pool. The submodules here hold the logic that is independent
+//! of which Tauri command is invoking it:
 //!
 //! * [`endpoint`] — per-server connection budgets, so pools stop being
 //!   accounted for per profile.
@@ -18,11 +20,14 @@
 //! * [`dump`] — render rows back into `INSERT` statements for SQL export.
 //! * [`ssh`] — SSH tunnel: host-key verification and local port forwarding.
 //! * [`mongo`] — shell-syntax parsing, query execution and BSON conversion.
+//! * [`mssql`] — the SQL Server client: its own session pool, `sys.*` catalog
+//!   introspection and `ColumnData` → JSON decoding.
 
 pub mod ddl;
 pub mod dump;
 pub mod endpoint;
 pub mod mongo;
+pub mod mssql;
 pub mod pool;
 pub mod sql;
 pub mod ssh;

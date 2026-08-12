@@ -43,6 +43,13 @@ pub enum AppError {
     #[error("{TOO_MANY_CONNECTIONS_TAG}: {0}")]
     TooManyConnections(String),
 
+    /// SQL Server (TDS) failure surfaced by the `tiberius` crate. Kept separate
+    /// from [`Self::Database`] because SQL Server does not go through `sqlx`
+    /// (see [`crate::db::mssql`]); its `Server` variant already carries the
+    /// server's own message and number, which is what the user needs to see.
+    #[error("sql server error: {0}")]
+    MsSql(#[from] tiberius::error::Error),
+
     /// OS keychain failure (Credential Manager / libsecret / Keychain).
     #[error("keyring error: {0}")]
     Keyring(#[from] keyring::Error),

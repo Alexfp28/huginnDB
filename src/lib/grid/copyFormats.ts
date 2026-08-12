@@ -37,6 +37,11 @@ export function quoteIdent(driver: Driver | undefined, name: string): string {
   if (driver === "mysql") {
     return "`" + name.replace(/`/g, "``") + "`";
   }
+  // SQL Server accepts ANSI double quotes only when QUOTED_IDENTIFIER is ON;
+  // brackets are unconditional and idiomatic in T-SQL.
+  if (driver === "sqlserver") {
+    return "[" + name.replace(/]/g, "]]") + "]";
+  }
   // Postgres + SQLite both accept ANSI double-quoted identifiers.
   return '"' + name.replace(/"/g, '""') + '"';
 }

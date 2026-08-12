@@ -202,7 +202,7 @@ Los flags aceptan tanto `--flag valor` como `--flag=valor`.
 | `list_tables` | Tablas y vistas, con recuentos de filas y tamaños aproximados. |
 | `describe_table` | Estructura completa: columnas, tipos, nulabilidad, PK, FKs, índices. |
 | `list_indexes` | Índices de una tabla y las columnas que cubre cada uno. |
-| `run_query` | Ejecuta una única sentencia (SQL para Postgres/MySQL/SQLite, estilo mongosh para MongoDB). Las lecturas siempre funcionan; las escrituras requieren que el nivel de la conexión lo permita (`data` para DML, `full` para DDL). |
+| `run_query` | Ejecuta una única sentencia (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Las lecturas siempre funcionan; las escrituras requieren que el nivel de la conexión lo permita (`data` para DML, `full` para DDL). |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
 | `server_version` | El motor y la versión conectados. |
 | `list_users` / `list_privileges` | Usuarios/roles del servidor y sus permisos. |
@@ -278,5 +278,11 @@ conexión son baratas. Una conexión de una sola base de datos (con
 
 ## Drivers soportados
 
-PostgreSQL, MySQL, SQLite y MongoDB — los mismos drivers que la app de
-escritorio, mediante el mismo código de backend.
+PostgreSQL, MySQL, SQLite, MongoDB y Microsoft SQL Server — los mismos
+drivers que la app de escritorio, mediante el mismo código de backend.
+
+Las herramientas de lectura funcionan igual en todos. Las de escritura
+(`insert_row`, `update_cell`, `delete_rows`) también, pero
+`apply_structure_change` es solo para SQL y además no está soportada en SQL
+Server, cuyo generador de DDL T-SQL todavía no existe: ahí devuelve un error
+de «driver no soportado».

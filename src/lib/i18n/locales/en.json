@@ -138,6 +138,13 @@
       "ssl": "SSL",
       "sqlitePath": "Database file path",
       "sqlitePathPlaceholder": "C:\\path\\to\\database.db",
+      "mssqlInstance": "Instance name (optional)",
+      "mssqlInstancePlaceholder": "SQLEXPRESS",
+      "mssqlTrustCert": "Trust server certificate",
+      "mssqlTrustCertHint": "Required for the self-signed certificates most on-premise instances use.",
+      "mssqlAuth": "Authentication",
+      "mssqlAuth_sql": "SQL Server login",
+      "mssqlAuth_windows": "Windows (NTLM)",
       "authSource": "Auth source",
       "authSourcePlaceholder": "admin",
       "connectionString": "Connection string",
@@ -630,7 +637,8 @@
       "refColumns": "referenced columns",
       "add": "Add foreign key"
     },
-    "readOnlyMongo": "Read-only (MongoDB)"
+    "readOnlyMongo": "Read-only (MongoDB)",
+    "readOnlySqlServer": "Read-only (SQL Server)"
   },
   "view": {
     "loading": "Loading view…",
