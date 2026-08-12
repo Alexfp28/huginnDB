@@ -110,6 +110,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A narrow grid column no longer hides the field name in favour of its type.**
+  The header lays the name and the data type on one line, and both were plain
+  flex items — but only the name was allowed to shrink, because `truncate` is
+  what lets a flex item go below its content width. So the first thing a column
+  too narrow for its content threw away was the one part that identifies it: a
+  `BOOLEAN` column rendered as a bare "BOOL", with nothing left of the name. The
+  priority is now inverted — the type is clipped away first, down to nothing,
+  and the name only starts eliding once the type is gone.
+- **The column-header tooltip describes the field instead of advertising
+  sort actions.** It now shows the full name (the thing a narrow column
+  clips), the full type, primary/foreign key with the referenced
+  `table.column`, nullability when the catalog knows it, and the current sort
+  state — and it is translated, which it never was. The old text offered
+  "Ctrl/Cmd+click to add a column", which read as an offer to *create* a
+  column: wrong, and alarming in a window that also runs DDL. Sorting stays
+  discoverable through the arrow glyph on every header.
+
 - **"Databases to show" no longer leaks between environments.** The subset was
   stored on the connection, and a connection is global — so restricting a shared
   test server to one client's database while inside a "Producción" environment
