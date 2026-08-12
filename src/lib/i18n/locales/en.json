@@ -482,7 +482,15 @@
     "insertNewRow": "Insert new row",
     "viewModeTable": "Table view",
     "viewModeList": "List view",
-    "fieldsCount": "{{count}} fields"
+    "fieldsCount": "{{count}} fields",
+    "headerPk": "Primary key",
+    "headerFk": "Foreign key",
+    "headerFkTo": "Foreign key → {{target}}",
+    "headerNullable": "Nullable",
+    "headerNotNull": "Not null",
+    "headerSortedAsc": "Sorted ascending",
+    "headerSortedDesc": "Sorted descending",
+    "headerSortLevel": "level {{level}}"
   },
   "tableData": {
     "refresh": "Refresh",
