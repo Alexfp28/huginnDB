@@ -57,15 +57,20 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useSchema, tableKey } from "@/stores/session/schema";
 import { useTabs, retitleTabsForTableRename } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
+import { useUi } from "@/stores/session/ui";
 import { tableTabTitle } from "@/lib/connectionLabel";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { api } from "@/lib/tauri";
-import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
+import {
+  openTrackedDatabaseView,
+  persistLaunchState,
+} from "@/stores/session/persistedTabs";
 import { toast } from "sonner";
 import { splitSql } from "@/lib/sql/sqlSplit";
 import type { SchemaTableMetric } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import {
   ContextMenu,
   ContextMenuAction,
@@ -184,6 +189,25 @@ function ColumnSkeleton({ label }: { label: string }) {
       ))}
     </div>
   );
+}
+
+/**
+ * Resolve the "databases to show" subset for a connection, in the two layers it
+ * is stored in: the active environment's override wins, and the profile's
+ * `visible_databases` is the fallback. `null` from either layer means "show
+ * all"; the difference is that the environment can *hold* a `null` to widen a
+ * subset the profile narrows (see `useUi.databaseVisibility`).
+ *
+ * A hook rather than a plain function because both layers are stores and the
+ * result has to re-render on either changing. Both selectors return an existing
+ * reference (or `null`/`undefined`), never a fresh array, so gotcha #1 holds.
+ */
+export function useVisibleDatabases(connectionId: string): string[] | null {
+  const override = useUi((s) => s.databaseVisibility[connectionId]);
+  const fromProfile = useConnections(
+    (s) => s.profiles.find((p) => p.id === connectionId)?.visible_databases ?? null,
+  );
+  return override !== undefined ? override : fromProfile;
 }
 
 export function SchemaExplorer({
@@ -416,7 +440,6 @@ export function ConnectionActionsMenu({
         <DatabaseVisibilityDialog
           profileId={connectionId}
           databases={databases.map((db) => db.name)}
-          selected={profile?.visible_databases ?? null}
           onClose={() => setDbPickerOpen(false)}
         />
       )}
@@ -856,8 +879,17 @@ function MultiDbExplorer({
   );
   const driver = profile?.driver;
   const canCreateDatabase = driver === "postgres" || driver === "mysql";
-  // DataGrip-style visible-databases subset. `null`/empty = show all.
-  const visibleDatabases = profile?.visible_databases ?? null;
+  // DataGrip-style visible-databases subset. `null`/empty = show all. Resolved
+  // across both layers (this environment's override, then the profile) rather
+  // than read off the profile: the profile is global, so reading it directly is
+  // what used to leak one environment's subset into all the others.
+  const visibleDatabases = useVisibleDatabases(parentId);
+  // Whether the subset in force is this environment's override rather than the
+  // profile's default — worth saying out loud in the header, since the same
+  // connection can legitimately show a different set in the next environment.
+  const subsetIsLocal = useUi(
+    (s) => s.databaseVisibility[parentId] !== undefined,
+  );
   const visibleSet = useMemo(
     () =>
       visibleDatabases && visibleDatabases.length > 0
@@ -1072,10 +1104,15 @@ function MultiDbExplorer({
               is stated here instead. */}
           {visibleSet && (
             <div className="text-[11px] text-muted-foreground">
-              {t("schema.selectDatabases.subsetActive", {
-                count: visibleSet.size,
-                total: cs.databases.length,
-              })}
+              {t(
+                subsetIsLocal
+                  ? "schema.selectDatabases.subsetActiveLocal"
+                  : "schema.selectDatabases.subsetActive",
+                {
+                  count: visibleSet.size,
+                  total: cs.databases.length,
+                },
+              )}
             </div>
           )}
         </div>
@@ -2328,25 +2365,51 @@ function CreateCollectionDialog({
   );
 }
 
-/** DataGrip-style "choose which databases to show" picker (#64). Persists the
- *  subset on the profile (`visible_databases`); "all selected" stores `null`
- *  so newly-created databases keep appearing automatically. Save is disabled
- *  with nothing selected — an empty subset would hide the whole tree, which is
- *  never what the user wants. */
+/** DataGrip-style "choose which databases to show" picker (#64). "All selected"
+ *  stores `null` so newly-created databases keep appearing automatically, and
+ *  save is disabled with nothing selected — an empty subset would hide the whole
+ *  tree, which is never what the user wants.
+ *
+ *  Where the subset lands is the user's choice, because the two scopes answer
+ *  different questions. **This environment** (the default) writes an override
+ *  onto `LaunchState.databaseVisibility`, so the same test server can show every
+ *  replica in one environment and a single client's database in another — the
+ *  thing that was impossible while the subset lived only on the (global)
+ *  profile. **All environments** writes `visible_databases` on the profile,
+ *  which is also what travels through export/import and shared origins, and
+ *  clears any local override so the choice is visibly in effect here too.
+ *
+ *  A profile published by a shared origin (`origin_id`) is read-only, so only
+ *  the environment scope is offered for it: a profile-scoped save would be
+ *  silently undone by the next sync. */
 function DatabaseVisibilityDialog({
   profileId,
   databases,
-  selected,
   onClose,
 }: {
   profileId: string;
   /** Every database name currently known for the connection. */
   databases: string[];
-  /** The persisted subset, or null when all are shown. */
-  selected: string[] | null;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const profile = useConnections((s) =>
+    s.profiles.find((p) => p.id === profileId),
+  );
+  const override = useUi((s) => s.databaseVisibility[profileId]);
+  const hasOverride = override !== undefined;
+  const fromProfile = profile?.visible_databases ?? null;
+  const selected = hasOverride ? override : fromProfile;
+  const fromOrigin = !!profile?.origin_id;
+  const [scope, setScope] = useState<"environment" | "profile">(() => {
+    // Editing happens where the value the user is looking at actually lives, so
+    // tweaking an existing filter doesn't silently fork it into two layers. The
+    // exception is a value that doesn't exist yet: a brand-new subset defaults
+    // to this environment — the narrower, reversible choice, and the one people
+    // expect (assuming otherwise is what made the original bug a surprise).
+    if (hasOverride || fromOrigin) return "environment";
+    return fromProfile ? "profile" : "environment";
+  });
   const [sel, setSel] = useState<Set<string>>(
     () => new Set(selected ?? databases),
   );
@@ -2366,6 +2429,10 @@ function DatabaseVisibilityDialog({
   const toggleAll = () =>
     setSel(allSelected ? new Set() : new Set(databases));
 
+  /** Write the launch state so the override survives a restart / switch. */
+  const persist = () =>
+    persistLaunchState(Array.from(useConnections.getState().active));
+
   const submit = async () => {
     if (sel.size === 0) return;
     setSubmitting(true);
@@ -2373,17 +2440,48 @@ function DatabaseVisibilityDialog({
     try {
       const chosen = databases.filter((n) => sel.has(n));
       // "All" → null so future databases stay visible; a proper subset is
-      // stored verbatim.
+      // stored verbatim. At environment scope the `null` is still recorded as an
+      // override (the key stays present), which is how this environment shows
+      // everything while the profile keeps a narrower default for the others.
       const value = chosen.length === databases.length ? null : chosen;
-      const profile = useConnections
-        .getState()
-        .profiles.find((p) => p.id === profileId);
-      if (profile) {
-        await useConnections.getState().save({
-          ...profile,
-          visible_databases: value,
-        });
+      if (scope === "profile") {
+        const stored = useConnections
+          .getState()
+          .profiles.find((p) => p.id === profileId);
+        if (stored) {
+          await useConnections.getState().save({
+            ...stored,
+            visible_databases: value,
+          });
+        }
+        // Drop the local override, or the user picks "all environments" and
+        // sees nothing change here — the override would keep winning.
+        if (hasOverride) {
+          useUi.getState().setDatabaseVisibilityFor(profileId, undefined);
+          await persist();
+        }
+      } else {
+        // "Show everything here" on top of a connection that already shows
+        // everything is an override that overrides nothing — drop the key
+        // instead of persisting a no-op that outlives the profile's default.
+        const local = value === null && fromProfile === null ? undefined : value;
+        useUi.getState().setDatabaseVisibilityFor(profileId, local);
+        await persist();
       }
+      onClose();
+    } catch (e) {
+      setError(String(e));
+      setSubmitting(false);
+    }
+  };
+
+  /** Discard this environment's override and fall back to the profile's subset. */
+  const clearOverride = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      useUi.getState().setDatabaseVisibilityFor(profileId, undefined);
+      await persist();
       onClose();
     } catch (e) {
       setError(String(e));
@@ -2400,6 +2498,54 @@ function DatabaseVisibilityDialog({
             {t("schema.selectDatabases.description")}
           </DialogDescription>
         </DialogHeader>
+        <div className="space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-muted-foreground">
+              {t("schema.selectDatabases.scopeLabel")}
+            </span>
+            {/* No control at all for an origin-published connection — a
+                one-option segmented strip reads as a dead toggle. The hint
+                below says why the choice isn't there. */}
+            {fromOrigin ? (
+              <span className="text-xs font-medium">
+                {t("schema.selectDatabases.scopeEnvironment")}
+              </span>
+            ) : (
+              <Segmented
+                size="sm"
+                aria-label={t("schema.selectDatabases.scopeLabel")}
+                value={scope}
+                onValueChange={setScope}
+                options={[
+                  {
+                    value: "environment" as const,
+                    label: t("schema.selectDatabases.scopeEnvironment"),
+                  },
+                  {
+                    value: "profile" as const,
+                    label: t("schema.selectDatabases.scopeProfile"),
+                  },
+                ]}
+              />
+            )}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {fromOrigin
+              ? t("schema.selectDatabases.scopeOriginHint")
+              : scope === "environment"
+                ? t("schema.selectDatabases.scopeEnvironmentHint")
+                : t("schema.selectDatabases.scopeProfileHint")}
+          </p>
+          {hasOverride && (
+            <button
+              onClick={() => void clearOverride()}
+              disabled={submitting}
+              className="text-[11px] text-primary underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              {t("schema.selectDatabases.useProfileDefault")}
+            </button>
+          )}
+        </div>
         <div className="flex items-center justify-between pb-1">
           <span className="text-xs text-muted-foreground">
             {t("schema.selectDatabases.count", {

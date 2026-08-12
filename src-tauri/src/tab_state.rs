@@ -198,6 +198,36 @@ pub struct LaunchState {
     /// leftover id with no matching profile is harmless (never matches, so
     /// effectively ignored), same reasoning as `collapsed_connections`.
     pub visible_connections: Option<Vec<String>>,
+    /// Per-connection override of the "databases to show" subset
+    /// ([`crate::state::ConnectionProfile::visible_databases`]), keyed by
+    /// connection id.
+    ///
+    /// The profile-level field stays the **default**: it ships with the profile
+    /// through export/import and shared origins, so a curated file can still
+    /// arrive with a sensible subset. What it cannot be is the *only* value,
+    /// because a profile is global while the reason to hide databases is not:
+    /// the same test server is a full replica set in one environment and a
+    /// single client's database in another, and storing that on the profile
+    /// made the narrower filter leak into every environment (the reported bug —
+    /// the same one `visible_connections` had one level up, before it moved
+    /// here).
+    ///
+    /// The two layers resolve as: **key present → this environment's value
+    /// wins; key absent → fall back to the profile**. That is why the value is
+    /// itself an `Option`: `Some(names)` restricts, and `None` means "show all
+    /// *here*" — an override that has to be distinguishable from "no override",
+    /// or an environment could never widen a subset the profile narrows.
+    ///
+    /// Cloning the profile per environment would express the same thing, and is
+    /// deliberately not what we do: it would duplicate credentials and keychain
+    /// entries, open a second pool against one server, and break the invariant
+    /// that connections are global and an environment only scopes which of them
+    /// are in play (see [`Environment`]).
+    ///
+    /// An entry whose profile is gone is swept by `delete_profile` — unlike the
+    /// id lists above, a map entry carries a payload, so it is worth reaping
+    /// rather than leaving inert.
+    pub database_visibility: HashMap<String, Option<Vec<String>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -368,6 +398,10 @@ impl RawState {
             // migration, and that global value is left untouched (a one-time
             // dangling field, harmless — see the `prefs.rs` removal note).
             visible_connections: None,
+            // No overrides on migration: every connection keeps resolving to
+            // its profile's `visible_databases`, so the upgrade is a no-op for
+            // anyone who never opens the picker again.
+            database_visibility: HashMap::new(),
         };
         let top_level_layout = self.internal_layout;
 
@@ -862,6 +896,82 @@ mod tests {
                 .visible_connections,
             Some(vec!["c1".to_string(), "c2".to_string()])
         );
+    }
+
+    #[test]
+    fn database_visibility_overrides_are_scoped_per_environment() {
+        // The bug this guards: `visible_databases` lives on the (global)
+        // profile, so a subset chosen while inside one environment showed up in
+        // every other one. Each environment must round-trip its own map, and an
+        // environment that never overrode anything must come back empty rather
+        // than inheriting a neighbour's.
+        let v4 = r#"{
+            "version": 4,
+            "activeEnvironmentId": "prod",
+            "environments": [
+                { "id": "prod", "launch": { "databaseVisibility": {
+                    "test-server": ["client_a"]
+                } } },
+                { "id": "pruebas", "launch": {} }
+            ]
+        }"#;
+        let raw: RawState = serde_json::from_str(v4).unwrap();
+        let state = raw.into_state();
+        assert_eq!(
+            state.environments[0].launch.database_visibility["test-server"],
+            Some(vec!["client_a".to_string()])
+        );
+        assert!(state.environments[1].launch.database_visibility.is_empty());
+
+        let json = serde_json::to_string(&state).unwrap();
+        let reparsed: RawState = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            reparsed.into_state().environments[0]
+                .launch
+                .database_visibility["test-server"],
+            Some(vec!["client_a".to_string()])
+        );
+    }
+
+    #[test]
+    fn a_null_database_visibility_override_survives_the_round_trip() {
+        // `null` is the override that means "show all *here*", and it is only
+        // useful if it stays distinguishable from "no override at all" — that
+        // is what lets an environment widen a subset its profile narrows.
+        // Serde would happily collapse the two if the value stopped being an
+        // `Option`, and nothing else in the app would notice.
+        let v4 = r#"{
+            "version": 4,
+            "environments": [
+                { "id": "a", "launch": { "databaseVisibility": { "conn": null } } }
+            ]
+        }"#;
+        let raw: RawState = serde_json::from_str(v4).unwrap();
+        let state = raw.into_state();
+        let map = &sole_env(&state).launch.database_visibility;
+        assert!(
+            map.contains_key("conn"),
+            "an explicit null must stay an override, not disappear"
+        );
+        assert_eq!(map["conn"], None);
+
+        let json = serde_json::to_string(&state).unwrap();
+        let reparsed: RawState = serde_json::from_str(&json).unwrap();
+        let reloaded = reparsed.into_state();
+        let map = &sole_env(&reloaded).launch.database_visibility;
+        assert!(map.contains_key("conn"));
+        assert_eq!(map["conn"], None);
+    }
+
+    #[test]
+    fn v3_blob_migrates_without_any_database_visibility_override() {
+        // Pre-v4 blobs predate the override entirely: every connection must
+        // keep resolving to its profile's `visible_databases`, so the upgrade
+        // changes nothing on screen.
+        let v3 = r#"{ "version": 3, "connections": { "c": { "tabs": [] } } }"#;
+        let raw: RawState = serde_json::from_str(v3).unwrap();
+        let state = raw.into_state();
+        assert!(sole_env(&state).launch.database_visibility.is_empty());
     }
 
     #[test]

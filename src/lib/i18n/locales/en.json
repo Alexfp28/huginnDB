@@ -343,7 +343,15 @@
       "count": "{{selected}} of {{total}} selected",
       "subsetActive": "Showing {{count}} of {{total}} databases",
       "selectAll": "Select all",
-      "deselectAll": "Deselect all"
+      "deselectAll": "Deselect all",
+      "subsetActiveLocal": "Showing {{count}} of {{total}} databases (this environment)",
+      "scopeLabel": "Apply to",
+      "scopeEnvironment": "This environment",
+      "scopeProfile": "All environments",
+      "scopeEnvironmentHint": "Only this environment sees the subset. The same connection keeps its own choice in the others.",
+      "scopeProfileHint": "Saved on the connection, so every environment without its own choice follows it. It also travels with export and shared origins.",
+      "scopeOriginHint": "This connection comes from a shared origin and can't be edited locally, so the subset is kept in this environment only.",
+      "useProfileDefault": "Use the connection's subset instead"
     },
     "dropDatabase": {
       "confirm": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server. This cannot be undone."

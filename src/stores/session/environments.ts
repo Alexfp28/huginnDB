@@ -118,11 +118,6 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
   },
 
   restoreSession: async () => {
-    // Gated on the same preference as the launch restore: with reconnect off
-    // there is nothing to bring up, and the layout deliberately rides along with
-    // the reconnect (see `hydrateWorkspaceLayout`).
-    if (!usePreferences.getState().prefs.ui.reconnectOnLaunch) return;
-
     let launch;
     try {
       launch = await api.getLaunchState();
@@ -131,6 +126,15 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       return;
     }
 
+    // The three view filters are restored *before* the `reconnectOnLaunch` gate
+    // below, unlike everything else here. They describe how this environment
+    // looks, not what it reopens: nothing about them depends on a pool being
+    // live, `persistLaunchState` writes them regardless of the preference, and
+    // `switchTo` clears them on the way out — so leaving them behind the gate
+    // meant that with reconnect off, entering an environment showed the
+    // *previous* one's filters (or none at all after a restart), which is the
+    // leak this whole per-environment scoping exists to close.
+    //
     // Folds first, before anything reconnects: set afterwards, a row the user had
     // folded would render open for as long as the reconnect takes and then snap
     // shut.
@@ -140,6 +144,15 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     // since `null` (show all) is itself meaningful and must overwrite whatever
     // the previous environment left behind.
     useUi.getState().setVisibleConnections(launch.visibleConnections ?? null);
+    // And for the per-connection database subsets, for the same reason and with
+    // the same unconditional write: an empty map is meaningful ("no environment
+    // override — every connection follows its profile") and must overwrite the
+    // outgoing environment's overrides rather than being skipped as falsy.
+    useUi.getState().setDatabaseVisibility(launch.databaseVisibility ?? {});
+
+    // Everything from here down brings pools back up, and the layout
+    // deliberately rides along with the reconnect (see `hydrateWorkspaceLayout`).
+    if (!usePreferences.getState().prefs.ui.reconnectOnLaunch) return;
 
     if (launch.activeConnections.length > 0) {
       // Only reconnect ids that still have a profile, and skip anything already
@@ -207,6 +220,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       const leavingActiveTab = useTabs.getState().activeId;
       const leavingCollapsed = useUi.getState().collapsedConnections;
       const leavingVisible = useUi.getState().visibleConnections;
+      const leavingDatabaseVisibility = useUi.getState().databaseVisibility;
       await flushAllTabState();
 
       // From here until `restoreSession` finishes rebuilding the incoming
@@ -244,6 +258,12 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       // how a subset tuned for the outgoing environment used to stay active
       // after switching to another one.
       useUi.getState().setVisibleConnections(null);
+      // Clearing the database-subset overrides here is what actually fixes the
+      // reported leak between environments: left in place, a subset chosen for a
+      // test server inside "Producción" would still be filtering that same
+      // connection's tree after switching back to "Pruebas". `restoreSession`
+      // fills the map back in from the incoming environment.
+      useUi.getState().setDatabaseVisibility({});
 
       // Emptying the tab store above wakes the per-connection subscriptions,
       // but `suspendSaves()` already turned `scheduleSave` into a no-op, so
@@ -271,6 +291,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         activeTabId: leavingActiveTab,
         collapsedConnections: leavingCollapsed,
         visibleConnections: leavingVisible,
+        databaseVisibility: leavingDatabaseVisibility,
       });
 
       // 5. Hand the backend over to the incoming environment.
@@ -315,6 +336,14 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     const sourceVisible = replicate.connections
       ? useUi.getState().visibleConnections
       : null;
+    // The per-connection database subsets ride with the connections too: they
+    // describe how each copied connection is meant to be seen, so replicating
+    // the set without them would reopen the same servers showing everything.
+    // The new environment owns the copy from that point on — narrowing it there
+    // never touches the source environment, which is the point of the override.
+    const sourceDatabaseVisibility = replicate.connections
+      ? useUi.getState().databaseVisibility
+      : {};
     let sourceTabs: [string, Awaited<ReturnType<typeof api.getTabState>>][] = [];
     let sourceLayout: unknown = null;
     try {
@@ -355,6 +384,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
           activeTabId: null,
           collapsedConnections: sourceCollapsed,
           visibleConnections: sourceVisible,
+          databaseVisibility: sourceDatabaseVisibility,
         });
         // Now that the new environment has a launch state, bring it up for
         // real. `switchTo` above already ran `restoreSession` against what was

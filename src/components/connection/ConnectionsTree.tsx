@@ -95,10 +95,12 @@ export function ConnectionsTree() {
   const groupCollapse = useConnectionGroupCollapse();
 
   // DataGrip-style subset of connections to show, one level up from the
-  // per-connection `visible_databases` (SchemaExplorer.tsx). Lives in `useUi`,
-  // persisted per environment via `LaunchState.visibleConnections` — not in
-  // prefs, so switching environments doesn't drag one's filter into another's
-  // tree.
+  // per-connection database subset (`useVisibleDatabases`, SchemaExplorer.tsx).
+  // Lives in `useUi`, persisted per environment via
+  // `LaunchState.visibleConnections` — not in prefs, so switching environments
+  // doesn't drag one's filter into another's tree. The level below now resolves
+  // the same way, through a per-environment override on top of the profile's
+  // `visible_databases`.
   const visibleConnectionIds = useUi((s) => s.visibleConnections);
   const visibleSet = useMemo(
     () =>

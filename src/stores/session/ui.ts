@@ -53,6 +53,33 @@ interface UiState {
    */
   visibleConnections: string[] | null;
   setVisibleConnections: (ids: string[] | null) => void;
+  /**
+   * Per-connection override of the "databases to show" subset, keyed by
+   * connection id — the same "hide the noise" filter as `visibleConnections`,
+   * one level down.
+   *
+   * `ConnectionProfile.visible_databases` remains the default (it is global, and
+   * ships with the profile through export and shared origins); an entry here
+   * overrides it for the active environment only. Key present → override, key
+   * absent → profile. The value is nullable on purpose: `null` means "show all
+   * here", which is how an environment widens a subset the profile narrows.
+   * Never read this map directly in a component — go through
+   * `useVisibleDatabases`, which resolves both layers.
+   *
+   * Persisted per environment via `LaunchState.databaseVisibility`, restored and
+   * cleared in exactly the same three places as `visibleConnections`.
+   */
+  databaseVisibility: Record<string, string[] | null>;
+  /** Replace the whole map — restoring an environment, or clearing on the way out. */
+  setDatabaseVisibility: (map: Record<string, string[] | null>) => void;
+  /**
+   * Set one connection's override, or drop it (`undefined`) so the connection
+   * falls back to its profile's subset.
+   */
+  setDatabaseVisibilityFor: (
+    connectionId: string,
+    value: string[] | null | undefined,
+  ) => void;
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -83,4 +110,18 @@ export const useUi = create<UiState>((set) => ({
 
   visibleConnections: null,
   setVisibleConnections: (ids) => set({ visibleConnections: ids }),
+
+  databaseVisibility: {},
+  setDatabaseVisibility: (map) => set({ databaseVisibility: map }),
+  setDatabaseVisibilityFor: (connectionId, value) =>
+    set((s) => {
+      const next = { ...s.databaseVisibility };
+      // `undefined` removes the key rather than storing it: the difference
+      // between "no override" and "override = show all" (`null`) is the whole
+      // point of the two layers, and `{ id: undefined }` would serialise as the
+      // latter.
+      if (value === undefined) delete next[connectionId];
+      else next[connectionId] = value;
+      return { databaseVisibility: next };
+    }),
 }));

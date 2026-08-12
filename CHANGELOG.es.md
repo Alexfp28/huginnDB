@@ -8,6 +8,35 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Corregido
+
+- **"Bases de datos a mostrar" ya no se filtra entre entornos.** El
+  subconjunto se guardaba en la conexión, y una conexión es global: al
+  restringir un servidor de pruebas compartido a la base de datos de un
+  cliente desde un entorno de "Producción", también desaparecían el resto
+  de bases en el entorno al que ese servidor pertenece de verdad. El
+  selector ahora pregunta dónde se aplica la elección: **este entorno**
+  (por defecto) la mantiene local, de modo que la misma conexión puede
+  mostrar todas las réplicas en un entorno y una sola base en otro;
+  **todos los entornos** la guarda en la conexión como hasta ahora, que es
+  además el valor que viaja en la exportación/importación de perfiles y en
+  los orígenes compartidos. Un entorno sin elección propia sigue a la de la
+  conexión, así que nada cambia hasta que elijas otra cosa y los
+  subconjuntos existentes siguen funcionando igual. Una conexión publicada
+  por un origen compartido es de solo lectura, así que en ella solo se
+  ofrece el ámbito local — antes no había forma de filtrar sus bases sin
+  que la siguiente sincronización lo deshiciera. Las conexiones **no** se
+  clonan por entorno a propósito: duplicaría credenciales y entradas del
+  llavero y abriría un segundo pool contra el mismo servidor. Lo que se
+  acota es la vista, no la conexión.
+- **Los filtros del árbol de conexiones sobreviven con la reconexión
+  automática desactivada.** Qué conexiones se muestran, qué filas están
+  plegadas y los nuevos subconjuntos de bases por entorno se restauran al
+  entrar en un entorno independientemente de la preferencia *Reconectar al
+  arrancar*. Describen cómo se ve un entorno, no qué reabre; detrás de esa
+  condición, entrar en un entorno con la reconexión desactivada dejaba en
+  pantalla los filtros del entorno anterior.
+
 ## [1.12.1] — 2026-08-05
 
 ### Añadido

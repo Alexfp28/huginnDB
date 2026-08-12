@@ -305,6 +305,11 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
             if env.launch.selected_connection_id.as_deref() == Some(id.as_str()) {
                 env.launch.selected_connection_id = None;
             }
+            // Unlike the id lists above (where a stale entry is inert and left
+            // alone on purpose), an override is a keyed payload: leaving it
+            // behind would grow the blob with dead keys and, if the id were
+            // ever reused, silently apply somebody else's subset.
+            env.launch.database_visibility.remove(&id);
         }
         guard.clone()
     };
