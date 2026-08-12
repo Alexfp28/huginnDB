@@ -181,12 +181,24 @@ Tunnel `mongodb+srv://` (Atlas) connections.
 (Number kept stable so cross-references elsewhere don't drift.)
 
 ### 8. Table ⇄ JSON view toggle
-A dedicated per-tab toggle between the flattened table grid and a raw
-document/JSON list view.
-- **Why deferred:** nested values already render as JSON in the grid cell and
-  expand in the `CellPreview` panel, which covers the common case; a dedicated
-  toggle is polish.
-- **Hook:** `TableDataTab.tsx` + the existing `CellPreview` panel.
+✅ **Shipped.** The toolbar toggle landed in 1.11.0 as a read-only list view;
+the pass after it turned that view into a Compass-style **document editor** —
+folded nested values, inline per-field editing, a BSON type picker, add field
+(`$set`) and delete field (`$unset`, the new `unset_field` command) — and made
+it available on every driver. See the `CHANGELOG.md` entries and
+`src/components/grid/DocumentListView.tsx` + `src/lib/grid/documentTree.ts`.
+
+Two limits are deliberate and worth knowing before extending it:
+- A field's **key cannot be renamed** in place (Compass allows it). A rename is
+  a `$set` of the new key plus an `$unset` of the old one, i.e. a two-write
+  operation that has to be atomic to be safe — that wants a document-level
+  update command rather than the per-field one this view uses.
+- Types whose display form isn't round-trippable (`Binary`, `DbPointer`,
+  `MinKey`, `MaxKey`) are not editable inline: the grid shows
+  `Binary(Generic, 12 bytes)`, not the bytes. Replacing such a field goes
+  through the type picker, which writes a fresh value of the chosen type.
+  Rendering real binary content would need `bson_to_json` to stop being lossy
+  for them (see this file's header note on display-vs-fidelity).
 
 ### 9. Richer query surface
 `explain`, `bulkWrite`, `findAndModify`, change streams, GridFS, a visual

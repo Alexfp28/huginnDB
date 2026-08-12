@@ -65,6 +65,10 @@ import {
   isNumericType,
 } from "@/lib/grid/columnKinds";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
+import {
+  DocumentListView,
+  type FieldSave,
+} from "@/components/grid/DocumentListView";
 import { formatComboForDisplay, getBinding, matchesBinding } from "@/lib/keybindings";
 import type {
   CellValue,
@@ -159,6 +163,21 @@ interface Props {
     columnName: string,
     value: string | null,
   ) => Promise<void>;
+  /**
+   * List-view field commit — `onCellSave` generalised to a field **path**, so
+   * a nested field (`["customData", "format"]`, `["tags", "2"]`) can be
+   * written as well as a top-level one, with the type it should be written
+   * as. Only the list view uses it; the table view has no nested cells to
+   * address. Absent → the list view renders read-only.
+   */
+  onFieldSave?: FieldSave;
+  /**
+   * List-view field removal (MongoDB `$unset`). Its presence is also what puts
+   * the list view in *document* mode: the add-field, delete-field and BSON
+   * type picker affordances only make sense where a row's field set is a
+   * property of the row itself, which is exactly where a `$unset` exists.
+   */
+  onFieldDelete?: (rowValues: CellValue[], path: string[]) => Promise<void>;
   /** Header click handler. `additive` is true when Ctrl/Cmd was held, which
    *  the parent uses to build a multi-column sort. */
   onSortChange?: (column: string, additive: boolean) => void;
@@ -291,17 +310,17 @@ interface Props {
   loading?: boolean;
   /**
    * Row layout: "table" (default) is the regular column grid; "list" renders
-   * each row as a read-only card with one `field: value` line per column —
-   * built for MongoDB documents, where a wide/nested shape makes the table
-   * layout scroll horizontally and flattens nested values into unreadable
-   * single-line JSON. Only `TableDataTab` ever passes "list", and only for
-   * `driver === "mongodb"`; every other caller keeps the default.
+   * each row as a card with one `field: value` line per column, folding
+   * nested objects/arrays — see `DocumentListView`. It was built for MongoDB
+   * documents but the problem it solves (a wide or nested row that scrolls
+   * horizontally and flattens nested values into one unreadable line) is not
+   * MongoDB's alone, so every driver can use it.
    *
-   * List mode is deliberately read-only: no inline cell editing, no FK
-   * overlay, no draft-row insert/duplicate UI (all of that is table-specific
-   * rendering). Per-row Copy (as JSON) and Delete still work since they
-   * don't need the editable-row UI; Duplicate and Insert are hidden in this
-   * mode for the same reason.
+   * List mode drives its own editing (inline per field, escalating to the
+   * same Monaco editor) through `onFieldSave`/`onFieldDelete`; what it does
+   * NOT have is the table-specific chrome — FK overlay, keyboard cell
+   * navigation, and the draft-row insert/duplicate UI — so Insert and
+   * Duplicate stay hidden while it is active.
    */
   viewMode?: "table" | "list";
 }
@@ -310,18 +329,6 @@ interface Props {
 function formatValue(v: CellValue): string {
   if (v === null || v === undefined) return "";
   if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
-/**
- * Render a field's value for the MongoDB "list" view. Unlike `formatValue`
- * (a single-line table cell), nested objects/arrays are pretty-printed —
- * the whole point of the list view is reading a wide/nested document
- * without flattening it into one unreadable line.
- */
-function formatListValue(v: CellValue): string {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object") return JSON.stringify(v, null, 2);
   return String(v);
 }
 
@@ -1045,6 +1052,8 @@ export function DataGrid({
   onDuplicateRow,
   onDeleteRow,
   onBulkDelete,
+  onFieldSave,
+  onFieldDelete,
   getRowKey,
   onSelectionChange,
   draftRow,
@@ -1088,6 +1097,11 @@ export function DataGrid({
     rowValues: CellValue[];
     column: ColumnMeta;
     value: string;
+    /** Set when the editor was opened from the list view: the field's path
+     *  from the document root plus its BSON type, so the commit goes through
+     *  `onFieldSave` (which can address a nested field) rather than
+     *  `onCellSave` (which only knows top-level columns). */
+    field?: { path: string[]; type: string };
   } | null>(null);
 
   /**
@@ -1388,6 +1402,15 @@ export function DataGrid({
   const zebraStripes = usePreferences((s) => selectGridPrefs(s).zebraStripes);
   const stickyHeader = usePreferences((s) => selectGridPrefs(s).stickyHeader);
   const cellPreview = usePreferences((s) => selectGridPrefs(s).cellPreview);
+  // List-view layout prefs (Settings → Appearance → data view). Subscribed as
+  // primitives so the selectors stay reference-stable (gotcha #1).
+  const listExpandNested = usePreferences(
+    (s) => selectGridPrefs(s).listExpandNested,
+  );
+  const listShowTypes = usePreferences((s) => selectGridPrefs(s).listShowTypes);
+  const listLineNumbers = usePreferences(
+    (s) => selectGridPrefs(s).listLineNumbers,
+  );
 
   /**
    * Persisted grid "zoom" (HeidiSQL-style). A single px row-height drives
@@ -1929,8 +1952,9 @@ export function DataGrid({
     rowValues: CellValue[],
     column: ColumnMeta,
     value: string,
+    field?: { path: string[]; type: string },
   ) {
-    setEditorTarget({ rowValues, column, value });
+    setEditorTarget({ rowValues, column, value, field });
     setEditorOpen(true);
   }
 
@@ -1941,15 +1965,21 @@ export function DataGrid({
     rowValues: CellValue[],
     column: ColumnMeta,
     value: string,
+    field?: { path: string[]; type: string },
   ) {
-    const canSave = !!(editable && onCellSave);
+    // A list-view field commits through `onFieldSave` (it may be nested and
+    // carries its own type); a table cell through `onCellSave` as before.
+    const canSave = !!(editable && (field ? onFieldSave : onCellSave));
     useCellEditor.getState().open({
       ownerId: tabId,
       columnName: column.name,
       value,
       readonly: !canSave,
       onSave: canSave
-        ? (v) => onCellSave!(rowValues, column.name, v)
+        ? (v) =>
+            field
+              ? onFieldSave!(rowValues, field.path, v, field.type)
+              : onCellSave!(rowValues, column.name, v)
         : undefined,
     });
     openSideEditor();
@@ -1961,11 +1991,12 @@ export function DataGrid({
     rowValues: CellValue[],
     column: ColumnMeta,
     value: string,
+    field?: { path: string[]; type: string },
   ) {
     if (cellEditorMode === "side") {
-      openSidePanelEditor(rowValues, column, value);
+      openSidePanelEditor(rowValues, column, value, field);
     } else {
-      openModalEditor(rowValues, column, value);
+      openModalEditor(rowValues, column, value, field);
     }
   }
 
@@ -2349,77 +2380,32 @@ export function DataGrid({
         onClick={() => setSelectedCell(null)}
       >
         {viewMode === "list" ? (
-          <div className="divide-y divide-border/60">
-            {visibleRows.map((rowValues, i) => (
-              <div
-                key={i}
-                className={cn(
-                  "group/doc px-3 py-2",
-                  zebraStripes && i % 2 === 1 && "bg-muted/30",
-                )}
-              >
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="shrink-0 tabular-nums text-3xs text-muted-foreground">
-                    {i + 1}
-                  </span>
-                  <span className="text-3xs uppercase text-muted-foreground/50">
-                    {t("dataGrid.fieldsCount", { count: result.columns.length })}
-                  </span>
-                  <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 group-hover/doc:opacity-100">
-                    <button
-                      type="button"
-                      className="rounded p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-                      title={t("dataGrid.ctxCopy")}
-                      onClick={() =>
-                        copyToClipboard(rowToJson(rowValues, result.columns))
-                      }
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </button>
-                    {onDeleteRow && (
-                      <button
-                        type="button"
-                        className="rounded p-1 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
-                        title={t("dataGrid.ctxDeleteRow")}
-                        onClick={() => onDeleteRow(rowValues)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </span>
-                </div>
-                <div
-                  className="space-y-0.5 pl-4"
-                  style={{ fontSize: cellStyle.fontSize }}
-                >
-                  {result.columns.map((col, ci) => {
-                    const v = rowValues[ci];
-                    return (
-                      <div key={col.name} className="flex gap-2 font-mono leading-relaxed">
-                        <span className="shrink-0 font-semibold text-foreground/90">
-                          {col.name}:
-                        </span>
-                        {v === null ? (
-                          <span className="italic text-muted-foreground">
-                            {nullDisplay}
-                          </span>
-                        ) : (
-                          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-muted-foreground">
-                            {formatListValue(v)}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-            {visibleRows.length === 0 && !draftRow && (
-              <div className="px-4 py-8 text-center text-xs text-muted-foreground">
-                No rows
-              </div>
-            )}
-          </div>
+          <DocumentListView
+            columns={result.columns}
+            rows={visibleRows}
+            rowTypes={result.row_types}
+            nullDisplay={nullDisplay}
+            zebraStripes={zebraStripes}
+            fontSize={cellStyle.fontSize}
+            expandNested={listExpandNested}
+            showTypes={listShowTypes}
+            lineNumbers={listLineNumbers}
+            onFieldSave={editable ? onFieldSave : undefined}
+            onFieldDelete={editable ? onFieldDelete : undefined}
+            onDeleteRow={onDeleteRow}
+            onExpandField={(rowValues, path, value, type) =>
+              openHeavyEditor(
+                rowValues,
+                // Synthetic column: the heavy editor only reads the name (as
+                // its title) and the commit is routed by `field` below.
+                { name: path.join("."), data_type: type },
+                value,
+                { path, type },
+              )
+            }
+            copyToClipboard={copyToClipboard}
+            emptyLabel={t("dataGrid.noRows")}
+          />
         ) : (
         <>
         {/* `select-none`: row range-select via Shift+Click otherwise also
@@ -2580,7 +2566,7 @@ export function DataGrid({
                   colSpan={result.columns.length + 2}
                   className="px-4 py-8 text-center text-xs text-muted-foreground"
                 >
-                  No rows
+                  {t("dataGrid.noRows")}
                 </td>
               </tr>
             )}
@@ -2665,15 +2651,27 @@ export function DataGrid({
           initialValue={editorTarget.value}
           columnName={editorTarget.column.name}
           ownerId={tabId}
-          readonly={!editable || !onCellSave}
+          readonly={
+            !editable || !(editorTarget.field ? onFieldSave : onCellSave)
+          }
           onSave={
-            editable && onCellSave
+            editable && (editorTarget.field ? onFieldSave : onCellSave)
               ? async (newValue) => {
-                  await onCellSave(
-                    editorTarget.rowValues,
-                    editorTarget.column.name,
-                    newValue,
-                  );
+                  const field = editorTarget.field;
+                  if (field) {
+                    await onFieldSave!(
+                      editorTarget.rowValues,
+                      field.path,
+                      newValue,
+                      field.type,
+                    );
+                  } else {
+                    await onCellSave!(
+                      editorTarget.rowValues,
+                      editorTarget.column.name,
+                      newValue,
+                    );
+                  }
                 }
               : undefined
           }

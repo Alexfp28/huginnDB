@@ -213,6 +213,33 @@ pub fn string_to_bson(value: Option<&str>, type_hint: Option<&str>) -> Bson {
             .map(Bson::DateTime)
             .unwrap_or_else(|_| Bson::String(s.to_string())),
         "null" => Bson::Null,
+        "undefined" => Bson::Undefined,
+        "minkey" => Bson::MinKey,
+        "maxkey" => Bson::MaxKey,
+        "javascript" | "code" => {
+            try_extjson(s).unwrap_or_else(|| Bson::JavaScriptCode(s.to_string()))
+        }
+        "symbol" => try_extjson(s).unwrap_or_else(|| Bson::Symbol(s.to_string())),
+        // The four types below have no natural plain-text spelling, so the
+        // canonical Extended JSON form is accepted first (that is what the
+        // document list view's type picker seeds the editor with) and a
+        // friendlier shorthand second: raw base64 for `binary`, `/pat/flags`
+        // for `regex`, `t,i` or `Timestamp(t, i)` for `timestamp`, and the
+        // bare hyphenated form for `uuid`.
+        "binary" | "binarydata" => try_extjson(s).unwrap_or_else(|| {
+            extjson(serde_json::json!({
+                "$binary": { "base64": s.trim(), "subType": "00" }
+            }))
+            .unwrap_or_else(|| Bson::String(s.to_string()))
+        }),
+        "uuid" => try_extjson(s).unwrap_or_else(|| {
+            extjson(serde_json::json!({ "$uuid": s.trim() }))
+                .unwrap_or_else(|| Bson::String(s.to_string()))
+        }),
+        "regex" | "bsonregexp" => try_extjson(s)
+            .unwrap_or_else(|| shorthand_regex(s).unwrap_or(Bson::String(s.to_string()))),
+        "timestamp" => try_extjson(s)
+            .unwrap_or_else(|| shorthand_timestamp(s).unwrap_or(Bson::String(s.to_string()))),
         // "document" / "array" / unknown: try to parse the text as JSON so the
         // user can paste a nested value; fall back to a plain string.
         "document" | "object" | "array" => serde_json::from_str::<Value>(s)
@@ -220,6 +247,58 @@ pub fn string_to_bson(value: Option<&str>, type_hint: Option<&str>) -> Bson {
             .unwrap_or_else(|_| Bson::String(s.to_string())),
         _ => Bson::String(s.to_string()),
     }
+}
+
+/// Parse `s` as canonical/relaxed Extended JSON, but only when it actually
+/// *is* one of the `$`-tagged wrappers (`{"$binary": …}`, `{"$timestamp": …}`,
+/// …). A plain JSON string/number/object is rejected so this can be used as a
+/// first attempt without swallowing values meant to be taken literally.
+fn try_extjson(s: &str) -> Option<Bson> {
+    let v: Value = serde_json::from_str(s.trim()).ok()?;
+    let obj = v.as_object()?;
+    if !obj.keys().any(|k| k.starts_with('$')) {
+        return None;
+    }
+    extjson(v)
+}
+
+/// `Bson::try_from` over an Extended JSON value, discarding the parse error —
+/// callers fall back to a plain string, matching every other arm of
+/// [`string_to_bson`].
+fn extjson(v: Value) -> Option<Bson> {
+    Bson::try_from(v).ok()
+}
+
+/// `/pattern/flags` → `Bson::RegularExpression`, the same spelling
+/// [`bson_to_json`] renders a regex as (so a displayed value round-trips).
+fn shorthand_regex(s: &str) -> Option<Bson> {
+    let s = s.trim();
+    let body = s.strip_prefix('/')?;
+    let close = body.rfind('/')?;
+    extjson(serde_json::json!({
+        "$regularExpression": { "pattern": &body[..close], "options": &body[close + 1..] }
+    }))
+}
+
+/// `Timestamp(t, i)` / `t,i` / a bare seconds value → `Bson::Timestamp`. The
+/// first spelling is what [`bson_to_json`] displays, so a displayed value
+/// round-trips.
+fn shorthand_timestamp(s: &str) -> Option<Bson> {
+    let inner = s
+        .trim()
+        .trim_start_matches("Timestamp")
+        .trim()
+        .trim_start_matches('(')
+        .trim_end_matches(')');
+    let mut parts = inner.split(',').map(|p| p.trim());
+    let time: u32 = parts.next()?.parse().ok()?;
+    let increment: u32 = match parts.next() {
+        Some(p) => p.parse().ok()?,
+        None => 0,
+    };
+    extjson(serde_json::json!({
+        "$timestamp": { "t": time, "i": increment }
+    }))
 }
 
 /// Reconstruct a primary-key (`_id`) value as BSON from its JSON display form.
@@ -264,6 +343,42 @@ pub fn bson_type_name(b: &Bson) -> &'static str {
         Bson::MaxKey => "maxKey",
         Bson::MinKey => "minKey",
         Bson::DbPointer(_) => "dbPointer",
+    }
+}
+
+/// Mirror a BSON value's *type* structure as JSON, so the grid's document list
+/// view can label every field — nested ones included — with the type it really
+/// has on the server.
+///
+/// This exists because [`bson_to_json`] is deliberately lossy (gotcha-style
+/// "display beats fidelity"): an `Int64`, an `Int32` and a `Double` that all
+/// hold `301353073` arrive at the frontend as the same JSON number, and an
+/// `ObjectId`, a `Date` and a `Decimal128` all arrive as plain strings. That is
+/// fine for *reading*, but the list view also *writes*: it sends the edited
+/// field back through [`string_to_bson`] with a type hint, and guessing that
+/// hint from the JSON shape would silently rewrite a `Long` as an `Int` (both
+/// look like a small JSON number) the first time a user edits an unrelated
+/// character of the value. Shipping the real types alongside the values is the
+/// only way to keep an edit type-preserving by default.
+///
+/// Shape: a scalar becomes `Value::String(<type name>)`; a document becomes an
+/// object with the same keys, each mapped to its own tree; an array becomes an
+/// array of trees. So "is this node a container" is answered by the tree node's
+/// own JSON kind, and no extra tagging is needed. Type names are the same
+/// lowercase vocabulary [`bson_type_name`] already uses for column types.
+pub fn bson_type_tree(b: &Bson) -> Value {
+    match b {
+        Bson::Document(d) => Value::Object(
+            d.iter()
+                .map(|(k, v)| (k.clone(), bson_type_tree(v)))
+                .collect(),
+        ),
+        Bson::Array(a) => Value::Array(a.iter().map(bson_type_tree).collect()),
+        // `bson_type_name` folds `Undefined` into `"null"` (they render
+        // identically in the grid); the type picker distinguishes them, so keep
+        // them apart here.
+        Bson::Undefined => Value::String("undefined".to_string()),
+        other => Value::String(bson_type_name(other).to_string()),
     }
 }
 
@@ -318,6 +433,95 @@ mod tests {
             Bson::String("42".into())
         );
         assert_eq!(string_to_bson(None, Some("int")), Bson::Null);
+    }
+
+    #[test]
+    fn string_to_bson_builds_the_exotic_types_the_list_view_offers() {
+        assert_eq!(
+            string_to_bson(Some("x"), Some("undefined")),
+            Bson::Undefined
+        );
+        assert_eq!(string_to_bson(Some(""), Some("minKey")), Bson::MinKey);
+        assert_eq!(string_to_bson(Some(""), Some("maxKey")), Bson::MaxKey);
+        assert_eq!(
+            string_to_bson(Some("a > b"), Some("javascript")),
+            Bson::JavaScriptCode("a > b".into())
+        );
+        assert_eq!(
+            string_to_bson(Some("sym"), Some("symbol")),
+            Bson::Symbol("sym".into())
+        );
+        // Base64 shorthand and the canonical Extended JSON form agree.
+        let expected = binary(vec![1, 2, 3]);
+        assert_eq!(string_to_bson(Some("AQID"), Some("binary")), expected);
+        assert_eq!(
+            string_to_bson(
+                Some(r#"{"$binary":{"base64":"AQID","subType":"00"}}"#),
+                Some("binary")
+            ),
+            expected
+        );
+        assert!(matches!(
+            string_to_bson(Some("6c4dd3a4-1c9d-4f5a-9c9f-1d0f6c4dd3a4"), Some("uuid")),
+            Bson::Binary(_)
+        ));
+    }
+
+    #[test]
+    fn timestamp_and_regex_round_trip_through_their_displayed_form() {
+        // What `bson_to_json` renders is what `string_to_bson` accepts back —
+        // that is why neither type is treated as opaque by the list view.
+        let ts = Bson::Timestamp(mongodb::bson::Timestamp {
+            time: 1774861099,
+            increment: 2,
+        });
+        let shown = bson_to_json(&ts);
+        assert_eq!(
+            string_to_bson(shown.as_str(), Some("timestamp")),
+            ts,
+            "displayed timestamp must parse back"
+        );
+
+        // `/pattern/flags` is exactly what `bson_to_json` prints for a regex.
+        let re = string_to_bson(Some("/^ab.*/i"), Some("regex"));
+        assert!(matches!(re, Bson::RegularExpression(_)), "{re:?}");
+        let shown = bson_to_json(&re);
+        assert_eq!(shown, Value::String("/^ab.*/i".into()));
+        assert_eq!(string_to_bson(shown.as_str(), Some("regex")), re);
+    }
+
+    #[test]
+    fn type_tree_mirrors_the_value_structure() {
+        let mut inner = Document::new();
+        inner.insert("n", Bson::Int64(7));
+        inner.insert("s", Bson::String("x".into()));
+        let mut doc = Document::new();
+        doc.insert("nested", Bson::Document(inner));
+        doc.insert("tags", Bson::Array(vec![Bson::Int32(1), Bson::Null]));
+        doc.insert(
+            "when",
+            Bson::DateTime(mongodb::bson::DateTime::from_millis(0)),
+        );
+
+        assert_eq!(
+            bson_type_tree(&Bson::Document(doc)),
+            serde_json::json!({
+                "nested": { "n": "long", "s": "string" },
+                "tags": ["int", "null"],
+                "when": "date",
+            })
+        );
+    }
+
+    #[test]
+    fn type_tree_keeps_undefined_apart_from_null() {
+        // `bson_type_name` folds the two together (they display identically);
+        // the list view's type picker has to tell them apart.
+        assert_eq!(bson_type_name(&Bson::Undefined), "null");
+        assert_eq!(
+            bson_type_tree(&Bson::Undefined),
+            Value::String("undefined".into())
+        );
     }
 
     #[test]

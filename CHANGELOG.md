@@ -53,9 +53,53 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `docs/CONNECTION_POOLING_ANALYSIS.md` — the audit these changes come from:
   how the engine allocated connections, worst-case arithmetic, ranked findings,
   and the endpoint-centric architecture the remaining work is heading towards.
+- **Editable list view.** The row-per-card list view is no longer read-only: it
+  is now a document editor in the shape MongoDB Compass made familiar. Nested
+  objects and arrays arrive **folded** and open on demand, each field is one
+  numbered line with its type in the right gutter, and **double-clicking a value
+  edits it in place** (Enter or blur commits, Esc cancels, ∅ writes NULL). The
+  expand button escalates the field to the same Monaco editor the table view
+  uses — modal or docked, following the existing `cellEditorMode` preference —
+  which is how a whole sub-document is edited as JSON.
+  On MongoDB the type gutter is a **picker**: choosing a type rewrites the field
+  as that BSON type (the full Compass vocabulary — `Binary`, `UUID`, `Code`,
+  `Timestamp`, `MinKey`/`MaxKey`, `BSONRegExp`, `BSONSymbol`, `Undefined` and
+  the ones already supported), fields can be **added** (a `$set` on a new path,
+  including inside a nested object or appended to an array) and **removed** (a
+  new `unset_field` command issuing `$unset`, behind the destructive-action
+  confirmation). A document's `_id` stays read-only: `$set` on it fails
+  server-side, so offering the edit would only ever produce an error.
+  Editing a **nested** field addresses it by its update path
+  (`customData.format`, `tags.2`), so a value inside a sub-document is written
+  without rewriting the document around it.
+- **MongoDB results now carry their real BSON types.** `QueryResult` gained a
+  `row_types` field: one type tree per cell, mirroring the value's structure
+  (`bson_type_tree`). The display JSON is deliberately lossy — `Int32`, `Int64`
+  and `Double` all arrive as JSON numbers, `ObjectId`, `Date` and `Decimal128`
+  all as strings — so without it the list view would have had to guess a type
+  from the value and would have rewritten a `Long` as an `Int` the first time
+  anyone fixed a typo in an unrelated field. The SQL drivers leave it unset;
+  their column types were never ambiguous.
 
 ### Changed
 
+- **The list view works on every driver.** It shipped in 1.11.0 as a
+  MongoDB-only rendering, but the problem it solves — a wide or nested row that
+  scrolls sideways and flattens its nested values into one unreadable line — is
+  not MongoDB's alone: a 40-column table, or a row with a big `jsonb` column,
+  has exactly the same shape. The toolbar toggle is now offered for
+  PostgreSQL/MySQL/SQLite too, values are editable there through the same
+  `update_cell` path as the table view, and nested values inside a JSON column
+  fold like a sub-document. The three affordances that only make sense for a
+  document database — add field, delete field, change type — stay hidden for
+  SQL, where a row's column set belongs to the table, not to the row.
+- **The view-mode preference moved to Settings → Appearance**, into a new
+  **Data view** group, and lost its MongoDB-specific wording. It sits next to
+  the theme editor because it answers the same question ("what does this look
+  like") rather than "how does the grid behave", and it now carries three
+  list-view options: whether nested values start expanded, whether the type
+  gutter is shown, and whether fields are numbered. The stored key
+  (`grid.documentViewMode`) is unchanged, so an existing choice survives.
 - **`connections.maxConnections` changed meaning** from "ceiling for a single
   pool" to "total for one server". Nothing was released with the old meaning, so
   no migration is needed; the default moved from 5 to 10 accordingly, since it

@@ -19,7 +19,8 @@
     "continue": "Continuar",
     "retry": "Reintentar",
     "copy": "Copiar",
-    "errorPanelCrashed": "Algo falló al renderizar este panel."
+    "errorPanelCrashed": "Algo falló al renderizar este panel.",
+    "add": "Añadir"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -483,6 +484,7 @@
     "zoomIn": "Filas más grandes (Ctrl + +)",
     "zoomOut": "Filas más pequeñas (Ctrl + −)",
     "zoomReset": "Restablecer tamaño de fila (Ctrl + 0)",
+    "noRows": "Sin filas",
     "headerPk": "Clave primaria",
     "headerFk": "Clave foránea",
     "headerFkTo": "Clave foránea → {{target}}",
@@ -490,7 +492,20 @@
     "headerNotNull": "No admite nulos",
     "headerSortedAsc": "Ordenado ascendente",
     "headerSortedDesc": "Ordenado descendente",
-    "headerSortLevel": "nivel {{level}}"
+    "headerSortLevel": "nivel {{level}}",
+    "list": {
+      "addField": "Añadir campo",
+      "deleteField": "Eliminar campo",
+      "confirmDeleteField": "¿Eliminar el campo «{{field}}» de este documento?",
+      "fieldName": "nombre del campo",
+      "fieldValue": "valor",
+      "fieldNameRequired": "El nuevo campo necesita un nombre.",
+      "invalidValue": "Ese valor no es un {{type}} válido.",
+      "opaqueType": "Este tipo no se puede editar en línea: lo que se muestra no es el valor almacenado. Cambia el tipo para reemplazarlo.",
+      "expand": "Desplegar",
+      "collapse": "Plegar",
+      "changeType": "Cambiar el tipo"
+    }
   },
   "tableData": {
     "refresh": "Actualizar",
@@ -849,12 +864,6 @@
         "desc": "Cómo se muestran las columnas BIT de MySQL en la cuadrícula.",
         "trueFalse": "true / false",
         "zeroOne": "0 / 1"
-      },
-      "documentViewMode": {
-        "label": "Vista de documentos MongoDB",
-        "desc": "Vista predeterminada para resultados de colecciones MongoDB. El resto de drivers la ignoran y siempre muestran una tabla.",
-        "table": "Tabla",
-        "list": "Lista"
       }
     },
     "appearance": {
@@ -867,7 +876,28 @@
       "modeDark": "Oscuro",
       "modeLight": "Claro",
       "deleteTooltip": "Eliminar tema personalizado",
-      "duplicateLabel": "Duplicar como personalizado"
+      "duplicateLabel": "Duplicar como personalizado",
+      "dataView": {
+        "title": "Vista de datos",
+        "mode": {
+          "label": "Disposición de la fila",
+          "desc": "Cómo se muestra una tabla o colección: la rejilla de columnas, o una tarjeta por fila con una línea por campo. Se aplica a todos los drivers; el conmutador de la barra de herramientas cambia este mismo ajuste.",
+          "table": "Tabla",
+          "list": "Lista"
+        },
+        "expandNested": {
+          "label": "Desplegar valores anidados",
+          "desc": "Abrir objetos y arrays al mostrar la fila en lugar de dejarlos plegados hasta que se pidan."
+        },
+        "showTypes": {
+          "label": "Mostrar el tipo de cada campo",
+          "desc": "Muestra el tipo en el margen derecho. En MongoDB además sirve de selector de tipo."
+        },
+        "lineNumbers": {
+          "label": "Numerar los campos",
+          "desc": "Numera los campos de cada fila en el margen izquierdo."
+        }
+      }
     },
     "shortcuts": {
       "openSettings": "Abrir Preferencias",

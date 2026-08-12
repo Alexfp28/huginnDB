@@ -304,7 +304,28 @@ export interface QueryResult {
    *  The table-data browser fetches the total separately via
    *  {@link CountResult} so the count never blocks the first row render. */
   total: number | null;
+  /**
+   * MongoDB only: per-cell BSON *type* structure, parallel to {@link rows}
+   * (one inner array per row, aligned to {@link columns}). Absent for the SQL
+   * drivers, whose per-column {@link ColumnMeta.data_type} already says
+   * everything there is to say.
+   *
+   * Needed because the JSON a MongoDB cell arrives as is deliberately lossy:
+   * `Int32`/`Int64`/`Double` all become a JSON number and
+   * `ObjectId`/`Date`/`Decimal128` all become a string. The document list view
+   * edits fields in place and must send the field's real type back, so it
+   * reads it from here instead of guessing — see `bson_type_tree` in
+   * `src-tauri/src/db/mongo/values.rs`. */
+  row_types?: BsonTypeTree[][] | null;
 }
+
+/** Mirror of a BSON value's type structure (see {@link QueryResult.row_types}):
+ *  a scalar is its type name, a document an object of the same keys, an array
+ *  an array of the same length. */
+export type BsonTypeTree =
+  | string
+  | { [key: string]: BsonTypeTree }
+  | BsonTypeTree[];
 
 /** Row total for the table-data browser, fetched separately from the data
  *  page (see `count_table_rows`). `estimated` is `true` when the total is a
@@ -614,10 +635,18 @@ export interface GridPrefs {
    *  column name (see `tableKey` in `stores/schema.ts`). Ad-hoc query result
    *  grids resize in-session only and never write here. */
   columnWidths: Record<string, Record<string, number>>;
-  /** How MongoDB collection results render. A single global toggle (not
-   *  per-collection); every other driver ignores it and always renders as a
-   *  table. */
+  /** How a browsed table/collection renders. A single global toggle (not
+   *  per-relation), honoured by every driver — the list view started out
+   *  MongoDB-only, which is all the `document` in the name still refers to
+   *  (the row-as-document layout), kept so an existing preference survives. */
   documentViewMode: "table" | "list";
+  /** List view: whether nested objects/arrays start expanded. `false` (the
+   *  default) folds them and lets the user open what they need. */
+  listExpandNested: boolean;
+  /** List view: whether each field's type is shown in the right-hand gutter. */
+  listShowTypes: boolean;
+  /** List view: whether fields are numbered in the left-hand gutter. */
+  listLineNumbers: boolean;
 }
 
 /** Schema-tree metric column. Source of truth for the enum is the frontend. */

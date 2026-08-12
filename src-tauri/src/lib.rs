@@ -315,6 +315,7 @@ pub fn run() {
             commands::query::fetch_table_data,
             commands::query::count_table_rows,
             commands::query::update_cell,
+            commands::query::unset_field,
             commands::query::delete_rows,
             commands::query::insert_row,
             commands::query::fetch_fk_options,
