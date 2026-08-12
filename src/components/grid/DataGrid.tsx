@@ -1632,32 +1632,84 @@ export function DataGrid({
           const active = sortIndex >= 0;
           const spec = active ? sort![sortIndex] : null;
           const showRank = active && (sort?.length ?? 0) > 1;
+          const info = columnInfoByName.get(col.name);
+          // The tooltip describes the FIELD, not what a click does. Two
+          // reasons: the name is the first thing a narrow column clips, so
+          // the tooltip is where the user recovers it (plus the full type,
+          // which is clipped even earlier — see the spans below); and the
+          // old wording ("Ctrl/Cmd+click to add a column") was read as an
+          // offer to CREATE a column, which is both wrong and alarming in a
+          // window that can also run DDL. Sorting stays discoverable through
+          // the arrow glyph and the sort state reported on the last line.
+          const facts: string[] = [col.data_type];
+          if (pkNameSet.has(col.name)) facts.push(t("dataGrid.headerPk"));
+          if (fkNameSet.has(col.name)) {
+            facts.push(
+              info?.referenced_table
+                ? t("dataGrid.headerFkTo", {
+                    target: `${info.referenced_table}.${
+                      info.referenced_column ?? "id"
+                    }`,
+                  })
+                : t("dataGrid.headerFk"),
+            );
+          }
+          // `info` is absent for ad-hoc query results (no catalog metadata),
+          // where nullability is unknown — say nothing rather than guess.
+          if (info) {
+            facts.push(
+              info.nullable
+                ? t("dataGrid.headerNullable")
+                : t("dataGrid.headerNotNull"),
+            );
+          }
+          if (active) {
+            const dir = spec!.desc
+              ? t("dataGrid.headerSortedDesc")
+              : t("dataGrid.headerSortedAsc");
+            facts.push(
+              showRank
+                ? `${dir} (${t("dataGrid.headerSortLevel", {
+                    level: sortIndex + 1,
+                  })})`
+                : dir,
+            );
+          }
           return (
             <button
               className="group/sort -mx-1 flex w-full items-center gap-1 rounded-sm px-1 hover:bg-accent/50 hover:text-foreground"
               onClick={(e) =>
                 onSortChange?.(col.name, e.ctrlKey || e.metaKey)
               }
-              title={
-                showRank
-                  ? `Sort level ${sortIndex + 1} — Ctrl/Cmd+click to add a column`
-                  : "Click to sort — Ctrl/Cmd+click to add a column"
-              }
+              title={`${col.name}\n${facts.join(" · ")}`}
             >
               {pkNameSet.has(col.name) && (
                 <KeyRound
                   className="h-3 w-3 shrink-0 text-pk"
-                  aria-label="primary key"
+                  aria-label={t("dataGrid.headerPk")}
                 />
               )}
               {fkNameSet.has(col.name) && (
                 <KeyRound
                   className="h-3 w-3 shrink-0 text-fk"
-                  aria-label="foreign key"
+                  aria-label={t("dataGrid.headerFk")}
                 />
               )}
-              <span className="truncate">{col.name}</span>
-              <span className="text-3xs uppercase text-muted-foreground/50">
+              {/* The NAME is the header's payload; the type is a hint. Both
+                  used to be plain flex items with the default `flex-shrink:
+                  1`, but only the name carried `truncate` — and `overflow:
+                  hidden` is what lets a flex item shrink past its min-content
+                  width. So in a column narrower than its content the name
+                  collapsed to nothing while the type stayed fully legible
+                  (a `BOOLEAN` column rendering as just "BOOL", with no clue
+                  which field it was). Giving the type `overflow-hidden` +
+                  a huge shrink factor inverts the priority: the type is
+                  clipped away first (down to zero width) and the name only
+                  starts eliding once the type is gone. `text-clip` rather
+                  than an ellipsis because a lone "…" where the type used to
+                  be is noise; the full type lives in the tooltip. */}
+              <span className="min-w-0 truncate">{col.name}</span>
+              <span className="min-w-0 shrink-[9999] overflow-hidden whitespace-nowrap text-clip text-3xs uppercase text-muted-foreground/50">
                 {col.data_type}
               </span>
               {active ? (

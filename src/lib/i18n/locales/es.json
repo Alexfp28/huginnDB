@@ -482,7 +482,15 @@
     "openInSideEditor": "Abrir en el editor lateral",
     "zoomIn": "Filas más grandes (Ctrl + +)",
     "zoomOut": "Filas más pequeñas (Ctrl + −)",
-    "zoomReset": "Restablecer tamaño de fila (Ctrl + 0)"
+    "zoomReset": "Restablecer tamaño de fila (Ctrl + 0)",
+    "headerPk": "Clave primaria",
+    "headerFk": "Clave foránea",
+    "headerFkTo": "Clave foránea → {{target}}",
+    "headerNullable": "Admite nulos",
+    "headerNotNull": "No admite nulos",
+    "headerSortedAsc": "Ordenado ascendente",
+    "headerSortedDesc": "Ordenado descendente",
+    "headerSortLevel": "nivel {{level}}"
   },
   "tableData": {
     "refresh": "Actualizar",
