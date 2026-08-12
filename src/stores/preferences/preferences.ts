@@ -55,6 +55,9 @@ const DEFAULT_PREFS: Preferences = {
     bitDisplay: "true_false",
     columnWidths: {},
     documentViewMode: "table",
+    listExpandNested: false,
+    listShowTypes: true,
+    listLineNumbers: true,
   },
   ui: {
     confirmDestructive: true,

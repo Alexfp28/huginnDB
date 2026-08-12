@@ -418,6 +418,23 @@ export const api = {
   }) => invoke<number>("update_cell", args),
 
   /**
+   * MongoDB only: remove a field from one document (`$unset`), addressed by
+   * its `_id`. The document list view's "delete field" action.
+   *
+   * `field` is a path exactly like the `column` of {@link updateCell} on
+   * MongoDB — `"customData.format"` unsets a key inside a sub-document. A SQL
+   * row has a fixed column set, so the backend rejects the other drivers
+   * instead of pretending this means "set to NULL" (that is `updateCell` with
+   * a `null` value).
+   */
+  unsetField: (args: {
+    connectionId: string;
+    collection: string;
+    idValue: CellValue;
+    field: string;
+  }) => invoke<number>("unset_field", args),
+
+  /**
    * DELETE one or more rows by their (possibly composite) primary key.
    * `pkValueRows` carries one tuple per row, each parallel to
    * `pkColumns`. The backend builds `WHERE (c1, c2, …) IN ((?, ?, …), …)`

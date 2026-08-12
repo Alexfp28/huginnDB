@@ -229,6 +229,21 @@ pub struct QueryResult {
     /// For [`fetch_table_data`] only: the total row count of the table
     /// (so the UI can show "1–100 of 12,345").
     pub total: Option<u64>,
+    /// MongoDB only: the per-cell BSON *type* structure mirroring `rows`, one
+    /// inner `Vec` per row aligned to `columns` (see
+    /// [`crate::db::mongo::values::bson_type_tree`]).
+    ///
+    /// The SQL drivers leave this `None`: their column types are uniform per
+    /// column and already carried by [`ColumnMeta::data_type`]. MongoDB's are
+    /// not — a field's type is a property of the individual document, and
+    /// nested fields have no `ColumnMeta` at all — so the document list view
+    /// would otherwise have to guess a type from the (deliberately lossy)
+    /// display JSON and would rewrite a `Long` as an `Int` on the first edit.
+    ///
+    /// Skipped when absent so a SQL result's payload is byte-identical to what
+    /// it was before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_types: Option<Vec<Vec<Value>>>,
 }
 
 /// Column descriptor in a [`QueryResult`]. `Deserialize` for the same reason
@@ -469,6 +484,7 @@ pub(crate) async fn execute_with_state(
             rows_affected,
             elapsed_ms: start.elapsed().as_millis() as u64,
             total: None,
+            row_types: None,
         });
     }
 
@@ -514,6 +530,7 @@ pub(crate) async fn execute_with_state(
         columns,
         elapsed_ms: start.elapsed().as_millis() as u64,
         total: None,
+        row_types: None,
     };
     log_sql_sink(
         sink,
@@ -605,6 +622,7 @@ pub(crate) async fn execute_batch_inner(
                                 rows_affected: ra,
                                 elapsed_ms: start.elapsed().as_millis() as u64,
                                 total: None,
+                                row_types: None,
                             });
                             outcomes.push(StmtOutcome {
                                 index,
@@ -1334,6 +1352,7 @@ pub(crate) async fn fetch_table_data_inner(
         columns,
         elapsed_ms,
         total,
+        row_types: None,
     })
 }
 
@@ -1867,6 +1886,60 @@ pub(crate) async fn update_cell_inner(
         None,
     );
     Ok(affected)
+}
+
+/// Remove a field from one MongoDB document (`$unset`), addressed by `_id`.
+///
+/// The document list view's "delete field" action. MongoDB only: a SQL row has
+/// a fixed column set, so removing a *field* from a single row has no meaning
+/// there (setting it to NULL does, and that already goes through
+/// [`update_cell`]) — the other drivers are rejected rather than silently
+/// mapped onto something else.
+///
+/// `field` is a path (`"customData.format"`, `"tags.2"`), matching the way the
+/// same list view addresses a nested field on the write side of
+/// [`update_cell`].
+#[tauri::command]
+pub async fn unset_field(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+    collection: String,
+    id_value: Value,
+    field: String,
+) -> AppResult<u64> {
+    let sink = log_bus::TauriSink::new(&app, window.label());
+    let pool = pool_for(state.inner(), &connection_id)?;
+    let driver = driver_str(&pool);
+    let DbPool::Mongo(conn) = &pool else {
+        return Err(AppError::InvalidInput(
+            "unset_field is only supported for MongoDB".into(),
+        ));
+    };
+    let start = Instant::now();
+    let res = crate::db::mongo::query::unset_field(conn, &collection, &id_value, &field).await;
+    match &res {
+        Ok(n) => log_sql_sink(
+            &sink,
+            &connection_id,
+            driver,
+            "(mongo unset)",
+            start,
+            Some(*n),
+            None,
+        ),
+        Err(e) => log_sql_sink(
+            &sink,
+            &connection_id,
+            driver,
+            "(mongo unset)",
+            start,
+            None,
+            Some(&e.to_string()),
+        ),
+    }
+    res
 }
 
 /// Normalize a cell value string for a MySQL BIT column write.

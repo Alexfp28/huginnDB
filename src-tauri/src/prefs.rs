@@ -86,12 +86,21 @@ pub struct GridPrefs {
     /// tiny (a `u16` each), so unlike `tab_state.json`'s query bodies this
     /// isn't pruned; even thousands of tables/columns stay a small blob.
     pub column_widths: HashMap<String, HashMap<String, u16>>,
-    /// How MongoDB collection results render: one of "table" | "list". A
-    /// single global toggle (not per-collection) — the frontend only shows
-    /// the switcher for `driver === "mongodb"` and ignores this value for
-    /// every other driver, which always renders as a table regardless.
-    /// Stringly-typed; the frontend owns the enum.
+    /// How a browsed table/collection renders: one of "table" | "list". A
+    /// single global toggle (not per-relation). Named after the *document*
+    /// (row-as-document) layout it selects, not after MongoDB: the list view
+    /// started out MongoDB-only but is available on every driver, so the key is
+    /// kept as-is only to avoid resetting the preference of anyone who already
+    /// set it. Stringly-typed; the frontend owns the enum.
     pub document_view_mode: String,
+    /// List view: whether nested objects/arrays start expanded. Default `false`
+    /// — a document with a big sub-document is unreadable when everything is
+    /// unfolded at once, so folds open on demand.
+    pub list_expand_nested: bool,
+    /// List view: whether each field's type is shown in the right-hand gutter.
+    pub list_show_types: bool,
+    /// List view: whether fields are numbered in the left-hand gutter.
+    pub list_line_numbers: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -262,6 +271,9 @@ impl Default for GridPrefs {
             bit_display: "true_false".into(),
             column_widths: HashMap::new(),
             document_view_mode: "table".into(),
+            list_expand_nested: false,
+            list_show_types: true,
+            list_line_numbers: true,
         }
     }
 }

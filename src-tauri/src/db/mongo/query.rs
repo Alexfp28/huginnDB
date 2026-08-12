@@ -20,7 +20,7 @@ use std::time::Instant;
 
 use super::schema::resolve_db;
 use super::shell::{self, MongoOp};
-use super::values::{bson_to_json, id_to_bson, json_to_bson, string_to_bson};
+use super::values::{bson_to_json, bson_type_tree, id_to_bson, json_to_bson, string_to_bson};
 
 /// Collect a cursor of documents without pulling in an external `Stream` trait
 /// (the `mongodb` cursor exposes `advance` + `deserialize_current` directly).
@@ -91,12 +91,32 @@ fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64) -> QueryResult {
         })
         .collect();
 
+    // Parallel to `rows`, one type tree per cell. Unlike the SQL drivers, a
+    // MongoDB field's type belongs to the individual document (and nested
+    // fields have no column at all), so the grid's document list view is told
+    // the real types rather than left to infer them from the lossy display
+    // JSON — see `bson_type_tree`.
+    let row_types: Vec<Vec<Value>> = docs
+        .iter()
+        .map(|d| {
+            order
+                .iter()
+                .map(|k| {
+                    d.get(k)
+                        .map(bson_type_tree)
+                        .unwrap_or_else(|| Value::String("null".to_string()))
+                })
+                .collect()
+        })
+        .collect();
+
     QueryResult {
         rows_affected: rows.len() as u64,
         rows,
         columns,
         elapsed_ms,
         total: None,
+        row_types: Some(row_types),
     }
 }
 
@@ -113,6 +133,7 @@ fn scalar_result(name: &str, data_type: &str, value: Value, elapsed_ms: u64) -> 
         rows_affected: 1,
         elapsed_ms,
         total: None,
+        row_types: None,
     }
 }
 
@@ -124,6 +145,7 @@ fn affected_result(count: u64, elapsed_ms: u64) -> QueryResult {
         rows_affected: count,
         elapsed_ms,
         total: None,
+        row_types: None,
     }
 }
 
@@ -184,6 +206,7 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
                 rows,
                 elapsed_ms: ms(),
                 total: None,
+                row_types: None,
             })
         }
         MongoOp::InsertOne { doc } => {
@@ -561,6 +584,28 @@ pub async fn update_cell(
     Ok(r.modified_count)
 }
 
+/// Remove one field from one document addressed by `_id` (`$unset`).
+///
+/// `field` is a field *path*, so a nested field is addressed the same way it is
+/// written: `"customData.format"` unsets that key inside the sub-document, and
+/// `"tags.2"` clears (rather than splices) the array slot — MongoDB's own
+/// `$unset` semantics, left as-is so the grid never silently reindexes an array
+/// behind the user's back.
+pub async fn unset_field(
+    conn: &MongoConn,
+    collection: &str,
+    id_value: &Value,
+    field: &str,
+) -> AppResult<u64> {
+    let db = resolve_db(conn)?;
+    let coll = db.collection::<Document>(collection);
+    let id = id_to_bson(id_value);
+    let r = coll
+        .update_one(doc! { "_id": id }, doc! { "$unset": { field: "" } })
+        .await?;
+    Ok(r.modified_count)
+}
+
 /// Delete documents by their `_id` values (`{_id: {$in: […]}}`).
 pub async fn delete_rows(
     conn: &MongoConn,
@@ -670,6 +715,54 @@ mod tests {
         let result = docs_to_result(docs, 0);
         let name_col = result.columns.iter().find(|c| c.name == "name").unwrap();
         assert_eq!(name_col.data_type, "string");
+    }
+
+    #[test]
+    fn docs_to_result_ships_a_type_tree_per_cell() {
+        // The grid's list view writes a field back with the type it reads
+        // here, so the trees must line up with `rows` cell for cell — a
+        // misaligned tree would retype an unrelated field on the next edit.
+        let mut nested = Document::new();
+        nested.insert("inner", Bson::Int64(9));
+        let docs = vec![doc_with(&[
+            ("_id", Bson::Int32(1)),
+            ("big", Bson::Int64(301_353_073)),
+            ("obj", Bson::Document(nested)),
+        ])];
+        let result = docs_to_result(docs, 0);
+        let types = result.row_types.expect("mongo results carry row types");
+        let index = |name: &str| {
+            result
+                .columns
+                .iter()
+                .position(|c| c.name == name)
+                .expect("column present")
+        };
+        assert_eq!(types[0][index("_id")], Value::String("int".into()));
+        // The value is a plain JSON number that fits in an i32 — only the tree
+        // knows it is a Long.
+        assert_eq!(result.rows[0][index("big")], serde_json::json!(301_353_073));
+        assert_eq!(types[0][index("big")], Value::String("long".into()));
+        assert_eq!(
+            types[0][index("obj")],
+            serde_json::json!({ "inner": "long" })
+        );
+    }
+
+    #[test]
+    fn docs_to_result_types_a_field_missing_from_a_document_as_null() {
+        let docs = vec![
+            doc_with(&[("_id", Bson::Int32(1)), ("name", Bson::String("a".into()))]),
+            doc_with(&[("_id", Bson::Int32(2))]),
+        ];
+        let result = docs_to_result(docs, 0);
+        let types = result.row_types.expect("mongo results carry row types");
+        let name = result
+            .columns
+            .iter()
+            .position(|c| c.name == "name")
+            .expect("column present");
+        assert_eq!(types[1][name], Value::String("null".into()));
     }
 
     #[test]

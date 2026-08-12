@@ -312,9 +312,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const rowHeight = usePreferences((s) => selectGridPrefs(s).rowHeight);
   const updateGrid = usePreferences((s) => s.updateGrid);
   /**
-   * MongoDB-only "table" vs "list" toggle (a single global preference, not
-   * per-collection — see `GridPrefs.documentViewMode`). Every other driver
-   * always renders as a table; the toolbar toggle below is hidden for them.
+   * "table" vs "list" row layout — a single global preference, not per-relation
+   * (see `GridPrefs.documentViewMode`), honoured by every driver.
    */
   const documentViewMode = usePreferences(
     (s) => selectGridPrefs(s).documentViewMode,
@@ -591,6 +590,65 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       column: columnName,
       value,
       columnType,
+    });
+    await fetchData();
+  }
+
+  /**
+   * List-view field commit — `onCellSave` generalised to a field **path**.
+   *
+   * On MongoDB the path is sent as a dotted update path (`customData.format`,
+   * `tags.2`), which `$set` understands natively, together with the field's
+   * real BSON type so an edit doesn't silently rewrite a `Long` as an `Int`
+   * (the type comes from `QueryResult.row_types`, not from a guess at the
+   * display JSON). On the SQL drivers only a top-level column can be
+   * addressed, and the type hint is deliberately IGNORED: `update_cell` reads
+   * `columnType` to decide whether a MySQL `BIT` needs its
+   * `CAST(? AS UNSIGNED)` (gotcha #15), and handing it the list view's
+   * inferred `"string"` would both miss the cast and suppress the backend's
+   * catalog fallback — so the catalog/schema type wins there, exactly as it
+   * does for a table-view cell save.
+   */
+  async function onFieldSave(
+    rowValues: CellValue[],
+    path: string[],
+    value: string | null,
+    typeHint?: string,
+  ) {
+    if (pkColumns.length === 0) {
+      throw new Error("Cannot update: table has no primary key");
+    }
+    const pkValues = pkValuesFromRow(rowValues);
+    const column = path.join(".");
+    const catalogType =
+      cols?.find((c) => c.name === column)?.data_type ??
+      result?.columns.find((c) => c.name === column)?.data_type;
+    await api.updateCell({
+      connectionId,
+      schema,
+      table,
+      pkColumns: pkColumns.map((c) => c.name),
+      pkValues,
+      column,
+      value,
+      columnType: isMongo ? (typeHint ?? catalogType) : catalogType,
+    });
+    await fetchData();
+  }
+
+  /**
+   * List-view field removal — MongoDB `$unset` on the document addressed by
+   * its `_id`. Only wired for MongoDB: a SQL row's columns are a property of
+   * the table, not of the row, so "remove this field from this row" has no
+   * counterpart there (setting it to NULL does, and that is `onFieldSave`).
+   */
+  async function onFieldDelete(rowValues: CellValue[], path: string[]) {
+    const idValue = pkValuesFromRow(rowValues)[0] ?? null;
+    await api.unsetField({
+      connectionId,
+      collection: table,
+      idValue,
+      field: path.join("."),
     });
     await fetchData();
   }
@@ -985,9 +1043,12 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   );
 
   // Trailing (right-aligned) HEADER content, rendered after `insertExtra` —
-  // just the MongoDB table/list view toggle, a *display* control rather than
-  // a data action, so it stays apart from the insert/export/bulk group.
-  const trailingToolbar = isMongo ? (
+  // just the table/list view toggle, a *display* control rather than a data
+  // action, so it stays apart from the insert/export/bulk group. Offered for
+  // every driver: the list view started out MongoDB-only, but a 40-column SQL
+  // table (or a row with a big JSONB column) has exactly the same problem it
+  // solves. The choice itself is the global `documentViewMode` preference.
+  const trailingToolbar = (
     <div className="flex items-center overflow-hidden rounded-md border border-border">
       <Button
         variant="ghost"
@@ -1012,7 +1073,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         <Rows3 className="h-3.5 w-3.5" />
       </Button>
     </div>
-  ) : undefined;
+  );
 
   // FOOTER content (a second, bottom toolbar row via DataGrid's `footer`) —
   // "how you're browsing", kept apart from the header's data actions. Two
@@ -1125,6 +1186,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             fkColumnNames={fkColumnNames}
             onNavigateFk={onNavigateFk}
             onCellSave={onCellSave}
+            onFieldSave={onFieldSave}
+            onFieldDelete={isMongo ? onFieldDelete : undefined}
             sort={sort}
             onSortChange={applySort}
             // `globalFilter` drives the grid's client-side `visibleRows`
@@ -1162,7 +1225,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             toolbarTrailing={trailingToolbar}
             footer={footerContent}
             showRowCount={false}
-            viewMode={isMongo ? documentViewMode : "table"}
+            viewMode={documentViewMode}
           />
         ) : (
           // Initial load (no rows yet): a shimmer skeleton that reads as

@@ -19,7 +19,8 @@
     "continue": "Continue",
     "retry": "Retry",
     "copy": "Copy",
-    "errorPanelCrashed": "Something went wrong rendering this panel."
+    "errorPanelCrashed": "Something went wrong rendering this panel.",
+    "add": "Add"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -482,7 +483,21 @@
     "insertNewRow": "Insert new row",
     "viewModeTable": "Table view",
     "viewModeList": "List view",
-    "fieldsCount": "{{count}} fields"
+    "fieldsCount": "{{count}} fields",
+    "noRows": "No rows",
+    "list": {
+      "addField": "Add field",
+      "deleteField": "Delete field",
+      "confirmDeleteField": "Delete the field \"{{field}}\" from this document?",
+      "fieldName": "field name",
+      "fieldValue": "value",
+      "fieldNameRequired": "The new field needs a name.",
+      "invalidValue": "That value is not a valid {{type}}.",
+      "opaqueType": "This type cannot be edited inline — its displayed form is not the stored value. Change the type to replace it.",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "changeType": "Change type"
+    }
   },
   "tableData": {
     "refresh": "Refresh",
@@ -841,12 +856,6 @@
         "desc": "How MySQL BIT columns are rendered in the grid.",
         "trueFalse": "true / false",
         "zeroOne": "0 / 1"
-      },
-      "documentViewMode": {
-        "label": "MongoDB document view",
-        "desc": "Default view for MongoDB collection results. Ignored by every other driver, which always shows a table.",
-        "table": "Table",
-        "list": "List"
       }
     },
     "appearance": {
@@ -859,7 +868,28 @@
       "modeDark": "Dark",
       "modeLight": "Light",
       "deleteTooltip": "Delete custom theme",
-      "duplicateLabel": "Duplicate as custom"
+      "duplicateLabel": "Duplicate as custom",
+      "dataView": {
+        "title": "Data view",
+        "mode": {
+          "label": "Row layout",
+          "desc": "How a browsed table or collection renders: the column grid, or one card per row with a line per field. Every driver honours it; the data tab's toolbar toggles the same setting.",
+          "table": "Table",
+          "list": "List"
+        },
+        "expandNested": {
+          "label": "Expand nested values",
+          "desc": "Open objects and arrays as soon as a row is rendered instead of folding them until asked."
+        },
+        "showTypes": {
+          "label": "Show field types",
+          "desc": "Show each field's type in the right-hand gutter. On MongoDB it doubles as the type picker."
+        },
+        "lineNumbers": {
+          "label": "Number fields",
+          "desc": "Number the fields of each row in the left-hand gutter."
+        }
+      }
     },
     "shortcuts": {
       "openSettings": "Open Settings",
