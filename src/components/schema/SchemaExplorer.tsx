@@ -99,6 +99,11 @@ import {
 } from "@/components/schema/dialogs/ImportSqlDialog";
 import { isTooManyConnections } from "@/lib/db/driver";
 import type { Driver, TableInfo } from "@/types";
+import {
+  supportsCreateDatabase,
+  supportsDdlEditing,
+  supportsSqlDump,
+} from "@/lib/db/driver";
 
 /**
  * How many databases the cross-database search may open at once.
@@ -305,14 +310,14 @@ export function ConnectionActionsMenu({
 
   const driver = profile?.driver;
   const isMultiDb = !!profile && driver !== "sqlite" && profile.database === "";
-  const canCreateDatabase = driver === "postgres" || driver === "mysql";
+  const canCreateDatabase = supportsCreateDatabase(driver);
   const canCreateCollection = driver === "mongodb" && !isMultiDb;
   // Whole-database `.sql` export/import used to require single-DB mode
   // (nothing to pick a database *from* otherwise); the export/import
   // dialogs now handle multi-DB themselves — a database picker for export,
   // a target-database dropdown for import — so this is SQL-only, not also
   // single-DB-only.
-  const canDumpSql = driver !== "mongodb";
+  const canDumpSql = supportsSqlDump(driver);
   const databases = cs?.databases ?? [];
   const exportScope: ExportScope = isMultiDb
     ? { kind: "multi", parentId: connectionId, databases: databases.map((d) => d.name) }
@@ -709,7 +714,7 @@ function SingleDbExplorer({
                           })
                         }
                       />
-                      {driver !== "mongodb" && (
+                      {supportsDdlEditing(driver) && (
                         <ContextMenuAction
                           icon={Eye}
                           label={t("schema.context.newView")}
@@ -878,7 +883,7 @@ function MultiDbExplorer({
     s.profiles.find((p) => p.id === parentId),
   );
   const driver = profile?.driver;
-  const canCreateDatabase = driver === "postgres" || driver === "mysql";
+  const canCreateDatabase = supportsCreateDatabase(driver);
   // DataGrip-style visible-databases subset. `null`/empty = show all. Resolved
   // across both layers (this environment's override, then the profile) rather
   // than read off the profile: the profile is global, so reading it directly is
@@ -1409,7 +1414,7 @@ function DatabaseRoot({
             label={t("schema.context.newTable")}
             onSelect={() => void createTableHere()}
           />
-          {driver !== "mongodb" && (
+          {supportsDdlEditing(driver) && (
             <ContextMenuAction
               icon={Eye}
               label={t("schema.context.newView")}
@@ -1428,9 +1433,10 @@ function DatabaseRoot({
               onSelect={() => void createCollectionHere()}
             />
           )}
-          {/* Whole-database .sql export/import is SQL-only; MongoDB databases
-              use the per-collection JSON export/import instead (#65). */}
-          {driver !== "mongodb" && (
+          {/* Whole-database .sql export/import needs a per-driver literal
+              encoder: MongoDB databases use the per-collection JSON
+              export/import instead (#65), and SQL Server has none yet. */}
+          {supportsSqlDump(driver) && (
             <>
               <ContextMenuSeparator />
               <ContextMenuAction
@@ -1702,6 +1708,10 @@ function TableRow({
   };
 
   const isMongo = actions.driver === "mongodb";
+  /** Rename and the view editor need a DDL builder for the driver; SQL Server
+   *  doesn't have one yet, so it gets the same read-only treatment MongoDB has
+   *  — except that its structure *view* is real (see below). */
+  const canEditDdl = supportsDdlEditing(actions.driver);
 
   return (
     <ContextMenu onOpenChange={setMenuOpen}>
@@ -1909,6 +1919,9 @@ function TableRow({
         {!isMongo && !isView && (
           <>
             <ContextMenuSeparator />
+            {/* Opens read-only on a driver without a DDL builder (SQL Server):
+                the catalog introspection is complete, only `apply` is missing,
+                and columns/PK/FK/index detail is worth showing regardless. */}
             <ContextMenuAction
               icon={SquarePen}
               label={ct("schema.context.editStructure")}
@@ -1923,11 +1936,13 @@ function TableRow({
                 })
               }
             />
-            <ContextMenuAction
-              icon={PencilLine}
-              label={ct("schema.context.rename")}
-              onSelect={() => actions.onRename(t)}
-            />
+            {canEditDdl && (
+              <ContextMenuAction
+                icon={PencilLine}
+                label={ct("schema.context.rename")}
+                onSelect={() => actions.onRename(t)}
+              />
+            )}
             <ContextMenuSeparator />
             <ContextMenuAction
               icon={Eraser}
@@ -1946,7 +1961,7 @@ function TableRow({
             but the definition itself is editable — see issue #86. MongoDB
             views are read-only aggregation pipelines, so excluded here too
             (same reasoning as the table-DDL guard above). */}
-        {!isMongo && isView && (
+        {canEditDdl && isView && (
           <>
             <ContextMenuSeparator />
             <ContextMenuAction
@@ -1995,6 +2010,11 @@ function qualifyForCopy(
     return schema
       ? `\`${schema}\`.\`${table}\``
       : `\`${table}\``;
+  }
+  // SQL Server accepts double quotes only under QUOTED_IDENTIFIER ON;
+  // brackets always work, and are what a T-SQL user expects to see.
+  if (driver === "sqlserver") {
+    return schema ? `[${schema}].[${table}]` : `[${table}]`;
   }
   // postgres / sqlite / unknown — use double quotes.
   return schema ? `"${schema}"."${table}"` : `"${table}"`;

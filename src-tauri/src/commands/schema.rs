@@ -5,7 +5,7 @@
 //! standard `information_schema` views where available, with `pg_*` /
 //! `sqlite_master` fallbacks for engine-specific metadata.
 
-use crate::db::sql::quote_ident;
+use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
 use serde::Serialize;
@@ -144,6 +144,9 @@ pub async fn list_databases_inner(
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_databases(conn).await;
     }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_databases(p).await;
+    }
     let names: Vec<String> = match pool {
         DbPool::Postgres(p) => {
             sqlx::query_scalar(
@@ -167,6 +170,7 @@ pub async fn list_databases_inner(
         // SQLite is single-file; pretend the file is one schema named "main".
         DbPool::Sqlite(_) => vec!["main".to_string()],
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(names
         .into_iter()
@@ -198,11 +202,11 @@ pub async fn create_database(
     let pool = pool_for(state.inner(), &connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
-            let sql = format!("CREATE DATABASE {}", quote_ident(true, &name));
+            let sql = format!("CREATE DATABASE {}", Dialect::Postgres.quote_ident(&name));
             sqlx::query(&sql).execute(&p).await?;
         }
         DbPool::Mysql(p) => {
-            let sql = format!("CREATE DATABASE {}", quote_ident(false, &name));
+            let sql = format!("CREATE DATABASE {}", Dialect::Mysql.quote_ident(&name));
             sqlx::query(&sql).execute(&p).await?;
         }
         DbPool::Sqlite(_) => {
@@ -214,6 +218,10 @@ pub async fn create_database(
             return Err(AppError::InvalidInput(
                 "MongoDB creates databases implicitly on first write".into(),
             ));
+        }
+        DbPool::MsSql(p) => {
+            let sql = format!("CREATE DATABASE {}", Dialect::MsSql.quote_ident(&name));
+            p.acquire().await?.simple_execute(&sql).await?;
         }
     }
     Ok(())
@@ -256,11 +264,11 @@ pub async fn drop_database(
     let pool = pool_for(state.inner(), &connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
-            let sql = format!("DROP DATABASE {}", quote_ident(true, &name));
+            let sql = format!("DROP DATABASE {}", Dialect::Postgres.quote_ident(&name));
             sqlx::query(&sql).execute(&p).await?;
         }
         DbPool::Mysql(p) => {
-            let sql = format!("DROP DATABASE {}", quote_ident(false, &name));
+            let sql = format!("DROP DATABASE {}", Dialect::Mysql.quote_ident(&name));
             sqlx::query(&sql).execute(&p).await?;
         }
         DbPool::Sqlite(_) => {
@@ -272,6 +280,10 @@ pub async fn drop_database(
             return Err(AppError::InvalidInput(
                 "Dropping a MongoDB database isn't supported here".into(),
             ));
+        }
+        DbPool::MsSql(p) => {
+            let sql = format!("DROP DATABASE {}", Dialect::MsSql.quote_ident(&name));
+            p.acquire().await?.simple_execute(&sql).await?;
         }
     }
     Ok(())
@@ -345,6 +357,9 @@ pub async fn list_tables_inner(state: &AppState, connection_id: &str) -> AppResu
     let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_collections(conn).await;
+    }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_tables(p).await;
     }
     let tables = match pool {
         DbPool::Postgres(p) => {
@@ -516,6 +531,7 @@ pub async fn list_tables_inner(state: &AppState, connection_id: &str) -> AppResu
             out
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(tables)
 }
@@ -551,6 +567,9 @@ pub async fn list_columns_inner(
     let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::infer_columns(conn, &table).await;
+    }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_columns(p, schema.as_deref(), &table).await;
     }
     let cols = match pool {
         DbPool::Postgres(p) => {
@@ -753,6 +772,7 @@ pub async fn list_columns_inner(
                 .collect()
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(cols)
 }
@@ -779,6 +799,9 @@ pub async fn list_indexes_inner(
     let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_indexes(conn, &table).await;
+    }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_indexes(p, schema.as_deref(), &table).await;
     }
     let idx = match pool {
         DbPool::Postgres(p) => {
@@ -859,6 +882,7 @@ pub async fn list_indexes_inner(
             out
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(idx)
 }
@@ -868,7 +892,7 @@ pub async fn list_indexes_inner(
 /// has no schema concept).
 ///
 /// All identifiers are sourced from the schema explorer, which itself comes
-/// from a catalog query, so the [`quote_ident`] usage matches the rule in
+/// from a catalog query, so the [`Dialect::quote_ident`] usage matches the rule in
 /// `SECURITY.md` — never applied to free-form user input.
 #[tauri::command]
 pub async fn drop_table(
@@ -885,22 +909,8 @@ pub async fn drop_table(
             .await?;
         return Ok(());
     }
-    let qt = match (&pool, schema) {
-        (DbPool::Postgres(_), Some(s)) => {
-            format!("{}.{}", quote_ident(true, &s), quote_ident(true, &table))
-        }
-        (DbPool::Postgres(_), None) => format!(
-            "{}.{}",
-            quote_ident(true, "public"),
-            quote_ident(true, &table)
-        ),
-        (DbPool::Mysql(_), Some(s)) => {
-            format!("{}.{}", quote_ident(false, &s), quote_ident(false, &table))
-        }
-        (DbPool::Mysql(_), None) => quote_ident(false, &table),
-        (DbPool::Sqlite(_), _) => quote_ident(true, &table),
-        (DbPool::Mongo(_), _) => unreachable!("mongo dispatched above"),
-    };
+    let dialect = Dialect::try_of(&pool)?;
+    let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let sql = format!("DROP TABLE {qt}");
     match pool {
         DbPool::Postgres(p) => {
@@ -911,6 +921,9 @@ pub async fn drop_table(
         }
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::MsSql(p) => {
+            p.acquire().await?.simple_execute(&sql).await?;
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     }
@@ -923,7 +936,7 @@ pub async fn drop_table(
 /// `TRUNCATE`, so a plain `DELETE FROM` clears it. MongoDB deletes every
 /// document (`delete_many({})`) rather than dropping the collection. Same
 /// catalog-sourced identifier guarantees as [`drop_table`] — `schema`/`table`
-/// come from the schema explorer, never free-form input, so [`quote_ident`]
+/// come from the schema explorer, never free-form input, so [`Dialect::quote_ident`]
 /// is used per the `SECURITY.md` rule.
 #[tauri::command]
 pub async fn empty_table(
@@ -940,22 +953,8 @@ pub async fn empty_table(
             .await?;
         return Ok(());
     }
-    let qt = match (&pool, schema) {
-        (DbPool::Postgres(_), Some(s)) => {
-            format!("{}.{}", quote_ident(true, &s), quote_ident(true, &table))
-        }
-        (DbPool::Postgres(_), None) => format!(
-            "{}.{}",
-            quote_ident(true, "public"),
-            quote_ident(true, &table)
-        ),
-        (DbPool::Mysql(_), Some(s)) => {
-            format!("{}.{}", quote_ident(false, &s), quote_ident(false, &table))
-        }
-        (DbPool::Mysql(_), None) => quote_ident(false, &table),
-        (DbPool::Sqlite(_), _) => quote_ident(true, &table),
-        (DbPool::Mongo(_), _) => unreachable!("mongo dispatched above"),
-    };
+    let dialect = Dialect::try_of(&pool)?;
+    let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     // SQLite has no TRUNCATE; DELETE FROM with no WHERE clears the table.
     let sql = match &pool {
         DbPool::Sqlite(_) => format!("DELETE FROM {qt}"),
@@ -970,6 +969,9 @@ pub async fn empty_table(
         }
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::MsSql(p) => {
+            p.acquire().await?.simple_execute(&sql).await?;
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     }
@@ -1002,38 +1004,41 @@ pub async fn rename_table(
             "renaming collections is not supported in this version".into(),
         ));
     }
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let new_ident = quote_ident(pg_or_sqlite, new_name.trim());
-    let sql = match &pool {
-        DbPool::Postgres(_) => {
-            let s = schema.unwrap_or_else(|| "public".into());
-            format!(
-                "ALTER TABLE {}.{} RENAME TO {}",
-                quote_ident(true, &s),
-                quote_ident(true, &table),
-                new_ident,
-            )
-        }
-        DbPool::Mysql(_) => match schema {
+    let dialect = Dialect::try_of(&pool)?;
+    let new_ident = dialect.quote_ident(new_name.trim());
+    let sql = match dialect {
+        Dialect::Postgres => format!(
+            "ALTER TABLE {} RENAME TO {}",
+            dialect.qualify_defaulted(schema.as_deref(), &table),
+            new_ident,
+        ),
+        Dialect::Mysql => match schema.as_deref() {
             Some(s) => format!(
-                "RENAME TABLE {}.{} TO {}.{}",
-                quote_ident(false, &s),
-                quote_ident(false, &table),
-                quote_ident(false, &s),
+                "RENAME TABLE {} TO {}.{}",
+                dialect.qualify(Some(s), &table),
+                dialect.quote_ident(s),
                 new_ident,
             ),
             None => format!(
                 "RENAME TABLE {} TO {}",
-                quote_ident(false, &table),
+                dialect.quote_ident(&table),
                 new_ident,
             ),
         },
-        DbPool::Sqlite(_) => format!(
+        Dialect::Sqlite => format!(
             "ALTER TABLE {} RENAME TO {}",
-            quote_ident(true, &table),
+            dialect.quote_ident(&table),
             new_ident,
         ),
-        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
+        // T-SQL renames through `EXEC sp_rename @old, @new, 'OBJECT'`, where
+        // both arguments are *strings* rather than identifiers — bound
+        // parameters, not quoted names. Wired up with the rest of the SQL
+        // Server DDL work.
+        Dialect::MsSql => {
+            return Err(AppError::UnsupportedDriver(
+                "renaming a table is not supported on SQL Server yet".into(),
+            ))
+        }
     };
     match pool {
         DbPool::Postgres(p) => {
@@ -1044,6 +1049,9 @@ pub async fn rename_table(
         }
         DbPool::Sqlite(p) => {
             sqlx::query(&sql).execute(&p).await?;
+        }
+        DbPool::MsSql(p) => {
+            p.acquire().await?.simple_execute(&sql).await?;
         }
         DbPool::Mongo(_) => unreachable!("mongo rejected above"),
     }
@@ -1081,6 +1089,9 @@ pub async fn server_version_inner(state: &AppState, connection_id: &str) -> AppR
         let ver = info.get_str("version").unwrap_or("?");
         return Ok(format!("mongodb {ver}"));
     }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::server_version(p).await;
+    }
     let version = match pool {
         DbPool::Postgres(p) => {
             let raw: String = sqlx::query_scalar("SELECT version()").fetch_one(&p).await?;
@@ -1105,6 +1116,7 @@ pub async fn server_version_inner(state: &AppState, connection_id: &str) -> AppR
             format!("sqlite {raw}")
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(version)
 }
@@ -1129,6 +1141,9 @@ pub async fn list_users_inner(state: &AppState, connection_id: &str) -> AppResul
     let pool = pool_for(state, connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_users(conn).await;
+    }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_users(p).await;
     }
     let users = match pool {
         DbPool::Postgres(p) => {
@@ -1224,6 +1239,7 @@ pub async fn list_users_inner(state: &AppState, connection_id: &str) -> AppResul
         // SQLite has no user/permission model.
         DbPool::Sqlite(_) => vec![],
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(users)
 }
@@ -1249,6 +1265,9 @@ pub async fn list_privileges_inner(
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_privileges(conn, &user).await;
     }
+    if let DbPool::MsSql(p) = &pool {
+        return crate::db::mssql::schema::list_privileges(p, &user).await;
+    }
     let privs = match pool {
         DbPool::Postgres(p) => {
             let rows = sqlx::query(
@@ -1271,7 +1290,7 @@ pub async fn list_privileges_inner(
         DbPool::Mysql(p) => {
             // `user` is "user@host" as produced by list_users. SHOW GRANTS
             // requires the literal pair, quoted as MySQL string literals —
-            // not identifiers, so quote_ident does not apply here. The
+            // not identifiers, so identifier quoting does not apply here. The
             // source is always a catalog lookup (mysql.user), never
             // free-form input, but quotes are still escaped defensively.
             let (name, host) = user.rsplit_once('@').unwrap_or((user.as_str(), "%"));
@@ -1292,6 +1311,7 @@ pub async fn list_privileges_inner(
         }
         DbPool::Sqlite(_) => vec![],
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
+        DbPool::MsSql(_) => unreachable!("sql server dispatched above"),
     };
     Ok(privs)
 }

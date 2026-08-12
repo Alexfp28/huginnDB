@@ -35,16 +35,6 @@ pub struct ConnectionSyncPayload {
     pub connection_id: String,
 }
 
-/// Driver label used by the Console panel.
-fn driver_str(driver: Driver) -> &'static str {
-    match driver {
-        Driver::Postgres => "postgres",
-        Driver::Mysql => "mysql",
-        Driver::Sqlite => "sqlite",
-        Driver::Mongo => "mongodb",
-    }
-}
-
 /// Emit a `connection` log entry. Used for `connect`, `disconnect`, and
 /// `test_connection` so the Console panel can show the actual lifecycle
 /// boundary that's currently invisible to the user.
@@ -63,7 +53,7 @@ fn log_connection(
 ) {
     let mut entry = LogEntry::new(LogKind::Connection)
         .connection_id(connection_id)
-        .driver(driver_str(driver))
+        .driver(driver.wire_name())
         .message(message);
     if let Some(s) = start {
         entry = entry.duration_ms(s.elapsed().as_millis() as u64);
@@ -504,7 +494,7 @@ pub(crate) async fn connect_inner(
         profile.driver,
         &format!(
             "connect: opening {} pool to {}:{}/{} (max {} connections)",
-            driver_str(profile.driver),
+            profile.driver.wire_name(),
             profile.host,
             profile.port,
             profile.database,

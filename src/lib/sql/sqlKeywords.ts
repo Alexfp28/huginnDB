@@ -94,6 +94,27 @@ const SQLITE_EXTRA: ReadonlyArray<string> = [
   "GLOB",
 ];
 
+/** T-SQL-specific additions (SQL Server). */
+const SQLSERVER_EXTRA: ReadonlyArray<string> = [
+  "TOP",
+  "OFFSET",
+  "FETCH NEXT",
+  "ROWS ONLY",
+  "MERGE",
+  "OUTPUT",
+  "IDENTITY",
+  "CROSS APPLY",
+  "OUTER APPLY",
+  "ISNULL",
+  "GETDATE",
+  "SCOPE_IDENTITY",
+  "NEWID",
+  "CONVERT",
+  "IIF",
+  "EXEC",
+  "NOLOCK",
+];
+
 /**
  * MongoDB is not SQL: its editor completions are the shell methods and the
  * common MQL/aggregation operators, not the SQL keyword set. Collection and
@@ -173,6 +194,8 @@ export function keywordsFor(driver: Driver | undefined): string[] {
       return [...COMMON_KEYWORDS, ...MYSQL_EXTRA];
     case "sqlite":
       return [...COMMON_KEYWORDS, ...SQLITE_EXTRA];
+    case "sqlserver":
+      return [...COMMON_KEYWORDS, ...SQLSERVER_EXTRA];
     case "mongodb":
       // Mongo is not SQL — return only the shell/MQL vocabulary.
       return [...MONGODB_KEYWORDS];

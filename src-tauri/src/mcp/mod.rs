@@ -815,7 +815,11 @@ impl Huginn {
                 write_policy: self.write_policy(&p.id).label(),
                 id: p.id.clone(),
                 name: p.name.clone(),
-                driver: format!("{:?}", p.driver).to_lowercase(),
+                // The profile's own wire name, not a `Debug` repr: the latter
+                // reported `"mongo"` where `profiles.json` (and every other
+                // surface) says `"mongodb"`, and would have said `"mssql"` for
+                // SQL Server's `"sqlserver"`.
+                driver: p.driver.wire_name().to_string(),
                 host: p.host.clone(),
                 database: p.database.clone(),
                 active: active.contains(&p.id),
@@ -1486,6 +1490,7 @@ mod tests {
                 ssh_tunnel: None,
                 connection_string: None,
                 auth_source: None,
+                mssql: None,
                 ephemeral: false,
                 group: None,
                 visible_databases: None,

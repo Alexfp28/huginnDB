@@ -39,6 +39,7 @@ import {
   parseColumnType,
   type ColumnTypeCategory,
 } from "@/lib/db/columnTypes";
+import { supportsDdlEditing } from "@/lib/db/driver";
 import type {
   ColumnDef,
   Driver,
@@ -118,10 +119,12 @@ export function StructureEditorTab({
   });
   const typeCategories = useMemo(() => columnCategoriesFor(driver), [driver]);
 
-  // MongoDB structure is read-only in this version: the backend rejects
-  // preview/apply, so the editor shows the inferred fields + indexes for
-  // inspection only and hides the Apply action.
-  const isReadOnly = driver === "mongodb";
+  // Read-only on the drivers whose DDL the backend can't build yet: MongoDB
+  // (no SQL DDL at all — the tab shows inferred fields + real indexes) and
+  // SQL Server (the catalog introspection is complete, only the T-SQL builder
+  // is missing). Both reject preview/apply, so the Apply action is replaced by
+  // a badge instead of failing on click.
+  const isReadOnly = !supportsDdlEditing(driver);
 
   const [original, setOriginal] = useState<TableStructure | null>(null);
   const [name, setName] = useState(table ?? "");
@@ -338,7 +341,9 @@ export function StructureEditorTab({
           )}
           {isReadOnly ? (
             <span className="rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground">
-              {t("structure.readOnlyMongo")}
+              {driver === "sqlserver"
+                ? t("structure.readOnlySqlServer")
+                : t("structure.readOnlyMongo")}
             </span>
           ) : (
             <Button

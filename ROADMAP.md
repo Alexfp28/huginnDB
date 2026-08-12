@@ -34,6 +34,7 @@ in a roadmap and now don't:
 | MCP connector (`huginndb-mcp`) | 1.7.0 (binary) → 1.9.0 (per-connection write policy) | Read-only by default; `read-only`/`data`/`full` policy per connection, audited writes. See `docs/MCP_CONNECTOR_ROADMAP.md` and `docs/MCP.md`. |
 | Canary pre-release channel | Unreleased | Side-by-side opt-in build for dogfooding against real profiles before a stable release. See `docs/CANARY.md`. |
 | Reconnect-on-launch + session-level workspace layout | Unreleased | Restores live connections, focus, and pane geometry at startup. |
+| Microsoft SQL Server driver | Unreleased | Read + edit-data MVP via `tiberius` (`sqlx` has no MSSQL driver). Structure/view editing and `.sql` export are deferred — see the CHANGELOG entry for the full list. Requires SQL Server 2012+. |
 
 ## Open (priority order)
 
@@ -42,8 +43,11 @@ in a roadmap and now don't:
    is still a one-row-at-a-time affair.
 2. **Schema diff & export** — DDL extraction and a side-by-side compare
    between two schemas or two points in time. No backend or UI work started.
-3. **More drivers** — Microsoft SQL Server, ClickHouse, DuckDB. Recipe for
-   adding a driver is in `CONTRIBUTING.md`.
+3. **More drivers** — ClickHouse, DuckDB. Recipe for adding a driver is in
+   `CONTRIBUTING.md`. Microsoft SQL Server shipped (see above); what is left
+   there is its DDL surface — the structure editor, table/view rename and
+   `.sql` export/import — which needs a T-SQL builder in `db/ddl.rs`,
+   `db/view_ddl.rs` and `db/dump.rs`.
 4. **Cloud/managed database support (Supabase, Neon, PlanetScale, ...)** — a
    Supabase project's Postgres endpoint already connects today through the
    existing PostgreSQL driver (it's plain Postgres on the wire), so this

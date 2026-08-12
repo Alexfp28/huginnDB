@@ -227,6 +227,9 @@ pub fn build_url(profile: &ConnectionProfile, password: &str, host: &str, port: 
         // ever reaching here. Returning the raw connection string keeps the
         // match total without inventing a meaningless SQL URL.
         Driver::Mongo => profile.connection_string.clone().unwrap_or_default(),
+        // Same story for SQL Server: `tiberius` is configured through a
+        // `Config` builder in `crate::db::mssql::open_pool`, not a URL.
+        Driver::MsSql => String::new(),
     }
 }
 
@@ -251,6 +254,14 @@ pub async fn open_pool(
     // built entirely in the mongo module.
     if matches!(profile.driver, Driver::Mongo) {
         return crate::db::mongo::open_pool(profile, password, ssh_secret, known_hosts, limits)
+            .await;
+    }
+    // SQL Server likewise builds its own client (and its own session pool, since
+    // `tiberius` has none). It *does* tunnel over SSH, so unlike the Mongo arm
+    // this one still goes through `db::ssh` — inside `mssql::open_pool`, which
+    // owns the tunnel-vs-named-instance interaction.
+    if matches!(profile.driver, Driver::MsSql) {
+        return crate::db::mssql::open_pool(profile, password, ssh_secret, known_hosts, limits)
             .await;
     }
 
@@ -280,8 +291,10 @@ pub async fn open_pool(
                 .connect(&url)
                 .await?,
         ),
-        // MongoDB is handled by the early return at the top of this function.
+        // MongoDB and SQL Server are handled by the early returns at the top of
+        // this function.
         Driver::Mongo => unreachable!("mongo handled by db::mongo::open_pool"),
+        Driver::MsSql => unreachable!("sql server handled by db::mssql::open_pool"),
         // SQLite is a local file: no server to run out of connections, and a
         // second writer only buys lock contention. Fixed at one, tuned the
         // same way so an abandoned tab doesn't hold the file handle open.
@@ -392,6 +405,11 @@ pub async fn close_pool(pool: &DbPool, ownership: PoolOwnership, timeout: Durati
                     conn.client.clone().shutdown().await
                 }
             }
+            // Unlike Mongo, a SQL Server per-database view owns its own
+            // sessions: `open_database_view` clones the profile with the
+            // database substituted and opens a second `MsSqlPool`, sharing
+            // nothing with the parent. So both ownerships close.
+            DbPool::MsSql(p) => p.close().await,
         }
     };
     let _ = tokio::time::timeout(timeout, closing).await;
@@ -429,9 +447,19 @@ pub async fn smoke_test(
         DbPool::Postgres(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
         DbPool::Mysql(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
         DbPool::Sqlite(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
+        // Mongo and SQL Server report their probe through `AppError` rather
+        // than `sqlx::Error`, so they close and return here instead of joining
+        // the shared `result?` below.
         DbPool::Mongo(conn) => {
             return {
                 let ping = crate::db::mongo::schema::ping(conn).await;
+                close_pool(&pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
+                ping
+            }
+        }
+        DbPool::MsSql(p) => {
+            return {
+                let ping = p.ping().await;
                 close_pool(&pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
                 ping
             }
@@ -488,6 +516,7 @@ mod tests {
             mcp_write: Default::default(),
             max_connections,
             origin_id: None,
+            mssql: None,
         }
     }
 

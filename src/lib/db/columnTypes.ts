@@ -158,6 +158,67 @@ const SQLITE: ColumnTypeCategory[] = [
   { key: "other", types: [{ name: "BOOLEAN" }] },
 ];
 
+/** T-SQL types (used as labels; structure *editing* is read-only for SQL
+ *  Server in this version, so these only have to describe what the catalog
+ *  reports back). */
+const SQLSERVER: ColumnTypeCategory[] = [
+  {
+    key: "integer",
+    types: [
+      { name: "tinyint" },
+      { name: "smallint" },
+      { name: "int" },
+      { name: "bigint" },
+      { name: "bit" },
+    ],
+  },
+  {
+    key: "real",
+    types: [
+      { name: "real" },
+      { name: "float", hasLength: true, defaultLength: "53" },
+      { name: "decimal", hasLength: true, defaultLength: "18,0" },
+      { name: "numeric", hasLength: true, defaultLength: "18,0" },
+      { name: "money" },
+      { name: "smallmoney" },
+    ],
+  },
+  {
+    key: "text",
+    types: [
+      { name: "char", hasLength: true, defaultLength: "1" },
+      { name: "varchar", hasLength: true, defaultLength: "255" },
+      { name: "nchar", hasLength: true, defaultLength: "1" },
+      { name: "nvarchar", hasLength: true, defaultLength: "255" },
+      { name: "text" },
+      { name: "ntext" },
+    ],
+  },
+  {
+    key: "datetime",
+    types: [
+      { name: "date" },
+      { name: "time", hasLength: true, defaultLength: "7" },
+      { name: "datetime" },
+      { name: "datetime2", hasLength: true, defaultLength: "7" },
+      { name: "smalldatetime" },
+      { name: "datetimeoffset", hasLength: true, defaultLength: "7" },
+    ],
+  },
+  {
+    key: "binary",
+    types: [
+      { name: "binary", hasLength: true, defaultLength: "16" },
+      { name: "varbinary", hasLength: true, defaultLength: "max" },
+      { name: "image" },
+    ],
+  },
+  {
+    key: "other",
+    types: [{ name: "uniqueidentifier" }, { name: "xml" }, { name: "sql_variant" }],
+  },
+];
+
 /** BSON types for MongoDB (used as field-type labels; structure editing is
  *  read-only for Mongo in this version). */
 const MONGODB: ColumnTypeCategory[] = [
@@ -190,6 +251,8 @@ export function columnCategoriesFor(driver: Driver | undefined): ColumnTypeCateg
       return MYSQL;
     case "sqlite":
       return SQLITE;
+    case "sqlserver":
+      return SQLSERVER;
     case "mongodb":
       return MONGODB;
     default:

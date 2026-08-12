@@ -7,8 +7,9 @@
 //! table. The lean `list_columns` shape stays untouched for the explorer tree.
 
 use crate::db::ddl::{
-    build_ddl, sqlite_rebuild_required, ColumnDef, Driver, ForeignKeyDef, IndexDef, TableStructure,
+    build_ddl, sqlite_rebuild_required, ColumnDef, ForeignKeyDef, IndexDef, TableStructure,
 };
+use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
@@ -22,17 +23,6 @@ fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
         .read()
         .get(id)
         .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
-fn driver_of(pool: &DbPool) -> Driver {
-    match pool {
-        DbPool::Postgres(_) => Driver::Postgres,
-        DbPool::Mysql(_) => Driver::Mysql,
-        DbPool::Sqlite(_) => Driver::Sqlite,
-        // MongoDB has no SQL DDL driver; structure *editing* is not supported,
-        // and the callers below guard against it before reaching `driver_of`.
-        DbPool::Mongo(_) => unreachable!("mongo structure changes are rejected before driver_of"),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +55,12 @@ pub async fn get_table_structure_inner(
         DbPool::Sqlite(p) => sqlite_structure(&p, table).await,
         // Read-only structure for MongoDB: inferred fields + real indexes.
         DbPool::Mongo(conn) => crate::db::mongo::schema::table_structure(&conn, &table).await,
+        // Read-only for SQL Server too in this version: the catalog gives us
+        // the full structure, but the DDL builder can't express T-SQL yet, so
+        // `preview`/`apply` below refuse it.
+        DbPool::MsSql(p) => {
+            crate::db::mssql::schema::table_structure(&p, schema.as_deref(), &table).await
+        }
     }
 }
 
@@ -469,10 +465,10 @@ pub async fn preview_structure_change(
             "structure editing is not supported on MongoDB in this version".into(),
         ));
     }
-    let driver = driver_of(&pool);
-    let statements = build_ddl(driver, args.original.as_ref(), &args.desired)?;
-    let rebuild =
-        driver == Driver::Sqlite && sqlite_rebuild_required(args.original.as_ref(), &args.desired);
+    let dialect = Dialect::try_of(&pool)?;
+    let statements = build_ddl(dialect, args.original.as_ref(), &args.desired)?;
+    let rebuild = dialect == Dialect::Sqlite
+        && sqlite_rebuild_required(args.original.as_ref(), &args.desired);
     Ok(StructurePreview {
         statements,
         rebuild,
@@ -501,8 +497,8 @@ pub(crate) async fn apply_structure_change_inner(
             "structure editing is not supported on MongoDB in this version".into(),
         ));
     }
-    let driver = driver_of(&pool);
-    let statements = build_ddl(driver, args.original.as_ref(), &args.desired)?;
+    let dialect = Dialect::try_of(&pool)?;
+    let statements = build_ddl(dialect, args.original.as_ref(), &args.desired)?;
 
     match &pool {
         DbPool::Postgres(p) => {
@@ -530,6 +526,9 @@ pub(crate) async fn apply_structure_change_inner(
                 sqlx::query(stmt).execute(p).await?;
             }
         }
+        // Rejected earlier by `build_ddl` (see `db::ddl::reject_unsupported`),
+        // so the statement list above was never produced for SQL Server.
+        DbPool::MsSql(_) => unreachable!("sql server rejected by build_ddl"),
         DbPool::Mongo(_) => unreachable!("mongo rejected above"),
     }
     Ok(())

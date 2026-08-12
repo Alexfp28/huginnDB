@@ -26,7 +26,43 @@ const DRIVER_ALIASES: Record<string, Driver> = {
   sqlite3: "sqlite",
   mongodb: "mongodb",
   mongo: "mongodb",
+  sqlserver: "sqlserver",
+  mssql: "sqlserver",
+  "ms-sql": "sqlserver",
+  tsql: "sqlserver",
+  azuresql: "sqlserver",
 };
+
+/**
+ * Per-driver capability gates for the UI.
+ *
+ * These exist so the explorer doesn't accumulate `driver !== "mongodb" &&
+ * driver !== "sqlserver"` chains that read as "not these two engines" when
+ * what they actually mean is "this surface is implemented". Each one names the
+ * *feature*, and the backend refuses the same operations with
+ * `UnsupportedDriver`, so a gate that drifts produces an error message rather
+ * than wrong SQL.
+ */
+
+/** Structure/view editing (`ALTER TABLE`, rename, `CREATE VIEW`). MongoDB has
+ *  no SQL DDL at all; SQL Server's T-SQL DDL builder is not written yet, so
+ *  both surfaces are read-only there for now. */
+export function supportsDdlEditing(driver: Driver | undefined): boolean {
+  return driver !== "mongodb" && driver !== "sqlserver";
+}
+
+/** Whole-database / per-table `.sql` export and import. Needs a per-driver
+ *  literal encoder (`db/dump.rs`), which SQL Server doesn't have yet;
+ *  MongoDB uses the per-collection JSON path instead. */
+export function supportsSqlDump(driver: Driver | undefined): boolean {
+  return driver !== "mongodb" && driver !== "sqlserver";
+}
+
+/** Server-level `CREATE DATABASE` / `DROP DATABASE`. SQLite's file *is* the
+ *  database and MongoDB creates them implicitly on first write. */
+export function supportsCreateDatabase(driver: Driver | undefined): boolean {
+  return driver === "postgres" || driver === "mysql" || driver === "sqlserver";
+}
 
 /** Canonicalize a free-form driver string; `null` when empty/unrecognized. */
 export function normalizeDriver(
@@ -54,6 +90,15 @@ export function driverMismatchHint(error: string): string | null {
   // MySQL driver talking to a non-MySQL server.
   if (e.includes("mysql protocol error") || e.includes("malformed packet")) {
     return "the server didn't respond as MySQL — if this is a PostgreSQL server, set the driver to PostgreSQL.";
+  }
+  // SQL Server driver talking to something that isn't speaking TDS. tiberius
+  // surfaces this as a protocol/token error rather than a connection failure,
+  // which reads as a server-side problem when it's really the wrong driver.
+  if (
+    e.includes("sql server error") &&
+    (e.includes("protocol error") || e.includes("token"))
+  ) {
+    return "the server didn't respond as SQL Server — check the port (1433 by default), or the instance name if this is a named instance.";
   }
   return null;
 }

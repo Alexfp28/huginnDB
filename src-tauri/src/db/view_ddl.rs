@@ -1,4 +1,4 @@
-//! Pure, driver-aware DDL generation for the view editor.
+//! Pure, dialect-aware DDL generation for the view editor.
 //!
 //! Mirrors [`crate::db::ddl`]'s "diff original vs desired, return ordered
 //! statements" shape, but for `CREATE VIEW` instead of `CREATE TABLE`: the
@@ -17,17 +17,10 @@
 //! same risk class the free-form Query Editor already accepts, not a new
 //! one introduced here.
 
-use crate::db::ddl::{validate_ident, Driver};
-use crate::db::sql::quote_ident;
+use crate::db::ddl::validate_ident;
+use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
-
-/// Quote a *validated* identifier for this driver. [`Driver`]'s own `quote`
-/// helper in `ddl.rs` is private to that module, so this mirrors it rather
-/// than widening `ddl.rs`'s visibility just for this one call site.
-fn quote(driver: Driver, ident: &str) -> String {
-    quote_ident(matches!(driver, Driver::Postgres | Driver::Sqlite), ident)
-}
 
 // ---------------------------------------------------------------------------
 // DTOs — mirrored in src/types.ts (camelCase on the wire).
@@ -58,27 +51,25 @@ fn validate_view(v: &ViewDefinition) -> AppResult<()> {
     Ok(())
 }
 
-/// Qualified `schema.view` (or bare view) for the driver.
-fn qualified(driver: Driver, schema: Option<&str>, name: &str) -> String {
-    match schema {
-        Some(s) if !s.is_empty() && driver != Driver::Sqlite => {
-            format!("{}.{}", quote(driver, s), quote(driver, name))
-        }
-        _ => quote(driver, name),
-    }
-}
-
 /// Build the ordered DDL statements to take `original` to `desired`.
 ///
 /// `original = None` means "create a new view"; `Some(snapshot)` diffs the
 /// two on name and body.
 pub fn build_view_ddl(
-    driver: Driver,
+    dialect: Dialect,
     original: Option<&ViewDefinition>,
     desired: &ViewDefinition,
 ) -> AppResult<(Vec<String>, bool)> {
+    // SQL Server would need `CREATE OR ALTER VIEW` (2016+) and `EXEC sp_rename`
+    // rather than a rename clause; deferred with the rest of its DDL support
+    // (see `crate::db::ddl`).
+    if dialect == Dialect::MsSql {
+        return Err(AppError::UnsupportedDriver(
+            "the view editor does not support SQL Server yet".into(),
+        ));
+    }
     validate_view(desired)?;
-    let qt = qualified(driver, desired.schema.as_deref(), &desired.name);
+    let qt = dialect.qualify(desired.schema.as_deref(), &desired.name);
 
     let Some(orig) = original else {
         return Ok((
@@ -94,24 +85,24 @@ pub fn build_view_ddl(
         return Ok((vec![], false));
     }
 
-    match driver {
-        Driver::Sqlite => {
+    match dialect {
+        Dialect::Sqlite => {
             // No CREATE OR REPLACE / ALTER VIEW on SQLite — always drop the
             // original name and recreate under the desired one.
-            let old_qt = qualified(driver, orig.schema.as_deref(), &orig.name);
+            let old_qt = dialect.qualify(orig.schema.as_deref(), &orig.name);
             let stmts = vec![
                 format!("DROP VIEW IF EXISTS {old_qt}"),
                 format!("CREATE VIEW {qt} AS {}", desired.query.trim()),
             ];
             Ok((stmts, true))
         }
-        Driver::Postgres => {
+        Dialect::Postgres => {
             let mut stmts = Vec::new();
             if renamed {
-                let old_qt = qualified(driver, orig.schema.as_deref(), &orig.name);
+                let old_qt = dialect.qualify(orig.schema.as_deref(), &orig.name);
                 stmts.push(format!(
                     "ALTER VIEW {old_qt} RENAME TO {}",
-                    quote(driver, &desired.name)
+                    dialect.quote_ident(&desired.name)
                 ));
             }
             if body_changed {
@@ -122,10 +113,10 @@ pub fn build_view_ddl(
             }
             Ok((stmts, false))
         }
-        Driver::Mysql => {
+        Dialect::Mysql => {
             let mut stmts = Vec::new();
             if renamed {
-                let old_qt = qualified(driver, orig.schema.as_deref(), &orig.name);
+                let old_qt = dialect.qualify(orig.schema.as_deref(), &orig.name);
                 stmts.push(format!("RENAME TABLE {old_qt} TO {qt}"));
             }
             if body_changed {
@@ -136,6 +127,7 @@ pub fn build_view_ddl(
             }
             Ok((stmts, false))
         }
+        Dialect::MsSql => unreachable!("SQL Server is rejected above"),
     }
 }
 
@@ -154,7 +146,7 @@ mod tests {
     #[test]
     fn create_new_view() {
         let (stmts, rebuild) = build_view_ddl(
-            Driver::Postgres,
+            Dialect::Postgres,
             None,
             &view(Some("public"), "v_active", "SELECT 1"),
         )
@@ -170,7 +162,7 @@ mod tests {
     fn postgres_body_change_uses_create_or_replace() {
         let orig = view(None, "v", "SELECT 1");
         let desired = view(None, "v", "SELECT 2");
-        let (stmts, rebuild) = build_view_ddl(Driver::Postgres, Some(&orig), &desired).unwrap();
+        let (stmts, rebuild) = build_view_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
         assert_eq!(stmts, vec!["CREATE OR REPLACE VIEW \"v\" AS SELECT 2"]);
         assert!(!rebuild);
     }
@@ -179,7 +171,7 @@ mod tests {
     fn postgres_rename_and_redefine() {
         let orig = view(None, "old", "SELECT 1");
         let desired = view(None, "new", "SELECT 2");
-        let (stmts, _) = build_view_ddl(Driver::Postgres, Some(&orig), &desired).unwrap();
+        let (stmts, _) = build_view_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
         assert_eq!(
             stmts,
             vec![
@@ -193,7 +185,7 @@ mod tests {
     fn mysql_rename_only_no_body_change() {
         let orig = view(None, "old", "SELECT 1");
         let desired = view(None, "new", "SELECT 1");
-        let (stmts, _) = build_view_ddl(Driver::Mysql, Some(&orig), &desired).unwrap();
+        let (stmts, _) = build_view_ddl(Dialect::Mysql, Some(&orig), &desired).unwrap();
         assert_eq!(stmts, vec!["RENAME TABLE `old` TO `new`"]);
     }
 
@@ -201,7 +193,7 @@ mod tests {
     fn sqlite_always_drop_and_recreate() {
         let orig = view(None, "v", "SELECT 1");
         let desired = view(None, "v", "SELECT 2");
-        let (stmts, rebuild) = build_view_ddl(Driver::Sqlite, Some(&orig), &desired).unwrap();
+        let (stmts, rebuild) = build_view_ddl(Dialect::Sqlite, Some(&orig), &desired).unwrap();
         assert_eq!(
             stmts,
             vec!["DROP VIEW IF EXISTS \"v\"", "CREATE VIEW \"v\" AS SELECT 2"]
@@ -213,13 +205,13 @@ mod tests {
     fn no_change_yields_no_statements() {
         let orig = view(None, "v", "SELECT 1");
         let (stmts, rebuild) =
-            build_view_ddl(Driver::Postgres, Some(&orig), &orig.clone()).unwrap();
+            build_view_ddl(Dialect::Postgres, Some(&orig), &orig.clone()).unwrap();
         assert!(stmts.is_empty());
         assert!(!rebuild);
     }
 
     #[test]
     fn empty_query_rejected() {
-        assert!(build_view_ddl(Driver::Postgres, None, &view(None, "v", "   ")).is_err());
+        assert!(build_view_ddl(Dialect::Postgres, None, &view(None, "v", "   ")).is_err());
     }
 }

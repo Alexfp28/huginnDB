@@ -4,10 +4,28 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
-## [Unreleased]
+## [1.13.0] — 2026-08-12
 
 ### Added
 
+- **Microsoft SQL Server driver** — the fifth engine, requested by users
+  running HuginnDB against SQL Server. Connect (with SSH tunnel support),
+  browse databases/schemas/tables/views/indexes with row counts and sizes,
+  run T-SQL in the editor, page/sort/filter the grid, edit cells, insert and
+  delete rows, bulk update, and the users/permissions panel. Named instances
+  (`HOST\SQLEXPRESS`) are resolved through the SQL Browser, and a "trust
+  server certificate" toggle — on by default — makes the self-signed
+  certificates most on-premise instances present usable. On Windows builds the
+  connection dialog also offers Windows (NTLM) authentication with an explicit
+  `DOMAIN\user`; the mode is hidden elsewhere because the underlying driver
+  only compiles it for Windows.
+- Minimum supported server is **SQL Server 2012**: paging uses
+  `OFFSET … ROWS FETCH NEXT … ROWS ONLY`, which does not exist before that.
+- The new engine is wired into the connection accounting below rather than
+  sizing itself: `tiberius` has no pool, so HuginnDB's own session pool takes
+  the same per-server grant every other driver takes, closes explicitly on
+  disconnect instead of waiting for a drop, and releases sessions left idle
+  for five minutes.
 - **Settings → Connections** — a new preferences section for the connection
   pool: the ceiling for a connection and for a per-database view, how many
   database views one connection may keep open, how long an unused one survives,
@@ -194,6 +212,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   state only — so saving a connection wiped its MCP write policy back to
   read-only and dropped its visible-databases subset. The dialog now preserves
   the stored profile's fields it doesn't edit.
+- The MCP connector's write-policy classifier treated two T-SQL statements as
+  reads: `SELECT … INTO <table>` (which creates a table) and `EXEC`/`EXECUTE`
+  (which can rename objects or run dynamic DDL). Both are now classified as
+  DDL, so a `read-only` or `data`-tier connection refuses them.
+- The MCP `list_connections` tool reported the driver from a `Debug`
+  representation, so a MongoDB connection came back as `"mongo"` instead of the
+  `"mongodb"` every other surface uses.
+
+### Known limitations (SQL Server)
+
+- The **structure editor is read-only**: columns, keys, indexes and foreign
+  keys are shown, but applying changes needs a T-SQL DDL builder that isn't
+  written yet. Renaming a table (`sp_rename`) and the **view editor** are
+  unavailable for the same reason.
+- **`.sql` export/import** is not available yet; it needs a T-SQL literal
+  encoder and `IDENTITY_INSERT` handling.
+- Integrated/SSPI authentication (log in as the current Windows user without
+  typing credentials) and Entra ID tokens are not offered.
+- A named instance cannot be combined with an SSH tunnel: the SQL Browser is a
+  separate UDP service the tunnel doesn't forward. Tunnel the instance's own
+  TCP port and leave the instance field empty.
 
 ## [1.12.1] — 2026-08-05
 

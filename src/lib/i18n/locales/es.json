@@ -138,6 +138,13 @@
       "ssl": "SSL",
       "sqlitePath": "Ruta del fichero de base de datos",
       "sqlitePathPlaceholder": "C:\\ruta\\al\\fichero.db",
+      "mssqlInstance": "Nombre de instancia (opcional)",
+      "mssqlInstancePlaceholder": "SQLEXPRESS",
+      "mssqlTrustCert": "Confiar en el certificado del servidor",
+      "mssqlTrustCertHint": "Necesario para los certificados autofirmados que usan la mayoría de instalaciones on-premise.",
+      "mssqlAuth": "Autenticación",
+      "mssqlAuth_sql": "Inicio de sesión de SQL Server",
+      "mssqlAuth_windows": "Windows (NTLM)",
       "authSource": "Origen de autenticación",
       "authSourcePlaceholder": "admin",
       "connectionString": "Cadena de conexión",
@@ -630,7 +637,8 @@
       "refColumns": "columnas referenciadas",
       "add": "Añadir clave foránea"
     },
-    "readOnlyMongo": "Solo lectura (MongoDB)"
+    "readOnlyMongo": "Solo lectura (MongoDB)",
+    "readOnlySqlServer": "Solo lectura (SQL Server)"
   },
   "view": {
     "loading": "Cargando vista…",
@@ -1132,6 +1140,31 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_13_0": {
+        "tagline": "Un quinto motor —Microsoft SQL Server—, una huella de conexiones por fin acotada, visible y configurable, y una vista lista que edita en todos los drivers.",
+        "items": {
+          "sqlServer": {
+            "title": "Microsoft SQL Server",
+            "body": "El quinto driver: conectar (túneles SSH, instancias nombradas, autenticación Windows en compilaciones de Windows), explorar esquemas/tablas/vistas/índices, ejecutar T-SQL y editar, insertar, borrar y actualizar filas en masa. El editor de estructura y la exportación .sql quedan de solo lectura por ahora."
+          },
+          "connectionFootprint": {
+            "title": "Muchas menos conexiones",
+            "body": "Explorar un servidor multi-BD ya no abre un pool sin límite por base de datos: están acotados, se reutilizan y se cierran tras cinco minutos sin uso. La búsqueda entre bases deja de inundar el servidor, MongoDB toma el mismo presupuesto que el resto, y un error de \"too many connections\" ahora se identifica como tal — con lo que está manteniendo el propio HuginnDB."
+          },
+          "connectionSettings": {
+            "title": "Un presupuesto tuyo, por servidor",
+            "body": "Ajustes → Conexiones muestra en vivo cuántos pools hay abiertos y permite fijar la asignación de un servidor entero —compartida por cada conexión y cada vista de base de datos que llegue a él— de forma global o en una conexión concreta."
+          },
+          "listEditor": {
+            "title": "La vista lista ya edita",
+            "body": "Doble clic en un valor para editarlo ahí mismo, plegar y desplegar objetos y arrays anidados y, en MongoDB, cambiar el tipo BSON de un campo, añadir campos o borrarlos. Deja de ser exclusiva de MongoDB: PostgreSQL, MySQL y SQLite también la tienen."
+          },
+          "mcpPools": {
+            "title": "Un presupuesto, MCP incluido",
+            "body": "El conector huginndb-mcp puede tomar prestados los pools de la aplicación en vez de abrir los suyos, así que por muchos clientes de IA que haya configurados la máquina mantiene un presupuesto por servidor — y su actividad aparece en vivo en la Consola."
+          }
+        }
+      },
       "1_12_1": {
         "tagline": "Exportación e importación con rediseño completo — diálogos a nivel de conexión y de base de datos, más atajos en la barra de la rejilla — junto con una herramienta de actualización masiva y un editor de estructura renovado.",
         "items": {

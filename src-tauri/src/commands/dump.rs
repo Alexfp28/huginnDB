@@ -23,12 +23,12 @@
 use crate::commands::query::{build_filter_clause_at, ColumnFilter};
 use crate::commands::schema::{list_tables_inner, TableInfo};
 use crate::commands::structure::{mysql_structure, pg_structure};
-use crate::db::ddl::{build_create, Driver, TableStructure};
+use crate::db::ddl::{build_create, TableStructure};
 use crate::db::dump::{
     build_insert_statements, mysql_auto_increment_resync_stmt, mysql_literal, pg_literal,
     pg_sequence_resync_stmt, sqlite_literal,
 };
-use crate::db::sql::quote_ident;
+use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
 use serde::Deserialize;
@@ -61,17 +61,6 @@ fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
 /// Rows per multi-row `INSERT ... VALUES (...), (...);` statement
 /// (mysqldump-style batching).
 const BATCH_SIZE: usize = 500;
-
-fn qualified_name(pg_or_sqlite: bool, schema: Option<&str>, table: &str) -> String {
-    match schema {
-        Some(s) if !s.is_empty() => format!(
-            "{}.{}",
-            quote_ident(pg_or_sqlite, s),
-            quote_ident(pg_or_sqlite, table)
-        ),
-        _ => quote_ident(pg_or_sqlite, table),
-    }
-}
 
 /// One database (or, for a multi-DB connection, one already-resolved
 /// `<parent>::db::<name>` child) to include in an [`export_databases`] run.
@@ -148,6 +137,15 @@ pub async fn export_databases(
                 let table_filter = target.tables.as_deref();
                 export_sqlite(&mut w, &p, table_filter, data_mode).await?
             }
+            // SQL Server export needs its own literal encoder (`0x…` binaries,
+            // `N'…'` unicode strings) plus `SET IDENTITY_INSERT` bracketing
+            // instead of the sequence/auto-increment resync the others do —
+            // deferred, so refuse rather than emit a dump that won't load.
+            DbPool::MsSql(_) => {
+                return Err(AppError::UnsupportedDriver(
+                    "database export is not supported for SQL Server yet".into(),
+                ))
+            }
             DbPool::Mongo(_) => unreachable!("rejected above"),
         }
     }
@@ -215,6 +213,11 @@ pub async fn export_table(
     )?;
 
     match pool {
+        DbPool::MsSql(_) => {
+            return Err(AppError::UnsupportedDriver(
+                "table export is not supported for SQL Server yet".into(),
+            ))
+        }
         DbPool::Postgres(p) => export_pg(&mut w, &p, &tables, DataMode::Insert).await?,
         DbPool::Mysql(p) => export_mysql(&mut w, &p, &tables, DataMode::Insert).await?,
         DbPool::Sqlite(p) => {
@@ -256,13 +259,17 @@ pub async fn export_table_rows(
                 .into(),
         ));
     }
-    let pg_or_sqlite = matches!(&pool, DbPool::Postgres(_) | DbPool::Sqlite(_));
-    let pg = matches!(&pool, DbPool::Postgres(_));
+    if matches!(&pool, DbPool::MsSql(_)) {
+        return Err(AppError::UnsupportedDriver(
+            "row export is not supported for SQL Server yet".into(),
+        ));
+    }
+    let dialect = Dialect::try_of(&pool)?;
     let search_columns = search_columns.unwrap_or_default();
     let search_ref = search.as_deref().filter(|s| !s.is_empty());
     let (where_clause, binds, _) =
-        build_filter_clause_at(1, pg, pg_or_sqlite, &filters, search_ref, &search_columns);
-    let qt = qualified_name(pg_or_sqlite, schema.as_deref(), &table);
+        build_filter_clause_at(1, dialect, &filters, search_ref, &search_columns);
+    let qt = dialect.qualify(schema.as_deref(), &table);
     let select_sql = format!("SELECT * FROM {qt}{where_clause}");
 
     use tauri_plugin_dialog::DialogExt;
@@ -289,6 +296,7 @@ pub async fn export_table_rows(
     // fetched rows' own metadata — the same technique `export_sqlite` already
     // uses for its per-row dump.
     match &pool {
+        DbPool::MsSql(_) => unreachable!("sql server rejected above"),
         DbPool::Postgres(p) => {
             let mut q = sqlx::query(&select_sql);
             for b in &binds {
@@ -299,7 +307,7 @@ pub async fn export_table_rows(
                 let quoted_cols: Vec<String> = rows[0]
                     .columns()
                     .iter()
-                    .map(|c| quote_ident(true, c.name()))
+                    .map(|c| Dialect::Postgres.quote_ident(c.name()))
                     .collect();
                 let literal_rows: Vec<Vec<String>> = rows
                     .iter()
@@ -320,7 +328,7 @@ pub async fn export_table_rows(
                 let quoted_cols: Vec<String> = rows[0]
                     .columns()
                     .iter()
-                    .map(|c| quote_ident(false, c.name()))
+                    .map(|c| Dialect::Mysql.quote_ident(c.name()))
                     .collect();
                 let literal_rows: Vec<Vec<String>> = rows
                     .iter()
@@ -345,7 +353,7 @@ pub async fn export_table_rows(
                 let quoted_cols: Vec<String> = rows[0]
                     .columns()
                     .iter()
-                    .map(|c| quote_ident(true, c.name()))
+                    .map(|c| Dialect::Sqlite.quote_ident(c.name()))
                     .collect();
                 let literal_rows: Vec<Vec<String>> = rows
                     .iter()
@@ -391,9 +399,9 @@ async fn export_pg(
         // defaults (e.g. Postgres's `'foo'::text` cast-style defaults) are
         // common and would otherwise be rejected outright.
         let structure = pg_structure(pool, Some(t.schema.clone()), t.name.clone()).await?;
-        let mut stmts = build_create(Driver::Postgres, &structure)?;
+        let mut stmts = build_create(Dialect::Postgres, &structure)?;
         let create = stmts.remove(0);
-        let qt = qualified_name(true, structure.schema.as_deref(), &structure.name);
+        let qt = Dialect::Postgres.qualify(structure.schema.as_deref(), &structure.name);
         cached.push(CachedTable {
             create,
             tail: stmts,
@@ -411,7 +419,7 @@ async fn export_pg(
             .structure
             .columns
             .iter()
-            .map(|col| quote_ident(true, &col.name))
+            .map(|col| Dialect::Postgres.quote_ident(&col.name))
             .collect();
         let auto_idx = c
             .structure
@@ -476,9 +484,9 @@ async fn export_mysql(
     let mut cached = Vec::with_capacity(tables.len());
     for t in tables {
         let structure = mysql_structure(pool, Some(t.schema.clone()), t.name.clone()).await?;
-        let mut stmts = build_create(Driver::Mysql, &structure)?;
+        let mut stmts = build_create(Dialect::Mysql, &structure)?;
         let create = stmts.remove(0);
-        let qt = qualified_name(false, None, &structure.name);
+        let qt = Dialect::Mysql.qualify(None, &structure.name);
         cached.push(CachedTable {
             create,
             tail: stmts,
@@ -496,7 +504,7 @@ async fn export_mysql(
             .structure
             .columns
             .iter()
-            .map(|col| quote_ident(false, &col.name))
+            .map(|col| Dialect::Mysql.quote_ident(&col.name))
             .collect();
         let auto_idx = c
             .structure
@@ -607,7 +615,7 @@ async fn export_sqlite(
 
     for r in &table_rows {
         let name: String = r.get("name");
-        let quoted = quote_ident(true, &name);
+        let quoted = Dialect::Sqlite.quote_ident(&name);
         let rows = sqlx::query(&format!("SELECT * FROM {quoted}"))
             .fetch_all(pool)
             .await?;
@@ -623,7 +631,7 @@ async fn export_sqlite(
         let quoted_cols: Vec<String> = rows[0]
             .columns()
             .iter()
-            .map(|c| quote_ident(true, c.name()))
+            .map(|c| Dialect::Sqlite.quote_ident(c.name()))
             .collect();
         let literal_rows: Vec<Vec<String>> = rows
             .iter()

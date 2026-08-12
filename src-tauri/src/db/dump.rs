@@ -1,4 +1,4 @@
-//! Pure logic for "export database to .sql": per-driver literal encoding and
+//! Pure logic for "export database to .sql": per-dialect literal encoding and
 //! `INSERT` statement assembly. No I/O, no `sqlx` execution — [`crate::commands::dump`]
 //! drives the actual queries and file writing.
 //!
@@ -8,18 +8,18 @@
 //! since a JSON value and a SQL literal have different escaping/quoting rules
 //! per type and forcing them through one representation would obscure both.
 
-use crate::db::ddl::Driver;
+use crate::db::sql::Dialect;
 use sqlx::{Row, TypeInfo, ValueRef};
 
-/// Escape + quote a text literal for the driver.
+/// Escape + quote a text literal for the dialect.
 ///
 /// Postgres and SQLite only need `'` doubled (`standard_conforming_strings`
 /// is on by default for both). MySQL's default `sql_mode` also treats `\` as
 /// an escape character inside string literals, so MySQL literals additionally
 /// double backslashes — done *first*, so doubling `'` afterward doesn't touch
 /// the backslashes just inserted.
-pub fn quote_text_literal(driver: Driver, s: &str) -> String {
-    let escaped = if driver == Driver::Mysql {
+pub fn quote_text_literal(dialect: Dialect, s: &str) -> String {
+    let escaped = if dialect == Dialect::Mysql {
         s.replace('\\', "\\\\").replace('\'', "''")
     } else {
         s.replace('\'', "''")
@@ -90,23 +90,23 @@ pub fn pg_literal(row: &sqlx::postgres::PgRow, idx: usize) -> String {
             .unwrap_or_else(|_| "NULL".into()),
         "JSON" | "JSONB" => row
             .try_get::<serde_json::Value, _>(idx)
-            .map(|v| quote_text_literal(Driver::Postgres, &v.to_string()))
+            .map(|v| quote_text_literal(Dialect::Postgres, &v.to_string()))
             .unwrap_or_else(|_| "NULL".into()),
         "TIMESTAMP" => row
             .try_get::<chrono::NaiveDateTime, _>(idx)
-            .map(|v| quote_text_literal(Driver::Postgres, &v.to_string()))
+            .map(|v| quote_text_literal(Dialect::Postgres, &v.to_string()))
             .unwrap_or_else(|_| "NULL".into()),
         "TIMESTAMPTZ" => row
             .try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
-            .map(|v| quote_text_literal(Driver::Postgres, &v.to_rfc3339()))
+            .map(|v| quote_text_literal(Dialect::Postgres, &v.to_rfc3339()))
             .unwrap_or_else(|_| "NULL".into()),
         "DATE" => row
             .try_get::<chrono::NaiveDate, _>(idx)
-            .map(|v| quote_text_literal(Driver::Postgres, &v.to_string()))
+            .map(|v| quote_text_literal(Dialect::Postgres, &v.to_string()))
             .unwrap_or_else(|_| "NULL".into()),
         "UUID" => row
             .try_get::<uuid::Uuid, _>(idx)
-            .map(|v| quote_text_literal(Driver::Postgres, &v.to_string()))
+            .map(|v| quote_text_literal(Dialect::Postgres, &v.to_string()))
             .unwrap_or_else(|_| "NULL".into()),
         "BYTEA" => row
             .try_get::<Vec<u8>, _>(idx)
@@ -116,7 +116,7 @@ pub fn pg_literal(row: &sqlx::postgres::PgRow, idx: usize) -> String {
         // gap already present in `values::pg_value`) share this fallback.
         _ => row
             .try_get::<String, _>(idx)
-            .map(|v| quote_text_literal(Driver::Postgres, &v))
+            .map(|v| quote_text_literal(Dialect::Postgres, &v))
             .unwrap_or_else(|_| "NULL".into()),
     }
 }
@@ -185,7 +185,7 @@ pub fn mysql_literal(row: &sqlx::mysql::MySqlRow, idx: usize) -> String {
     if name.contains("JSON") {
         return row
             .try_get::<serde_json::Value, _>(idx)
-            .map(|v| quote_text_literal(Driver::Mysql, &v.to_string()))
+            .map(|v| quote_text_literal(Dialect::Mysql, &v.to_string()))
             .unwrap_or_else(|_| "NULL".into());
     }
     if name.contains("BLOB") || name.contains("BINARY") {
@@ -197,7 +197,7 @@ pub fn mysql_literal(row: &sqlx::mysql::MySqlRow, idx: usize) -> String {
         // literal.
         if let Ok(bytes) = row.try_get::<Vec<u8>, _>(idx) {
             return match String::from_utf8(bytes) {
-                Ok(s) => quote_text_literal(Driver::Mysql, &s),
+                Ok(s) => quote_text_literal(Dialect::Mysql, &s),
                 Err(e) => format!("0x{}", hex(e.as_bytes())),
             };
         }
@@ -206,25 +206,25 @@ pub fn mysql_literal(row: &sqlx::mysql::MySqlRow, idx: usize) -> String {
     if name == "DATETIME" {
         return row
             .try_get::<chrono::NaiveDateTime, _>(idx)
-            .map(|v| quote_text_literal(Driver::Mysql, &v.to_string()))
+            .map(|v| quote_text_literal(Dialect::Mysql, &v.to_string()))
             .unwrap_or_else(|_| "NULL".into());
     }
     if name == "TIMESTAMP" {
         return row
             .try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
-            .map(|v| quote_text_literal(Driver::Mysql, &v.to_rfc3339()))
+            .map(|v| quote_text_literal(Dialect::Mysql, &v.to_rfc3339()))
             .unwrap_or_else(|_| "NULL".into());
     }
     if name == "DATE" {
         return row
             .try_get::<chrono::NaiveDate, _>(idx)
-            .map(|v| quote_text_literal(Driver::Mysql, &v.to_string()))
+            .map(|v| quote_text_literal(Dialect::Mysql, &v.to_string()))
             .unwrap_or_else(|_| "NULL".into());
     }
     if name == "TIME" {
         return row
             .try_get::<chrono::NaiveTime, _>(idx)
-            .map(|v| quote_text_literal(Driver::Mysql, &v.to_string()))
+            .map(|v| quote_text_literal(Dialect::Mysql, &v.to_string()))
             .unwrap_or_else(|_| "NULL".into());
     }
     if name == "YEAR" {
@@ -244,7 +244,7 @@ pub fn mysql_literal(row: &sqlx::mysql::MySqlRow, idx: usize) -> String {
             .unwrap_or_else(|_| "NULL".into());
     }
     row.try_get::<String, _>(idx)
-        .map(|v| quote_text_literal(Driver::Mysql, &v))
+        .map(|v| quote_text_literal(Dialect::Mysql, &v))
         .unwrap_or_else(|_| "NULL".into())
 }
 
@@ -265,7 +265,7 @@ pub fn sqlite_literal(row: &sqlx::sqlite::SqliteRow, idx: usize) -> String {
         return fmt_f64(v);
     }
     if let Ok(v) = row.try_get::<String, _>(idx) {
-        return quote_text_literal(Driver::Sqlite, &v);
+        return quote_text_literal(Dialect::Sqlite, &v);
     }
     if let Ok(v) = row.try_get::<Vec<u8>, _>(idx) {
         return format!("X'{}'", hex(&v));
@@ -277,7 +277,7 @@ pub fn sqlite_literal(row: &sqlx::sqlite::SqliteRow, idx: usize) -> String {
 /// statements from pre-rendered per-cell literals, chunked at `batch_size`
 /// rows per statement (mysqldump-style multi-row insert). `quoted_columns`
 /// and `rows` must already be caller-rendered — this only assembles
-/// punctuation, so it has no driver-specific behaviour of its own.
+/// punctuation, so it has no dialect-specific behaviour of its own.
 pub fn build_insert_statements(
     qualified_table: &str,
     quoted_columns: &[String],
