@@ -1140,6 +1140,31 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_13_0": {
+        "tagline": "A fifth engine — Microsoft SQL Server — a connection footprint that is finally bounded, visible and yours to set, and a list view that edits on every driver.",
+        "items": {
+          "sqlServer": {
+            "title": "Microsoft SQL Server",
+            "body": "The fifth driver: connect (SSH tunnels, named instances, Windows authentication on Windows builds), browse schemas/tables/views/indexes, run T-SQL, and edit, insert, delete and bulk-update rows. The structure editor and .sql export stay read-only for now."
+          },
+          "connectionFootprint": {
+            "title": "Far fewer connections",
+            "body": "Browsing a multi-database server no longer opens an unbounded pool per database: they are capped, reused and closed after five minutes idle. Cross-database search stops flooding the server, MongoDB takes the same budget as everyone else, and a \"too many connections\" error now says so — with what HuginnDB itself is holding."
+          },
+          "connectionSettings": {
+            "title": "A budget you set, per server",
+            "body": "Settings → Connections shows live how many pools are open and lets you set the allowance for a whole server — shared by every connection and database view reaching it — globally or on a single connection."
+          },
+          "listEditor": {
+            "title": "The list view now edits",
+            "body": "Double-click a value to edit it in place, fold and unfold nested objects and arrays, and on MongoDB change a field's BSON type, add fields or remove them. It is no longer MongoDB-only: PostgreSQL, MySQL and SQLite get it too."
+          },
+          "mcpPools": {
+            "title": "One budget, MCP included",
+            "body": "The huginndb-mcp connector can borrow the app's pools instead of opening its own, so however many AI clients are configured the machine keeps one budget per server — and their activity shows up live in the Console."
+          }
+        }
+      },
       "1_12_1": {
         "tagline": "Export and import get a proper redesign — connection- and database-level dialogs, plus grid-toolbar shortcuts — alongside a bulk update tool and a reworked structure editor.",
         "items": {

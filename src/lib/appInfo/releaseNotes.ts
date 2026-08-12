@@ -40,8 +40,10 @@ import {
   Pencil,
   Plug,
   Power,
+  Server,
   Share2,
   ShieldCheck,
+  SlidersHorizontal,
   SquareTerminal,
   Table2,
   Tags,
@@ -77,6 +79,38 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.13.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_13_0.tagline",
+    highlights: [
+      {
+        icon: Server,
+        titleKey: "whatsNew.releases.1_13_0.items.sqlServer.title",
+        bodyKey: "whatsNew.releases.1_13_0.items.sqlServer.body",
+      },
+      {
+        icon: Gauge,
+        titleKey: "whatsNew.releases.1_13_0.items.connectionFootprint.title",
+        bodyKey: "whatsNew.releases.1_13_0.items.connectionFootprint.body",
+      },
+      {
+        icon: SlidersHorizontal,
+        titleKey: "whatsNew.releases.1_13_0.items.connectionSettings.title",
+        bodyKey: "whatsNew.releases.1_13_0.items.connectionSettings.body",
+      },
+      {
+        icon: LayoutList,
+        titleKey: "whatsNew.releases.1_13_0.items.listEditor.title",
+        bodyKey: "whatsNew.releases.1_13_0.items.listEditor.body",
+      },
+      {
+        icon: Bot,
+        titleKey: "whatsNew.releases.1_13_0.items.mcpPools.title",
+        bodyKey: "whatsNew.releases.1_13_0.items.mcpPools.body",
+      },
+    ],
+  },
   {
     version: "1.12.1",
     major: true,
