@@ -14,11 +14,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   cell editor just to be read: the column grows to the widest value currently
   on screen and stays there (persisted per table, like a manual resize).
   Holding `Ctrl`/`Cmd` while double-clicking fits every column at once, and the
-  handle's tooltip spells both gestures out. The fit is measured against the
-  text as *rendered* (BIT display mode, the NULL placeholder, the
-  "truncate long text at" cap all apply) and capped at 900 px, so one wide
-  column can't push the rest of the row off-screen; dragging by hand still
-  goes as wide as you like.
+  handle's tooltip spells both gestures out. The grid's toolbar also gets a
+  button for the fit-everything version, so it isn't only reachable through a
+  gesture you have to know about — table tabs and query results alike.
+  The fit is measured against the text as *rendered* (BIT display mode, the
+  NULL placeholder, the "truncate long text at" cap all apply) and capped at
+  900 px, so one wide column can't push the rest of the row off-screen;
+  dragging by hand still goes as wide as you like.
 
 ### Fixed
 

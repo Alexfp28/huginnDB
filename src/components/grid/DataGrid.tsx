@@ -48,6 +48,7 @@ import {
   Plus,
   Search,
   Trash2,
+  UnfoldHorizontal,
   X,
 } from "lucide-react";
 import {
@@ -2456,6 +2457,21 @@ export function DataGrid({
                 </>
               )}
             </span>
+          )}
+          {/* Same auto-fit as double-clicking a column's edge, applied to
+              every column — the discoverable form of that gesture. Hidden in
+              list view, which has no column widths to fit. */}
+          {viewMode !== "list" && result.columns.length > 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => autoFitColumns(result.columns.map((c) => c.name))}
+              title={t("dataGrid.fitColumns")}
+              aria-label={t("dataGrid.fitColumns")}
+            >
+              <UnfoldHorizontal className="h-3.5 w-3.5" />
+            </Button>
           )}
           {toolbarTrailing}
           <span

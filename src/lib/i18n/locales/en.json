@@ -462,6 +462,7 @@
     "selectRow": "Select row",
     "expandEditor": "Open in full editor",
     "resizeHandleHint": "Drag to resize · double-click to fit the content (Ctrl: every column)",
+    "fitColumns": "Fit all columns to their content",
     "openInSideEditor": "Open in side editor",
     "zoomIn": "Larger rows (Ctrl + +)",
     "zoomOut": "Smaller rows (Ctrl + −)",

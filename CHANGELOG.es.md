@@ -17,8 +17,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   columna crece hasta el valor más ancho que hay en pantalla y se queda así
   (se persiste por tabla, igual que un redimensionado manual). Con
   `Ctrl`/`Cmd` pulsado el doble clic ajusta todas las columnas de golpe, y el
-  tooltip del tirador explica ambos gestos. El ajuste se mide sobre el texto
-  tal y como se *dibuja* (se aplican el modo de visualización de BIT, el
+  tooltip del tirador explica ambos gestos. La barra de herramientas de la
+  rejilla incorpora además un botón para la versión "ajustar todas", para que
+  no dependa de un gesto que hay que conocer — tanto en pestañas de tabla como
+  en resultados de consulta. El ajuste se mide sobre el texto tal y como se
+  *dibuja* (se aplican el modo de visualización de BIT, el
   marcador de NULL y el tope de "truncar texto largo en") y se limita a
   900 px, para que una columna ancha no eche el resto de la fila fuera de la
   pantalla; arrastrando a mano se sigue pudiendo ir tan ancho como se quiera.
