@@ -685,7 +685,6 @@
   },
   "tabSwitcher": {
     "title": "Cambiar de pestaña",
-    "tooltip": "Pestañas abiertas (Ctrl/Cmd+P)",
     "placeholder": "Buscar pestañas abiertas…",
     "pinned": "Fijadas",
     "current": "actual",

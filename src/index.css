@@ -388,60 +388,89 @@ input[type="password"]::-ms-clear {
   box-shadow: none;
 }
 
+/* A clipped one-line label dissolves into its surface instead of ending in
+ * an ellipsis (IntelliJ's tab treatment). Applied only when the text really
+ * is cut off — see `useClipFade`, and don't make this unconditional: the mask
+ * would fade the tail of every short label too. `-webkit-` first for the
+ * WebView2/WebKit engines that still want it. */
+.fade-tail {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 1.75rem),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 1.75rem),
+    transparent 100%
+  );
+}
+
 /* -------------------------------------------------------------------------
- * Tab overflow popover ("∨ N") — a menu, not a stack of loose chips
+ * Tab overflow popover ("∨ N") — the tab strip, stood on its side
  * -------------------------------------------------------------------------
  * dockview builds this popover by re-rendering each hidden tab's own tab
  * component inside a `.dv-tab` wrapper (see dockview-core's
- * `tabsContainer.js`), so every rule above — the floating chip's margin,
- * radius, card fill — followed the tabs into a vertical list where none of
- * it makes sense: rows sat on separate islands with a 7px trench between
- * them, each capped at the strip's own truncation width inside a container
- * far wider than it needed to be.
+ * `tabsContainer.js`). That is a gift for the island language — the rows ARE
+ * tabs, and they keep the chip fill, radius and active-state elevation from
+ * the rules above — but the strip's *geometry* came with them and none of it
+ * survives a rotation: a `7px 3px 0` margin meant for a horizontal row left
+ * chips floating with a gap on one side only, and each row stayed at the
+ * strip's own truncation width inside a container far wider than it needed.
+ * So the popover keeps the trench-and-chip look (its backdrop is the same
+ * recessed surface as `.dv-tabs-and-actions-container`, with the chips
+ * floating over it) and only the geometry is restated for a column.
  *
- * Two scrollbars came with it. dockview sets `overflow: auto` INLINE on the
- * container (its stylesheet's `overflow-y: auto` can't win against that), so
- * the horizontal axis scrolled too — and something always overflowed it,
- * because the popover is sized by content while each row carried the strip's
- * own paddings and max width. Hence `overflow-x: hidden !important`: an
- * inline style is only reachable with `!important`, and a list of names has
- * no business scrolling sideways. `WorkspaceTab` renders its `headerOverflow`
- * branch as a full-width two-line row to match.
+ * Two scrollbars came with it as well. dockview sets `overflow: auto` INLINE
+ * on the container (its stylesheet's `overflow-y: auto` can't win against
+ * that), so the horizontal axis scrolled too — and something always
+ * overflowed it, because the popover is sized by content while each row
+ * carried the strip's own paddings and max width. Hence `overflow-x: hidden
+ * !important`: an inline style is only reachable with `!important`, and a
+ * list of names has no business scrolling sideways. `WorkspaceTab` renders
+ * its `headerOverflow` branch as a full-width two-line row to match.
  */
 .inner-dock .dv-tabs-overflow-container {
   min-width: 17rem;
   max-width: 24rem;
-  padding: 0;
+  padding: 4px;
   overflow-x: hidden !important;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
-  background-color: hsl(var(--popover));
+  /* The trench, same recipe as the tab strip's backdrop — the chips below
+     float over it exactly as they do up there. */
+  background-color: hsl(var(--muted));
+  background-image: linear-gradient(
+    hsl(var(--foreground) / 0.05),
+    hsl(var(--foreground) / 0.05)
+  );
   color: hsl(var(--popover-foreground));
   box-shadow:
     0 4px 12px hsl(var(--foreground) / 0.1),
     0 12px 32px hsl(var(--foreground) / 0.12);
 }
+/* Geometry only — fill, radius, border and the active chip's elevation are
+   inherited from the strip's `.dv-tab` rules on purpose. */
 .inner-dock .dv-tabs-overflow-container .dv-tab {
   display: block;
   width: 100%;
-  margin: 0;
+  margin: 3px 0;
   padding: 0;
-  border: none;
-  border-radius: 0;
-  background-color: transparent;
 }
+/* dockview draws a divider under every row but the last; chips with a gap
+   between them don't need one, and it would cut across their corners. */
 .inner-dock .dv-tabs-overflow-container .dv-tab:not(:last-child) {
-  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  border-bottom: 1px solid transparent;
 }
-.inner-dock .dv-tabs-overflow-container .dv-tab:hover {
-  background-color: hsl(var(--accent));
+/* The active chip's accent is a left rail here whatever `tabAccentStyle`
+   says: a top cap belongs to a horizontal strip, and on a stacked row it
+   would read as a border between chips instead of a marker. */
+.inner-dock .dv-tabs-overflow-container .dv-tab.dv-active-tab,
+.inner-dock[data-tab-accent="rail"] .dv-tabs-overflow-container .dv-tab.dv-active-tab {
+  box-shadow: inset 3px 0 0 0 hsl(var(--brand));
 }
-/* The active row keeps the same brand rail the tab switcher's highlighted
-   row uses, so "where am I" reads identically in both lists. */
-.inner-dock .dv-tabs-overflow-container .dv-tab.dv-active-tab {
-  background-color: hsl(var(--accent));
-  box-shadow: inset 2px 0 0 0 hsl(var(--brand));
-  filter: none;
+.inner-dock[data-tab-accent="boxed"] .dv-tabs-overflow-container .dv-tab.dv-active-tab {
+  box-shadow: none;
 }
 /* The trigger itself: same ghost-button language as the "+" and tab-switcher
    buttons it sits beside, instead of dockview's bare default. */

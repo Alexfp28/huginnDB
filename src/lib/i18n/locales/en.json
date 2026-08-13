@@ -685,7 +685,6 @@
   },
   "tabSwitcher": {
     "title": "Switch tab",
-    "tooltip": "Open tabs (Ctrl/Cmd+P)",
     "placeholder": "Search open tabs…",
     "pinned": "Pinned",
     "current": "current",
