@@ -19,6 +19,7 @@ HuginnDB is a cross-platform desktop client for **PostgreSQL**, **MySQL**, **SQL
 ## Table of contents
 
 - [Why HuginnDB?](#why-huginn)
+- [How it compares](#how-it-compares)
 - [Features](#features)
 - [Status](#status)
 - [Screenshots](#screenshots)
@@ -47,6 +48,23 @@ Most database GUIs are either heavyweight Java IDEs or web-based dashboards that
 
 It's named after [Huginn](https://en.wikipedia.org/wiki/Huginn_and_Muninn), one of Odin's ravens — the one who fetches information.
 
+## How it compares
+
+No two of these tools are chasing the same thing, and all four below are genuinely good at what they do (DBeaver and HeidiSQL are two of the reasons HuginnDB looks the way it does — see [Acknowledgements](#acknowledgements)). This is where HuginnDB sits relative to them, checked against each project's own docs/pricing pages as of writing (August 2026) — always double-check the vendor's site for anything that's moved since.
+
+|                          | **HuginnDB**                                                   | DBeaver (CE)                                              | TablePlus                                                       | HeidiSQL                                          | DataGrip                                                        |
+| ------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------ |
+| **License / price**      | MIT, free                                                         | Apache-2.0 (CE) free; paid tiers from ~$110/yr for more drivers/SSO | Proprietary; free tier capped (2 tabs/windows/filters), ~$99 perpetual license | GPL-2.0, free                                       | Paid (~$99/yr); free for non-commercial use since Oct 2025           |
+| **Platforms**            | Windows, Linux (macOS unverified)                                 | Windows, macOS, Linux                                        | Windows, macOS, Linux                                               | Windows-native (Linux via Wine; no native macOS)     | Windows, macOS, Linux                                                |
+| **MongoDB**              | ✅ native                                                          | ❌ in Community — only paid Lite/Enterprise/Ultimate         | ✅ (Beta)                                                            | ❌                                                     | ✅                                                                    |
+| **SQL Server**           | ✅                                                                  | ✅ (JDBC)                                                     | ✅                                                                    | ✅                                                     | ✅                                                                    |
+| **Per-cell editor**      | Full Monaco pane — JSON/XML/SQL highlighting, live validation, `F11` fullscreen | Inline / basic value viewer                                  | Inline / basic value viewer                                          | Inline / basic value viewer                          | Inline / basic value viewer                                          |
+| **Credential storage**   | OS keychain, always                                               | Local encrypted file + optional master password (not an OS keychain by default) | Keychain confirmed on macOS; Windows mechanism undocumented          | Windows Registry, obfuscated (not strong encryption) | OS-native (Keychain / Secret Service / Credential-Store-backed)      |
+| **AI / MCP connector**   | Built-in, free — any MCP client (Claude Code, Claude Desktop, Cursor, …) | MCP server is a paid Team Edition feature                    | Built-in LLM chat with MCP support, not exposed to external AI clients | None                                                  | Built-in MCP server (2026.1+), consent-gated                          |
+| **UI weight**            | Keyboard-first, minimal chrome                                    | Full IDE (Eclipse-based)                                     | Lightweight, native                                                  | Lightweight, native                                  | Full IDE (JetBrains)                                                  |
+
+Sources: [DBeaver editions](https://dbeaver.com/edition/) · [DBeaver MongoDB support](https://dbeaver.com/docs/dbeaver/MongoDB/) · [DBeaver master password](https://github.com/dbeaver/dbeaver/wiki/Managing-Master-Password) · [DBeaver Team Edition MCP server](https://dbeaver.com/docs/team-edition/web/Model-Context-Protocol-Server/) · [TablePlus pricing](https://tableplus.com) · [TablePlus MongoDB](https://tableplus.com/blog/2019/08/tableplus-native-gui-client-mongodb.html) · [TablePlus MCP announcement](https://x.com/TablePlus/status/1935585135472287819) · [HeidiSQL](https://www.heidisql.com) · [HeidiSQL credential storage discussion](https://github.com/HeidiSQL/HeidiSQL/issues/1489) · [DataGrip free non-commercial tier](https://blog.jetbrains.com/datagrip/2025/10/01/datagrip-is-now-free-for-non-commercial-use/) · [DataGrip password storage](https://www.jetbrains.com/help/datagrip/reference-ide-settings-password-safe.html) · [DataGrip MCP server](https://www.jetbrains.com/help/datagrip/mcp-server.html)
+
 ## Features
 
 - **Multi-driver connection manager.** PostgreSQL, MySQL, SQLite, MongoDB, and SQL Server, each with a per-driver dialog and the right defaults, plus SSH tunnelling for remote hosts.
@@ -69,7 +87,37 @@ It's named after [Huginn](https://en.wikipedia.org/wiki/Huginn_and_Muninn), one 
 
 ## Screenshots
 
-> **Note:** Screenshots will be added once the UI stabilises. In the meantime, the [Features](#features) list and [Usage](#usage) section describe the workflow.
+<!--
+  Drop screenshots into docs/screenshots/ using these exact filenames and the
+  <img> tags below will pick them up automatically — see docs/screenshots/README.md
+  for capture guidance (resolution, theme, what to show in each shot).
+    - overview.png       main window: schema tree + data grid + SQL tab, dark theme
+    - cell-editor.png    a cell expanded into the fullscreen Monaco editor (JSON works best)
+    - sql-workspace.png  the SQL editor with autocomplete / CodeLens visible
+    - mcp-settings.png   Settings → MCP panel showing the generated client config
+-->
+
+<p align="center">
+  <img src="docs/screenshots/overview.png" alt="HuginnDB main window: schema explorer, data grid and SQL editor" width="860">
+</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/cell-editor.png" alt="A cell expanded into a fullscreen Monaco editor" width="100%"><br>
+      <sub align="center">Full Monaco editor for any cell — JSON / XML / SQL auto-detected, live validation, <code>F11</code> fullscreen.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/sql-workspace.png" alt="SQL workspace with schema-aware autocomplete" width="100%"><br>
+      <sub align="center">Schema-aware SQL editor — <code>Ctrl+Enter</code> to run, per-statement CodeLens, history that survives restarts.</sub>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/mcp-settings.png" alt="Settings → MCP panel generating a ready-to-paste client config" width="860"><br>
+  <sub>Settings → MCP — point Claude Code, Claude Desktop, Cursor, or any MCP client at your real schema.</sub>
+</p>
 
 ## Installation
 
