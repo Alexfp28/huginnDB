@@ -8,6 +8,60 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The command palette (Ctrl/Cmd+K) is now a real launcher.** It used to index
+  three things — the saved connections, the selected connection's tables, and a
+  fixed handful of actions (new query, preferences, theme, language) — filtered
+  with a plain substring `includes()`. It now indexes thirteen groups and ranks
+  them:
+
+  - **Every individual preference**, VS Code style: typing `#wrap` (or just
+    `wrap`) finds "Soft-wrap long lines", shows its current value, and Enter
+    opens Preferences on that section and scrolls to *that row*, flashing it.
+    Boolean settings can also be flipped without leaving the palette with
+    Alt+Enter, which keeps it open so the value badge updates under the cursor.
+    Every rebindable shortcut is indexed the same way, with its current combo.
+  - **The documentation** (each in-app doc, plus What's new, Report/suggest,
+    Check for updates, About, the MCP setup page).
+  - **Navigation**: open tabs (Enter jumps, Alt+Enter closes), saved
+    connections (Alt+Enter disconnects a live one), environments, the databases
+    of a multi-database server, tables and views across *every* connected
+    connection rather than only the selected one, saved queries and the last 20
+    entries of the query history.
+  - **Actions** that previously existed only in a menu: new/manage connection,
+    import/export profiles, disconnect all, refresh schema, refresh the active
+    table's data, close/pin the active tab, close all tabs, new window, reset
+    layout, float the active panel, and a toggle per dock panel.
+
+  Search itself changed shape: entries are scored rather than filtered
+  (`src/lib/commandPalette/fuzzy.ts` — prefix beats word-start beats substring
+  beats subsequence, with run-density and word-boundary bonuses and a
+  shorter-is-better tiebreak), the characters that matched are emphasised in
+  each row, groups are ordered by their best hit so section headers stay
+  coherent, and the commands you actually use float to the top under a
+  "Recently used" heading (persisted in `localStorage`).
+
+  Mode prefixes narrow the search the way they do in VS Code — `>` actions,
+  `@` tables, `#` settings, `?` help, `:` go to — shown as clickable chips
+  while the field is empty and cyclable with Tab, so a connection with
+  thousands of tables can't bury the actions.
+
+- **`Ctrl/Cmd+Shift+P` opens the palette in actions-only mode** (VS Code
+  parity). Rebindable like the rest, under Settings → Shortcuts.
+
+- **The palette can index a multi-database server's tables on demand.** A
+  server-wide connection starts with only its *database* list loaded — each
+  database's tables arrive under its own `<parent>::db::<name>` slice, and only
+  once something opens that view — so a freshly connected server had databases
+  to offer and no tables to search. `@` mode now also lists an "Index all
+  databases of X" entry while any of them is still cold; running it opens those
+  views three at a time and keeps the palette open so the tables land under the
+  cursor. It is a deliberate action rather than an automatic fan-out on every
+  keystroke because each view is another connection pool — same reasoning, and
+  the same concurrency cap and connection-limit circuit breaker, as the schema
+  explorer's cross-database search (`src/lib/commandPalette/warmSchema.ts`).
+  The per-connection "databases to show" subset is honoured, so a database
+  hidden in the tree stays hidden in the palette.
+
 - **Import/export a theme from Settings → Appearance.** An export icon next
   to the theme editor's mode picker writes the active theme (built-in or
   custom) to a JSON file via the native save dialog; an import icon in the
@@ -108,6 +162,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   which is still the only way to search every open tab by name.
 
 ### Fixed
+
+- **Jumping to a tab or table of a per-database view left the workspace
+  pointing somewhere else.** A tab of a multi-database server carries the
+  synthetic `<parent>::db::<database>` connection id, but
+  `useConnections.active` only ever holds top-level profile ids (`markConnected`
+  runs in `connect()`; a database view is opened by `open_database_view`), and
+  `App.tsx` clears `selectedConnectionId` whenever it isn't in that set. So
+  selecting a child id was undone a render later and replaced by whichever pool
+  came first — nondeterministically. Both the tab switcher (pre-existing) and the
+  command palette's new table/tab entries now resolve the owning profile through
+  `parentConnectionId`; the tab itself keeps the child id, which is what scopes
+  its queries.
 
 - A single click on a column's resize handle no longer rewrites that column's
   width in `prefs.json` with the value it already had.

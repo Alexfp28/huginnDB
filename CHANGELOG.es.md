@@ -10,6 +10,65 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **La paleta de comandos (Ctrl/Cmd+K) ya es un lanzador de verdad.** Antes
+  indexaba tres cosas — las conexiones guardadas, las tablas de la conexión
+  seleccionada y un puñado fijo de acciones (nueva consulta, preferencias,
+  tema, idioma) — filtradas con un `includes()` de subcadena. Ahora indexa
+  trece grupos y los ordena por relevancia:
+
+  - **Cada preferencia individual**, al estilo de VS Code: escribir `#ajuste`
+    (o simplemente `wrap`) encuentra «Ajustar líneas largas», muestra su valor
+    actual y Enter abre Preferencias en esa sección y baja hasta *esa fila*,
+    resaltándola. Los ajustes booleanos además se pueden alternar sin salir de
+    la paleta con Alt+Enter, que la deja abierta para que el valor se actualice
+    bajo el cursor. Cada atajo reasignable se indexa igual, con su combinación
+    actual.
+  - **La documentación** (cada documento de la app, más Novedades,
+    Informar/sugerir, Buscar actualizaciones, Acerca de y la página de MCP).
+  - **Navegación**: pestañas abiertas (Enter salta, Alt+Enter cierra),
+    conexiones guardadas (Alt+Enter desconecta una activa), entornos, las bases
+    de datos de un servidor multi-base, tablas y vistas de *todas* las
+    conexiones abiertas y no solo de la seleccionada, consultas guardadas y las
+    últimas 20 entradas del historial.
+  - **Acciones** que solo existían en un menú: nueva conexión, gestionar
+    conexiones, importar/exportar perfiles, desconectar todo, recargar el
+    esquema, recargar los datos de la tabla activa, cerrar/fijar la pestaña
+    activa, cerrar todas, nueva ventana, restablecer la disposición, flotar el
+    panel activo y un interruptor por cada panel del dock.
+
+  La búsqueda también cambió de forma: las entradas se puntúan en vez de
+  filtrarse (`src/lib/commandPalette/fuzzy.ts` — prefijo gana a inicio de
+  palabra, que gana a subcadena, que gana a subsecuencia, con bonus por
+  densidad de coincidencias y límites de palabra, y desempate por longitud),
+  los caracteres que coincidieron se resaltan en cada fila, los grupos se
+  ordenan por su mejor coincidencia para que las cabeceras sigan teniendo
+  sentido, y los comandos que de verdad usas suben al principio bajo el
+  encabezado «Usados recientemente» (persistido en `localStorage`).
+
+  Los prefijos de modo acotan la búsqueda como en VS Code — `>` acciones,
+  `@` tablas, `#` ajustes, `?` ayuda, `:` ir a — mostrados como chips
+  clicables mientras el campo está vacío y recorribles con Tab, para que una
+  conexión con miles de tablas no sepulte las acciones.
+
+- **`Ctrl/Cmd+Shift+P` abre la paleta en modo solo acciones** (paridad con
+  VS Code). Reasignable como el resto, en Ajustes → Atajos.
+
+- **La paleta puede indexar bajo demanda las tablas de un servidor
+  multi-base.** Una conexión a todo el servidor arranca con solo la lista de
+  *bases de datos* cargada — las tablas de cada base llegan en su propio
+  fragmento `<padre>::db::<nombre>`, y solo cuando algo abre esa vista — así que
+  un servidor recién conectado ofrecía bases de datos y ninguna tabla que
+  buscar. El modo `@` ahora incluye también una entrada «Indexar todas las bases
+  de datos de X» mientras alguna siga sin indexar; al ejecutarla abre esas
+  vistas de tres en tres y deja la paleta abierta para que las tablas aparezcan
+  bajo el cursor. Es una acción deliberada y no un abanico automático en cada
+  pulsación porque cada vista es otro pool de conexiones — el mismo
+  razonamiento, y el mismo límite de concurrencia y cortacircuitos por límite de
+  conexiones, que la búsqueda entre bases del explorador de esquema
+  (`src/lib/commandPalette/warmSchema.ts`). Se respeta el subconjunto de «bases
+  de datos a mostrar» de cada conexión, así que una base oculta en el árbol
+  sigue oculta en la paleta.
+
 - **Importar/exportar un tema desde Ajustes → Apariencia.** Un icono de
   exportar junto al selector de modo del editor de temas escribe el tema
   activo (integrado o personalizado) a un archivo JSON mediante el diálogo
@@ -117,6 +176,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   abiertas.
 
 ### Corregido
+
+- **Saltar a una pestaña o tabla de una vista por base de datos dejaba el
+  espacio de trabajo apuntando a otro sitio.** Una pestaña de un servidor
+  multi-base lleva el id sintético `<padre>::db::<base>`, pero
+  `useConnections.active` solo contiene ids de perfil de primer nivel
+  (`markConnected` se ejecuta en `connect()`; una vista de base la abre
+  `open_database_view`), y `App.tsx` limpia `selectedConnectionId` en cuanto no
+  está en ese conjunto. Así que seleccionar un id hijo se deshacía un render
+  después y se reemplazaba por el pool que llegara primero, de forma no
+  determinista. Tanto el conmutador de pestañas (que ya lo tenía) como las
+  nuevas entradas de tablas/pestañas de la paleta resuelven ahora el perfil
+  propietario con `parentConnectionId`; la pestaña conserva el id hijo, que es
+  lo que acota sus consultas.
 
 - Un clic simple en el tirador de redimensionado de una columna ya no
   reescribe en `prefs.json` el ancho que esa columna ya tenía.

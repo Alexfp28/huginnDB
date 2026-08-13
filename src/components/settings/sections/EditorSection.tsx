@@ -38,6 +38,7 @@ export function EditorSection() {
           and registered at app boot from `monaco-setup.ts`. */}
       <PrefRow
         label={t("settings.editor.theme")}
+        prefId="editor.theme"
         htmlFor="prefs-editor-theme"
       >
         <Select
@@ -59,6 +60,7 @@ export function EditorSection() {
 
       <PrefRow
         label={t("settings.editor.fontFamily")}
+        prefId="editor.fontFamily"
         htmlFor="prefs-editor-font-family"
       >
         <Input
@@ -71,6 +73,7 @@ export function EditorSection() {
 
       <PrefRow
         label={t("settings.editor.fontSize")}
+        prefId="editor.fontSize"
         htmlFor="prefs-editor-font-size"
       >
         <Input
@@ -89,6 +92,7 @@ export function EditorSection() {
 
       <PrefRow
         label={t("settings.editor.tabSize")}
+        prefId="editor.tabSize"
         htmlFor="prefs-editor-tab-size"
       >
         <Input
@@ -107,6 +111,7 @@ export function EditorSection() {
 
       <PrefRow
         label={t("settings.editor.wordWrap.label")}
+        prefId="editor.wordWrap"
         description={t("settings.editor.wordWrap.desc")}
       >
         <Switch
@@ -117,6 +122,7 @@ export function EditorSection() {
 
       <PrefRow
         label={t("settings.editor.minimap.label")}
+        prefId="editor.minimap"
         description={t("settings.editor.minimap.desc")}
       >
         <Switch
@@ -125,7 +131,8 @@ export function EditorSection() {
         />
       </PrefRow>
 
-      <PrefRow label={t("settings.editor.lineNumbers")}>
+      <PrefRow label={t("settings.editor.lineNumbers")}
+        prefId="editor.lineNumbers">
         <Switch
           checked={editor.lineNumbers}
           onCheckedChange={(v) => updateEditor({ lineNumbers: v })}
@@ -134,6 +141,7 @@ export function EditorSection() {
 
       <PrefRow
         label={t("settings.editor.formatOnPaste.label")}
+        prefId="editor.formatOnPaste"
         description={t("settings.editor.formatOnPaste.desc")}
       >
         <Switch

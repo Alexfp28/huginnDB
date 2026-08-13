@@ -32,6 +32,24 @@ export function resolveConnectionLabel(
 }
 
 /**
+ * The *profile* id behind a connection id: itself for a plain one, the parent
+ * for a synthetic `<parentId>::db::<db>` child.
+ *
+ * Needed because `useUi.selectedConnectionId` must always name a real profile.
+ * `useConnections.active` only ever holds top-level ids (`markConnected` runs in
+ * `connect()`, and a per-database view is opened by `open_database_view`, not by
+ * `connect`), and `App.tsx` clears the selection whenever it isn't in that set —
+ * so pointing the workspace at a child id doesn't just look odd, it is undone a
+ * render later and replaced by whichever pool happens to come first. Any
+ * cross-connection surface that navigates by tab or table (command palette, tab
+ * switcher) has to funnel through this.
+ */
+export function parentConnectionId(connectionId: string): string {
+  const sep = connectionId.indexOf(DB_SEP);
+  return sep > 0 ? connectionId.slice(0, sep) : connectionId;
+}
+
+/**
  * Resolve a connectionId to its driver, for surfaces that show a
  * `DriverBadge` next to the connection (the workspace tab strip). Shares the
  * `<parent>::db::<db>` parsing with [`resolveConnectionLabel`] — a synthetic

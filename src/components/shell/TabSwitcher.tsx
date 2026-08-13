@@ -33,6 +33,7 @@ import { useTabs } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
 import {
+  parentConnectionId,
   resolveConnectionLabel,
   resolveConnectionParts,
   tabLeafTitle,
@@ -161,7 +162,11 @@ export function TabSwitcher() {
 
   function jump(tab: AppTab) {
     useTabs.getState().setActive(tab.id);
-    setSelected(tab.connectionId);
+    // A tab of a per-database view carries the synthetic `<parent>::db::<db>`
+    // id, which is never in `useConnections.active` — selecting it directly got
+    // cleared by App's active-set sync a render later, silently landing the
+    // workspace on some other connection. Select the owning profile instead.
+    setSelected(parentConnectionId(tab.connectionId));
     setOpen(false);
   }
 

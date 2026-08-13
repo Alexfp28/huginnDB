@@ -13,6 +13,7 @@
 import { useTranslation } from "react-i18next";
 import { History, Moon, Rows3, Sun, Trash2 } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
+import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabs } from "@/stores/session/tabs";
 import { useQueryHistory } from "@/stores/query/queryHistory";
 import { useGridSelection } from "@/stores/grid/gridSelection";
@@ -83,11 +84,7 @@ export function StatusBar() {
         <SimpleTooltip label={t("statusBar.commandPaletteTooltip")} side="top">
           <button
             type="button"
-            onClick={() => {
-              import("@/components/shell/CommandPalette").then((m) =>
-                m.useCommandPalette.getState().toggle(),
-              );
-            }}
+            onClick={() => useCommandPalette.getState().toggle()}
             className="rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
           >
             {t("statusBar.commandPaletteHint")}

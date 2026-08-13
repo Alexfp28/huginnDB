@@ -51,7 +51,7 @@ import { useConnections } from "@/stores/session/connections";
 import { useEnvironments } from "@/stores/session/environments";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { useCommandPalette } from "@/components/shell/CommandPalette";
+import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { ConnectionDialog } from "@/components/connection/dialogs/ConnectionDialog";
 import { getBinding, formatComboForDisplay } from "@/lib/keybindings";

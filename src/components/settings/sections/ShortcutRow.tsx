@@ -59,6 +59,9 @@ export function ShortcutRow({
   return (
     <PrefRow
       label={t(action.labelKey)}
+      // Anchor for the command palette's "Shortcut: …" entries — mirrors the
+      // `keybinding.<id>` prefIds its settings registry emits for `ACTIONS`.
+      prefId={`keybinding.${action.id}`}
       description={
         isCapturing
           ? (conflictMsg ?? t("settings.shortcuts.pressKey"))
