@@ -18,8 +18,17 @@
  *   keeps acting on the current page only.
  */
 
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   flexRender,
   getCoreRowModel,
@@ -44,16 +53,19 @@ import {
   KeyRound,
   Loader2,
   Maximize2,
+  MoreHorizontal,
   PanelRight,
   Plus,
   Search,
   Trash2,
+  UnfoldHorizontal,
   X,
 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import { cn } from "@/lib/utils";
@@ -64,6 +76,11 @@ import {
   isBitType,
   isNumericType,
 } from "@/lib/grid/columnKinds";
+import {
+  computeColumnFitWidth,
+  resolveCanvasFont,
+} from "@/lib/grid/autoFitColumn";
+import { useToolbarDensity } from "@/lib/grid/toolbarDensity";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
 import {
   DocumentListView,
@@ -105,6 +122,32 @@ import {
 import { useCellEditor } from "@/stores/grid/cellEditor";
 import { openSideEditor, isSideEditorOpen } from "@/lib/dockview";
 import type { Driver } from "@/types";
+
+/**
+ * One toolbar action, in BOTH of its presentations.
+ *
+ * The toolbar is responsive: as the grid's pane narrows, actions move out of
+ * the bar and into an overflow menu (see `useToolbarDensity`). A plain
+ * `ReactNode` can't make that trip — a `<Button>` dropped inside
+ * `DropdownMenuContent` looks wrong and loses the menu's keyboard semantics,
+ * and a bar control that is itself a dropdown (Export data) has to become a
+ * submenu rather than a nested menu. So each action declares both forms and
+ * the grid decides which one to mount; nothing here is derived from the other,
+ * because the two really are different components (an icon button with a
+ * tooltip vs. a labelled row with a check state).
+ *
+ * `id` is the React key and exists only for that.
+ */
+export interface GridToolbarItem {
+  id: string;
+  /** Rendered inline in the toolbar row. */
+  bar: ReactNode;
+  /**
+   * Rendered inside the overflow menu — one or more `DropdownMenuItem`s (or a
+   * `DropdownMenuSub`). Must not be a bare `<Button>`.
+   */
+  menu: ReactNode;
+}
 
 interface Props {
   result: QueryResult;
@@ -264,26 +307,26 @@ interface Props {
   onDraftCancel?: () => void;
 
   /**
-   * Optional content rendered at the START of the toolbar row (before the
-   * search box), with a divider after it. TableDataTab folds its breadcrumb +
-   * refresh + zoom controls in here so a table tab shows ONE toolbar instead
-   * of two stacked bars. Query-result tabs omit it.
+   * Actions rendered at the START of the toolbar row (before the search box),
+   * with a divider after them. TableDataTab folds its refresh + advanced
+   * filter controls in here so a table tab shows ONE toolbar instead of two
+   * stacked bars. Query-result tabs omit it.
    */
-  toolbarLeading?: ReactNode;
+  toolbarLeading?: GridToolbarItem[];
   /**
-   * Optional content rendered right beside the built-in "Insert" button, both
-   * living in the toolbar's right-aligned cluster. TableDataTab folds its
-   * "Add data"/"Export data"/"Bulk update" controls in here so every action
-   * that adds, exports, or mass-edits data reads as one group instead of
-   * being split across the toolbar.
+   * Actions rendered right beside the built-in "Insert" button, both living in
+   * the toolbar's right-aligned cluster. TableDataTab folds its "Add
+   * data"/"Export data"/"Bulk update" controls in here so every action that
+   * adds, exports, or mass-edits data reads as one group instead of being
+   * split across the toolbar.
    */
-  insertExtra?: ReactNode;
+  insertExtra?: GridToolbarItem[];
   /**
-   * Optional content rendered on the TRAILING (right) side of the toolbar row,
-   * after `insertExtra`, before the elapsed-time readout. TableDataTab folds
-   * its MongoDB table/list view toggle in here.
+   * Actions rendered on the TRAILING (right) side of the toolbar row, after
+   * `insertExtra`, before the elapsed-time readout. TableDataTab folds its
+   * table/list view toggle in here.
    */
-  toolbarTrailing?: ReactNode;
+  toolbarTrailing?: GridToolbarItem[];
   /**
    * Optional second toolbar row, rendered below the grid body (a footer, not
    * a header). TableDataTab folds its pagination range/prev/next/page-size
@@ -1468,6 +1511,17 @@ export function DataGrid({
    */
   const [resizingColId, setResizingColId] = useState<string | null>(null);
   const MIN_COLUMN_WIDTH = 40;
+  /**
+   * Ceiling for the auto-fit gesture below. A column holding a long free-text
+   * value (a serialised config, a description paragraph) would otherwise
+   * expand to several thousand px and push every column after it off-screen,
+   * turning "let me read this one value" into "I lost the rest of the row".
+   * Past this the value belongs in the cell editor / preview panel, and the
+   * user can still drag wider by hand.
+   */
+  const MAX_AUTOFIT_WIDTH = 900;
+  /** The header's dimmed type hint renders at the `text-3xs` token (10px). */
+  const TYPE_HINT_FONT_SIZE = 10;
 
   /**
    * Drag a column's header edge to resize it — deliberately NOT TanStack's
@@ -1528,6 +1582,13 @@ export function DataGrid({
       document.body.style.userSelect = prevUserSelect;
       setResizingColId(null);
       const finalWidth = parseInt(th.style.width, 10);
+      // A bare click (no `mousemove` at all) lands here with the width
+      // untouched — notably the first click of the double-click that triggers
+      // the auto-fit below. Committing then would write an identical width
+      // into `columnSizing` (and through to `prefs.json`) for nothing, and
+      // would make the auto-fit's own commit the *second* state update of one
+      // gesture.
+      if (!Number.isFinite(finalWidth) || finalWidth === startWidth) return;
       handleColumnSizingChange((prev) => ({ ...prev, [colId]: finalWidth }));
     }
     window.addEventListener("mousemove", onMove);
@@ -1600,6 +1661,94 @@ export function DataGrid({
     () => new Set(fkColumnNames ?? []),
     [fkColumnNames],
   );
+
+  /**
+   * Size a column to its widest *visible* value — HeidiSQL's double-click on
+   * the column's edge, which is the gesture people reach for when a value is
+   * clipped and they'd rather read it in place than open the cell editor.
+   *
+   * Widths are measured off-screen (`computeColumnFitWidth`) rather than by
+   * letting the browser do it: the table is `table-fixed`, so there is no
+   * `width: auto` shrink-to-fit pass to borrow — the declared header widths
+   * *are* the layout, and a column's content never influences it. Measuring
+   * the strings ourselves is also what keeps this honest about what's on
+   * screen: the same formatting the `cell` renderer applies (BIT display
+   * mode, the NULL placeholder, the `truncateLongTextAt` cap) is replayed
+   * here, so the fit matches the rendered text and not the raw value.
+   *
+   * Scope is the rows currently in the grid (`visibleRows`, i.e. the fetched
+   * page after the client filter), matching HeidiSQL: fitting to rows the
+   * user can't see would need a full-table scan per double-click.
+   */
+  function autoFitColumns(colIds: readonly string[]) {
+    const host = scrollRef.current;
+    const cellFontSize = (cellStyle.fontSize as number) ?? 12;
+    const headerFontSize = (headerStyle.fontSize as number) ?? 10;
+    // Resolved once per gesture, not once per column: each call appends a
+    // probe element and reads its computed style, which forces a style
+    // recalc. The "fit every column" path would otherwise pay for 3× the
+    // column count.
+    const cellFont = resolveCanvasFont(host, "font-mono", cellFontSize);
+    const headerFont = resolveCanvasFont(host, "", headerFontSize);
+    const typeFont = resolveCanvasFont(host, "", TYPE_HINT_FONT_SIZE);
+
+    const widths: Record<string, number> = {};
+    for (const colId of colIds) {
+      const idx = columnIndexByName.get(colId);
+      if (idx === undefined) continue;
+      const col = result.columns[idx];
+      const isBit = bitColNames.has(col.name);
+      const cells = visibleRows.map((row) => {
+        const v = row[idx];
+        if (v === null) return nullDisplay;
+        const raw =
+          isBit && typeof v === "number"
+            ? formatBitValue(v, bitDisplay)
+            : formatValue(v);
+        return truncateLongTextAt > 0 && raw.length > truncateLongTextAt
+          ? `${raw.slice(0, truncateLongTextAt)}…`
+          : raw;
+      });
+      widths[colId] = computeColumnFitWidth({
+        // The header renders `uppercase tracking-wider`; both change its
+        // width, and neither is visible to `measureText` unless applied here.
+        header: {
+          text: col.name.toUpperCase(),
+          font: headerFont,
+          letterSpacing: headerFontSize * 0.05,
+        },
+        // The dimmed type hint is `text-3xs` (a fixed token), not derived
+        // from the zoom like the rest of the header.
+        type: {
+          text: col.data_type.toUpperCase(),
+          font: typeFont,
+          letterSpacing: TYPE_HINT_FONT_SIZE * 0.05,
+        },
+        // gap before the type (4) + the sort glyph and its gap (16) + one key
+        // icon and its gap per PK/FK badge (16 each).
+        headerChrome:
+          20 +
+          (pkNameSet.has(col.name) ? 16 : 0) +
+          (fkNameSet.has(col.name) ? 16 : 0) +
+          // Multi-sort rank badge ("1", "2", …) next to the arrow.
+          ((sort?.length ?? 0) > 1 && sort!.some((s) => s.column === col.name)
+            ? 12
+            : 0),
+        cells,
+        cellFont,
+        // `px-2` on both the `<th>` and every `<td>`, plus the 1px right
+        // border.
+        padding: 17,
+        min: MIN_COLUMN_WIDTH,
+        max: MAX_AUTOFIT_WIDTH,
+      });
+    }
+    // One state update (and therefore one `prefs.json` write) for the whole
+    // gesture, however many columns it covered.
+    if (Object.keys(widths).length > 0) {
+      handleColumnSizingChange((prev) => ({ ...prev, ...widths }));
+    }
+  }
 
   /**
    * Live mirror of fkEditCell/inlineEdit/selectedCell, read by the `cell`
@@ -2251,73 +2400,39 @@ export function DataGrid({
       .join("\n");
   }
 
-  return (
-    // `relative` allows CellPreview to be positioned absolute within this container.
-    <div className="relative flex h-full flex-col">
-      {/* Toolbar layout: leading actions (refresh · advanced filter) · growing
-          search box · filter chips  ——  then, right-aligned via the cluster's
-          `ml-auto`: Insert · insertExtra (TableDataTab's Add/Export
-          data/Bulk update, grouped right beside Insert) · optional row count ·
-          trailing slot (view toggle) · elapsed time. The search box
-          flex-grows (capped) so it's the visual anchor on the left; every
-          action that adds, exports, or mass-edits data lives together on the
-          right instead of crowding the filter cluster. */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs">
-        {toolbarLeading}
-        {toolbarLeading && (
-          <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
-        )}
-        <SearchInput
-          value={filterInput ?? globalFilter ?? ""}
-          onChange={onGlobalFilterChange}
-          onSubmit={onGlobalFilterSubmit}
-          history={searchHistory ?? []}
-        />
-        {serverFilters?.map((f, i) => (
-          <span
-            key={`${f.column}-${f.op}-${i}`}
-            className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 font-mono text-[11px]"
-            title={t("dataGrid.serverSideFilter")}
-          >
-            <span className="text-muted-foreground">{f.column}</span>
-            <span className="text-muted-foreground/70">{FILTER_LABEL[f.op]}</span>
-            {f.op === "in" || f.op === "not_in" ? (
-              // A value list can be hundreds of entries long, so the chip shows
-              // the count and defers the values themselves to the tooltip.
-              <span
-                className="max-w-[10rem] truncate"
-                title={(f.values ?? [])
-                  .map((v) => (v === null || v === undefined ? "NULL" : formatValue(v)))
-                  .join(", ")}
-              >
-                {t("dataGrid.filterValueCount", {
-                  count: f.values?.length ?? 0,
-                })}
-              </span>
-            ) : f.op === "eq" || f.op === "ne" ? (
-              <span className="truncate max-w-[10rem]">
-                {f.value === null || f.value === undefined
-                  ? "NULL"
-                  : formatValue(f.value)}
-              </span>
-            ) : null}
-            <button
-              className="ml-1 text-muted-foreground/60 hover:text-foreground"
-              onClick={() => onRemoveFilter?.(i)}
-              title={t("dataGrid.removeFilter")}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-        {/* Right-aligned cluster. `ml-auto` opens the gap between the growing
-            search box (+ filter chips) on the left and this group. Contents:
-            Insert · insertExtra (TableDataTab's Add/Export data/Bulk update)
-            · optional row count (query/view tabs) · trailing slot (view
-            toggle) · elapsed time. Wrapped so the whole group wraps as a unit
-            on narrow panes. */}
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          {onInsertRow && viewMode !== "list" && (
+  /**
+   * Responsive toolbar. The bar is measured (not the viewport — the grid lives
+   * in a dockview panel), and as it narrows actions move into a single
+   * overflow menu instead of wrapping onto a second row, which is what used to
+   * happen and left the filter cluster and the action cluster stacked.
+   *
+   * Two things collapse, in order of how much room they cost and how little
+   * their absence hurts:
+   * - `collapseData` — the labelled data actions (Insert plus the parent's
+   *   import/export/bulk-update group). They carry text, so they're the widest
+   *   things in the bar, and they're deliberate operations nobody triggers
+   *   twice a minute.
+   * - `collapseChrome` — the icon-only controls: the parent's leading cluster
+   *   (refresh, advanced filter) and the view controls (fit columns, the
+   *   table/list toggle). Cheap in pixels, frequently used, so they only go
+   *   when the pane is genuinely too narrow for anything but the search box.
+   */
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const density = useToolbarDensity(toolbarRef);
+  const collapseData = density !== "wide";
+  const collapseChrome = density === "narrow";
+
+  /**
+   * The grid's own toolbar actions, in the same two-presentation shape the
+   * parent's slots use (`GridToolbarItem`) so the bar and the overflow menu
+   * are built from one list each. `null` when the action doesn't apply — no
+   * insert callback, or list view, which has no columns to fit.
+   */
+  const insertItem: GridToolbarItem | null =
+    onInsertRow && viewMode !== "list"
+      ? {
+          id: "insert",
+          bar: (
             <Button
               variant="ghost"
               size="sm"
@@ -2328,9 +2443,151 @@ export function DataGrid({
               <Plus className="h-3.5 w-3.5" />
               {t("dataGrid.insert")}
             </Button>
-          )}
-          {insertExtra}
-          {showRowCount && (
+          ),
+          menu: (
+            <DropdownMenuItem className="text-xs" onSelect={onInsertRow}>
+              <Plus className="mr-2 h-3.5 w-3.5" />
+              {t("dataGrid.insertNewRow")}
+            </DropdownMenuItem>
+          ),
+        }
+      : null;
+
+  // Same auto-fit as double-clicking a column's edge, applied to every column
+  // — the discoverable form of that gesture.
+  const fitItem: GridToolbarItem | null =
+    viewMode !== "list" && result.columns.length > 0
+      ? {
+          id: "fit-columns",
+          bar: (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => autoFitColumns(result.columns.map((c) => c.name))}
+              title={t("dataGrid.fitColumns")}
+              aria-label={t("dataGrid.fitColumns")}
+            >
+              <UnfoldHorizontal className="h-3.5 w-3.5" />
+            </Button>
+          ),
+          menu: (
+            <DropdownMenuItem
+              className="text-xs"
+              onSelect={() => autoFitColumns(result.columns.map((c) => c.name))}
+            >
+              <UnfoldHorizontal className="mr-2 h-3.5 w-3.5" />
+              {t("dataGrid.fitColumns")}
+            </DropdownMenuItem>
+          ),
+        }
+      : null;
+
+  /**
+   * What the overflow menu holds right now, grouped so the menu keeps the
+   * bar's reading order (leading · data · view) with a separator between
+   * groups. Empty groups are dropped, and an empty result hides the trigger
+   * altogether — a `⋯` that opens nothing is worse than no `⋯`.
+   */
+  const overflowGroups: { id: string; items: GridToolbarItem[] }[] = [
+    { id: "leading", items: collapseChrome ? (toolbarLeading ?? []) : [] },
+    {
+      id: "data",
+      items: collapseData
+        ? [...(insertItem ? [insertItem] : []), ...(insertExtra ?? [])]
+        : [],
+    },
+    {
+      id: "view",
+      items: collapseChrome
+        ? [...(fitItem ? [fitItem] : []), ...(toolbarTrailing ?? [])]
+        : [],
+    },
+  ].filter((g) => g.items.length > 0);
+
+  /**
+   * The two readouts (row count, elapsed time) are squeezed out of the bar
+   * before anything else — nobody acts on them — but only when the overflow
+   * menu exists to keep showing them. A query-result tab passes no toolbar
+   * slots and has no insert action, so at `compact` it has nothing to collapse
+   * and therefore no `⋯`; hiding the timing there would delete it outright,
+   * and the timing is precisely what you're watching on an ad-hoc query.
+   */
+  const hasOverflow = overflowGroups.length > 0;
+  const rowCountInBar = density !== "narrow" || !hasOverflow;
+  const elapsedInBar = density === "wide" || !hasOverflow;
+
+  return (
+    // `relative` allows CellPreview to be positioned absolute within this container.
+    <div className="relative flex h-full flex-col">
+      {/* Toolbar layout: leading actions (refresh · advanced filter) · growing
+          search box · filter chips  ——  then, right-aligned via the cluster's
+          `ml-auto`: Insert · insertExtra (TableDataTab's Add/Export
+          data/Bulk update, grouped right beside Insert) · optional row count ·
+          fit columns · trailing slot (view toggle) · elapsed time · overflow
+          menu. The search box flex-grows (capped) so it's the visual anchor on
+          the left; every action that adds, exports, or mass-edits data lives
+          together on the right instead of crowding the filter cluster.
+
+          As the pane narrows, actions leave the bar for the overflow menu
+          instead of wrapping onto a second row (`density`, measured on this
+          element): at `compact` the labelled data actions go, at `narrow`
+          everything but the search box does. `flex-wrap` is kept as a safety
+          net for the cases the breakpoints can't predict (a very long filter
+          chip, a future action), not as the normal behaviour. */}
+      <div
+        ref={toolbarRef}
+        className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs"
+      >
+        {!collapseChrome && toolbarLeading?.map((item) => (
+          <Fragment key={item.id}>{item.bar}</Fragment>
+        ))}
+        {!collapseChrome && toolbarLeading && toolbarLeading.length > 0 && (
+          <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+        )}
+        <SearchInput
+          value={filterInput ?? globalFilter ?? ""}
+          onChange={onGlobalFilterChange}
+          onSubmit={onGlobalFilterSubmit}
+          history={searchHistory ?? []}
+        />
+        {/* Active server-side filters. They're content, not actions, so they
+            don't take part in the overflow-menu collapse above — but N chips
+            are the single widest thing in the bar (each one spells out
+            `column op value`), so from `compact` down they fold into one
+            summary chip whose dropdown still removes them individually.
+            Collapsing them only at `narrow` was measured and wasn't enough:
+            two chips still pushed a 700 px pane onto a second row, which is
+            the exact wrap this whole mechanism exists to prevent. */}
+        {serverFilters && serverFilters.length > 0 && (
+          density !== "wide" ? (
+            <ServerFilterSummary
+              filters={serverFilters}
+              onRemove={onRemoveFilter}
+            />
+          ) : (
+            serverFilters.map((f, i) => (
+              <ServerFilterChip
+                key={`${f.column}-${f.op}-${i}`}
+                filter={f}
+                onRemove={onRemoveFilter && (() => onRemoveFilter(i))}
+              />
+            ))
+          )
+        )}
+        {/* Right-aligned cluster. `ml-auto` opens the gap between the growing
+            search box (+ filter chips) on the left and this group. Contents:
+            Insert · insertExtra (TableDataTab's Add/Export data/Bulk update)
+            · optional row count (query/view tabs) · trailing slot (view
+            toggle) · elapsed time. Wrapped so the whole group wraps as a unit
+            on narrow panes. */}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {!collapseData && insertItem?.bar}
+          {!collapseData &&
+            insertExtra?.map((item) => (
+              <Fragment key={item.id}>{item.bar}</Fragment>
+            ))}
+          {showRowCount && rowCountInBar && (
             <span className="tabular-nums text-muted-foreground">
               <span className="font-medium text-foreground">
                 {visibleRows.length.toLocaleString()}
@@ -2347,21 +2604,76 @@ export function DataGrid({
               )}
             </span>
           )}
-          {toolbarTrailing}
-          <span
-            className={cn(
-              "tabular-nums",
-              // Draw attention only when a query is slow; fast queries stay
-              // muted (colouring every timing green/amber would be noise).
-              result.elapsed_ms > 2000
-                ? "text-destructive"
-                : result.elapsed_ms > 500
-                  ? "text-warning"
-                  : "text-muted-foreground",
-            )}
-          >
-            {result.elapsed_ms} ms
-          </span>
+          {!collapseChrome && fitItem?.bar}
+          {!collapseChrome &&
+            toolbarTrailing?.map((item) => (
+              <Fragment key={item.id}>{item.bar}</Fragment>
+            ))}
+          {/* The timing is the first thing to go: it's a readout nobody acts
+              on, and the overflow menu keeps showing it (with the row count)
+              once either is squeezed out of the bar. */}
+          {elapsedInBar && (
+            <span
+              className={cn(
+                "tabular-nums",
+                // Draw attention only when a query is slow; fast queries stay
+                // muted (colouring every timing green/amber would be noise).
+                result.elapsed_ms > 2000
+                  ? "text-destructive"
+                  : result.elapsed_ms > 500
+                    ? "text-warning"
+                    : "text-muted-foreground",
+              )}
+            >
+              {result.elapsed_ms} ms
+            </span>
+          )}
+          {overflowGroups.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  title={t("dataGrid.moreActions")}
+                  aria-label={t("dataGrid.moreActions")}
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[13rem]">
+                {overflowGroups.map((group, gi) => (
+                  <Fragment key={group.id}>
+                    {gi > 0 && <DropdownMenuSeparator />}
+                    {group.items.map((item) => (
+                      <Fragment key={item.id}>{item.menu}</Fragment>
+                    ))}
+                  </Fragment>
+                ))}
+                {/* Readouts the bar no longer has room for. Not menu items —
+                    there's nothing to select — just the numbers, so collapsing
+                    the toolbar never hides information outright. */}
+                {(!elapsedInBar || (showRowCount && !rowCountInBar)) && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <div className="px-2 py-1 text-xs tabular-nums text-muted-foreground">
+                      {showRowCount && !rowCountInBar && (
+                        <>
+                          {visibleRows.length.toLocaleString()}{" "}
+                          {t("dataGrid.rows")}
+                          {result.total !== null &&
+                            result.total !== undefined &&
+                            ` ${t("dataGrid.of")} ${result.total.toLocaleString()}`}
+                          {!elapsedInBar && " · "}
+                        </>
+                      )}
+                      {!elapsedInBar && `${result.elapsed_ms} ms`}
+                    </div>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -2471,6 +2783,24 @@ export function DataGrid({
                       onMouseDown={(e) =>
                         startColumnResize(e, h.column.id, h.column.getSize())
                       }
+                      // Double-click = fit the column to its content
+                      // (HeidiSQL), Ctrl/Cmd held = fit every column at once.
+                      // Routed through `click` + `detail`, not `onDoubleClick`:
+                      // some Linux WebKitGTK builds never fire `dblclick`
+                      // inside a `user-select: none` subtree (this table sets
+                      // it globally), the same quirk the cells work around —
+                      // see the `e.detail >= 2` note in `GridRow`.
+                      onClick={(e) => {
+                        if (e.detail < 2) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        autoFitColumns(
+                          e.ctrlKey || e.metaKey
+                            ? result.columns.map((c) => c.name)
+                            : [h.column.id],
+                        );
+                      }}
+                      title={t("dataGrid.resizeHandleHint")}
                       className={cn(
                         "absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-primary/50",
                         resizingColId === h.column.id && "bg-primary",
@@ -2690,6 +3020,124 @@ export function DataGrid({
  * keystroke from creating a history entry and avoids spurious refetches
  * while the user is still composing the query.
  */
+/**
+ * The value half of a filter chip's label — the part after `column op`. An
+ * `IN` list is summarised by count (it can hold hundreds of values, with the
+ * values themselves deferred to a tooltip); `IS NULL` and friends have no
+ * value at all.
+ */
+function filterValueLabel(f: ColumnFilter, t: TFunction): string | null {
+  if (f.op === "in" || f.op === "not_in") {
+    return t("dataGrid.filterValueCount", { count: f.values?.length ?? 0 });
+  }
+  if (f.op === "eq" || f.op === "ne") {
+    return f.value === null || f.value === undefined
+      ? "NULL"
+      : formatValue(f.value);
+  }
+  return null;
+}
+
+/** Values behind an `IN` / `NOT IN` chip, for its tooltip. */
+function filterValuesTooltip(f: ColumnFilter): string | undefined {
+  if (f.op !== "in" && f.op !== "not_in") return undefined;
+  return (f.values ?? [])
+    .map((v) => (v === null || v === undefined ? "NULL" : formatValue(v)))
+    .join(", ");
+}
+
+/** One active server-side filter, as a removable chip in the toolbar. */
+function ServerFilterChip({
+  filter: f,
+  onRemove,
+}: {
+  filter: ColumnFilter;
+  onRemove?: () => void;
+}) {
+  const { t } = useTranslation();
+  const value = filterValueLabel(f, t);
+  return (
+    <span
+      className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 font-mono text-[11px]"
+      title={t("dataGrid.serverSideFilter")}
+    >
+      <span className="text-muted-foreground">{f.column}</span>
+      <span className="text-muted-foreground/70">{FILTER_LABEL[f.op]}</span>
+      {value !== null && (
+        <span className="max-w-[10rem] truncate" title={filterValuesTooltip(f)}>
+          {value}
+        </span>
+      )}
+      {onRemove && (
+        <button
+          className="ml-1 text-muted-foreground/60 hover:text-foreground"
+          onClick={onRemove}
+          title={t("dataGrid.removeFilter")}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The narrow-pane form of the chip row: one chip carrying the filter count,
+ * whose dropdown still removes filters one by one. Selecting an entry removes
+ * that filter and deliberately keeps the menu open (`preventDefault` on the
+ * select), since clearing several filters in a row is the common case and
+ * re-opening the menu each time would be busywork.
+ */
+function ServerFilterSummary({
+  filters,
+  onRemove,
+}: {
+  filters: ColumnFilter[];
+  onRemove?: (index: number) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+          title={t("dataGrid.serverSideFilter")}
+        >
+          <Filter className="h-3 w-3 text-brand" />
+          {t("dataGrid.activeFilterCount", { count: filters.length })}
+          <ChevronDown className="h-3 w-3 opacity-60" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {filters.map((f, i) => {
+          const value = filterValueLabel(f, t);
+          return (
+            <DropdownMenuItem
+              key={`${f.column}-${f.op}-${i}`}
+              className="gap-2 font-mono text-xs"
+              title={filterValuesTooltip(f) ?? t("dataGrid.removeFilter")}
+              disabled={!onRemove}
+              onSelect={(e) => {
+                e.preventDefault();
+                onRemove?.(i);
+              }}
+            >
+              <span className="text-muted-foreground">{f.column}</span>
+              <span className="text-muted-foreground/70">
+                {FILTER_LABEL[f.op]}
+              </span>
+              {value !== null && (
+                <span className="max-w-[14rem] truncate">{value}</span>
+              )}
+              <X className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/60" />
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function SearchInput({
   value,
   onChange,

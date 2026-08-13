@@ -4,6 +4,42 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Added
+
+- **Double-click a column's edge in the data grid to fit it to its content**
+  (HeidiSQL's gesture). A value too long for the default width — a serialised
+  widget config, a description paragraph — no longer has to be opened in the
+  cell editor just to be read: the column grows to the widest value currently
+  on screen and stays there (persisted per table, like a manual resize).
+  Holding `Ctrl`/`Cmd` while double-clicking fits every column at once, and the
+  handle's tooltip spells both gestures out. The grid's toolbar also gets a
+  button for the fit-everything version, so it isn't only reachable through a
+  gesture you have to know about — table tabs and query results alike.
+  The fit is measured against the text as *rendered* (BIT display mode, the
+  NULL placeholder, the "truncate long text at" cap all apply) and capped at
+  900 px, so one wide column can't push the rest of the row off-screen;
+  dragging by hand still goes as wide as you like.
+
+- **The grid's toolbar is responsive.** On a narrow pane it used to split into
+  two rows, with the filter cluster on one and the action cluster on the other.
+  Now the actions leave the bar instead: the toolbar measures its own width
+  (it lives in a dock panel, so a media query would be measuring the wrong
+  thing) and collapses in two steps — first the labelled data actions (insert,
+  import, export, bulk update) move into a single `⋯` overflow menu, then, on a
+  genuinely narrow pane, so does everything else, leaving the search box and
+  the `⋯`. Active filter chips fold into one "2 filters" chip whose dropdown
+  still removes them one at a time, and the row count / query time move into
+  the menu rather than disappearing — except on a grid with nothing else to
+  collapse (an ad-hoc query result), where they stay in the bar because there
+  would be no menu to read them in.
+
+### Fixed
+
+- A single click on a column's resize handle no longer rewrites that column's
+  width in `prefs.json` with the value it already had.
+
 ## [1.13.0] — 2026-08-12
 
 ### Added
