@@ -127,6 +127,7 @@ export function ConnectionsSection() {
 
       <PrefRow
         label={t("settings.connections.maxConnections.label")}
+        prefId="connections.maxConnections"
         description={t("settings.connections.maxConnections.desc")}
         htmlFor="prefs-conn-max"
       >
@@ -147,6 +148,7 @@ export function ConnectionsSection() {
 
       <PrefRow
         label={t("settings.connections.childMaxConnections.label")}
+        prefId="connections.childMaxConnections"
         description={t("settings.connections.childMaxConnections.desc")}
         htmlFor="prefs-conn-child-max"
       >
@@ -169,6 +171,7 @@ export function ConnectionsSection() {
 
       <PrefRow
         label={t("settings.connections.maxChildPools.label")}
+        prefId="connections.maxChildPools"
         description={t("settings.connections.maxChildPools.desc")}
         htmlFor="prefs-conn-max-children"
       >
@@ -189,6 +192,7 @@ export function ConnectionsSection() {
 
       <PrefRow
         label={t("settings.connections.childIdleTtl.label")}
+        prefId="connections.childIdleTtlSecs"
         description={t("settings.connections.childIdleTtl.desc")}
         htmlFor="prefs-conn-child-ttl"
       >
@@ -212,6 +216,7 @@ export function ConnectionsSection() {
 
       <PrefRow
         label={t("settings.connections.keepalive.label")}
+        prefId="connections.keepaliveSecs"
         description={t("settings.connections.keepalive.desc")}
         htmlFor="prefs-conn-keepalive"
       >
@@ -233,6 +238,7 @@ export function ConnectionsSection() {
 
       <PrefRow
         label={t("settings.connections.mcpBridge.label")}
+        prefId="connections.mcpBridge"
         description={t("settings.connections.mcpBridge.desc")}
       >
         <div className="flex items-center gap-3">

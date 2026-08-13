@@ -39,6 +39,7 @@ export function GeneralSection() {
     <div className="space-y-1">
       <PrefRow
         label={t("common.language")}
+        prefId="ui.language"
         description={t("common.languageDescription")}
       >
         <Select
@@ -61,6 +62,7 @@ export function GeneralSection() {
 
       <PrefRow
         label={t("settings.general.defaultDriver.label")}
+        prefId="ui.defaultDriver"
         description={t("settings.general.defaultDriver.desc")}
       >
         <Select
@@ -99,6 +101,7 @@ export function GeneralSection() {
 
       <PrefRow
         label={t("settings.general.confirmDestructive.label")}
+        prefId="ui.confirmDestructive"
         description={t("settings.general.confirmDestructive.desc")}
       >
         <Switch
@@ -109,6 +112,7 @@ export function GeneralSection() {
 
       <PrefRow
         label={t("settings.general.restoreTabs.label")}
+        prefId="ui.restoreTabsOnOpen"
         description={t("settings.general.restoreTabs.desc")}
       >
         <Switch
@@ -119,6 +123,7 @@ export function GeneralSection() {
 
       <PrefRow
         label={t("settings.general.reconnectOnLaunch.label")}
+        prefId="ui.reconnectOnLaunch"
         description={t("settings.general.reconnectOnLaunch.desc")}
       >
         <Switch
@@ -129,6 +134,7 @@ export function GeneralSection() {
 
       <PrefRow
         label={t("settings.general.cellEditorMode.label")}
+        prefId="ui.cellEditorMode"
         description={t("settings.general.cellEditorMode.desc")}
       >
         <Select
@@ -151,6 +157,7 @@ export function GeneralSection() {
 
       <PrefRow
         label={t("settings.general.connectionGroupExpandMode.label")}
+        prefId="ui.connectionGroupExpandMode"
         description={t("settings.general.connectionGroupExpandMode.desc")}
       >
         <Select
@@ -180,6 +187,7 @@ export function GeneralSection() {
 
       <PrefRow
         label={t("settings.general.queryHistoryLimit.label")}
+        prefId="ui.queryHistoryLimit"
         description={t("settings.general.queryHistoryLimit.desc")}
         htmlFor="prefs-history-limit"
       >

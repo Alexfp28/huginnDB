@@ -140,6 +140,14 @@ These bit us during the first sessions. Don't repeat them.
     - `AuthMethod::Windows` (NTLM) is `cfg(windows)`-gated *inside tiberius*, so the arm is `#[cfg(windows)]` and the CI's Linux leg compiles SQL-login-only. The connection dialog hides the mode off Windows.
     - Its `rustls` feature pins `tokio-rustls 0.24` → **rustls 0.21 alongside the tree's 0.23**. Accepted knowingly (the alternative, `native-tls`, drags OpenSSL onto the Linux leg); revisit on any `cargo update` that lets tiberius move up.
 
+32. **The command palette's *index* lives in `src/lib/commandPalette/`, never in the component — and "go to this setting" is a string contract between two files.** `CommandPalette.tsx` is presentation + keys only; `useCommands.tsx` builds the entries, `types.ts` owns the group order and the `>`/`@`/`#`/`?`/`:` mode prefixes, `fuzzy.ts` scores them, `settingsRegistry.ts` indexes the individual preferences. Things that will bite:
+    - **A palette entry's `id` is the MRU key** (`stores/dialogs/commandPalette.ts` persists the last 12 to `localStorage`), so it must describe *what the entry is* (`table:<conn>:<schema>.<name>`), never its position in the list. A stale id — deleted connection, closed tab — is skipped when the list is rebuilt, which is why no pruning exists.
+    - **`SETTINGS_INDEX[].prefId` must equal the `prefId` passed to that setting's `PrefRow`.** That string is the entire join: `useSettingsDialog.openAtPref(section, prefId)` opens the section, and the matching `PrefRow` scrolls itself into view and flashes. A typo degrades silently to "the section opens, nothing is highlighted" — there is no compile-time link. Adding a preference means touching both (and `ShortcutRow` already emits `keybinding.<ActionId>` for every entry in `ACTIONS`, so shortcuts come for free).
+    - `PrefRow` consumes `highlightPrefId` immediately (`clearHighlight` on match, not after the timeout) so re-opening the same section later doesn't replay the flash, and `setSection` drops a pending highlight — the user navigated elsewhere.
+    - **`useCommands(enabled)` returns `[]` when the palette is closed.** It is mounted for the app's whole life; indexing every table of every connected database on unrelated store changes would be pure waste. Keep new providers inside that gate, and keep reading raw store state (gotcha #1) — the memo derives, the selectors don't.
+    - **Alt+Enter is a per-entry second action** (`PaletteCommand.alt`), and a `keepOpen` one is deliberately *not* remembered in the MRU: reordering the empty-query view mid-toggle would slide the row out from under the cursor.
+    - Three dialogs the palette needs were local `useState` in `FileMenu` and now live in `stores/dialogs/connectionDialog.ts`; `FileMenu` is still their only mount point. `TabbedArea`'s own `ConnectionDialog` is a separate, tab-scoped flow and intentionally stays local.
+
 ## Workflow
 
 ```powershell

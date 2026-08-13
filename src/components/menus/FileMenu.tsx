@@ -12,10 +12,10 @@
  *   └── Export profiles…
  */
 
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, Download, FolderOpen, Plus, Settings, Upload } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
+import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,7 +26,6 @@ import {
 import { ConnectionDialog } from "@/components/connection/dialogs/ConnectionDialog";
 import { ExportProfilesDialog } from "@/components/connection/dialogs/ExportProfilesDialog";
 import { ImportProfilesDialog } from "@/components/connection/dialogs/ImportProfilesDialog";
-import type { ConnectionProfile } from "@/types";
 
 interface Props {
   selectedConnectionId: string | null;
@@ -36,15 +35,25 @@ interface Props {
 export function FileMenu({ selectedConnectionId, onSelect }: Props) {
   const profiles = useConnections((s) => s.profiles);
 
-  const [connDialogOpen, setConnDialogOpen] = useState(false);
-  // Which profile the manager opens focused on: `null` starts a new draft
-  // ("New connection"), a profile preselects it ("Manage connections").
-  const [dialogInitial, setDialogInitial] = useState<ConnectionProfile | null>(
-    null,
-  );
-  const [exportOpen, setExportOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
+  // Open state for the three dialogs below lives in a store rather than local
+  // component state so the command palette can request them too (see
+  // `stores/dialogs/connectionDialog.ts`); this stays their only mount point.
+  const connDialogOpen = useConnectionDialog((s) => s.open);
+  const setConnDialogOpen = useConnectionDialog((s) => s.setOpen);
+  const dialogInitialId = useConnectionDialog((s) => s.initialId);
+  const openNew = useConnectionDialog((s) => s.openNew);
+  const openManage = useConnectionDialog((s) => s.openManage);
+  const exportOpen = useConnectionDialog((s) => s.exportOpen);
+  const setExportOpen = useConnectionDialog((s) => s.setExportOpen);
+  const importOpen = useConnectionDialog((s) => s.importOpen);
+  const setImportOpen = useConnectionDialog((s) => s.setImportOpen);
   const { t } = useTranslation();
+
+  // Which profile the manager opens focused on: `null` starts a new draft
+  // ("New connection"), a resolved profile preselects it ("Manage
+  // connections"). Resolved at render so a profile deleted in between falls
+  // back to a new draft instead of a dangling reference.
+  const dialogInitial = profiles.find((p) => p.id === dialogInitialId) ?? null;
 
   return (
     <>
@@ -61,23 +70,11 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuItem
-            onSelect={() => {
-              setDialogInitial(null);
-              setConnDialogOpen(true);
-            }}
-          >
+          <DropdownMenuItem onSelect={() => openNew()}>
             <Plus className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.newConnection")}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              setDialogInitial(
-                profiles.find((p) => p.id === selectedConnectionId) ?? null,
-              );
-              setConnDialogOpen(true);
-            }}
-          >
+          <DropdownMenuItem onSelect={() => openManage(selectedConnectionId)}>
             <Settings className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.manageConnections")}
           </DropdownMenuItem>

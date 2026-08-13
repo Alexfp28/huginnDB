@@ -43,7 +43,7 @@ import { useTabs } from "@/stores/session/tabs";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import { useQueryHistory } from "@/stores/query/queryHistory";
-import { useCommandPalette } from "@/components/shell/CommandPalette";
+import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { formatComboForDisplay, getBinding } from "@/lib/keybindings";
 import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
@@ -452,6 +452,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         {
           id: "toggleCommandPalette",
           run: () => useCommandPalette.getState().toggle(),
+        },
+        {
+          id: "openCommandActions",
+          run: () => useCommandPalette.getState().openWith(">"),
         },
         {
           id: "toggleTabSwitcher",

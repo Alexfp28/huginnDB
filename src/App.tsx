@@ -56,7 +56,8 @@ import { HelpMenu } from "@/components/menus/HelpMenu";
 import { ConnectionsTree } from "@/components/connection/ConnectionsTree";
 import { TabbedArea } from "@/components/shell/TabbedArea";
 import { StatusBar } from "@/components/shell/StatusBar";
-import { CommandPalette, useCommandPalette } from "@/components/shell/CommandPalette";
+import { CommandPalette } from "@/components/shell/CommandPalette";
+import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { TabSwitcher, useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { SettingsDialog } from "@/components/settings/dialogs/SettingsDialog";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
@@ -674,15 +675,19 @@ export default function App() {
   // Global shortcuts, attached to `window` so they fire regardless of focus
   // inside the panel layout — except inside Monaco, which swallows all of
   // these; the editor registers its own redispatch for that case (see
-  // QueryEditorTab/ViewEditorTab, gotcha #9). All four are user-rebindable
+  // QueryEditorTab/ViewEditorTab, gotcha #9). All of them are user-rebindable
   // (issue #75) via `matchesBinding` against the live `keybindings` pref.
   const togglePalette = useCommandPalette((s) => s.toggle);
+  const openPaletteWith = useCommandPalette((s) => s.openWith);
   const toggleSwitcher = useTabSwitcher((s) => s.toggle);
   const openSettingsCombo = usePreferences((s) =>
     getBinding(s.prefs.keybindings, "openSettings"),
   );
   const paletteCombo = usePreferences((s) =>
     getBinding(s.prefs.keybindings, "toggleCommandPalette"),
+  );
+  const paletteActionsCombo = usePreferences((s) =>
+    getBinding(s.prefs.keybindings, "openCommandActions"),
   );
   const switcherCombo = usePreferences((s) =>
     getBinding(s.prefs.keybindings, "toggleTabSwitcher"),
@@ -701,6 +706,14 @@ export default function App() {
       if (matchesBinding(e, paletteCombo)) {
         e.preventDefault();
         togglePalette();
+        return;
+      }
+      // Same palette, pre-filtered to its actions mode (VS Code's
+      // Ctrl+Shift+P), so "run a command" never competes with the tables and
+      // settings the catch-all mode also searches.
+      if (matchesBinding(e, paletteActionsCombo)) {
+        e.preventDefault();
+        openPaletteWith(">");
         return;
       }
       if (matchesBinding(e, switcherCombo)) {
@@ -737,10 +750,12 @@ export default function App() {
   }, [
     openSettings,
     togglePalette,
+    openPaletteWith,
     toggleSwitcher,
     selected,
     openSettingsCombo,
     paletteCombo,
+    paletteActionsCombo,
     switcherCombo,
     refreshCombo,
   ]);

@@ -22,16 +22,36 @@ export type SettingsSection =
 interface SettingsDialogState {
   open: boolean;
   section: SettingsSection;
+  /**
+   * `prefId` of a single setting the dialog should scroll to and flash, or
+   * `null`. Set by the command palette's "go to this setting" entries; cleared
+   * by the `PrefRow` that consumes it (see `clearHighlight`), so the flash plays
+   * once per request rather than every time that section is revisited.
+   */
+  highlightPrefId: string | null;
   openAt: (section?: SettingsSection) => void;
+  /** Open `section` and highlight the row registered under `prefId`. */
+  openAtPref: (section: SettingsSection, prefId: string) => void;
   setOpen: (open: boolean) => void;
   setSection: (section: SettingsSection) => void;
+  clearHighlight: () => void;
 }
 
 export const useSettingsDialog = create<SettingsDialogState>()((set) => ({
   open: false,
   section: "general",
+  highlightPrefId: null,
   openAt: (section) =>
-    set((s) => ({ open: true, section: section ?? s.section })),
+    set((s) => ({
+      open: true,
+      section: section ?? s.section,
+      highlightPrefId: null,
+    })),
+  openAtPref: (section, prefId) =>
+    set({ open: true, section, highlightPrefId: prefId }),
   setOpen: (open) => set({ open }),
-  setSection: (section) => set({ section }),
+  // Switching section by hand abandons any pending highlight: the user is
+  // navigating somewhere else, and a stale flash on return would be noise.
+  setSection: (section) => set({ section, highlightPrefId: null }),
+  clearHighlight: () => set({ highlightPrefId: null }),
 }));

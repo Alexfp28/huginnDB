@@ -10,6 +10,49 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **La paleta de comandos (Ctrl/Cmd+K) ya es un lanzador de verdad.** Antes
+  indexaba tres cosas — las conexiones guardadas, las tablas de la conexión
+  seleccionada y un puñado fijo de acciones (nueva consulta, preferencias,
+  tema, idioma) — filtradas con un `includes()` de subcadena. Ahora indexa
+  trece grupos y los ordena por relevancia:
+
+  - **Cada preferencia individual**, al estilo de VS Code: escribir `#ajuste`
+    (o simplemente `wrap`) encuentra «Ajustar líneas largas», muestra su valor
+    actual y Enter abre Preferencias en esa sección y baja hasta *esa fila*,
+    resaltándola. Los ajustes booleanos además se pueden alternar sin salir de
+    la paleta con Alt+Enter, que la deja abierta para que el valor se actualice
+    bajo el cursor. Cada atajo reasignable se indexa igual, con su combinación
+    actual.
+  - **La documentación** (cada documento de la app, más Novedades,
+    Informar/sugerir, Buscar actualizaciones, Acerca de y la página de MCP).
+  - **Navegación**: pestañas abiertas (Enter salta, Alt+Enter cierra),
+    conexiones guardadas (Alt+Enter desconecta una activa), entornos, las bases
+    de datos de un servidor multi-base, tablas y vistas de *todas* las
+    conexiones abiertas y no solo de la seleccionada, consultas guardadas y las
+    últimas 20 entradas del historial.
+  - **Acciones** que solo existían en un menú: nueva conexión, gestionar
+    conexiones, importar/exportar perfiles, desconectar todo, recargar el
+    esquema, recargar los datos de la tabla activa, cerrar/fijar la pestaña
+    activa, cerrar todas, nueva ventana, restablecer la disposición, flotar el
+    panel activo y un interruptor por cada panel del dock.
+
+  La búsqueda también cambió de forma: las entradas se puntúan en vez de
+  filtrarse (`src/lib/commandPalette/fuzzy.ts` — prefijo gana a inicio de
+  palabra, que gana a subcadena, que gana a subsecuencia, con bonus por
+  densidad de coincidencias y límites de palabra, y desempate por longitud),
+  los caracteres que coincidieron se resaltan en cada fila, los grupos se
+  ordenan por su mejor coincidencia para que las cabeceras sigan teniendo
+  sentido, y los comandos que de verdad usas suben al principio bajo el
+  encabezado «Usados recientemente» (persistido en `localStorage`).
+
+  Los prefijos de modo acotan la búsqueda como en VS Code — `>` acciones,
+  `@` tablas, `#` ajustes, `?` ayuda, `:` ir a — mostrados como chips
+  clicables mientras el campo está vacío y recorribles con Tab, para que una
+  conexión con miles de tablas no sepulte las acciones.
+
+- **`Ctrl/Cmd+Shift+P` abre la paleta en modo solo acciones** (paridad con
+  VS Code). Reasignable como el resto, en Ajustes → Atajos.
+
 - **Importar/exportar un tema desde Ajustes → Apariencia.** Un icono de
   exportar junto al selector de modo del editor de temas escribe el tema
   activo (integrado o personalizado) a un archivo JSON mediante el diálogo

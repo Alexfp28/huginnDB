@@ -251,6 +251,7 @@ function DataViewGroup() {
       </div>
       <PrefRow
         label={t("settings.appearance.dataView.mode.label")}
+        prefId="grid.documentViewMode"
         description={t("settings.appearance.dataView.mode.desc")}
       >
         <Select
@@ -274,6 +275,7 @@ function DataViewGroup() {
       </PrefRow>
       <PrefRow
         label={t("settings.appearance.dataView.expandNested.label")}
+        prefId="grid.listExpandNested"
         description={t("settings.appearance.dataView.expandNested.desc")}
       >
         <Switch
@@ -284,6 +286,7 @@ function DataViewGroup() {
       </PrefRow>
       <PrefRow
         label={t("settings.appearance.dataView.showTypes.label")}
+        prefId="grid.listShowTypes"
         description={t("settings.appearance.dataView.showTypes.desc")}
       >
         <Switch
@@ -294,6 +297,7 @@ function DataViewGroup() {
       </PrefRow>
       <PrefRow
         label={t("settings.appearance.dataView.lineNumbers.label")}
+        prefId="grid.listLineNumbers"
         description={t("settings.appearance.dataView.lineNumbers.desc")}
       >
         <Switch

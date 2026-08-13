@@ -8,6 +8,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The command palette (Ctrl/Cmd+K) is now a real launcher.** It used to index
+  three things — the saved connections, the selected connection's tables, and a
+  fixed handful of actions (new query, preferences, theme, language) — filtered
+  with a plain substring `includes()`. It now indexes thirteen groups and ranks
+  them:
+
+  - **Every individual preference**, VS Code style: typing `#wrap` (or just
+    `wrap`) finds "Soft-wrap long lines", shows its current value, and Enter
+    opens Preferences on that section and scrolls to *that row*, flashing it.
+    Boolean settings can also be flipped without leaving the palette with
+    Alt+Enter, which keeps it open so the value badge updates under the cursor.
+    Every rebindable shortcut is indexed the same way, with its current combo.
+  - **The documentation** (each in-app doc, plus What's new, Report/suggest,
+    Check for updates, About, the MCP setup page).
+  - **Navigation**: open tabs (Enter jumps, Alt+Enter closes), saved
+    connections (Alt+Enter disconnects a live one), environments, the databases
+    of a multi-database server, tables and views across *every* connected
+    connection rather than only the selected one, saved queries and the last 20
+    entries of the query history.
+  - **Actions** that previously existed only in a menu: new/manage connection,
+    import/export profiles, disconnect all, refresh schema, refresh the active
+    table's data, close/pin the active tab, close all tabs, new window, reset
+    layout, float the active panel, and a toggle per dock panel.
+
+  Search itself changed shape: entries are scored rather than filtered
+  (`src/lib/commandPalette/fuzzy.ts` — prefix beats word-start beats substring
+  beats subsequence, with run-density and word-boundary bonuses and a
+  shorter-is-better tiebreak), the characters that matched are emphasised in
+  each row, groups are ordered by their best hit so section headers stay
+  coherent, and the commands you actually use float to the top under a
+  "Recently used" heading (persisted in `localStorage`).
+
+  Mode prefixes narrow the search the way they do in VS Code — `>` actions,
+  `@` tables, `#` settings, `?` help, `:` go to — shown as clickable chips
+  while the field is empty and cyclable with Tab, so a connection with
+  thousands of tables can't bury the actions.
+
+- **`Ctrl/Cmd+Shift+P` opens the palette in actions-only mode** (VS Code
+  parity). Rebindable like the rest, under Settings → Shortcuts.
+
 - **Import/export a theme from Settings → Appearance.** An export icon next
   to the theme editor's mode picker writes the active theme (built-in or
   custom) to a JSON file via the native save dialog; an import icon in the

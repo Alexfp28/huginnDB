@@ -44,6 +44,7 @@ export function GridSection() {
     <div className="space-y-1">
       <PrefRow
         label={t("settings.grid.defaultPageSize")}
+        prefId="grid.defaultPageSize"
         htmlFor="prefs-grid-page-size"
       >
         <Input
@@ -64,6 +65,7 @@ export function GridSection() {
 
       <PrefRow
         label={t("settings.grid.rowHeight")}
+        prefId="grid.rowHeight"
         htmlFor="prefs-grid-row-height"
       >
         <Input
@@ -82,6 +84,7 @@ export function GridSection() {
 
       <PrefRow
         label={t("settings.grid.nullDisplay.label")}
+        prefId="grid.nullDisplay"
         description={t("settings.grid.nullDisplay.desc")}
         htmlFor="prefs-grid-null-display"
       >
@@ -95,6 +98,7 @@ export function GridSection() {
 
       <PrefRow
         label={t("settings.grid.truncateLongTextAt.label")}
+        prefId="grid.truncateLongTextAt"
         description={t("settings.grid.truncateLongTextAt.desc")}
         htmlFor="prefs-grid-truncate"
       >
@@ -116,6 +120,7 @@ export function GridSection() {
 
       <PrefRow
         label={t("settings.grid.zebraStripes.label")}
+        prefId="grid.zebraStripes"
         description={t("settings.grid.zebraStripes.desc")}
       >
         <Switch
@@ -126,6 +131,7 @@ export function GridSection() {
 
       <PrefRow
         label={t("settings.grid.stickyHeader.label")}
+        prefId="grid.stickyHeader"
         description={t("settings.grid.stickyHeader.desc")}
       >
         <Switch
@@ -136,6 +142,7 @@ export function GridSection() {
 
       <PrefRow
         label={t("settings.grid.cellPreview.label")}
+        prefId="grid.cellPreview"
         description={t("settings.grid.cellPreview.desc")}
       >
         <Switch
@@ -146,6 +153,7 @@ export function GridSection() {
 
       <PrefRow
         label={t("settings.grid.bitDisplay.label")}
+        prefId="grid.bitDisplay"
         description={t("settings.grid.bitDisplay.desc")}
       >
         <Select
@@ -170,6 +178,7 @@ export function GridSection() {
 
       <PrefRow
         label={t("settings.grid.schemaMetric.label")}
+        prefId="ui.schemaTableMetric"
         description={t("settings.grid.schemaMetric.desc")}
       >
         <Select
@@ -193,6 +202,7 @@ export function GridSection() {
 
       <PrefRow
         label={t("settings.grid.tabAccentStyle.label")}
+        prefId="ui.tabAccentStyle"
         description={t("settings.grid.tabAccentStyle.desc")}
       >
         <Select

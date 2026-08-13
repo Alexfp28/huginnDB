@@ -13,6 +13,7 @@
 export type ActionId =
   | "openSettings"
   | "toggleCommandPalette"
+  | "openCommandActions"
   | "toggleTabSwitcher"
   | "refreshData"
   | "runQuery"
@@ -39,6 +40,9 @@ export interface ActionSpec {
 export const ACTIONS: ActionSpec[] = [
   { id: "openSettings", defaultCombo: "Ctrl+,", labelKey: "settings.shortcuts.openSettings" },
   { id: "toggleCommandPalette", defaultCombo: "Ctrl+K", labelKey: "settings.shortcuts.toggleCommandPalette" },
+  // Same palette, opened straight into its actions-only mode (`>`), mirroring
+  // VS Code's Ctrl+Shift+P.
+  { id: "openCommandActions", defaultCombo: "Ctrl+Shift+P", labelKey: "settings.shortcuts.openCommandActions" },
   { id: "toggleTabSwitcher", defaultCombo: "Ctrl+P", labelKey: "settings.shortcuts.toggleTabSwitcher" },
   { id: "refreshData", defaultCombo: "F5", labelKey: "settings.shortcuts.refreshData" },
   { id: "runQuery", defaultCombo: "Ctrl+Enter", labelKey: "settings.shortcuts.runQuery" },

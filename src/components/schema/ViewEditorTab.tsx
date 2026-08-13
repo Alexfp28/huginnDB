@@ -39,7 +39,7 @@ import {
   registerSqlEditor,
 } from "@/lib/monaco/monacoSql";
 import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
-import { useCommandPalette } from "@/components/shell/CommandPalette";
+import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import type { QueryResult, StructureMode, ViewDefinition } from "@/types";
 
@@ -275,6 +275,10 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
       {
         id: "toggleCommandPalette",
         run: () => useCommandPalette.getState().toggle(),
+      },
+      {
+        id: "openCommandActions",
+        run: () => useCommandPalette.getState().openWith(">"),
       },
       {
         id: "toggleTabSwitcher",
