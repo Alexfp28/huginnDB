@@ -10,6 +10,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Un tema integrado "Summer"** — una paleta clara y cálida (fondo de arena
+  soleada, un único acento turquesa-océano para brand/ring, tonos coral en
+  primary y destructive) que se suma a los temas integrados existentes en
+  `src/lib/themes.ts`.
+
+- **Tema por entorno.** El diálogo de crear/renombrar entorno
+  (`EnvironmentSwitcher`) incorpora un selector de tema junto a los campos ya
+  existentes de color e icono, listando todos los temas integrados y
+  personalizados más una opción "Predeterminado". Asignar un tema a un
+  entorno lo aplica automáticamente cada vez que se entra en él — al arrancar
+  la app o al cambiar de entorno (`switchTo`) — y quitarlo (la opción
+  predeterminada, siempre disponible) vuelve al tema que tengas configurado
+  en Ajustes → Apariencia. La asignación se superpone al almacén de temas
+  existente (`useThemeStore.setEnvironmentOverride`) en vez de sobrescribir
+  el tema predeterminado persistido, así que volver a un entorno sin tema
+  asignado nunca pisa la elección habitual del usuario. Se persiste en el
+  backend como `Environment.themeId` (`tab_state.json` v4; `None` por
+  defecto, así que los entornos existentes no se ven afectados).
+
 - **Doble clic en el borde de una columna de la rejilla para ajustarla a su
   contenido** (el gesto de HeidiSQL). Un valor demasiado largo para el ancho
   por defecto —la configuración serializada de un widget, un párrafo de
