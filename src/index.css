@@ -389,6 +389,75 @@ input[type="password"]::-ms-clear {
 }
 
 /* -------------------------------------------------------------------------
+ * Tab overflow popover ("∨ N") — a menu, not a stack of loose chips
+ * -------------------------------------------------------------------------
+ * dockview builds this popover by re-rendering each hidden tab's own tab
+ * component inside a `.dv-tab` wrapper (see dockview-core's
+ * `tabsContainer.js`), so every rule above — the floating chip's margin,
+ * radius, card fill — followed the tabs into a vertical list where none of
+ * it makes sense: rows sat on separate islands with a 7px trench between
+ * them, each capped at the strip's own truncation width inside a container
+ * far wider than it needed to be.
+ *
+ * Two scrollbars came with it. dockview sets `overflow: auto` INLINE on the
+ * container (its stylesheet's `overflow-y: auto` can't win against that), so
+ * the horizontal axis scrolled too — and something always overflowed it,
+ * because the popover is sized by content while each row carried the strip's
+ * own paddings and max width. Hence `overflow-x: hidden !important`: an
+ * inline style is only reachable with `!important`, and a list of names has
+ * no business scrolling sideways. `WorkspaceTab` renders its `headerOverflow`
+ * branch as a full-width two-line row to match.
+ */
+.inner-dock .dv-tabs-overflow-container {
+  min-width: 17rem;
+  max-width: 24rem;
+  padding: 0;
+  overflow-x: hidden !important;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background-color: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow:
+    0 4px 12px hsl(var(--foreground) / 0.1),
+    0 12px 32px hsl(var(--foreground) / 0.12);
+}
+.inner-dock .dv-tabs-overflow-container .dv-tab {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
+}
+.inner-dock .dv-tabs-overflow-container .dv-tab:not(:last-child) {
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+}
+.inner-dock .dv-tabs-overflow-container .dv-tab:hover {
+  background-color: hsl(var(--accent));
+}
+/* The active row keeps the same brand rail the tab switcher's highlighted
+   row uses, so "where am I" reads identically in both lists. */
+.inner-dock .dv-tabs-overflow-container .dv-tab.dv-active-tab {
+  background-color: hsl(var(--accent));
+  box-shadow: inset 2px 0 0 0 hsl(var(--brand));
+  filter: none;
+}
+/* The trigger itself: same ghost-button language as the "+" and tab-switcher
+   buttons it sits beside, instead of dockview's bare default. */
+.inner-dock .dv-tabs-overflow-dropdown-default {
+  margin: 0 2px;
+  padding: 0.25rem 0.375rem;
+  border-radius: calc(var(--radius) - 4px);
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+.inner-dock .dv-tabs-overflow-dropdown-default:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+/* -------------------------------------------------------------------------
  * Inner workspace drag-and-drop: directional split preview + reflow
  * -------------------------------------------------------------------------
  * Two gaps against the reference behaviour dragging a tab was checked

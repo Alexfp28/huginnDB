@@ -41,14 +41,19 @@ export function SimpleTooltip({
   label,
   children,
   side,
+  delayDuration,
 }: {
   label: React.ReactNode;
   children: React.ReactNode;
   side?: React.ComponentPropsWithoutRef<typeof TooltipContent>["side"];
+  /** Override the provider's hover delay. Use a shorter one where hovering is
+   *  a scanning gesture rather than a deliberate "what is this?" (the tab
+   *  strip: the tooltip is how a truncated tab reveals its full name). */
+  delayDuration?: number;
 }) {
   if (!label) return <>{children}</>;
   return (
-    <Tooltip>
+    <Tooltip delayDuration={delayDuration}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side={side}>{label}</TooltipContent>
     </Tooltip>

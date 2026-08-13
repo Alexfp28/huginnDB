@@ -99,3 +99,28 @@ export function tableTabTitle(
   const { database } = resolveConnectionParts(profiles, connectionId);
   return database ? `${database}.${table}` : table;
 }
+
+/**
+ * The name a tab is *really* about, with the database dropped when a
+ * surrounding surface already shows it.
+ *
+ * A table tab's title is `database.table` (see [`tableTabTitle`]) so a bare
+ * tab reads unambiguously. But the tab strip and the tab switcher also render
+ * the connection context — `resolveConnectionLabel`, itself `name · database`
+ * — right next to it, so the database was printed twice in the same 200px:
+ * `Oset · iMesPyme · iMesPyme.pedidos`. The repetition is what pushed the
+ * table name (the only part that differs between two tabs of the same
+ * connection) past the truncation point. Call this wherever the context is
+ * shown alongside, and keep `tab.title` where it stands alone (window title,
+ * detached window, persistence).
+ */
+export function tabLeafTitle(
+  profiles: ConnectionProfile[],
+  tab: { kind: string; title: string; connectionId: string; table?: string },
+): string {
+  if (tab.kind !== "table" || !tab.table) return tab.title;
+  const { database } = resolveConnectionParts(profiles, tab.connectionId);
+  return database && tab.title === `${database}.${tab.table}`
+    ? tab.table
+    : tab.title;
+}

@@ -35,6 +35,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   collapse (an ad-hoc query result), where they stay in the bar because there
   would be no menu to read them in.
 
+### Changed
+
+- **A workspace tab now shows the table's name instead of running out of room
+  before it.** With tabs open across several connections, each one printed
+  `connection · database · database.table` — the database twice — and the part
+  that actually tells two tabs apart, the table, was the part that fell off the
+  end. The database appears once now, and the label truncates by priority: the
+  connection context (repeated on every tab of that connection, and already
+  signalled by the driver badge) gives up its width first, the name keeps
+  hers, separated by a hairline rather than one more `·` in a name full of
+  them. Hovering a tab shows its full identity — qualified `schema.table` and
+  the connection — after a shorter delay than a chrome button's, since on a
+  truncated tab the tooltip is the only way to read the whole name.
+
+- **The tab overflow menu ("∨ N") is a list, not a shelf of clipped tabs.**
+  It re-uses each hidden tab's own tab component, so every one arrived with
+  the tab strip's floating-chip margins and truncation width — rows on
+  separate islands, names cut short inside a popover with room to spare, and
+  two scrollbars, one of them horizontal. Rows are flush and full-width now,
+  with the name on one line and its connection under it, and the popover
+  scrolls in one direction only.
+
 ### Fixed
 
 - A single click on a column's resize handle no longer rewrites that column's

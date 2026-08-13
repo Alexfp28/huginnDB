@@ -32,7 +32,11 @@ import {
 import { useTabs } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
-import { resolveConnectionLabel } from "@/lib/connectionLabel";
+import {
+  resolveConnectionLabel,
+  resolveConnectionParts,
+  tabLeafTitle,
+} from "@/lib/connectionLabel";
 import { cn } from "@/lib/utils";
 import type { AppTab, TabKind } from "@/types";
 
@@ -61,6 +65,8 @@ interface Entry {
   tab: AppTab;
   group: string;
   connLabel: string;
+  /** The tab's name with the database stripped when the subtitle repeats it. */
+  leaf: string;
   subtitle: string;
 }
 
@@ -92,11 +98,22 @@ export function TabSwitcher() {
     const labelFor = (cid: string) => resolveConnectionLabel(profiles, cid);
     const toEntry = (tab: AppTab, group: string): Entry => {
       const connLabel = labelFor(tab.connectionId);
-      const subtitle =
-        tab.kind === "table"
-          ? `${tab.schema ? `${tab.schema}.` : ""}${tab.table ?? ""} · ${connLabel}`
-          : connLabel;
-      return { tab, group, connLabel, subtitle };
+      // The row already prints `connection · database` underneath, so the
+      // title sheds the `database.` prefix it carries for standalone use
+      // (same reasoning as the tab strip — see `tabLeafTitle`), and the
+      // schema joins the subtitle only when it isn't that same database.
+      const { database } = resolveConnectionParts(profiles, tab.connectionId);
+      const schema =
+        tab.kind === "table" && tab.schema && tab.schema !== database
+          ? tab.schema
+          : null;
+      return {
+        tab,
+        group,
+        connLabel,
+        leaf: tabLeafTitle(profiles, tab),
+        subtitle: schema ? `${schema} · ${connLabel}` : connLabel,
+      };
     };
 
     const pinned = tabs.filter((x) => x.pinned).map((x) => toEntry(x, pinnedLabel));
@@ -123,7 +140,11 @@ export function TabSwitcher() {
     const q = query.trim().toLowerCase();
     if (!q) return entries;
     return entries.filter((e) =>
-      `${e.tab.title} ${e.subtitle} ${e.connLabel}`.toLowerCase().includes(q),
+      // The full `database.table` title stays in the haystack even though the
+      // row renders the stripped leaf — typing the qualified name must match.
+      `${e.tab.title} ${e.leaf} ${e.subtitle} ${e.connLabel}`
+        .toLowerCase()
+        .includes(q),
     );
   }, [entries, query]);
 
@@ -253,7 +274,7 @@ export function TabSwitcher() {
                         )}
                         <span className="flex min-w-0 flex-col">
                           <span className="flex items-center gap-1.5 truncate">
-                            <span className="truncate">{e.tab.title}</span>
+                            <span className="truncate">{e.leaf}</span>
                             {isCurrent && (
                               <span className="shrink-0 rounded bg-brand/15 px-1 text-3xs font-medium uppercase tracking-wide text-brand">
                                 {t("tabSwitcher.current")}
