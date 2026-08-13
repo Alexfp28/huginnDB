@@ -44,7 +44,7 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTabs } from "@/stores/session/tabs";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import type { AppTab } from "@/types";
+import type { AppTab, Driver } from "@/types";
 import { useUi } from "@/stores/session/ui";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { useConnections } from "@/stores/session/connections";
@@ -267,17 +267,34 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const isActive = useTabs((s) => s.activeId === id);
   const profiles = useConnections((s) => s.profiles);
 
-  const { label, leaf, context, connName, qualified, driver } = useMemo(() => {
+  // Last identity this panel had while its tab existed. A panel can outlive
+  // its tab entry for a render or two — closing one (the panel is removed by
+  // the reconciler, not by this component) and a restore-protected panel
+  // waiting for its tab to arrive both do it — and falling back to the raw
+  // panel id there put a bare `api02wzj` on screen where a name had been.
+  // Holding the last one over is always closer to the truth than the id.
+  const lastIdentity = useRef<{
+    label: string;
+    leaf: string;
+    context: string | null;
+    connName: string;
+    qualified: string;
+    driver: Driver | undefined;
+  } | null>(null);
+
+  const identity = useMemo(() => {
     const tab = tabs.find((t) => t.id === id);
     if (!tab) {
-      return {
-        label: id,
-        leaf: id,
-        context: null,
-        connName: "",
-        qualified: id,
-        driver: undefined,
-      };
+      return (
+        lastIdentity.current ?? {
+          label: id,
+          leaf: id,
+          context: null,
+          connName: "",
+          qualified: id,
+          driver: undefined,
+        }
+      );
     }
 
     // Show the connection/database context whenever it's needed to tell tabs
@@ -314,6 +331,11 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       driver: resolveConnectionDriver(profiles, tab.connectionId),
     };
   }, [tabs, profiles, id]);
+
+  const { label, leaf, context, connName, qualified, driver } = identity;
+  // Remember it only while the tab is real — writing back an identity that
+  // *came* from the ref would pin it forever.
+  if (tabs.some((tb) => tb.id === id)) lastIdentity.current = identity;
 
   // Full identity on hover — the tab strip truncates by design, so this is
   // where the whole name lives. Two lines, weighted: what the tab *is*, then
@@ -391,7 +413,16 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       )}
       title={t("tabs.closeTab")}
       onClick={(e) => {
-        e.stopPropagation();
+        // In the strip the click stops here — activating a tab you just
+        // closed would be nonsense. In the popover it must NOT: dockview's
+        // own listener on the row wrapper is what dismisses the popover, and
+        // the popover cannot survive this click. It is built once, at open
+        // time, from the tabs that were hidden *then* (see
+        // dockview-core's `tabsContainer.js`), and nothing rebuilds it — so a
+        // row whose tab just went away stays on screen as a dead entry. Let
+        // it through and the whole popover closes, which is also what the
+        // user means by closing a tab from a list of tabs.
+        if (!inOverflow) e.stopPropagation();
         requestClose();
       }}
       // Same drag-suppression as the menu trigger.
@@ -413,15 +444,9 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           "group/tab flex w-full items-center gap-2.5 py-1.5 pl-2.5 pr-1.5 text-xs",
           isActive ? "text-foreground" : "text-foreground/90",
         )}
-        onMouseDown={(e) => {
-          if (e.button === 1) e.preventDefault();
-        }}
-        onAuxClick={(e) => {
-          if (e.button === 1) {
-            e.preventDefault();
-            requestClose();
-          }
-        }}
+        // No middle-click-to-close here, unlike the strip: dockview only
+        // dismisses the popover on a primary click, so a middle click would
+        // close the tab and leave its dead row behind.
       >
         {driver && <DriverBadge driver={driver} />}
         <span className="flex min-w-0 flex-1 flex-col leading-snug">
