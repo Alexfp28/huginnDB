@@ -85,9 +85,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   conexión — con menos retardo que en un botón de la interfaz: en una pestaña
   recortada el tooltip es la única forma de leer el nombre entero.
 
-- **Un nombre de pestaña recortado se difumina en vez de acabar en puntos
-  suspensivos**, como en la tira de pestañas de un IDE. Solo se aplica donde el
-  texto se corta de verdad: un nombre corto conserva su final.
+- **Las pestañas recortadas se difuminan en vez de cortarse**, como en la tira
+  de pestañas de un IDE: tanto un nombre demasiado largo para su pestaña como
+  la pestaña que queda a caballo del borde de una tira con más pestañas de las
+  que caben, que antes se cortaba a media letra contra una pared vertical.
+  Cada difuminado aparece solo donde algo se corta de verdad: un nombre que
+  cabe conserva su final, y una tira con sitio de sobra mantiene los bordes
+  limpios. El borde difuminado sirve además de pista de que hay más pestañas
+  en esa dirección.
+
+- **El botón «∨» de la tira parece un botón**: superficie y borde propios
+  sobre el fondo hundido de la tira. Ya no imprime el número de pestañas
+  ocultas junto al galón — el galón ya significa «hay más», la propia lista
+  enseña cuántas, y el número solo competía con los nombres de al lado.
 
 - **El menú de pestañas desbordadas («∨ N») es la tira de pestañas puesta de
   canto.** Reutiliza el propio componente de cada pestaña oculta, así que cada

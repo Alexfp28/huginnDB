@@ -877,6 +877,9 @@ export function TabbedArea(_props: Props) {
   const activeId = useTabs((s) => s.activeId);
   const tabAccentStyle = usePreferences((s) => s.prefs.ui.tabAccentStyle);
   const [api, setApi] = useState<DockviewApi | null>(null);
+  // Set by the edge-fade effect below; called from `onDidLayoutChange`, which
+  // is where a newly-created group's tab strip first becomes reachable.
+  const refreshEdgeFade = useRef<() => void>(() => {});
 
   const onReady = (event: DockviewReadyEvent) => {
     setApi(event.api);
@@ -909,8 +912,13 @@ export function TabbedArea(_props: Props) {
     // A pure split/float/resize gesture touches no tab or schema state, so
     // nothing else schedules a save for it — without this, split geometry
     // could go unpersisted until an unrelated tab edit happened to trigger
-    // one (see issue #80).
-    event.api.onDidLayoutChange(() => scheduleSaveActive());
+    // one (see issue #80). It is also the only signal that a *group* (and
+    // with it a tab strip) was created, which the edge-fade pass has to know
+    // about — its own observers can only watch strips that already exist.
+    event.api.onDidLayoutChange(() => {
+      scheduleSaveActive();
+      refreshEdgeFade.current();
+    });
   };
 
   // Clear the inner-dockview singleton on unmount so a stale handle from a
@@ -969,6 +977,48 @@ export function TabbedArea(_props: Props) {
       window.clearTimeout(clearTimer);
     };
   }, []);
+
+  // Fade the tab strip's edges wherever there is more to scroll to. A strip
+  // that overflows crops the tab straddling its edge mid-letter, which no
+  // amount of label truncation can soften — the tab isn't truncated, it's
+  // cropped by the scroll box around it — so the mask goes on the scroller
+  // (`data-clip` → `index.css`). CSS can't see scroll offsets, hence this.
+  // Re-running on `tabs` catches opens and closes; the per-container
+  // ResizeObserver catches splits and window resizes; the capture-phase
+  // listener catches scrolling (a scroll event doesn't bubble).
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      for (const el of root.querySelectorAll<HTMLElement>(".dv-tabs-container")) {
+        observer.observe(el); // re-observing an observed element is a no-op
+        const slack = 2;
+        const hidden = el.scrollWidth - el.clientWidth;
+        const left = hidden > slack && el.scrollLeft > slack;
+        const right = hidden > slack && el.scrollLeft < hidden - slack;
+        if (left && right) el.dataset.clip = "both";
+        else if (left) el.dataset.clip = "left";
+        else if (right) el.dataset.clip = "right";
+        else delete el.dataset.clip;
+      }
+    };
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(root);
+    refreshEdgeFade.current = schedule;
+    schedule();
+    root.addEventListener("scroll", schedule, { capture: true });
+    return () => {
+      refreshEdgeFade.current = () => {};
+      root.removeEventListener("scroll", schedule, { capture: true });
+      observer.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [tabs]);
 
   return (
     // Explicit positioned, full-size wrapper. The nested DockviewReact root

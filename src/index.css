@@ -472,18 +472,65 @@ input[type="password"]::-ms-clear {
 .inner-dock[data-tab-accent="boxed"] .dv-tabs-overflow-container .dv-tab.dv-active-tab {
   box-shadow: none;
 }
-/* The trigger itself: same ghost-button language as the "+" and tab-switcher
-   buttons it sits beside, instead of dockview's bare default. */
+/* The trigger itself: a real button — its own surface and border, so it reads
+   as a control sitting on the trench rather than a chevron floating in it.
+   dockview renders a count next to the chevron; the "∨" already means "there
+   is more", the popover itself shows how much, and the number only competed
+   with the tab labels beside it. */
 .inner-dock .dv-tabs-overflow-dropdown-default {
+  height: 28px;
+  align-self: center;
   margin: 0 2px;
-  padding: 0.25rem 0.375rem;
-  border-radius: calc(var(--radius) - 4px);
+  padding: 0 0.375rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  background-color: hsl(var(--card));
   color: hsl(var(--muted-foreground));
-  font-variant-numeric: tabular-nums;
+}
+.inner-dock .dv-tabs-overflow-dropdown-default > span {
+  display: none;
 }
 .inner-dock .dv-tabs-overflow-dropdown-default:hover {
   background-color: hsl(var(--accent));
+  border-color: hsl(var(--border));
   color: hsl(var(--foreground));
+}
+
+/* -------------------------------------------------------------------------
+ * Tab strip scroll edges
+ * -------------------------------------------------------------------------
+ * When the tabs overflow, the strip clips whichever one straddles its edge
+ * mid-letter — a hard vertical wall through the middle of a word. The label
+ * masks above can't help: that tab isn't being truncated, it's being cropped
+ * by an ancestor's scroll box. So the scroll container itself fades on the
+ * side(s) where there is more to scroll to, which also makes "there are more
+ * tabs that way" legible without reading the "∨" button. `data-clip` is
+ * maintained by `TabbedArea` (scroll position and widths are not knowable in
+ * CSS); no attribute means nothing is cut off, so a strip with room to spare
+ * keeps hard, unfaded edges. */
+.inner-dock .dv-tabs-container[data-clip="right"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+}
+.inner-dock .dv-tabs-container[data-clip="left"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 2.5rem);
+  mask-image: linear-gradient(to right, transparent, #000 2.5rem);
+}
+.inner-dock .dv-tabs-container[data-clip="both"] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 2.5rem,
+    #000 calc(100% - 2.5rem),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 2.5rem,
+    #000 calc(100% - 2.5rem),
+    transparent
+  );
 }
 
 /* -------------------------------------------------------------------------

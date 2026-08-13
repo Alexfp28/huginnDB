@@ -78,9 +78,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the connection — after a shorter delay than a chrome button's, since on a
   truncated tab the tooltip is the only way to read the whole name.
 
-- **A clipped tab name fades out instead of ending in an ellipsis**, the way
-  an IDE's tab strip does. Applied only where the text really is cut off — a
-  short name keeps its full tail.
+- **Clipped tabs fade out instead of being cut**, the way an IDE's tab strip
+  does — both a name too long for its tab and the tab straddling the edge of
+  a strip with more tabs than fit, which used to be chopped mid-letter against
+  a hard vertical wall. Each fade appears only where something really is cut
+  off: a name that fits keeps its full tail, and a strip with room to spare
+  keeps clean edges. The faded edge doubles as the cue that there are more
+  tabs that way.
+
+- **The tab strip's "∨" button looks like a button**: its own surface and
+  border, on the strip's recessed backdrop. It no longer prints the number of
+  hidden tabs beside the chevron — the chevron already means "there is more",
+  the list itself shows how much, and the count only competed with the tab
+  names next to it.
 
 - **The tab overflow menu ("∨ N") is the tab strip stood on its side.** It
   re-uses each hidden tab's own tab component, so every row arrived with the
