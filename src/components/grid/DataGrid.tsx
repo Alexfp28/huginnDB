@@ -64,6 +64,10 @@ import {
   isBitType,
   isNumericType,
 } from "@/lib/grid/columnKinds";
+import {
+  computeColumnFitWidth,
+  resolveCanvasFont,
+} from "@/lib/grid/autoFitColumn";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
 import {
   DocumentListView,
@@ -1468,6 +1472,17 @@ export function DataGrid({
    */
   const [resizingColId, setResizingColId] = useState<string | null>(null);
   const MIN_COLUMN_WIDTH = 40;
+  /**
+   * Ceiling for the auto-fit gesture below. A column holding a long free-text
+   * value (a serialised config, a description paragraph) would otherwise
+   * expand to several thousand px and push every column after it off-screen,
+   * turning "let me read this one value" into "I lost the rest of the row".
+   * Past this the value belongs in the cell editor / preview panel, and the
+   * user can still drag wider by hand.
+   */
+  const MAX_AUTOFIT_WIDTH = 900;
+  /** The header's dimmed type hint renders at the `text-3xs` token (10px). */
+  const TYPE_HINT_FONT_SIZE = 10;
 
   /**
    * Drag a column's header edge to resize it — deliberately NOT TanStack's
@@ -1528,6 +1543,13 @@ export function DataGrid({
       document.body.style.userSelect = prevUserSelect;
       setResizingColId(null);
       const finalWidth = parseInt(th.style.width, 10);
+      // A bare click (no `mousemove` at all) lands here with the width
+      // untouched — notably the first click of the double-click that triggers
+      // the auto-fit below. Committing then would write an identical width
+      // into `columnSizing` (and through to `prefs.json`) for nothing, and
+      // would make the auto-fit's own commit the *second* state update of one
+      // gesture.
+      if (!Number.isFinite(finalWidth) || finalWidth === startWidth) return;
       handleColumnSizingChange((prev) => ({ ...prev, [colId]: finalWidth }));
     }
     window.addEventListener("mousemove", onMove);
@@ -1600,6 +1622,94 @@ export function DataGrid({
     () => new Set(fkColumnNames ?? []),
     [fkColumnNames],
   );
+
+  /**
+   * Size a column to its widest *visible* value — HeidiSQL's double-click on
+   * the column's edge, which is the gesture people reach for when a value is
+   * clipped and they'd rather read it in place than open the cell editor.
+   *
+   * Widths are measured off-screen (`computeColumnFitWidth`) rather than by
+   * letting the browser do it: the table is `table-fixed`, so there is no
+   * `width: auto` shrink-to-fit pass to borrow — the declared header widths
+   * *are* the layout, and a column's content never influences it. Measuring
+   * the strings ourselves is also what keeps this honest about what's on
+   * screen: the same formatting the `cell` renderer applies (BIT display
+   * mode, the NULL placeholder, the `truncateLongTextAt` cap) is replayed
+   * here, so the fit matches the rendered text and not the raw value.
+   *
+   * Scope is the rows currently in the grid (`visibleRows`, i.e. the fetched
+   * page after the client filter), matching HeidiSQL: fitting to rows the
+   * user can't see would need a full-table scan per double-click.
+   */
+  function autoFitColumns(colIds: readonly string[]) {
+    const host = scrollRef.current;
+    const cellFontSize = (cellStyle.fontSize as number) ?? 12;
+    const headerFontSize = (headerStyle.fontSize as number) ?? 10;
+    // Resolved once per gesture, not once per column: each call appends a
+    // probe element and reads its computed style, which forces a style
+    // recalc. The "fit every column" path would otherwise pay for 3× the
+    // column count.
+    const cellFont = resolveCanvasFont(host, "font-mono", cellFontSize);
+    const headerFont = resolveCanvasFont(host, "", headerFontSize);
+    const typeFont = resolveCanvasFont(host, "", TYPE_HINT_FONT_SIZE);
+
+    const widths: Record<string, number> = {};
+    for (const colId of colIds) {
+      const idx = columnIndexByName.get(colId);
+      if (idx === undefined) continue;
+      const col = result.columns[idx];
+      const isBit = bitColNames.has(col.name);
+      const cells = visibleRows.map((row) => {
+        const v = row[idx];
+        if (v === null) return nullDisplay;
+        const raw =
+          isBit && typeof v === "number"
+            ? formatBitValue(v, bitDisplay)
+            : formatValue(v);
+        return truncateLongTextAt > 0 && raw.length > truncateLongTextAt
+          ? `${raw.slice(0, truncateLongTextAt)}…`
+          : raw;
+      });
+      widths[colId] = computeColumnFitWidth({
+        // The header renders `uppercase tracking-wider`; both change its
+        // width, and neither is visible to `measureText` unless applied here.
+        header: {
+          text: col.name.toUpperCase(),
+          font: headerFont,
+          letterSpacing: headerFontSize * 0.05,
+        },
+        // The dimmed type hint is `text-3xs` (a fixed token), not derived
+        // from the zoom like the rest of the header.
+        type: {
+          text: col.data_type.toUpperCase(),
+          font: typeFont,
+          letterSpacing: TYPE_HINT_FONT_SIZE * 0.05,
+        },
+        // gap before the type (4) + the sort glyph and its gap (16) + one key
+        // icon and its gap per PK/FK badge (16 each).
+        headerChrome:
+          20 +
+          (pkNameSet.has(col.name) ? 16 : 0) +
+          (fkNameSet.has(col.name) ? 16 : 0) +
+          // Multi-sort rank badge ("1", "2", …) next to the arrow.
+          ((sort?.length ?? 0) > 1 && sort!.some((s) => s.column === col.name)
+            ? 12
+            : 0),
+        cells,
+        cellFont,
+        // `px-2` on both the `<th>` and every `<td>`, plus the 1px right
+        // border.
+        padding: 17,
+        min: MIN_COLUMN_WIDTH,
+        max: MAX_AUTOFIT_WIDTH,
+      });
+    }
+    // One state update (and therefore one `prefs.json` write) for the whole
+    // gesture, however many columns it covered.
+    if (Object.keys(widths).length > 0) {
+      handleColumnSizingChange((prev) => ({ ...prev, ...widths }));
+    }
+  }
 
   /**
    * Live mirror of fkEditCell/inlineEdit/selectedCell, read by the `cell`
@@ -2471,6 +2581,24 @@ export function DataGrid({
                       onMouseDown={(e) =>
                         startColumnResize(e, h.column.id, h.column.getSize())
                       }
+                      // Double-click = fit the column to its content
+                      // (HeidiSQL), Ctrl/Cmd held = fit every column at once.
+                      // Routed through `click` + `detail`, not `onDoubleClick`:
+                      // some Linux WebKitGTK builds never fire `dblclick`
+                      // inside a `user-select: none` subtree (this table sets
+                      // it globally), the same quirk the cells work around —
+                      // see the `e.detail >= 2` note in `GridRow`.
+                      onClick={(e) => {
+                        if (e.detail < 2) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        autoFitColumns(
+                          e.ctrlKey || e.metaKey
+                            ? result.columns.map((c) => c.name)
+                            : [h.column.id],
+                        );
+                      }}
+                      title={t("dataGrid.resizeHandleHint")}
                       className={cn(
                         "absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-primary/50",
                         resizingColId === h.column.id && "bg-primary",

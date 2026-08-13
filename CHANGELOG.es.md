@@ -6,6 +6,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
+## [Sin publicar]
+
+### Añadido
+
+- **Doble clic en el borde de una columna de la rejilla para ajustarla a su
+  contenido** (el gesto de HeidiSQL). Un valor demasiado largo para el ancho
+  por defecto —la configuración serializada de un widget, un párrafo de
+  descripción— ya no obliga a abrir el editor de celda solo para leerlo: la
+  columna crece hasta el valor más ancho que hay en pantalla y se queda así
+  (se persiste por tabla, igual que un redimensionado manual). Con
+  `Ctrl`/`Cmd` pulsado el doble clic ajusta todas las columnas de golpe, y el
+  tooltip del tirador explica ambos gestos. El ajuste se mide sobre el texto
+  tal y como se *dibuja* (se aplican el modo de visualización de BIT, el
+  marcador de NULL y el tope de "truncar texto largo en") y se limita a
+  900 px, para que una columna ancha no eche el resto de la fila fuera de la
+  pantalla; arrastrando a mano se sigue pudiendo ir tan ancho como se quiera.
+
+### Corregido
+
+- Un clic simple en el tirador de redimensionado de una columna ya no
+  reescribe en `prefs.json` el ancho que esa columna ya tenía.
+
 ## [1.13.0] — 2026-08-12
 
 ### Añadido

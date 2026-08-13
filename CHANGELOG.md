@@ -4,6 +4,27 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Added
+
+- **Double-click a column's edge in the data grid to fit it to its content**
+  (HeidiSQL's gesture). A value too long for the default width — a serialised
+  widget config, a description paragraph — no longer has to be opened in the
+  cell editor just to be read: the column grows to the widest value currently
+  on screen and stays there (persisted per table, like a manual resize).
+  Holding `Ctrl`/`Cmd` while double-clicking fits every column at once, and the
+  handle's tooltip spells both gestures out. The fit is measured against the
+  text as *rendered* (BIT display mode, the NULL placeholder, the
+  "truncate long text at" cap all apply) and capped at 900 px, so one wide
+  column can't push the rest of the row off-screen; dragging by hand still
+  goes as wide as you like.
+
+### Fixed
+
+- A single click on a column's resize handle no longer rewrites that column's
+  width in `prefs.json` with the value it already had.
+
 ## [1.13.0] — 2026-08-12
 
 ### Added
