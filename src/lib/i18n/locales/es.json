@@ -40,6 +40,8 @@
     "switchFailed": "No se pudo cambiar de entorno: {{error}}",
     "color": "Color",
     "icon": "Icono",
+    "theme": "Tema",
+    "themeDefault": "Predeterminado (tema de la app)",
     "none": "Ninguno",
     "replicateFrom": "Partir de «{{name}}»",
     "replicateConnections": "Reabrir las mismas conexiones y sus pestañas",
@@ -889,6 +891,14 @@
       "modeLight": "Claro",
       "deleteTooltip": "Eliminar tema personalizado",
       "duplicateLabel": "Duplicar como personalizado",
+      "exportTooltip": "Exportar tema…",
+      "exportSuccess": "Tema exportado a {{path}}",
+      "importTitle": "Importar tema…",
+      "importSuccess": "Se importó «{{name}}» como nuevo tema personalizado",
+      "importError": {
+        "notJson": "Ese archivo no es un JSON válido.",
+        "notATheme": "Ese archivo no parece una exportación de tema de HuginnDB."
+      },
       "dataView": {
         "title": "Vista de datos",
         "mode": {

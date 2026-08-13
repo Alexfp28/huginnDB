@@ -46,9 +46,22 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useEnvironments, environmentLabel } from "@/stores/session/environments";
+import { useThemeStore } from "@/stores/preferences/theme";
+import { BUILT_IN_THEMES } from "@/lib/themes";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { cn } from "@/lib/utils";
+
+/** Sentinel for "no override" in the theme `<Select>` — Radix rejects an
+ *  empty-string item value, so `null` can't be the value directly. */
+const NO_THEME_OVERRIDE = "__default__";
 
 /**
  * Accent colours offered for an environment. A fixed palette rather than a
@@ -103,6 +116,9 @@ interface EnvironmentDraft {
   name: string;
   color: string | null;
   icon: string | null;
+  /** Theme override for this environment. `null` = no override, keep the
+   *  app's default theme. */
+  themeId: string | null;
 }
 
 export function EnvironmentSwitcher() {
@@ -119,6 +135,11 @@ export function EnvironmentSwitcher() {
   /** Seeded from the last choice each time the create dialog opens. */
   const [replicate, setReplicate] = useState(lastReplicate);
   const remove = useEnvironments((s) => s.remove);
+  const customThemes = useThemeStore((s) => s.customThemes);
+  const themeChoices = useMemo(
+    () => [...BUILT_IN_THEMES, ...customThemes],
+    [customThemes],
+  );
 
   /** Open editor: `{ id: null }` creates, `{ id }` edits an existing one. */
   const [editing, setEditing] = useState<EnvironmentDraft | null>(null);
@@ -142,9 +163,9 @@ export function EnvironmentSwitcher() {
   async function submitEditor() {
     if (!editing) return;
     const name = editing.name.trim();
-    const { color, icon } = editing;
+    const { color, icon, themeId } = editing;
     if (editing.id) {
-      await update({ id: editing.id, name, color, icon });
+      await update({ id: editing.id, name, color, icon, themeId });
       setEditing(null);
       return;
     }
@@ -152,7 +173,7 @@ export function EnvironmentSwitcher() {
     // Close first: creating replicates, switches and reconnects, which can take
     // as long as connecting does. Leaving the dialog up over it looks hung.
     setEditing(null);
-    await createAndEnter({ name, color, icon }, replicate);
+    await createAndEnter({ name, color, icon, themeId }, replicate);
   }
 
   return (
@@ -240,6 +261,7 @@ export function EnvironmentSwitcher() {
                       name: env.name,
                       color: env.color,
                       icon: env.icon,
+                      themeId: env.themeId,
                     });
                   }}
                 >
@@ -283,7 +305,7 @@ export function EnvironmentSwitcher() {
             className="gap-2"
             onSelect={() => {
               setReplicate(lastReplicate);
-              setEditing({ id: null, name: "", color: null, icon: null });
+              setEditing({ id: null, name: "", color: null, icon: null, themeId: null });
             }}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -397,6 +419,36 @@ export function EnvironmentSwitcher() {
               </button>
             </div>
           </div>
+          {/* Theme override — always optional; "Default" keeps whatever theme
+              the user has set in Settings > Appearance. */}
+          <div>
+            <div className="mb-1.5 text-xs text-muted-foreground">
+              {t("environments.theme")}
+            </div>
+            <Select
+              value={editing?.themeId ?? NO_THEME_OVERRIDE}
+              onValueChange={(v) =>
+                setEditing((p) =>
+                  p ? { ...p, themeId: v === NO_THEME_OVERRIDE ? null : v } : p,
+                )
+              }
+            >
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_THEME_OVERRIDE}>
+                  {t("environments.themeDefault")}
+                </SelectItem>
+                {themeChoices.map((theme) => (
+                  <SelectItem key={theme.id} value={theme.id}>
+                    {theme.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Creating only. A new environment starts empty, which is rarely
               what you want when you're spinning one up alongside the work you
               already have open — these carry it over. Editing an existing

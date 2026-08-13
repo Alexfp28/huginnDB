@@ -40,6 +40,8 @@
     "switchFailed": "Could not switch environment: {{error}}",
     "color": "Colour",
     "icon": "Icon",
+    "theme": "Theme",
+    "themeDefault": "Default (app theme)",
     "none": "None",
     "replicateFrom": "Start from «{{name}}»",
     "replicateConnections": "Reopen the same connections and their tabs",
@@ -889,6 +891,14 @@
       "modeLight": "Light",
       "deleteTooltip": "Delete custom theme",
       "duplicateLabel": "Duplicate as custom",
+      "exportTooltip": "Export theme…",
+      "exportSuccess": "Theme exported to {{path}}",
+      "importTitle": "Import theme…",
+      "importSuccess": "Imported \"{{name}}\" as a new custom theme",
+      "importError": {
+        "notJson": "That file isn't valid JSON.",
+        "notATheme": "That file doesn't look like a HuginnDB theme export."
+      },
       "dataView": {
         "title": "Data view",
         "mode": {

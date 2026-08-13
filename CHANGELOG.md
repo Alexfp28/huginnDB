@@ -8,6 +8,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Import/export a theme from Settings → Appearance.** An export icon next
+  to the theme editor's mode picker writes the active theme (built-in or
+  custom) to a JSON file via the native save dialog; an import icon in the
+  theme list's header reads one back as a brand-new custom theme (always a
+  fresh id, never colliding with an existing one) and switches to it
+  immediately, the same as duplicating a theme already does. The file format
+  is a small versioned envelope (`src/lib/themeTransfer.ts`) — themes live
+  entirely in the frontend's `localStorage`-backed store, so the only
+  backend piece needed is a narrow `write_text_file` command mirroring the
+  existing `read_text_file` used by SQL import.
+
+- **A "Summer" built-in theme** — a light, warm palette (sun-bleached sand
+  background, a single ocean-teal brand/ring accent, coral primary and
+  destructive tones) joining the existing built-in set in
+  `src/lib/themes.ts`.
+
+- **Per-environment theme override.** The environment create/rename dialog
+  (`EnvironmentSwitcher`) gets a theme picker alongside the existing colour
+  and icon fields, listing every built-in and custom theme plus a "Default"
+  option. Assigning a theme to an environment applies it automatically
+  whenever that environment is entered — at launch or on `switchTo` — and
+  clearing it (the default option, always available) falls back to whatever
+  theme is set in Settings → Appearance. The override is layered on top of
+  the existing theme store (`useThemeStore.setEnvironmentOverride`) rather
+  than overwriting the persisted default, so switching back to an
+  environment with no override never loses the user's regular theme choice.
+  Persisted on the backend as `Environment.themeId` (`tab_state.json` v4;
+  `None` by default, so existing environments are unaffected).
+
 - **Double-click a column's edge in the data grid to fit it to its content**
   (HeidiSQL's gesture). A value too long for the default width — a serialised
   widget config, a description paragraph — no longer has to be opened in the

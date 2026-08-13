@@ -159,6 +159,20 @@ pub fn read_text_file(file_path: String) -> AppResult<String> {
     Ok(std::fs::read_to_string(&file_path)?)
 }
 
+/// Writes a text file to a path the frontend already picked via the native
+/// save dialog (`@tauri-apps/plugin-dialog`'s `save()`), for flows that have
+/// nothing else to ask the backend to do — currently theme export
+/// (`AppearanceSection.tsx`/`src/lib/themeTransfer.ts`): themes are plain
+/// JSON that live entirely in the frontend's `localStorage`-backed theme
+/// store, so there is no query, no encoding decision, nothing that belongs on
+/// this side beyond the actual file write (which the webview sandbox can't do
+/// itself). Deliberately as narrow as `read_text_file` — one path, one
+/// string, no format opinion.
+#[tauri::command]
+pub fn write_text_file(file_path: String, contents: String) -> AppResult<()> {
+    Ok(std::fs::write(&file_path, contents)?)
+}
+
 /// Export a single table (schema + data) to a user-chosen `.sql` file — the
 /// same DDL+data format [`export_databases`] produces, scoped to one table.
 /// Always plain `INSERT` ([`DataMode::Insert`]) — this is the DataGrid

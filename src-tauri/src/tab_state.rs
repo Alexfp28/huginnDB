@@ -123,6 +123,16 @@ pub struct Environment {
     /// Shared connection sources this environment pulls from (#108).
     #[serde(default)]
     pub origins: Vec<Origin>,
+    /// Theme id (a [`crate::app_identity`]-agnostic string matching a built-in
+    /// or user-defined `Theme.id` on the frontend) to apply whenever this
+    /// environment is entered. `None` means "no override" — the app's regular
+    /// default theme applies, same as before this field existed. Stored
+    /// opaquely, like `color`/`icon`: the backend never validates it against
+    /// the frontend's theme list, so a custom theme deleted after being
+    /// assigned here just falls back to the default (the frontend's job, not
+    /// this one's).
+    #[serde(default)]
+    pub theme_id: Option<String>,
 }
 
 /// A shared folder this environment imports connections from (#108).

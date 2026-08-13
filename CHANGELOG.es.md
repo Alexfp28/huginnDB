@@ -10,6 +10,37 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Importar/exportar un tema desde Ajustes → Apariencia.** Un icono de
+  exportar junto al selector de modo del editor de temas escribe el tema
+  activo (integrado o personalizado) a un archivo JSON mediante el diálogo
+  nativo de guardar; un icono de importar en la cabecera de la lista de temas
+  lee uno de vuelta como un tema personalizado nuevo (siempre con un id
+  nuevo, nunca choca con uno existente) y cambia a él de inmediato, igual que
+  ya hace duplicar un tema. El formato del archivo es un pequeño envoltorio
+  versionado (`src/lib/themeTransfer.ts`) — los temas viven enteramente en el
+  almacén respaldado por `localStorage` del frontend, así que lo único que
+  necesita el backend es un comando `write_text_file` estrecho, análogo al
+  `read_text_file` que ya usa la importación de SQL.
+
+- **Un tema integrado "Summer"** — una paleta clara y cálida (fondo de arena
+  soleada, un único acento turquesa-océano para brand/ring, tonos coral en
+  primary y destructive) que se suma a los temas integrados existentes en
+  `src/lib/themes.ts`.
+
+- **Tema por entorno.** El diálogo de crear/renombrar entorno
+  (`EnvironmentSwitcher`) incorpora un selector de tema junto a los campos ya
+  existentes de color e icono, listando todos los temas integrados y
+  personalizados más una opción "Predeterminado". Asignar un tema a un
+  entorno lo aplica automáticamente cada vez que se entra en él — al arrancar
+  la app o al cambiar de entorno (`switchTo`) — y quitarlo (la opción
+  predeterminada, siempre disponible) vuelve al tema que tengas configurado
+  en Ajustes → Apariencia. La asignación se superpone al almacén de temas
+  existente (`useThemeStore.setEnvironmentOverride`) en vez de sobrescribir
+  el tema predeterminado persistido, así que volver a un entorno sin tema
+  asignado nunca pisa la elección habitual del usuario. Se persiste en el
+  backend como `Environment.themeId` (`tab_state.json` v4; `None` por
+  defecto, así que los entornos existentes no se ven afectados).
+
 - **Doble clic en el borde de una columna de la rejilla para ajustarla a su
   contenido** (el gesto de HeidiSQL). Un valor demasiado largo para el ancho
   por defecto —la configuración serializada de un widget, un párrafo de
