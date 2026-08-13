@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Import/export a theme from Settings → Appearance.** An export icon next
+  to the theme editor's mode picker writes the active theme (built-in or
+  custom) to a JSON file via the native save dialog; an import icon in the
+  theme list's header reads one back as a brand-new custom theme (always a
+  fresh id, never colliding with an existing one) and switches to it
+  immediately, the same as duplicating a theme already does. The file format
+  is a small versioned envelope (`src/lib/themeTransfer.ts`) — themes live
+  entirely in the frontend's `localStorage`-backed store, so the only
+  backend piece needed is a narrow `write_text_file` command mirroring the
+  existing `read_text_file` used by SQL import.
+
 - **A "Summer" built-in theme** — a light, warm palette (sun-bleached sand
   background, a single ocean-teal brand/ring accent, coral primary and
   destructive tones) joining the existing built-in set in

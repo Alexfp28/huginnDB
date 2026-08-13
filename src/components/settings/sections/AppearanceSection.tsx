@@ -17,7 +17,9 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, Trash2 } from "lucide-react";
+import { save as saveFileDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { toast } from "sonner";
+import { Copy, Download, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +37,13 @@ import {
   selectGridPrefs,
 } from "@/stores/preferences/preferences";
 import { BUILT_IN_THEMES, COLOR_KEYS, type ThemeColors } from "@/lib/themes";
+import {
+  parseThemeFile,
+  serializeTheme,
+  themeFileName,
+  ThemeImportError,
+} from "@/lib/themeTransfer";
+import { api } from "@/lib/tauri";
 import type { GridPrefs } from "@/types";
 import { PrefRow } from "./PrefRow";
 
@@ -46,6 +55,7 @@ export function AppearanceSection() {
   const setMode = useThemeStore((s) => s.setActiveMode);
   const duplicate = useThemeStore((s) => s.duplicateAsCustom);
   const deleteCustom = useThemeStore((s) => s.deleteCustom);
+  const upsertCustom = useThemeStore((s) => s.upsertCustom);
   const [newName, setNewName] = useState("");
   const { t } = useTranslation();
 
@@ -60,12 +70,62 @@ export function AppearanceSection() {
     setNewName("");
   }
 
+  /** Export the active theme (built-in or custom) to a JSON file the user
+   *  picks the destination for — a starting point to hand to someone else,
+   *  or a backup of a custom theme before editing it further. */
+  async function handleExportTheme() {
+    try {
+      const destPath = await saveFileDialog({
+        defaultPath: themeFileName(active),
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!destPath) return;
+      await api.writeTextFile(destPath, serializeTheme(active));
+      toast.success(t("settings.appearance.exportSuccess", { path: destPath }));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  /** Import a theme file as a new custom theme (always a fresh id — see
+   *  `parseThemeFile`) and switch to it immediately, same as duplicating one. */
+  async function handleImportTheme() {
+    try {
+      const picked = await openFileDialog({
+        multiple: false,
+        directory: false,
+        title: t("settings.appearance.importTitle"),
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (typeof picked !== "string" || !picked) return;
+      const raw = await api.readTextFile(picked);
+      const theme = parseThemeFile(raw);
+      upsertCustom(theme);
+      setThemeId(theme.id);
+      toast.success(t("settings.appearance.importSuccess", { name: theme.name }));
+    } catch (e) {
+      if (e instanceof ThemeImportError) {
+        toast.error(t(`settings.appearance.importError.${e.message}`));
+      } else {
+        toast.error(String(e));
+      }
+    }
+  }
+
   return (
     <div className="flex h-full flex-col gap-3">
       <div className="grid min-h-0 flex-1 grid-cols-[180px_1fr] gap-3">
         <aside className="overflow-y-auto rounded-md border border-border bg-card/40">
-          <div className="sticky top-0 bg-card/60 px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground backdrop-blur">
+          <div className="sticky top-0 flex items-center justify-between gap-1 bg-card/60 px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground backdrop-blur">
             {t("settings.appearance.themes")}
+            <button
+              type="button"
+              onClick={() => void handleImportTheme()}
+              title={t("settings.appearance.importTitle")}
+              className="rounded p-1 normal-case text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Upload className="h-3 w-3" />
+            </button>
           </div>
           {themes.map((theme) => (
             <button
@@ -114,6 +174,14 @@ export function AppearanceSection() {
                 </SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => void handleExportTheme()}
+              title={t("settings.appearance.exportTooltip")}
+            >
+              <Download className="h-4 w-4" />
+            </Button>
             {!active.builtin && (
               <Button
                 variant="ghost"

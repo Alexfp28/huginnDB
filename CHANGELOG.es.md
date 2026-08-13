@@ -10,6 +10,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Importar/exportar un tema desde Ajustes → Apariencia.** Un icono de
+  exportar junto al selector de modo del editor de temas escribe el tema
+  activo (integrado o personalizado) a un archivo JSON mediante el diálogo
+  nativo de guardar; un icono de importar en la cabecera de la lista de temas
+  lee uno de vuelta como un tema personalizado nuevo (siempre con un id
+  nuevo, nunca choca con uno existente) y cambia a él de inmediato, igual que
+  ya hace duplicar un tema. El formato del archivo es un pequeño envoltorio
+  versionado (`src/lib/themeTransfer.ts`) — los temas viven enteramente en el
+  almacén respaldado por `localStorage` del frontend, así que lo único que
+  necesita el backend es un comando `write_text_file` estrecho, análogo al
+  `read_text_file` que ya usa la importación de SQL.
+
 - **Un tema integrado "Summer"** — una paleta clara y cálida (fondo de arena
   soleada, un único acento turquesa-océano para brand/ring, tonos coral en
   primary y destructive) que se suma a los temas integrados existentes en

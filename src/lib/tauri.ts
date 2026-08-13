@@ -678,6 +678,15 @@ export const api = {
     invoke<string>("read_text_file", { filePath }),
 
   /**
+   * Write `contents` to `filePath` verbatim. Used by theme export
+   * (`src/lib/themeTransfer.ts`) once the frontend has already picked the
+   * destination via the native save dialog — the counterpart to
+   * `readTextFile`, and just as narrow (no format opinion, no encoding).
+   */
+  writeTextFile: (filePath: string, contents: string) =>
+    invoke<void>("write_text_file", { filePath, contents }),
+
+  /**
    * Export one SQL table (schema + data) to a user-chosen `.sql` file — the
    * same format `exportDatabase` produces, scoped to a single table.
    * Rejects MongoDB; use `exportCollection` for a collection.
