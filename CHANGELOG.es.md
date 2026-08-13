@@ -85,18 +85,46 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   conexión — con menos retardo que en un botón de la interfaz: en una pestaña
   recortada el tooltip es la única forma de leer el nombre entero.
 
-- **El menú de pestañas desbordadas («∨ N») es una lista, no un estante de
-  pestañas recortadas.** Reutiliza el propio componente de cada pestaña
-  oculta, así que todas llegaban con los márgenes de chip flotante y el ancho
-  de recorte de la tira: filas en islas separadas, nombres cortados dentro de
-  un desplegable con sitio de sobra y dos barras de scroll, una de ellas
-  horizontal. Ahora las filas van a ras y a todo el ancho, con el nombre en una
-  línea y su conexión debajo, y el desplegable solo se desplaza en vertical.
+- **Las pestañas recortadas se difuminan en vez de cortarse**, como en la tira
+  de pestañas de un IDE: tanto un nombre demasiado largo para su pestaña como
+  la pestaña que queda a caballo del borde de una tira con más pestañas de las
+  que caben, que antes se cortaba a media letra contra una pared vertical.
+  Cada difuminado aparece solo donde algo se corta de verdad: un nombre que
+  cabe conserva su final, y una tira con sitio de sobra mantiene los bordes
+  limpios. El borde difuminado sirve además de pista de que hay más pestañas
+  en esa dirección.
+
+- **El botón «∨» de la tira parece un botón**: superficie y borde propios
+  sobre el fondo hundido de la tira. Ya no imprime el número de pestañas
+  ocultas junto al galón — el galón ya significa «hay más», la propia lista
+  enseña cuántas, y el número solo competía con los nombres de al lado.
+
+- **El menú de pestañas desbordadas («∨ N») es la tira de pestañas puesta de
+  canto.** Reutiliza el propio componente de cada pestaña oculta, así que cada
+  fila llegaba con la geometría *horizontal* de la tira: un margen de 7px por
+  un solo lado y el ancho de recorte de la tira dentro de un desplegable con
+  sitio de sobra, más dos barras de scroll, una de ellas horizontal. Los chips
+  se quedan — mismo fondo hundido, mismo relleno y misma elevación, así que el
+  desplegable se lee como parte de la misma superficie — pero ahora cada uno
+  ocupa todo el ancho, con el nombre en una línea y su conexión debajo, el
+  activo marcado con un raíl a la izquierda en vez de un borde superior, y el
+  desplegable solo se desplaza en vertical.
+
+- **Eliminado el botón «⊞ N» de la tira de pestañas.** Abría el selector modal
+  a dos píxeles de la lista de desbordadas «∨ N», que responde a lo mismo sin
+  salir de la barra. El diálogo sigue estando en `Ctrl`/`Cmd`+`P`
+  (reasignable), que es lo único que busca por nombre entre todas las pestañas
+  abiertas.
 
 ### Corregido
 
 - Un clic simple en el tirador de redimensionado de una columna ya no
   reescribe en `prefs.json` el ancho que esa columna ya tenía.
+
+- Cerrar una pestaña desde la lista de desbordadas («∨ N») dejaba atrás una
+  fila muerta, con el id interno de la pestaña donde estaba su nombre. dockview
+  construye ese desplegable una sola vez, al abrirlo, y nunca lo reconstruye:
+  ahora se cierra junto con la pestaña que se cerró desde él.
 
 ## [1.13.0] — 2026-08-12
 

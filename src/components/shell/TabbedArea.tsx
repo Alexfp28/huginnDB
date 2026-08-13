@@ -24,7 +24,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { PanelsTopLeft, Pin, PinOff, Plus, X } from "lucide-react";
+import { Pin, PinOff, Plus, X } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -44,14 +44,13 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTabs } from "@/stores/session/tabs";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import type { AppTab } from "@/types";
+import type { AppTab, Driver } from "@/types";
 import { useUi } from "@/stores/session/ui";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { useConnections } from "@/stores/session/connections";
 import { useEnvironments } from "@/stores/session/environments";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { useCommandPalette } from "@/components/shell/CommandPalette";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { ConnectionDialog } from "@/components/connection/dialogs/ConnectionDialog";
@@ -77,6 +76,7 @@ import {
 } from "@/lib/dockview";
 import { scheduleSaveActive } from "@/stores/session/persistedTabs";
 import { cn } from "@/lib/utils";
+import { useClipFade } from "@/lib/useClipFade";
 import { api } from "@/lib/tauri";
 import type { TabAccentStyle } from "@/types";
 
@@ -267,17 +267,34 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const isActive = useTabs((s) => s.activeId === id);
   const profiles = useConnections((s) => s.profiles);
 
-  const { label, leaf, context, connName, qualified, driver } = useMemo(() => {
+  // Last identity this panel had while its tab existed. A panel can outlive
+  // its tab entry for a render or two — closing one (the panel is removed by
+  // the reconciler, not by this component) and a restore-protected panel
+  // waiting for its tab to arrive both do it — and falling back to the raw
+  // panel id there put a bare `api02wzj` on screen where a name had been.
+  // Holding the last one over is always closer to the truth than the id.
+  const lastIdentity = useRef<{
+    label: string;
+    leaf: string;
+    context: string | null;
+    connName: string;
+    qualified: string;
+    driver: Driver | undefined;
+  } | null>(null);
+
+  const identity = useMemo(() => {
     const tab = tabs.find((t) => t.id === id);
     if (!tab) {
-      return {
-        label: id,
-        leaf: id,
-        context: null,
-        connName: "",
-        qualified: id,
-        driver: undefined,
-      };
+      return (
+        lastIdentity.current ?? {
+          label: id,
+          leaf: id,
+          context: null,
+          connName: "",
+          qualified: id,
+          driver: undefined,
+        }
+      );
     }
 
     // Show the connection/database context whenever it's needed to tell tabs
@@ -314,6 +331,19 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       driver: resolveConnectionDriver(profiles, tab.connectionId),
     };
   }, [tabs, profiles, id]);
+
+  const { label, leaf, context, connName, qualified, driver } = identity;
+  // Remember it only while the tab is real — writing back an identity that
+  // *came* from the ref would pin it forever.
+  if (tabs.some((tb) => tb.id === id)) lastIdentity.current = identity;
+
+  // A clipped label fades into the tab instead of ending in an ellipsis, so
+  // each of the four one-line labels (strip: context + name, popover row:
+  // name + connection) needs to know whether it is actually being cut off.
+  const contextFade = useClipFade<HTMLSpanElement>(context ?? "");
+  const nameFade = useClipFade<HTMLSpanElement>(leaf);
+  const rowNameFade = useClipFade<HTMLSpanElement>(leaf);
+  const rowContextFade = useClipFade<HTMLSpanElement>(connName);
 
   // Full identity on hover — the tab strip truncates by design, so this is
   // where the whole name lives. Two lines, weighted: what the tab *is*, then
@@ -391,7 +421,16 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       )}
       title={t("tabs.closeTab")}
       onClick={(e) => {
-        e.stopPropagation();
+        // In the strip the click stops here — activating a tab you just
+        // closed would be nonsense. In the popover it must NOT: dockview's
+        // own listener on the row wrapper is what dismisses the popover, and
+        // the popover cannot survive this click. It is built once, at open
+        // time, from the tabs that were hidden *then* (see
+        // dockview-core's `tabsContainer.js`), and nothing rebuilds it — so a
+        // row whose tab just went away stays on screen as a dead entry. Let
+        // it through and the whole popover closes, which is also what the
+        // user means by closing a tab from a list of tabs.
+        if (!inOverflow) e.stopPropagation();
         requestClose();
       }}
       // Same drag-suppression as the menu trigger.
@@ -401,11 +440,13 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
     </button>
   );
 
-  // Overflow popover row: a list item, not a chip. There is room here, so the
-  // context gets its own line under the name instead of competing with it for
-  // width, and the strip-only affordances (tooltip, context menu — both would
-  // portal *outside* the popover, whose own pointerdown-outside handler then
-  // closes it under them) are left off. Closing stays available inline.
+  // Overflow popover row: still a chip (the popover keeps the strip's
+  // trench-and-island look — see `index.css`), but stood on its side. There
+  // is room here, so the context gets its own line under the name instead of
+  // competing with it for width, and the strip-only affordances (tooltip,
+  // context menu — both would portal *outside* the popover, whose own
+  // pointerdown-outside handler then closes it under them) are left off.
+  // Closing stays available inline.
   if (inOverflow) {
     return (
       <div
@@ -413,15 +454,9 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
           "group/tab flex w-full items-center gap-2.5 py-1.5 pl-2.5 pr-1.5 text-xs",
           isActive ? "text-foreground" : "text-foreground/90",
         )}
-        onMouseDown={(e) => {
-          if (e.button === 1) e.preventDefault();
-        }}
-        onAuxClick={(e) => {
-          if (e.button === 1) {
-            e.preventDefault();
-            requestClose();
-          }
-        }}
+        // No middle-click-to-close here, unlike the strip: dockview only
+        // dismisses the popover on a primary click, so a middle click would
+        // close the tab and leave its dead row behind.
       >
         {driver && <DriverBadge driver={driver} />}
         <span className="flex min-w-0 flex-1 flex-col leading-snug">
@@ -435,11 +470,24 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
                 style={{ backgroundColor: tabColor }}
               />
             )}
-            <span className={cn("truncate", isActive && "font-medium")}>
+            <span
+              ref={rowNameFade.ref}
+              className={cn(
+                "overflow-hidden whitespace-nowrap",
+                isActive && "font-medium",
+                rowNameFade.clipped && "fade-tail",
+              )}
+            >
               {leaf}
             </span>
           </span>
-          <span className="truncate text-2xs text-muted-foreground/70">
+          <span
+            ref={rowContextFade.ref}
+            className={cn(
+              "overflow-hidden whitespace-nowrap text-2xs text-muted-foreground/70",
+              rowContextFade.clipped && "fade-tail",
+            )}
+          >
             {connName}
           </span>
         </span>
@@ -502,7 +550,13 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       <span className="flex min-w-0 items-center gap-1.5">
         {context && (
           <>
-            <span className="min-w-[2.5rem] max-w-[8.5rem] shrink-[6] truncate text-2xs text-muted-foreground/70">
+            <span
+              ref={contextFade.ref}
+              className={cn(
+                "min-w-[2.5rem] max-w-[8.5rem] shrink-[6] overflow-hidden whitespace-nowrap text-2xs text-muted-foreground/70",
+                contextFade.clipped && "fade-tail",
+              )}
+            >
               {context}
             </span>
             <span
@@ -511,7 +565,15 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
             />
           </>
         )}
-        <span className="min-w-[4rem] shrink truncate">{leaf}</span>
+        <span
+          ref={nameFade.ref}
+          className={cn(
+            "min-w-[4rem] shrink overflow-hidden whitespace-nowrap",
+            nameFade.clipped && "fade-tail",
+          )}
+        >
+          {leaf}
+        </span>
       </span>
       {/*
        * No explicit action menu here anymore — every action below (split,
@@ -616,27 +678,20 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   );
 }
 
-/** Per-group right-slot actions: a button that lists all open tabs (the
- *  overflow / quick-switch affordance, with a live count) plus the "+" that
- *  opens a fresh query tab on the selected connection. */
+/** Per-group right-slot action: the "+" that opens a fresh query tab on the
+ *  selected connection.
+ *
+ *  It used to be preceded by a "⊞ N" button opening the modal tab switcher.
+ *  That was a second, heavier way to answer the question dockview's own "∨ N"
+ *  overflow popover — two pixels to its left — already answers by listing the
+ *  tabs that don't fit, so the button is gone. The dialog itself stays: its
+ *  keyboard route (Ctrl/Cmd+P, rebindable) is the only surface that searches
+ *  *every* open tab by name, which the overflow list can't do. */
 function NewTabAction(_props: IDockviewHeaderActionsProps) {
   const { t } = useTranslation();
   const connectionId = useUi((s) => s.selectedConnectionId);
-  const tabCount = useTabs((s) => s.tabs.length);
   return (
     <div className="flex items-center gap-0.5 pr-1">
-      <SimpleTooltip label={t("tabSwitcher.tooltip")} side="bottom">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 px-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-          disabled={tabCount === 0}
-          onClick={() => useTabSwitcher.getState().setOpen(true)}
-        >
-          <PanelsTopLeft className="h-3.5 w-3.5" />
-          <span className="text-2xs tabular-nums">{tabCount}</span>
-        </Button>
-      </SimpleTooltip>
       <SimpleTooltip label={t("tabs.newQueryTooltip")} side="bottom">
         <Button
           variant="ghost"
@@ -822,6 +877,9 @@ export function TabbedArea(_props: Props) {
   const activeId = useTabs((s) => s.activeId);
   const tabAccentStyle = usePreferences((s) => s.prefs.ui.tabAccentStyle);
   const [api, setApi] = useState<DockviewApi | null>(null);
+  // Set by the edge-fade effect below; called from `onDidLayoutChange`, which
+  // is where a newly-created group's tab strip first becomes reachable.
+  const refreshEdgeFade = useRef<() => void>(() => {});
 
   const onReady = (event: DockviewReadyEvent) => {
     setApi(event.api);
@@ -854,8 +912,13 @@ export function TabbedArea(_props: Props) {
     // A pure split/float/resize gesture touches no tab or schema state, so
     // nothing else schedules a save for it — without this, split geometry
     // could go unpersisted until an unrelated tab edit happened to trigger
-    // one (see issue #80).
-    event.api.onDidLayoutChange(() => scheduleSaveActive());
+    // one (see issue #80). It is also the only signal that a *group* (and
+    // with it a tab strip) was created, which the edge-fade pass has to know
+    // about — its own observers can only watch strips that already exist.
+    event.api.onDidLayoutChange(() => {
+      scheduleSaveActive();
+      refreshEdgeFade.current();
+    });
   };
 
   // Clear the inner-dockview singleton on unmount so a stale handle from a
@@ -914,6 +977,48 @@ export function TabbedArea(_props: Props) {
       window.clearTimeout(clearTimer);
     };
   }, []);
+
+  // Fade the tab strip's edges wherever there is more to scroll to. A strip
+  // that overflows crops the tab straddling its edge mid-letter, which no
+  // amount of label truncation can soften — the tab isn't truncated, it's
+  // cropped by the scroll box around it — so the mask goes on the scroller
+  // (`data-clip` → `index.css`). CSS can't see scroll offsets, hence this.
+  // Re-running on `tabs` catches opens and closes; the per-container
+  // ResizeObserver catches splits and window resizes; the capture-phase
+  // listener catches scrolling (a scroll event doesn't bubble).
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      for (const el of root.querySelectorAll<HTMLElement>(".dv-tabs-container")) {
+        observer.observe(el); // re-observing an observed element is a no-op
+        const slack = 2;
+        const hidden = el.scrollWidth - el.clientWidth;
+        const left = hidden > slack && el.scrollLeft > slack;
+        const right = hidden > slack && el.scrollLeft < hidden - slack;
+        if (left && right) el.dataset.clip = "both";
+        else if (left) el.dataset.clip = "left";
+        else if (right) el.dataset.clip = "right";
+        else delete el.dataset.clip;
+      }
+    };
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(root);
+    refreshEdgeFade.current = schedule;
+    schedule();
+    root.addEventListener("scroll", schedule, { capture: true });
+    return () => {
+      refreshEdgeFade.current = () => {};
+      root.removeEventListener("scroll", schedule, { capture: true });
+      observer.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [tabs]);
 
   return (
     // Explicit positioned, full-size wrapper. The nested DockviewReact root

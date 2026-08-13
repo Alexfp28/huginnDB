@@ -78,18 +78,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the connection — after a shorter delay than a chrome button's, since on a
   truncated tab the tooltip is the only way to read the whole name.
 
-- **The tab overflow menu ("∨ N") is a list, not a shelf of clipped tabs.**
-  It re-uses each hidden tab's own tab component, so every one arrived with
-  the tab strip's floating-chip margins and truncation width — rows on
-  separate islands, names cut short inside a popover with room to spare, and
-  two scrollbars, one of them horizontal. Rows are flush and full-width now,
-  with the name on one line and its connection under it, and the popover
+- **Clipped tabs fade out instead of being cut**, the way an IDE's tab strip
+  does — both a name too long for its tab and the tab straddling the edge of
+  a strip with more tabs than fit, which used to be chopped mid-letter against
+  a hard vertical wall. Each fade appears only where something really is cut
+  off: a name that fits keeps its full tail, and a strip with room to spare
+  keeps clean edges. The faded edge doubles as the cue that there are more
+  tabs that way.
+
+- **The tab strip's "∨" button looks like a button**: its own surface and
+  border, on the strip's recessed backdrop. It no longer prints the number of
+  hidden tabs beside the chevron — the chevron already means "there is more",
+  the list itself shows how much, and the count only competed with the tab
+  names next to it.
+
+- **The tab overflow menu ("∨ N") is the tab strip stood on its side.** It
+  re-uses each hidden tab's own tab component, so every row arrived with the
+  strip's *horizontal* geometry: a one-sided 7px margin, the strip's
+  truncation width inside a popover with room to spare, and two scrollbars,
+  one of them horizontal. The chips stay — same trench backdrop, same fill and
+  elevation, so the popover reads as part of the same surface — but each is
+  full-width now, with the name on one line and its connection under it, the
+  active one marked by a left rail rather than a top cap, and the popover
   scrolls in one direction only.
+
+- **Removed the "⊞ N" button from the tab strip.** It opened the modal tab
+  switcher, two pixels from the "∨ N" overflow list that answers the same
+  question in place. The dialog itself stays on `Ctrl`/`Cmd`+`P` (rebindable),
+  which is still the only way to search every open tab by name.
 
 ### Fixed
 
 - A single click on a column's resize handle no longer rewrites that column's
   width in `prefs.json` with the value it already had.
+
+- Closing a tab from the "∨ N" overflow list left a dead row behind, showing
+  the tab's internal id where its name had been. dockview builds that popover
+  once, at open time, and never rebuilds it, so it now closes along with the
+  tab that was closed from it.
 
 ## [1.13.0] — 2026-08-12
 
