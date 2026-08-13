@@ -231,6 +231,7 @@ pub fn save_environment(
     name: String,
     color: Option<String>,
     icon: Option<String>,
+    theme_id: Option<String>,
 ) -> AppResult<Environment> {
     let (snapshot, saved) = {
         let mut guard = state.tab_state.write();
@@ -246,6 +247,7 @@ pub fn save_environment(
                 env.name = name;
                 env.color = color;
                 env.icon = icon;
+                env.theme_id = theme_id;
                 env.clone()
             }
             None => {
@@ -262,6 +264,7 @@ pub fn save_environment(
                     color,
                     icon,
                     order,
+                    theme_id,
                     ..Environment::default()
                 };
                 guard.environments.push(env.clone());

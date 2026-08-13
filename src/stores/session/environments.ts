@@ -22,6 +22,7 @@ import { useConnections } from "@/stores/session/connections";
 import { useTabs } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
 import { usePreferences } from "@/stores/preferences/preferences";
+import { useThemeStore } from "@/stores/preferences/theme";
 import {
   flushAllTabState,
   hydrateWorkspaceLayout,
@@ -64,6 +65,7 @@ interface EnvironmentsState {
     name: string;
     color?: string | null;
     icon?: string | null;
+    themeId?: string | null;
   }) => Promise<Environment | null>;
   /**
    * Create an environment, enter it, and optionally seed it from the one being
@@ -71,7 +73,12 @@ interface EnvironmentsState {
    * geometry.
    */
   createAndEnter: (
-    env: { name: string; color?: string | null; icon?: string | null },
+    env: {
+      name: string;
+      color?: string | null;
+      icon?: string | null;
+      themeId?: string | null;
+    },
     replicate: ReplicateOptions,
   ) => Promise<void>;
   /** Last replicate choice, so the dialog reopens the way it was left. */
@@ -81,6 +88,7 @@ interface EnvironmentsState {
     name: string;
     color?: string | null;
     icon?: string | null;
+    themeId?: string | null;
   }) => Promise<void>;
   remove: (id: string) => Promise<void>;
   reorder: (ids: string[]) => Promise<void>;
@@ -118,6 +126,15 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
   },
 
   restoreSession: async () => {
+    // Apply the incoming environment's theme override (or clear it, for one
+    // with none) before anything else — it's a pure visual affordance, not
+    // gated on `reconnectOnLaunch` like the pool/tab restore below, and
+    // whichever environment `activeId` names by now is the right one: `load()`
+    // sets it before the launch effect calls this, and `switchTo` sets it
+    // right before calling this too.
+    const activeEnv = get().environments.find((e) => e.id === get().activeId);
+    useThemeStore.getState().setEnvironmentOverride(activeEnv?.themeId ?? null);
+
     let launch;
     try {
       launch = await api.getLaunchState();
@@ -397,9 +414,9 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     }
   },
 
-  create: async ({ name, color = null, icon = null }) => {
+  create: async ({ name, color = null, icon = null, themeId = null }) => {
     try {
-      const env = await api.saveEnvironment({ name, color, icon });
+      const env = await api.saveEnvironment({ name, color, icon, themeId });
       await get().load();
       return env;
     } catch (e) {
@@ -412,6 +429,12 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     try {
       await api.saveEnvironment(env);
       await get().load();
+      // Re-apply immediately if this was the active environment — otherwise a
+      // theme change made from the edit dialog wouldn't show until the next
+      // switch, and the dialog visually implies it takes effect on save.
+      if (env.id === get().activeId) {
+        useThemeStore.getState().setEnvironmentOverride(env.themeId ?? null);
+      }
     } catch (e) {
       set({ error: String(e) });
     }

@@ -40,6 +40,8 @@
     "switchFailed": "Could not switch environment: {{error}}",
     "color": "Colour",
     "icon": "Icon",
+    "theme": "Theme",
+    "themeDefault": "Default (app theme)",
     "none": "None",
     "replicateFrom": "Start from «{{name}}»",
     "replicateConnections": "Reopen the same connections and their tabs",

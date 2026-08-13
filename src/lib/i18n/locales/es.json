@@ -40,6 +40,8 @@
     "switchFailed": "No se pudo cambiar de entorno: {{error}}",
     "color": "Color",
     "icon": "Icono",
+    "theme": "Tema",
+    "themeDefault": "Predeterminado (tema de la app)",
     "none": "Ninguno",
     "replicateFrom": "Partir de «{{name}}»",
     "replicateConnections": "Reabrir las mismas conexiones y sus pestañas",

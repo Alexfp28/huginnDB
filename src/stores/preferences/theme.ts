@@ -25,6 +25,17 @@ import {
 interface ThemeState {
   themeId: string;
   customThemes: Theme[];
+  /**
+   * Theme id the *active environment* wants applied instead of `themeId`, or
+   * `null` for "no override — use the default". Set by
+   * `useEnvironments.restoreSession`/`switchTo`/`update`, never persisted
+   * here: it describes the current environment, not a user preference, and
+   * environments already persist their own `themeId` on the backend
+   * (`Environment.themeId`, tab_state.json). Kept transient so a fresh
+   * install or a rehydrate before environments load never shows a stale
+   * override.
+   */
+  environmentOverrideId: string | null;
   setThemeId: (id: string) => void;
   upsertCustom: (theme: Theme) => void;
   deleteCustom: (id: string) => void;
@@ -32,6 +43,11 @@ interface ThemeState {
   updateActiveColor: (key: keyof ThemeColors, value: string) => void;
   setActiveMode: (mode: "light" | "dark") => void;
   resetActive: () => void;
+  /** Apply (or clear) the active environment's theme override. Re-resolves
+   *  and re-paints immediately; a `themeId` that no longer matches any theme
+   *  (a deleted custom theme) falls back to the default, same as `themeId`
+   *  going stale would. */
+  setEnvironmentOverride: (themeId: string | null) => void;
 }
 
 function allThemes(state: ThemeState): Theme[] {
@@ -39,6 +55,16 @@ function allThemes(state: ThemeState): Theme[] {
 }
 
 function resolveActive(state: ThemeState): Theme {
+  // The environment override wins over the persisted default whenever it
+  // resolves to a real theme — this is what makes assigning a theme to an
+  // environment stick even if the user later changes their default theme
+  // elsewhere (Settings > Appearance) while that environment stays active.
+  if (state.environmentOverrideId) {
+    const overridden = allThemes(state).find(
+      (t) => t.id === state.environmentOverrideId,
+    );
+    if (overridden) return overridden;
+  }
   return (
     allThemes(state).find((t) => t.id === state.themeId) ??
     BUILT_IN_THEMES[0]
@@ -50,6 +76,11 @@ export const useThemeStore = create<ThemeState>()(
     (set, get) => ({
       themeId: "dark",
       customThemes: [],
+      environmentOverrideId: null,
+      setEnvironmentOverride: (themeId) => {
+        set({ environmentOverrideId: themeId });
+        applyTheme(resolveActive(get()));
+      },
       setThemeId: (id) => {
         set({ themeId: id });
         applyTheme(resolveActive(get()));

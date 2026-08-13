@@ -790,6 +790,13 @@ export interface Environment {
   color: string | null;
   icon: string | null;
   order: number;
+  /**
+   * Theme id (a built-in or custom `Theme.id` from `src/lib/themes.ts`) to
+   * apply while this environment is active. `null` means no override — the
+   * app's regular default theme applies. Resolved by
+   * `useThemeStore.setEnvironmentOverride`, not interpreted here.
+   */
+  themeId: string | null;
 }
 
 /**

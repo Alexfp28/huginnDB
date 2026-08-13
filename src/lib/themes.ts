@@ -358,6 +358,47 @@ export const BUILT_IN_THEMES: Theme[] = [
     },
   },
   {
+    // Warm, light "beach" palette: sun-bleached sand background, a single
+    // saturated ocean-teal brand/ring accent, and coral for destructive
+    // actions. Kept in the light-mode family (like "light"/"claude-light")
+    // rather than a separate saturated dark theme (contrast with "neon") —
+    // summer reads as bright daylight, not a night palette.
+    id: "summer",
+    name: "Summer",
+    mode: "light",
+    builtin: true,
+    colors: {
+      background: "#fef9ef",
+      foreground: "#22333b",
+      card: "#fffdf6",
+      cardForeground: "#22333b",
+      popover: "#fffdf6",
+      popoverForeground: "#22333b",
+      primary: "#ff6b4a",
+      primaryForeground: "#fff8f2",
+      secondary: "#eaf6f6",
+      secondaryForeground: "#14514f",
+      muted: "#f3ecd9",
+      mutedForeground: "#8a7f66",
+      accent: "#d9f2ef",
+      accentForeground: "#0f4c46",
+      brand: "#00b8a9",
+      brandForeground: "#ffffff",
+      success: "#2fae60",
+      successForeground: "#f5fff8",
+      warning: "#f4a300",
+      warningForeground: "#241300",
+      pk: "#e2711d",
+      fk: "#1c8c9c",
+      numeric: "#e2711d",
+      destructive: "#e5484d",
+      destructiveForeground: "#fff5f5",
+      border: "#f0e2c0",
+      input: "#f0e2c0",
+      ring: "#00b8a9",
+    },
+  },
+  {
     id: "high-contrast",
     name: "High Contrast",
     mode: "dark",

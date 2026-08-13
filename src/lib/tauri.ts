@@ -537,6 +537,7 @@ export const api = {
     name: string;
     color?: string | null;
     icon?: string | null;
+    themeId?: string | null;
   }) => invoke<Environment>("save_environment", args),
 
   /** Delete an environment and the session state it remembered. Rejects the
