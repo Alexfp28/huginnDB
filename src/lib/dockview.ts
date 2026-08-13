@@ -1,29 +1,29 @@
 /**
- * Dockview helpers: layout persistence, panel registry, and runtime
- * actions exposed to UI surfaces (FileMenu, ViewMenu).
+ * Dockview helpers for the *inner* workspace dockview only — the nested
+ * `DockviewReact` inside `TabbedArea` that hosts open table/query tabs
+ * (gotcha #10 in CLAUDE.md).
  *
- * Lives in `lib/` (rather than next to App.tsx) so that components like
- * the FileMenu and ViewMenu can trigger layout changes without creating
- * a circular import on the App module.
+ * The outer shell (Schema/Saved/Console docking, the workspace island) no
+ * longer uses dockview at all — see `stores/session/panelLayout.ts` for
+ * why (dockview's panel API has no `setVisible`, so a 0px-collapsed panel
+ * isn't expressible without add/remove and its proportional-reflow side
+ * effect). This file used to also own that outer dockview's theme, panel
+ * registry, and layout persistence; all of that was removed once every
+ * consumer (`App.tsx`, `ViewMenu`, `WindowMenu`, `useCommands`, `DataGrid`,
+ * `CellEditor`) migrated to the new store.
  */
 
-import type { AddPanelOptions, DockviewApi, DockviewTheme } from "dockview-react";
-import i18n from "@/lib/i18n";
+import type { DockviewApi, DockviewTheme } from "dockview-react";
 import type { AppTab } from "@/types";
 
 /**
- * Custom dockview theme that defers all colours to the app's existing
- * CSS variables (`--background`, `--foreground`, `--border`, …) defined
- * in `src/index.css`. The `className` here must match the selector in
- * the bridge CSS block.
- *
- * `dndPanelOverlay: 'group'` makes the drag-over highlight cover the
- * full panel group (tabs + content) rather than just the content area,
- * so the drop target is easy to see. `dndOverlayMounting: 'absolute'`
- * positions the overlay against the dockview root, which behaves more
- * predictably when panels are nested inside split groups.
+ * Theme for the inner tab dockview (`TabbedArea`). No `gap` — open
+ * table/query tabs stay flush; the user asked to keep data tables
+ * edge-to-edge. Shares the `dockview-theme-huginndb` class (defined in
+ * `src/index.css`) with the old outer theme, so it inherits the same CSS
+ * variables without redeclaring them.
  */
-export const huginnDockviewTheme: DockviewTheme = {
+export const huginnDockviewThemeInner: DockviewTheme = {
   name: "huginndb",
   className: "dockview-theme-huginndb",
   dndPanelOverlay: "group",
@@ -31,113 +31,8 @@ export const huginnDockviewTheme: DockviewTheme = {
   dndTabIndicator: "fill",
   dndOverlayBorder: "2px dashed hsl(var(--primary))",
   tabGroupIndicator: "none",
-  // "Island" spacing for the outer shell: dockview inserts this gap (px)
-  // between groups, and the rounded `.dv-groupview` corners (see index.css)
-  // turn each panel into a floating card. The gap reveals the dock root
-  // backdrop, which `.outer-dock` tints slightly so the panels read as
-  // raised. The inner tab dockview opts out — see `huginnDockviewThemeInner`.
-  gap: 8,
-};
-
-/**
- * Theme for the *inner* tab dockview (`TabbedArea`). Identical to the outer
- * theme — same `className`, so it shares every CSS variable — but with no
- * gap, so open table/query tabs stay flush. The user asked to keep the data
- * tables edge-to-edge; only the outer window distribution gets the island
- * treatment. `gap` is applied by dockview at runtime (not via the class),
- * so sharing the class name is safe.
- */
-export const huginnDockviewThemeInner: DockviewTheme = {
-  ...huginnDockviewTheme,
   gap: 0,
 };
-
-/** localStorage key for the persisted dockview layout JSON. */
-export const LAYOUT_STORAGE_KEY = "huginndb.layout";
-
-/**
- * Canonical set of panels the app ships with. Anything that needs to
- * iterate over "all known panels" (View → Panels checkboxes, default
- * layout, reset) reads from here so there's a single source of truth.
- */
-// `title` is the English fallback; `i18nKey` is the source of truth for the
-// displayed label. Panel titles are localized at creation and re-applied on
-// language change via `localizePanelTitles` — see that function for why a
-// static title alone isn't enough (persisted layouts restore stale titles).
-export const PANELS = [
-  { id: "schema", component: "schema", title: "Schema", i18nKey: "panels.schema" },
-  { id: "saved", component: "saved", title: "Saved", i18nKey: "panels.saved" },
-  { id: "workspace", component: "workspace", title: "Workspace", i18nKey: "panels.workspace" },
-  { id: "console", component: "console", title: "Console", i18nKey: "panels.console" },
-  { id: "side-editor", component: "side-editor", title: "Cell", i18nKey: "panels.cell" },
-] as const;
-
-export type PanelId = (typeof PANELS)[number]["id"];
-
-/** Translated title for a panel id, falling back to its English `title`. */
-function panelTitle(id: PanelId): string {
-  const meta = PANELS.find((p) => p.id === id);
-  if (!meta) return id;
-  return i18n.t(meta.i18nKey);
-}
-
-/**
- * Re-apply localized titles to every panel currently in the layout.
- *
- * Dockview's default tab renders `panel.title`, a plain string baked into the
- * layout — and `api.toJSON()` persists it, so a layout saved while the UI was
- * in English restores English titles via `fromJSON` regardless of the active
- * language. Setting the title at creation time isn't enough for two cases:
- * a restored layout, and a language switch while the app is open. This walks
- * the live panels and rewrites each known panel's title from i18n.
- */
-export function localizePanelTitles(api: DockviewApi) {
-  for (const panel of api.panels) {
-    const meta = PANELS.find((p) => p.id === panel.id);
-    if (meta) panel.setTitle(i18n.t(meta.i18nKey));
-  }
-}
-
-/**
- * Single dockview API handle for the running window. There is only ever
- * one DockviewReact mount inside the app shell, so a module-level
- * singleton is sufficient and avoids prop-drilling the API down to every
- * call site that wants to reset or reshape the layout.
- */
-let dockviewApi: DockviewApi | null = null;
-
-const apiReadyListeners = new Set<(api: DockviewApi) => void>();
-
-/** Stash the API once the DockviewReact `onReady` callback fires.
- *  Listeners registered via `onDockviewApiReady` are invoked
- *  synchronously after assignment. */
-export function registerDockviewApi(api: DockviewApi) {
-  dockviewApi = api;
-  for (const listener of apiReadyListeners) listener(api);
-  // Keep the outer panel titles in sync when the user switches language while
-  // the app is open. Registered once per API (one per window lifetime).
-  i18n.on("languageChanged", () => {
-    if (dockviewApi === api) localizePanelTitles(api);
-  });
-}
-
-/** Read-only accessor for surfaces that want to subscribe to layout
- *  events directly (e.g. View menu refreshing its checkbox state). */
-export function getDockviewApi(): DockviewApi | null {
-  return dockviewApi;
-}
-
-/** Subscribe to API-ready. Invoked immediately if the API is already
- *  registered. Returns an unsubscribe function. */
-export function onDockviewApiReady(
-  listener: (api: DockviewApi) => void,
-): () => void {
-  if (dockviewApi) listener(dockviewApi);
-  apiReadyListeners.add(listener);
-  return () => {
-    apiReadyListeners.delete(listener);
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Inner (workspace) dockview — the nested DockviewReact inside the Workspace
@@ -309,238 +204,4 @@ export function syncTabPanels(api: DockviewApi, tabs: AppTab[]): void {
     if (protectedPanels.has(panel.id)) continue;
     api.removePanel(panel);
   }
-}
-
-/** Restore the layout from localStorage, or build the default if no
- *  saved layout exists or the saved JSON is unparseable. */
-export function restoreOrInitLayout(api: DockviewApi) {
-  const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
-  if (saved) {
-    try {
-      api.fromJSON(JSON.parse(saved));
-      // The blob carries whatever titles were active when it was saved
-      // (often English); re-localize to the current language.
-      localizePanelTitles(api);
-      return;
-    } catch (err) {
-      // Persisted layout is unusable (schema drift, manual edit, …).
-      // Fall through to the default so the user isn't left blank.
-      console.warn("Failed to restore dockview layout:", err);
-    }
-  }
-  initDefaultLayout(api);
-}
-
-/** Default arrangement: Schema + Saved tabbed on the left (≈320 px),
- *  Workspace taking the rest on the right. */
-export function initDefaultLayout(api: DockviewApi) {
-  api.addPanel({ id: "schema", component: "schema", title: panelTitle("schema") });
-  api.addPanel({
-    id: "saved",
-    component: "saved",
-    title: panelTitle("saved"),
-    position: { referencePanel: "schema" },
-  });
-  api.addPanel({
-    id: "workspace",
-    component: "workspace",
-    title: panelTitle("workspace"),
-    position: { referencePanel: "schema", direction: "right" },
-  });
-  api.getPanel("schema")?.api.setSize({ width: 320 });
-}
-
-// ---------------------------------------------------------------------------
-// Schema-width preservation around the side-editor toggle.
-//
-// The side-editor docks as a sibling group in the horizontal row
-// `[schema | workspace | side-editor]` (see `openSideEditor`). Adding or
-// removing a child of that SplitView makes dockview redistribute the freed /
-// taken space *proportionally across every sibling*, which silently shrinks or
-// grows the Schema panel — so the Schema↔Workspace split the user set gets lost
-// every time the cell editor opens or closes. We remember the Schema width
-// while the side-editor is absent (the "stable" state) and re-assert it on each
-// open/close transition, so only the Workspace panel absorbs the delta.
-// ---------------------------------------------------------------------------
-
-/** Last Schema width observed while the side-editor was NOT present. */
-let lastStableSchemaWidth: number | null = null;
-/** Side-editor presence at the previous layout-change, to detect transitions. */
-let sideEditorWasOpen = false;
-
-/**
- * Subscribe to the outer dockview layout stream to keep the Schema width stable
- * across side-editor open/close. Call once from `onDockviewReady`.
- */
-export function trackSchemaWidthAroundSideEditor(api: DockviewApi) {
-  api.onDidLayoutChange(() => {
-    const sideOpen = api.getPanel("side-editor") != null;
-    const schema = api.getPanel("schema");
-    const transition = sideOpen !== sideEditorWasOpen;
-    if (transition && schema && lastStableSchemaWidth != null) {
-      // Open or close just happened: undo dockview's proportional reflow of the
-      // Schema panel. The re-assert fires another layout change, but it's no
-      // longer a transition, so it can't recurse.
-      schema.api.setSize({ width: lastStableSchemaWidth });
-    } else if (!sideOpen && schema && schema.api.width > 0) {
-      // Stable state (no side-editor): this is the width to restore later.
-      lastStableSchemaWidth = schema.api.width;
-    }
-    sideEditorWasOpen = sideOpen;
-  });
-}
-
-/** Persist the current layout. Called from the `onDidLayoutChange`
- *  callback wired up in App.tsx. */
-export function persistLayout(api: DockviewApi) {
-  try {
-    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(api.toJSON()));
-  } catch {
-    // Storage quota / disabled — non-fatal; layout simply won't persist.
-  }
-}
-
-/** Wipe persisted layout state and rebuild the default arrangement.
- *  Exposed for the "Reset window layout" entry in the FileMenu. */
-export function resetLayout() {
-  if (!dockviewApi) return;
-  localStorage.removeItem(LAYOUT_STORAGE_KEY);
-  dockviewApi.clear();
-  initDefaultLayout(dockviewApi);
-}
-
-// ---------------------------------------------------------------------------
-// Panel visibility — used by the View → Panels checkboxes.
-// ---------------------------------------------------------------------------
-
-/** Does the given panel currently exist somewhere in the layout
- *  (docked or floating)? */
-export function isPanelOpen(id: PanelId): boolean {
-  return dockviewApi?.getPanel(id) != null;
-}
-
-/**
- * Toggle a panel's presence. If it's currently in the layout it is
- * removed; otherwise it is re-added with a position that mirrors the
- * default arrangement so the user doesn't end up with an orphan tab in
- * an unexpected spot.
- */
-export function togglePanel(id: PanelId) {
-  const api = dockviewApi;
-  if (!api) return;
-  const existing = api.getPanel(id);
-  if (existing) {
-    api.removePanel(existing);
-    return;
-  }
-  const meta = PANELS.find((p) => p.id === id);
-  if (!meta) return;
-
-  const options: AddPanelOptions = {
-    id: meta.id,
-    component: meta.component,
-    title: i18n.t(meta.i18nKey),
-    position: positionFor(id, api),
-  };
-  api.addPanel(options);
-
-  if (id === "schema") {
-    // Restore a sensible width — otherwise the new split lands at 50/50.
-    api.getPanel("schema")?.api.setSize({ width: 320 });
-  }
-}
-
-/** Pick a reasonable insertion point for a re-opened panel based on
- *  whatever else is currently in the layout. */
-function positionFor(
-  id: PanelId,
-  api: DockviewApi,
-): AddPanelOptions["position"] {
-  const has = (p: PanelId) => api.getPanel(p) != null;
-  switch (id) {
-    case "schema":
-      if (has("workspace")) {
-        return { referencePanel: "workspace", direction: "left" };
-      }
-      if (has("saved")) {
-        return { referencePanel: "saved" };
-      }
-      return undefined;
-    case "saved":
-      if (has("schema")) {
-        return { referencePanel: "schema" };
-      }
-      if (has("workspace")) {
-        return { referencePanel: "workspace", direction: "left" };
-      }
-      return undefined;
-    case "workspace":
-      if (has("schema")) {
-        return { referencePanel: "schema", direction: "right" };
-      }
-      if (has("saved")) {
-        return { referencePanel: "saved", direction: "right" };
-      }
-      return undefined;
-    case "console":
-      // Re-open the console docked at the bottom, preferably under the
-      // workspace so the schema tree keeps its full height.
-      if (has("workspace")) {
-        return { referencePanel: "workspace", direction: "below" };
-      }
-      if (has("schema")) {
-        return { referencePanel: "schema", direction: "below" };
-      }
-      return undefined;
-    case "side-editor":
-      // Dock to the right of the workspace so the editor sits beside the
-      // data grid, like JetBrains' value viewer.
-      if (has("workspace")) {
-        return { referencePanel: "workspace", direction: "right" };
-      }
-      return undefined;
-  }
-}
-
-/**
- * Open (or focus) the docked side cell-editor panel. Called after the grid /
- * modal stashes a target in `useCellEditor`. If the panel already exists we
- * just activate it; otherwise we add it to the right of the workspace with a
- * reasonable width.
- */
-export function isSideEditorOpen(): boolean {
-  return dockviewApi?.getPanel("side-editor") != null;
-}
-
-export function openSideEditor() {
-  const api = dockviewApi;
-  if (!api) return;
-  const existing = api.getPanel("side-editor");
-  if (existing) {
-    existing.api.setActive();
-    return;
-  }
-  api.addPanel({
-    id: "side-editor",
-    component: "side-editor",
-    title: panelTitle("side-editor"),
-    position: positionFor("side-editor", api),
-  });
-  api.getPanel("side-editor")?.api.setSize({ width: 420 });
-}
-
-// ---------------------------------------------------------------------------
-// Floating groups — explicit action for users who don't discover the
-// drag-out-of-container gesture.
-// ---------------------------------------------------------------------------
-
-/** Move the currently active panel into a floating group. No-op if
- *  there is no active panel (e.g. the layout is empty). Users who want
- *  to dock a floating panel back can drag its tab onto the main grid,
- *  or "Reset window layout" as a nuclear option. */
-export function floatActivePanel() {
-  const api = dockviewApi;
-  const panel = api?.activePanel;
-  if (!api || !panel) return;
-  api.addFloatingGroup(panel);
 }

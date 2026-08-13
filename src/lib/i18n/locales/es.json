@@ -39,7 +39,6 @@
     "deleteConfirm": "¿Eliminar el entorno «{{name}}»?\n\nSe descartan sus pestañas abiertas y la distribución de paneles. Tus conexiones y sus contraseñas no se tocan.",
     "switchFailed": "No se pudo cambiar de entorno: {{error}}",
     "color": "Color",
-    "icon": "Icono",
     "theme": "Tema",
     "themeDefault": "Predeterminado (tema de la app)",
     "none": "Ninguno",
@@ -50,7 +49,6 @@
   "panels": {
     "schema": "Esquema",
     "saved": "Guardadas",
-    "workspace": "Espacio de trabajo",
     "console": "Consola",
     "cell": "Celda"
   },
@@ -71,13 +69,12 @@
     "view": {
       "label": "Vista",
       "sectionPanels": "Paneles",
-      "floatActivePanel": "Flotar panel activo",
       "sectionSchemaTree": "Árbol de esquema",
       "metricHide": "Ocultar métrica de tabla",
       "metricRowCount": "Mostrar nº de filas",
       "metricSize": "Mostrar tamaño de tabla",
       "preferences": "Preferencias…",
-      "help": "Arrastra las pestañas para reorganizar. Suelta fuera del área para flotar un panel. Los recuentos y tamaños son estimaciones del motor."
+      "help": "Los recuentos y tamaños son estimaciones del motor."
     },
     "help": {
       "label": "Ayuda",
@@ -721,6 +718,12 @@
     "commandPaletteHint": "Ctrl+K",
     "commandPaletteTooltip": "Paleta de comandos (Ctrl+K)"
   },
+  "shell": {
+    "console": {
+      "collapse": "Colapsar consola",
+      "expand": "Mostrar consola"
+    }
+  },
   "commandPalette": {
     "title": "Paleta de comandos",
     "placeholder": "Busca acciones, tablas, ajustes…",
@@ -1193,6 +1196,31 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_14_0": {
+        "tagline": "La paleta de comandos se convierte en un lanzador de verdad, la estructura de la ventana se reorganiza alrededor de una barra de actividad, los entornos tienen su propia columna, y los temas viajan entre máquinas.",
+        "items": {
+          "paletteLauncher": {
+            "title": "La paleta ya es un lanzador de verdad",
+            "body": "Ctrl/Cmd+K indexa trece grupos — cada preferencia y atajo, cada documento, pestañas abiertas, conexiones, entornos, tablas y vistas de todas las conexiones abiertas, consultas guardadas e historial — puntuados y ordenados, con prefijos de modo (>, @, #, ?, :) y una sección «Usados recientemente». Ctrl/Cmd+Shift+P la abre en modo solo acciones."
+          },
+          "activityBarShell": {
+            "title": "Una estructura de ventana rediseñada",
+            "body": "Esquema, Guardadas y Consola ya no son paneles dockview arrastrables: Consola se ancla abajo, Guardadas se colapsa desde una barra de actividad derecha, y el espacio de trabajo es una isla fija con su propia cabecera. Cada panel anima su apertura y cierre, y nuevos botones muestran u ocultan cada uno de forma independiente."
+          },
+          "environmentRail": {
+            "title": "Una columna de entornos",
+            "body": "La barra de actividad izquierda ahora es una columna de avatares de entorno al estilo Discord/Teams — iniciales sobre el color de acento de cada entorno — que sustituye al antiguo selector de iconos. Clic para cambiar y abrir Esquema en un gesto; clic derecho para renombrar/eliminar."
+          },
+          "themeTransfer": {
+            "title": "Importar y exportar temas",
+            "body": "Ajustes → Apariencia ya puede guardar el tema activo en un archivo JSON y cargar uno de vuelta como tema personalizado nuevo. Se suma un tema integrado «Summer», y los entornos pueden llevar su propio tema asignado."
+          },
+          "columnFit": {
+            "title": "Doble clic en el borde de una columna para ajustarla",
+            "body": "El tirador de redimensionado de la rejilla ahora ajusta una columna a su valor visible más ancho con doble clic (Ctrl/Cmd+clic ajusta todas de golpe), y el colapso responsive de la barra de herramientas mantiene filtros y acciones usables en un panel estrecho."
+          }
+        }
+      },
       "1_13_0": {
         "tagline": "Un quinto motor —Microsoft SQL Server—, una huella de conexiones por fin acotada, visible y configurable, y una vista lista que edita en todos los drivers.",
         "items": {

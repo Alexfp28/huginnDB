@@ -4,10 +4,14 @@
  * `useCellEditor` store — from the grid's "Open in side editor" context-menu
  * item, or the "move to side panel" button in the modal editor.
  *
- * Lives in the outer dockview as the `side-editor` panel, so it inherits free
- * resize / dock / float. It is scoped to the tab that opened the cell: it
- * closes when the user switches to a different tab or that tab is closed (#49),
- * unless the buffer has unsaved edits. When no cell is targeted it shows a hint.
+ * Lives inside `IslandShell` as a manual split (see that file), sized via
+ * `panelLayout.sideEditorWidth`/`sideEditorOpen`. It is scoped to the tab
+ * that opened the cell: it closes when the user switches to a different tab
+ * or that tab is closed (#49), unless the buffer has unsaved edits. When no
+ * cell is targeted it shows a hint. Every path here that "closes the panel"
+ * routes through `useCellEditor.close()`, which also flips
+ * `sideEditorOpen` off (see that store) — there's no separate dismiss
+ * affordance on the panel itself now that it isn't a dockview group.
  *
  * NOTE: we never call `window.confirm`/`alert` here — Tauri's webview blocks
  * the native dialogs ("dialog.confirm not allowed"), so the unsaved-changes

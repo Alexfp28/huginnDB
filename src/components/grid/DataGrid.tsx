@@ -120,7 +120,7 @@ import {
   toSqlUpdate as rowToSqlUpdate,
 } from "@/lib/grid/copyFormats";
 import { useCellEditor } from "@/stores/grid/cellEditor";
-import { openSideEditor, isSideEditorOpen } from "@/lib/dockview";
+import { useSessionPanelLayout, isSideEditorOpen } from "@/stores/session/panelLayout";
 import type { Driver } from "@/types";
 
 /**
@@ -2131,7 +2131,7 @@ export function DataGrid({
               : onCellSave!(rowValues, column.name, v)
         : undefined,
     });
-    openSideEditor();
+    useSessionPanelLayout.getState().openSideEditor();
   }
 
   /** Escalate from inline/preview to the heavyweight editor, honouring the

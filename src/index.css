@@ -149,8 +149,10 @@ input[type="password"]::-ms-clear {
  * inherits the active app theme automatically (light/dark, custom themes
  * from the Settings dialog, everything).
  *
- * The class name below is referenced by `huginnDockviewTheme` in
- * `src/lib/dockview.ts`.
+ * The class name below is referenced by `huginnDockviewThemeInner` in
+ * `src/lib/dockview.ts` — the nested dockview inside `TabbedArea` (open
+ * table/query tabs). The outer shell no longer uses dockview at all (see
+ * `stores/session/panelLayout.ts`).
  */
 .dockview-theme-huginndb {
   /* Sizing & shape */
@@ -260,63 +262,12 @@ input[type="password"]::-ms-clear {
   border-bottom-right-radius: var(--dv-border-radius);
 }
 
-/* "Island view" — outer shell only. The outer dockview carries a `gap`
-   (see `huginnDockviewTheme`) so groups float apart over the `.outer-dock`
-   backdrop; these rules give each floating panel a slightly larger corner
-   radius, a hairline border and a soft shadow so it reads as a raised card.
-   Scoped to `.outer-dock` so the inner tab dockview (shared theme class,
-   gap: 0) stays flush and unstyled — the user asked to keep data tables
-   edge-to-edge. */
-/* The grayish backdrop the islands float over. dockview paints its own
-   root (`.dv-dockview`) with `--dv-group-view-background-color` — the SAME
-   colour as the panels — and that root is what shows through the `gap`
-   between groups, which is why the margins previously looked identical to
-   the panels. We repaint the OUTER dockview root with a distinct backdrop:
-   a solid `--muted` (every theme defines it as a neutral surface) plus a 5%
-   `--foreground` veil. In light themes the dark foreground nudges the
-   backdrop grayer; in dark themes the light foreground nudges it lighter —
-   so the gap always reads as distinct from the panel surface (`--background`)
-   regardless of theme. The inner tab dockview has gap: 0, so its own root is
-   fully covered by its flush panels and stays unaffected. */
-.outer-dock .dv-dockview {
-  background-color: hsl(var(--muted));
-  background-image: linear-gradient(
-    hsl(var(--foreground) / 0.05),
-    hsl(var(--foreground) / 0.05)
-  );
-}
-.outer-dock .dv-groupview {
-  border-radius: var(--radius);
-  border: 1px solid hsl(var(--border));
-  /* Foreground-based so the lift is visible in light themes (a soft dark
-     shadow) without vanishing into a white `--background` shadow, and reads
-     as a faint separating halo in dark themes. */
-  box-shadow:
-    0 1px 2px hsl(var(--foreground) / 0.06),
-    0 2px 6px hsl(var(--foreground) / 0.08);
-}
-.outer-dock .dv-groupview > .dv-tabs-and-actions-container {
-  border-top-left-radius: var(--radius);
-  border-top-right-radius: var(--radius);
-}
-.outer-dock .dv-groupview > .dv-content-container {
-  border-bottom-left-radius: var(--radius);
-  border-bottom-right-radius: var(--radius);
-}
-/* The gap reveals the dock root; hide dockview's own sashes there so the
-   backdrop shows as a clean margin between islands rather than a divider. */
-.outer-dock .dv-sash {
-  background-color: transparent !important;
-}
-.outer-dock .dv-sash:hover {
-  background-color: hsl(var(--primary) / 0.3) !important;
-}
-
 /* -------------------------------------------------------------------------
  * Inner workspace dockview (open table / query tabs) — `.inner-dock`
  * -------------------------------------------------------------------------
- * Extends the "island view" language from the outer shell (`.outer-dock`
- * above) down to individual tabs: each open table/query is its own floating
+ * Extends the "island" language of `AppShell`/`IslandShell`/`ConsoleDock`
+ * (plain React/CSS now, not dockview — see `stores/session/panelLayout.ts`)
+ * down to individual tabs: each open table/query is its own floating
  * rounded chip over a recessed backdrop, rather than a flush segment in a
  * flat strip. `--dv-tab-margin` and `--dv-tab-border-radius` are dockview's
  * own theming hooks — the same two variables its bundled "-spaced" themes

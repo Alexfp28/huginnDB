@@ -42,6 +42,17 @@ export function environmentLabel(env: Environment, fallback: string): string {
   return env.name.trim() || fallback;
 }
 
+/**
+ * Teams-style avatar initials: first letter of up to the first two words in
+ * the label. "Producción" → "P", "Staging DB" → "SD", a single emoji/CJK
+ * label still degrades to its first code point rather than throwing.
+ */
+export function environmentInitials(label: string): string {
+  const words = label.trim().split(/\s+/).filter(Boolean).slice(0, 2);
+  if (words.length === 0) return "?";
+  return words.map((w) => w[0]!.toUpperCase()).join("");
+}
+
 /** What a newly created environment copies from the one being left. */
 export interface ReplicateOptions {
   /** Reopen the same connections, each with the tabs it had. */

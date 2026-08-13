@@ -11,7 +11,7 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { History, Moon, Rows3, Sun, Trash2 } from "lucide-react";
+import { History, Moon, Rows3, SquareTerminal, Sun, Trash2 } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabs } from "@/stores/session/tabs";
@@ -19,6 +19,7 @@ import { useQueryHistory } from "@/stores/query/queryHistory";
 import { useGridSelection } from "@/stores/grid/gridSelection";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
 import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useUi } from "@/stores/session/ui";
 import { StatusConnections } from "@/components/connection/StatusConnections";
 import { EnvironmentSwitcher } from "@/components/connection/EnvironmentSwitcher";
@@ -102,6 +103,7 @@ export function StatusBar() {
         <HistoryMenu count={historyCount} />
         <Sep />
         <DensityMenu />
+        <ConsoleToggle />
         <ThemeToggle />
       </div>
     </div>
@@ -224,6 +226,35 @@ function DensityMenu() {
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** Reopens the console dock once it's been collapsed from its own header
+ *  (`ConsoleDock`) — the VSCode "toggle terminal" pattern, since collapsing
+ *  it there leaves no other affordance to bring it back. */
+function ConsoleToggle() {
+  const { t } = useTranslation();
+  const consoleOpen = useSessionPanelLayout((s) => s.consoleOpen);
+  const toggleConsole = useSessionPanelLayout((s) => s.toggleConsole);
+  return (
+    <SimpleTooltip
+      label={
+        consoleOpen ? t("shell.console.collapse") : t("shell.console.expand")
+      }
+      side="top"
+    >
+      <button
+        type="button"
+        onClick={toggleConsole}
+        aria-pressed={consoleOpen}
+        className={cn(
+          "flex items-center rounded-sm p-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring",
+          consoleOpen && "text-foreground",
+        )}
+      >
+        <SquareTerminal className="h-3 w-3" />
+      </button>
+    </SimpleTooltip>
   );
 }
 

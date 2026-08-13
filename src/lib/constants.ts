@@ -38,4 +38,10 @@ export const STORAGE_KEYS = {
   viewPrefs: "huginndb.viewPrefs.v1",
   update: "huginndb.update.v1",
   whatsNew: "huginndb.whatsNew.v1",
+  panelLayout: "huginndb.panelLayout",
 } as const;
+
+/** Superseded by `STORAGE_KEYS.panelLayout` — the old outer dockview's
+ *  `toJSON()` blob under the panel-shell redesign. Not migrated (see
+ *  `stores/session/panelLayout.ts`); read once at boot solely to remove it. */
+export const LEGACY_DOCKVIEW_LAYOUT_KEY = "huginndb.layout";

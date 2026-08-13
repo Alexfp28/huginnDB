@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.14.0] — 2026-08-13
+
 ### Added
 
 - **The command palette (Ctrl/Cmd+K) is now a real launcher.** It used to index
@@ -79,8 +81,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `src/lib/themes.ts`.
 
 - **Per-environment theme override.** The environment create/rename dialog
-  (`EnvironmentSwitcher`) gets a theme picker alongside the existing colour
-  and icon fields, listing every built-in and custom theme plus a "Default"
+  (`EnvironmentEditorDialog`) gets a theme picker alongside the existing
+  colour field, listing every built-in and custom theme plus a "Default"
   option. Assigning a theme to an environment applies it automatically
   whenever that environment is entered — at launch or on `switchTo` — and
   clearing it (the default option, always available) falls back to whatever
@@ -117,6 +119,59 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the menu rather than disappearing — except on a grid with nothing else to
   collapse (an ad-hoc query result), where they stay in the bar because there
   would be no menu to read them in.
+
+- **The outer window shell is now activity-bar-driven instead of five equal
+  dockview panels.** Schema, Saved, Console, the cell editor, and the
+  workspace used to live as interchangeable dockview groups the user could
+  drag, tab together, or float — which visually implied you could spin up
+  more "workspaces," never the intent. Console now docks to the bottom with
+  its own collapsible header; Saved collapses/expands from a button in a new
+  right-hand activity bar; the cell editor is a plain flex split *inside* the
+  workspace island rather than a sibling dockview group (so opening/closing
+  it can no longer trigger dockview's proportional-reflow-of-siblings side
+  effect); and the workspace itself is a fixed, un-draggable "island" card
+  with its own header, wrapping the open table/query tabs area unchanged.
+  Every panel now animates open/closed (200ms ease, suspended during an
+  active sash drag so resizing still tracks the pointer 1:1) instead of
+  mounting/unmounting instantly. New VS Code-style toggle buttons in the
+  header's top-right corner (`PanelLeft`/`PanelBottom`/`PanelRight` icons)
+  show/hide Schema, Console, and Saved independently of the activity bars.
+  Layout state moved to a small store (`stores/session/panelLayout.ts`,
+  persisted separately from the old dockview blob) since dockview's panel
+  API has no `setVisible` for a normal panel — there is no way to collapse
+  one to 0px without removing it, which reflows its siblings. The nested
+  dockview inside the workspace island (open table/query tabs, their own
+  split/float geometry, drag-and-drop) is completely unaffected.
+
+- **The left activity bar is now a Discord/Teams-style environment rail**
+  instead of a single generic "Schema" button. Every environment gets its
+  own avatar (initials over its accent colour, in a rounded square — see the
+  next entry) with its name underneath; a trailing "+" opens the same
+  create dialog the status-bar switcher already had. Clicking a
+  non-active environment switches to it *and* opens the Schema panel in one
+  gesture; clicking the already-active one just collapses/expands Schema —
+  there is no separate dedicated toggle button anymore since that would be
+  redundant with it. Right-clicking an avatar opens the same rename/delete
+  context menu the status-bar switcher's dropdown rows offer, so environment
+  management doesn't require a trip down to the status bar. The status-bar
+  switcher (`EnvironmentSwitcher`) is unchanged and still there — this is an
+  additional, not a replacement, way to switch.
+
+- **Environments render as a Teams-style initials avatar** — up to two
+  letters derived from the name, over the environment's accent colour (a
+  neutral fallback when none is set), foreground colour picked for contrast
+  automatically. Replaces the old lucide icon picker in the environment
+  create/rename dialog, which is gone; the dialog now shows a live avatar
+  preview next to the name field instead. Used everywhere an environment is
+  shown: the new rail, the empty-workspace environment picker cards, and the
+  create/rename dialog's preview. The status-bar switcher deliberately keeps
+  a plain colour dot instead — too small at that scale for initials to stay
+  legible. `Environment.icon` is unread but kept on the wire (both in the
+  store and in the backend's `tab_state.json` struct — no migration was
+  needed) as the future home for a custom uploaded image, which is designed
+  in but not yet built: the avatar component is structured so an `env.icon`-
+  backed `<img>` branch can be added later, taking priority over the
+  initials, without touching any call site.
 
 ### Changed
 

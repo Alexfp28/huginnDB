@@ -1,12 +1,11 @@
 /**
  * Top-bar "View" dropdown — toggles UI display preferences (schema
- * metric) and exposes panel-level actions (show/hide each dockview
- * panel, float the active panel). New display preferences should land
- * here so persistence stays centralised in `useViewPrefs`; panel-level
- * actions stay derived from the dockview API.
+ * metric) and exposes panel-level actions (show/hide Schema, Saved,
+ * Console). Panel state lives in `panelLayout.ts`, a plain Zustand store
+ * — no dockview API involved for these three since the outer shell
+ * redesign (see that store's header comment).
  */
 
-import { useEffect, useState } from "react";
 import { ChevronDown, Eye } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -20,14 +19,7 @@ import {
 } from "@/components/ui/dropdown";
 import { usePreferences } from "@/stores/preferences/preferences";
 import type { SchemaTableMetric } from "@/types";
-import {
-  PANELS,
-  type PanelId,
-  floatActivePanel,
-  isPanelOpen,
-  onDockviewApiReady,
-  togglePanel,
-} from "@/lib/dockview";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 
 const METRIC_OPTIONS: { value: SchemaTableMetric; i18nKey: string }[] = [
@@ -42,23 +34,14 @@ export function ViewMenu() {
   const setMetric = (m: SchemaTableMetric) =>
     updateUi({ schemaTableMetric: m });
   const openSettings = useSettingsDialog((s) => s.openAt);
-  const [, setTick] = useState(0);
   const { t } = useTranslation();
 
-  // Bump local state on every dockview layout change so the panel
-  // checkboxes reflect the current state even when the user closes a
-  // panel via the tab's X button. `onDockviewApiReady` handles the
-  // case where the menu mounts before App.tsx registers the API.
-  useEffect(() => {
-    let layoutSub: { dispose: () => void } | null = null;
-    const unsubReady = onDockviewApiReady((api) => {
-      layoutSub = api.onDidLayoutChange(() => setTick((n) => n + 1));
-    });
-    return () => {
-      unsubReady();
-      layoutSub?.dispose();
-    };
-  }, []);
+  const schemaOpen = useSessionPanelLayout((s) => s.schemaOpen);
+  const savedOpen = useSessionPanelLayout((s) => s.savedOpen);
+  const consoleOpen = useSessionPanelLayout((s) => s.consoleOpen);
+  const toggleSchema = useSessionPanelLayout((s) => s.toggleSchema);
+  const toggleSaved = useSessionPanelLayout((s) => s.toggleSaved);
+  const toggleConsole = useSessionPanelLayout((s) => s.toggleConsole);
 
   return (
     <DropdownMenu>
@@ -77,26 +60,33 @@ export function ViewMenu() {
         <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {t("menu.view.sectionPanels")}
         </div>
-        {PANELS.map((p) => (
-          <DropdownMenuCheckboxItem
-            key={p.id}
-            checked={isPanelOpen(p.id as PanelId)}
-            onSelect={(e) => {
-              e.preventDefault();
-              togglePanel(p.id as PanelId);
-            }}
-          >
-            {t(p.i18nKey)}
-          </DropdownMenuCheckboxItem>
-        ))}
-        <DropdownMenuItem
+        <DropdownMenuCheckboxItem
+          checked={schemaOpen}
           onSelect={(e) => {
             e.preventDefault();
-            floatActivePanel();
+            toggleSchema();
           }}
         >
-          {t("menu.view.floatActivePanel")}
-        </DropdownMenuItem>
+          {t("panels.schema")}
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={savedOpen}
+          onSelect={(e) => {
+            e.preventDefault();
+            toggleSaved();
+          }}
+        >
+          {t("panels.saved")}
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={consoleOpen}
+          onSelect={(e) => {
+            e.preventDefault();
+            toggleConsole();
+          }}
+        >
+          {t("panels.console")}
+        </DropdownMenuCheckboxItem>
 
         <DropdownMenuSeparator />
 

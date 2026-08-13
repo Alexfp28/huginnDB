@@ -80,6 +80,38 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.14.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_14_0.tagline",
+    highlights: [
+      {
+        icon: SquareTerminal,
+        titleKey: "whatsNew.releases.1_14_0.items.paletteLauncher.title",
+        bodyKey: "whatsNew.releases.1_14_0.items.paletteLauncher.body",
+      },
+      {
+        icon: PanelTop,
+        titleKey: "whatsNew.releases.1_14_0.items.activityBarShell.title",
+        bodyKey: "whatsNew.releases.1_14_0.items.activityBarShell.body",
+      },
+      {
+        icon: Layers,
+        titleKey: "whatsNew.releases.1_14_0.items.environmentRail.title",
+        bodyKey: "whatsNew.releases.1_14_0.items.environmentRail.body",
+      },
+      {
+        icon: Palette,
+        titleKey: "whatsNew.releases.1_14_0.items.themeTransfer.title",
+        bodyKey: "whatsNew.releases.1_14_0.items.themeTransfer.body",
+      },
+      {
+        icon: Table2,
+        titleKey: "whatsNew.releases.1_14_0.items.columnFit.title",
+        bodyKey: "whatsNew.releases.1_14_0.items.columnFit.body",
+      },
+    ],
+  },
+  {
     version: "1.13.0",
     major: true,
     taglineKey: "whatsNew.releases.1_13_0.tagline",

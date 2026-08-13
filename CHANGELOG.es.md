@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.14.0] — 2026-08-13
+
 ### Añadido
 
 - **La paleta de comandos (Ctrl/Cmd+K) ya es un lanzador de verdad.** Antes
@@ -87,8 +89,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `src/lib/themes.ts`.
 
 - **Tema por entorno.** El diálogo de crear/renombrar entorno
-  (`EnvironmentSwitcher`) incorpora un selector de tema junto a los campos ya
-  existentes de color e icono, listando todos los temas integrados y
+  (`EnvironmentEditorDialog`) incorpora un selector de tema junto al campo ya
+  existente de color, listando todos los temas integrados y
   personalizados más una opción "Predeterminado". Asignar un tema a un
   entorno lo aplica automáticamente cada vez que se entra en él — al arrancar
   la app o al cambiar de entorno (`switchTo`) — y quitarlo (la opción
@@ -128,6 +130,71 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   desaparecer — salvo en una rejilla sin nada más que colapsar (un resultado de
   consulta ad-hoc), donde se quedan en la barra porque no habría menú donde
   leerlos.
+
+- **La estructura exterior de la ventana ahora se organiza con una barra de
+  actividad en vez de cinco paneles dockview de igual rango.** Esquema,
+  Guardadas, Consola, el editor de celda y el espacio de trabajo vivían como
+  grupos dockview intercambiables que se podían arrastrar, tabular juntos o
+  flotar — lo que sugería visualmente que se podían crear más "espacios de
+  trabajo", algo que nunca fue la intención. Consola ahora se ancla abajo
+  con su propia cabecera colapsable; Guardadas se colapsa/expande desde un
+  botón en una nueva barra de actividad derecha; el editor de celda es un
+  simple split flexbox *dentro* de la isla del espacio de trabajo en vez de
+  un grupo dockview hermano (así que abrirlo o cerrarlo ya no puede disparar
+  el efecto secundario de dockview de redistribuir proporcionalmente los
+  paneles vecinos); y el propio espacio de trabajo es una tarjeta "isla" fija
+  y no arrastrable con su propia cabecera, que envuelve sin cambios el área
+  de pestañas de tabla/consulta abiertas. Cada panel ahora anima su apertura
+  y cierre (200ms con suavizado, suspendido durante un arrastre activo del
+  separador para que el redimensionado siga siguiendo el puntero 1:1) en vez
+  de aparecer/desaparecer de golpe. Nuevos botones de mostrar/ocultar al
+  estilo VS Code en la esquina superior derecha de la cabecera (iconos
+  `PanelLeft`/`PanelBottom`/`PanelRight`) muestran u ocultan Esquema, Consola
+  y Guardadas de forma independiente a las barras de actividad. El estado de
+  la disposición se trasladó a un almacén pequeño
+  (`stores/session/panelLayout.ts`, persistido por separado del antiguo blob
+  de dockview) porque la API de paneles de dockview no tiene `setVisible`
+  para un panel normal — no hay forma de colapsar uno a 0px sin eliminarlo,
+  lo que redistribuye a sus vecinos. El dockview anidado dentro de la isla
+  del espacio de trabajo (pestañas de tabla/consulta abiertas, su propia
+  geometría de división/flotación, arrastrar y soltar) no se ve afectado en
+  absoluto.
+
+- **La barra de actividad izquierda ahora es una columna de entornos al
+  estilo Discord/Teams** en vez de un único botón genérico "Esquema". Cada
+  entorno tiene su propio avatar (iniciales sobre su color de acento, en un
+  cuadrado redondeado — ver la siguiente entrada) con su nombre debajo; un
+  "+" al final abre el mismo diálogo de creación que ya tenía el selector de
+  la barra de estado. Al hacer clic en un entorno que no es el activo se
+  cambia a él *y* se abre el panel de Esquema en un solo gesto; al hacer clic
+  en el ya activo simplemente se colapsa/expande Esquema — ya no hay un
+  botón de alternancia dedicado aparte, porque sería redundante con este.
+  Al hacer clic derecho sobre un avatar se abre el mismo menú de
+  renombrar/eliminar que ya ofrecían las filas del desplegable del selector
+  de la barra de estado, así que gestionar entornos ya no exige bajar hasta
+  la barra de estado. El selector de la barra de estado (`EnvironmentSwitcher`)
+  no cambia y sigue ahí — esto es una forma adicional de cambiar de entorno,
+  no un reemplazo.
+
+- **Los entornos se representan como un avatar de iniciales al estilo Teams**
+  — hasta dos letras derivadas del nombre, sobre el color de acento del
+  entorno (un gris neutro si no hay ninguno asignado), con el color del texto
+  elegido automáticamente para mantener el contraste. Sustituye al antiguo
+  selector de iconos de lucide en el diálogo de crear/renombrar entorno, que
+  ha desaparecido; el diálogo ahora muestra una vista previa del avatar en
+  vivo junto al campo de nombre. Se usa en todos los sitios donde se muestra
+  un entorno: la nueva columna, las tarjetas del selector de entorno del
+  espacio de trabajo vacío, y la vista previa del diálogo de crear/renombrar.
+  El selector de la barra de estado mantiene deliberadamente un simple punto
+  de color en su lugar — a esa escala las iniciales son demasiado pequeñas
+  para leerse bien. `Environment.icon` no se lee pero se mantiene en el
+  contrato de datos (tanto en el almacén del frontend como en la estructura
+  `tab_state.json` del backend — no hizo falta ninguna migración) como el
+  futuro hueco para una imagen personalizada subida por el usuario, que está
+  pensada pero todavía no implementada: el componente del avatar está
+  estructurado para que más adelante se pueda añadir una rama `<img>`
+  respaldada por `env.icon`, con prioridad sobre las iniciales, sin tocar
+  ningún punto donde ya se usa.
 
 ### Cambiado
 

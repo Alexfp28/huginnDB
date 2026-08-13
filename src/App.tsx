@@ -1,31 +1,20 @@
 /**
  * Top-level layout: header (File menu + centered breadcrumb + theme /
- * settings actions), a dockview-based workspace in the middle, and the
- * status bar at the bottom.
+ * settings actions), the outer shell in the middle, and the status bar
+ * at the bottom.
  *
- * The workspace is fully customisable — Schema, Saved queries, and the
- * Workspace (TabbedArea) each live in their own dockview panel and can
- * be moved, resized, tabbed together, or hidden. The arrangement is
- * persisted to localStorage; the FileMenu's "Reset window layout" entry
- * wipes it back to the default.
+ * The outer shell (`AppShell`) is an activity-bar-driven layout: Schema
+ * and Saved dock to a fixed side and collapse to 0px from their activity
+ * bar button, Console docks to the bottom, and the workspace island (open
+ * table/query tabs) is the one fixed, unmovable canvas in the middle — see
+ * `stores/session/panelLayout.ts` for why this replaced the old 5-panel
+ * outer dockview (it visually implied you could spin up more
+ * "workspaces", which was never the intent).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "dockview-react/dist/styles/dockview.css";
-import {
-  DockviewReact,
-  type DockviewReadyEvent,
-  type IDockviewPanelProps,
-} from "dockview-react";
-import {
-  CheckCircle2,
-  Info,
-  Moon,
-  Settings,
-  Sun,
-  TriangleAlert,
-  XCircle,
-} from "lucide-react";
+import { CheckCircle2, Info, TriangleAlert, XCircle } from "lucide-react";
 import { Toaster } from "sonner";
 import {
   selectUpdateNotificationVisible,
@@ -53,17 +42,14 @@ import { FileMenu } from "@/components/menus/FileMenu";
 import { WindowMenu } from "@/components/menus/WindowMenu";
 import { ViewMenu } from "@/components/menus/ViewMenu";
 import { HelpMenu } from "@/components/menus/HelpMenu";
-import { ConnectionsTree } from "@/components/connection/ConnectionsTree";
-import { TabbedArea } from "@/components/shell/TabbedArea";
+import { AppShell } from "@/components/shell/AppShell";
+import { LayoutToggles } from "@/components/shell/LayoutToggles";
 import { StatusBar } from "@/components/shell/StatusBar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { TabSwitcher, useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { SettingsDialog } from "@/components/settings/dialogs/SettingsDialog";
-import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
-import { SideEditorPanel } from "@/components/grid/SideEditorPanel";
-import { SavedQueriesPanel } from "@/components/query/SavedQueriesPanel";
-import { Console } from "@/components/query/Console";
+import { EnvironmentEditorDialog } from "@/components/connection/dialogs/EnvironmentEditorDialog";
 import { startLogBridge } from "@/lib/bridges/log-bridge";
 import { startCliConnectBridge } from "@/lib/bridges/cli-connect-bridge";
 import { startConnectionHealthBridge } from "@/lib/bridges/connection-health-bridge";
@@ -78,82 +64,11 @@ import { FeedbackDialog } from "@/components/shell/dialogs/FeedbackDialog";
 import { api } from "@/lib/tauri";
 import { useLogs } from "@/stores/query/logs";
 import { normalizeDriver, driverMismatchHint } from "@/lib/db/driver";
-import { DEFAULT_PORTS } from "@/lib/constants";
+import { DEFAULT_PORTS, LEGACY_DOCKVIEW_LAYOUT_KEY } from "@/lib/constants";
 import { AdHocDriverDialog } from "@/components/connection/dialogs/AdHocDriverDialog";
 import type { ConnectionProfile, Driver, StartupArgs } from "@/types";
-import { Button } from "@/components/ui/button";
-import { TooltipProvider, SimpleTooltip } from "@/components/ui/tooltip";
-import {
-  huginnDockviewTheme,
-  persistLayout,
-  registerDockviewApi,
-  restoreOrInitLayout,
-  trackSchemaWidthAroundSideEditor,
-} from "@/lib/dockview";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { refreshTable } from "@/lib/grid/tableRefresh";
-
-// ---------------------------------------------------------------------------
-// Panel components — thin wrappers that pull the current connection from
-// the UI store and delegate rendering to the existing feature components.
-// ---------------------------------------------------------------------------
-
-function SchemaPanel() {
-  const id = useUi((s) => s.selectedConnectionId);
-  // The panel now starts at the connection level (#107): folders and connections
-  // are rows in the tree, and each expanded connection renders its own schema
-  // subtree. It no longer needs a selected connection to show anything, so the
-  // "connect a database" watermark is gone — an empty list says that better.
-  //
-  // The error boundary still keys on the selected connection: a subtree that
-  // throws is almost always the focused one, and resetting on a change of focus
-  // is the recovery the user expects.
-  return (
-    <ConnectionErrorBoundary resetKey={id ?? undefined}>
-      <ConnectionsTree />
-    </ConnectionErrorBoundary>
-  );
-}
-
-function SavedPanel() {
-  const id = useUi((s) => s.selectedConnectionId);
-  return <SavedQueriesPanel connectionId={id} />;
-}
-
-function WorkspacePanel() {
-  const id = useUi((s) => s.selectedConnectionId);
-  return (
-    <ConnectionErrorBoundary resetKey={id ?? undefined}>
-      <TabbedArea connectionId={id} />
-    </ConnectionErrorBoundary>
-  );
-}
-
-function ConsolePanel() {
-  return <Console />;
-}
-
-function SideEditorPanelWrapper() {
-  return <SideEditorPanel />;
-}
-
-/**
- * Component registry passed to DockviewReact. Defined at module scope
- * so the reference is stable across renders — recreating it inside the
- * component body would cause dockview to unmount and re-mount every
- * panel on each App re-render.
- */
-const COMPONENTS: Record<
-  string,
-  React.FunctionComponent<IDockviewPanelProps>
-> = {
-  schema: SchemaPanel,
-  saved: SavedPanel,
-  workspace: WorkspacePanel,
-  console: ConsolePanel,
-  "side-editor": SideEditorPanelWrapper,
-};
-
-// ---------------------------------------------------------------------------
 
 /** Ad-hoc connection params staged while we prompt the user for a driver
  *  (CLI launch without `--driver` and no configured default). */
@@ -255,7 +170,6 @@ export default function App() {
   );
   const activeTheme = useThemeStore(selectActiveTheme);
   const canaryFlavor = useAppFlavor((s) => s.canary);
-  const setMode = useThemeStore((s) => s.setActiveMode);
   const hydratePreferences = usePreferences((s) => s.hydrate);
   const language = usePreferences((s) => s.prefs.ui.language);
   const cliConnectDefault = usePreferences((s) => s.prefs.ui.cliConnectDefault);
@@ -775,17 +689,12 @@ export default function App() {
     if (!selected && active.size > 0) setSelected(Array.from(active)[0]);
   }, [active, selected, setSelected]);
 
-  /**
-   * Wire up the dockview instance: stash the API for reset-layout, run
-   * layout restoration (or default), and persist every subsequent
-   * change back to localStorage.
-   */
-  const onDockviewReady = (event: DockviewReadyEvent) => {
-    registerDockviewApi(event.api);
-    restoreOrInitLayout(event.api);
-    trackSchemaWidthAroundSideEditor(event.api);
-    event.api.onDidLayoutChange(() => persistLayout(event.api));
-  };
+  // One-shot cleanup of the old 5-panel outer dockview's persisted layout
+  // blob — superseded by `stores/session/panelLayout.ts`. Not migrated
+  // field-by-field (see that store's header comment); just discarded.
+  useEffect(() => {
+    localStorage.removeItem(LEGACY_DOCKVIEW_LAYOUT_KEY);
+  }, []);
 
   return (
     <TooltipProvider>
@@ -831,66 +740,14 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right — theme + settings. Standalone chrome buttons → themed
-              SimpleTooltip instead of native `title` (see gotcha in tooltip.tsx
-              about not bulk-migrating tooltips nested inside menus). */}
-          <div className="ml-auto flex items-center gap-1">
-            <SimpleTooltip label={t("common.tooltipToggleTheme")} side="bottom">
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() =>
-                  setMode(activeTheme.mode === "dark" ? "light" : "dark")
-                }
-              >
-                {activeTheme.mode === "dark" ? (
-                  <Sun className="h-4 w-4" />
-                ) : (
-                  <Moon className="h-4 w-4" />
-                )}
-              </Button>
-            </SimpleTooltip>
-            <SimpleTooltip
-              side="bottom"
-              label={
-                updateNotificationVisible
-                  ? t("update.tooltipUpdateAvailable", {
-                      version: availableVersion,
-                    })
-                  : t("common.tooltipOpenPreferences")
-              }
-            >
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() =>
-                  // Jump straight to the About panel only when there's a
-                  // pending update to act on; otherwise restore the default
-                  // behaviour (open at whichever section the user last used).
-                  updateNotificationVisible
-                    ? openSettings("about")
-                    : openSettings()
-                }
-                className="relative"
-              >
-                <Settings className="h-4 w-4" />
-                {updateNotificationVisible && (
-                  <span
-                    aria-hidden
-                    className="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-background"
-                  />
-                )}
-              </Button>
-            </SimpleTooltip>
+          <div className="ml-auto">
+            <LayoutToggles />
           </div>
         </header>
         <SettingsDialog />
-        <div className="outer-dock flex-1 overflow-hidden">
-          <DockviewReact
-            components={COMPONENTS}
-            onReady={onDockviewReady}
-            theme={huginnDockviewTheme}
-          />
+        <EnvironmentEditorDialog />
+        <div className="flex-1 overflow-hidden">
+          <AppShell />
         </div>
         <StatusBar />
       </div>

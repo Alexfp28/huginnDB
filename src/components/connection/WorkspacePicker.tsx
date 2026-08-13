@@ -24,7 +24,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Layers, Loader2, Search } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
@@ -34,7 +34,7 @@ import { bucketByGroup, cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DriverBadge, driverLabel } from "@/components/common/DriverBadge";
-import { EnvIcon } from "@/components/connection/EnvironmentSwitcher";
+import { EnvironmentAvatar } from "@/components/connection/EnvironmentAvatar";
 import type { ConnectionProfile, Environment } from "@/types";
 
 /**
@@ -86,31 +86,6 @@ function PickerCard({
         )}
       </span>
     </button>
-  );
-}
-
-/** Colour-aware icon tile for an environment card — the environment's own
- *  accent tints its own tile, echoing the dot/icon pairing in the topbar
- *  switcher, and falls back to a neutral tile with the generic icon. */
-function EnvTile({ env }: { env: Environment }) {
-  return (
-    <span
-      className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-md",
-        !env.color && "bg-muted text-muted-foreground",
-      )}
-      style={
-        env.color
-          ? { backgroundColor: `${env.color}1f`, color: env.color }
-          : undefined
-      }
-    >
-      {env.icon ? (
-        <EnvIcon icon={env.icon} className="h-5 w-5" />
-      ) : (
-        <Layers className="h-5 w-5" />
-      )}
-    </span>
   );
 }
 
@@ -290,7 +265,11 @@ function EnvironmentsPane() {
                 switchingTo === env.id ? (
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 ) : (
-                  <EnvTile env={env} />
+                  <EnvironmentAvatar
+                    name={environmentLabel(env, defaultName)}
+                    color={env.color}
+                    size={32}
+                  />
                 )
               }
             />

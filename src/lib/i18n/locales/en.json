@@ -39,7 +39,6 @@
     "deleteConfirm": "Delete the environment \"{{name}}\"?\n\nIts open tabs and pane layout are discarded. Your connections and their passwords are not touched.",
     "switchFailed": "Could not switch environment: {{error}}",
     "color": "Colour",
-    "icon": "Icon",
     "theme": "Theme",
     "themeDefault": "Default (app theme)",
     "none": "None",
@@ -50,7 +49,6 @@
   "panels": {
     "schema": "Schema",
     "saved": "Saved",
-    "workspace": "Workspace",
     "console": "Console",
     "cell": "Cell"
   },
@@ -71,13 +69,12 @@
     "view": {
       "label": "View",
       "sectionPanels": "Panels",
-      "floatActivePanel": "Float active panel",
       "sectionSchemaTree": "Schema tree",
       "metricHide": "Hide table metric",
       "metricRowCount": "Show row count",
       "metricSize": "Show table size",
       "preferences": "Preferences…",
-      "help": "Drag panel tabs to rearrange. Drop outside the dock area to float a panel. Counts and sizes are engine estimates."
+      "help": "Counts and sizes are engine estimates."
     },
     "help": {
       "label": "Help",
@@ -721,6 +718,12 @@
     "commandPaletteHint": "Ctrl+K",
     "commandPaletteTooltip": "Command palette (Ctrl+K)"
   },
+  "shell": {
+    "console": {
+      "collapse": "Collapse console",
+      "expand": "Show console"
+    }
+  },
   "commandPalette": {
     "title": "Command palette",
     "placeholder": "Search actions, tables, settings…",
@@ -1193,6 +1196,31 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_14_0": {
+        "tagline": "The command palette becomes a real launcher, the window shell reorganizes around an activity bar, environments get their own rail, and themes travel between machines.",
+        "items": {
+          "paletteLauncher": {
+            "title": "The palette is a real launcher now",
+            "body": "Ctrl/Cmd+K indexes thirteen groups — every preference and shortcut, every doc, open tabs, connections, environments, tables and views across all connected connections, saved queries and history — scored and ranked, with mode prefixes (>, @, #, ?, :) and a \"Recently used\" section. Ctrl/Cmd+Shift+P opens it in actions-only mode."
+          },
+          "activityBarShell": {
+            "title": "A redesigned window shell",
+            "body": "Schema, Saved and Console are no longer draggable dockview panels: Console docks to the bottom, Saved collapses from a right-hand activity bar, and the workspace is a fixed island with its own header. Every panel animates open and closed, and new toggle buttons show or hide each one independently."
+          },
+          "environmentRail": {
+            "title": "An environment rail",
+            "body": "The left activity bar is now a Discord/Teams-style column of environment avatars — initials over each environment's accent colour — replacing the old icon picker. Click one to switch and open Schema in one gesture; right-click for rename/delete."
+          },
+          "themeTransfer": {
+            "title": "Import and export themes",
+            "body": "Settings → Appearance can now save the active theme to a JSON file and load one back as a brand-new custom theme. A new \"Summer\" built-in theme joins the set, and environments can carry their own theme override."
+          },
+          "columnFit": {
+            "title": "Double-click a column edge to fit it",
+            "body": "The data grid's column resize handle now double-click-fits a column to its widest visible value (Ctrl/Cmd-click fits every column at once), and the toolbar's responsive collapse keeps filters and actions usable on a narrow pane."
+          }
+        }
+      },
       "1_13_0": {
         "tagline": "A fifth engine — Microsoft SQL Server — a connection footprint that is finally bounded, visible and yours to set, and a list view that edits on every driver.",
         "items": {

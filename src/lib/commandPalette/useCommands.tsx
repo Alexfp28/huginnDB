@@ -35,7 +35,6 @@ import {
   Info,
   Keyboard,
   Languages,
-  LayoutGrid,
   Layers,
   MessageSquarePlus,
   Palette,
@@ -86,14 +85,7 @@ import {
   unwarmedDatabases,
   warmDatabases,
 } from "@/lib/commandPalette/warmSchema";
-import {
-  PANELS,
-  floatActivePanel,
-  isPanelOpen,
-  resetLayout,
-  togglePanel,
-  type PanelId,
-} from "@/lib/dockview";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { refreshTable } from "@/lib/grid/tableRefresh";
 import { ACTIONS, formatComboForDisplay, getBinding } from "@/lib/keybindings";
 import { api } from "@/lib/tauri";
@@ -159,6 +151,9 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   const historyEntries = useQueryHistory((s) => s.entries);
   const openSettings = useSettingsDialog((s) => s.openAt);
   const openSettingsAtPref = useSettingsDialog((s) => s.openAtPref);
+  const schemaOpen = useSessionPanelLayout((s) => s.schemaOpen);
+  const savedOpen = useSessionPanelLayout((s) => s.savedOpen);
+  const consoleOpen = useSessionPanelLayout((s) => s.consoleOpen);
 
   return useMemo<PaletteCommand[]>(() => {
     if (!enabled) return [];
@@ -323,34 +318,35 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         label: t("menu.window.resetLayout"),
         keywords: "reset layout panels restablecer disposición paneles",
         icon: <RotateCcw className="h-4 w-4" />,
-        run: () => resetLayout(),
+        run: () => useSessionPanelLayout.getState().resetLayout(),
       },
     );
 
     // ── Panels ───────────────────────────────────────────────────────────────
-    for (const panel of PANELS) {
-      const shown = isPanelOpen(panel.id as PanelId);
+    const PANEL_TOGGLES: {
+      id: string;
+      i18nKey: string;
+      shown: boolean;
+      toggle: () => void;
+    }[] = [
+      { id: "schema", i18nKey: "panels.schema", shown: schemaOpen, toggle: useSessionPanelLayout.getState().toggleSchema },
+      { id: "saved", i18nKey: "panels.saved", shown: savedOpen, toggle: useSessionPanelLayout.getState().toggleSaved },
+      { id: "console", i18nKey: "panels.console", shown: consoleOpen, toggle: useSessionPanelLayout.getState().toggleConsole },
+    ];
+    for (const panel of PANEL_TOGGLES) {
       list.push({
         id: `panel:${panel.id}`,
         group: "panels",
         label: t("commandPalette.togglePanel", { name: t(panel.i18nKey) }),
         keywords: `panel view toggle panel vista ${panel.id}`,
         icon: <PanelsTopLeft className="h-4 w-4" />,
-        badge: shown
+        badge: panel.shown
           ? t("commandPalette.settings.on")
           : t("commandPalette.settings.off"),
-        current: shown,
-        run: () => togglePanel(panel.id as PanelId),
+        current: panel.shown,
+        run: panel.toggle,
       });
     }
-    list.push({
-      id: "panel:float-active",
-      group: "panels",
-      label: t("menu.view.floatActivePanel"),
-      keywords: "float panel window flotante panel",
-      icon: <LayoutGrid className="h-4 w-4" />,
-      run: () => floatActivePanel(),
-    });
 
     // ── Settings: the dialog's sections, then every individual preference ────
     list.push({
@@ -779,5 +775,8 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     historyEntries,
     openSettings,
     openSettingsAtPref,
+    schemaOpen,
+    savedOpen,
+    consoleOpen,
   ]);
 }

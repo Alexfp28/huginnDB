@@ -30,12 +30,18 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName;
  * for anything richer (rich content, controlled open, custom side/align).
  *
  * NOTE: use this for standalone chrome buttons AND for menu/context triggers
- * (wrap the `*Trigger asChild` element — the tooltip fires on hover, the menu
- * still opens on click; both `asChild` slots compose onto the button). What it
- * is NOT for is a tooltip nested *inside* open menu content (a DropdownMenuItem
- * or a swatch inside DropdownMenuContent): there the Radix tooltip fights the
- * menu's own hover/portal handling, so those spots keep a native `title=""` —
- * a plain OS tooltip that doesn't conflict. Don't migrate in-menu-item titles.
+ * — but `SimpleTooltip` must be the OUTER wrapper, with `*Trigger asChild`
+ * wrapping the actual button INSIDE it (`<SimpleTooltip><ContextMenuTrigger
+ * asChild><button/></ContextMenuTrigger></SimpleTooltip>`), never the other
+ * way around: nesting `*Trigger asChild` around `SimpleTooltip` compiles and
+ * looks plausible, but the trigger's `asChild` clones onto `SimpleTooltip`'s
+ * own `TooltipTrigger` wrapper rather than the underlying button, and the
+ * context/dropdown menu silently never opens (confirmed against
+ * `EnvironmentRail`'s right-click menu). What it is NOT for is a tooltip
+ * nested *inside* open menu content (a DropdownMenuItem or a swatch inside
+ * DropdownMenuContent): there the Radix tooltip fights the menu's own hover/
+ * portal handling, so those spots keep a native `title=""` — a plain OS
+ * tooltip that doesn't conflict. Don't migrate in-menu-item titles.
  */
 export function SimpleTooltip({
   label,

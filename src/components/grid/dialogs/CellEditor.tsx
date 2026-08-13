@@ -32,7 +32,7 @@ import { detectLanguage, tryFormat, type ContentLanguage } from "@/lib/grid/dete
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import { useCellEditor } from "@/stores/grid/cellEditor";
-import { openSideEditor } from "@/lib/dockview";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -221,7 +221,7 @@ export function CellEditor({
       readonly,
       onSave,
     });
-    openSideEditor();
+    useSessionPanelLayout.getState().openSideEditor();
     onOpenChange(false);
   }
 

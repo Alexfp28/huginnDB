@@ -1,12 +1,12 @@
 /**
  * Top-bar "Window" dropdown — window/layout-level actions that don't fit
  * under File (connections) or View (panel visibility): opening a new OS
- * window, and resetting the outer dockview layout back to its default.
+ * window, and resetting the outer shell layout back to its default.
  */
 
 import { AppWindow, ChevronDown, LayoutGrid } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { resetLayout } from "@/lib/dockview";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { api } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,7 +39,10 @@ export function WindowMenu() {
           <AppWindow className="mr-2 h-3.5 w-3.5" />
           {t("menu.window.newWindow")}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={resetLayout} className="text-xs">
+        <DropdownMenuItem
+          onSelect={() => useSessionPanelLayout.getState().resetLayout()}
+          className="text-xs"
+        >
           <LayoutGrid className="mr-2 h-3.5 w-3.5" />
           {t("menu.window.resetLayout")}
         </DropdownMenuItem>
