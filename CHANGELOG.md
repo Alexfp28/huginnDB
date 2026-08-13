@@ -22,6 +22,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   900 px, so one wide column can't push the rest of the row off-screen;
   dragging by hand still goes as wide as you like.
 
+- **The grid's toolbar is responsive.** On a narrow pane it used to split into
+  two rows, with the filter cluster on one and the action cluster on the other.
+  Now the actions leave the bar instead: the toolbar measures its own width
+  (it lives in a dock panel, so a media query would be measuring the wrong
+  thing) and collapses in two steps — first the labelled data actions (insert,
+  import, export, bulk update) move into a single `⋯` overflow menu, then, on a
+  genuinely narrow pane, so does everything else, leaving the search box and
+  the `⋯`. Active filter chips fold into one "2 filters" chip whose dropdown
+  still removes them one at a time, and the row count / query time move into
+  the menu rather than disappearing — except on a grid with nothing else to
+  collapse (an ad-hoc query result), where they stay in the bar because there
+  would be no menu to read them in.
+
 ### Fixed
 
 - A single click on a column's resize handle no longer rewrites that column's

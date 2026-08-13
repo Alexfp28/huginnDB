@@ -21,10 +21,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   rejilla incorpora además un botón para la versión "ajustar todas", para que
   no dependa de un gesto que hay que conocer — tanto en pestañas de tabla como
   en resultados de consulta. El ajuste se mide sobre el texto tal y como se
-  *dibuja* (se aplican el modo de visualización de BIT, el
-  marcador de NULL y el tope de "truncar texto largo en") y se limita a
-  900 px, para que una columna ancha no eche el resto de la fila fuera de la
+  *dibuja* (se aplican el modo de visualización de BIT, el marcador de NULL y
+  el tope de "truncar texto largo en") y se limita a 900 px, para que una columna ancha no eche el resto de la fila fuera de la
   pantalla; arrastrando a mano se sigue pudiendo ir tan ancho como se quiera.
+
+- **La barra de herramientas de la rejilla es responsive.** En un panel
+  estrecho se partía en dos filas, con el clúster de filtros en una y el de
+  acciones en la otra. Ahora las acciones se salen de la barra: mide su propio
+  ancho (vive en un panel del dock, así que una media query mediría lo que no
+  toca) y colapsa en dos pasos — primero las acciones de datos con etiqueta
+  (insertar, importar, exportar, actualizar en masa) pasan a un único menú
+  `⋯`, y con el panel ya realmente estrecho lo hace todo lo demás, quedando
+  solo el buscador y el `⋯`. Los chips de filtros activos se pliegan en un
+  único chip "2 filtros" cuyo desplegable sigue quitándolos uno a uno, y el
+  recuento de filas y el tiempo de consulta se van al menú en vez de
+  desaparecer — salvo en una rejilla sin nada más que colapsar (un resultado de
+  consulta ad-hoc), donde se quedan en la barra porque no habría menú donde
+  leerlos.
 
 ### Corregido
 

@@ -489,6 +489,8 @@
     "expandEditor": "Abrir en el editor completo",
     "resizeHandleHint": "Arrastra para redimensionar · doble clic para ajustar al contenido (Ctrl: todas las columnas)",
     "fitColumns": "Ajustar todas las columnas al contenido",
+    "moreActions": "Más acciones",
+    "activeFilterCount": "{{count}} filtros",
     "openInSideEditor": "Abrir en el editor lateral",
     "zoomIn": "Filas más grandes (Ctrl + +)",
     "zoomOut": "Filas más pequeñas (Ctrl + −)",
