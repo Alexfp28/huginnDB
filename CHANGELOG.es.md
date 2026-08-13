@@ -39,6 +39,29 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   consulta ad-hoc), donde se quedan en la barra porque no habría menú donde
   leerlos.
 
+### Cambiado
+
+- **Una pestaña del espacio de trabajo ya muestra el nombre de la tabla en
+  lugar de quedarse sin sitio antes de llegar a él.** Con pestañas de varias
+  conexiones abiertas, cada una imprimía `conexión · base · base.tabla` — la
+  base de datos dos veces — y lo único que distingue una pestaña de otra, la
+  tabla, era justo lo que se cortaba. La base aparece una sola vez, y la
+  etiqueta se recorta por prioridad: el contexto de conexión (que se repite en
+  todas las pestañas de esa conexión, y que el logo del driver ya señala) cede
+  su ancho primero y el nombre conserva el suyo, separados por una línea fina
+  en vez de otro `·` dentro de un nombre lleno de ellos. Al pasar el ratón por
+  encima aparece la identidad completa — `esquema.tabla` cualificado y la
+  conexión — con menos retardo que en un botón de la interfaz: en una pestaña
+  recortada el tooltip es la única forma de leer el nombre entero.
+
+- **El menú de pestañas desbordadas («∨ N») es una lista, no un estante de
+  pestañas recortadas.** Reutiliza el propio componente de cada pestaña
+  oculta, así que todas llegaban con los márgenes de chip flotante y el ancho
+  de recorte de la tira: filas en islas separadas, nombres cortados dentro de
+  un desplegable con sitio de sobra y dos barras de scroll, una de ellas
+  horizontal. Ahora las filas van a ras y a todo el ancho, con el nombre en una
+  línea y su conexión debajo, y el desplegable solo se desplaza en vertical.
+
 ### Corregido
 
 - Un clic simple en el tirador de redimensionado de una columna ya no

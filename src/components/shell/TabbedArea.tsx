@@ -59,6 +59,7 @@ import { getBinding, formatComboForDisplay } from "@/lib/keybindings";
 import {
   resolveConnectionLabel,
   resolveConnectionDriver,
+  tabLeafTitle,
 } from "@/lib/connectionLabel";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { TableDataTab } from "@/components/grid/TableDataTab";
@@ -230,6 +231,8 @@ function tabsRelevantEqual(a: AppTab[], b: AppTab[]): boolean {
       x.connectionId !== y.connectionId ||
       x.kind !== y.kind ||
       x.title !== y.title ||
+      x.schema !== y.schema ||
+      x.table !== y.table ||
       x.color !== y.color ||
       x.pinned !== y.pinned
     ) {
@@ -242,6 +245,15 @@ function tabsRelevantEqual(a: AppTab[], b: AppTab[]): boolean {
 function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const { t } = useTranslation();
   const id = props.api.id;
+  // dockview renders this same component in two places: the tab strip
+  // (`header`) and the "∨ N" overflow popover (`headerOverflow`). They are
+  // different objects — a chip competing for horizontal space vs. a row in a
+  // vertical list with room to spare — so the strip's truncation budget and
+  // hover affordances would be exactly wrong in the popover. Branch on it
+  // rather than shipping one layout that suits neither (see the overflow
+  // rules in `index.css`, which turn each popover `.dv-tab` into a flush,
+  // full-width row).
+  const inOverflow = props.tabLocation === "headerOverflow";
   const tabs = useStoreWithEqualityFn(
     useTabs,
     (s) => s.tabs,
@@ -255,17 +267,26 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   const isActive = useTabs((s) => s.activeId === id);
   const profiles = useConnections((s) => s.profiles);
 
-  const { label, tooltip, driver } = useMemo(() => {
+  const { label, leaf, context, connName, qualified, driver } = useMemo(() => {
     const tab = tabs.find((t) => t.id === id);
-    if (!tab) return { label: id, tooltip: id, driver: undefined };
+    if (!tab) {
+      return {
+        label: id,
+        leaf: id,
+        context: null,
+        connName: "",
+        qualified: id,
+        driver: undefined,
+      };
+    }
 
-    // Prefix the connection/database context whenever it's needed to tell tabs
+    // Show the connection/database context whenever it's needed to tell tabs
     // apart: either more than one connection is in play, or another open tab
     // carries the same bare title (the same table opened on two connections /
     // databases — issue #22, where both rendered as an identical bare name). A
     // lone tab, or unique titles on a single connection, stay bare. The driver
     // badge (rendered unconditionally, see below) already gives every tab a
-    // permanent visual anchor to its connection, so this text prefix is only
+    // permanent visual anchor to its connection, so this context is only
     // needed for the disambiguation cases, not as the primary "which
     // connection" cue anymore.
     const distinctConnections = new Set(tabs.map((x) => x.connectionId)).size;
@@ -273,15 +294,36 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       tabs.filter((x) => x.kind === tab.kind && x.title === tab.title).length > 1;
     const showConn = distinctConnections > 1 || titleCollision;
     const connName = resolveConnectionLabel(profiles, tab.connectionId);
+    // `tabLeafTitle` drops the `database.` prefix a table tab's title carries,
+    // because `connName` right beside it already ends in that same database —
+    // printing it twice is what pushed the table name itself out of view.
+    const leafTitle = tabLeafTitle(profiles, tab);
+    const qualified =
+      tab.kind === "table" && tab.table
+        ? `${tab.schema ? `${tab.schema}.` : ""}${tab.table}`
+        : tab.title;
     return {
-      label: showConn ? `${connName} · ${tab.title}` : tab.title,
-      tooltip:
-        tab.kind === "table"
-          ? `${connName} / ${tab.schema ?? ""}${tab.schema ? "." : ""}${tab.table ?? ""}`
-          : `${connName} / ${tab.title}`,
+      // Flat string for the surfaces that need one (the detached-window
+      // title). The rendered tab composes the two parts separately so the
+      // context can truncate before the name does.
+      label: showConn ? `${connName} · ${leafTitle}` : leafTitle,
+      leaf: leafTitle,
+      context: showConn ? connName : null,
+      connName,
+      qualified,
       driver: resolveConnectionDriver(profiles, tab.connectionId),
     };
   }, [tabs, profiles, id]);
+
+  // Full identity on hover — the tab strip truncates by design, so this is
+  // where the whole name lives. Two lines, weighted: what the tab *is*, then
+  // where it comes from.
+  const tooltip = (
+    <span className="flex max-w-[22rem] flex-col gap-0.5">
+      <span className="break-all font-medium">{qualified}</span>
+      <span className="break-all text-muted-foreground">{connName}</span>
+    </span>
+  );
 
   const thisTab = tabs.find((tb) => tb.id === id);
   // User-assigned tab colour (issue #24), rendered as an inset accent whose
@@ -332,21 +374,92 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   // keeps it from nudging any vertical scroll.
   const tabRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!isActive) return;
+    // Only the strip scrolls; in the overflow popover this would yank the
+    // list to the active row the moment it opens.
+    if (!isActive || inOverflow) return;
     const raf = requestAnimationFrame(() => {
       tabRef.current?.scrollIntoView({ inline: "nearest", block: "nearest" });
     });
     return () => cancelAnimationFrame(raf);
-  }, [isActive]);
+  }, [isActive, inOverflow]);
+
+  const closeButton = (
+    <button
+      className={cn(
+        "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive",
+        isActive ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100",
+      )}
+      title={t("tabs.closeTab")}
+      onClick={(e) => {
+        e.stopPropagation();
+        requestClose();
+      }}
+      // Same drag-suppression as the menu trigger.
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <X className="h-3.5 w-3.5" />
+    </button>
+  );
+
+  // Overflow popover row: a list item, not a chip. There is room here, so the
+  // context gets its own line under the name instead of competing with it for
+  // width, and the strip-only affordances (tooltip, context menu — both would
+  // portal *outside* the popover, whose own pointerdown-outside handler then
+  // closes it under them) are left off. Closing stays available inline.
+  if (inOverflow) {
+    return (
+      <div
+        className={cn(
+          "group/tab flex w-full items-center gap-2.5 py-1.5 pl-2.5 pr-1.5 text-xs",
+          isActive ? "text-foreground" : "text-foreground/90",
+        )}
+        onMouseDown={(e) => {
+          if (e.button === 1) e.preventDefault();
+        }}
+        onAuxClick={(e) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            requestClose();
+          }
+        }}
+      >
+        {driver && <DriverBadge driver={driver} />}
+        <span className="flex min-w-0 flex-1 flex-col leading-snug">
+          <span className="flex min-w-0 items-center gap-1.5">
+            {isPinned && (
+              <Pin className="h-3 w-3 shrink-0 -rotate-45 text-brand" />
+            )}
+            {tabColor && (
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: tabColor }}
+              />
+            )}
+            <span className={cn("truncate", isActive && "font-medium")}>
+              {leaf}
+            </span>
+          </span>
+          <span className="truncate text-2xs text-muted-foreground/70">
+            {connName}
+          </span>
+        </span>
+        {closeButton}
+      </div>
+    );
+  }
 
   return (
     <ContextMenu>
-      <SimpleTooltip label={tooltip} side="bottom">
+      <SimpleTooltip label={tooltip} side="bottom" delayDuration={300}>
       <ContextMenuTrigger asChild>
     <div
       ref={tabRef}
       className={cn(
-        "group/tab flex h-full items-center gap-2 px-3 text-xs",
+        // `max-w` is what makes the priority truncation below actually fire:
+        // a `.dv-tab` is a non-shrinking flex item in a scrolling strip, so
+        // without an explicit ceiling the tab just grows and nothing inside
+        // it ever has to give way.
+        "group/tab flex h-full min-w-0 max-w-[19rem] items-center gap-2 px-3 text-xs",
         // The active tab already carries a bg-background surface + a 2px brand
         // top cap from index.css (`.inner-dock .dv-active-tab`); here we add the
         // matching weight so the label reads as the active one too.
@@ -376,29 +489,37 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps) {
       {isPinned && (
         <Pin className="h-3 w-3 shrink-0 -rotate-45 text-brand" />
       )}
-      <span className="max-w-[220px] truncate">{label}</span>
+      {/*
+       * Two-part label with an explicit space priority: the connection
+       * context is the disposable half (it repeats across every tab of that
+       * connection, and the driver badge already anchors it), the name is
+       * the half that tells two tabs apart, so the context is weighted to
+       * shrink several times faster and both carry a floor so neither
+       * collapses to a bare ellipsis. A hairline divider — not another "·" —
+       * separates them: `schema.table` is full of dots already, and one more
+       * read as part of the name.
+       */}
+      <span className="flex min-w-0 items-center gap-1.5">
+        {context && (
+          <>
+            <span className="min-w-[2.5rem] max-w-[8.5rem] shrink-[6] truncate text-2xs text-muted-foreground/70">
+              {context}
+            </span>
+            <span
+              aria-hidden
+              className="h-3 w-px shrink-0 bg-border"
+            />
+          </>
+        )}
+        <span className="min-w-[4rem] shrink truncate">{leaf}</span>
+      </span>
       {/*
        * No explicit action menu here anymore — every action below (split,
        * float, colour, close variants) lives in the right-click context menu
        * on this same tab (see `ContextMenuContent` below). Drag-to-split
        * still works natively.
        */}
-      <SimpleTooltip label={t("tabs.closeTab")} side="bottom">
-        <button
-          className={cn(
-            "rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive",
-            isActive ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100",
-          )}
-          onClick={(e) => {
-            e.stopPropagation();
-            requestClose();
-          }}
-          // Same drag-suppression as the menu trigger.
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </SimpleTooltip>
+      {closeButton}
     </div>
       </ContextMenuTrigger>
       </SimpleTooltip>
