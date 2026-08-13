@@ -76,10 +76,16 @@ import {
 import { BUILT_IN_THEMES } from "@/lib/themes";
 import { DOCS } from "@/lib/appInfo/docs";
 import {
+  parentConnectionId,
   resolveConnectionLabel,
   tabLeafTitle,
   tableTabTitle,
 } from "@/lib/connectionLabel";
+import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
+import {
+  unwarmedDatabases,
+  warmDatabases,
+} from "@/lib/commandPalette/warmSchema";
 import {
   PANELS,
   floatActivePanel,
@@ -137,6 +143,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   const activeTabId = useTabs((s) => s.activeId);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
+  const databaseVisibility = useUi((s) => s.databaseVisibility);
   const environments = useEnvironments((s) => s.environments);
   const activeEnvId = useEnvironments((s) => s.activeId);
   const switchEnvironment = useEnvironments((s) => s.switchTo);
@@ -448,7 +455,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         current: tab.id === activeTabId,
         run: () => {
           useTabs.getState().setActive(tab.id);
-          setSelected(tab.connectionId);
+          setSelected(parentConnectionId(tab.connectionId));
         },
         alt: {
           hintKey: "commandPalette.hintCloseTab",
@@ -522,30 +529,77 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       }
     }
 
-    // ── Databases of every live connection ───────────────────────────────────
+    // ── Databases of every live multi-database connection ────────────────────
+    //
+    // Only server-wide connections (no `database` on the profile) browse per
+    // database, matching the schema tree; a connection scoped to one database
+    // has nothing to switch between. The user's "databases to show" subset is
+    // honoured here too, so a database hidden in the tree can't reappear in the
+    // palette (gotcha #27 — resolved through the shared two-layer helper).
     for (const p of profiles) {
       if (!active.has(p.id)) continue;
-      const dbs = byConnection[p.id]?.databases ?? [];
-      // A single-database profile browses its own database directly; the
-      // per-database views only exist for server-wide connections.
-      if (dbs.length < 2) continue;
-      for (const db of dbs) {
+      if (p.driver === "sqlite" || p.database !== "") continue;
+      const visible = resolveVisibleDatabases(
+        databaseVisibility[p.id],
+        p.visible_databases,
+      );
+      const names = (byConnection[p.id]?.databases ?? [])
+        .map((db) => db.name)
+        .filter((name) => !visible || visible.includes(name));
+      if (names.length === 0) continue;
+
+      for (const name of names) {
         list.push({
-          id: `db:${p.id}:${db.name}`,
+          id: `db:${p.id}:${name}`,
           group: "databases",
-          label: db.name,
+          label: name,
           detail: p.name,
           keywords: `database schema base de datos esquema ${p.name}`,
           icon: <Database className="h-4 w-4" />,
           run: () => {
             void (async () => {
               try {
-                const childId = await openTrackedDatabaseView(p.id, db.name);
+                const childId = await openTrackedDatabaseView(p.id, name);
                 await refreshSchema(childId);
+                // The workspace follows the *profile*, never the synthetic
+                // child id — see `parentConnectionId`.
                 setSelected(p.id);
               } catch (e) {
                 toast.error(String(e));
               }
+            })();
+          },
+        });
+      }
+
+      // A database's tables only reach the store once its view is opened, so a
+      // freshly connected server has databases to offer but no tables to search.
+      // This is the opt-in way to fill that in — deliberately an action the user
+      // asks for, since every view is another connection pool (see
+      // `warmSchema.ts`). Keeps the palette open so the tables it just indexed
+      // are one keystroke away.
+      const cold = unwarmedDatabases(p.id, names, byConnection);
+      if (cold.length > 0) {
+        list.push({
+          id: `db:index-all:${p.id}`,
+          group: "databases",
+          label: t("commandPalette.indexAllDatabases", { name: p.name }),
+          detail: t("commandPalette.indexAllDatabasesDetail", {
+            count: cold.length,
+          }),
+          keywords: "index load all databases tables buscar cargar todas tablas",
+          icon: <Layers className="h-4 w-4" />,
+          keepOpen: true,
+          run: () => {
+            void (async () => {
+              const res = await warmDatabases(p.id, cold);
+              if (res.limitError) {
+                toast.error(String(res.limitError));
+                return;
+              }
+              toast.success(
+                t("commandPalette.indexedDatabases", { count: res.loaded }),
+              );
             })();
           },
         });
@@ -578,7 +632,9 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
               schema: tbl.schema,
               table: tbl.name,
             });
-            setSelected(connectionId);
+            // The tab keeps the per-database child id; the *selection* must be
+            // the profile, or App's active-set sync clears it a render later.
+            setSelected(parentConnectionId(connectionId));
           },
         });
       }
@@ -587,7 +643,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     // ── Saved queries + history ──────────────────────────────────────────────
     const openSql = (sql: string, title: string, connectionId: string) => {
       useTabs.getState().open({ kind: "query", title, connectionId, query: sql });
-      setSelected(connectionId);
+      setSelected(parentConnectionId(connectionId));
     };
     if (queryTarget) {
       for (const q of savedQueries) {
@@ -707,6 +763,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     activeTabId,
     selected,
     setSelected,
+    databaseVisibility,
     environments,
     activeEnvId,
     switchEnvironment,

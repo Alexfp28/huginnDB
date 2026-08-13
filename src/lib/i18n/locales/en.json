@@ -775,7 +775,10 @@
     "settings": {
       "on": "On",
       "off": "Off"
-    }
+    },
+    "indexAllDatabases": "Index all databases of {{name}}",
+    "indexAllDatabasesDetail": "{{count}} database(s) not searched yet — loads their tables",
+    "indexedDatabases": "Indexed {{count}} database(s)"
   },
   "settings": {
     "title": "Preferences",

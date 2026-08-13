@@ -48,6 +48,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **`Ctrl/Cmd+Shift+P` opens the palette in actions-only mode** (VS Code
   parity). Rebindable like the rest, under Settings → Shortcuts.
 
+- **The palette can index a multi-database server's tables on demand.** A
+  server-wide connection starts with only its *database* list loaded — each
+  database's tables arrive under its own `<parent>::db::<name>` slice, and only
+  once something opens that view — so a freshly connected server had databases
+  to offer and no tables to search. `@` mode now also lists an "Index all
+  databases of X" entry while any of them is still cold; running it opens those
+  views three at a time and keeps the palette open so the tables land under the
+  cursor. It is a deliberate action rather than an automatic fan-out on every
+  keystroke because each view is another connection pool — same reasoning, and
+  the same concurrency cap and connection-limit circuit breaker, as the schema
+  explorer's cross-database search (`src/lib/commandPalette/warmSchema.ts`).
+  The per-connection "databases to show" subset is honoured, so a database
+  hidden in the tree stays hidden in the palette.
+
 - **Import/export a theme from Settings → Appearance.** An export icon next
   to the theme editor's mode picker writes the active theme (built-in or
   custom) to a JSON file via the native save dialog; an import icon in the
@@ -148,6 +162,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   which is still the only way to search every open tab by name.
 
 ### Fixed
+
+- **Jumping to a tab or table of a per-database view left the workspace
+  pointing somewhere else.** A tab of a multi-database server carries the
+  synthetic `<parent>::db::<database>` connection id, but
+  `useConnections.active` only ever holds top-level profile ids (`markConnected`
+  runs in `connect()`; a database view is opened by `open_database_view`), and
+  `App.tsx` clears `selectedConnectionId` whenever it isn't in that set. So
+  selecting a child id was undone a render later and replaced by whichever pool
+  came first — nondeterministically. Both the tab switcher (pre-existing) and the
+  command palette's new table/tab entries now resolve the owning profile through
+  `parentConnectionId`; the tab itself keeps the child id, which is what scopes
+  its queries.
 
 - A single click on a column's resize handle no longer rewrites that column's
   width in `prefs.json` with the value it already had.

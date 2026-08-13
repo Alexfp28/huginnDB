@@ -97,6 +97,7 @@ import {
   ImportSqlDialog,
   type ImportScope,
 } from "@/components/schema/dialogs/ImportSqlDialog";
+import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
 import { isTooManyConnections } from "@/lib/db/driver";
 import type { Driver, TableInfo } from "@/types";
 import {
@@ -212,7 +213,10 @@ export function useVisibleDatabases(connectionId: string): string[] | null {
   const fromProfile = useConnections(
     (s) => s.profiles.find((p) => p.id === connectionId)?.visible_databases ?? null,
   );
-  return override !== undefined ? override : fromProfile;
+  // The resolution itself lives in `lib/connection/visibleDatabases.ts` so the
+  // command palette, which needs the answer for many connections at once, can
+  // share it instead of re-deriving the override/profile precedence.
+  return resolveVisibleDatabases(override, fromProfile);
 }
 
 export function SchemaExplorer({

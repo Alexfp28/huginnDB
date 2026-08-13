@@ -53,6 +53,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **`Ctrl/Cmd+Shift+P` abre la paleta en modo solo acciones** (paridad con
   VS Code). Reasignable como el resto, en Ajustes → Atajos.
 
+- **La paleta puede indexar bajo demanda las tablas de un servidor
+  multi-base.** Una conexión a todo el servidor arranca con solo la lista de
+  *bases de datos* cargada — las tablas de cada base llegan en su propio
+  fragmento `<padre>::db::<nombre>`, y solo cuando algo abre esa vista — así que
+  un servidor recién conectado ofrecía bases de datos y ninguna tabla que
+  buscar. El modo `@` ahora incluye también una entrada «Indexar todas las bases
+  de datos de X» mientras alguna siga sin indexar; al ejecutarla abre esas
+  vistas de tres en tres y deja la paleta abierta para que las tablas aparezcan
+  bajo el cursor. Es una acción deliberada y no un abanico automático en cada
+  pulsación porque cada vista es otro pool de conexiones — el mismo
+  razonamiento, y el mismo límite de concurrencia y cortacircuitos por límite de
+  conexiones, que la búsqueda entre bases del explorador de esquema
+  (`src/lib/commandPalette/warmSchema.ts`). Se respeta el subconjunto de «bases
+  de datos a mostrar» de cada conexión, así que una base oculta en el árbol
+  sigue oculta en la paleta.
+
 - **Importar/exportar un tema desde Ajustes → Apariencia.** Un icono de
   exportar junto al selector de modo del editor de temas escribe el tema
   activo (integrado o personalizado) a un archivo JSON mediante el diálogo
@@ -160,6 +176,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   abiertas.
 
 ### Corregido
+
+- **Saltar a una pestaña o tabla de una vista por base de datos dejaba el
+  espacio de trabajo apuntando a otro sitio.** Una pestaña de un servidor
+  multi-base lleva el id sintético `<padre>::db::<base>`, pero
+  `useConnections.active` solo contiene ids de perfil de primer nivel
+  (`markConnected` se ejecuta en `connect()`; una vista de base la abre
+  `open_database_view`), y `App.tsx` limpia `selectedConnectionId` en cuanto no
+  está en ese conjunto. Así que seleccionar un id hijo se deshacía un render
+  después y se reemplazaba por el pool que llegara primero, de forma no
+  determinista. Tanto el conmutador de pestañas (que ya lo tenía) como las
+  nuevas entradas de tablas/pestañas de la paleta resuelven ahora el perfil
+  propietario con `parentConnectionId`; la pestaña conserva el id hijo, que es
+  lo que acota sus consultas.
 
 - Un clic simple en el tirador de redimensionado de una columna ya no
   reescribe en `prefs.json` el ancho que esa columna ya tenía.

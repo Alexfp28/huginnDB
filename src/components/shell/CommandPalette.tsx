@@ -205,7 +205,7 @@ export function CommandPalette() {
     if (!cmd) return;
     remember(cmd.id);
     cmd.run();
-    setOpen(false);
+    if (!cmd.keepOpen) setOpen(false);
   }
 
   function runAltAt(index: number) {

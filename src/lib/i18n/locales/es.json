@@ -775,7 +775,10 @@
     "settings": {
       "on": "Sí",
       "off": "No"
-    }
+    },
+    "indexAllDatabases": "Indexar todas las bases de datos de {{name}}",
+    "indexAllDatabasesDetail": "{{count}} base(s) de datos sin indexar — carga sus tablas",
+    "indexedDatabases": "Indexadas {{count}} base(s) de datos"
   },
   "settings": {
     "title": "Preferencias",

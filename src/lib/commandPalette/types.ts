@@ -89,6 +89,12 @@ export interface PaletteCommand {
   /** Marks the entry as the thing already in effect (active tab, live theme). */
   current?: boolean;
   run: () => void;
+  /**
+   * Keep the palette open after `run`. For entries whose whole point is to
+   * change what the palette itself can find (loading a server's table lists),
+   * closing on Enter would hide the result of the action.
+   */
+  keepOpen?: boolean;
   alt?: PaletteAltAction;
 }
 
