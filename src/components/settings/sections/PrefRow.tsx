@@ -59,8 +59,12 @@ export function PrefRow({ label, description, htmlFor, prefId, children }: Props
       data-pref-id={prefId}
       className={cn(
         "flex items-start justify-between gap-4 border-b border-border/60 py-3 last:border-b-0",
+        // One blue pulse on arrival (`animate-brand-flash`, ~0.5s) settling
+        // into the persistent ring — the "small blue spark when an action
+        // completes" microdetail of the brand language, on the one navigation
+        // that genuinely completes somewhere the user can't see yet.
         flashing &&
-          "-mx-2 rounded-md bg-brand/10 px-2 ring-1 ring-brand/60 transition-colors",
+          "-mx-2 animate-brand-flash rounded-md bg-brand/10 px-2 ring-1 ring-brand/60 transition-colors",
       )}
     >
       <div className="flex-1">

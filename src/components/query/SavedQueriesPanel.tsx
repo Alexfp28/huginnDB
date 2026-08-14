@@ -6,7 +6,8 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Bookmark, Pencil, Play, Search, Trash2 } from "lucide-react";
+import { Bookmark, Pencil, Play, Search, SearchX, Trash2 } from "lucide-react";
+import { EmptyState } from "@/components/common/EmptyState";
 import { useSavedQueries, type SavedQuery } from "@/stores/query/savedQueries";
 import { useTabs } from "@/stores/session/tabs";
 import { Button } from "@/components/ui/button";
@@ -75,11 +76,13 @@ export function SavedQueriesPanel({
       </div>
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 && (
-          <div className="px-3 py-4 text-xs text-muted-foreground">
-            {items.length === 0
-              ? t("saved.emptyNone")
-              : t("saved.emptyNoMatch")}
-          </div>
+          <EmptyState
+            size="sm"
+            icon={items.length === 0 ? Bookmark : SearchX}
+            title={
+              items.length === 0 ? t("saved.emptyNone") : t("saved.emptyNoMatch")
+            }
+          />
         )}
         {filtered.map((q) => (
           <div

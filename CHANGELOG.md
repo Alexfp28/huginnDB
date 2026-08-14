@@ -54,6 +54,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   - The cell editor's header is now a rounded, slightly elevated rail with an
     icon for the detected content type, and fullscreen is a small sticker chip
     that finally shows its own shortcut (F11) instead of an anonymous icon.
+  - **Empty screens are a family now**, not four unrelated grey lines: one
+    shared frame (`EmptyState`) with a halftone wash, an outlined medallion
+    holding the glyph and room for a hint, adopted by the connections tree, the
+    console, saved queries and an empty result set. The medallion is the slot
+    the sticker illustration drops into later.
+  - Microdetails: resize handles are rounded and turn blue while grabbed;
+    connection state dots carry a soft halo of their own colour (the lit dots on
+    the logo's cylinder); jumping to a preference from the command palette
+    pulses it blue once before settling into its ring; the two state banners
+    that used a lighter border than the rest now match.
 
 ### Fixed
 

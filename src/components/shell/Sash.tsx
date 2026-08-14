@@ -78,9 +78,12 @@ export function Sash({ orientation, onResize, onDraggingChange, className }: Sas
         className,
       )}
     >
+      {/* Rounded ends and the brand accent on hover/drag: a separator the user
+          can grab is an affordance, and the brand language wants those blue and
+          soft-cornered rather than a square grey bar. */}
       <div
         className={cn(
-          "h-full w-full bg-transparent transition-colors group-hover:bg-primary/30 group-active:bg-primary/50",
+          "h-full w-full rounded-full bg-transparent transition-colors duration-150 group-hover:bg-brand/40 group-active:bg-brand/60",
         )}
       />
     </div>

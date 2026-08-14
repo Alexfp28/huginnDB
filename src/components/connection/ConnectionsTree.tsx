@@ -28,6 +28,7 @@ import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
+  DatabaseZap,
   Folder,
   FolderOpen,
   ListFilter,
@@ -48,6 +49,7 @@ import { connectAndWarm, disconnectAndClean } from "@/lib/connection/connectFlow
 import { persistLaunchState } from "@/stores/session/persistedTabs";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { DriverBadge } from "@/components/common/DriverBadge";
+import { EmptyState } from "@/components/common/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -341,11 +343,7 @@ export function ConnectionsTree() {
   }
 
   if (profiles.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
-        {t("connectionsTree.empty")}
-      </div>
-    );
+    return <EmptyState icon={DatabaseZap} title={t("connectionsTree.empty")} />;
   }
 
   return (

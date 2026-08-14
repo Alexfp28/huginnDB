@@ -50,6 +50,7 @@ import {
   Eraser,
   Filter,
   FilterX,
+  Inbox,
   KeyRound,
   Loader2,
   Maximize2,
@@ -70,6 +71,7 @@ import {
 } from "@/components/ui/dropdown";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/common/EmptyState";
 import {
   defaultColumnWidth,
   formatBitValue,
@@ -2895,11 +2897,13 @@ export function DataGrid({
             })}
             {visibleRows.length === 0 && !draftRow && (
               <tr>
-                <td
-                  colSpan={result.columns.length + 2}
-                  className="px-4 py-8 text-center text-xs text-muted-foreground"
-                >
-                  {t("dataGrid.noRows")}
+                <td colSpan={result.columns.length + 2}>
+                  <EmptyState
+                    size="sm"
+                    icon={Inbox}
+                    title={t("dataGrid.noRows")}
+                    className="h-auto"
+                  />
                 </td>
               </tr>
             )}
