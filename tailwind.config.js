@@ -37,6 +37,10 @@ export default {
         brand: {
           DEFAULT: "hsl(var(--brand))",
           foreground: "hsl(var(--brand-foreground))",
+          // The brand surface under the pointer. Enables `hover:bg-brand-hover`
+          // instead of `hover:bg-brand/90` — a transparency fades the accent
+          // into the surface on dark themes, which is backwards for a hover.
+          hover: "hsl(var(--brand-hover))",
         },
         success: {
           DEFAULT: "hsl(var(--success))",
@@ -103,6 +107,37 @@ export default {
         "elevation-2": "0 2px 6px hsl(var(--foreground) / 0.08), 0 1px 2px hsl(var(--foreground) / 0.06)",
         "elevation-3": "0 8px 24px hsl(var(--foreground) / 0.12), 0 2px 6px hsl(var(--foreground) / 0.08)",
         "elevation-4": "0 16px 48px hsl(var(--foreground) / 0.18), 0 4px 12px hsl(var(--foreground) / 0.10)",
+        // Brand affordance glow — the hover/active state of anything that
+        // spends the accent blue (primary buttons, the active connection card).
+        // Deliberately short-range: the brief rules out neon halos.
+        brand: "0 2px 12px hsl(var(--brand) / 0.35)",
+        "brand-ring": "0 0 0 1px hsl(var(--brand) / 0.35), 0 2px 12px hsl(var(--brand) / 0.28)",
+      },
+      transitionDuration: {
+        // The brand motion band is 150–220ms; Tailwind ships 150/200/300, so
+        // the two ends that were missing are added rather than letting call
+        // sites round to 300 (which reads sluggish on a desktop tool).
+        180: "180ms",
+        220: "220ms",
+      },
+      keyframes: {
+        // "Pequeños destellos azules al completar acciones" — one short brand
+        // pulse on the element that just succeeded. Not a loop: it fires once
+        // and leaves nothing behind.
+        "brand-flash": {
+          "0%": { boxShadow: "0 0 0 0 hsl(var(--brand) / 0.55)" },
+          "70%": { boxShadow: "0 0 0 6px hsl(var(--brand) / 0)" },
+          "100%": { boxShadow: "0 0 0 0 hsl(var(--brand) / 0)" },
+        },
+        // The shared open/appear motion: fade + 98→100% scale, per the brief.
+        "pop-in": {
+          from: { opacity: "0", transform: "scale(0.98)" },
+          to: { opacity: "1", transform: "scale(1)" },
+        },
+      },
+      animation: {
+        "brand-flash": "brand-flash 520ms ease-out 1",
+        "pop-in": "pop-in 180ms ease-out",
       },
     },
   },

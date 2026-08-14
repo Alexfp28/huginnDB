@@ -3,26 +3,37 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
+// Shape and motion follow the brand visual language: 12px corners on the
+// full-size button (`rounded-xl`, deliberately outside the `--radius` scale —
+// see index.css), a 2px edge on the *filled* variants so they carry the logo's
+// outlined-sticker weight, and a hover that lifts 1px into a short brand glow.
+// The transition lists properties explicitly rather than `transition-all`:
+// `all` would also animate width/height, which makes a button holding a
+// spinner (Run, Connect) visibly stretch when its label swaps.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-180 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default: "bg-brand text-brand-foreground hover:bg-brand/90",
+        default:
+          "border-2 border-brand bg-brand text-brand-foreground shadow-elevation-1 hover:border-brand-hover hover:bg-brand-hover hover:-translate-y-px hover:shadow-brand active:translate-y-0 active:shadow-none",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "border-2 border-destructive bg-destructive text-destructive-foreground shadow-elevation-1 hover:bg-destructive/90 hover:-translate-y-px hover:shadow-[0_2px_12px_hsl(var(--destructive)/0.35)] active:translate-y-0 active:shadow-none",
+        // The secondary of the brief: transparent fill, grey edge, grey hover.
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+          "border border-input bg-transparent hover:bg-accent hover:text-accent-foreground",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "border border-border bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground",
         ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-brand underline-offset-4 hover:underline",
+        link: "text-brand underline-offset-4 hover:text-brand-hover hover:underline",
       },
       size: {
         default: "h-9 px-4 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-10 rounded-md px-6",
-        icon: "h-8 w-8",
+        // Dense sizes step down to the 10px `lg` radius: a 12px corner on a
+        // 32px square control reads as a blob rather than a button.
+        sm: "h-8 rounded-lg px-3 text-xs",
+        lg: "h-10 px-6",
+        icon: "h-8 w-8 rounded-lg",
       },
     },
     defaultVariants: {

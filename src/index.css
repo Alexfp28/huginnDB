@@ -29,8 +29,14 @@ input[type="password"]::-ms-clear {
     /* Action/state accent. Per-theme via the theme store (themes.ts); this
        default only applies to custom themes persisted before `brand` existed,
        which inherit it rather than breaking. #0f83fd. */
-    --brand: 211 98% 52%;
+    --brand: 217 91% 53%;
     --brand-foreground: 0 0% 100%;
+    /* The brand surface under the pointer — a *colour*, not `brand/90`. Light
+       themes deepen it (#1d4ed8), dark themes lighten it (see `.dark`), which
+       is the opposite of what one shared transparency can do. Per-theme via
+       themes.ts; this default only applies to custom themes persisted before
+       the token existed. */
+    --brand-hover: 224 76% 48%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
     /* Semantic state accents. Distinct from `brand` (the app's one "do this /
@@ -56,41 +62,47 @@ input[type="password"]::-ms-clear {
     --pk: 35 92% 33%;
     --fk: 200 98% 39%;
     --numeric: 35 92% 33%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 240 5% 65%;
-    --radius: 0.5rem;
+    --border: 214 60% 90%;
+    --input: 214 60% 90%;
+    --ring: 217 91% 53%;
+    /* 10px. The brand language is built on rounded corners, but this is a
+       dense desktop tool: `lg` (10px) covers panels/dialogs/buttons-at-rest,
+       `md` (8px) inputs and chips, `sm` (6px) micro-tags. Controls that the
+       brief pins at 12px (primary buttons) ask for `rounded-xl` explicitly —
+       Tailwind's own 0.75rem, deliberately outside this scale. */
+    --radius: 0.625rem;
   }
 
   .dark {
-    --background: 240 10% 6%;
-    --foreground: 0 0% 96%;
-    --card: 240 10% 8%;
-    --card-foreground: 0 0% 96%;
-    --popover: 240 10% 8%;
-    --popover-foreground: 0 0% 96%;
-    --primary: 0 0% 96%;
-    --primary-foreground: 240 6% 10%;
-    --secondary: 240 6% 12%;
-    --secondary-foreground: 0 0% 96%;
-    --muted: 240 6% 14%;
-    --muted-foreground: 240 5% 60%;
-    --accent: 240 6% 16%;
-    --accent-foreground: 0 0% 96%;
-    --brand: 211 98% 52%;
+    --background: 229 84% 5%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 98%;
+    --popover: 221 39% 11%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222 47% 8%;
+    --secondary: 221 39% 11%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 221 39% 11%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --brand: 217 91% 53%;
     --brand-foreground: 0 0% 100%;
-    --destructive: 0 70% 45%;
-    --destructive-foreground: 0 0% 98%;
-    --success: 142 64% 42%;
-    --success-foreground: 0 0% 100%;
+    --brand-hover: 217 91% 60%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 140 69% 5%;
     --warning: 38 92% 50%;
-    --warning-foreground: 240 10% 4%;
+    --warning-foreground: 30 79% 6%;
     --pk: 43 96% 56%;
-    --fk: 199 89% 64%;
+    --fk: 213 94% 68%;
     --numeric: 43 96% 56%;
-    --border: 240 6% 16%;
-    --input: 240 6% 16%;
-    --ring: 240 5% 40%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 217 91% 53%;
   }
 
   * {
@@ -136,6 +148,75 @@ input[type="password"]::-ms-clear {
 @layer utilities {
   .no-drag {
     -webkit-app-region: no-drag;
+  }
+
+  /* -----------------------------------------------------------------------
+   * Brand personality utilities
+   * -----------------------------------------------------------------------
+   * The three visual devices the logo is built from — halftone dots, a soft
+   * black sticker outline, an electric-blue glow — rendered at UI scale and
+   * deliberately kept out of the working surfaces. The rule from the visual
+   * brief: 90% function, 10% personality. `halftone` belongs to the launch
+   * screen, empty states, About and loading; NEVER behind a grid, a tree or
+   * an editor, where a repeating pattern fights the data for attention.
+   * They are utilities rather than components so a one-off surface can opt in
+   * without another wrapper, but each new call site is a deliberate choice.
+   */
+
+  /* The comic halftone: a dot lattice in the brand blue, faded out from the
+     top-left so it reads as printing texture behind an illustration rather
+     than a tiled background. `background-size` sets the dot pitch. */
+  .halftone {
+    background-image: radial-gradient(
+      hsl(var(--brand) / 0.5) 1px,
+      transparent 1.5px
+    );
+    background-size: 9px 9px;
+    -webkit-mask-image: radial-gradient(
+      120% 100% at 15% 0%,
+      #000 0%,
+      transparent 72%
+    );
+    mask-image: radial-gradient(120% 100% at 15% 0%, #000 0%, transparent 72%);
+  }
+
+  /* Same lattice, centred fade — for a mark sitting in the middle of an empty
+     state or the splash screen. */
+  .halftone-centered {
+    background-image: radial-gradient(
+      hsl(var(--brand) / 0.45) 1px,
+      transparent 1.5px
+    );
+    background-size: 9px 9px;
+    -webkit-mask-image: radial-gradient(closest-side, #000 0%, transparent 80%);
+    mask-image: radial-gradient(closest-side, #000 0%, transparent 80%);
+  }
+
+  /* The logo's soft black outline plus a hint of volume, at control scale: a
+     2px edge tinted from `--foreground` (so it inverts with the theme instead
+     of being a literal black) and a single-pixel base shadow. Used for
+     sticker-ish chips (the F11 badge, driver pills), not for every button. */
+  .brand-sticker {
+    border-width: 2px;
+    border-color: hsl(var(--foreground) / 0.14);
+    box-shadow:
+      0 1px 0 hsl(var(--foreground) / 0.1),
+      0 2px 5px hsl(var(--foreground) / 0.08);
+  }
+
+  /* "Iluminación azul" — the hover/active glow. Subtle by design: a tight
+     brand ring plus a short bloom, no neon halo (explicitly out of scope in
+     the brief). `brand-glow-strong` is for the splash mark only. */
+  .brand-glow {
+    box-shadow:
+      0 0 0 1px hsl(var(--brand) / 0.35),
+      0 2px 12px hsl(var(--brand) / 0.28);
+  }
+  .brand-glow-strong {
+    box-shadow:
+      0 0 0 1px hsl(var(--brand) / 0.5),
+      0 4px 24px hsl(var(--brand) / 0.4),
+      0 0 64px hsl(var(--brand) / 0.22);
   }
 }
 
@@ -186,21 +267,24 @@ input[type="password"]::-ms-clear {
   /* Separators, sashes & active outline */
   --dv-separator-border: 1px solid hsl(var(--border));
   --dv-paneview-header-border-color: hsl(var(--border));
-  --dv-paneview-active-outline-color: hsl(var(--primary));
+  --dv-paneview-active-outline-color: hsl(var(--brand));
   --dv-sash-color: hsl(var(--border));
-  --dv-active-sash-color: hsl(var(--primary));
+  --dv-active-sash-color: hsl(var(--brand));
   --dv-active-sash-transition-duration: 0.1s;
   --dv-active-sash-transition-delay: 0s;
 
-  /* Drag-over indicators — primary-tinted so users can clearly see where
-     a dragged panel will land. The previous (abyss) theme used a near-
+  /* Drag-over indicators — brand-tinted so users can clearly see where a
+     dragged panel will land. The previous (abyss) theme used a near-
      transparent grey which made the drop targets easy to miss; the 0.18
      fill that replaced it was still too subtle against the editor surface
      when the panel underneath was a dark Monaco editor or grid, hence the
-     bump to a clearly visible 0.40 + a 3px dashed border. */
-  --dv-drag-over-background-color: hsl(var(--primary) / 0.40);
-  --dv-drag-over-border-color: hsl(var(--primary));
-  --dv-drag-over-border: 3px dashed hsl(var(--primary));
+     bump to a clearly visible 0.40 + a 3px dashed border. They were keyed to
+     `--primary` (a near-white in dark themes) until the brand pass: a drop
+     target is an affordance, and affordances are the one thing allowed to
+     spend the accent blue. */
+  --dv-drag-over-background-color: hsl(var(--brand) / 0.32);
+  --dv-drag-over-border-color: hsl(var(--brand));
+  --dv-drag-over-border: 3px dashed hsl(var(--brand));
 
   /* Misc */
   --dv-icon-hover-background-color: hsl(var(--accent));
@@ -232,7 +316,7 @@ input[type="password"]::-ms-clear {
 /* Make the resize sash easier to grab. Default dockview sashes are 4 px;
    bump the hover/active state so users have a visible cue. */
 .dockview-theme-huginndb .dv-sash:hover {
-  background-color: hsl(var(--primary) / 0.5) !important;
+  background-color: hsl(var(--brand) / 0.55) !important;
 }
 
 /* Visible draggable affordance on tabs. The default cursor is `default`
@@ -522,19 +606,19 @@ input[type="password"]::-ms-clear {
 .inner-dock .dv-drop-target-anchor.dv-drop-target-bottom {
   border: none;
   border-radius: var(--dv-border-radius);
-  background-color: hsl(var(--primary) / 0.55);
+  background-color: hsl(var(--brand) / 0.42);
 }
 .inner-dock .dv-drop-target-anchor.dv-drop-target-left {
-  border-right: 3px solid hsl(var(--primary));
+  border-right: 3px solid hsl(var(--brand));
 }
 .inner-dock .dv-drop-target-anchor.dv-drop-target-right {
-  border-left: 3px solid hsl(var(--primary));
+  border-left: 3px solid hsl(var(--brand));
 }
 .inner-dock .dv-drop-target-anchor.dv-drop-target-top {
-  border-bottom: 3px solid hsl(var(--primary));
+  border-bottom: 3px solid hsl(var(--brand));
 }
 .inner-dock .dv-drop-target-anchor.dv-drop-target-bottom {
-  border-top: 3px solid hsl(var(--primary));
+  border-top: 3px solid hsl(var(--brand));
 }
 
 /* Sibling panels resize instantly by default — dockview writes the new pixel
@@ -599,15 +683,20 @@ input[type="password"]::-ms-clear {
   background: hsl(var(--accent)) !important;
   color: hsl(var(--foreground)) !important;
 }
+/* One colour-coded left edge per outcome, all at the same 3px weight (the
+   brand language asks for identical border weight across success / warning /
+   error so the colour is the only variable). `success` and `warning` used to
+   be the brand blue and a hard-coded #f59e0b — the former made a confirmation
+   indistinguishable from an affordance, the latter ignored the active theme. */
 [data-sonner-toast][data-type="success"] {
-  border-left: 3px solid hsl(var(--brand)) !important;
+  border-left: 3px solid hsl(var(--success)) !important;
 }
 [data-sonner-toast][data-type="error"] {
   border-left: 3px solid hsl(var(--destructive)) !important;
 }
 [data-sonner-toast][data-type="info"] {
-  border-left: 3px solid hsl(var(--muted-foreground) / 0.5) !important;
+  border-left: 3px solid hsl(var(--brand)) !important;
 }
 [data-sonner-toast][data-type="warning"] {
-  border-left: 3px solid #f59e0b !important;
+  border-left: 3px solid hsl(var(--warning)) !important;
 }

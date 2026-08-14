@@ -6,6 +6,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **The whole interface now follows the HuginnDB brand visual language.** The
+  logo's world — soft black outlines, rounded corners, light volume, one
+  electric blue — is applied as a *contained* layer over the existing
+  keyboard-first tool: the working surfaces (grid, SQL, JSON) stay quiet, and
+  the personality shows up in affordances, states and empty screens.
+  - The two default themes were repainted on the brand palette: a slate/navy
+    ramp in four depth levels (`#020617` → `#0b1220` → `#111827` → `#1e293b`)
+    under a single `#2563eb` accent in dark, and white → `#f8fafc` → `#eef5ff`
+    over `#d6e4f5` borders in light. The other presets (Dim, Solarized, Claude,
+    Neon, Summer, High Contrast) are untouched.
+  - New `brand-hover` theme token: the accent under the pointer is now a real
+    colour per theme (lighter in dark themes, deeper in light ones) instead of
+    `brand/90`, which faded the accent into the surface exactly when it should
+    light up. It is editable like any other colour in Preferences → Appearance.
+  - Buttons: 12px corners, a 2px edge on the filled variants, and a hover that
+    lifts 1px into a short brand glow. Inputs, textareas and selects share one
+    clean focus treatment — the border turns brand blue with a soft 3px halo,
+    replacing the detached offset ring.
+  - Menus, popovers, tooltips, selects and dialogs now open with the same
+    fade + 98→100% scale inside the 150–220ms motion band, and sit on the
+    shared elevation ramp instead of ad-hoc shadows.
+  - Panel drag-and-drop targets, the active sash and a checked switch are blue
+    (they are affordances); toast edges are colour-coded per outcome at one
+    shared weight, with success finally green and warning theme-aware instead
+    of a hard-coded amber.
+
 ## [1.14.0] — 2026-08-13
 
 ### Added

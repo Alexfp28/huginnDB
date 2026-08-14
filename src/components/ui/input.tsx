@@ -7,8 +7,13 @@ import { cn } from "@/lib/utils";
 // `h-6`/`h-7`/`text-xs`. `sm`/`xs` tokenise that instead. The native HTML
 // `size` attribute (character width) is omitted below so it doesn't collide
 // with this cva `size` variant — it's effectively never used in the app.
+// Focus language (shared with Textarea and Select): the border itself turns
+// brand blue and a soft 3px halo sits directly against it. The previous
+// `ring-2 + ring-offset-2` drew a detached blue outline with a background-
+// coloured gap — legible, but a heavy, floating ring on a 28px-tall field, and
+// the brief asks inputs to stay very clean with a fine border and a blue focus.
 const inputVariants = cva(
-  "flex w-full rounded-md border border-input bg-background transition-colors file:border-0 file:bg-transparent file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+  "flex w-full rounded-md border border-input bg-background transition-colors file:border-0 file:bg-transparent file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-brand focus-visible:ring-[3px] focus-visible:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
       inputSize: {
