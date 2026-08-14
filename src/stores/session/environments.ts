@@ -7,10 +7,16 @@
  * whichever environment is active, so switching one is mostly a pointer move on
  * disk. The work — and the ordering risk — is all on this side.
  *
- * Main-window only, like everything that touches `tab_state.json` (gotcha #8).
- * A secondary "New window" instance is ephemeral and must not reshape the main
- * window's session, so `switchTo` refuses to run there.
+ * Writing to `tab_state.json` is main-window only (gotcha #8): `create`,
+ * `update`, `remove`, `reorder` and the full `restoreSession`/`switchTo`
+ * teardown-and-reconnect all touch it and only run there. A secondary "New
+ * window" instance still reads the environment list (`load`, safe — it never
+ * writes) and can `switchTo` locally: that branch never reaches the backend,
+ * it only re-points this window's own `useUi` filters at the chosen
+ * environment's `launch` snapshot (`applyLocalView`), so several windows can
+ * each sit in a different environment at once without racing the shared file.
  *
+
  * Selector note (gotcha #1): components read `environments` / `activeId` /
  * `switching` as raw values and derive anything else with `useMemo`. Never
  * return a fresh array or object from a selector here.
@@ -117,6 +123,21 @@ function isMainWindow(): boolean {
   return getCurrentWindow().label === "main";
 }
 
+/**
+ * Apply an environment's connection/database view filters to *this* window's
+ * own `useUi` — nothing else. Used by secondary "New window" instances, which
+ * never own `tab_state.json` (gotcha #8) and so can't run the pool/tab/layout
+ * parts of `restoreSession`, only the "how does the tree look" part of it.
+ * Each window has its own JS process and therefore its own `useUi` instance
+ * (same free isolation `useConnections.active` already relies on), so this
+ * never leaks into another window.
+ */
+function applyLocalView(env: Environment | undefined): void {
+  useUi.getState().setCollapsedConnections(env?.launch?.collapsedConnections ?? []);
+  useUi.getState().setVisibleConnections(env?.launch?.visibleConnections ?? null);
+  useUi.getState().setDatabaseVisibility(env?.launch?.databaseVisibility ?? {});
+}
+
 export const useEnvironments = create<EnvironmentsState>((set, get) => ({
   environments: [],
   activeId: null,
@@ -131,6 +152,15 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         activeId: activeEnvironmentId || null,
         error: null,
       });
+      // Secondary windows never call `restoreSession` (main-window-only,
+      // gotcha #8) and so never had their own view filters seeded — without
+      // this a "New window" showed every saved connection from every
+      // environment (the reported bug). Seed this window's local view from
+      // whichever environment is active right now, with no pool/tab/layout
+      // side effect — those stay main-only.
+      if (!isMainWindow()) {
+        applyLocalView(environments.find((e) => e.id === activeEnvironmentId));
+      }
     } catch (e) {
       set({ error: String(e) });
     }
@@ -232,7 +262,19 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
   },
 
   switchTo: async (id) => {
-    if (!isMainWindow()) return;
+    if (!isMainWindow()) {
+      // Secondary windows never touch the shared backend pointer or its
+      // pools/tabs/layout (gotcha #8) — picking a different environment here
+      // only changes which one's connection/database filters *this* window
+      // applies to its own connections tree, entirely in memory.
+      if (get().switching || get().activeId === id) return;
+      const env = get().environments.find((e) => e.id === id);
+      if (!env) return;
+      set({ switching: true });
+      applyLocalView(env);
+      set({ activeId: id, switching: false });
+      return;
+    }
     if (get().switching || get().activeId === id) return;
     set({ switching: true, error: null });
     try {

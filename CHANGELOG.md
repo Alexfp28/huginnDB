@@ -99,7 +99,123 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   six icon files, so touching one forces the relink.
 - The active-environment marker in the left rail was never visible: it was
   offset 8px outside a full-width button, which put it beyond the shell's
-  `overflow-hidden` boundary.
+  `overflow-hidden` boundary. The read-only rail button secondary windows
+  render carried the same bug and is fixed with it.
+
+- **A secondary "New window" showed every saved connection from every
+  environment, with no rail to tell them apart.** `EnvironmentRail` and
+  `EnvironmentSwitcher` already hid themselves outside the main window
+  (gotcha #8 — only main writes `tab_state.json`), but nothing filled in the
+  connection/database visibility filters (`useUi.visibleConnections` /
+  `databaseVisibility` / `collapsedConnections`) for a secondary window
+  either, since `restoreSession`/`switchTo` were both hard-gated to the main
+  window. Because connection profiles are global, not partitioned per
+  environment, the tree fell back to its "no filter" default: show
+  everything. `list_environments` already returns every environment's full
+  `launch` snapshot, read-only, so the fix stays on the frontend:
+  `useEnvironments.load()` now seeds a secondary window's own filters from
+  whichever environment is active, and `switchTo()` gained a real branch for
+  non-main windows that re-points those filters locally — never touching
+  `set_active_environment`, pools, tabs or `tab_state.json`. Each window
+  already has its own JS process and its own Zustand store, so this can't
+  leak between windows. `EnvironmentRail`/`EnvironmentSwitcher` now render in
+  every window, with create/rename/delete/reorder (the actions that do write
+  the shared file) hidden outside main — so several windows can each sit in a
+  different environment at once, independently.
+
+- **Switching a table's row layout (table/list) in one window silently
+  switched it in every other open window and tab too.** The toggle wrote
+  `documentViewMode`, a field inside the single `Preferences` blob the
+  backend intentionally broadcasts to every window on save (most of
+  `Preferences` genuinely is app-wide, e.g. row height). Moved it onto each
+  table tab's own view state (`TabViewState`/`PersistedTab`), the same
+  mechanism already used for a tab's filters/sort/search — a tab now owns its
+  row layout independently of other tabs and other windows, seeded once from
+  the (unchanged) global default the first time it's opened.
+
+## [1.15.0] — 2026-08-14
+
+### Added
+
+- **Environments can carry a custom avatar image.** Until now an environment
+  was always drawn as its initials over the accent colour, which stops
+  disambiguating as soon as two of them start with the same letter ("Cliente A"
+  / "Cliente B") — exactly the case the rail exists to make glanceable. The
+  create/rename dialog now takes an image: pick one through the native file
+  dialog, or drop a file straight onto the avatar preview. It replaces the
+  initials in the rail, the workspace picker and the dialog preview, and the
+  status-bar switcher shows it too instead of its colour dot (an image is
+  recognisable at 12px, which is why initials never were there). Clearing it
+  goes back to the initials tile.
+  Where it is stored: inline in the existing `Environment.icon` field — a
+  `data:` URL, so no backend schema change and no data migration. Whatever the
+  user picks is centre-cropped square and re-encoded at 128px (WebP where the
+  webview can encode it, PNG otherwise) before being stored, which keeps the
+  payload in the low single-digit KB: `icon` round-trips through
+  `tab_state.json` on every environment write, so a full-resolution photo there
+  would bloat a file the app rewrites constantly. Keeping the image inline
+  rather than as a file under the config dir means it has no lifecycle of its
+  own — it is copied, discarded and written with the environment itself, so
+  there are no orphans to sweep and no second failure mode where the JSON
+  points at a file that is gone.
+  `icon` is the slot the old lucide icon picker used to write, and an
+  environment that still holds a legacy icon key falls back to the initials
+  exactly as it has since that picker was removed: the image branch is gated on
+  the value being a `data:image/` URL, not on the field being non-empty.
+  One new backend command (`read_image_data_url`) does the reading, because the
+  native picker hands back a *path* the webview cannot open itself. It
+  validates the format from the file's magic bytes rather than its extension
+  and refuses anything over 12 MB, so an unusable file is rejected with a clear
+  message instead of turning into a data URL no `<img>` will load. The drop
+  path never touches it — the browser already has the bytes.
+
+- **Linux release artifacts are now published.** Every release already *could*
+  have shipped them: `tauri.conf.json`'s `bundle.targets` has listed `deb` and
+  `appimage` since 1.7.0, and `.github/workflows/release.yml` carried both the
+  `ubuntu-22.04` matrix leg and its apt build-deps
+  (`libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`,
+  `patchelf`). The leg was just commented out, so nothing was ever built and
+  Linux users had to compile from source — the README even said so. It is now
+  enabled, and a tagged build attaches `x86_64` `.deb` + `.AppImage` next to
+  the Windows installer, with a new "From a release (Linux)" section in the
+  README covering both. `ubuntu-22.04` is a deliberate choice over
+  `ubuntu-latest`: an AppImage links against the glibc of whatever machine
+  built it, so building on a newer image would silently narrow the range of
+  distros the artifact can start on. The matrix already sets
+  `fail-fast: false`, so a Linux-leg failure cannot take the Windows artifacts
+  down with it, and the `tauri-action` step gained `retryAttempts: 3` because
+  two legs now publish updater artifacts to one release: the action merges
+  each platform's entry into the existing `latest.json` rather than replacing
+  the asset, so no entry is lost, but parallel legs can race on the delete —
+  retrying the whole fetch-merge-upload is the upstream-intended mitigation.
+  Not yet exercised by a real tagged run — the workflow's `workflow_dispatch`
+  input builds a draft against a throwaway tag for exactly this kind of smoke
+  test.
+
+### Changed
+
+- **The environment label in the left rail is a little larger.** It was 10px,
+  which on a 1080p display sat below what the one piece of always-visible
+  environment chrome should need to be read at a glance from the corner of the
+  eye. Now 11px with tighter letter-spacing, so roughly the same number of
+  characters still fits in the 72px rail before truncating, and the active
+  environment's label is medium weight — "which environment am I in" now reads
+  from the type as well as from the background tint.
+
+### Fixed
+
+- **The README pointed Windows users at a `.msi` that no longer exists.**
+  Windows bundling moved from WiX/MSI to NSIS in 1.7.0 (see gotcha #21 in
+  `CLAUDE.md` for why: WiX v3 was archived in February 2025 and its
+  `light.exe` stopped running on GitHub's Windows runners at all), so releases
+  have been shipping a `-setup.exe` for several versions while three places in
+  the README — the download instruction, the SmartScreen note's SHA-256
+  advice, and the tech-stack bundling line — still named the MSI. Anyone
+  following the README looked for a file that isn't attached to the release.
+
+- **Folding a connection group in one surface silently folded it everywhere else it was on screen.** `useConnectionGroupCollapse` (`src/lib/connection/useConnectionGroups.ts`) is shared by the File menu, the connections manager dialog, the status-bar switcher and the environment's Schema tree; in the default "remember" mode it read `prefs.ui.collapsedConnectionGroups` as a live Zustand selector, so every mounted instance re-rendered off the same value on every toggle. Opening the connections manager while an environment's tree already had a group open showed it open too (as expected — same remembered layout), but collapsing that group *inside the dialog* also collapsed it live in the tree behind it, because both surfaces were really one shared instance of the fold state rather than independent views that merely started from the same saved arrangement. The hook now seeds a per-instance session override from the persisted set once, at mount, and every toggle — in all three expand modes, not just the forced "expanded"/"collapsed" ones — only touches that instance's local state; "remember" toggles still write through to disk so the *next* surface to mount (including a future app launch) picks up the latest arrangement, but an already-open surface elsewhere is no longer reshaped out from under the user. No preference or on-disk schema changed.
+
+- **The "Restart now" button gave no feedback after being clicked, inviting repeat clicks.** `installAndRelaunch` (`src/stores/update.ts`) went straight from `readyToRestart` to a transient `ready` right before `installUpdate()`/`relaunchApp()` — but everything in between (an async MCP-sidecar check, and its confirmation dialog if a client currently holds the sidecar) ran while the store still reported `readyToRestart`, so both `UpdateBanner` and the Settings → About updates card kept rendering the idle "Restart now" / "Install and relaunch" label with the button fully clickable. A new `installing` status is now set synchronously the instant the click handler runs, before any `await`; both components disable their install button and the banner's dismiss controls and swap in a spinner + "Restarting…" label for the whole gap. `installAndRelaunch` also short-circuits if it's called again while already `installing`/`ready`, so a stray double-invocation can't queue a second install even if a click slips through.
 
 ## [1.14.0] — 2026-08-13
 

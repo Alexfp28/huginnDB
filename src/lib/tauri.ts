@@ -678,6 +678,16 @@ export const api = {
     invoke<string>("read_text_file", { filePath }),
 
   /**
+   * Read an image file at `filePath` and get it back as a `data:` URL. Used by
+   * the environment-avatar picker (`src/lib/environmentAvatar.ts`), which then
+   * downscales it in a canvas before it is stored. The backend validates the
+   * format by magic bytes and rejects anything oversized, so a rejection here
+   * is a real "that isn't a usable image", not a decode failure later.
+   */
+  readImageDataUrl: (filePath: string) =>
+    invoke<string>("read_image_data_url", { filePath }),
+
+  /**
    * Write `contents` to `filePath` verbatim. Used by theme export
    * (`src/lib/themeTransfer.ts`) once the frontend has already picked the
    * destination via the native save dialog — the counterpart to

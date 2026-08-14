@@ -271,6 +271,7 @@ function EnvironmentsPane() {
                   <EnvironmentAvatar
                     name={environmentLabel(env, defaultName)}
                     color={env.color}
+                    icon={env.icon}
                     size={32}
                   />
                 )
@@ -287,8 +288,11 @@ export function WorkspacePicker({ className }: { className?: string }) {
   const { t } = useTranslation();
   const hasProfiles = useConnections((s) => s.profiles.length > 0);
   const environments = useEnvironments((s) => s.environments);
-  // Secondary windows never own an environment (gotcha #8) — `switchTo`
-  // no-ops there, so the tab is hidden rather than offered as dead weight.
+  // Main-window-only for now: `switchTo` itself works locally in a secondary
+  // window (it just re-points that window's own connection filter, see
+  // `useEnvironments.switchTo`), but this empty-workspace picker tab hasn't
+  // been audited for that surface yet — left out of the "New window"
+  // independence pass that unlocked the rail/status-bar switcher.
   const showEnvironments = getCurrentWindow().label === "main" && environments.length > 1;
 
   if (!hasProfiles && !showEnvironments) return null;

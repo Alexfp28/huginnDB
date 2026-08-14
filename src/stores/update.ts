@@ -12,6 +12,11 @@
  *                     installed files, never prompts for elevation.
  *   readyToRestart → download finished, install NOT yet applied. One click
  *                     away; nothing happens without it.
+ *   installing     → the user clicked "Restart now"; covers the async gap
+ *                     before the real install() call (the MCP sidecar
+ *                     check + its confirmation dialog can take a while if
+ *                     the user hesitates). Buttons show a spinner and are
+ *                     disabled so a slow click doesn't fire twice.
  *   ready          → install is being applied and the app is about to
  *                     relaunch (transient — only visible for a frame).
  *   error          → last attempt failed; surfaced inside Settings → About.
@@ -58,6 +63,7 @@ export type UpdateStatus =
   | "available"
   | "downloading"
   | "readyToRestart"
+  | "installing"
   | "ready"
   | "error";
 
@@ -145,6 +151,7 @@ async function runCheck(
       versionBefore === update.version &&
       (statusBefore === "available" ||
         statusBefore === "readyToRestart" ||
+        statusBefore === "installing" ||
         statusBefore === "ready");
     if (alreadyTracked) {
       set({ status: statusBefore, currentVersion: current });
@@ -235,11 +242,16 @@ export const useUpdateStore = create<UpdateState>()(
       },
 
       installAndRelaunch: async () => {
-        const { _update } = get();
+        const { _update, status } = get();
         if (!_update) return;
-        set({ error: null });
+        // Guards a slow double-click (or a stray second call) from firing
+        // the install twice — the whole point of the "installing" status.
+        if (status === "installing" || status === "ready") return;
+        // Reflect the click immediately, before the async sidecar check
+        // below, so the button shows its loading state without any gap.
+        set({ status: "installing", error: null });
         try {
-          if (get().status !== "readyToRestart") {
+          if (status !== "readyToRestart") {
             get().startBackgroundDownload();
             await get()._downloadPromise;
             if (get().status === "error") return;
@@ -257,7 +269,8 @@ export const useUpdateStore = create<UpdateState>()(
             sidecarRunning &&
             !window.confirm(i18n.t("update.mcpSidecarWarning"))
           ) {
-            return; // stays at readyToRestart; the user can retry later
+            set({ status: "readyToRestart" });
+            return; // the user can retry later
           }
 
           set({ status: "ready" });
@@ -294,7 +307,8 @@ export function selectUpdateNotificationVisible(state: UpdateState): boolean {
   return (
     (state.status === "available" ||
       state.status === "downloading" ||
-      state.status === "readyToRestart") &&
+      state.status === "readyToRestart" ||
+      state.status === "installing") &&
     state.availableVersion !== null &&
     state.availableVersion !== state.lastDismissedVersion
   );

@@ -1,25 +1,29 @@
 /**
- * Teams-style environment avatar: initials over the environment's accent
- * colour (or a neutral fallback when none is set), as a rounded square
- * (not a circle — the user asked for the squarer, app-icon-like shape).
- * See `environmentInitials` in `stores/session/environments.ts` for the
- * initials algorithm.
+ * Teams-style environment avatar: a custom image if the environment has one,
+ * otherwise initials over its accent colour (or a neutral fallback when no
+ * colour is set), as a rounded square (not a circle — the user asked for the
+ * squarer, app-icon-like shape). See `environmentInitials` in
+ * `stores/session/environments.ts` for the initials algorithm.
  *
- * `env.icon` is deliberately NOT read here. It used to hold a lucide icon
- * key (`EnvironmentSwitcher.ENV_ICONS`); the field is kept, just unread, as
- * where a future custom image will live — no data migration was needed to
- * drop the icon picker, since existing values simply stop being consulted.
- * When image upload lands, this component gains an `env.icon`-backed `<img>`
- * branch that takes priority over the initials, and every call site here
- * stays unchanged.
+ * `icon` is the image slot. It holds a `data:` URL, already cropped square and
+ * downscaled by `lib/environmentAvatar.ts` — this component never resizes
+ * anything, it just fills the tile. The field used to hold a lucide icon key
+ * (`EnvironmentSwitcher.ENV_ICONS`) and old profiles may still carry one, so
+ * the `<img>` branch is gated on `isAvatarImage` rather than on the field being
+ * non-empty: a legacy `"database"` value falls through to the initials exactly
+ * as it did while the field went unread, and no migration was ever needed.
  */
 
+import { isAvatarImage } from "@/lib/environmentAvatar";
 import { environmentInitials } from "@/stores/session/environments";
 import { cn } from "@/lib/utils";
 
 interface EnvironmentAvatarProps {
   name: string;
   color: string | null;
+  /** Custom avatar image as a `data:` URL, or `null`/a legacy icon key to fall
+   *  back to the initials tile. */
+  icon?: string | null;
   size?: number;
   className?: string;
 }
@@ -27,10 +31,36 @@ interface EnvironmentAvatarProps {
 export function EnvironmentAvatar({
   name,
   color,
+  icon,
   size = 36,
   className,
 }: EnvironmentAvatarProps) {
   const initials = environmentInitials(name);
+
+  if (isAvatarImage(icon)) {
+    return (
+      <img
+        src={icon}
+        alt=""
+        aria-hidden
+        draggable={false}
+        width={size}
+        height={size}
+        style={{
+          width: size,
+          height: size,
+          // Same radius curve as the initials tile below, so swapping one for
+          // the other never changes the silhouette.
+          borderRadius: size * 0.28,
+        }}
+        // `object-cover` is belt-and-braces: the stored pixels are already a
+        // square, but a hand-edited `tab_state.json` shouldn't be able to
+        // stretch the rail's geometry.
+        className={cn("shrink-0 object-cover", className)}
+      />
+    );
+  }
+
   return (
     <div
       aria-hidden

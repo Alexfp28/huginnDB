@@ -232,12 +232,15 @@ export function AppearanceSection() {
 }
 
 /**
- * "Data view": the row layout every driver's table/collection browser uses,
- * and the list view's own gutters. All four are global preferences (not
- * per-relation) — the toolbar toggle in the data tab writes the same
- * `documentViewMode` this picker does. The three list options are disabled
- * while the table layout is selected: they describe a surface that isn't on
- * screen, and greying them says so better than letting them look effective.
+ * "Data view": the list view's own gutters (always global preferences, not
+ * per-relation) plus `documentViewMode` — which, since #131, is only the
+ * *default* row layout for a newly opened table/collection tab. Each tab
+ * remembers its own choice afterwards (`TableDataTab`'s local
+ * `documentViewMode` state, persisted per tab via `viewState`), independent of
+ * this setting and of other tabs/windows — the toolbar toggle in the data tab
+ * no longer writes here. The three list options are disabled while the table
+ * layout is selected: they describe a surface that isn't on screen, and
+ * greying them says so better than letting them look effective.
  */
 function DataViewGroup() {
   const grid = usePreferences(selectGridPrefs);

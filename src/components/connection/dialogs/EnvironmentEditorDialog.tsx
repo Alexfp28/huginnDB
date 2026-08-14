@@ -1,16 +1,15 @@
 /**
- * Create/rename dialog for environments — name, color, theme override, and
- * (create-only) replicate-from-current options. The avatar preview at the
- * top (initials over the chosen colour, Teams-style — see
- * `EnvironmentAvatar`) is live: it reflects the name/colour as the user
- * types/picks, before saving.
+ * Create/rename dialog for environments — name, avatar image, color, theme
+ * override, and (create-only) replicate-from-current options. The avatar
+ * preview at the top (the custom image, or initials over the chosen colour
+ * Teams-style — see `EnvironmentAvatar`) is live: it reflects the
+ * name/image/colour as the user types/picks, before saving.
  *
- * There used to also be a lucide icon picker here; it's gone now that
- * environments render as an initials avatar everywhere (`EnvironmentAvatar`)
- * rather than a generic icon. `EnvironmentDraft.icon`/`Environment.icon`
- * still exist on the wire (a future custom-image upload will use that slot)
- * but this dialog no longer writes to it, and existing values are simply
- * never read for display — see `EnvironmentAvatar`'s header comment.
+ * The avatar image writes to `EnvironmentDraft.icon`, the slot the old lucide
+ * icon picker used to own — see `lib/environmentAvatar.ts` for why it is stored
+ * inline as a downscaled `data:` URL and what happens to legacy icon keys.
+ * Two ways in, because they cost nothing to share: the native picker, and
+ * dropping a file on the preview.
  *
  * Extracted out of `EnvironmentSwitcher` so `EnvironmentRail`'s "+" button
  * can open the same create flow without duplicating the form; both read/
@@ -18,8 +17,10 @@
  * that renders the dialog.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { ImagePlus, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,11 @@ import { useEnvironmentEditor } from "@/stores/dialogs/environmentEditor";
 import { useThemeStore } from "@/stores/preferences/theme";
 import { BUILT_IN_THEMES } from "@/lib/themes";
 import { EnvironmentAvatar } from "@/components/connection/EnvironmentAvatar";
+import {
+  avatarImageFromFile,
+  isAvatarImage,
+  pickAvatarImage,
+} from "@/lib/environmentAvatar";
 import { cn } from "@/lib/utils";
 
 /** Sentinel for "no override" in the theme `<Select>` — Radix rejects an
@@ -82,8 +88,30 @@ export function EnvironmentEditorDialog() {
   const patchDraft = useEnvironmentEditor((s) => s.update);
   const close = useEnvironmentEditor((s) => s.close);
 
+  /** Purely visual drop affordance on the preview tile. */
+  const [dragOver, setDragOver] = useState(false);
+
   const active = environments.find((e) => e.id === activeId) ?? null;
   const defaultName = t("environments.defaultName");
+  const hasImage = isAvatarImage(editing?.icon);
+
+  async function chooseImage() {
+    try {
+      const icon = await pickAvatarImage(t("environments.imagePickTitle"));
+      if (icon) patchDraft({ icon });
+    } catch (e) {
+      toast.error(t("environments.imageError", { error: String(e) }));
+    }
+  }
+
+  async function dropImage(file: File | undefined) {
+    if (!file) return;
+    try {
+      patchDraft({ icon: await avatarImageFromFile(file) });
+    } catch (e) {
+      toast.error(t("environments.imageError", { error: String(e) }));
+    }
+  }
 
   async function submitEditor() {
     if (!editing) return;
@@ -111,24 +139,78 @@ export function EnvironmentEditorDialog() {
               : t("environments.createTitle")}
           </DialogTitle>
         </DialogHeader>
-        {/* Live avatar preview — reflects name/colour as they're picked,
-            same rendering `EnvironmentRail`/`EnvironmentSwitcher` use. */}
+        {/* Live avatar preview — reflects name/image/colour as they're picked,
+            same rendering `EnvironmentRail`/`EnvironmentSwitcher` use. It is
+            also the drop target for an image file: dropping on the thing that
+            shows the result is the affordance users try first, and the button
+            below covers the case where they don't. */}
         <div className="flex items-center gap-3">
-          <EnvironmentAvatar
-            name={editing?.name.trim() || defaultName}
-            color={editing?.color ?? null}
-            size={48}
-          />
-          <Input
-            autoFocus
-            value={editing?.name ?? ""}
-            placeholder={defaultName}
-            onChange={(e) => patchDraft({ name: e.target.value })}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void submitEditor();
+          <div
+            className={cn(
+              "relative shrink-0 rounded-[13px] outline-offset-2 transition-colors",
+              dragOver && "outline-dashed outline-2 outline-brand",
+            )}
+            onDragOver={(e) => {
+              // Both handlers must preventDefault or the webview navigates to
+              // the dropped file instead of handing it to us.
+              e.preventDefault();
+              setDragOver(true);
             }}
-            className="flex-1"
-          />
+            onDragLeave={(e) => {
+              // `dragleave` also fires when the pointer crosses into a child
+              // (the avatar itself, the clear button), which would flicker the
+              // outline off and on for the whole hover.
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                setDragOver(false);
+              }
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              void dropImage(e.dataTransfer.files[0]);
+            }}
+          >
+            <EnvironmentAvatar
+              name={editing?.name.trim() || defaultName}
+              color={editing?.color ?? null}
+              icon={editing?.icon ?? null}
+              size={48}
+            />
+            {hasImage && (
+              <button
+                type="button"
+                title={t("environments.imageRemove")}
+                aria-label={t("environments.imageRemove")}
+                // Clearing writes `null`, not the previous lucide key: the icon
+                // picker is gone, so "no image" is the only other state.
+                onClick={() => patchDraft({ icon: null })}
+                className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-sm hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <Input
+              autoFocus
+              value={editing?.name ?? ""}
+              placeholder={defaultName}
+              onChange={(e) => patchDraft({ name: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void submitEditor();
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void chooseImage()}
+              className="flex items-center gap-1.5 self-start rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ImagePlus className="h-3.5 w-3.5" />
+              {hasImage
+                ? t("environments.imageReplace")
+                : t("environments.imageUpload")}
+            </button>
+          </div>
         </div>
 
         {/* Colour — click the selected swatch again to clear it. */}

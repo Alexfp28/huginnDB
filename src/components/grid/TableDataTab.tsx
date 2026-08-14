@@ -256,6 +256,20 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const restoredViewState = useRef(
     useTabs.getState().tabs.find((t) => t.id === tabId)?.viewState,
   ).current;
+  /**
+   * "table" vs "list" row layout — this tab's own choice (#131), not a global
+   * preference: two windows (or two tabs on the same table) must be able to
+   * show it differently. Falls back to the `GridPrefs.documentViewMode`
+   * default only when this tab has never had one set, read once here — same
+   * non-reactive, read-once-at-mount treatment as `restoredViewState` itself,
+   * so a later change to the global default (or another tab's toggle) never
+   * yanks an already-open tab.
+   */
+  const [documentViewMode, setDocumentViewMode] = useState<"table" | "list">(
+    () =>
+      restoredViewState?.documentViewMode ??
+      usePreferences.getState().prefs.grid.documentViewMode,
+  );
   const [sort, setSort] = useState<SortSpec[]>(
     () => restoredViewState?.sort ?? [],
   );
@@ -291,18 +305,20 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   }, [tabInitialFilters]);
 
   // Publish the committed view state onto the tab so it persists with it
-  // (#112). Driven off the same three values the backend fetch uses, so what is
-  // saved is always what was actually applied — never the uncommitted toolbar
-  // draft. `setViewState` skips no-op writes, which keeps this from scheduling a
-  // disk save on every unrelated re-render.
+  // (#112, #131). Driven off the same values the backend fetch uses (plus
+  // `documentViewMode`, which is purely a display choice), so what is saved is
+  // always what was actually applied — never the uncommitted toolbar draft.
+  // `setViewState` skips no-op writes, which keeps this from scheduling a disk
+  // save on every unrelated re-render.
   const setViewState = useTabs((s) => s.setViewState);
   useEffect(() => {
     setViewState(tabId, {
       filters: serverFilters.length > 0 ? serverFilters : undefined,
       sort: sort.length > 0 ? sort : undefined,
       search: appliedFilter || undefined,
+      documentViewMode,
     });
-  }, [setViewState, tabId, serverFilters, sort, appliedFilter]);
+  }, [setViewState, tabId, serverFilters, sort, appliedFilter, documentViewMode]);
 
   const pushHistory = useFilterHistory((s) => s.push);
   const filterHistory = useFilterHistory((s) => s.byConnection[connectionId]);
@@ -315,13 +331,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    */
   const rowHeight = usePreferences((s) => selectGridPrefs(s).rowHeight);
   const updateGrid = usePreferences((s) => s.updateGrid);
-  /**
-   * "table" vs "list" row layout — a single global preference, not per-relation
-   * (see `GridPrefs.documentViewMode`), honoured by every driver.
-   */
-  const documentViewMode = usePreferences(
-    (s) => selectGridPrefs(s).documentViewMode,
-  );
   const isMongo = driver === "mongodb";
   const zoomRows = useCallback(
     (delta: number) =>
@@ -1159,7 +1168,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // action, so it stays apart from the insert/export/bulk group. Offered for
   // every driver: the list view started out MongoDB-only, but a 40-column SQL
   // table (or a row with a big JSONB column) has exactly the same problem it
-  // solves. The choice itself is the global `documentViewMode` preference.
+  // solves. The choice is this tab's own `documentViewMode` state (#131), not
+  // a global preference — see its declaration above.
   const trailingToolbar: GridToolbarItem[] = [
     {
       id: "view-mode",
@@ -1170,7 +1180,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => updateGrid({ documentViewMode: "table" })}
+            onClick={() => setDocumentViewMode("table")}
             title={t("dataGrid.viewModeTable")}
             className={`h-7 w-7 rounded-none ${
               documentViewMode === "table" ? "bg-accent text-brand" : ""
@@ -1181,7 +1191,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => updateGrid({ documentViewMode: "list" })}
+            onClick={() => setDocumentViewMode("list")}
             title={t("dataGrid.viewModeList")}
             className={`h-7 w-7 rounded-none ${
               documentViewMode === "list" ? "bg-accent text-brand" : ""
@@ -1199,14 +1209,14 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           <DropdownMenuCheckboxItem
             className="text-xs"
             checked={documentViewMode === "table"}
-            onSelect={() => updateGrid({ documentViewMode: "table" })}
+            onSelect={() => setDocumentViewMode("table")}
           >
             {t("dataGrid.viewModeTable")}
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             className="text-xs"
             checked={documentViewMode === "list"}
-            onSelect={() => updateGrid({ documentViewMode: "list" })}
+            onSelect={() => setDocumentViewMode("list")}
           >
             {t("dataGrid.viewModeList")}
           </DropdownMenuCheckboxItem>

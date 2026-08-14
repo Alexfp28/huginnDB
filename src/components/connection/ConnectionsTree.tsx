@@ -8,9 +8,12 @@
  * tables for a multi-DB connection, schema → tables for a single-DB one.
  *
  * Two things are reused rather than reinvented. Folders come from
- * `bucketByGroup` + `useConnectionGroupCollapse`, the same pair the File menu and
- * the status bar use, so a folded folder and the `connectionGroupExpandMode`
- * preference behave identically in all three. The subtree is the same
+ * `bucketByGroup` + `useConnectionGroupCollapse`, the same pair the File menu,
+ * the connections manager dialog and the status bar use, so the initial fold
+ * state and the `connectionGroupExpandMode` preference behave identically in
+ * all of them — but each surface keeps its own session-local overrides after
+ * that, so folding a folder in the connections manager while this tree is
+ * open no longer folds it here too. The subtree is the same
  * `SchemaExplorer` the panel rendered before — it lost its panel-level title,
  * icon strip and scroll container, since the row above it now owns all three
  * (its right-click menu is [[ConnectionActionsMenu]], defined next to the

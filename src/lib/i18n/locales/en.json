@@ -35,6 +35,11 @@
     "createTitle": "New environment",
     "rename": "Rename",
     "renameTitle": "Rename environment",
+    "imageUpload": "Upload an image…",
+    "imageReplace": "Change the image…",
+    "imageRemove": "Remove the image",
+    "imagePickTitle": "Choose an avatar image",
+    "imageError": "Could not use that image: {{error}}",
     "delete": "Delete",
     "deleteConfirm": "Delete the environment \"{{name}}\"?\n\nIts open tabs and pane layout are discarded. Your connections and their passwords are not touched.",
     "switchFailed": "Could not switch environment: {{error}}",
@@ -944,7 +949,7 @@
         "title": "Data view",
         "mode": {
           "label": "Row layout",
-          "desc": "How a browsed table or collection renders: the column grid, or one card per row with a line per field. Every driver honours it; the data tab's toolbar toggles the same setting.",
+          "desc": "How a newly opened table or collection tab renders by default: the column grid, or one card per row with a line per field. Every driver honours it. Each open tab remembers its own choice afterwards — the data tab's toolbar toggle only changes that tab, not this default.",
           "table": "Table",
           "list": "List"
         },
@@ -1166,6 +1171,7 @@
     "readyTitle": "Update ready to install: {{version}}",
     "readyDescription": "Downloaded in the background — restart to apply it.",
     "restartNow": "Restart now",
+    "restarting": "Restarting…",
     "install": "Install and relaunch",
     "later": "Later",
     "tooltipUpdateAvailable": "An update is available ({{version}})",
@@ -1196,6 +1202,27 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_15_0": {
+        "tagline": "Environments get a face of their own, Linux finally gets installers straight off the releases page, and two rough edges — fold state shared where it shouldn't be, and a restart button that went silent — are filed down.",
+        "items": {
+          "environmentAvatars": {
+            "title": "Give an environment its own image",
+            "body": "The create/rename dialog now takes a custom avatar: pick a file, or drop one on the preview. It replaces the initials everywhere the environment appears — the rail, the workspace picker, the status-bar switcher — which is what finally tells \"Cliente A\" and \"Cliente B\" apart at a glance. Whatever you pick is cropped square and downscaled, and it travels inside the environment itself. The rail's label is slightly larger too, and the active one now reads in bold."
+          },
+          "linuxBuilds": {
+            "title": "Linux downloads on the releases page",
+            "body": "Every tagged release now attaches an x86_64 .deb and .AppImage next to the Windows installer, so Linux no longer means building from source. The README covers both, including which glibc the AppImage is built against."
+          },
+          "independentFolds": {
+            "title": "Folds stay where you left them",
+            "body": "Collapsing a connection group inside the connections manager no longer reaches behind the dialog and collapses it in the Schema tree as well. Every surface now starts from the same remembered arrangement but folds independently from there, and \"remember\" still writes through for the next one you open."
+          },
+          "restartFeedback": {
+            "title": "\"Restart now\" shows it heard you",
+            "body": "The install button used to keep looking idle and clickable through the whole MCP-sidecar check that runs before an update installs. It now disables itself and shows a spinner the instant you click, and a second click can no longer queue a second install."
+          }
+        }
+      },
       "1_14_0": {
         "tagline": "The command palette becomes a real launcher, the window shell reorganizes around an activity bar, environments get their own rail, and themes travel between machines.",
         "items": {

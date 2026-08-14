@@ -12,12 +12,15 @@
  *   • "available"   — shows release notes + install button + progress.
  *   • "downloading" — same as available, but the install button is
  *                     disabled and the progress bar animates.
+ *   • "installing"  — same as available, but the install button shows a
+ *                     spinner + "Restarting…" and is disabled. Covers
+ *                     both the async gap between the click and the real
+ *                     install() call, and the brief `ready` status right
+ *                     before the relaunch (see stores/update.ts) — so the
+ *                     button never silently reverts to its idle label.
  *   • "error"       — error line in place of the up-to-date message.
- *   • everything else (idle / checking / ready) — "you're on the latest"
- *                     reassurance line. We intentionally keep this
- *                     visible while `ready` because the relaunch happens
- *                     immediately after, so the user sees this only for
- *                     a frame.
+ *   • everything else (idle / checking) — "you're on the latest"
+ *                     reassurance line.
  */
 
 import { useTranslation } from "react-i18next";
@@ -49,13 +52,18 @@ export function UpdatesCard({ currentVersion }: Props) {
   const isChecking = status === "checking";
   const isDownloading = status === "downloading";
   const isReadyToRestart = status === "readyToRestart";
+  const isInstalling = status === "installing" || status === "ready";
   const hasUpdate =
-    (status === "available" || isDownloading || isReadyToRestart) &&
+    (status === "available" ||
+      isDownloading ||
+      isReadyToRestart ||
+      isInstalling) &&
     availableVersion !== null;
   const hasError = status === "error" && error !== null;
   // Only show the up-to-date reassurance when we're truly settled — not
-  // mid-check, mid-download, or while bubbling an error.
-  const showUpToDate = !hasUpdate && !hasError && !isChecking && !isDownloading;
+  // mid-check, mid-download, mid-install, or while bubbling an error.
+  const showUpToDate =
+    !hasUpdate && !hasError && !isChecking && !isDownloading && !isInstalling;
 
   const progressPct =
     downloadProgress && downloadProgress.total
@@ -79,7 +87,7 @@ export function UpdatesCard({ currentVersion }: Props) {
           onClick={() => {
             void checkManually();
           }}
-          disabled={isChecking || isDownloading}
+          disabled={isChecking || isDownloading || isInstalling}
           className="h-7 gap-1.5 text-xs"
         >
           {isChecking ? (
@@ -115,19 +123,21 @@ export function UpdatesCard({ currentVersion }: Props) {
               onClick={() => {
                 void installAndRelaunch();
               }}
-              disabled={isDownloading}
+              disabled={isDownloading || isInstalling}
               className="h-7 gap-1.5 text-xs"
             >
-              {isDownloading ? (
+              {isDownloading || isInstalling ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
                 <Download className="h-3 w-3" />
               )}
               {isDownloading
                 ? t("update.downloading")
-                : isReadyToRestart
-                  ? t("update.restartNow")
-                  : t("update.installAndRelaunch")}
+                : isInstalling
+                  ? t("update.restarting")
+                  : isReadyToRestart
+                    ? t("update.restartNow")
+                    : t("update.installAndRelaunch")}
             </Button>
             <a
               href="https://github.com/Alexfp28/huginnDB/releases"

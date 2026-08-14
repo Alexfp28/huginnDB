@@ -4,14 +4,14 @@
  * so both "what's in play" controls sit together rather than splitting one
  * into the topbar and one into the status bar.
  *
- * Rendered only in the main window: an environment scopes `tab_state.json`,
- * which secondary "New window" instances never touch (gotcha #8), so offering
- * the control there would suggest a switch that cannot happen.
- *
- * Switching tears down every live pool and rebuilds the incoming session, which
- * takes as long as reconnecting does. The trigger therefore reflects
- * `switching` — spinner, disabled — rather than looking instantaneous and
- * leaving the user clicking again mid-teardown.
+ * Rendered in every window. In the main window, switching tears down every
+ * live pool and rebuilds the incoming session, which takes as long as
+ * reconnecting does — the trigger reflects `switching` (spinner, disabled)
+ * rather than looking instantaneous and leaving the user clicking again
+ * mid-teardown. In a secondary "New window" instance, `switchTo` resolves to a
+ * purely local filter change instead (gotcha #8 — it never touches
+ * `tab_state.json`), so create/rename/delete are hidden there: those are the
+ * actions that do write it.
  */
 
 import { useMemo } from "react";
@@ -28,7 +28,9 @@ import {
 import { useEnvironments, environmentLabel } from "@/stores/session/environments";
 import { useEnvironmentEditor } from "@/stores/dialogs/environmentEditor";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
+import { isAvatarImage } from "@/lib/environmentAvatar";
 import { cn } from "@/lib/utils";
+import type { Environment } from "@/types";
 
 export function EnvironmentSwitcher() {
   const { t } = useTranslation();
@@ -54,10 +56,9 @@ export function EnvironmentSwitcher() {
   );
 
   const defaultName = t("environments.defaultName");
+  const isMain = getCurrentWindow().label === "main";
 
-  // Nothing useful to show before the first load resolves, and secondary windows
-  // don't own an environment at all.
-  if (getCurrentWindow().label !== "main") return null;
+  // Nothing useful to show before the first load resolves.
   if (!active) return null;
 
   return (
@@ -75,10 +76,7 @@ export function EnvironmentSwitcher() {
           {switching ? (
             <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
           ) : (
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: active.color || "hsl(var(--muted-foreground))" }}
-            />
+            <EnvironmentMark env={active} />
           )}
           <span className="truncate">
             {environmentLabel(active, defaultName)}
@@ -102,34 +100,33 @@ export function EnvironmentSwitcher() {
                   isActive ? "opacity-100" : "opacity-0",
                 )}
               />
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: env.color || "hsl(var(--muted-foreground))" }}
-              />
+              <EnvironmentMark env={env} />
               <span className="min-w-0 flex-1 truncate">
                 {environmentLabel(env, defaultName)}
               </span>
-              <span
-                role="button"
-                tabIndex={-1}
-                className="shrink-0 opacity-0 group-hover/env:opacity-70 hover:!opacity-100"
-                title={t("environments.rename")}
-                onClick={(e) => {
-                  // Keep the menu open and don't trigger the row's switch.
-                  e.preventDefault();
-                  e.stopPropagation();
-                  openEdit({
-                    id: env.id,
-                    name: env.name,
-                    color: env.color,
-                    icon: env.icon,
-                    themeId: env.themeId,
-                  });
-                }}
-              >
-                <Pencil className="h-3 w-3" />
-              </span>
-              {ordered.length > 1 && (
+              {isMain && (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className="shrink-0 opacity-0 group-hover/env:opacity-70 hover:!opacity-100"
+                  title={t("environments.rename")}
+                  onClick={(e) => {
+                    // Keep the menu open and don't trigger the row's switch.
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openEdit({
+                      id: env.id,
+                      name: env.name,
+                      color: env.color,
+                      icon: env.icon,
+                      themeId: env.themeId,
+                    });
+                  }}
+                >
+                  <Pencil className="h-3 w-3" />
+                </span>
+              )}
+              {isMain && ordered.length > 1 && (
                 <span
                   role="button"
                   tabIndex={-1}
@@ -162,15 +159,49 @@ export function EnvironmentSwitcher() {
             </DropdownMenuItem>
           );
         })}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="gap-2"
-          onSelect={() => openCreate(lastReplicate)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {t("environments.create")}
-        </DropdownMenuItem>
+        {isMain && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2"
+              onSelect={() => openCreate(lastReplicate)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t("environments.create")}
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * Status-bar-scale mark for an environment: its avatar image when it has one,
+ * otherwise the accent-colour dot this has always used.
+ *
+ * Not `EnvironmentAvatar` — initials are illegible at 8–12px, which is why the
+ * dot exists in the first place. An image is not: a recognisable thumbnail is
+ * exactly what the user uploaded it for, so honouring it here keeps the status
+ * bar consistent with the rail instead of showing a generic dot for an
+ * environment the user gave a face.
+ */
+function EnvironmentMark({ env }: { env: Environment }) {
+  if (isAvatarImage(env.icon)) {
+    return (
+      <img
+        src={env.icon}
+        alt=""
+        aria-hidden
+        draggable={false}
+        className="h-3 w-3 shrink-0 rounded-[3px] object-cover"
+      />
+    );
+  }
+  return (
+    <span
+      className="h-2 w-2 shrink-0 rounded-full"
+      style={{ backgroundColor: env.color || "hsl(var(--muted-foreground))" }}
+    />
   );
 }
