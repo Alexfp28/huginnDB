@@ -83,7 +83,7 @@ Sources: [DBeaver editions](https://dbeaver.com/edition/) · [DBeaver MongoDB su
 
 ## Status
 
-**Stable**, SemVer since `1.0`. The MVP is feature-complete for read/write workflows against every supported driver, and the project has been through several triage rounds of real-world usage (see `CHANGELOG.md`). Known gaps: no automated frontend tests yet, macOS builds are unverified, Windows binaries aren't code-signed yet, and — despite the `.deb`/`.AppImage` bundler being fully configured — the release CI doesn't currently publish Linux artifacts, so Linux users need to build from source for now (see [Roadmap](#roadmap)).
+**Stable**, SemVer since `1.0`. The MVP is feature-complete for read/write workflows against every supported driver, and the project has been through several triage rounds of real-world usage (see `CHANGELOG.md`). Known gaps: no automated frontend tests yet, macOS builds are unverified, and Windows binaries aren't code-signed yet (see [Roadmap](#roadmap)). Windows and Linux (`x86_64`) artifacts are both published per release; arm64, `.rpm` and Flatpak/Snap/AUR packaging are not.
 
 ## Screenshots
 
@@ -123,9 +123,26 @@ Sources: [DBeaver editions](https://dbeaver.com/edition/) · [DBeaver MongoDB su
 
 ### From a release (Windows)
 
-Download the latest `.msi` installer from the [Releases page](https://github.com/Alexfp28/huginnDB/releases) and run it.
+Download the latest `-setup.exe` installer from the [Releases page](https://github.com/Alexfp28/huginnDB/releases) and run it.
 
-> **Windows SmartScreen warning.** Because HuginnDB binaries are not yet signed with an Authenticode certificate, Windows Defender SmartScreen will show a blue *"Windows protected your PC"* dialog on first launch. This is the default behaviour for any unsigned executable from a publisher SmartScreen has not seen before — it is not a malware detection. To continue, click **More info** (*Más información*) and then **Run anyway** (*Ejecutar de todas formas*). Code signing is on the roadmap; in the meantime, you can verify the SHA-256 of the downloaded `.msi` against the digest published on the Releases page. The full source is in this repository and reproducible builds are encouraged.
+> **Windows SmartScreen warning.** Because HuginnDB binaries are not yet signed with an Authenticode certificate, Windows Defender SmartScreen will show a blue *"Windows protected your PC"* dialog on first launch. This is the default behaviour for any unsigned executable from a publisher SmartScreen has not seen before — it is not a malware detection. To continue, click **More info** (*Más información*) and then **Run anyway** (*Ejecutar de todas formas*). Code signing is on the roadmap; in the meantime, you can verify the SHA-256 of the downloaded installer against the digest published on the Releases page. The full source is in this repository and reproducible builds are encouraged.
+
+### From a release (Linux)
+
+Two `x86_64` artifacts are published per release — pick whichever suits you:
+
+```bash
+# .deb — Debian, Ubuntu, Mint, Pop!_OS, …
+sudo apt install ./HuginnDB_<version>_amd64.deb
+
+# .AppImage — any distro, no install step
+chmod +x HuginnDB_<version>_amd64.AppImage
+./HuginnDB_<version>_amd64.AppImage
+```
+
+The `.deb` pulls its runtime dependencies (`libwebkit2gtk-4.1`, `libappindicator3`, …) through apt. The AppImage bundles them, so it needs nothing but a FUSE-capable kernel — but because an AppImage links against the glibc of the machine that built it, and these are built on Ubuntu 22.04, distros older than that may refuse to start it. Build from source in that case.
+
+There is no `aarch64`/arm64 build, no `.rpm`, and no Flatpak/Snap/AUR packaging yet — see [`ROADMAP.md`](ROADMAP.md).
 
 ### Prerequisites
 
@@ -180,7 +197,7 @@ The first `tauri:dev` is slow — Cargo compiles `sqlx` with three database driv
 
 Release bundles land under `src-tauri/target/release/bundle/`:
 
-- **Windows** — `.msi` installer.
+- **Windows** — NSIS `-setup.exe` installer.
 - **Linux** — `.deb` and `.AppImage`.
 
 ## Usage
@@ -255,7 +272,7 @@ For a deeper map of the code layout, read [`CONTRIBUTING.md`](CONTRIBUTING.md#pr
 - **Data grid**: [TanStack Table v8](https://tanstack.com/table).
 - **Editor**: [Monaco](https://microsoft.github.io/monaco-editor/) (self-hosted; no CDN).
 - **Backend**: Rust, [sqlx](https://github.com/launchbadge/sqlx) (PostgreSQL, MySQL, SQLite), the official [`mongodb`](https://crates.io/crates/mongodb) driver, [keyring](https://crates.io/crates/keyring), [tokio](https://tokio.rs), [thiserror](https://crates.io/crates/thiserror).
-- **Bundling**: Tauri bundler — `.msi` (Windows), `.deb` / `.AppImage` (Linux).
+- **Bundling**: Tauri bundler — NSIS `-setup.exe` (Windows), `.deb` / `.AppImage` (Linux).
 
 ## MCP connector
 

@@ -6,7 +6,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Linux release artifacts are now published.** Every release already *could*
+  have shipped them: `tauri.conf.json`'s `bundle.targets` has listed `deb` and
+  `appimage` since 1.7.0, and `.github/workflows/release.yml` carried both the
+  `ubuntu-22.04` matrix leg and its apt build-deps
+  (`libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`,
+  `patchelf`). The leg was just commented out, so nothing was ever built and
+  Linux users had to compile from source — the README even said so. It is now
+  enabled, and a tagged build attaches `x86_64` `.deb` + `.AppImage` next to
+  the Windows installer, with a new "From a release (Linux)" section in the
+  README covering both. `ubuntu-22.04` is a deliberate choice over
+  `ubuntu-latest`: an AppImage links against the glibc of whatever machine
+  built it, so building on a newer image would silently narrow the range of
+  distros the artifact can start on. The matrix already sets
+  `fail-fast: false`, so a Linux-leg failure cannot take the Windows artifacts
+  down with it, and the `tauri-action` step gained `retryAttempts: 3` because
+  two legs now publish updater artifacts to one release: the action merges
+  each platform's entry into the existing `latest.json` rather than replacing
+  the asset, so no entry is lost, but parallel legs can race on the delete —
+  retrying the whole fetch-merge-upload is the upstream-intended mitigation.
+  Not yet exercised by a real tagged run — the workflow's `workflow_dispatch`
+  input builds a draft against a throwaway tag for exactly this kind of smoke
+  test.
+
 ### Fixed
+
+- **The README pointed Windows users at a `.msi` that no longer exists.**
+  Windows bundling moved from WiX/MSI to NSIS in 1.7.0 (see gotcha #21 in
+  `CLAUDE.md` for why: WiX v3 was archived in February 2025 and its
+  `light.exe` stopped running on GitHub's Windows runners at all), so releases
+  have been shipping a `-setup.exe` for several versions while three places in
+  the README — the download instruction, the SmartScreen note's SHA-256
+  advice, and the tech-stack bundling line — still named the MSI. Anyone
+  following the README looked for a file that isn't attached to the release.
 
 - **Folding a connection group in one surface silently folded it everywhere else it was on screen.** `useConnectionGroupCollapse` (`src/lib/connection/useConnectionGroups.ts`) is shared by the File menu, the connections manager dialog, the status-bar switcher and the environment's Schema tree; in the default "remember" mode it read `prefs.ui.collapsedConnectionGroups` as a live Zustand selector, so every mounted instance re-rendered off the same value on every toggle. Opening the connections manager while an environment's tree already had a group open showed it open too (as expected — same remembered layout), but collapsing that group *inside the dialog* also collapsed it live in the tree behind it, because both surfaces were really one shared instance of the fold state rather than independent views that merely started from the same saved arrangement. The hook now seeds a per-instance session override from the persisted set once, at mount, and every toggle — in all three expand modes, not just the forced "expanded"/"collapsed" ones — only touches that instance's local state; "remember" toggles still write through to disk so the *next* surface to mount (including a future app launch) picks up the latest arrangement, but an already-open surface elsewhere is no longer reshaped out from under the user. No preference or on-disk schema changed.
 
