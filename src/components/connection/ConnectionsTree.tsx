@@ -219,9 +219,15 @@ export function ConnectionsTree() {
             }}
             title={isLost ? t("connections.lost", { message: lostError }) : p.name}
             className={cn(
-              "group flex cursor-pointer items-center gap-2 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none hover:bg-accent/40 focus-visible:ring-1 focus-visible:ring-ring",
+              "group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-brand/40",
               isLost && "bg-destructive/10",
-              !isLost && selected === p.id && "bg-brand/10",
+              // Selected connection: the same brand rail the active table row
+              // carries in `SchemaExplorer`, so "this is the one you're in"
+              // reads identically at both levels of the tree, plus a hairline
+              // blue edge as the card's quiet version of an active border.
+              !isLost &&
+                selected === p.id &&
+                "bg-brand/10 ring-1 ring-inset ring-brand/25 shadow-[inset_2px_0_0_hsl(var(--brand))]",
             )}
           >
             {isBusy ? (

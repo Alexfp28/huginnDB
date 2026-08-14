@@ -33,6 +33,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     (they are affordances); toast edges are colour-coded per outcome at one
     shared weight, with success finally green and warning theme-aware instead
     of a hard-coded amber.
+  - The activity bar and the environment rail now mark the active entry with a
+    4px rounded bar flush against the rail edge (brand blue in the activity
+    bar, the environment's own colour in the rail) and tint the selected icon
+    blue. Both rails and the chrome footer buttons gained keyboard focus rings.
+  - The selected connection in the tree carries the same blue rail the active
+    table row already had, plus a hairline blue edge; connection cards in the
+    launcher lift 1px on hover and the active one sits inside a subtle blue
+    glow.
+
+### Fixed
+
+- The active-environment marker in the left rail was never visible: it was
+  offset 8px outside a full-width button, which put it beyond the shell's
+  `overflow-hidden` boundary.
 
 ## [1.14.0] — 2026-08-13
 
