@@ -793,17 +793,22 @@ function EmptyWatermark() {
 
       <div className="relative z-10 flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-7 py-10">
         <div className="flex flex-col items-center gap-3 text-center">
+          {/* The full sticker lockup, not the mark plus a mono wordmark: an
+              empty workspace is one of the few places the brief hands the
+              brand its full voice, and the lockup already carries the name, so
+              repeating it in type underneath was saying it twice. Served at
+              512px for a ~240px box (2x DPI); the 1024px variant exists for
+              docs, and the untouched master lives in `brand/`. */}
           <div className="relative">
-            <div className="absolute inset-0 -z-10 scale-125 rounded-2xl bg-brand/15 blur-xl" />
+            <div className="absolute inset-0 -z-10 scale-110 rounded-[2rem] bg-brand/15 blur-2xl" />
             <img
-              src="/image/huginn-app-icon.svg"
+              src="/image/huginn-lockup-512.png"
               alt="HuginnDB"
-              className="h-14 w-14"
+              width={512}
+              height={288}
+              className="h-auto w-60 select-none"
               draggable={false}
             />
-          </div>
-          <div className="font-mono text-xl font-semibold tracking-tight text-foreground">
-            huginndb<span className="text-brand">_</span>
           </div>
           {!showPicker && (
             <p className="max-w-xs text-sm text-muted-foreground">
