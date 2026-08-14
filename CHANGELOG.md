@@ -41,6 +41,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     table row already had, plus a hairline blue edge; connection cards in the
     launcher lift 1px on hover and the active one sits inside a subtle blue
     glow.
+  - Data grid: headers are semibold on a slightly elevated surface, and every
+    cell separator now comes from the `border` token instead of a flat
+    foreground alpha — a softer, theme-aware hairline. Column resizing (handle,
+    hover, in-progress column) is blue like every other affordance.
+  - **New "HuginnDB Dark" / "HuginnDB Light" editor themes** (Preferences →
+    Editor), painted in the app palette: the editor background matches the
+    panel exactly, the active line is a soft blue lift with Monaco's default
+    box border suppressed, keywords take the brand blue and numbers the same
+    amber the grid uses for numeric cells. `huginn-dark` is the new default for
+    fresh installs; an install that already picked an editor theme keeps it.
+  - The cell editor's header is now a rounded, slightly elevated rail with an
+    icon for the detected content type, and fullscreen is a small sticker chip
+    that finally shows its own shortcut (F11) instead of an anonymous icon.
 
 ### Fixed
 

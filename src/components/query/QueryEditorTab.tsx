@@ -583,8 +583,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 // now Editor prefs own the Monaco theme so users can
                 // pick One Dark Pro / GitHub / Monokai / Solarized
                 // independently of the app chrome. `resolveMonacoTheme`
-                // falls back to one-dark-pro if `prefs.json` carries an
-                // unknown id.
+                // falls back to the brand theme (huginn-dark) if
+                // `prefs.json` carries an unknown id.
                 theme={resolveMonacoTheme(editorPrefs.theme)}
                 value={sql}
                 onChange={(v) => updateQuery(tabId, v ?? "")}

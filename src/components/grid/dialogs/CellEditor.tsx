@@ -10,7 +10,15 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Maximize2, Minimize2, PanelRight } from "lucide-react";
+import {
+  Braces,
+  Code2,
+  Database,
+  Maximize2,
+  Minimize2,
+  PanelRight,
+  Type,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -170,6 +178,17 @@ export function CellEditor({
   const saveHint = /Mac/i.test(navigator.userAgent) ? "⌘S" : "Ctrl+S";
   // Content-type badge label: the auto-detected / selected language.
   const typeLabel = language === "plaintext" ? "TEXT" : language.toUpperCase();
+  // …and its glyph. The brief allows a little more branding in this editor
+  // than anywhere else, and the data type is the one fact worth an icon:
+  // it's what decides highlighting, formatting and JSON validation.
+  const TypeIcon =
+    language === "json"
+      ? Braces
+      : language === "xml"
+        ? Code2
+        : language === "sql"
+          ? Database
+          : Type;
   const bytes = useMemo(() => new TextEncoder().encode(value).length, [value]);
 
   useEffect(() => {
@@ -238,13 +257,17 @@ export function CellEditor({
         <DialogHeader>
           {/* Titled header rail for the flagship editor: column name +
               content-type badge + char/byte pills, with the panel/fullscreen
-              controls grouped right. `pr-8` reserves space for the dialog's
-              built-in close button (replaces the old per-button `mr-8` hack). */}
-          <DialogTitle className="flex items-center gap-2 pr-8">
+              controls grouped right. `pr-10` reserves space for the dialog's
+              built-in close button (replaces the old per-button `mr-8` hack).
+              The rail is a rounded, slightly elevated bar of its own — the one
+              place in the app where the brand language is allowed a little more
+              volume than the working surfaces below it. */}
+          <DialogTitle className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 pr-10 shadow-elevation-1">
             <span className="truncate font-mono text-sm font-semibold">
               {columnName ?? t("cellEditor.title")}
             </span>
-            <span className="shrink-0 rounded bg-brand/10 px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide text-brand">
+            <span className="flex shrink-0 items-center gap-1 rounded-md bg-brand/10 px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide text-brand">
+              <TypeIcon className="h-3 w-3" aria-hidden />
               {typeLabel}
             </span>
             <span className="hidden shrink-0 items-center gap-1 text-2xs tabular-nums text-muted-foreground sm:flex">
@@ -264,22 +287,28 @@ export function CellEditor({
               >
                 <PanelRight className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
+              {/* Fullscreen reads as a small sticker chip carrying its own
+                  shortcut rather than an anonymous icon button: F11 is already
+                  bound here (see the keydown handler above), and the key was
+                  discoverable only by trying it. The sticker edge is the one
+                  logo device this editor gets. */}
+              <button
+                type="button"
                 onClick={() => setFullscreen((v) => !v)}
                 title={
                   fullscreen
                     ? t("cellEditor.exitFullscreen")
                     : t("cellEditor.fullscreen")
                 }
+                className="brand-sticker flex h-7 shrink-0 items-center gap-1 rounded-lg bg-background px-2 text-2xs font-semibold text-muted-foreground transition-colors duration-150 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               >
                 {fullscreen ? (
-                  <Minimize2 className="h-4 w-4" />
+                  <Minimize2 className="h-3.5 w-3.5" />
                 ) : (
-                  <Maximize2 className="h-4 w-4" />
+                  <Maximize2 className="h-3.5 w-3.5" />
                 )}
-              </Button>
+                F11
+              </button>
             </div>
           </DialogTitle>
         </DialogHeader>

@@ -42,7 +42,7 @@ const DEFAULT_PREFS: Preferences = {
     minimap: false,
     lineNumbers: true,
     formatOnPaste: false,
-    theme: "one-dark-pro",
+    theme: "huginn-dark",
   },
   grid: {
     rowHeight: 26,
