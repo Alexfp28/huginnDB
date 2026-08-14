@@ -48,10 +48,24 @@ jobs:
           # the last image generation WiX v3 was actually built against.
           - platform: windows-2022
             args: ""
-          # Uncomment to also ship Linux artifacts. Leaving disabled by
-          # default keeps the runtime + signing surface small for now.
-          # - platform: ubuntu-22.04
-          #   args: ""
+          # Builds the `.deb` + `.AppImage` targets from tauri.conf.json's
+          # bundle.targets. Deliberately the OLDEST supported Ubuntu image
+          # rather than ubuntu-latest: an AppImage links against the glibc of
+          # whatever built it (22.04 is glibc 2.35), so building on a newer
+          # image would silently narrow the set of distros the artifact can
+          # start on. The apt deps for this leg are installed by the
+          # conditional step below, and `fail-fast: false` above means a Linux
+          # failure can no longer take the Windows artifacts down with it.
+          #
+          # MIGRATION DEADLINE: ubuntu-22.04 is GA today but has a published
+          # retirement schedule (actions/runner-images#14254) — deprecation
+          # begins 2026-09-17 (longer queue times), GitHub runs deliberate
+          # brownouts through late March / mid-April 2027 where jobs just fail,
+          # and it stops working entirely on 2027-04-17. Move this to
+          # ubuntu-24.04 (glibc 2.39) before the brownouts start; the only cost
+          # is that the AppImage then requires a distro with glibc >= 2.39.
+          - platform: ubuntu-22.04
+            args: ""
 
     runs-on: ${{ matrix.platform }}
 
@@ -151,6 +165,19 @@ jobs:
             cp src-tauri/target/release/huginndb-mcp "src-tauri/binaries/huginndb-mcp-${triple}"
           fi
 
+      # `retryAttempts` matters now that the matrix has more than one leg.
+      # tauri-action does NOT clobber `latest.json` when a second platform
+      # publishes to the same release — it fetches the existing asset, merges
+      # its own entries into `platforms`, then deletes and re-uploads
+      # (src/upload-version-json.ts) — so the Windows entry survives the Linux
+      # job and vice versa. What it does have is a race
+      # (tauri-apps/tauri-action#1270): two jobs finishing close together can
+      # both resolve the same asset id, and whichever deletes second 404s. The
+      # action deliberately retries the whole fetch-merge-upload operation
+      # rather than just the upload (a narrower retry could re-upload a stale
+      # latest.json), so raising the attempt count is the intended mitigation.
+      # If intermittent 404s still show up, serialise with `max-parallel: 1`
+      # or move latest.json generation into a final `needs:`-gated job.
       - name: Build and publish draft release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -166,4 +193,5 @@ jobs:
             Installed builds with auto-update support will detect this release on next launch and offer to install it from inside the app.
           releaseDraft: true
           prerelease: ${{ steps.resolve_tag.outputs.prerelease }}
+          retryAttempts: 3
           args: ${{ matrix.args }}

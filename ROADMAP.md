@@ -74,22 +74,30 @@ in a roadmap and now don't:
    values,query}.rs`). Still missing: integration tests against ephemeral
    Postgres/MySQL (`testcontainers-rs`), and any frontend test coverage
    (Playwright).
-7. **Ship Linux release artifacts.** Closer to done than it looks: the
-   bundler is already configured for `.deb`/`.AppImage`
-   (`tauri.conf.json`'s `bundle.targets`), and the release workflow
-   (`.github/workflows/release.yml`) already has the `ubuntu-22.04` matrix
-   leg and its apt build-deps (`libwebkit2gtk-4.1-dev`,
-   `libappindicator3-dev`, `librsvg2-dev`, `patchelf`) wired up — but that
-   leg is commented out ("keeps the runtime + signing surface small for
-   now"), so **no Linux binary is currently published on a GitHub
-   Release**. Building from source works fine (see README Installation);
-   there's just nothing to download. Next step is to uncomment the leg,
-   verify a real tagged build end-to-end, and add a "From a release
-   (Linux)" section to the README once artifacts exist. Only x86_64 is
-   targeted today — an `aarch64`/arm64 leg, an `rpm` bundle target, and any
-   distribution beyond raw GitHub Releases (Flatpak/Flathub, Snap, an AUR
-   package) have zero existing scaffolding and are further-out stretch
-   goals, not blocking this item.
+7. **Broaden Linux distribution.** The `ubuntu-22.04` leg in
+   `.github/workflows/release.yml` is now **enabled**, so a tagged build
+   publishes `x86_64` `.deb` + `.AppImage` alongside the Windows installer,
+   and the README documents both. One caveat before treating this as closed:
+   the leg has not yet been exercised by a real tagged run — use the
+   workflow's `workflow_dispatch` input with a throwaway tag like
+   `v0.0.0-test` to smoke-test it, then delete the draft. (The updater is
+   *not* a concern: tauri-action fetches the existing `latest.json` and merges
+   its own entries into `platforms` rather than replacing the asset, so the
+   second leg to finish preserves the first one's entry. Its known race
+   between parallel legs — tauri-apps/tauri-action#1270 — is mitigated with
+   `retryAttempts: 3`; see the comment on that step.)
+
+   **Dated follow-up: move the Linux leg to `ubuntu-24.04` before March
+   2027.** `ubuntu-22.04` is GA today but retires on 2027-04-17, with
+   deliberate brownouts from late March (actions/runner-images#14254). It is
+   the right image *now* because it has the oldest glibc still available
+   (2.35) and that maximises AppImage compatibility, so this is a deadline to
+   track rather than something to do early.
+
+   What genuinely remains beyond that: an `aarch64`/arm64 leg, an `rpm`
+   bundle target, and any distribution beyond raw GitHub Releases
+   (Flatpak/Flathub, Snap, an AUR package) — all with zero existing
+   scaffolding.
 8. **macOS bundle with code signing.** The build is expected to work but is
    unverified, and there's no Apple Developer signing/notarization yet
    (parallels the Windows SmartScreen situation documented in the README).

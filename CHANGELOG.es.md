@@ -8,7 +8,44 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Ya se publican artefactos de release para Linux.** Cada release *podía*
+  haberlos incluido desde hace tiempo: `bundle.targets` en
+  `tauri.conf.json` lista `deb` y `appimage` desde la 1.7.0, y
+  `.github/workflows/release.yml` ya tenía tanto la pata `ubuntu-22.04` de la
+  matriz como sus dependencias de apt (`libwebkit2gtk-4.1-dev`,
+  `libappindicator3-dev`, `librsvg2-dev`, `patchelf`). La pata estaba
+  simplemente comentada, así que nunca se compilaba nada y los usuarios de
+  Linux tenían que compilar desde el código — el propio README lo decía. Ahora
+  está activada, y una build con tag adjunta `.deb` + `.AppImage` de `x86_64`
+  junto al instalador de Windows, con una nueva sección "From a release
+  (Linux)" en el README que cubre ambos. `ubuntu-22.04` es una elección
+  deliberada frente a `ubuntu-latest`: un AppImage enlaza contra la glibc de la
+  máquina que lo construyó, así que compilar en una imagen más nueva
+  reduciría en silencio el rango de distros donde puede arrancar. La matriz ya
+  tenía `fail-fast: false`, así que un fallo en la pata de Linux no puede
+  tumbar los artefactos de Windows, y el paso de `tauri-action` ha ganado
+  `retryAttempts: 3` porque ahora hay dos patas publicando artefactos del
+  updater en una misma release: la action fusiona la entrada de cada plataforma
+  en el `latest.json` existente en vez de reemplazar el asset, así que no se
+  pierde ninguna entrada, pero dos patas en paralelo pueden competir al
+  borrarlo — reintentar todo el ciclo descargar-fusionar-subir es la mitigación
+  prevista por upstream. Todavía no se ha probado con un tag real — el
+  `workflow_dispatch` del workflow construye un borrador contra un tag
+  desechable justo para este tipo de comprobación.
+
 ### Corregido
+
+- **El README mandaba a los usuarios de Windows a un `.msi` que ya no existe.**
+  El empaquetado de Windows pasó de WiX/MSI a NSIS en la 1.7.0 (ver gotcha #21
+  en `CLAUDE.md`: WiX v3 quedó archivado en febrero de 2025 y su `light.exe`
+  dejó de ejecutarse en los runners de Windows de GitHub), así que las
+  releases llevan varias versiones publicando un `-setup.exe` mientras tres
+  sitios del README —  la instrucción de descarga, el consejo del SHA-256 en la
+  nota de SmartScreen y la línea de empaquetado del stack — seguían nombrando
+  el MSI. Quien siguiera el README buscaba un archivo que no está adjunto a la
+  release.
 
 - **Plegar un grupo de conexiones en una pantalla lo plegaba silenciosamente en todas las demás donde estuviera visible a la vez.** `useConnectionGroupCollapse` (`src/lib/connection/useConnectionGroups.ts`) lo comparten el menú Archivo, el diálogo de gestión de conexiones, el selector de la barra de estado y el árbol de Esquema del entorno; en el modo por defecto "recordar" leía `prefs.ui.collapsedConnectionGroups` como un selector de Zustand en vivo, así que cada instancia montada se volvía a renderizar a partir del mismo valor en cada toggle. Abrir el diálogo de gestión de conexiones con el árbol de un entorno ya con un grupo abierto lo mostraba también abierto ahí (esperable — es la misma disposición recordada), pero plegar ese grupo *dentro del diálogo* también lo plegaba en vivo en el árbol de detrás, porque ambas pantallas eran en realidad una única instancia compartida del estado de plegado, no vistas independientes que simplemente partían de la misma disposición guardada. El hook ahora siembra, al montarse, un override de sesión propio de cada instancia a partir del conjunto persistido, y cada toggle — en los tres modos, no solo en los forzados "expandido"/"plegado" — solo toca el estado local de esa instancia; los toggles en modo "recordar" siguen escribiéndose a disco, así que la *siguiente* pantalla en montarse (incluido un futuro arranque de la app) recoge la disposición más reciente, pero una pantalla que ya está abierta en otro sitio deja de recolocarse sin que el usuario lo pida. No cambia ninguna preferencia ni el formato en disco.
 
