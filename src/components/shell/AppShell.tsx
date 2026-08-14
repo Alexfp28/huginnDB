@@ -86,9 +86,9 @@ function ChromeFooter() {
           className="flex h-9 w-9 items-center justify-center rounded-[10px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         >
           {mode === "dark" ? (
-            <Sun className="h-6 w-6" />
+            <Sun className="h-5 w-5" />
           ) : (
-            <Moon className="h-6 w-6" />
+            <Moon className="h-5 w-5" />
           )}
         </button>
       </SimpleTooltip>
@@ -105,9 +105,9 @@ function ChromeFooter() {
           onClick={() =>
             updateNotificationVisible ? openSettings("about") : openSettings()
           }
-          className="relative mt-2 flex h-9 w-9 items-center justify-center rounded-[10px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+          className="relative mt-1 flex h-9 w-9 items-center justify-center rounded-[10px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         >
-          <Settings className="h-6 w-6" />
+          <Settings className="h-5 w-5" />
           {updateNotificationVisible && (
             <span
               aria-hidden
