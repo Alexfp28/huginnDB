@@ -86,6 +86,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Replacing an app icon no longer leaves the old one embedded in the
+  binary.** `tauri_build::build()` declares only `tauri.conf.json` and
+  `capabilities/` as build inputs, and cargo tracks *only* what a build script
+  declares — so changing `icons/*` left the crate looking fresh while both
+  compile-time copies of the icon (the executable's Win32 resource and the
+  generated context's `default_window_icon`) kept the previous artwork, with no
+  error and nothing a frontend rebuild could fix. `build.rs` now declares the
+  six icon files, so touching one forces the relink.
 - The active-environment marker in the left rail was never visible: it was
   offset 8px outside a full-width button, which put it beyond the shell's
   `overflow-hidden` boundary.
