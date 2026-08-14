@@ -1,18 +1,23 @@
 /**
  * Shared collapse/expand logic for the connection group tree, used by every
  * surface that renders grouped connections (the File menu, the connections
- * manager rail, the status-bar switcher).
+ * manager dialog, the environment's Schema tree, the status-bar switcher).
  *
- * The `ui.connectionGroupExpandMode` preference decides the *default* state:
- *   - "remember"  → defer to the persisted `collapsedConnectionGroups` set,
- *                   toggling writes back to disk (the historical behaviour).
- *   - "expanded"  → groups start open; toggles live in per-surface session
- *                   state only (nothing persisted).
- *   - "collapsed" → groups start folded; toggles live in session state.
+ * The `ui.connectionGroupExpandMode` preference decides the *initial* state
+ * a surface mounts with:
+ *   - "remember"  → seed from the persisted `collapsedConnectionGroups` set.
+ *   - "expanded"  → groups start open.
+ *   - "collapsed" → groups start folded.
  *
- * Keeping the session overrides local to each hook instance is deliberate:
- * in the forced modes a fold in one surface shouldn't silently reshape the
- * others, and the persisted "remember" set stays clean of transient toggles.
+ * From then on every toggle lives in a per-hook-instance session override —
+ * in every mode, including "remember" — so surfaces mounted at the same time
+ * (e.g. the environment's tree behind an already-open connections manager
+ * dialog) never reshape each other: folding a group in the dialog used to
+ * fold it live in the tree too, because both read the same persisted value
+ * on every render. "remember" toggles still write through to disk so the
+ * *next* surface to mount (including this one, next launch) picks up the
+ * latest arrangement — they just don't retroactively touch a surface that's
+ * already on screen.
  */
 
 import { useCallback, useState } from "react";
@@ -27,40 +32,48 @@ export interface GroupCollapse {
 
 export function useConnectionGroupCollapse(): GroupCollapse {
   const mode = usePreferences((s) => s.prefs.ui.connectionGroupExpandMode);
-  const collapsedGroups = usePreferences(
-    (s) => s.prefs.ui.collapsedConnectionGroups,
-  );
   const updateUi = usePreferences((s) => s.updateUi);
 
-  // Session-only overrides for the forced ("expanded"/"collapsed") modes.
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  // Session-local overrides, seeded once at mount from the persisted
+  // "remember" set. Deliberately NOT a live subscription to
+  // `collapsedConnectionGroups` — see the module doc.
+  const [overrides, setOverrides] = useState<Record<string, boolean>>(() => {
+    if (mode !== "remember") return {};
+    const seed: Record<string, boolean> = {};
+    for (const name of usePreferences.getState().prefs.ui
+      .collapsedConnectionGroups) {
+      seed[name] = true;
+    }
+    return seed;
+  });
 
   const isCollapsed = useCallback(
     (name: string) => {
-      if (mode === "remember") return collapsedGroups.includes(name);
       if (name in overrides) return overrides[name];
       return mode === "collapsed";
     },
-    [mode, collapsedGroups, overrides],
+    [mode, overrides],
   );
 
   const toggle = useCallback(
     (name: string) => {
-      if (mode === "remember") {
-        const collapsed = collapsedGroups.includes(name);
-        updateUi({
-          collapsedConnectionGroups: collapsed
-            ? collapsedGroups.filter((g) => g !== name)
-            : [...collapsedGroups, name],
-        });
-        return;
-      }
       setOverrides((prev) => {
         const current = name in prev ? prev[name] : mode === "collapsed";
-        return { ...prev, [name]: !current };
+        const next = { ...prev, [name]: !current };
+        if (mode === "remember") {
+          const collapsedGroups =
+            usePreferences.getState().prefs.ui.collapsedConnectionGroups;
+          const nowCollapsed = !current;
+          updateUi({
+            collapsedConnectionGroups: nowCollapsed
+              ? [...collapsedGroups, name]
+              : collapsedGroups.filter((g) => g !== name),
+          });
+        }
+        return next;
       });
     },
-    [mode, collapsedGroups, updateUi],
+    [mode, updateUi],
   );
 
   return { isCollapsed, toggle };
