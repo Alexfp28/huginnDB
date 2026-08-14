@@ -1166,6 +1166,7 @@
     "readyTitle": "Actualización lista para instalar: {{version}}",
     "readyDescription": "Descargada en segundo plano — reinicia para aplicarla.",
     "restartNow": "Reiniciar ahora",
+    "restarting": "Reiniciando…",
     "install": "Instalar y reiniciar",
     "later": "Más tarde",
     "tooltipUpdateAvailable": "Hay una actualización disponible ({{version}})",

@@ -1166,6 +1166,7 @@
     "readyTitle": "Update ready to install: {{version}}",
     "readyDescription": "Downloaded in the background — restart to apply it.",
     "restartNow": "Restart now",
+    "restarting": "Restarting…",
     "install": "Install and relaunch",
     "later": "Later",
     "tooltipUpdateAvailable": "An update is available ({{version}})",

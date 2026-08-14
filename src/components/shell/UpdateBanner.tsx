@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Sparkles, X } from "lucide-react";
+import { Loader2, Sparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useUpdateStore } from "@/stores/update";
 import { Button } from "@/components/ui/button";
@@ -44,15 +44,23 @@ export function UpdateBanner({ version }: Props) {
   // wait, no progress) — the copy and button reflect that instead of
   // implying there's still something to download.
   const readyToRestart = status === "readyToRestart";
-  const title = readyToRestart
-    ? t("update.readyTitle", { version })
-    : t("update.toastTitle", { version });
-  const description = readyToRestart
-    ? t("update.readyDescription")
-    : t("update.toastDescription");
-  const installLabel = readyToRestart
-    ? t("update.restartNow")
-    : t("update.install");
+  // Covers the gap between the click and the actual install() call (see
+  // the "installing" status doc in stores/update.ts) — disables both
+  // buttons so a slow click can't fire the install twice.
+  const isInstalling = status === "installing" || status === "ready";
+  const title =
+    readyToRestart || isInstalling
+      ? t("update.readyTitle", { version })
+      : t("update.toastTitle", { version });
+  const description =
+    readyToRestart || isInstalling
+      ? t("update.readyDescription")
+      : t("update.toastDescription");
+  const installLabel = isInstalling
+    ? t("update.restarting")
+    : readyToRestart
+      ? t("update.restartNow")
+      : t("update.install");
 
   return (
     <div
@@ -77,16 +85,23 @@ export function UpdateBanner({ version }: Props) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={dismiss}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={dismiss}
+            disabled={isInstalling}
+          >
             {t("update.later")}
           </Button>
-          <Button size="sm" onClick={install}>
+          <Button size="sm" onClick={install} disabled={isInstalling}>
+            {isInstalling && <Loader2 className="h-3 w-3 animate-spin" />}
             {installLabel}
           </Button>
           <button
             aria-label={t("common.close")}
             onClick={dismiss}
-            className="text-muted-foreground/60 transition-colors hover:text-foreground"
+            disabled={isInstalling}
+            className="text-muted-foreground/60 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
           >
             <X className="h-4 w-4" />
           </button>

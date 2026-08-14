@@ -8,6 +8,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **El botón "Reiniciar ahora" no daba ningún feedback tras pulsarlo, lo que invitaba a pulsarlo varias veces.** `installAndRelaunch` (`src/stores/update.ts`) pasaba directamente de `readyToRestart` a un estado transitorio `ready` justo antes de `installUpdate()`/`relaunchApp()` — pero todo lo que ocurre en medio (una comprobación asíncrona del sidecar de MCP, y su diálogo de confirmación si algún cliente lo tiene abierto ahora mismo) se ejecutaba mientras el store seguía reportando `readyToRestart`, así que tanto `UpdateBanner` como la tarjeta de actualizaciones de Ajustes → Acerca de seguían mostrando la etiqueta inactiva "Reiniciar ahora" / "Instalar y reiniciar" con el botón totalmente pulsable. Ahora se fija un nuevo estado `installing` de forma síncrona en el instante en que se ejecuta el handler del click, antes de cualquier `await`; ambos componentes deshabilitan su botón de instalar (y en el banner también los controles de descarte) y muestran un spinner con la etiqueta "Reiniciando…" durante todo ese hueco. `installAndRelaunch` también corta en seco si se vuelve a invocar mientras ya está en `installing`/`ready`, así que una doble invocación accidental no puede encolar una segunda instalación aunque un click se cuele.
+
 ## [1.14.0] — 2026-08-13
 
 ### Añadido

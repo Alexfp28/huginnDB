@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **The "Restart now" button gave no feedback after being clicked, inviting repeat clicks.** `installAndRelaunch` (`src/stores/update.ts`) went straight from `readyToRestart` to a transient `ready` right before `installUpdate()`/`relaunchApp()` — but everything in between (an async MCP-sidecar check, and its confirmation dialog if a client currently holds the sidecar) ran while the store still reported `readyToRestart`, so both `UpdateBanner` and the Settings → About updates card kept rendering the idle "Restart now" / "Install and relaunch" label with the button fully clickable. A new `installing` status is now set synchronously the instant the click handler runs, before any `await`; both components disable their install button and the banner's dismiss controls and swap in a spinner + "Restarting…" label for the whole gap. `installAndRelaunch` also short-circuits if it's called again while already `installing`/`ready`, so a stray double-invocation can't queue a second install even if a click slips through.
+
 ## [1.14.0] — 2026-08-13
 
 ### Added
