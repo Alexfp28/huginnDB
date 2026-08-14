@@ -8,6 +8,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Environments can carry a custom avatar image.** Until now an environment
+  was always drawn as its initials over the accent colour, which stops
+  disambiguating as soon as two of them start with the same letter ("Cliente A"
+  / "Cliente B") — exactly the case the rail exists to make glanceable. The
+  create/rename dialog now takes an image: pick one through the native file
+  dialog, or drop a file straight onto the avatar preview. It replaces the
+  initials in the rail, the workspace picker and the dialog preview, and the
+  status-bar switcher shows it too instead of its colour dot (an image is
+  recognisable at 12px, which is why initials never were there). Clearing it
+  goes back to the initials tile.
+  Where it is stored: inline in the existing `Environment.icon` field — a
+  `data:` URL, so no backend schema change and no data migration. Whatever the
+  user picks is centre-cropped square and re-encoded at 128px (WebP where the
+  webview can encode it, PNG otherwise) before being stored, which keeps the
+  payload in the low single-digit KB: `icon` round-trips through
+  `tab_state.json` on every environment write, so a full-resolution photo there
+  would bloat a file the app rewrites constantly. Keeping the image inline
+  rather than as a file under the config dir means it has no lifecycle of its
+  own — it is copied, discarded and written with the environment itself, so
+  there are no orphans to sweep and no second failure mode where the JSON
+  points at a file that is gone.
+  `icon` is the slot the old lucide icon picker used to write, and an
+  environment that still holds a legacy icon key falls back to the initials
+  exactly as it has since that picker was removed: the image branch is gated on
+  the value being a `data:image/` URL, not on the field being non-empty.
+  One new backend command (`read_image_data_url`) does the reading, because the
+  native picker hands back a *path* the webview cannot open itself. It
+  validates the format from the file's magic bytes rather than its extension
+  and refuses anything over 12 MB, so an unusable file is rejected with a clear
+  message instead of turning into a data URL no `<img>` will load. The drop
+  path never touches it — the browser already has the bytes.
+
 - **Linux release artifacts are now published.** Every release already *could*
   have shipped them: `tauri.conf.json`'s `bundle.targets` has listed `deb` and
   `appimage` since 1.7.0, and `.github/workflows/release.yml` carried both the
@@ -30,6 +62,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Not yet exercised by a real tagged run — the workflow's `workflow_dispatch`
   input builds a draft against a throwaway tag for exactly this kind of smoke
   test.
+
+### Changed
+
+- **The environment label in the left rail is a little larger.** It was 10px,
+  which on a 1080p display sat below what the one piece of always-visible
+  environment chrome should need to be read at a glance from the corner of the
+  eye. Now 11px with tighter letter-spacing, so roughly the same number of
+  characters still fits in the 72px rail before truncating, and the active
+  environment's label is medium weight — "which environment am I in" now reads
+  from the type as well as from the background tint.
 
 ### Fixed
 

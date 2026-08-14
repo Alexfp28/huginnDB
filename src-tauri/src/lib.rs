@@ -304,6 +304,7 @@ pub fn run() {
             commands::view::drop_view,
             commands::dump::export_databases,
             commands::dump::read_text_file,
+            commands::dump::read_image_data_url,
             commands::dump::write_text_file,
             commands::dump::export_table,
             commands::dump::export_table_rows,

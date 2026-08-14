@@ -28,7 +28,9 @@ import {
 import { useEnvironments, environmentLabel } from "@/stores/session/environments";
 import { useEnvironmentEditor } from "@/stores/dialogs/environmentEditor";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
+import { isAvatarImage } from "@/lib/environmentAvatar";
 import { cn } from "@/lib/utils";
+import type { Environment } from "@/types";
 
 export function EnvironmentSwitcher() {
   const { t } = useTranslation();
@@ -75,10 +77,7 @@ export function EnvironmentSwitcher() {
           {switching ? (
             <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
           ) : (
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: active.color || "hsl(var(--muted-foreground))" }}
-            />
+            <EnvironmentMark env={active} />
           )}
           <span className="truncate">
             {environmentLabel(active, defaultName)}
@@ -102,10 +101,7 @@ export function EnvironmentSwitcher() {
                   isActive ? "opacity-100" : "opacity-0",
                 )}
               />
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: env.color || "hsl(var(--muted-foreground))" }}
-              />
+              <EnvironmentMark env={env} />
               <span className="min-w-0 flex-1 truncate">
                 {environmentLabel(env, defaultName)}
               </span>
@@ -172,5 +168,35 @@ export function EnvironmentSwitcher() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * Status-bar-scale mark for an environment: its avatar image when it has one,
+ * otherwise the accent-colour dot this has always used.
+ *
+ * Not `EnvironmentAvatar` — initials are illegible at 8–12px, which is why the
+ * dot exists in the first place. An image is not: a recognisable thumbnail is
+ * exactly what the user uploaded it for, so honouring it here keeps the status
+ * bar consistent with the rail instead of showing a generic dot for an
+ * environment the user gave a face.
+ */
+function EnvironmentMark({ env }: { env: Environment }) {
+  if (isAvatarImage(env.icon)) {
+    return (
+      <img
+        src={env.icon}
+        alt=""
+        aria-hidden
+        draggable={false}
+        className="h-3 w-3 shrink-0 rounded-[3px] object-cover"
+      />
+    );
+  }
+  return (
+    <span
+      className="h-2 w-2 shrink-0 rounded-full"
+      style={{ backgroundColor: env.color || "hsl(var(--muted-foreground))" }}
+    />
   );
 }

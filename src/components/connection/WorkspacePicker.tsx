@@ -268,6 +268,7 @@ function EnvironmentsPane() {
                   <EnvironmentAvatar
                     name={environmentLabel(env, defaultName)}
                     color={env.color}
+                    icon={env.icon}
                     size={32}
                   />
                 )
