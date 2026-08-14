@@ -4,6 +4,41 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Fixed
+
+- **A secondary "New window" showed every saved connection from every
+  environment, with no rail to tell them apart.** `EnvironmentRail` and
+  `EnvironmentSwitcher` already hid themselves outside the main window
+  (gotcha #8 — only main writes `tab_state.json`), but nothing filled in the
+  connection/database visibility filters (`useUi.visibleConnections` /
+  `databaseVisibility` / `collapsedConnections`) for a secondary window
+  either, since `restoreSession`/`switchTo` were both hard-gated to the main
+  window. Because connection profiles are global, not partitioned per
+  environment, the tree fell back to its "no filter" default: show
+  everything. `list_environments` already returns every environment's full
+  `launch` snapshot, read-only, so the fix stays on the frontend:
+  `useEnvironments.load()` now seeds a secondary window's own filters from
+  whichever environment is active, and `switchTo()` gained a real branch for
+  non-main windows that re-points those filters locally — never touching
+  `set_active_environment`, pools, tabs or `tab_state.json`. Each window
+  already has its own JS process and its own Zustand store, so this can't
+  leak between windows. `EnvironmentRail`/`EnvironmentSwitcher` now render in
+  every window, with create/rename/delete/reorder (the actions that do write
+  the shared file) hidden outside main — so several windows can each sit in a
+  different environment at once, independently.
+
+- **Switching a table's row layout (table/list) in one window silently
+  switched it in every other open window and tab too.** The toggle wrote
+  `documentViewMode`, a field inside the single `Preferences` blob the
+  backend intentionally broadcasts to every window on save (most of
+  `Preferences` genuinely is app-wide, e.g. row height). Moved it onto each
+  table tab's own view state (`TabViewState`/`PersistedTab`), the same
+  mechanism already used for a tab's filters/sort/search — a tab now owns its
+  row layout independently of other tabs and other windows, seeded once from
+  the (unchanged) global default the first time it's opened.
+
 ## [1.15.0] — 2026-08-14
 
 ### Added

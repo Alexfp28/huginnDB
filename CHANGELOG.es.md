@@ -6,6 +6,46 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
+## [Unreleased]
+
+### Corregido
+
+- **Una "New window" secundaria mostraba todas las conexiones guardadas de
+  todos los entornos, sin ningún rail que las distinguiera.**
+  `EnvironmentRail` y `EnvironmentSwitcher` ya se ocultaban fuera de la
+  ventana principal (gotcha #8 — solo main escribe `tab_state.json`), pero
+  nada rellenaba los filtros de visibilidad de conexiones/bases de datos
+  (`useUi.visibleConnections` / `databaseVisibility` /
+  `collapsedConnections`) en una ventana secundaria tampoco, ya que
+  `restoreSession`/`switchTo` estaban ambos bloqueados a la ventana
+  principal. Como los perfiles de conexión son globales, no están
+  particionados por entorno, el árbol caía a su comportamiento por defecto
+  de "sin filtro": mostrar todo. `list_environments` ya devuelve, de solo
+  lectura, el `launch` completo de cada entorno, así que el arreglo se queda
+  en el frontend: `useEnvironments.load()` ahora siembra los filtros propios
+  de una ventana secundaria a partir del entorno que esté activo, y
+  `switchTo()` ganó una rama real para ventanas que no son la principal que
+  redirige esos filtros localmente — sin tocar nunca `set_active_environment`,
+  los pools, las pestañas ni `tab_state.json`. Cada ventana ya tiene su
+  propio proceso de JS y su propia instancia de Zustand, así que esto no
+  puede filtrarse entre ventanas. `EnvironmentRail`/`EnvironmentSwitcher`
+  ahora se renderizan en toda ventana, con crear/renombrar/eliminar/reordenar
+  (las acciones que sí escriben el archivo compartido) ocultas fuera de
+  main — así que varias ventanas pueden estar cada una en un entorno
+  distinto a la vez, de forma independiente.
+
+- **Cambiar el modo de vista de una tabla (tabla/lista) en una ventana lo
+  cambiaba en silencio en el resto de ventanas y pestañas abiertas.** El
+  conmutador escribía `documentViewMode`, un campo dentro del único bloque
+  `Preferences` que el backend difunde a propósito a todas las ventanas al
+  guardar (la mayor parte de `Preferences` es efectivamente de toda la
+  aplicación, por ejemplo la altura de fila). Se ha movido al estado de
+  vista propio de cada pestaña de tabla (`TabViewState`/`PersistedTab`), el
+  mismo mecanismo que ya se usa para los filtros/orden/búsqueda de una
+  pestaña — ahora cada pestaña guarda su modo de fila de forma independiente
+  del resto de pestañas y ventanas, sembrado una sola vez desde el valor por
+  defecto global (sin cambios) la primera vez que se abre.
+
 ## [1.15.0] — 2026-08-14
 
 ### Añadido
