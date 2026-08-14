@@ -61,21 +61,32 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex h-full w-full flex-col items-center justify-center text-center",
+        "relative flex h-full w-full flex-col items-center justify-center overflow-hidden text-center",
         compact ? "gap-2 px-4 py-6" : "gap-3 px-6 py-10",
         className,
       )}
     >
+      {/* The dot field spans the whole surface rather than a small ring around
+          the mark — a lattice that stops a few dots out reads as an unfinished
+          patch floating in the middle of the panel. Its own mask keeps the
+          edges from ending in a hard line. */}
+      <span
+        aria-hidden
+        className="halftone-centered pointer-events-none absolute inset-0"
+      />
       <div className="relative flex items-center justify-center">
-        {/* The comic halftone, faded from the centre so it reads as printing
-            texture behind the mark rather than a tiled background. */}
+        {/* Blue bloom under the mark: the light source the flat dot field
+            lacks, and the same device the splash uses. */}
         <span
           aria-hidden
-          className="halftone-centered pointer-events-none absolute -inset-7 rounded-full"
+          className={cn(
+            "pointer-events-none absolute rounded-full bg-brand/25 blur-2xl",
+            compact ? "h-20 w-20" : "h-28 w-28",
+          )}
         />
         <span
           className={cn(
-            "relative block",
+            "relative block drop-shadow-[0_4px_16px_hsl(var(--brand)/0.35)]",
             compact ? "h-11 w-11" : "h-16 w-16",
           )}
         >
@@ -107,7 +118,11 @@ export function EmptyState({
           )}
         </span>
       </div>
-      <div className="flex flex-col gap-1">
+      {/* `relative` on the copy is load-bearing, not decoration: the halftone
+          is absolutely positioned, and CSS paints positioned siblings above
+          static ones regardless of source order — without it the dot field
+          speckles over the text. */}
+      <div className="relative flex flex-col gap-1">
         <p
           className={cn(
             "max-w-[42ch] font-medium text-foreground",
@@ -120,7 +135,7 @@ export function EmptyState({
           <p className="max-w-[46ch] text-xs text-muted-foreground">{hint}</p>
         )}
       </div>
-      {action}
+      {action && <div className="relative">{action}</div>}
     </div>
   );
 }

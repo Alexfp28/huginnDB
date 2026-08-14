@@ -163,33 +163,54 @@ input[type="password"]::-ms-clear {
    * without another wrapper, but each new call site is a deliberate choice.
    */
 
-  /* The comic halftone: a dot lattice in the brand blue, faded out from the
-     top-left so it reads as printing texture behind an illustration rather
-     than a tiled background. `background-size` sets the dot pitch. */
+  /* The comic halftone: a dot lattice in the brand blue. The mask thins the
+     field out towards the far corner so it reads as printing texture rather
+     than wallpaper, but it now runs to the edge of its box (it used to stop at
+     72%, leaving a visibly unfinished patch of dots floating in the middle of
+     the surface). `background-size` sets the dot pitch. */
   .halftone {
     background-image: radial-gradient(
-      hsl(var(--brand) / 0.5) 1px,
+      hsl(var(--brand) / 0.62) 1px,
       transparent 1.5px
     );
     background-size: 9px 9px;
     -webkit-mask-image: radial-gradient(
-      120% 100% at 15% 0%,
+      140% 120% at 12% 0%,
       #000 0%,
-      transparent 72%
+      #000 35%,
+      transparent 100%
     );
-    mask-image: radial-gradient(120% 100% at 15% 0%, #000 0%, transparent 72%);
+    mask-image: radial-gradient(
+      140% 120% at 12% 0%,
+      #000 0%,
+      #000 35%,
+      transparent 100%
+    );
   }
 
-  /* Same lattice, centred fade — for a mark sitting in the middle of an empty
-     state or the splash screen. */
+  /* Same lattice, centred — for a mark sitting in the middle of an empty state
+     or the splash screen. `farthest-side` + a late fade keeps the field lit all
+     the way into the corners instead of dying in a small circle around the
+     mark; the dots are also brighter than the corner variant, since here they
+     are the only texture on the surface. */
   .halftone-centered {
     background-image: radial-gradient(
-      hsl(var(--brand) / 0.45) 1px,
+      hsl(var(--brand) / 0.7) 1px,
       transparent 1.5px
     );
     background-size: 9px 9px;
-    -webkit-mask-image: radial-gradient(closest-side, #000 0%, transparent 80%);
-    mask-image: radial-gradient(closest-side, #000 0%, transparent 80%);
+    -webkit-mask-image: radial-gradient(
+      farthest-side,
+      #000 0%,
+      #000 45%,
+      transparent 100%
+    );
+    mask-image: radial-gradient(
+      farthest-side,
+      #000 0%,
+      #000 45%,
+      transparent 100%
+    );
   }
 
   /* The logo's soft black outline plus a hint of volume, at control scale: a
