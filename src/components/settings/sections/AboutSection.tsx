@@ -65,23 +65,44 @@ export function AboutSection() {
 
   return (
     <div className="space-y-4 text-sm">
-      <div className="rounded-md border border-border bg-card/40 p-3">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-          {productName}
-        </div>
-        <div className="mt-1 font-mono text-base">{currentVersion}</div>
-        <div className="mt-2 text-[12px] text-muted-foreground">
-          {t("settings.about.tagline")}
-        </div>
-        <div className="mt-2 text-[12px]">
-          <a
-            href="https://github.com/Alexfp28/huginnDB"
-            target="_blank"
-            rel="noreferrer"
-            className="text-primary hover:underline"
-          >
-            github.com/Alexfp28/huginnDB
-          </a>
+      {/* About is one of the four surfaces the visual brief lets the brand
+          speak fully (with launch, empty states and loading), so the identity
+          card leads with the mark over a halftone wash instead of a text
+          label. `productName` still renders underneath because the canary
+          build shares this panel and must stay tellable apart. */}
+      <div className="relative overflow-hidden rounded-md border border-border bg-card/40 p-3">
+        <span
+          aria-hidden
+          className="halftone pointer-events-none absolute inset-0 opacity-60"
+        />
+        <div className="relative flex items-start gap-3">
+          <img
+            src="/image/huginn-mark-256.png"
+            alt=""
+            width={256}
+            height={256}
+            className="h-12 w-12 shrink-0 select-none"
+            draggable={false}
+          />
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              {productName}
+            </div>
+            <div className="mt-1 font-mono text-base">{currentVersion}</div>
+            <div className="mt-2 text-[12px] text-muted-foreground">
+              {t("settings.about.tagline")}
+            </div>
+            <div className="mt-2 text-[12px]">
+              <a
+                href="https://github.com/Alexfp28/huginnDB"
+                target="_blank"
+                rel="noreferrer"
+                className="text-brand hover:text-brand-hover hover:underline"
+              >
+                github.com/Alexfp28/huginnDB
+              </a>
+            </div>
+          </div>
         </div>
       </div>
 

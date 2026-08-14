@@ -59,6 +59,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     holding the glyph and room for a hint, adopted by the connections tree, the
     console, saved queries and an empty result set. The medallion is the slot
     the sticker illustration drops into later.
+  - **The new comic logo replaces the old raven/rune mark everywhere**: every
+    app/installer icon size was regenerated from it (Windows, macOS, Linux,
+    plus the Android/iOS sets), the empty workspace shows the full lockup, the
+    About card leads with the mark over a halftone wash, empty states show it in
+    their medallion with the per-state glyph as a corner badge, and the dev
+    browser tab finally has a favicon. Masters live in the new `brand/`
+    directory, outside `public/` so 2.5MB of source artwork stays out of every
+    installer; `public/image/` keeps only what the app renders, at the size it
+    renders it.
+  - **New launch splash**: the mark over a halftone wash and a blue bloom, on
+    screen for about half a second and then gone. It is an overlay inside the
+    existing window, not a second Tauri window, and it never blocks or waits on
+    session restore.
   - Microdetails: resize handles are rounded and turn blue while grabbed;
     connection state dots carry a soft halo of their own colour (the lit dots on
     the logo's cylinder); jumping to a preference from the command palette
