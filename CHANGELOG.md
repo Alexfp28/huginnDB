@@ -71,9 +71,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     renders it.
   - The Windows icon was rebuilt for small sizes: the artwork is cropped to its
     own content (the master's transparent margin was costing ~10% of every
-    canvas) and each entry in `icon.ico` — 16/24/32/48/64/256 — is downscaled in
-    two steps, so the "H" stays readable in the title bar, the taskbar and
-    Explorer instead of turning into a blue smudge.
+    canvas), every size is resampled by repeated 2:1 halvings with a light
+    unsharp pass at 32px and below, and `icon.ico` now carries the full ladder
+    — 16/20/24/32/40/48/64/96/128/256 — including the 20px and 40px entries
+    Windows asks for at 125% and 250% display scaling and used to have to
+    improvise by rescaling a neighbour. The "H" stays readable in the title bar,
+    the taskbar and Explorer instead of turning into a blue smudge.
   - **New launch splash**: the mark over a halftone wash and a blue bloom, on
     screen for about half a second and then gone. It is an overlay inside the
     existing window, not a second Tauri window, and it never blocks or waits on
