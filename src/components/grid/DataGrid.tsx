@@ -50,6 +50,7 @@ import {
   Eraser,
   Filter,
   FilterX,
+  Inbox,
   KeyRound,
   Loader2,
   Maximize2,
@@ -70,6 +71,7 @@ import {
 } from "@/components/ui/dropdown";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/common/EmptyState";
 import {
   defaultColumnWidth,
   formatBitValue,
@@ -575,8 +577,8 @@ const GridRow = memo(function GridRow({
           : isSelected
             ? "bg-brand/10"
             : zebraStripes && i % 2 === 1
-              ? "bg-muted/30 hover:bg-accent/30"
-              : "hover:bg-accent/30",
+              ? "bg-muted/30 hover:bg-accent/40"
+              : "hover:bg-accent/40",
       )}
       onClick={(e) => {
         e.stopPropagation();
@@ -586,7 +588,7 @@ const GridRow = memo(function GridRow({
     >
       <td
         className={cn(
-          "border-b border-border/50 border-r border-r-foreground/15 px-2 tabular-nums text-muted-foreground",
+          "border-b border-border/50 border-r border-r-border/70 px-2 tabular-nums text-muted-foreground",
           // Inset accent bar marking a selected row's left edge. It
           // lives on the gutter cell rather than the `<tr>` because
           // box-shadow on a table-row box is unreliable across
@@ -659,7 +661,7 @@ const GridRow = memo(function GridRow({
               <td
                 data-cell={`${i}-${cIdx}`}
                 className={cn(
-                  "cursor-pointer border-b border-border/50 border-r border-r-foreground/15 px-2",
+                  "cursor-pointer border-b border-border/50 border-r border-r-border/70 px-2",
                   isFkCell &&
                     "hover:underline hover:decoration-dotted hover:decoration-fk/70 hover:underline-offset-2",
                   // Inset ring marks the keyboard-active cell.
@@ -2734,7 +2736,7 @@ export function DataGrid({
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 <th
-                  className="border-b border-border border-r border-r-foreground/25 bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground"
+                  className="border-b border-border border-r border-r-border bg-card px-2 py-1 font-semibold uppercase tracking-wider text-muted-foreground"
                   style={{ ...headerStyle, width: 40 }}
                 >
                   {selectionEnabled ? (
@@ -2769,8 +2771,11 @@ export function DataGrid({
                     key={h.id}
                     data-col-id={h.column.id}
                     className={cn(
-                      "relative border-b border-border border-r border-r-foreground/25 bg-card px-2 py-1 uppercase tracking-wider text-muted-foreground transition-colors duration-150",
-                      resizingColId === h.column.id && "bg-primary/10",
+                      // Slightly elevated surface (`card` over the grid's
+                      // `background`) + semibold, per the brand language: the
+                      // header is a label strip, not another data row.
+                      "relative border-b border-border border-r border-r-border bg-card px-2 py-1 font-semibold uppercase tracking-wider text-muted-foreground transition-colors duration-150",
+                      resizingColId === h.column.id && "bg-brand/10",
                     )}
                     style={{ ...headerStyle, width: h.getSize() }}
                   >
@@ -2802,8 +2807,8 @@ export function DataGrid({
                       }}
                       title={t("dataGrid.resizeHandleHint")}
                       className={cn(
-                        "absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-primary/50",
-                        resizingColId === h.column.id && "bg-primary",
+                        "absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-brand/50",
+                        resizingColId === h.column.id && "bg-brand",
                       )}
                     />
                   </th>
@@ -2892,11 +2897,13 @@ export function DataGrid({
             })}
             {visibleRows.length === 0 && !draftRow && (
               <tr>
-                <td
-                  colSpan={result.columns.length + 2}
-                  className="px-4 py-8 text-center text-xs text-muted-foreground"
-                >
-                  {t("dataGrid.noRows")}
+                <td colSpan={result.columns.length + 2}>
+                  <EmptyState
+                    size="sm"
+                    icon={Inbox}
+                    title={t("dataGrid.noRows")}
+                    className="h-auto"
+                  />
                 </td>
               </tr>
             )}
@@ -3308,7 +3315,7 @@ function DraftRowView({
         onBlur={handleRowBlur}
         onKeyDown={handleKeyDown}
       >
-        <td className="border-b border-border/50 border-r border-r-foreground/15 px-2 py-1 text-[10px] font-medium text-primary">
+        <td className="border-b border-border/50 border-r border-r-border/70 px-2 py-1 text-[10px] font-medium text-primary">
           {draft.saving ? "…" : "+"}
         </td>
         {columns.map((col, idx) => {
@@ -3321,7 +3328,7 @@ function DraftRowView({
           return (
             <td
               key={col.name}
-              className="border-b border-border/50 border-r border-r-foreground/15 px-1 py-0.5"
+              className="border-b border-border/50 border-r border-r-border/70 px-1 py-0.5"
             >
               {isAutoPk ? (
                 <span

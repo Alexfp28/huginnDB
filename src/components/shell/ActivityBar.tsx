@@ -45,17 +45,25 @@ export function ActivityBar({ side, buttons, footer, className }: ActivityBarPro
             onClick={btn.onClick}
             aria-pressed={btn.active}
             className={cn(
-              "relative flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors",
-              "hover:bg-foreground/[0.06] hover:text-foreground",
-              btn.active && "bg-foreground/[0.08] text-foreground",
+              "relative flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150",
+              "hover:bg-accent/60 hover:text-foreground",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
+              // Selected: the icon itself goes brand blue over a quiet surface.
+              // The colour is the signal, not a loud fill.
+              btn.active && "bg-accent/70 text-brand",
             )}
           >
             {btn.active && (
               <span
                 aria-hidden
+                // The 4px active marker of the brief, flush against the rail's
+                // outer edge. The button is centred in a 44px rail (6px of
+                // slack per side), so a -6px offset lands the bar exactly on
+                // the edge; the previous -8px pushed a 2px sliver off the rail
+                // entirely, where the shell's `overflow-hidden` clipped it.
                 className={cn(
-                  "absolute top-1.5 bottom-1.5 w-0.5 rounded-full bg-primary",
-                  side === "left" ? "-left-2" : "-right-2",
+                  "absolute top-1 bottom-1 w-1 rounded-full bg-brand",
+                  side === "left" ? "-left-1.5" : "-right-1.5",
                 )}
               />
             )}

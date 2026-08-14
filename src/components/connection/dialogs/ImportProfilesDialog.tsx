@@ -150,7 +150,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
               {t("transfer.import.pickDescription")}
             </p>
             {error && (
-              <div className="flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-[11px] text-destructive">
+              <div className="flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/40 px-3 py-2 text-[11px] text-destructive">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 {error}
               </div>
@@ -285,7 +285,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
               )}
             </div>
             {result.needs_password.length > 0 && (
-              <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/30 px-3 py-2 text-2xs text-warning">
+              <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/40 px-3 py-2 text-2xs text-warning">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 {t("transfer.import.needsPassword", {
                   count: result.needs_password.length,

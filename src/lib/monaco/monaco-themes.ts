@@ -25,6 +25,8 @@ import type * as monaco from "monaco-editor";
 export type MonacoThemeId =
   | "vs-dark"
   | "vs-light"
+  | "huginn-dark"
+  | "huginn-light"
   | "one-dark-pro"
   | "github-dark"
   | "github-light"
@@ -41,6 +43,8 @@ export interface MonacoThemeOption {
 }
 
 export const MONACO_THEME_OPTIONS: MonacoThemeOption[] = [
+  { id: "huginn-dark", label: "HuginnDB Dark" },
+  { id: "huginn-light", label: "HuginnDB Light" },
   { id: "one-dark-pro", label: "One Dark Pro" },
   { id: "github-dark", label: "GitHub Dark" },
   { id: "github-light", label: "GitHub Light" },
@@ -68,6 +72,81 @@ export const MONACO_THEME_DEFINITIONS: Record<
   >,
   monaco.editor.IStandaloneThemeData
 > = {
+  /**
+   * The brand editor themes: the app palette, in Monaco. `editor.background`
+   * matches the app's own `--background` exactly so the editor reads as part of
+   * its panel rather than a window inside it, and the active line is the "soft
+   * blue" the visual brief asks for — a blue-tinted lift with its default
+   * border suppressed (Monaco draws a 1px box around the current line
+   * otherwise, which is the "thick border" the brief rules out). Token colours
+   * stay in the app's own accent families: keywords in the brand blue, numbers
+   * in the same amber the grid uses for numeric cells, so a value looks like
+   * itself in both surfaces.
+   */
+  "huginn-dark": {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "", foreground: "e2e8f0" },
+      { token: "comment", foreground: "64748b", fontStyle: "italic" },
+      { token: "keyword", foreground: "60a5fa" },
+      { token: "operator", foreground: "93c5fd" },
+      { token: "string", foreground: "34d399" },
+      { token: "number", foreground: "fbbf24" },
+      { token: "type", foreground: "a78bfa" },
+      { token: "identifier", foreground: "e2e8f0" },
+      { token: "delimiter", foreground: "94a3b8" },
+      { token: "predefined", foreground: "22d3ee" },
+    ],
+    colors: {
+      "editor.background": "#020617",
+      "editor.foreground": "#e2e8f0",
+      "editorLineNumber.foreground": "#334155",
+      "editorLineNumber.activeForeground": "#94a3b8",
+      "editor.selectionBackground": "#2563eb59",
+      "editor.inactiveSelectionBackground": "#2563eb2b",
+      "editor.lineHighlightBackground": "#0f1e3a",
+      "editor.lineHighlightBorder": "#00000000",
+      "editorCursor.foreground": "#3b82f6",
+      "editorIndentGuide.background1": "#111827",
+      "editorIndentGuide.activeBackground1": "#1e293b",
+      "editorWhitespace.foreground": "#1e293b",
+      "editorBracketMatch.background": "#2563eb33",
+      "editorBracketMatch.border": "#2563eb",
+    },
+  },
+  "huginn-light": {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "", foreground: "0f172a" },
+      { token: "comment", foreground: "64748b", fontStyle: "italic" },
+      { token: "keyword", foreground: "1d4ed8" },
+      { token: "operator", foreground: "2563eb" },
+      { token: "string", foreground: "047857" },
+      { token: "number", foreground: "b45309" },
+      { token: "type", foreground: "7c3aed" },
+      { token: "identifier", foreground: "0f172a" },
+      { token: "delimiter", foreground: "475569" },
+      { token: "predefined", foreground: "0e7490" },
+    ],
+    colors: {
+      "editor.background": "#ffffff",
+      "editor.foreground": "#0f172a",
+      "editorLineNumber.foreground": "#94a3b8",
+      "editorLineNumber.activeForeground": "#475569",
+      "editor.selectionBackground": "#2563eb33",
+      "editor.inactiveSelectionBackground": "#2563eb1a",
+      "editor.lineHighlightBackground": "#eef5ff",
+      "editor.lineHighlightBorder": "#00000000",
+      "editorCursor.foreground": "#2563eb",
+      "editorIndentGuide.background1": "#e6eefb",
+      "editorIndentGuide.activeBackground1": "#d6e4f5",
+      "editorWhitespace.foreground": "#d6e4f5",
+      "editorBracketMatch.background": "#2563eb1f",
+      "editorBracketMatch.border": "#2563eb",
+    },
+  },
   "one-dark-pro": {
     base: "vs-dark",
     inherit: true,
@@ -237,7 +316,11 @@ export function registerMonacoThemes(m: typeof monaco) {
  */
 export function resolveMonacoTheme(id: string | undefined): MonacoThemeId {
   const known = MONACO_THEME_OPTIONS.find((o) => o.id === id);
-  return known ? (known.id as MonacoThemeId) : "one-dark-pro";
+  // Falls back to the brand editor theme (matching `prefs.rs`'s own default),
+  // not One Dark Pro: an unset or unknown id should land on the palette the
+  // rest of the app is painted in. An install that already *chose* a theme
+  // keeps it — that value is user data, not a default.
+  return known ? (known.id as MonacoThemeId) : "huginn-dark";
 }
 
 /** Flat colour set the Preferences preview needs to render a static SQL

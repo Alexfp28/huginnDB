@@ -83,7 +83,7 @@ function ChromeFooter() {
         <button
           type="button"
           onClick={() => setMode(mode === "dark" ? "light" : "dark")}
-          className="flex h-9 w-9 items-center justify-center rounded-[10px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+          className="flex h-9 w-9 items-center justify-center rounded-[10px] text-muted-foreground transition-colors duration-150 hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
         >
           {mode === "dark" ? (
             <Sun className="h-5 w-5" />
@@ -105,7 +105,7 @@ function ChromeFooter() {
           onClick={() =>
             updateNotificationVisible ? openSettings("about") : openSettings()
           }
-          className="relative mt-1 flex h-9 w-9 items-center justify-center rounded-[10px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+          className="relative mt-1 flex h-9 w-9 items-center justify-center rounded-[10px] text-muted-foreground transition-colors duration-150 hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
         >
           <Settings className="h-5 w-5" />
           {updateNotificationVisible && (

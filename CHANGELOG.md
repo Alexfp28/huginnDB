@@ -6,7 +6,101 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **The whole interface now follows the HuginnDB brand visual language.** The
+  logo's world — soft black outlines, rounded corners, light volume, one
+  electric blue — is applied as a *contained* layer over the existing
+  keyboard-first tool: the working surfaces (grid, SQL, JSON) stay quiet, and
+  the personality shows up in affordances, states and empty screens.
+  - The two default themes were repainted on the brand palette: a slate/navy
+    ramp in four depth levels (`#020617` → `#0b1220` → `#111827` → `#1e293b`)
+    under a single `#2563eb` accent in dark, and white → `#f8fafc` → `#eef5ff`
+    over `#d6e4f5` borders in light. The other presets (Dim, Solarized, Claude,
+    Neon, Summer, High Contrast) are untouched.
+  - New `brand-hover` theme token: the accent under the pointer is now a real
+    colour per theme (lighter in dark themes, deeper in light ones) instead of
+    `brand/90`, which faded the accent into the surface exactly when it should
+    light up. It is editable like any other colour in Preferences → Appearance.
+  - Buttons: 12px corners, a 2px edge on the filled variants, and a hover that
+    lifts 1px into a short brand glow. Inputs, textareas and selects share one
+    clean focus treatment — the border turns brand blue with a soft 3px halo,
+    replacing the detached offset ring.
+  - Menus, popovers, tooltips, selects and dialogs now open with the same
+    fade + 98→100% scale inside the 150–220ms motion band, and sit on the
+    shared elevation ramp instead of ad-hoc shadows.
+  - Panel drag-and-drop targets, the active sash and a checked switch are blue
+    (they are affordances); toast edges are colour-coded per outcome at one
+    shared weight, with success finally green and warning theme-aware instead
+    of a hard-coded amber.
+  - The activity bar and the environment rail now mark the active entry with a
+    4px rounded bar flush against the rail edge (brand blue in the activity
+    bar, the environment's own colour in the rail) and tint the selected icon
+    blue. Both rails and the chrome footer buttons gained keyboard focus rings.
+  - The selected connection in the tree carries the same blue rail the active
+    table row already had, plus a hairline blue edge; connection cards in the
+    launcher lift 1px on hover and the active one sits inside a subtle blue
+    glow.
+  - Data grid: headers are semibold on a slightly elevated surface, and every
+    cell separator now comes from the `border` token instead of a flat
+    foreground alpha — a softer, theme-aware hairline. Column resizing (handle,
+    hover, in-progress column) is blue like every other affordance.
+  - **New "HuginnDB Dark" / "HuginnDB Light" editor themes** (Preferences →
+    Editor), painted in the app palette: the editor background matches the
+    panel exactly, the active line is a soft blue lift with Monaco's default
+    box border suppressed, keywords take the brand blue and numbers the same
+    amber the grid uses for numeric cells. `huginn-dark` is the new default for
+    fresh installs; an install that already picked an editor theme keeps it.
+  - The cell editor's header is now a rounded, slightly elevated rail with an
+    icon for the detected content type, and fullscreen is a small sticker chip
+    that finally shows its own shortcut (F11) instead of an anonymous icon.
+  - **Empty screens are a family now**, not four unrelated grey lines: one
+    shared frame (`EmptyState`) with a halftone wash, an outlined medallion
+    holding the glyph and room for a hint, adopted by the connections tree, the
+    console, saved queries and an empty result set. The medallion is the slot
+    the sticker illustration drops into later.
+  - **The new comic logo replaces the old raven/rune mark everywhere**: every
+    app/installer icon size was regenerated from it (Windows, macOS, Linux,
+    plus the Android/iOS sets), the empty workspace shows the full lockup, the
+    About card leads with the mark over a halftone wash, empty states show it in
+    their medallion with the per-state glyph as a corner badge (over a dot field
+    that now spans the whole surface, lit by a blue bloom under the mark), and
+    the dev browser tab finally has a favicon. Masters live in the new `brand/`
+    directory, outside `public/` so 2.5MB of source artwork stays out of every
+    installer; `public/image/` keeps only what the app renders, at the size it
+    renders it.
+  - The Windows icon was rebuilt for small sizes: the artwork is cropped to its
+    own content (the master's transparent margin was costing ~10% of every
+    canvas), every size is resampled by repeated 2:1 halvings with a light
+    unsharp pass at 32px and below, and `icon.ico` now carries the full ladder
+    — 16/20/24/32/40/48/64/96/128/256 — including the 20px and 40px entries
+    Windows asks for at 125% and 250% display scaling and used to have to
+    improvise by rescaling a neighbour. The "H" stays readable in the title bar,
+    the taskbar and Explorer instead of turning into a blue smudge.
+  - **New launch splash**: the mark over a halftone wash and a blue bloom, on
+    screen for about half a second and then gone. It is an overlay inside the
+    existing window, not a second Tauri window, and it never blocks or waits on
+    session restore.
+  - Microdetails: resize handles are rounded and turn blue while grabbed;
+    connection state dots carry a soft halo of their own colour (the lit dots on
+    the logo's cylinder); jumping to a preference from the command palette
+    pulses it blue once before settling into its ring; the two state banners
+    that used a lighter border than the rest now match.
+
 ### Fixed
+
+- **Replacing an app icon no longer leaves the old one embedded in the
+  binary.** `tauri_build::build()` declares only `tauri.conf.json` and
+  `capabilities/` as build inputs, and cargo tracks *only* what a build script
+  declares — so changing `icons/*` left the crate looking fresh while both
+  compile-time copies of the icon (the executable's Win32 resource and the
+  generated context's `default_window_icon`) kept the previous artwork, with no
+  error and nothing a frontend rebuild could fix. `build.rs` now declares the
+  six icon files, so touching one forces the relink.
+- The active-environment marker in the left rail was never visible: it was
+  offset 8px outside a full-width button, which put it beyond the shell's
+  `overflow-hidden` boundary. The read-only rail button secondary windows
+  render carried the same bug and is fixed with it.
 
 - **A secondary "New window" showed every saved connection from every
   environment, with no rail to tell them apart.** `EnvironmentRail` and

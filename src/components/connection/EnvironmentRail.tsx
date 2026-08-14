@@ -199,7 +199,7 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
           <button
             type="button"
             onClick={() => openCreate(lastReplicate)}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors duration-150 hover:border-brand/60 hover:bg-brand/10 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
           >
             <Plus className="h-[18px] w-[18px]" />
           </button>
@@ -244,16 +244,21 @@ function EnvironmentButton({
         onClick={onClick}
         aria-pressed={isActive && schemaOpen}
         className={cn(
-          "group relative flex w-full flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors disabled:opacity-60",
-          "hover:bg-foreground/[0.06]",
-          isActive && "bg-foreground/[0.08]",
+          "group relative flex w-full flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150 disabled:opacity-60",
+          "hover:bg-accent/50",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
+          isActive && "bg-accent/60",
         )}
       >
         {isActive && (
           <span
             aria-hidden
-            className="absolute -left-2 top-1.5 bottom-1.5 w-0.5 rounded-full"
-            style={{ backgroundColor: env.color || "hsl(var(--primary))" }}
+            // Same 4px marker, same geometry as `SortableEnvironmentButton` —
+            // this read-only twin must not drift from it. At `-left-2` on a
+            // full-width button the bar lands outside the shell's
+            // `overflow-hidden` and never paints at all.
+            className="absolute left-0 top-1 bottom-1 w-1 rounded-full"
+            style={{ backgroundColor: env.color || "hsl(var(--brand))" }}
           />
         )}
         {switching && isActive ? (
@@ -325,18 +330,24 @@ function SortableEnvironmentButton({
             onClick={onClick}
             aria-pressed={isActive && schemaOpen}
             className={cn(
-              "group relative flex w-full flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors disabled:opacity-60",
-              "hover:bg-foreground/[0.06]",
-              isActive && "bg-foreground/[0.08]",
+              "group relative flex w-full flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150 disabled:opacity-60",
+              "hover:bg-accent/50",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
+              isActive && "bg-accent/60",
               isDragging && "z-10 opacity-80",
             )}
           >
             {isActive && (
               <span
                 aria-hidden
-                className="absolute -left-2 top-1.5 bottom-1.5 w-0.5 rounded-full"
+                // Same 4px active marker as `ActivityBar`, in the environment's
+                // own colour (its identity outranks the brand blue here) and
+                // flush against the rail's left edge. It sat at `-left-2` while
+                // the button spans the rail's full width, which put a 2px
+                // sliver outside the shell's `overflow-hidden` — invisible.
+                className="absolute left-0 top-1 bottom-1 w-1 rounded-full"
                 style={{
-                  backgroundColor: env.color || "hsl(var(--primary))",
+                  backgroundColor: env.color || "hsl(var(--brand))",
                 }}
               />
             )}

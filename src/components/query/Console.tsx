@@ -24,9 +24,12 @@ import {
   Pause,
   Play,
   Search,
+  SearchX,
+  TerminalSquare,
   Trash2,
   X,
 } from "lucide-react";
+import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -233,11 +236,15 @@ export function Console() {
       {/* List */}
       <div className="flex-1 overflow-hidden">
         {filtered.length === 0 ? (
-          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
-            {entries.length === 0
-              ? t("console.emptyNoActivity")
-              : t("console.emptyNoMatch")}
-          </div>
+          <EmptyState
+            size="sm"
+            icon={entries.length === 0 ? TerminalSquare : SearchX}
+            title={
+              entries.length === 0
+                ? t("console.emptyNoActivity")
+                : t("console.emptyNoMatch")
+            }
+          />
         ) : (
           <Virtuoso
             ref={listRef}

@@ -124,12 +124,16 @@ export function StatusConnections() {
             : selected === p.id && "bg-brand/10",
         )}
       >
+        {/* Circular state indicators, echoing the lit dots on the logo's
+            database cylinder: same 8px circle for every state, with a soft
+            halo of its own colour so a live connection reads as *lit* rather
+            than merely coloured. */}
         {isLost ? (
-          <span className="h-2 w-2 shrink-0 rounded-full bg-destructive" />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-destructive shadow-[0_0_0_3px_hsl(var(--destructive)/0.18)]" />
         ) : selected === p.id ? (
           <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
         ) : (
-          <span className="h-2 w-2 shrink-0 rounded-full bg-brand" />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-brand shadow-[0_0_0_3px_hsl(var(--brand)/0.18)]" />
         )}
         <span
           className={cn(

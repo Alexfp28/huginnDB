@@ -23,6 +23,7 @@ import {
 import { UpdateBanner } from "@/components/shell/UpdateBanner";
 import { WindowTitleSync } from "@/components/shell/WindowTitleSync";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
+import { SplashScreen } from "@/components/shell/SplashScreen";
 import { getCurrentVersion } from "@/lib/appInfo/updater";
 import { useWhatsNew } from "@/stores/dialogs/whatsNew";
 import { WhatsNewDialog } from "@/components/shell/dialogs/WhatsNewDialog";
@@ -702,6 +703,10 @@ export default function App() {
 
   return (
     <TooltipProvider>
+      {/* Decorative launch overlay, ~0.5s total. Sits outside the layout flow
+          and never blocks it — see `SplashScreen` for why it isn't tied to the
+          session-restore sequence. */}
+      <SplashScreen />
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
         <SandboxRibbon />
         <header className="relative flex h-9 items-center border-b border-border px-2">

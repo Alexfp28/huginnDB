@@ -39,6 +39,15 @@ export interface ThemeColors {
   brand: string;
   brandForeground: string;
   /**
+   * The `brand` surface under the pointer. The brand palette used to be a
+   * single colour and every hover was `bg-brand/90` — a *transparency*, which
+   * on a dark surface reads as the accent fading into the background instead of
+   * lighting up. The brand language calls for the opposite (dark: a lighter,
+   * more electric blue; light: a deeper one), and that direction can't be
+   * derived from one hex, so each theme states it.
+   */
+  brandHover: string;
+  /**
    * Semantic state accents, distinct from `brand` and `destructive`.
    * `success` = healthy / confirmed (live connection dot, valid JSON, active
    * DB); `warning` = caution that isn't an error (destructive-rebuild notice,
@@ -82,6 +91,7 @@ export const COLOR_KEYS: { key: keyof ThemeColors; label: string }[] = [
   { key: "accentForeground", label: "Accent text" },
   { key: "brand", label: "Brand" },
   { key: "brandForeground", label: "Brand text" },
+  { key: "brandHover", label: "Brand hover" },
   { key: "popover", label: "Popover" },
   { key: "popoverForeground", label: "Popover text" },
   { key: "success", label: "Success" },
@@ -97,75 +107,94 @@ export const COLOR_KEYS: { key: keyof ThemeColors; label: string }[] = [
 
 export const BUILT_IN_THEMES: Theme[] = [
   {
+    // The brand palette (see the visual-language brief): a slate/navy ramp
+    // under one electric blue. Four surface levels, in depth order —
+    // background #020617 (the deepest, what the editor and grid sit on),
+    // card #0b1220 (panels, cards, rails), popover/secondary #111827 (menus,
+    // dialogs, the tab-strip trench) and accent #1e293b (the pointer/selected
+    // surface, one step above elevated so hover stays visible inside a menu).
+    // `border` shares that last step: at this contrast a hairline that reads as
+    // a border and a hover fill that reads as a surface are the same value.
     id: "dark",
     name: "HuginnDB Dark",
     mode: "dark",
     builtin: true,
     colors: {
-      background: "#0e1116",
-      foreground: "#f5f5f7",
-      card: "#13161c",
-      cardForeground: "#f5f5f7",
-      popover: "#13161c",
-      popoverForeground: "#f5f5f7",
-      primary: "#f5f5f7",
-      primaryForeground: "#13161c",
-      secondary: "#1a1d24",
-      secondaryForeground: "#f5f5f7",
-      muted: "#1f232b",
-      mutedForeground: "#8b8f99",
-      accent: "#262a33",
-      accentForeground: "#f5f5f7",
-      brand: "#0f83fd",
+      background: "#020617",
+      foreground: "#f8fafc",
+      card: "#0b1220",
+      cardForeground: "#f8fafc",
+      popover: "#111827",
+      popoverForeground: "#f8fafc",
+      primary: "#f8fafc",
+      primaryForeground: "#0b1220",
+      secondary: "#111827",
+      secondaryForeground: "#f8fafc",
+      muted: "#111827",
+      mutedForeground: "#94a3b8",
+      accent: "#1e293b",
+      accentForeground: "#f8fafc",
+      brand: "#2563eb",
       brandForeground: "#ffffff",
+      brandHover: "#3b82f6",
       success: "#22c55e",
-      successForeground: "#08160c",
+      successForeground: "#04140a",
       warning: "#f59e0b",
       warningForeground: "#1a1204",
       pk: "#fbbf24",
-      fk: "#38bdf8",
+      // Kept in the brand's blue family (was sky #38bdf8) so a foreign key
+      // reads as "a link to elsewhere in the app's own accent", not a third
+      // unrelated hue next to the amber key markers.
+      fk: "#60a5fa",
       numeric: "#fbbf24",
-      destructive: "#b1342a",
-      destructiveForeground: "#fafafa",
-      border: "#262a33",
-      input: "#262a33",
-      ring: "#0f83fd",
+      destructive: "#ef4444",
+      destructiveForeground: "#ffffff",
+      border: "#1e293b",
+      input: "#1e293b",
+      ring: "#2563eb",
     },
   },
   {
+    // Light counterpart. `card` (#f8fafc) is deliberately *darker* than
+    // `background` (#ffffff) here — surfaces recede from a white page instead
+    // of lifting off a grey one — and the pointer/selected surface is the
+    // blue-tinted #eef5ff rather than a neutral grey, which is what makes a
+    // selected grid row or menu item read as "azul muy suave" in light mode
+    // without spending the brand blue on it.
     id: "light",
     name: "HuginnDB Light",
     mode: "light",
     builtin: true,
     colors: {
       background: "#ffffff",
-      foreground: "#0a0a0c",
-      card: "#ffffff",
-      cardForeground: "#0a0a0c",
+      foreground: "#0f172a",
+      card: "#f8fafc",
+      cardForeground: "#0f172a",
       popover: "#ffffff",
-      popoverForeground: "#0a0a0c",
-      primary: "#18181b",
-      primaryForeground: "#fafafa",
-      secondary: "#f4f4f5",
-      secondaryForeground: "#18181b",
-      muted: "#f4f4f5",
-      mutedForeground: "#71717a",
-      accent: "#e4e4e7",
-      accentForeground: "#18181b",
-      brand: "#0f83fd",
+      popoverForeground: "#0f172a",
+      primary: "#0f172a",
+      primaryForeground: "#f8fafc",
+      secondary: "#eef5ff",
+      secondaryForeground: "#0f172a",
+      muted: "#f8fafc",
+      mutedForeground: "#475569",
+      accent: "#eef5ff",
+      accentForeground: "#0f172a",
+      brand: "#2563eb",
       brandForeground: "#ffffff",
+      brandHover: "#1d4ed8",
       success: "#16a34a",
       successForeground: "#ffffff",
       warning: "#d97706",
       warningForeground: "#ffffff",
       pk: "#b45309",
-      fk: "#0284c7",
+      fk: "#1d4ed8",
       numeric: "#b45309",
       destructive: "#dc2626",
-      destructiveForeground: "#fafafa",
-      border: "#e4e4e7",
-      input: "#e4e4e7",
-      ring: "#0f83fd",
+      destructiveForeground: "#ffffff",
+      border: "#d6e4f5",
+      input: "#d6e4f5",
+      ring: "#2563eb",
     },
   },
   {
@@ -190,6 +219,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#d8dce4",
       brand: "#7dd3fc",
       brandForeground: "#0c1118",
+      brandHover: "#a5e4fd",
       success: "#4ade80",
       successForeground: "#0c1118",
       warning: "#fbbf24",
@@ -226,6 +256,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#fdf6e3",
       brand: "#268bd2",
       brandForeground: "#fdf6e3",
+      brandHover: "#3da3e8",
       success: "#859900",
       successForeground: "#fdf6e3",
       warning: "#b58900",
@@ -265,6 +296,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#3d3929",
       brand: "#c96442",
       brandForeground: "#fbfaf3",
+      brandHover: "#b0512f",
       success: "#5a8250",
       successForeground: "#fbfaf3",
       warning: "#bf7d2e",
@@ -301,6 +333,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#e8e3d4",
       brand: "#d97757",
       brandForeground: "#1f1e1b",
+      brandHover: "#e89575",
       success: "#7fa86f",
       successForeground: "#1f1e1b",
       warning: "#d9a441",
@@ -343,6 +376,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#39ff14",
       brand: "#39ff14",
       brandForeground: "#04120a",
+      brandHover: "#6bff54",
       success: "#00e676",
       successForeground: "#04120a",
       warning: "#ffea00",
@@ -384,6 +418,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#0f4c46",
       brand: "#00b8a9",
       brandForeground: "#ffffff",
+      brandHover: "#009b8f",
       success: "#2fae60",
       successForeground: "#f5fff8",
       warning: "#f4a300",
@@ -420,6 +455,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       accentForeground: "#ffeb3b",
       brand: "#ffeb3b",
       brandForeground: "#000000",
+      brandHover: "#fff59d",
       success: "#00e676",
       successForeground: "#000000",
       warning: "#ffb300",
@@ -453,6 +489,7 @@ const VAR_NAMES: Record<keyof ThemeColors, string> = {
   accentForeground: "--accent-foreground",
   brand: "--brand",
   brandForeground: "--brand-foreground",
+  brandHover: "--brand-hover",
   success: "--success",
   successForeground: "--success-foreground",
   warning: "--warning",

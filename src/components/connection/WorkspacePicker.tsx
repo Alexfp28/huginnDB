@@ -63,10 +63,13 @@ function PickerCard({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex flex-col items-center gap-2.5 rounded-xl border-2 px-4 py-5 text-center transition-colors disabled:cursor-default disabled:opacity-60",
+        // Connection card of the brand language: 12px corners, a 2px sticker
+        // edge, a very light lift at rest, and on the active one a blue edge
+        // with a *subtle* glow (`shadow-brand-ring`, not a neon halo).
+        "flex flex-col items-center gap-2.5 rounded-xl border-2 px-4 py-5 text-center transition-[background-color,border-color,box-shadow,transform] duration-180 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-default disabled:opacity-60",
         active
-          ? "border-brand bg-brand/10"
-          : "border-border/60 hover:border-brand/70 hover:bg-brand/5",
+          ? "border-brand bg-brand/10 shadow-brand-ring"
+          : "border-border/60 bg-card shadow-elevation-1 hover:-translate-y-px hover:border-brand/70 hover:bg-brand/5 hover:shadow-elevation-2",
       )}
     >
       <span className="flex h-8 w-8 items-center justify-center">{icon}</span>

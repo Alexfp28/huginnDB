@@ -8,7 +8,110 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Cambiado
+
+- **Toda la interfaz sigue ahora el lenguaje visual de marca de HuginnDB.** El
+  universo del logo —contornos negros suaves, esquinas redondeadas, volumen
+  ligero, un único azul eléctrico— se aplica como una capa *contenida* sobre la
+  herramienta keyboard-first existente: las superficies de trabajo (grid, SQL,
+  JSON) se mantienen tranquilas y la personalidad aparece en las affordances,
+  los estados y las pantallas vacías.
+  - Los dos temas por defecto se han repintado con la paleta de marca: una
+    rampa slate/navy de cuatro niveles de profundidad (`#020617` → `#0b1220` →
+    `#111827` → `#1e293b`) bajo un único acento `#2563eb` en oscuro, y blanco →
+    `#f8fafc` → `#eef5ff` sobre bordes `#d6e4f5` en claro. El resto de presets
+    (Dim, Solarized, Claude, Neon, Summer, High Contrast) no se tocan.
+  - Nuevo token de tema `brand-hover`: el acento bajo el puntero es ahora un
+    color real por tema (más claro en temas oscuros, más profundo en los
+    claros) en lugar de `brand/90`, que fundía el acento con la superficie
+    justo cuando debía iluminarse. Es editable como cualquier otro color en
+    Preferencias → Apariencia.
+  - Botones: esquinas de 12px, borde de 2px en las variantes rellenas y un
+    hover que sube 1px hacia un breve resplandor de marca. Inputs, textareas y
+    selects comparten un único tratamiento de foco limpio: el borde se vuelve
+    azul de marca con un halo suave de 3px, en lugar del anillo despegado.
+  - Menús, popovers, tooltips, selects y diálogos se abren con el mismo
+    fundido + escala 98→100% dentro de la banda de movimiento de 150–220ms, y
+    se apoyan en la rampa de elevación compartida en vez de sombras ad-hoc.
+  - Los destinos de arrastre de paneles, el sash activo y un switch activado
+    son azules (son affordances); los bordes de los toasts se codifican por
+    color según el resultado con un grosor común, con success por fin verde y
+    warning sensible al tema en lugar de un ámbar fijo.
+  - La barra de actividad y el rail de entornos marcan la entrada activa con
+    una barra redondeada de 4px a ras del borde del rail (azul de marca en la
+    barra de actividad, el color propio del entorno en el rail) y tiñen de azul
+    el icono seleccionado. Ambos railes y los botones del pie del chrome ganan
+    anillos de foco por teclado.
+  - La conexión seleccionada en el árbol lleva el mismo rail azul que ya tenía
+    la tabla activa, más un borde azul de un píxel; las tarjetas de conexión
+    del lanzador suben 1px al pasar el ratón y la activa queda dentro de un
+    resplandor azul sutil.
+  - Data grid: las cabeceras van en semibold sobre una superficie ligeramente
+    elevada, y todos los separadores de celda salen ahora del token `border` en
+    lugar de un alpha plano del foreground — una línea más suave y sensible al
+    tema. El redimensionado de columnas (tirador, hover, columna en curso) es
+    azul como el resto de affordances.
+  - **Nuevos temas de editor "HuginnDB Dark" / "HuginnDB Light"**
+    (Preferencias → Editor), pintados con la paleta de la app: el fondo del
+    editor coincide exactamente con el del panel, la línea activa es un realce
+    azul suave con el borde por defecto de Monaco suprimido, las palabras clave
+    toman el azul de marca y los números el mismo ámbar que usa el grid para
+    celdas numéricas. `huginn-dark` es el nuevo valor por defecto en
+    instalaciones nuevas; quien ya eligiera un tema de editor lo conserva.
+  - La cabecera del editor de celda es ahora un rail redondeado y ligeramente
+    elevado con un icono del tipo de contenido detectado, y el pantalla
+    completa es un pequeño chip tipo sticker que por fin muestra su propio
+    atajo (F11) en lugar de un icono anónimo.
+  - **Las pantallas vacías son ahora una familia**, no cuatro líneas grises sin
+    relación: un único marco compartido (`EmptyState`) con un lavado de
+    halftone, un medallón contorneado con el glifo y sitio para una pista,
+    adoptado por el árbol de conexiones, la consola, las consultas guardadas y
+    un resultado vacío.
+  - **El nuevo logo comic sustituye a la marca antigua del cuervo/runas en todas
+    partes**: se han regenerado desde él todos los tamaños de icono de app e
+    instalador (Windows, macOS, Linux, además de los sets de Android/iOS), el
+    workspace vacío muestra el lockup completo, la tarjeta de Acerca de lidera
+    con la marca sobre un lavado de halftone, las pantallas vacías la muestran
+    en su medallón con el glifo de cada estado como chapa en la esquina (sobre
+    un campo de puntos que ahora cubre toda la superficie, iluminado por un
+    bloom azul bajo la marca) y la pestaña del navegador en dev por fin tiene
+    favicon. Los originales viven en el nuevo directorio `brand/`, fuera de
+    `public/`, para que 2,5 MB de arte fuente no acaben en cada instalador;
+    `public/image/` guarda solo lo que la app pinta, al tamaño al que lo pinta.
+  - El icono de Windows se ha rehecho para los tamaños pequeños: el arte se
+    recorta a su propio contenido (el margen transparente del original costaba
+    ~10% de cada lienzo), cada talla se remuestrea con halvings 2:1 sucesivos y
+    un unsharp suave a 32px o menos, e `icon.ico` incluye ahora la escalera
+    completa —16/20/24/32/40/48/64/96/128/256—, con las entradas de 20px y 40px
+    que Windows pide al 125% y 250% de escalado y que antes tenía que
+    improvisar reescalando una vecina. La "H" se lee en la barra de título, la
+    barra de tareas y el Explorador en vez de convertirse en un borrón azul.
+  - **Nuevo splash de arranque**: la marca sobre un lavado de halftone y un
+    bloom azul, en pantalla medio segundo y fuera. Es una capa dentro de la
+    ventana existente, no una segunda ventana de Tauri, y nunca bloquea ni
+    espera a la restauración de sesión.
+  - Microdetalles: los tiradores de redimensionado son redondeados y se vuelven
+    azules al agarrarlos; los puntos de estado de conexión llevan un halo suave
+    de su propio color (los pilotos del cilindro del logo); saltar a una
+    preferencia desde la paleta de comandos la hace parpadear en azul una vez
+    antes de asentarse en su anillo; los dos avisos de estado que usaban un
+    borde más claro que el resto ahora coinciden.
+
 ### Corregido
+
+- **Sustituir un icono de la app ya no deja el anterior embebido en el
+  binario.** `tauri_build::build()` solo declara `tauri.conf.json` y
+  `capabilities/` como entradas de compilación, y cargo rastrea *únicamente* lo
+  que un build script declara — así que cambiar `icons/*` dejaba el crate como
+  fresco mientras las dos copias del icono que se hornean al compilar (el
+  recurso Win32 del ejecutable y el `default_window_icon` del contexto
+  generado) conservaban el arte anterior, sin error alguno y sin que ninguna
+  recompilación del frontend lo arreglara. `build.rs` declara ahora los seis
+  ficheros de icono, de modo que tocar uno fuerza el reenlazado.
+- El marcador del entorno activo en el rail izquierdo nunca se veía: estaba
+  desplazado 8px fuera de un botón a ancho completo, lo que lo dejaba más allá
+  del `overflow-hidden` del shell. El botón de solo lectura que renderizan las
+  ventanas secundarias arrastraba el mismo fallo y se corrige con él.
 
 - **Una "New window" secundaria mostraba todas las conexiones guardadas de
   todos los entornos, sin ningún rail que las distinguiera.**
