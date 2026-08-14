@@ -25,9 +25,11 @@ import {
   Bot,
   Copy,
   Database,
+  Download,
   ExternalLink,
   Eye,
   FolderTree,
+  ImagePlus,
   Gauge,
   HardDrive,
   Keyboard,
@@ -79,6 +81,33 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.15.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_15_0.tagline",
+    highlights: [
+      {
+        icon: ImagePlus,
+        titleKey: "whatsNew.releases.1_15_0.items.environmentAvatars.title",
+        bodyKey: "whatsNew.releases.1_15_0.items.environmentAvatars.body",
+      },
+      {
+        icon: Download,
+        titleKey: "whatsNew.releases.1_15_0.items.linuxBuilds.title",
+        bodyKey: "whatsNew.releases.1_15_0.items.linuxBuilds.body",
+      },
+      {
+        icon: FolderTree,
+        titleKey: "whatsNew.releases.1_15_0.items.independentFolds.title",
+        bodyKey: "whatsNew.releases.1_15_0.items.independentFolds.body",
+      },
+      {
+        icon: Power,
+        titleKey: "whatsNew.releases.1_15_0.items.restartFeedback.title",
+        bodyKey: "whatsNew.releases.1_15_0.items.restartFeedback.body",
+      },
+    ],
+  },
   {
     version: "1.14.0",
     major: true,

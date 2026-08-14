@@ -6,9 +6,44 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
-## [Sin publicar]
+## [1.15.0] — 2026-08-14
 
 ### Añadido
+
+- **Los entornos pueden llevar una imagen de avatar propia.** Hasta ahora un
+  entorno se dibujaba siempre con sus iniciales sobre el color de acento, lo que
+  deja de distinguir en cuanto dos empiezan por la misma letra ("Cliente A" /
+  "Cliente B") — justo el caso que el rail existe para hacer reconocible de un
+  vistazo. El diálogo de crear/renombrar acepta ahora una imagen: elígela con el
+  diálogo nativo de archivos, o suelta un archivo directamente sobre la vista
+  previa del avatar. Sustituye a las iniciales en el rail, en el selector de
+  espacios de trabajo y en la propia vista previa del diálogo, y el selector de
+  la barra de estado también la muestra en lugar de su punto de color (una
+  imagen sí se reconoce a 12px, que es la razón por la que las iniciales nunca
+  estuvieron ahí). Quitarla vuelve a las iniciales.
+  Dónde se guarda: en línea, dentro del campo `Environment.icon` que ya existía
+  — como una URL `data:`, así que no hay cambio de esquema ni migración de
+  datos. Lo que elija el usuario se recorta cuadrado desde el centro y se
+  recodifica a 128px (WebP donde el webview sabe codificarlo, PNG en el resto)
+  antes de guardarse, lo que mantiene el payload en pocos KB: `icon` viaja por
+  `tab_state.json` en cada escritura del entorno, así que una foto a resolución
+  completa engordaría un archivo que la app reescribe constantemente. Guardar la
+  imagen en línea en vez de como archivo en el directorio de configuración
+  significa que no tiene ciclo de vida propio — se copia, se descarta y se
+  escribe junto al entorno, así que no hay huérfanos que barrer ni un segundo
+  modo de fallo en el que el JSON apunte a un archivo que ya no está.
+  `icon` es la ranura en la que escribía el antiguo selector de iconos de
+  lucide, y un entorno que aún guarde una clave de icono heredada sigue cayendo
+  a las iniciales igual que desde que ese selector se eliminó: la rama de imagen
+  se activa por que el valor sea una URL `data:image/`, no por que el campo no
+  esté vacío.
+  Un comando nuevo en el backend (`read_image_data_url`) hace la lectura, porque
+  el diálogo nativo devuelve una *ruta* que el webview no puede abrir por sí
+  mismo. Valida el formato por los bytes mágicos del archivo y no por su
+  extensión, y rechaza cualquier cosa por encima de 12 MB, así que un archivo
+  inservible se rechaza con un mensaje claro en vez de convertirse en una URL
+  `data:` que ningún `<img>` va a cargar. La ruta de arrastrar y soltar no pasa
+  por él — el navegador ya tiene los bytes.
 
 - **Ya se publican artefactos de release para Linux.** Cada release *podía*
   haberlos incluido desde hace tiempo: `bundle.targets` en
@@ -34,6 +69,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   prevista por upstream. Todavía no se ha probado con un tag real — el
   `workflow_dispatch` del workflow construye un borrador contra un tag
   desechable justo para este tipo de comprobación.
+
+### Cambiado
+
+- **El nombre del entorno en el rail izquierdo es algo más grande.** Estaba a
+  10px, que en una pantalla de 1080p se quedaba por debajo de lo que necesita el
+  único trozo de interfaz de entornos que está siempre visible para leerse de
+  reojo. Ahora son 11px con el espaciado entre letras más cerrado, así que sigue
+  cabiendo aproximadamente el mismo número de caracteres en los 72px del rail
+  antes de truncar, y el nombre del entorno activo va en peso medio — "en qué
+  entorno estoy" se lee ahora también por la tipografía, no solo por el tinte
+  del fondo.
 
 ### Corregido
 

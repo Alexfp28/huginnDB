@@ -257,12 +257,24 @@ function SortableEnvironmentButton({
                 <Loader2 className="h-[18px] w-[18px] animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <EnvironmentAvatar name={label} color={env.color} size={36} />
+              <EnvironmentAvatar
+                name={label}
+                color={env.color}
+                icon={env.icon}
+                size={36}
+              />
             )}
+            {/* 11px rather than the 10px this started at: the rail is 72px
+                wide, so the label is the one piece of chrome that has to stay
+                readable at a glance from the corner of the eye, and 10px sat
+                below that on a 1080p display. Tighter tracking keeps roughly
+                the same number of glyphs fitting before the truncation, and the
+                active row goes medium so "which environment am I in" reads from
+                the weight, not only from the background tint. */}
             <span
               className={cn(
-                "w-full truncate text-center text-[10px] leading-tight text-muted-foreground",
-                isActive && "text-foreground",
+                "w-full truncate text-center text-[11px] leading-[1.15] tracking-tight text-muted-foreground",
+                isActive && "font-medium text-foreground",
               )}
             >
               {label}

@@ -18,6 +18,23 @@ if (!import.meta.env.DEV) {
   document.addEventListener("contextmenu", (e) => e.preventDefault());
 }
 
+// Swallow file drops that miss an explicit drop target. `dragDropEnabled` is
+// `false` in `tauri.conf.json` (so HTML drag-and-drop reaches the page at all —
+// the environment-avatar picker relies on it), which also means the webview
+// keeps its *default* action for a dropped file: navigate to `file:///…`,
+// replacing the entire app with the dropped document and no chrome to go back
+// with. Anything that genuinely accepts a file already calls `preventDefault`
+// in its own handler, so this only ever catches a near miss.
+//
+// Deliberately gated on the drag carrying files: every internal drag (dockview
+// tabs, the environment rail's `@dnd-kit` sortable, text into Monaco) must keep
+// its default behaviour, and none of those set the `Files` type.
+for (const type of ["dragover", "drop"] as const) {
+  document.addEventListener(type, (e) => {
+    if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+  });
+}
+
 // A "sacar como ventana flotante" window (see `open_tab_window` /
 // `TabbedArea`'s floatPanel action) is labeled "tabwin-<uuid>" and renders a
 // single bare tab instead of the full app shell.

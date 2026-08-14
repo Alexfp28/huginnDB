@@ -141,6 +141,10 @@ Switching in the main window doesn't disturb an open secondary one.
 - Renaming to an empty name clears your name and brings the localised default
   back. Creating an environment does require a name — an unnamed new one would
   be indistinguishable from the default.
-- Assigning a colour or an icon marks the environment in the switcher. Both are
-  cosmetic; nothing behaves differently.
+- An environment is drawn as the initials of its name over its accent colour,
+  or as a custom avatar image if you give it one (pick a file, or drop one on
+  the preview in the create/rename dialog). Both are cosmetic; nothing behaves
+  differently. The image is stored inside the environment itself, cropped square
+  and downscaled to 128px, so it is copied when you replicate one and discarded
+  when you delete one — there is no separate file to manage.
 - The last environment can't be deleted. There is always exactly one active.

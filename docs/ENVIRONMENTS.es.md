@@ -148,6 +148,11 @@ abierta.
 - Renombrar a vacío borra tu nombre y devuelve el predeterminado localizado.
   Crear un entorno sí exige un nombre: uno nuevo sin nombre sería indistinguible
   del predeterminado.
-- Asignar un color o un icono marca el entorno en el selector. Ambos son
-  cosméticos; nada se comporta distinto.
+- Un entorno se dibuja con las iniciales de su nombre sobre su color de acento,
+  o con una imagen de avatar propia si le asignas una (elige un archivo, o
+  suéltalo sobre la vista previa del diálogo de crear/renombrar). Ambos son
+  cosméticos; nada se comporta distinto. La imagen se guarda dentro del propio
+  entorno, recortada en cuadrado y reducida a 128px, así que se copia al
+  replicarlo y se descarta al eliminarlo — no hay ningún archivo aparte que
+  gestionar.
 - El último entorno no se puede eliminar. Siempre hay exactamente uno activo.

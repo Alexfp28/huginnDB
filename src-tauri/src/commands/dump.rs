@@ -31,6 +31,7 @@ use crate::db::dump::{
 use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde::Deserialize;
 use sqlx::{Column, Row};
 use std::io::Write;
@@ -157,6 +158,65 @@ pub async fn export_databases(
 #[tauri::command]
 pub fn read_text_file(file_path: String) -> AppResult<String> {
     Ok(std::fs::read_to_string(&file_path)?)
+}
+
+/// Largest image file accepted as an environment avatar, before downscaling.
+/// The frontend shrinks whatever it gets to a 128px square, so this cap is not
+/// about the stored size — it exists so a user who picks a 200 MB TIFF by
+/// mistake gets a clear error instead of the webview base64-ing it into memory
+/// twice and stalling.
+const MAX_AVATAR_SOURCE_BYTES: u64 = 12 * 1024 * 1024;
+
+/// Reads an image file and returns it as a `data:` URL for the frontend to
+/// draw into a canvas and downscale (see `src/lib/environmentAvatar.ts`).
+///
+/// Why the backend is involved at all: the picker is the native dialog
+/// (`@tauri-apps/plugin-dialog`'s `open()`, like every other file flow here),
+/// which yields a *path*, and the webview can't read an arbitrary path itself.
+/// The counterpart to [`read_text_file`], and just as narrow — except that it
+/// does validate: the MIME type comes from the file's magic bytes rather than
+/// its extension, so a `.png` that is really something else is rejected here
+/// instead of silently producing a data URL no `<img>` will load. Nothing is
+/// stored on this side; the resulting avatar lives in `Environment.icon`, which
+/// the backend keeps opaque (see `tab_state.rs`).
+#[tauri::command]
+pub fn read_image_data_url(file_path: String) -> AppResult<String> {
+    let len = std::fs::metadata(&file_path)?.len();
+    if len > MAX_AVATAR_SOURCE_BYTES {
+        return Err(AppError::InvalidInput(format!(
+            "image is too large ({:.1} MB); the limit is {} MB",
+            len as f64 / (1024.0 * 1024.0),
+            MAX_AVATAR_SOURCE_BYTES / (1024 * 1024)
+        )));
+    }
+    let bytes = std::fs::read(&file_path)?;
+    let mime = sniff_image_mime(&bytes).ok_or_else(|| {
+        AppError::InvalidInput("that file is not a PNG, JPEG, GIF, WebP or BMP image".into())
+    })?;
+    Ok(format!("data:{mime};base64,{}", B64.encode(&bytes)))
+}
+
+/// Magic-byte MIME sniff for the raster formats every webview can decode.
+/// SVG is deliberately absent: an SVG without an intrinsic size draws as a
+/// 0×0 image on canvas in WebKitGTK, so accepting one would produce a blank
+/// avatar rather than an error.
+fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Some("image/png");
+    }
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    if bytes.starts_with(b"BM") {
+        return Some("image/bmp");
+    }
+    None
 }
 
 /// Writes a text file to a path the frontend already picked via the native

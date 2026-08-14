@@ -35,6 +35,11 @@
     "createTitle": "Nuevo entorno",
     "rename": "Renombrar",
     "renameTitle": "Renombrar entorno",
+    "imageUpload": "Subir una imagen…",
+    "imageReplace": "Cambiar la imagen…",
+    "imageRemove": "Quitar la imagen",
+    "imagePickTitle": "Elegir una imagen de avatar",
+    "imageError": "No se pudo usar esa imagen: {{error}}",
     "delete": "Eliminar",
     "deleteConfirm": "¿Eliminar el entorno «{{name}}»?\n\nSe descartan sus pestañas abiertas y la distribución de paneles. Tus conexiones y sus contraseñas no se tocan.",
     "switchFailed": "No se pudo cambiar de entorno: {{error}}",
@@ -1197,6 +1202,27 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_15_0": {
+        "tagline": "Los entornos tienen cara propia, Linux por fin tiene instaladores directos en la página de releases, y se liman dos asperezas: el plegado compartido donde no debía y un botón de reiniciar que se quedaba mudo.",
+        "items": {
+          "environmentAvatars": {
+            "title": "Dale su propia imagen a un entorno",
+            "body": "El diálogo de crear/renombrar acepta ahora un avatar propio: elige un archivo, o suéltalo sobre la vista previa. Sustituye a las iniciales en todos los sitios donde aparece el entorno —la columna, el selector de espacios de trabajo, el selector de la barra de estado—, que es lo que por fin distingue «Cliente A» de «Cliente B» de un vistazo. Lo que elijas se recorta cuadrado y se reduce, y viaja dentro del propio entorno. El nombre en la columna también es algo más grande, y el del entorno activo se lee en negrita."
+          },
+          "linuxBuilds": {
+            "title": "Descargas para Linux en la página de releases",
+            "body": "Cada release con tag adjunta ahora un .deb y un .AppImage de x86_64 junto al instalador de Windows, así que en Linux ya no hay que compilar desde el código. El README cubre ambos, incluida la glibc contra la que se construye el AppImage."
+          },
+          "independentFolds": {
+            "title": "Los plegados se quedan donde los dejaste",
+            "body": "Plegar un grupo de conexiones dentro del gestor de conexiones ya no alcanza al árbol de Esquema que hay detrás del diálogo para plegarlo también ahí. Cada pantalla parte de la misma disposición recordada pero se pliega de forma independiente desde ese punto, y el modo «recordar» sigue escribiendo a disco para la siguiente que abras."
+          },
+          "restartFeedback": {
+            "title": "«Reiniciar ahora» acusa el clic",
+            "body": "El botón de instalar seguía pareciendo inactivo y pulsable durante toda la comprobación del sidecar de MCP que se hace antes de instalar una actualización. Ahora se deshabilita y muestra un spinner en el instante en que lo pulsas, y un segundo clic ya no puede encolar una segunda instalación."
+          }
+        }
+      },
       "1_14_0": {
         "tagline": "La paleta de comandos se convierte en un lanzador de verdad, la estructura de la ventana se reorganiza alrededor de una barra de actividad, los entornos tienen su propia columna, y los temas viajan entre máquinas.",
         "items": {
