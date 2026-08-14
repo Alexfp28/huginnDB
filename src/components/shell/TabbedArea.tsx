@@ -747,8 +747,8 @@ function EmptyWatermark() {
   const connectionId = useUi((s) => s.selectedConnectionId);
   const hasProfiles = useConnections((s) => s.profiles.length > 0);
   const environments = useEnvironments((s) => s.environments);
-  // Same guard as `WorkspacePicker` itself (gotcha #8) — a secondary window
-  // never owns an environment, so switching is hidden there.
+  // Same guard as `WorkspacePicker` itself — left main-window-only for now,
+  // see that component's comment.
   const showEnvironments =
     getCurrentWindow().label === "main" && environments.length > 1;
   const showPicker = hasProfiles || showEnvironments;

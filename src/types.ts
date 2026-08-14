@@ -447,6 +447,13 @@ export interface TabViewState {
   sort?: SortSpec[];
   /** The *applied* free-text search, never the uncommitted toolbar draft. */
   search?: string;
+  /**
+   * "table" vs "list" row layout for this tab specifically, not a global
+   * preference — each table tab keeps its own choice, independent of other
+   * tabs and other windows. Falls back to `GridPrefs.documentViewMode` (the
+   * default for a newly opened tab) when absent. See `TableDataTab`.
+   */
+  documentViewMode?: "table" | "list";
 }
 
 /**
@@ -774,11 +781,11 @@ export type WorkspaceLayout = unknown | null;
  * A named set of connections plus the session state that belongs to them.
  * Mirrors `Environment` in `src-tauri/src/tab_state.rs` (`tab_state.json` v4).
  *
- * Only the presentation fields are exposed here. `connections`,
- * `internalLayout` and `launch` live in the same on-disk struct but are owned by
- * the session-state commands (`get/saveTabState`, `get/saveWorkspaceLayout`,
- * `get/saveLaunchState`), which resolve against the active environment — the
- * frontend never sends them as part of an environment payload.
+ * Only the presentation fields (plus `launch`, see below) are exposed here.
+ * `connections` and `internalLayout` live in the same on-disk struct but are
+ * owned by the session-state commands (`get/saveTabState`,
+ * `get/saveWorkspaceLayout`), which resolve against the active environment —
+ * the frontend never sends them as part of an environment payload.
  */
 export interface Environment {
   id: string;
@@ -798,6 +805,18 @@ export interface Environment {
    * `useThemeStore.setEnvironmentOverride`, not interpreted here.
    */
   themeId: string | null;
+  /**
+   * Present only on READ (e.g. via `listEnvironments`) — the Rust struct
+   * always serialises it, this type just didn't expose it before. Never sent
+   * back through `saveEnvironment`, which only accepts the presentation
+   * fields above (see its comment in `lib/tauri.ts`).
+   *
+   * Secondary "New window" instances use this to apply a chosen environment's
+   * connection/database filters to their own, purely in-memory view without
+   * ever touching `tab_state.json` (gotcha #8) — see
+   * `stores/session/environments.ts`'s `applyLocalView`.
+   */
+  launch?: LaunchState;
 }
 
 /**
@@ -916,6 +935,10 @@ export interface PersistedTab {
   filters: ColumnFilter[] | null;
   sort: SortSpec[] | null;
   search: string | null;
+  /** Same IPC-boundary rule as the three fields above — this tab's own
+   *  "table" vs "list" choice, independent of `GridPrefs.documentViewMode`
+   *  (which only seeds a newly opened tab's default). `null` on a query tab. */
+  documentViewMode: "table" | "list" | null;
 }
 
 /**

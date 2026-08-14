@@ -187,11 +187,15 @@ export default function App() {
     refreshConnections();
   }, [refreshConnections]);
 
-  // Launch restore (main window only): load the environment list, then bring
-  // the active environment's session up — its view filters always, and with
-  // `reconnectOnLaunch` on, also reconnect what was live, restore the pane
-  // layout and restore focus. (The filters sit before that gate inside
-  // `restoreSession`: they say how the environment looks, not what it reopens.)
+  // Launch restore: load the environment list in EVERY window — it's a
+  // read-only call, and a secondary "New window" needs it too so its own
+  // rail/switcher can render and seed that window's own connection filter
+  // from whatever environment is active (see `useEnvironments.load`). Only the
+  // main window goes on to bring the active environment's session up — its
+  // view filters always, and with `reconnectOnLaunch` on, also reconnect what
+  // was live, restore the pane layout and restore focus. (The filters sit
+  // before that gate inside `restoreSession`: they say how the environment
+  // looks, not what it reopens.)
   //
   // The sequence itself lives in `useEnvironments.restoreSession` because
   // entering an environment at launch and entering one via the switcher are the
@@ -204,10 +208,10 @@ export default function App() {
   const launchRestoreDone = useRef(false);
   useEffect(() => {
     if (launchRestoreDone.current) return;
-    if (getCurrentWindow().label !== "main") return;
     launchRestoreDone.current = true;
     void (async () => {
       await useEnvironments.getState().load();
+      if (getCurrentWindow().label !== "main") return;
       await useEnvironments.getState().restoreSession();
       // Shared origins: first sweep now, then every few hours. After the session
       // is up so a slow or unreachable share can never delay the workspace.

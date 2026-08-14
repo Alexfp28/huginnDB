@@ -19,15 +19,20 @@
  * menu the status-bar switcher already had rather than forcing a trip there
  * for management.
  *
- * Rendered only in the main window, same guard as `EnvironmentSwitcher`
- * (gotcha #8 — environments scope `tab_state.json`, which secondary windows
- * never touch).
+ * Rendered in every window, but only the main window gets the management
+ * affordances (create, rename, delete, reorder): those write `tab_state.json`
+ * (gotcha #8), which secondary "New window" instances never touch. A
+ * secondary window still renders one plain, non-draggable button per
+ * environment — clicking one calls `useEnvironments.switchTo`, which for a
+ * non-main window resolves to a purely local, in-memory filter change (see
+ * that store's `applyLocalView`), letting each window sit in a different
+ * environment at once.
  *
- * Reorderable via `@dnd-kit` (vertical sortable list) — drag an avatar to
- * move it, drop to persist through `useEnvironments.reorder`, which already
- * writes optimistically and rolls back on a failed `reorderEnvironments`
- * call. `EnvironmentSwitcher`'s dropdown rows are not draggable; this rail is
- * the one place order can be changed.
+ * Reorderable via `@dnd-kit` (vertical sortable list, main window only) —
+ * drag an avatar to move it, drop to persist through `useEnvironments.reorder`,
+ * which already writes optimistically and rolls back on a failed
+ * `reorderEnvironments` call. `EnvironmentSwitcher`'s dropdown rows are not
+ * draggable; this rail is the one place order can be changed.
  */
 
 import { EnvironmentAvatar } from "@/components/connection/EnvironmentAvatar";
@@ -102,9 +107,10 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // Secondary "New window" instances don't own an environment — mirrors
-  // `EnvironmentSwitcher`'s own guard.
-  if (getCurrentWindow().label !== "main") return null;
+  // Only the main window may create/rename/delete/reorder — those write
+  // `tab_state.json` (gotcha #8). A secondary window still gets the rail
+  // itself, in a read-only, non-draggable form (see the render below).
+  const isMain = getCurrentWindow().label === "main";
 
   function handleClick(envId: string) {
     if (envId === activeId) {
@@ -129,62 +135,144 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
 
   return (
     <div className="flex w-[72px] shrink-0 flex-col items-center gap-2 border-r border-border py-2">
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
-          {ordered.map((env) => (
-            <SortableEnvironmentButton
-              key={env.id}
-              env={env}
-              label={environmentLabel(env, defaultName)}
-              isActive={env.id === activeId}
-              schemaOpen={schemaOpen}
-              switching={switching}
-              canDelete={ordered.length > 1}
-              onClick={() => handleClick(env.id)}
-              onRename={() =>
-                openEdit({
-                  id: env.id,
-                  name: env.name,
-                  color: env.color,
-                  icon: env.icon,
-                  themeId: env.themeId,
-                })
-              }
-              onDelete={() => {
-                // Same irreversible-tabs/layout warning as the status-bar
-                // switcher's delete action — connections/credentials are
-                // untouched, only this environment's session state.
-                if (
-                  confirmIrreversible(
-                    t("environments.deleteConfirm", {
-                      name: environmentLabel(env, defaultName),
-                    }),
-                  )
-                ) {
-                  void remove(env.id);
+      {isMain ? (
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
+            {ordered.map((env) => (
+              <SortableEnvironmentButton
+                key={env.id}
+                env={env}
+                label={environmentLabel(env, defaultName)}
+                isActive={env.id === activeId}
+                schemaOpen={schemaOpen}
+                switching={switching}
+                canDelete={ordered.length > 1}
+                onClick={() => handleClick(env.id)}
+                onRename={() =>
+                  openEdit({
+                    id: env.id,
+                    name: env.name,
+                    color: env.color,
+                    icon: env.icon,
+                    themeId: env.themeId,
+                  })
                 }
-              }}
-              renameLabel={t("environments.rename")}
-              deleteLabel={t("environments.delete")}
-            />
-          ))}
-        </SortableContext>
-      </DndContext>
-      <SimpleTooltip label={t("environments.create")} side="right">
-        <button
-          type="button"
-          onClick={() => openCreate(lastReplicate)}
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
-        >
-          <Plus className="h-[18px] w-[18px]" />
-        </button>
-      </SimpleTooltip>
+                onDelete={() => {
+                  // Same irreversible-tabs/layout warning as the status-bar
+                  // switcher's delete action — connections/credentials are
+                  // untouched, only this environment's session state.
+                  if (
+                    confirmIrreversible(
+                      t("environments.deleteConfirm", {
+                        name: environmentLabel(env, defaultName),
+                      }),
+                    )
+                  ) {
+                    void remove(env.id);
+                  }
+                }}
+                renameLabel={t("environments.rename")}
+                deleteLabel={t("environments.delete")}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
+      ) : (
+        // Secondary window: plain, non-draggable buttons — picking one only
+        // changes this window's own connection/database filter (see
+        // `useEnvironments.switchTo`'s non-main branch), so there is nothing
+        // here that needs drag-to-reorder or a rename/delete context menu.
+        ordered.map((env) => (
+          <EnvironmentButton
+            key={env.id}
+            env={env}
+            label={environmentLabel(env, defaultName)}
+            isActive={env.id === activeId}
+            schemaOpen={schemaOpen}
+            switching={switching}
+            onClick={() => handleClick(env.id)}
+          />
+        ))
+      )}
+      {isMain && (
+        <SimpleTooltip label={t("environments.create")} side="right">
+          <button
+            type="button"
+            onClick={() => openCreate(lastReplicate)}
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+          >
+            <Plus className="h-[18px] w-[18px]" />
+          </button>
+        </SimpleTooltip>
+      )}
       {footer && (
         <div className="mt-auto flex flex-col items-center gap-0.5">
           {footer}
         </div>
       )}
     </div>
+  );
+}
+
+interface EnvironmentButtonProps {
+  env: Environment;
+  label: string;
+  isActive: boolean;
+  schemaOpen: boolean;
+  switching: boolean;
+  onClick: () => void;
+}
+
+/**
+ * Read-only counterpart to `SortableEnvironmentButton`, for secondary
+ * windows: same look, no drag handle and no context menu (rename/delete write
+ * `tab_state.json`, main-window only).
+ */
+function EnvironmentButton({
+  env,
+  label,
+  isActive,
+  schemaOpen,
+  switching,
+  onClick,
+}: EnvironmentButtonProps) {
+  return (
+    <SimpleTooltip label={label} side="right">
+      <button
+        type="button"
+        disabled={switching}
+        onClick={onClick}
+        aria-pressed={isActive && schemaOpen}
+        className={cn(
+          "group relative flex w-full flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors disabled:opacity-60",
+          "hover:bg-foreground/[0.06]",
+          isActive && "bg-foreground/[0.08]",
+        )}
+      >
+        {isActive && (
+          <span
+            aria-hidden
+            className="absolute -left-2 top-1.5 bottom-1.5 w-0.5 rounded-full"
+            style={{ backgroundColor: env.color || "hsl(var(--primary))" }}
+          />
+        )}
+        {switching && isActive ? (
+          <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted">
+            <Loader2 className="h-[18px] w-[18px] animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <EnvironmentAvatar name={label} color={env.color} icon={env.icon} size={36} />
+        )}
+        <span
+          className={cn(
+            "w-full truncate text-center text-[11px] leading-[1.15] tracking-tight text-muted-foreground",
+            isActive && "font-medium text-foreground",
+          )}
+        >
+          {label}
+        </span>
+      </button>
+    </SimpleTooltip>
   );
 }
 

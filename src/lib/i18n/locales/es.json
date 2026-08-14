@@ -949,7 +949,7 @@
         "title": "Vista de datos",
         "mode": {
           "label": "Disposición de la fila",
-          "desc": "Cómo se muestra una tabla o colección: la rejilla de columnas, o una tarjeta por fila con una línea por campo. Se aplica a todos los drivers; el conmutador de la barra de herramientas cambia este mismo ajuste.",
+          "desc": "Cómo se muestra por defecto una pestaña de tabla o colección recién abierta: la rejilla de columnas, o una tarjeta por fila con una línea por campo. Se aplica a todos los drivers. Cada pestaña abierta recuerda después su propia elección — el conmutador de la barra de herramientas solo cambia esa pestaña, no este valor por defecto.",
           "table": "Tabla",
           "list": "Lista"
         },

@@ -295,6 +295,10 @@ pub struct PersistedTab {
     pub filters: Option<serde_json::Value>,
     pub sort: Option<serde_json::Value>,
     pub search: Option<String>,
+    /// This tab's own "table" vs "list" row layout, independent of the
+    /// `documentViewMode` default preference used only to seed a newly opened
+    /// tab. Same IPC-boundary rule as the three fields above (gotcha #14).
+    pub document_view_mode: Option<String>,
 }
 
 impl Environment {
@@ -332,6 +336,7 @@ impl Default for PersistedTab {
             filters: None,
             sort: None,
             search: None,
+            document_view_mode: None,
         }
     }
 }
@@ -706,6 +711,44 @@ mod tests {
         normalise(&mut state);
         assert!(state.tabs[0].query.is_none());
         assert_eq!(state.tabs[1].query.as_deref(), Some("ok"));
+    }
+
+    #[test]
+    fn document_view_mode_round_trips_and_defaults_to_absent() {
+        // Same gotcha #14 failure this guards against as the collapsed-
+        // connections test above: a field the frontend sends but the struct
+        // doesn't declare is silently dropped before it reaches disk.
+        let without = r#"{ "version": 4, "environments": [ { "id": "a", "connections": {
+            "c1": { "tabs": [ { "id": "t1", "kind": "table" } ] }
+        } } ] }"#;
+        let raw: RawState = serde_json::from_str(without).unwrap();
+        let state = raw.into_state();
+        assert_eq!(
+            sole_env(&state).connections["c1"].tabs[0].document_view_mode,
+            None
+        );
+
+        let with = r#"{ "version": 4, "environments": [ { "id": "a", "connections": {
+            "c1": { "tabs": [ { "id": "t1", "kind": "table", "documentViewMode": "list" } ] }
+        } } ] }"#;
+        let raw: RawState = serde_json::from_str(with).unwrap();
+        let state = raw.into_state();
+        assert_eq!(
+            sole_env(&state).connections["c1"].tabs[0]
+                .document_view_mode
+                .as_deref(),
+            Some("list")
+        );
+
+        // And it survives being written back out.
+        let json = serde_json::to_string(&state).unwrap();
+        let reparsed: RawState = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            sole_env(&reparsed.into_state()).connections["c1"].tabs[0]
+                .document_view_mode
+                .as_deref(),
+            Some("list")
+        );
     }
 
     #[test]

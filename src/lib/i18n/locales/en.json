@@ -949,7 +949,7 @@
         "title": "Data view",
         "mode": {
           "label": "Row layout",
-          "desc": "How a browsed table or collection renders: the column grid, or one card per row with a line per field. Every driver honours it; the data tab's toolbar toggles the same setting.",
+          "desc": "How a newly opened table or collection tab renders by default: the column grid, or one card per row with a line per field. Every driver honours it. Each open tab remembers its own choice afterwards — the data tab's toolbar toggle only changes that tab, not this default.",
           "table": "Table",
           "list": "List"
         },
