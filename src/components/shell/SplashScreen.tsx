@@ -50,7 +50,12 @@ export function SplashScreen() {
         phase === "fading" ? "opacity-0 duration-220" : "opacity-100 duration-0",
       )}
     >
-      <span aria-hidden className="halftone-centered absolute inset-0" />
+      {/* Coarser pitch than a medallion's, same as the empty workspace: this
+          field covers the entire window. */}
+      <span
+        aria-hidden
+        className="halftone-centered absolute inset-0 [--halftone-pitch:14px]"
+      />
       <span
         aria-hidden
         className="absolute h-72 w-72 rounded-full bg-brand/20 blur-[90px]"

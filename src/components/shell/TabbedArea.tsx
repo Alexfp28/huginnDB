@@ -776,19 +776,16 @@ function EmptyWatermark() {
   return (
     <div className="relative flex h-full flex-col items-center overflow-y-auto p-6">
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-50"
-          style={{
-            backgroundImage:
-              "radial-gradient(hsl(var(--border)) 1px, transparent 1px)",
-            backgroundSize: "24px 24px",
-            maskImage:
-              "radial-gradient(ellipse 60% 55% at 50% 32%, black 0%, transparent 75%)",
-            WebkitMaskImage:
-              "radial-gradient(ellipse 60% 55% at 50% 32%, black 0%, transparent 75%)",
-          }}
-        />
-        <div className="absolute left-1/2 top-[-140px] h-[420px] w-[680px] -translate-x-1/2 rounded-full bg-brand/10 blur-[110px]" />
+        {/* The brand halftone, not a hand-rolled grid of `--border` dots: this
+            is the same lattice the splash and the empty states use, so all four
+            empty surfaces share one texture. The pitch is coarsened to 16px
+            because this one covers the whole workspace — at the medallion's 9px
+            it reads as noise — and the utility's own mask carries it into the
+            corners instead of dying in an ellipse two thirds of the way out. */}
+        <div className="halftone-centered absolute inset-0 [--halftone-pitch:16px]" />
+        {/* Two blooms rather than one: a wide wash from above for the surface,
+            and a tighter one behind the lockup as its light source. */}
+        <div className="absolute left-1/2 top-[-140px] h-[420px] w-[680px] -translate-x-1/2 rounded-full bg-brand/20 blur-[110px]" />
       </div>
 
       <div className="relative z-10 flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-7 py-10">
@@ -800,13 +797,13 @@ function EmptyWatermark() {
               512px for a ~240px box (2x DPI); the 1024px variant exists for
               docs, and the untouched master lives in `brand/`. */}
           <div className="relative">
-            <div className="absolute inset-0 -z-10 scale-110 rounded-[2rem] bg-brand/15 blur-2xl" />
+            <div className="absolute inset-0 -z-10 scale-125 rounded-[2rem] bg-brand/25 blur-2xl" />
             <img
               src="/image/huginn-lockup-512.png"
               alt="HuginnDB"
               width={512}
               height={288}
-              className="h-auto w-60 select-none"
+              className="h-auto w-60 select-none drop-shadow-[0_6px_24px_hsl(var(--brand)/0.35)]"
               draggable={false}
             />
           </div>

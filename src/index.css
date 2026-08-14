@@ -173,7 +173,11 @@ input[type="password"]::-ms-clear {
       hsl(var(--brand) / 0.62) 1px,
       transparent 1.5px
     );
-    background-size: 9px 9px;
+    /* Dot pitch. A large surface (the empty workspace) needs a coarser lattice
+       than a 48px medallion or the field turns into noise, so the call site can
+       override it — `[--halftone-pitch:16px]` — without hand-rolling a second
+       gradient and drifting from this definition. */
+    background-size: var(--halftone-pitch, 9px) var(--halftone-pitch, 9px);
     -webkit-mask-image: radial-gradient(
       140% 120% at 12% 0%,
       #000 0%,
@@ -198,7 +202,7 @@ input[type="password"]::-ms-clear {
       hsl(var(--brand) / 0.7) 1px,
       transparent 1.5px
     );
-    background-size: 9px 9px;
+    background-size: var(--halftone-pitch, 9px) var(--halftone-pitch, 9px);
     -webkit-mask-image: radial-gradient(
       farthest-side,
       #000 0%,
