@@ -38,7 +38,8 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["nsis", "deb", "appimage"],
+    "targets": ["nsis", "deb", "appimage", "rpm"],
+    "license": "MIT",
     "externalBin": ["binaries/huginndb-mcp"],
     "windows": {
       "nsis": {

@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **`.rpm` bundle target**, alongside the existing `.deb`/`.AppImage`, for
+  Fedora/openSUSE/RHEL-family distros. Tauri's rpm bundler (the `rpm` crate)
+  is pure Rust — no `rpmbuild` or extra system packages — so it builds from
+  the same `ubuntu-22.04` release leg with no CI changes beyond the
+  `tauri.conf.json` target list. Added `bundle.license: "MIT"` alongside it,
+  since an unset License header on an RPM package reads as "Unspecified."
+  Not yet exercised by a real tagged run — smoke-test via `workflow_dispatch`
+  with a throwaway tag before trusting it in a real release, same as the
+  `.deb`/`.AppImage` leg (see `ROADMAP.md` item 7).
+
 ## [1.16.0] — 2026-08-17
 
 ### Added

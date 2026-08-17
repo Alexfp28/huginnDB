@@ -98,10 +98,22 @@ in a roadmap and now don't:
    (2.35) and that maximises AppImage compatibility, so this is a deadline to
    track rather than something to do early.
 
-   What genuinely remains beyond that: an `aarch64`/arm64 leg, an `rpm`
-   bundle target, and any distribution beyond raw GitHub Releases
-   (Flatpak/Flathub, Snap, an AUR package) — all with zero existing
-   scaffolding.
+   **`.rpm` target added** (Fedora/openSUSE/RHEL-family) — `bundle.targets`
+   in `tauri.conf.json` now includes `"rpm"`. Tauri's rpm bundler is the pure
+   Rust `rpm` crate, so it builds from the same `ubuntu-22.04` leg with no
+   extra system packages or CI changes. Same caveat as the `.deb`/`.AppImage`
+   leg above: not yet exercised by a real tagged run — smoke-test with
+   `workflow_dispatch` before trusting it.
+
+   What genuinely remains beyond that: an `aarch64`/arm64 leg, and any
+   distribution beyond raw GitHub Releases (Flatpak/Flathub, Snap, an AUR
+   package) — all with zero existing scaffolding. Arch is a special case:
+   the `.AppImage` already runs there unmodified (Arch's glibc is always
+   newer than the `ubuntu-22.04` baseline it's built against), so "Arch
+   support" doesn't need a new Tauri bundle target — it needs someone to
+   write and maintain a `PKGBUILD` for the AUR, which is an external
+   packaging/publishing step (an aur.archlinux.org account + SSH key), not a
+   change to this repo's build.
 8. **macOS bundle with code signing.** The build is expected to work but is
    unverified, and there's no Apple Developer signing/notarization yet
    (parallels the Windows SmartScreen situation documented in the README).
