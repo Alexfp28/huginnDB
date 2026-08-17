@@ -295,7 +295,9 @@
       "editView": "Edit view…",
       "newView": "New view…",
       "renameView": "Rename view…",
-      "dropView": "Drop view…"
+      "dropView": "Drop view…",
+      "newAggregation": "New aggregation…",
+      "editViewPipeline": "Edit pipeline…"
     },
     "rename": {
       "title": "Rename table",
@@ -661,6 +663,69 @@
     "previewTitle": "Live preview",
     "previewEmptyQuery": "Write a SELECT to see a live preview of the view's columns and rows."
   },
+  "aggregation": {
+    "loading": "Loading the view definition…",
+    "noSource": "no collection",
+    "boundToView": "view \"{{name}}\"",
+    "mode": "Editor mode",
+    "modeStages": "Stages",
+    "modeText": "Text",
+    "preview": "Preview",
+    "sampleSize": "Sample",
+    "format": "Format",
+    "save": "Save",
+    "addStage": "Add stage",
+    "emptyPipeline": "This pipeline has no stages yet. Add one to start shaping the documents.",
+    "outputTitle": "Pipeline output",
+    "previewPending": "Edit the pipeline to see its output.",
+    "running": "Running…",
+    "noDocuments": "This stage returned no documents.",
+    "sampleTruncated": "Showing the first {{count}} documents of the sample.",
+    "disabledDropped": "{{count}} disabled stage(s) were left out — text mode has nowhere to keep them.",
+    "switchFailed": "The pipeline has to parse before switching modes: {{message}}",
+    "formatFailed": "Can't format the pipeline: {{message}}",
+    "rail": {
+      "unnamed": "stage",
+      "goTo": "Go to stage {{index}}"
+    },
+    "stage": {
+      "label": "Stage {{index}}",
+      "pick": "Pick a stage",
+      "toggle": "Include this stage",
+      "delete": "Delete stage",
+      "collapse": "Collapse",
+      "expand": "Expand",
+      "reorder": "Drag to reorder",
+      "docCount": "{{count}}{{suffix}} docs",
+      "outputHint": "Documents this stage emitted in the sample",
+      "previewPending": "Edit this stage to see its output.",
+      "disabledHint": "Stage is off — it runs neither here nor in a saved view."
+    },
+    "saveView": {
+      "titleCreate": "Save as view…",
+      "titleUpdate": "Update view",
+      "description": "A MongoDB view stores this pipeline and reads from the source collection every time it is queried.",
+      "name": "View name",
+      "namePlaceholder": "activeOrders",
+      "source": "Reads from",
+      "submitCreate": "Create view",
+      "submitUpdate": "Update view",
+      "saving": "Saving…",
+      "saved": "View \"{{name}}\" saved.",
+      "failed": "Can't save the view: {{message}}"
+    },
+    "export": {
+      "action": "Export",
+      "title": "Export pipeline",
+      "description": "The enabled stages, ready to paste. Disabled stages are left out.",
+      "shell": "mongosh",
+      "json": "Pipeline",
+      "createView": "createView",
+      "copy": "Copy",
+      "copied": "Pipeline copied.",
+      "pending": "Building the snippet…"
+    }
+  },
   "tabs": {
     "queryFileName": "query.sql",
     "tableFallback": "Table",
@@ -683,7 +748,8 @@
     "newQueryTooltip": "New query (uses current connection)",
     "emptyOpenSomething": "Open a table from the schema explorer, or create a new query tab.",
     "emptyConnectFirst": "Select or create a connection to begin.",
-    "detachedUnavailable": "This tab is no longer available."
+    "detachedUnavailable": "This tab is no longer available.",
+    "aggregationSuffix": "aggregation"
   },
   "tabSwitcher": {
     "title": "Switch tab",

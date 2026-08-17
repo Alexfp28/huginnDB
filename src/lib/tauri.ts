@@ -42,6 +42,10 @@ import type {
   RowValue,
   SortSpec,
   StartupArgs,
+  MongoViewDefinition,
+  PipelineStageInput,
+  PipelineText,
+  StagePreview,
   StructurePreview,
   TableInfo,
   TableStructure,
@@ -326,9 +330,56 @@ export const api = {
     newName: string,
   ) => invoke<void>("rename_view", { connectionId, schema, view, newName }),
 
-  /** `DROP VIEW` for a catalog-sourced (schema, view) pair. */
+  /** `DROP VIEW` for a catalog-sourced (schema, view) pair. Works on MongoDB
+   *  too — dropping a view there needs no DDL, so the command handles it. */
   dropView: (connectionId: string, schema: string | undefined, view: string) =>
     invoke<void>("drop_view", { connectionId, schema, view }),
+
+  // MongoDB aggregation editor ---------------------------------------------
+  //
+  // A pipeline crosses this boundary as the *source text* the user typed, not
+  // as parsed JSON: it is relaxed JSON (unquoted keys, `ObjectId(…)`,
+  // comments) and Rust owns the only parser for it. That is also why the
+  // stages ⇄ text mode switch is a command rather than a client-side split.
+
+  /** Normalise a pipeline and get back both representations — the array
+   *  literal and one source string per stage. Doubles as prettify. */
+  formatMongoPipeline: (args: { text?: string; stages?: string[] }) =>
+    invoke<PipelineText>("format_mongo_pipeline", { args }),
+
+  /** Run the whole pipeline against `source` and return a sample of its
+   *  output. Write stages (`$out`/`$merge`) are refused. */
+  runMongoPipeline: (args: {
+    connectionId: string;
+    source: string;
+    text?: string;
+    stages?: PipelineStageInput[];
+    limit?: number;
+  }) => invoke<QueryResult>("run_mongo_pipeline", { args }),
+
+  /** One bounded preview per stage: stage *i* sees the pipeline truncated
+   *  after it. Errors come back per stage rather than failing the call. */
+  previewMongoStages: (args: {
+    connectionId: string;
+    source: string;
+    stages: PipelineStageInput[];
+    limit?: number;
+  }) => invoke<StagePreview[]>("preview_mongo_stages", { args }),
+
+  /** Read a MongoDB view's `viewOn` + pipeline as editable source. */
+  getMongoView: (connectionId: string, view: string) =>
+    invoke<MongoViewDefinition>("get_mongo_view", { connectionId, view }),
+
+  /** Create a view from the pipeline (`create: true`) or redefine an existing
+   *  one (`collMod`). Disabled stages are dropped, never stored. */
+  saveMongoView: (args: {
+    connectionId: string;
+    name: string;
+    viewOn: string;
+    text?: string;
+    stages?: PipelineStageInput[];
+    create: boolean;
+  }) => invoke<void>("save_mongo_view", { args }),
 
   // Query execution ------------------------------------------------------
 

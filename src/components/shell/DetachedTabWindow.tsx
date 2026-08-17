@@ -34,6 +34,7 @@ import { TableDataTab } from "@/components/grid/TableDataTab";
 import { QueryEditorTab } from "@/components/query/QueryEditorTab";
 import { StructureEditorTab } from "@/components/schema/StructureEditorTab";
 import { ViewEditorTab } from "@/components/schema/ViewEditorTab";
+import { AggregationTab } from "@/components/aggregation/AggregationTab";
 import { SecurityTab } from "@/components/schema/SecurityTab";
 import { useTabs } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
@@ -75,6 +76,17 @@ function TabBody({ tab }: { tab: AppTab }) {
           schema={tab.schema}
           view={tab.view}
           mode={tab.viewMode ?? "edit"}
+        />
+      );
+    case "aggregation":
+      return (
+        <AggregationTab
+          tabId={tab.id}
+          connectionId={tab.connectionId}
+          schema={tab.schema}
+          collection={tab.table}
+          view={tab.view}
+          mode={tab.viewMode ?? "new"}
         />
       );
     case "security":

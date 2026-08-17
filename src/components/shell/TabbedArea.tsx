@@ -65,6 +65,7 @@ import { TableDataTab } from "@/components/grid/TableDataTab";
 import { QueryEditorTab } from "@/components/query/QueryEditorTab";
 import { StructureEditorTab } from "@/components/schema/StructureEditorTab";
 import { ViewEditorTab } from "@/components/schema/ViewEditorTab";
+import { AggregationTab } from "@/components/aggregation/AggregationTab";
 import { SecurityTab } from "@/components/schema/SecurityTab";
 import { WorkspacePicker } from "@/components/connection/WorkspacePicker";
 import {
@@ -105,6 +106,14 @@ interface ViewPanelParams {
   tabId: string;
   connectionId: string;
   schema?: string;
+  view?: string;
+  mode: "new" | "edit";
+}
+interface AggregationPanelParams {
+  tabId: string;
+  connectionId: string;
+  schema?: string;
+  collection?: string;
   view?: string;
   mode: "new" | "edit";
 }
@@ -166,11 +175,26 @@ function ViewPanel(props: IDockviewPanelProps<ViewPanelParams>) {
   );
 }
 
+function AggregationPanel(props: IDockviewPanelProps<AggregationPanelParams>) {
+  const { tabId, connectionId, schema, collection, view, mode } = props.params;
+  return (
+    <AggregationTab
+      tabId={tabId}
+      connectionId={connectionId}
+      schema={schema}
+      collection={collection}
+      view={view}
+      mode={mode}
+    />
+  );
+}
+
 const INNER_COMPONENTS = {
   table: TablePanel,
   query: QueryPanel,
   structure: StructurePanel,
   view: ViewPanel,
+  aggregation: AggregationPanel,
   security: SecurityPanel,
 };
 

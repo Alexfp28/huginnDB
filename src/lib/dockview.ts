@@ -189,6 +189,17 @@ export function syncTabPanels(api: DockviewApi, tabs: AppTab[]): void {
         view: tab.view,
         mode: tab.viewMode ?? "edit",
       };
+    } else if (tab.kind === "aggregation") {
+      params = {
+        tabId: tab.id,
+        connectionId: tab.connectionId,
+        schema: tab.schema,
+        // The pipeline's source collection; for a view tab it is refilled from
+        // the view's own `viewOn` once the definition loads.
+        collection: tab.table,
+        view: tab.view,
+        mode: tab.viewMode ?? "new",
+      };
     } else {
       params = { tabId: tab.id, connectionId: tab.connectionId };
     }

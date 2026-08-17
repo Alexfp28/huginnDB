@@ -30,7 +30,8 @@ in a roadmap and now don't:
 | Server-side users/privileges introspection | 1.4.0 | Every driver, including SQLite's explicit no-user-model empty state. |
 | Native multi-window ("New window"), replacing workspaces | 1.4.0 | |
 | Connection keepalive + lost-connection reconnect UX | 1.4.0 | |
-| View editor (create/edit/rename/drop, live preview) | 1.10.0 | |
+| View editor (create/edit/rename/drop, live preview) | 1.10.0 | SQL drivers. MongoDB views go through the aggregation editor instead — see the next row. |
+| MongoDB aggregation editor + view editing | Unreleased | Stage-by-stage and text modes with live per-stage previews; "Save as view" / `collMod`. See `CLAUDE.md` gotcha #33 and `docs/MONGODB_ROADMAP.md` item #12. |
 | MCP connector (`huginndb-mcp`) | 1.7.0 (binary) → 1.9.0 (per-connection write policy) | Read-only by default; `read-only`/`data`/`full` policy per connection, audited writes. See `docs/MCP_CONNECTOR_ROADMAP.md` and `docs/MCP.md`. |
 | Canary pre-release channel | Unreleased | Side-by-side opt-in build for dogfooding against real profiles before a stable release. See `docs/CANARY.md`. |
 | Reconnect-on-launch + session-level workspace layout | Unreleased | Restores live connections, focus, and pane geometry at startup. |

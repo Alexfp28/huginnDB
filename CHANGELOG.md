@@ -4,6 +4,59 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Added
+
+- **MongoDB views are editable, through a Compass-style aggregation editor.**
+  Until now a MongoDB view could be browsed but not changed: `commands/view.rs`
+  rejects MongoDB on purpose, because a Mongo "view" has no `CREATE VIEW` body
+  to diff — it is a stored aggregation pipeline over a source collection
+  (`{create|collMod, viewOn, pipeline}`). The new aggregation editor is the
+  parallel surface, and it opens two ways: **New aggregation…** on any
+  collection (a scratch pipeline, which "Save as view" turns into a real view),
+  and **Edit pipeline…** on any view (its pipeline loaded, saving runs
+  `collMod`). Dropping a Mongo view also works now — `drop_view` grew a Mongo
+  arm, since that one operation needs no DDL at all.
+  - **Two modes over one pipeline.** *Stages* gives each stage its own card
+    with its own output — the pipeline truncated after that stage — which is
+    what makes a sixteen-stage `$lookup` chain readable instead of one opaque
+    result. *Text* is the whole array in a single editor with the pipeline's
+    output beside it. Switching between them is a conversion routed through the
+    backend (`format_mongo_pipeline`), because splitting an array literal into
+    stages needs the grammar and a stage body is full of commas.
+  - **The stage rail is a health strip, not a breadcrumb.** Every stage is a
+    chip, in order, carrying the number of documents it emitted in the sample
+    (`10+` when the sample hit its limit). Read left to right it shows where a
+    pipeline's data dies: the `$match` that empties everything downstream takes
+    a `warning` accent at zero, an errored stage a `destructive` one.
+  - Stages can be switched off without being deleted (they stay in the document
+    and out of every request, and are never written into a saved view),
+    reordered by dragging, collapsed, and re-typed through the stage picker —
+    which replaces the body only when it is still an untouched snippet, and
+    otherwise rewrites just the operator key so a mis-click costs one undo.
+  - **Export pipeline** copies the enabled stages as a `mongosh` call, the bare
+    pipeline, or a `db.createView(…)` snippet — the last being what a pipeline
+    turns into once it stops being an exploration.
+  - Pipelines are written in the same relaxed grammar the query editor already
+    speaks (unquoted keys, single quotes, `ObjectId(…)`/`ISODate(…)`, and now
+    `//` and `/* */` comments), parsed by that one parser in Rust — the
+    frontend never parses a pipeline. Reading a view back renders its stored
+    BSON as that same source (`bson_to_shell_text`), so an `ObjectId` in a
+    `$match` stays an `ObjectId` and a `NumberLong` stays a `NumberLong`
+    across an open-and-save round trip, rather than degrading to a string or
+    an `Int32` that silently stops matching.
+  - `$out` and `$merge` are refused before anything reaches the server: the
+    editor previews on a debounce as you type, and a "preview" that overwrites
+    a collection mid-edit is not one. Every preview is bounded by a `$limit`
+    (10 documents by default, selectable up to 50).
+  - A new Monaco language colours the two things that carry meaning in a
+    pipeline apart — an operator key (`$match`, `$sum`) reads as a keyword, a
+    field reference (`"$customerId"`, `"$$NOW"`) as a predefined name — with
+    completions for stages, expression operators and BSON constructors. It
+    uses the token names every theme already styles, so custom themes colour
+    pipelines without knowing it exists.
+
 ## [1.16.0] — 2026-08-17
 
 ### Changed

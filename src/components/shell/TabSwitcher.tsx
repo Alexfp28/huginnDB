@@ -27,6 +27,7 @@ import {
   ShieldCheck,
   SquareTerminal,
   Table as TableIcon,
+  Workflow,
   X,
 } from "lucide-react";
 import { useTabs } from "@/stores/session/tabs";
@@ -60,6 +61,7 @@ const KIND_ICON: Record<TabKind, React.ReactNode> = {
   structure: <Hammer className="h-4 w-4" />,
   view: <Eye className="h-4 w-4" />,
   security: <ShieldCheck className="h-4 w-4" />,
+  aggregation: <Workflow className="h-4 w-4" />,
 };
 
 interface Entry {

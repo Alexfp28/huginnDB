@@ -61,7 +61,7 @@ fn infer_column_type<'a>(docs: impl Iterator<Item = Option<&'a Bson>>) -> String
 /// label, so `run_query`/`browse_table` give an MCP client (or the data grid)
 /// a real type signal — the same treatment the read-only structure view
 /// already gives via `infer_columns`' document sampling.
-fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64) -> QueryResult {
+pub(super) fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64) -> QueryResult {
     let mut order: Vec<String> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for d in &docs {
