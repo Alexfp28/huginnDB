@@ -27,6 +27,7 @@ import {
   ShieldCheck,
   SquareTerminal,
   Table as TableIcon,
+  KeyRound,
   Workflow,
   X,
 } from "lucide-react";
@@ -62,6 +63,7 @@ const KIND_ICON: Record<TabKind, React.ReactNode> = {
   view: <Eye className="h-4 w-4" />,
   security: <ShieldCheck className="h-4 w-4" />,
   aggregation: <Workflow className="h-4 w-4" />,
+  indexes: <KeyRound className="h-4 w-4" />,
 };
 
 interface Entry {

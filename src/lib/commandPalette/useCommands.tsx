@@ -51,6 +51,7 @@ import {
   Star,
   Table as TableIcon,
   Unplug,
+  KeyRound,
   Workflow,
   X,
 } from "lucide-react";
@@ -102,6 +103,7 @@ const TAB_ICON: Record<TabKind, React.ReactNode> = {
   view: <Eye className="h-4 w-4" />,
   security: <Cable className="h-4 w-4" />,
   aggregation: <Workflow className="h-4 w-4" />,
+  indexes: <KeyRound className="h-4 w-4" />,
 };
 
 /** Icon per Settings section, matching `SettingsDialog`'s rail. */

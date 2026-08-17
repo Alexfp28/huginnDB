@@ -8,6 +8,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **MongoDB indexes can be inspected and edited, from a dedicated index
+  manager.** They were visible but untouchable: the structure tab listed them
+  read-only, `apply_structure_change` rejects MongoDB, and the query editor's
+  statement parser has never known `createIndex`. Managing an index meant
+  leaving HuginnDB for `mongosh`. **Indexes…** on any collection now opens a
+  tab listing the real catalogue, with create, hide, replace and drop.
+  - **The list is a tool, not a catalogue.** Alongside the keys and their
+    properties it shows each index's **size** and how many operations it has
+    served since the counter was last reset. An index with months of uptime and
+    zero uses is one nobody queries and every write pays to maintain — the most
+    useful thing this view can tell you, and the reason it isn't just a list of
+    names. Both columns come from `$collStats` / `$indexStats`, which need their
+    own privileges, so they are omitted rather than shown as zeros when the
+    connection's role can't read them.
+  - **Hide sits next to drop, deliberately.** A hidden index is ignored by the
+    query planner while the server keeps it up to date, so the effect of
+    removing one can be measured and undone instantly. Dropping a large index
+    and changing your mind costs a full rebuild.
+  - Creating covers the keys (per-key direction or type, through a picker, with
+    a raw-text mode for anything exotic), `unique`, `sparse`, `hidden`, TTL,
+    partial filter expressions, collations, text weights and a merge-anything
+    escape hatch for options the form has no field for. **Editing is a drop
+    plus a create** — MongoDB cannot alter an index in place — which the dialog
+    states and a confirmation repeats before it runs.
+  - **Nothing the server reports is dropped in silence.** The catalogue is read
+    from the raw `listIndexes` documents rather than through the driver's typed
+    `IndexModel`, which keeps only names, field names and `unique`; every option
+    beyond those — including ones a future server adds — survives to the editor
+    and back. Reusing that typed shape would have rebuilt `{ createdAt: -1 }`
+    ascending the first time anyone corrected a typo in it.
+  - `_id_` is refused for drop, hide and replace by the backend, not merely
+    greyed out.
+
 - **MongoDB views are editable, through a Compass-style aggregation editor.**
   Until now a MongoDB view could be browsed but not changed: `commands/view.rs`
   rejects MongoDB on purpose, because a Mongo "view" has no `CREATE VIEW` body
@@ -56,6 +89,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     completions for stages, expression operators and BSON constructors. It
     uses the token names every theme already styles, so custom themes colour
     pipelines without knowing it exists.
+
+### Fixed
+
+- **The environment rail scrolls, and Theme/Settings stay reachable.** The rail
+  was one flat column with its footer pinned by `mt-auto`, which only pins
+  while there is free space. At around eight or nine environments the avatars
+  filled the rail, pushed the theme toggle and the settings button past its
+  bottom edge, and the shell's `overflow-hidden` clipped them away — with no
+  scroll to reach them and no cue that anything had been lost. The environments
+  now scroll in their own container, and "+", Theme and Settings sit in a
+  pinned strip below it. "+" moved out of the scrolling list on purpose:
+  creating an environment shouldn't mean scrolling past every environment you
+  already have.
 
 ## [1.16.0] — 2026-08-17
 

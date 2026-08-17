@@ -126,13 +126,52 @@ MCP server build-out itself, not per-driver tool quality.
 ## Deferred (⏳ still open as of 1.8.0)
 
 ### 1. Index editor
-Create / drop / alter indexes from the structure editor (currently read-only).
-- **Why deferred:** the structure editor is built around SQL DDL diffing
-  (`db/ddl.rs`); MongoDB needs a parallel apply path (`createIndex` /
-  `dropIndex`) rather than generated SQL.
-- **Hook:** `db/mongo/schema.rs` already reads indexes via `list_indexes`; add a
-  mongo branch to `apply_structure_change` that diffs `IndexDef`s and issues
-  `create_index` / `drop_index`.
+✅ **Shipped** — as a dedicated **index manager** tab, not as a branch of the
+structure editor. The hook noted here originally ("add a mongo branch to
+`apply_structure_change` that diffs `IndexDef`s") was rejected on contact with
+the DTO: `IndexDef` carries a name, a list of *column names* and `unique`, and
+a Mongo index also has a direction or type per key, a TTL, a partial filter, a
+collation, text weights and a hidden flag. Widening the shared struct to hold
+all of that would have made it wrong for the SQL drivers too, and rebuilding
+`{ createdAt: -1 }` from a bare field-name list would have silently recreated
+it ascending — gotcha #29's failure mode again.
+
+The parallel path is `db/mongo/indexes.rs` + `commands/mongo_indexes.rs`, with
+the UI in `src/components/indexes/`:
+
+- **The catalogue is read from raw `listIndexes` documents**, not through
+  `mongodb::IndexModel`. A raw document preserves key order, key values and
+  every option, including ones the driver's typed `IndexOptions` doesn't model;
+  what the DTO doesn't name explicitly survives in `extraOptions` as source
+  text, so nothing the server reports is dropped in silence.
+  `schema.rs::list_indexes` stays as it was — it feeds the SQL-shaped explorer
+  DTO and is deliberately lossy.
+- **One grammar, both directions**, as for pipelines: key documents, partial
+  filters, collations and weights cross as source text and are parsed by
+  `shell::parse_relaxed_value` / rendered by `values::bson_to_shell_text`. The
+  frontend never parses BSON. Writes go through `createIndexes` /
+  `dropIndexes` / `collMod` run-commands rather than `Collection::create_index`,
+  which would be lossy outbound for the same reason.
+- **Sizes and usage** come from `$collStats` (`indexSizes`) and `$indexStats`
+  (`accesses.ops` / `since`), both best-effort: a role without the privilege
+  leaves the columns out instead of failing the listing. An index with a long
+  uptime and zero operations is the thing this view exists to show.
+- **Hide/unhide** sits next to drop as its reversible rehearsal — the planner
+  stops using a hidden index while the server keeps maintaining it.
+- `_id_` is refused for drop, hide and replace in the backend, not only greyed
+  out in the UI.
+
+Known limits, deliberate:
+- **"Edit" is a drop plus a create.** MongoDB cannot alter an index in place
+  (`collMod` reaches `hidden` and nothing else), so the collection runs without
+  the index while the replacement builds. The new spec is parsed *before* the
+  drop, and a failure after it names the now-missing index explicitly.
+- **No index build progress.** A large `createIndexes` blocks the call rather
+  than reporting progress. Hook: `currentOp` filtered to the index build.
+- **Not exposed over MCP.** These are writes; which of them an AI client should
+  reach is a per-connection write-policy decision, not a side effect of adding
+  the UI. Hook: `bridge/protocol.rs` + `mcp/mod.rs`, alongside the existing
+  read-only `list_indexes` tool.
 
 ### 2. JSON Schema validator editor
 View and edit a collection's `$jsonSchema` validator.

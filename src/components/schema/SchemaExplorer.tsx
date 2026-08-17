@@ -1919,6 +1919,23 @@ function TableRow({
                 })
               }
             />
+            {/* Indexes are the one piece of a Mongo collection's structure
+                that is real rather than inferred, and the only part of it
+                that can be edited — hence an entry of its own rather than a
+                section inside the read-only structure tab. */}
+            <ContextMenuAction
+              icon={KeyRound}
+              label={ct("schema.context.manageIndexes")}
+              onSelect={() =>
+                actions.openTab({
+                  kind: "indexes",
+                  title: `${t.name} (${ct("tabs.indexesSuffix")})`,
+                  connectionId,
+                  schema: t.schema,
+                  table: t.name,
+                })
+              }
+            />
             <ContextMenuSeparator />
             <ContextMenuAction
               icon={Eraser}
