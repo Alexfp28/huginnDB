@@ -101,9 +101,14 @@ in a roadmap and now don't:
    **`.rpm` target added** (Fedora/openSUSE/RHEL-family) — `bundle.targets`
    in `tauri.conf.json` now includes `"rpm"`. Tauri's rpm bundler is the pure
    Rust `rpm` crate, so it builds from the same `ubuntu-22.04` leg with no
-   extra system packages or CI changes. Same caveat as the `.deb`/`.AppImage`
-   leg above: not yet exercised by a real tagged run — smoke-test with
-   `workflow_dispatch` before trusting it.
+   extra system packages or CI changes. Smoke-tested via `workflow_dispatch`
+   with the `v0.0.0-test` throwaway tag (run
+   [#32025472960](https://github.com/Alexfp28/huginnDB/actions/runs/32025472960)):
+   both legs completed successfully and the draft release carried a valid
+   `HuginnDB-1.16.0-1.x86_64.rpm` + `.sig` alongside the existing assets.
+   What that confirms is that the bundler produces a well-formed package —
+   it does **not** confirm the package actually installs and launches on a
+   real Fedora/openSUSE box, which is still unverified.
 
    What genuinely remains beyond that: an `aarch64`/arm64 leg, and any
    distribution beyond raw GitHub Releases (Flatpak/Flathub, Snap, an AUR

@@ -14,9 +14,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the same `ubuntu-22.04` release leg with no CI changes beyond the
   `tauri.conf.json` target list. Added `bundle.license: "MIT"` alongside it,
   since an unset License header on an RPM package reads as "Unspecified."
-  Not yet exercised by a real tagged run — smoke-test via `workflow_dispatch`
-  with a throwaway tag before trusting it in a real release, same as the
-  `.deb`/`.AppImage` leg (see `ROADMAP.md` item 7).
+  Smoke-tested via `workflow_dispatch` with the `v0.0.0-test` throwaway tag
+  (run #62): both legs completed and the draft release carried a valid
+  `HuginnDB-1.16.0-1.x86_64.rpm` alongside the usual assets. That confirms
+  the bundler output is well-formed — actual install/launch on a real
+  Fedora/openSUSE box is still unverified (see `ROADMAP.md` item 7).
 
 ## [1.16.0] — 2026-08-17
 
