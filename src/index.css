@@ -150,6 +150,19 @@ input[type="password"]::-ms-clear {
     -webkit-app-region: no-drag;
   }
 
+  /* Scroller for the narrow vertical chrome rails (the environment rail).
+   * The global scrollbar skin above is 10px wide — a seventh of a 72px rail,
+   * and it would sit right on top of the avatars' active marker. Rails hide
+   * it the way Teams and Discord do: the clipped avatar at the edge plus the
+   * pinned footer's top border are what signal there is more to scroll to. */
+  .rail-scroll {
+    scrollbar-width: none;
+  }
+
+  .rail-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
   /* -----------------------------------------------------------------------
    * Brand personality utilities
    * -----------------------------------------------------------------------

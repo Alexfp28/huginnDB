@@ -28,6 +28,14 @@
  * that store's `applyLocalView`), letting each window sit in a different
  * environment at once.
  *
+ * The rail is two zones: the environments scroll (`.rail-scroll`, its
+ * scrollbar hidden — 10px of the global skin on a 72px rail would land on
+ * the avatars), and a pinned strip below them holding "+", Theme and
+ * Settings. Those three must stay reachable at any environment count, which
+ * `mt-auto` alone could not guarantee: it pins to the bottom only while
+ * there is slack, so past ~8 environments the footer was pushed out of the
+ * rail and clipped by `AppShell`'s `overflow-hidden`.
+ *
  * Reorderable via `@dnd-kit` (vertical sortable list, main window only) —
  * drag an avatar to move it, drop to persist through `useEnvironments.reorder`,
  * which already writes optimistically and rolls back on a failed
@@ -134,82 +142,99 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
   }
 
   return (
-    <div className="flex w-[72px] shrink-0 flex-col items-center gap-2 border-r border-border py-2">
-      {isMain ? (
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
-            {ordered.map((env) => (
-              <SortableEnvironmentButton
-                key={env.id}
-                env={env}
-                label={environmentLabel(env, defaultName)}
-                isActive={env.id === activeId}
-                schemaOpen={schemaOpen}
-                switching={switching}
-                canDelete={ordered.length > 1}
-                onClick={() => handleClick(env.id)}
-                onRename={() =>
-                  openEdit({
-                    id: env.id,
-                    name: env.name,
-                    color: env.color,
-                    icon: env.icon,
-                    themeId: env.themeId,
-                  })
-                }
-                onDelete={() => {
-                  // Same irreversible-tabs/layout warning as the status-bar
-                  // switcher's delete action — connections/credentials are
-                  // untouched, only this environment's session state.
-                  if (
-                    confirmIrreversible(
-                      t("environments.deleteConfirm", {
-                        name: environmentLabel(env, defaultName),
-                      }),
-                    )
-                  ) {
-                    void remove(env.id);
+    // Two zones, not one flat column: the environments scroll, the chrome
+    // below them does not. The footer used to be pinned with `mt-auto`, which
+    // only holds while there is slack — past ~8 environments on a 1080p
+    // display the list overflowed, pushed Theme/Settings past the rail's
+    // bottom edge, and `AppShell`'s `overflow-hidden` clipped them away with
+    // no scroll to reach them.
+    <div className="flex w-[72px] shrink-0 flex-col border-r border-border">
+      {/* `min-h-0` is load-bearing: a flex child defaults to `min-height:auto`,
+          which refuses to shrink below its content, so the scrollbar would
+          never appear and the overflow would keep escaping the rail. */}
+      <div className="rail-scroll flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto py-2">
+        {isMain ? (
+          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+            <SortableContext
+              items={orderedIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {ordered.map((env) => (
+                <SortableEnvironmentButton
+                  key={env.id}
+                  env={env}
+                  label={environmentLabel(env, defaultName)}
+                  isActive={env.id === activeId}
+                  schemaOpen={schemaOpen}
+                  switching={switching}
+                  canDelete={ordered.length > 1}
+                  onClick={() => handleClick(env.id)}
+                  onRename={() =>
+                    openEdit({
+                      id: env.id,
+                      name: env.name,
+                      color: env.color,
+                      icon: env.icon,
+                      themeId: env.themeId,
+                    })
                   }
-                }}
-                renameLabel={t("environments.rename")}
-                deleteLabel={t("environments.delete")}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
-      ) : (
-        // Secondary window: plain, non-draggable buttons — picking one only
-        // changes this window's own connection/database filter (see
-        // `useEnvironments.switchTo`'s non-main branch), so there is nothing
-        // here that needs drag-to-reorder or a rename/delete context menu.
-        ordered.map((env) => (
-          <EnvironmentButton
-            key={env.id}
-            env={env}
-            label={environmentLabel(env, defaultName)}
-            isActive={env.id === activeId}
-            schemaOpen={schemaOpen}
-            switching={switching}
-            onClick={() => handleClick(env.id)}
-          />
-        ))
-      )}
-      {isMain && (
-        <SimpleTooltip label={t("environments.create")} side="right">
-          <button
-            type="button"
-            onClick={() => openCreate(lastReplicate)}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors duration-150 hover:border-brand/60 hover:bg-brand/10 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-          >
-            <Plus className="h-[18px] w-[18px]" />
-          </button>
-        </SimpleTooltip>
-      )}
-      {footer && (
-        <div className="mt-auto flex flex-col items-center gap-0.5">
-          {footer}
-        </div>
-      )}
+                  onDelete={() => {
+                    // Same irreversible-tabs/layout warning as the status-bar
+                    // switcher's delete action — connections/credentials are
+                    // untouched, only this environment's session state.
+                    if (
+                      confirmIrreversible(
+                        t("environments.deleteConfirm", {
+                          name: environmentLabel(env, defaultName),
+                        }),
+                      )
+                    ) {
+                      void remove(env.id);
+                    }
+                  }}
+                  renameLabel={t("environments.rename")}
+                  deleteLabel={t("environments.delete")}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        ) : (
+          // Secondary window: plain, non-draggable buttons — picking one only
+          // changes this window's own connection/database filter (see
+          // `useEnvironments.switchTo`'s non-main branch), so there is nothing
+          // here that needs drag-to-reorder or a rename/delete context menu.
+          ordered.map((env) => (
+            <EnvironmentButton
+              key={env.id}
+              env={env}
+              label={environmentLabel(env, defaultName)}
+              isActive={env.id === activeId}
+              schemaOpen={schemaOpen}
+              switching={switching}
+              onClick={() => handleClick(env.id)}
+            />
+          ))
+        )}
+      </div>
+      {/* Pinned chrome. "+" lives here rather than at the end of the scrolling
+          list so creating an environment never requires scrolling to the
+          bottom of the environments you already have. */}
+      <div className="flex shrink-0 flex-col items-center gap-2 border-t border-border py-2">
+        {isMain && (
+          <SimpleTooltip label={t("environments.create")} side="right">
+            <button
+              type="button"
+              onClick={() => openCreate(lastReplicate)}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors duration-150 hover:border-brand/60 hover:bg-brand/10 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              <Plus className="h-[18px] w-[18px]" />
+            </button>
+          </SimpleTooltip>
+        )}
+        {footer && (
+          <div className="flex flex-col items-center gap-0.5">{footer}</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -244,7 +269,9 @@ function EnvironmentButton({
         onClick={onClick}
         aria-pressed={isActive && schemaOpen}
         className={cn(
-          "group relative flex w-full flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150 disabled:opacity-60",
+          // `shrink-0`: in the rail's scrolling flex column the buttons would
+          // otherwise compress to fit instead of overflowing into the scroll.
+          "group relative flex w-full shrink-0 flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150 disabled:opacity-60",
           "hover:bg-accent/50",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
           isActive && "bg-accent/60",
@@ -312,7 +339,12 @@ function SortableEnvironmentButton({
     useSortable({ id: env.id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    // X is zeroed deliberately. The rail scrolls now, and a scroll container
+    // clips both axes (`overflow-y: auto` forces the other axis to `auto`
+    // too), so a drag that drifts sideways would slice the avatar against the
+    // rail's edge. The list is vertical anyway — dropping the horizontal
+    // component costs nothing and keeps the dragged item whole.
+    transform: CSS.Transform.toString(transform && { ...transform, x: 0 }),
     transition,
   };
 
@@ -330,7 +362,9 @@ function SortableEnvironmentButton({
             onClick={onClick}
             aria-pressed={isActive && schemaOpen}
             className={cn(
-              "group relative flex w-full flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150 disabled:opacity-60",
+              // See `EnvironmentButton` on `shrink-0` — the rail scrolls, and
+              // without it the avatars squash instead of overflowing.
+              "group relative flex w-full shrink-0 flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150 disabled:opacity-60",
               "hover:bg-accent/50",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
               isActive && "bg-accent/60",
