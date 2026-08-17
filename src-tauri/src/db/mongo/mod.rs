@@ -7,6 +7,8 @@
 //!
 //! * [`query`]  — execute `mongosh`-style statements + collection CRUD, shaped
 //!   into the SQL-shaped DTOs the frontend already consumes.
+//! * [`aggregation`] — pipeline preview + the view editor's create/alter path
+//!   (`{create|collMod, viewOn, pipeline}`), MongoDB's answer to `CREATE VIEW`.
 //! * [`schema`] — introspection (databases, collections, inferred fields,
 //!   indexes). MongoDB is schemaless, so field lists are *sampled*.
 //! * [`shell`]  — a bounded parser for `db.coll.method(...)` statements.
@@ -18,6 +20,7 @@
 //! `mongodb://` URIs (an SRV record resolves to several hosts, which the
 //! single-port tunnel model can't represent — see the roadmap).
 
+pub mod aggregation;
 pub mod query;
 pub mod schema;
 pub mod shell;

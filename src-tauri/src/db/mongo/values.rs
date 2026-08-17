@@ -382,6 +382,161 @@ pub fn bson_type_tree(b: &Bson) -> Value {
     }
 }
 
+// ---------------------------------------------------------------------------
+// BSON → editable mongosh source
+// ---------------------------------------------------------------------------
+
+/// Render a BSON value as the **relaxed mongosh source** a user edits — the
+/// exact grammar [`super::shell::parse_relaxed_value`] reads back.
+///
+/// This is the third direction the module header's two-way table didn't need
+/// until the aggregation editor existed. Neither existing converter works for
+/// it: [`bson_to_json`] is display-lossy (an `ObjectId` in a `$match` would
+/// come back as a bare string and stop matching anything), and canonical
+/// Extended JSON round-trips perfectly but is unreadable as source and is *not*
+/// what the server interprets when the pipeline is handed to `aggregate` — a
+/// literal `{"$oid": …}` in a pipeline is just a document. So typed values are
+/// written as the constructors the parser understands (`ObjectId("…")`,
+/// `ISODate("…")`, `NumberLong(…)`, `NumberDecimal("…")`), which both read well
+/// and parse back to the same BSON.
+///
+/// `Int64` is always written as `NumberLong(…)` even when it would fit in an
+/// `i32`: a bare integer literal parses back as `Int32`, and a `$match` against
+/// a `Long` field written as an `Int` silently stops matching — the same
+/// invisible-in-testing, permanent-in-data failure gotcha #29 describes.
+///
+/// **Lossy fallback:** types with no constructor in the grammar (`Binary`,
+/// `Timestamp`, `MinKey`/`MaxKey`, regexes outside a `$regex` position, …) are
+/// written as their Extended JSON document form. They read correctly and the
+/// server accepts the common `{$regex: …}` case, but re-saving a pipeline that
+/// contained one rewrites it as a plain document. Pipelines carry filters and
+/// field paths rather than stored data, so this is rare in practice; the
+/// alternative — refusing to open such a view at all — is strictly worse.
+pub fn bson_to_shell_text(b: &Bson) -> String {
+    let mut out = String::new();
+    write_shell(b, 0, &mut out);
+    out
+}
+
+/// Render a pipeline (an array of stage documents) as editable source.
+pub fn pipeline_to_shell_text(stages: &[Document]) -> String {
+    let array = Bson::Array(stages.iter().cloned().map(Bson::Document).collect());
+    bson_to_shell_text(&array)
+}
+
+fn indent(depth: usize, out: &mut String) {
+    out.push_str(&"  ".repeat(depth));
+}
+
+fn write_shell(b: &Bson, depth: usize, out: &mut String) {
+    match b {
+        Bson::Document(d) if d.is_empty() => out.push_str("{}"),
+        Bson::Document(d) => {
+            out.push_str("{\n");
+            let last = d.len() - 1;
+            for (i, (k, v)) in d.iter().enumerate() {
+                indent(depth + 1, out);
+                out.push_str(&shell_key(k));
+                out.push_str(": ");
+                write_shell(v, depth + 1, out);
+                if i != last {
+                    out.push(',');
+                }
+                out.push('\n');
+            }
+            indent(depth, out);
+            out.push('}');
+        }
+        Bson::Array(a) if a.is_empty() => out.push_str("[]"),
+        Bson::Array(a) => {
+            out.push_str("[\n");
+            let last = a.len() - 1;
+            for (i, v) in a.iter().enumerate() {
+                indent(depth + 1, out);
+                write_shell(v, depth + 1, out);
+                if i != last {
+                    out.push(',');
+                }
+                out.push('\n');
+            }
+            indent(depth, out);
+            out.push(']');
+        }
+        Bson::String(s) => out.push_str(&quote_shell_string(s)),
+        Bson::Boolean(v) => out.push_str(if *v { "true" } else { "false" }),
+        Bson::Null | Bson::Undefined => out.push_str("null"),
+        Bson::Int32(i) => out.push_str(&i.to_string()),
+        Bson::Int64(i) => out.push_str(&format!("NumberLong({i})")),
+        Bson::Double(f) => {
+            // A double that is integral must keep a decimal point, or it parses
+            // back as an Int32 (the parser only produces a Double when it sees
+            // one). Non-finite values have no literal at all — write null.
+            if !f.is_finite() {
+                out.push_str("null");
+            } else if f.fract() == 0.0 && f.abs() < 1e15 {
+                out.push_str(&format!("{f:.1}"));
+            } else {
+                out.push_str(&f.to_string());
+            }
+        }
+        Bson::ObjectId(oid) => out.push_str(&format!("ObjectId(\"{}\")", oid.to_hex())),
+        Bson::DateTime(dt) => match dt.try_to_rfc3339_string() {
+            Ok(s) => out.push_str(&format!("ISODate(\"{s}\")")),
+            // Out of the range RFC3339 can express — keep the epoch millis,
+            // which at least stays a date on the server.
+            Err(_) => out.push_str(&format!(
+                "{{ \"$date\": {{ \"$numberLong\": \"{}\" }} }}",
+                dt.timestamp_millis()
+            )),
+        },
+        Bson::Decimal128(d) => out.push_str(&format!("NumberDecimal(\"{d}\")")),
+        // No constructor in the grammar — fall back to Extended JSON (see the
+        // doc comment's "lossy fallback" note).
+        other => {
+            let ext = other.clone().into_relaxed_extjson();
+            match serde_json::to_string(&ext) {
+                Ok(s) => out.push_str(&s),
+                Err(_) => out.push_str("null"),
+            }
+        }
+    }
+}
+
+/// A key is written bare when it is a safe identifier (including the leading
+/// `$` of an operator), quoted otherwise — dotted field paths like
+/// `"customData.format"` must keep their quotes.
+fn shell_key(key: &str) -> String {
+    let mut chars = key.chars();
+    let valid = match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' || c == '$' => {
+            chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+        }
+        _ => false,
+    };
+    if valid {
+        key.to_string()
+    } else {
+        quote_shell_string(key)
+    }
+}
+
+fn quote_shell_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// Construct a BSON binary value (used only in round-trip tests for now).
 #[allow(dead_code)]
 pub(crate) fn binary(bytes: Vec<u8>) -> Bson {

@@ -6,6 +6,65 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
+## [Unreleased]
+
+### Añadido
+
+- **Las vistas de MongoDB ya se pueden editar, con un editor de agregaciones al
+  estilo Compass.** Hasta ahora una vista de MongoDB se podía consultar pero no
+  modificar: `commands/view.rs` rechaza MongoDB a propósito, porque una "vista"
+  de Mongo no tiene un cuerpo `CREATE VIEW` que comparar — es un pipeline de
+  agregación guardado sobre una colección de origen (`{create|collMod, viewOn,
+  pipeline}`). El nuevo editor de agregaciones es la superficie paralela, y se
+  abre de dos formas: **Nueva agregación…** sobre cualquier colección (un
+  pipeline de trabajo, que "Guardar como vista" convierte en una vista real) y
+  **Editar pipeline…** sobre cualquier vista (con su pipeline cargado; al
+  guardar se ejecuta `collMod`). Eliminar una vista de Mongo también funciona
+  ya: `drop_view` tiene ahora una rama Mongo, porque esa operación concreta no
+  necesita DDL.
+  - **Dos modos sobre un mismo pipeline.** *Etapas* da a cada etapa su propia
+    tarjeta con su propia salida —el pipeline truncado tras esa etapa—, que es
+    lo que hace legible una cadena de dieciséis `$lookup` en lugar de un único
+    resultado opaco. *Texto* es el array completo en un solo editor con la
+    salida del pipeline al lado. Cambiar de modo es una conversión que pasa por
+    el backend (`format_mongo_pipeline`), porque partir un array literal en
+    etapas requiere la gramática y el cuerpo de una etapa está lleno de comas.
+  - **La barra de etapas es un diagnóstico, no una miga de pan.** Cada etapa es
+    un chip, en orden, con el número de documentos que emitió en la muestra
+    (`10+` cuando la muestra llegó a su límite). Leída de izquierda a derecha
+    muestra dónde muere el pipeline: el `$match` que vacía todo lo que viene
+    después se marca en `warning` al llegar a cero, y una etapa con error en
+    `destructive`.
+  - Las etapas se pueden desactivar sin borrarlas (permanecen en el documento y
+    quedan fuera de toda petición, y nunca se escriben en una vista guardada),
+    reordenar arrastrando, plegar y cambiar de operador desde el selector —que
+    sustituye el cuerpo solo si sigue siendo la plantilla sin tocar, y en caso
+    contrario reescribe únicamente la clave del operador, de modo que un clic
+    equivocado cuesta un deshacer.
+  - **Exportar pipeline** copia las etapas activas como llamada `mongosh`, como
+    pipeline a secas o como fragmento `db.createView(…)` —esto último es en lo
+    que se convierte un pipeline cuando deja de ser una exploración.
+  - Los pipelines se escriben en la misma gramática relajada que ya entiende el
+    editor de consultas (claves sin comillas, comillas simples,
+    `ObjectId(…)`/`ISODate(…)` y ahora comentarios `//` y `/* */`), analizada
+    por ese único parser en Rust: el frontend nunca analiza un pipeline. Al
+    releer una vista, su BSON guardado se renderiza como ese mismo código
+    fuente (`bson_to_shell_text`), así que un `ObjectId` dentro de un `$match`
+    sigue siendo un `ObjectId` y un `NumberLong` sigue siendo un `NumberLong`
+    tras abrir y guardar, en vez de degradarse a una cadena o a un `Int32` que
+    deja de coincidir en silencio.
+  - `$out` y `$merge` se rechazan antes de llegar al servidor: el editor
+    previsualiza con debounce mientras escribes, y una "vista previa" que
+    sobrescribe una colección a media edición no lo es. Toda vista previa está
+    acotada por un `$limit` (10 documentos por defecto, ampliable hasta 50).
+  - Un nuevo lenguaje de Monaco colorea por separado las dos cosas que
+    significan algo en un pipeline —una clave de operador (`$match`, `$sum`) se
+    lee como palabra clave y una referencia a campo (`"$customerId"`, `"$$NOW"`)
+    como nombre predefinido—, con autocompletado de etapas, operadores de
+    expresión y constructores BSON. Usa los nombres de token que ya estilan
+    todos los temas, así que los temas personalizados colorean pipelines sin
+    saber que existe.
+
 ## [1.16.0] — 2026-08-17
 
 ### Cambiado

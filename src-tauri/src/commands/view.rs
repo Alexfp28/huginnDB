@@ -291,6 +291,15 @@ pub async fn drop_view(
     view: String,
 ) -> AppResult<()> {
     let pool = pool_for(state.inner(), &connection_id)?;
+    // MongoDB is the one driver whose views this module can otherwise not
+    // touch — but *dropping* one needs no DDL at all (a view lives in the same
+    // namespace as a collection), so it is handled here rather than forcing
+    // the explorer to pick a different command per driver. Editing a Mongo
+    // view still belongs to the aggregation editor, which has a pipeline to
+    // work with instead of a `SELECT` body.
+    if let DbPool::Mongo(conn) = &pool {
+        return crate::db::mongo::aggregation::drop_view(conn, &view).await;
+    }
     let dialect = Dialect::try_of(&pool)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), &view);
     let sql = format!("DROP VIEW {qt}");

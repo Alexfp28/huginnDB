@@ -313,6 +313,56 @@ export interface ViewPreview {
   dropAndRecreate: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// MongoDB aggregation editor — mirror of the Rust DTOs in
+// src-tauri/src/db/mongo/aggregation.rs / src-tauri/src/commands/aggregation.rs.
+// ---------------------------------------------------------------------------
+
+/**
+ * A MongoDB view as the aggregation editor sees it. Unlike {@link ViewDefinition}
+ * there is no SQL body: a Mongo view is a stored pipeline over `viewOn`, so the
+ * editor holds source *text* — the exact relaxed-JSON the user typed, parsed
+ * only in Rust.
+ */
+export interface MongoViewDefinition {
+  name: string;
+  /** The collection (or view) the pipeline reads from. */
+  viewOn: string;
+  /** The whole pipeline as one array literal, for the text editor. */
+  pipeline: string;
+  /** The same pipeline split per stage, for the stage editor. */
+  stages: string[];
+}
+
+/** One stage as sent to the backend: its source plus its on/off state. */
+export interface PipelineStageInput {
+  body: string;
+  enabled: boolean;
+}
+
+/** A pipeline normalised into both of the editor's representations. Returned
+ *  by `formatMongoPipeline`, which is both the prettify action and the
+ *  stages ⇄ text mode switch (splitting an array literal into stages needs the
+ *  grammar, so it can't be done client-side). */
+export interface PipelineText {
+  text: string;
+  stages: string[];
+}
+
+/** Preview output for one stage, index-aligned to the stages that were sent. */
+export interface StagePreview {
+  index: number;
+  /** The stage is switched off — nothing ran for it. */
+  skipped: boolean;
+  result: QueryResult | null;
+  /** A parse error in this stage's body, or the server error from running the
+   *  pipeline up to and including it. */
+  error: string | null;
+  /** The sample hit the preview limit, so the real output is "this many or
+   *  more" rather than exactly this many. */
+  truncated: boolean;
+}
+
 /** Column descriptor in a `QueryResult`. */
 export interface ColumnMeta {
   name: string;
@@ -387,7 +437,13 @@ export interface BatchResult {
 }
 
 /** Tabs in the main workspace can host either table data or a query editor. */
-export type TabKind = "table" | "query" | "structure" | "security" | "view";
+export type TabKind =
+  | "table"
+  | "query"
+  | "structure"
+  | "security"
+  | "view"
+  | "aggregation";
 
 /** New-table vs edit-existing for a structure tab. Reused as-is for view
  *  tabs ("new" view vs "edit" an existing one) — same semantics, no need
@@ -400,11 +456,17 @@ export interface AppTab {
   title: string;
   connectionId: string;
   schema?: string;
+  /** The table for a table/structure tab; for `kind: "aggregation"` it is the
+   *  collection the pipeline reads from (`viewOn`). */
   table?: string;
   /** For `kind: "view"` tabs: the view name being edited; absent when
-   *  `viewMode` is `"new"`. */
+   *  `viewMode` is `"new"`. For `kind: "aggregation"` tabs the same field
+   *  names the MongoDB view the pipeline is bound to — absent when the tab is
+   *  an unbound pipeline over a plain collection, which "Save as view" then
+   *  binds. */
   view?: string;
-  /** For view tabs: whether we're creating a new view or editing one. */
+  /** For view and aggregation tabs: whether we're creating a new view or
+   *  editing one. */
   viewMode?: StructureMode;
   /** User-assigned tab colour (hex, e.g. `#ef4444`). Undefined = no colour.
    *  Purely cosmetic; persisted per connection. */

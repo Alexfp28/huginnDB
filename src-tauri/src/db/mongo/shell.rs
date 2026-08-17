@@ -112,6 +112,33 @@ impl From<UpdateSpec> for mongodb::options::UpdateModifications {
     }
 }
 
+/// Parse a *standalone* relaxed-JSON / BSON value — a document, an array, or a
+/// scalar — with no surrounding `db.coll.method(…)` call.
+///
+/// This is the aggregation editor's entry point into the same grammar the query
+/// editor already speaks: a pipeline the user types as `[ { $match: { status:
+/// "A" } } ]` (unquoted keys, single quotes, trailing commas, `ObjectId(…)` /
+/// `ISODate(…)` constructors) is exactly an argument the parser below already
+/// knows how to read. Reusing it means the two surfaces can never disagree
+/// about what a typed value means — and, just as importantly, that a pipeline
+/// round-trips through [`super::values::bson_to_shell_text`] without a second,
+/// subtly different grammar being invented for it.
+///
+/// Rejects trailing input, so a half-written second value is an error rather
+/// than being silently dropped.
+pub fn parse_relaxed_value(input: &str) -> AppResult<Bson> {
+    let mut p = Parser::new(input);
+    let value = p.parse_value()?;
+    p.skip_ws();
+    if p.pos < p.src.len() {
+        return Err(AppError::InvalidInput(format!(
+            "unexpected trailing input at position {} (expected a single value)",
+            p.pos
+        )));
+    }
+    Ok(value)
+}
+
 /// Parse one `mongosh`-style statement.
 pub fn parse(input: &str) -> AppResult<ParsedCommand> {
     let src = input.trim().trim_end_matches(';').trim();
@@ -381,11 +408,33 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Skip whitespace *and* JS-style comments (`// …` to end of line, `/* … */`).
+    ///
+    /// Comments matter for the aggregation editor, where a stage body is a
+    /// document a user reads and annotates like code rather than a one-line
+    /// filter typed into the query bar; MongoDB Compass accepts them in the
+    /// same position. They are skipped here rather than in a pre-pass so a `//`
+    /// inside a string literal is untouched — string literals are consumed by
+    /// `parse_string_literal`, which never calls back into this.
     fn skip_ws(&mut self) {
         while self.pos < self.src.len() {
             let c = self.src[self.pos];
             if c == b' ' || c == b'\t' || c == b'\n' || c == b'\r' {
                 self.pos += 1;
+            } else if c == b'/' && self.src.get(self.pos + 1) == Some(&b'/') {
+                self.pos += 2;
+                while self.pos < self.src.len() && self.src[self.pos] != b'\n' {
+                    self.pos += 1;
+                }
+            } else if c == b'/' && self.src.get(self.pos + 1) == Some(&b'*') {
+                self.pos += 2;
+                while self.pos < self.src.len() {
+                    if self.src[self.pos] == b'*' && self.src.get(self.pos + 1) == Some(&b'/') {
+                        self.pos += 2;
+                        break;
+                    }
+                    self.pos += 1;
+                }
             } else {
                 break;
             }
@@ -732,6 +781,38 @@ fn utf8_len(lead: u8) -> usize {
 mod tests {
     use super::*;
     use mongodb::bson::doc;
+
+    #[test]
+    fn parses_a_standalone_relaxed_value() {
+        let v = parse_relaxed_value("{ $match: { status: 'A', n: { $gt: 3 } } }").unwrap();
+        assert_eq!(
+            v,
+            Bson::Document(doc! {"$match": {"status": "A", "n": {"$gt": 3}}})
+        );
+    }
+
+    #[test]
+    fn standalone_parse_rejects_trailing_input() {
+        // Two values back to back is a mistake worth reporting, not a reason to
+        // silently keep the first one.
+        assert!(parse_relaxed_value("{a: 1} {b: 2}").is_err());
+    }
+
+    #[test]
+    fn comments_are_skipped_outside_string_literals() {
+        let v = parse_relaxed_value(
+            r#"{
+              // keep the active ones
+              status: "A", /* inline */ n: 1,
+              note: "not // a comment"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            v,
+            Bson::Document(doc! {"status": "A", "n": 1, "note": "not // a comment"})
+        );
+    }
 
     #[test]
     fn parses_find_with_filter() {

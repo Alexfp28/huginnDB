@@ -295,7 +295,9 @@
       "editView": "Editar vista…",
       "newView": "Nueva vista…",
       "renameView": "Renombrar vista…",
-      "dropView": "Eliminar vista…"
+      "dropView": "Eliminar vista…",
+      "newAggregation": "Nueva agregación…",
+      "editViewPipeline": "Editar pipeline…"
     },
     "rename": {
       "title": "Renombrar tabla",
@@ -661,6 +663,69 @@
     "previewTitle": "Vista previa en vivo",
     "previewEmptyQuery": "Escribe un SELECT para ver una vista previa en vivo de las columnas y filas."
   },
+  "aggregation": {
+    "loading": "Cargando la definición de la vista…",
+    "noSource": "sin colección",
+    "boundToView": "vista \"{{name}}\"",
+    "mode": "Modo de edición",
+    "modeStages": "Etapas",
+    "modeText": "Texto",
+    "preview": "Vista previa",
+    "sampleSize": "Muestra",
+    "format": "Formatear",
+    "save": "Guardar",
+    "addStage": "Añadir etapa",
+    "emptyPipeline": "Este pipeline aún no tiene etapas. Añade una para empezar a transformar los documentos.",
+    "outputTitle": "Salida del pipeline",
+    "previewPending": "Edita el pipeline para ver su salida.",
+    "running": "Ejecutando…",
+    "noDocuments": "Esta etapa no devolvió ningún documento.",
+    "sampleTruncated": "Mostrando los primeros {{count}} documentos de la muestra.",
+    "disabledDropped": "Se han dejado fuera {{count}} etapa(s) desactivada(s): el modo texto no puede guardarlas.",
+    "switchFailed": "El pipeline tiene que ser válido para cambiar de modo: {{message}}",
+    "formatFailed": "No se puede formatear el pipeline: {{message}}",
+    "rail": {
+      "unnamed": "etapa",
+      "goTo": "Ir a la etapa {{index}}"
+    },
+    "stage": {
+      "label": "Etapa {{index}}",
+      "pick": "Elige una etapa",
+      "toggle": "Incluir esta etapa",
+      "delete": "Eliminar etapa",
+      "collapse": "Plegar",
+      "expand": "Desplegar",
+      "reorder": "Arrastra para reordenar",
+      "docCount": "{{count}}{{suffix}} docs",
+      "outputHint": "Documentos que emitió esta etapa en la muestra",
+      "previewPending": "Edita esta etapa para ver su salida.",
+      "disabledHint": "Etapa desactivada: no se ejecuta aquí ni en una vista guardada."
+    },
+    "saveView": {
+      "titleCreate": "Guardar como vista…",
+      "titleUpdate": "Actualizar vista",
+      "description": "Una vista de MongoDB guarda este pipeline y lo ejecuta sobre la colección de origen cada vez que se consulta.",
+      "name": "Nombre de la vista",
+      "namePlaceholder": "pedidosActivos",
+      "source": "Lee de",
+      "submitCreate": "Crear vista",
+      "submitUpdate": "Actualizar vista",
+      "saving": "Guardando…",
+      "saved": "Vista \"{{name}}\" guardada.",
+      "failed": "No se puede guardar la vista: {{message}}"
+    },
+    "export": {
+      "action": "Exportar",
+      "title": "Exportar pipeline",
+      "description": "Las etapas activas, listas para pegar. Las desactivadas quedan fuera.",
+      "shell": "mongosh",
+      "json": "Pipeline",
+      "createView": "createView",
+      "copy": "Copiar",
+      "copied": "Pipeline copiado.",
+      "pending": "Generando el fragmento…"
+    }
+  },
   "tabs": {
     "queryFileName": "query.sql",
     "tableFallback": "Tabla",
@@ -683,7 +748,8 @@
     "newQueryTooltip": "Nueva query (usa la conexión activa)",
     "emptyOpenSomething": "Abre una tabla desde el explorador de esquemas o crea una nueva pestaña de query.",
     "emptyConnectFirst": "Selecciona o crea una conexión para empezar.",
-    "detachedUnavailable": "Esta pestaña ya no está disponible."
+    "detachedUnavailable": "Esta pestaña ya no está disponible.",
+    "aggregationSuffix": "agregación"
   },
   "tabSwitcher": {
     "title": "Cambiar de pestaña",

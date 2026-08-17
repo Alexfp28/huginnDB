@@ -79,13 +79,24 @@ export const useTabs = create<TabsState>((set, get) => ({
   tabs: [],
   activeId: null,
   open: (input) => {
-    if (input.kind === "table" || input.kind === "security") {
+    if (
+      input.kind === "table" ||
+      input.kind === "security" ||
+      input.kind === "aggregation"
+    ) {
       const existing = get().tabs.find(
         (t) =>
           t.kind === input.kind &&
           t.connectionId === input.connectionId &&
-          (input.kind !== "table" ||
-            (t.schema === input.schema && t.table === input.table)),
+          (input.kind === "security" ||
+            (t.schema === input.schema &&
+              t.table === input.table &&
+              // Aggregation tabs additionally key on the view they're bound
+              // to: "Edit pipeline" on a view and a scratch pipeline over the
+              // same collection are different working sessions. Within one
+              // identity the tab is reused, so re-opening it can't quietly
+              // strand a pipeline the user was still building.
+              (input.kind !== "aggregation" || t.view === input.view))),
       );
       if (existing) {
         // Re-navigation (FK "go to referenced row") may carry a fresh

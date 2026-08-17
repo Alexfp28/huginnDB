@@ -201,14 +201,54 @@ Two limits are deliberate and worth knowing before extending it:
   for them (see this file's header note on display-vs-fidelity).
 
 ### 9. Richer query surface
-`explain`, `bulkWrite`, `findAndModify`, change streams, GridFS, a visual
-aggregation builder, and per-field schema-variance analysis (type distribution
-across a sample).
+`explain`, `bulkWrite`, `findAndModify`, change streams, GridFS, and per-field
+schema-variance analysis (type distribution across a sample).
 - **Why deferred:** beyond the MVP's bounded `mongosh` grammar
   (`db/mongo/shell.rs`).
 - **Hook:** extend the `shell.rs` parser + `query.rs` executor; the parser is
   designed to reject unknown methods with a clear error, so additions are
   additive.
+- The **visual aggregation builder** that used to be listed here is ✅ **done** —
+  see item #12 below. `explain` is the one piece of that idea still open: the
+  editor previews output but shows no plan.
+
+### 12. View editing / aggregation builder
+✅ **Shipped.** A MongoDB view is a stored aggregation pipeline, which is why
+`commands/view.rs` rejects Mongo (there is no `CREATE VIEW` body to diff). The
+parallel path lives in `db/mongo/aggregation.rs` + `commands/aggregation.rs`,
+with the UI in `src/components/aggregation/`:
+
+- Read a view (`listCollections` → `options.viewOn` / `options.pipeline`),
+  preview a pipeline whole or **per stage** (each stage sees the pipeline
+  truncated after it), and save with `{create|collMod, viewOn, pipeline}`.
+  Dropping a Mongo view is handled inside the shared `drop_view` command — it
+  needs no DDL, so it did not warrant a second command.
+- **One grammar, both directions.** Stage bodies are parsed by
+  `shell::parse_relaxed_value` (the query editor's own parser, now reachable
+  standalone, and now comment-aware) and rendered back by
+  `values::bson_to_shell_text`, which writes typed values as the constructors
+  that parser reads. That round trip is what stops "open a view, save it
+  unchanged" from rewriting an `ObjectId` as a string or a `Long` as an `Int`
+  — gotcha #29's failure mode, one level up. The frontend never parses a
+  pipeline; even the stages ⇄ text mode switch is a backend call
+  (`format_mongo_pipeline`).
+- `$out`/`$merge` are refused before dispatch (`reject_write_stages`): the
+  editor previews on a debounce, so running a write stage would overwrite a
+  collection mid-keystroke.
+
+Known limits, deliberate:
+- **A view cannot be renamed.** MongoDB has no rename for a view; the only path
+  is drop + recreate, which is a destructive gesture rather than a rename, so
+  the explorer offers no "Rename view" for Mongo.
+- **`collation` is not round-tripped.** `createView` accepts one; the editor
+  neither shows nor preserves it, so redefining a view that has a collation
+  through `collMod` drops it. Hook: carry `options.collation` on
+  `MongoViewDefinition` and pass it back through `save_view`.
+- **Types with no constructor in the grammar** (`Binary`, `Timestamp`,
+  `MinKey`/`MaxKey`) render as Extended JSON and re-save as plain documents.
+  Pipelines carry filters and field paths rather than stored data, so this is
+  rare; the fix is the same one item #8 needs — a non-lossy display form.
+- **No `explain`.** See item #9.
 
 ### 10. Proper editor language for MongoDB
 The editor reuses Monaco's `sql` language for syntax highlighting; mongosh would

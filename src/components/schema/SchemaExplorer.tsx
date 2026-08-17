@@ -52,6 +52,7 @@ import {
   Trash2,
   Unplug,
   Upload,
+  Workflow,
 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useSchema, tableKey } from "@/stores/session/schema";
@@ -1901,6 +1902,24 @@ function TableRow({
         {isMongo && !isView && (
           <>
             <ContextMenuSeparator />
+            {/* A pipeline over this collection — the entry point to the
+                aggregation editor, and the way a new MongoDB view gets made
+                (build the pipeline, then "Save as view"). */}
+            <ContextMenuAction
+              icon={Workflow}
+              label={ct("schema.context.newAggregation")}
+              onSelect={() =>
+                actions.openTab({
+                  kind: "aggregation",
+                  viewMode: "new",
+                  title: `${t.name} (${ct("tabs.aggregationSuffix")})`,
+                  connectionId,
+                  schema: t.schema,
+                  table: t.name,
+                })
+              }
+            />
+            <ContextMenuSeparator />
             <ContextMenuAction
               icon={Eraser}
               label={ct("schema.context.empty")}
@@ -1911,6 +1930,40 @@ function TableRow({
               destructive
               label={ct("schema.context.drop")}
               onSelect={() => actions.onDrop(t)}
+            />
+          </>
+        )}
+        {/* MongoDB views. Not covered by the `canEditDdl` block below: a Mongo
+            view has no `CREATE VIEW` body to edit, it has a *pipeline* — so
+            "Edit view" opens the aggregation editor with that pipeline loaded,
+            and saving runs `collMod` rather than DDL. Renaming is absent
+            because MongoDB has no rename for a view (drop and recreate is the
+            only path, which is a different, destructive gesture). */}
+        {isMongo && isView && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuAction
+              icon={Workflow}
+              label={ct("schema.context.editViewPipeline")}
+              onSelect={() =>
+                actions.openTab({
+                  kind: "aggregation",
+                  viewMode: "edit",
+                  title: `${t.name} (${ct("tabs.aggregationSuffix")})`,
+                  connectionId,
+                  schema: t.schema,
+                  // No `table`: a view's source is its own `viewOn`, which the
+                  // editor reads from the definition rather than assuming.
+                  view: t.name,
+                })
+              }
+            />
+            <ContextMenuSeparator />
+            <ContextMenuAction
+              icon={Trash2}
+              destructive
+              label={ct("schema.context.dropView")}
+              onSelect={() => actions.onDropView(t)}
             />
           </>
         )}
