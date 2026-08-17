@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -529,13 +530,21 @@ export function AggregationTab({
           {previewing && (
             <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
           )}
-          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            {t("aggregation.sampleSize")}
+          <div className="flex items-center gap-1.5">
+            <Label
+              htmlFor={`${tabId}-sample-size`}
+              className="text-[11px] font-normal text-muted-foreground"
+            >
+              {t("aggregation.sampleSize")}
+            </Label>
             <Select
               value={String(sampleSize)}
               onValueChange={(v) => setSampleSize(Number(v))}
             >
-              <SelectTrigger className="h-6 w-16 text-[11px]">
+              <SelectTrigger
+                id={`${tabId}-sample-size`}
+                className="h-6 w-16 text-[11px]"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -546,15 +555,24 @@ export function AggregationTab({
                 ))}
               </SelectContent>
             </Select>
-          </label>
-          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          </div>
+          {/* Stock `Switch`, unstyled — the same control (and the same size)
+              the Settings dialog uses for every preference. It is the app's one
+              on/off affordance, and a toolbar is not a reason to grow a second
+              one a shade smaller. */}
+          <div className="flex items-center gap-1.5">
             <Switch
+              id={`${tabId}-show-preview`}
               checked={showPreview}
               onCheckedChange={setShowPreview}
-              className="h-4 w-7"
             />
-            {t("aggregation.preview")}
-          </label>
+            <Label
+              htmlFor={`${tabId}-show-preview`}
+              className="text-[11px] font-normal text-muted-foreground"
+            >
+              {t("aggregation.preview")}
+            </Label>
+          </div>
         </div>
       </div>
 

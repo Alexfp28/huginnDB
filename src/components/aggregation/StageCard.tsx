@@ -189,10 +189,13 @@ export function StageCard({
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          {/* Stock `Switch` at its normal size — the same control the Settings
+              dialog uses. A shrunken variant also breaks its own geometry: the
+              thumb keeps its `h-4`/`translate-x-4`, so a `h-4 w-7` track leaves
+              the thumb as tall as the track and sliding past its edge. */}
           <Switch
             checked={stage.enabled}
             onCheckedChange={onToggleEnabled}
-            className="h-4 w-7"
             aria-label={t("aggregation.stage.toggle")}
             title={t("aggregation.stage.toggle")}
           />
