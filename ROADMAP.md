@@ -31,11 +31,12 @@ in a roadmap and now don't:
 | Native multi-window ("New window"), replacing workspaces | 1.4.0 | |
 | Connection keepalive + lost-connection reconnect UX | 1.4.0 | |
 | View editor (create/edit/rename/drop, live preview) | 1.10.0 | SQL drivers. MongoDB views go through the aggregation editor instead — see the next row. |
-| MongoDB aggregation editor + view editing | Unreleased | Stage-by-stage and text modes with live per-stage previews; "Save as view" / `collMod`. See `CLAUDE.md` gotcha #33 and `docs/MONGODB_ROADMAP.md` item #12. |
+| MongoDB aggregation editor + view editing | 1.16.0 | Stage-by-stage and text modes with live per-stage previews; "Save as view" / `collMod`. See `CLAUDE.md` gotcha #33 and `docs/MONGODB_ROADMAP.md` item #12. |
+| MongoDB index manager (list, create, hide, replace, drop) | 1.16.0 | Read from raw `listIndexes` documents (not the lossy typed `IndexModel`), so any option beyond name/keys/`unique` round-trips. See `CLAUDE.md` gotcha #34 and `docs/MONGODB_ROADMAP.md` item #1. |
 | MCP connector (`huginndb-mcp`) | 1.7.0 (binary) → 1.9.0 (per-connection write policy) | Read-only by default; `read-only`/`data`/`full` policy per connection, audited writes. See `docs/MCP_CONNECTOR_ROADMAP.md` and `docs/MCP.md`. |
-| Canary pre-release channel | Unreleased | Side-by-side opt-in build for dogfooding against real profiles before a stable release. See `docs/CANARY.md`. |
-| Reconnect-on-launch + session-level workspace layout | Unreleased | Restores live connections, focus, and pane geometry at startup. |
-| Microsoft SQL Server driver | Unreleased | Read + edit-data MVP via `tiberius` (`sqlx` has no MSSQL driver). Structure/view editing and `.sql` export are deferred — see the CHANGELOG entry for the full list. Requires SQL Server 2012+. |
+| Canary pre-release channel | 1.11.0 | Side-by-side opt-in build for dogfooding against real profiles before a stable release. See `docs/CANARY.md`. |
+| Reconnect-on-launch + session-level workspace layout | 1.11.0 | Restores live connections, focus, and pane geometry at startup. |
+| Microsoft SQL Server driver | 1.13.0 | Read + edit-data MVP via `tiberius` (`sqlx` has no MSSQL driver). Structure/view editing and `.sql` export are deferred — see the CHANGELOG entry for the full list. Requires SQL Server 2012+. |
 
 ## Open (priority order)
 
@@ -69,12 +70,14 @@ in a roadmap and now don't:
    invariants for why the relaxation is considered narrow today.
 6. **Automated tests, wider coverage.** Backend unit tests already cover a
    meaningful slice (`tab_state` migrations, `db::ddl`/`view_ddl` builders,
-   `db::sql`, the Mongo shell parser and value coercion, `mcp::mod`, prefs,
-   store — see `#[test]` in `src-tauri/src/{lib,store,prefs,tab_state,
-   commands/query}.rs` and `db/{sql,ddl,view_ddl}.rs` and `db/mongo/{shell,
-   values,query}.rs`). Still missing: integration tests against ephemeral
-   Postgres/MySQL (`testcontainers-rs`), and any frontend test coverage
-   (Playwright).
+   `db::sql`, the Mongo shell parser/value coercion/aggregation/indexes,
+   `mcp::mod`, `bridge`, prefs, store, SQL Server's pool/schema/values — see
+   `#[test]` in `src-tauri/src/{lib,store,prefs,tab_state,commands/query,
+   commands/origins}.rs`, `db/{sql,ddl,view_ddl,pool,endpoint}.rs`,
+   `db/mongo/{shell,values,query,aggregation,indexes}.rs`, `db/mssql/{mod,
+   schema,values}.rs` and `bridge/{protocol,server}.rs`). Still missing:
+   integration tests against ephemeral Postgres/MySQL (`testcontainers-rs`),
+   and any frontend test coverage (Playwright).
 7. **Broaden Linux distribution.** The `ubuntu-22.04` leg in
    `.github/workflows/release.yml` is now **enabled**, so a tagged build
    publishes `x86_64` `.deb` + `.AppImage` alongside the Windows installer,
@@ -111,7 +114,7 @@ in a roadmap and now don't:
    seek would make deep pages O(1), but it doesn't compose with "jump to page
    N" or arbitrary multi-column sort, so it's a targeted optimisation, not a
    drop-in replacement for the current offset model. Deferred deliberately:
-   the Unreleased row-count decoupling + whole-table estimate (issue #77)
+   the 1.11.0 row-count decoupling + whole-table estimate (issue #77)
    already removed the *actual* first-paint stall, so the offset cost only
    bites a user who pages very deep, which is rare in practice. Revisit only
    if a real deep-navigation complaint appears.
