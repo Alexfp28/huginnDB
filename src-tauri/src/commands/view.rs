@@ -74,11 +74,20 @@ fn strip_sqlite_view_header(create_sql: &str) -> String {
 
 #[tauri::command]
 pub async fn get_view_definition(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
     view: String,
 ) -> AppResult<ViewDefinition> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     if matches!(&pool, DbPool::MsSql(_)) {
         return Err(AppError::UnsupportedDriver(
@@ -86,60 +95,64 @@ pub async fn get_view_definition(
         ));
     }
     Dialect::try_of(&pool)?;
-    match pool {
-        DbPool::Postgres(p) => {
-            let schema = schema.unwrap_or_else(|| "public".into());
-            let row = sqlx::query(
-                "SELECT pg_get_viewdef(c.oid, true) AS def \
+    crate::error::with_timeout("get_view_definition", async move {
+        match pool {
+            DbPool::Postgres(p) => {
+                let schema = schema.unwrap_or_else(|| "public".into());
+                let row = sqlx::query(
+                    "SELECT pg_get_viewdef(c.oid, true) AS def \
                  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
                  WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'v'",
-            )
-            .bind(&schema)
-            .bind(&view)
-            .fetch_optional(&p)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("view {schema}.{view}")))?;
-            let query: String = row.get("def");
-            Ok(ViewDefinition {
-                schema: Some(schema),
-                name: view,
-                query: query.trim().trim_end_matches(';').trim().to_string(),
-            })
-        }
-        DbPool::Mysql(p) => {
-            let schema_arg = schema.clone().unwrap_or_default();
-            let row = sqlx::query(
-                "SELECT VIEW_DEFINITION FROM information_schema.views \
+                )
+                .bind(&schema)
+                .bind(&view)
+                .fetch_optional(&p)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("view {schema}.{view}")))?;
+                let query: String = row.get("def");
+                Ok(ViewDefinition {
+                    schema: Some(schema),
+                    name: view,
+                    query: query.trim().trim_end_matches(';').trim().to_string(),
+                })
+            }
+            DbPool::Mysql(p) => {
+                let schema_arg = schema.clone().unwrap_or_default();
+                let row = sqlx::query(
+                    "SELECT VIEW_DEFINITION FROM information_schema.views \
                  WHERE TABLE_SCHEMA = COALESCE(NULLIF(?, ''), DATABASE()) AND TABLE_NAME = ?",
-            )
-            .bind(&schema_arg)
-            .bind(&view)
-            .fetch_optional(&p)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("view {view}")))?;
-            let query: String = row.get("VIEW_DEFINITION");
-            Ok(ViewDefinition {
-                schema,
-                name: view,
-                query: query.trim().to_string(),
-            })
-        }
-        DbPool::Sqlite(p) => {
-            let row = sqlx::query("SELECT sql FROM sqlite_master WHERE type = 'view' AND name = ?")
+                )
+                .bind(&schema_arg)
                 .bind(&view)
                 .fetch_optional(&p)
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("view {view}")))?;
-            let create_sql: String = row.get("sql");
-            Ok(ViewDefinition {
-                schema: None,
-                name: view,
-                query: strip_sqlite_view_header(&create_sql),
-            })
+                let query: String = row.get("VIEW_DEFINITION");
+                Ok(ViewDefinition {
+                    schema,
+                    name: view,
+                    query: query.trim().to_string(),
+                })
+            }
+            DbPool::Sqlite(p) => {
+                let row =
+                    sqlx::query("SELECT sql FROM sqlite_master WHERE type = 'view' AND name = ?")
+                        .bind(&view)
+                        .fetch_optional(&p)
+                        .await?
+                        .ok_or_else(|| AppError::NotFound(format!("view {view}")))?;
+                let create_sql: String = row.get("sql");
+                Ok(ViewDefinition {
+                    schema: None,
+                    name: view,
+                    query: strip_sqlite_view_header(&create_sql),
+                })
+            }
+            DbPool::MsSql(_) => unreachable!("sql server rejected above"),
+            DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
         }
-        DbPool::MsSql(_) => unreachable!("sql server rejected above"),
-        DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
-    }
+    })
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -164,9 +177,18 @@ pub struct ViewChangeArgs {
 
 #[tauri::command]
 pub async fn preview_view_change(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     args: ViewChangeArgs,
 ) -> AppResult<ViewPreview> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &args.connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let (statements, drop_and_recreate) =
@@ -178,7 +200,19 @@ pub async fn preview_view_change(
 }
 
 #[tauri::command]
-pub async fn apply_view_change(state: State<'_, AppState>, args: ViewChangeArgs) -> AppResult<()> {
+pub async fn apply_view_change(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    args: ViewChangeArgs,
+) -> AppResult<()> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &args.connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let (statements, _) = build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
@@ -220,6 +254,8 @@ pub async fn apply_view_change(state: State<'_, AppState>, args: ViewChangeArgs)
 /// likewise accepts `ALTER TABLE ... RENAME TO` for a view.
 #[tauri::command]
 pub async fn rename_view(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -231,6 +267,13 @@ pub async fn rename_view(
             "rename_view: new_name must not be empty".into(),
         ));
     }
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let new_ident = dialect.quote_ident(new_name.trim());
@@ -285,11 +328,20 @@ pub async fn rename_view(
 
 #[tauri::command]
 pub async fn drop_view(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
     view: String,
 ) -> AppResult<()> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     // MongoDB is the one driver whose views this module can otherwise not
     // touch — but *dropping* one needs no DDL at all (a view lives in the same

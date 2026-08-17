@@ -45,10 +45,19 @@ fn mongo_for(state: &AppState, id: &str) -> AppResult<MongoConn> {
 /// connection's role can read them.
 #[tauri::command]
 pub async fn list_mongo_indexes(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     collection: String,
 ) -> AppResult<Vec<MongoIndexInfo>> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let conn = mongo_for(state.inner(), &connection_id)?;
     indexes::list_indexes(&conn, &collection).await
 }
@@ -63,9 +72,18 @@ pub struct CreateIndexArgs {
 
 #[tauri::command]
 pub async fn create_mongo_index(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     args: CreateIndexArgs,
 ) -> AppResult<()> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &args.connection_id,
+    )
+    .await;
     let conn = mongo_for(state.inner(), &args.connection_id)?;
     indexes::create_index(&conn, &args.collection, &args.spec).await
 }
@@ -84,20 +102,38 @@ pub struct RecreateIndexArgs {
 /// followed by a create — destructive, and the UI confirms it first.
 #[tauri::command]
 pub async fn recreate_mongo_index(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     args: RecreateIndexArgs,
 ) -> AppResult<()> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &args.connection_id,
+    )
+    .await;
     let conn = mongo_for(state.inner(), &args.connection_id)?;
     indexes::recreate_index(&conn, &args.collection, &args.original_name, &args.spec).await
 }
 
 #[tauri::command]
 pub async fn drop_mongo_index(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     collection: String,
     name: String,
 ) -> AppResult<()> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let conn = mongo_for(state.inner(), &connection_id)?;
     indexes::drop_index(&conn, &collection, &name).await
 }
@@ -105,12 +141,21 @@ pub async fn drop_mongo_index(
 /// Hide or unhide an index — the reversible rehearsal for dropping it.
 #[tauri::command]
 pub async fn set_mongo_index_hidden(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     collection: String,
     name: String,
     hidden: bool,
 ) -> AppResult<()> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let conn = mongo_for(state.inner(), &connection_id)?;
     indexes::set_index_hidden(&conn, &collection, &name, hidden).await
 }

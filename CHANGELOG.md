@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-08-17
+
 ### Added
 
 - **MongoDB indexes can be inspected and edited, from a dedicated index
@@ -89,21 +91,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     completions for stages, expression operators and BSON constructors. It
     uses the token names every theme already styles, so custom themes colour
     pipelines without knowing it exists.
-
-### Fixed
-
-- **The environment rail scrolls, and Theme/Settings stay reachable.** The rail
-  was one flat column with its footer pinned by `mt-auto`, which only pins
-  while there is free space. At around eight or nine environments the avatars
-  filled the rail, pushed the theme toggle and the settings button past its
-  bottom edge, and the shell's `overflow-hidden` clipped them away — with no
-  scroll to reach them and no cue that anything had been lost. The environments
-  now scroll in their own container, and "+", Theme and Settings sit in a
-  pinned strip below it. "+" moved out of the scrolling list on purpose:
-  creating an environment shouldn't mean scrolling past every environment you
-  already have.
-
-## [1.16.0] — 2026-08-17
 
 ### Changed
 
@@ -268,6 +255,60 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   mechanism already used for a tab's filters/sort/search — a tab now owns its
   row layout independently of other tabs and other windows, seeded once from
   the (unchanged) global default the first time it's opened.
+
+- **The environment rail scrolls, and Theme/Settings stay reachable.** The rail
+  was one flat column with its footer pinned by `mt-auto`, which only pins
+  while there is free space. At around eight or nine environments the avatars
+  filled the rail, pushed the theme toggle and the settings button past its
+  bottom edge, and the shell's `overflow-hidden` clipped them away — with no
+  scroll to reach them and no cue that anything had been lost. The environments
+  now scroll in their own container, and "+", Theme and Settings sit in a
+  pinned strip below it. "+" moved out of the scrolling list on purpose:
+  creating an environment shouldn't mean scrolling past every environment you
+  already have.
+
+- **A multi-database connection stopped browsing after a few idle minutes,
+  even though the tree still showed it as connected.** Expanding a database on
+  a server-style connection (Postgres/MySQL/SQL Server with no fixed
+  `database`) opens a synthetic per-database pool
+  (`<parent>::db::<database>`), and since 1.13.0 an idle one of those is closed
+  by the background reaper after `connections.childIdleTtlSecs` (default 5
+  minutes) — deliberately, to stop a long session's connection footprint from
+  only ever growing. What wasn't accounted for is that the *parent* connection
+  the tree actually reflects stays healthy the whole time (its own heartbeat
+  keeps succeeding), so the tree kept reporting "connected" while the child
+  pool the next click actually needed was already gone — surfacing as either a
+  `not connected: <id>` error, or, when the click only triggered the column
+  list, an indefinite loading skeleton (the store's `loadColumns`/`loadIndexes`
+  had no error handling, so a rejected call just left it stuck). Every command
+  that resolves a connection id now transparently reopens a reaped child pool
+  first, with the same cached credentials it used the first time, before the
+  usual lookup — the reap itself is unchanged, only its effect on the next
+  click is. Read-only metadata calls (`list_tables`, `list_columns`, the
+  keepalive ping, …) also gained a 20-second timeout, so a socket a NAT or
+  firewall silently half-closed fails fast instead of hanging — previously the
+  only timeout anywhere in the backend guarded pool shutdown, not queries. SQL
+  Server needed one more fix underneath this: a query cancelled by that new
+  timeout could otherwise be handed back to the pool as healthy with its TDS
+  stream left mid-read: a session is now only returned to the idle pool once
+  its result has actually been classified as leaving the stream at a clean
+  boundary, never on a cancelled future.
+- **The `huginndb-mcp` connector could fail an otherwise-successful call with
+  `invalid input: empty reply`, most visibly against SQL Server.** The bug is
+  in the local bridge the sidecar uses to reuse the desktop app's own pools:
+  every tool call opens with an `EnsureConnected` round trip whose success
+  value is `Value::Null`, and the wire format wrapped a reply's payload in a
+  bare `Option<Value>` — which `serde_json` collapses to "absent" for *any*
+  `null`, regardless of what it's wrapping. A legitimate `Value::Null` success
+  was therefore indistinguishable from no reply at all. The bug is agnostic to
+  driver — it can hit the first call of any tool against any connection while
+  the bridge is active — but SQL Server was the one place it got noticed,
+  likely because other drivers were exercised with the sidecar in its
+  standalone (no-bridge) mode, where this code path never runs. The payload is
+  now wrapped one level deeper so the wire can tell "a null value" from "no
+  value" apart; the bridge's protocol version is bumped accordingly so an old
+  sidecar a client kept alive across an app update degrades to its local-pool
+  fallback instead of misparsing the new shape mid-call.
 
 ## [1.15.0] — 2026-08-14
 

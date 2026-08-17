@@ -149,9 +149,18 @@ impl RunPipelineArgs {
 /// final preview, in both modes.
 #[tauri::command]
 pub async fn run_mongo_pipeline(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     args: RunPipelineArgs,
 ) -> AppResult<QueryResult> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &args.connection_id,
+    )
+    .await;
     let conn = mongo_for(state.inner(), &args.connection_id)?;
     let stages = args.parsed()?;
     aggregation::run_pipeline(
@@ -178,9 +187,18 @@ pub struct PreviewStagesArgs {
 /// half-typed stage doesn't blank the whole editor.
 #[tauri::command]
 pub async fn preview_mongo_stages(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     args: PreviewStagesArgs,
 ) -> AppResult<Vec<StagePreview>> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &args.connection_id,
+    )
+    .await;
     let conn = mongo_for(state.inner(), &args.connection_id)?;
     aggregation::preview_stages(
         &conn,
@@ -198,10 +216,19 @@ pub async fn preview_mongo_stages(
 /// Read a view's `viewOn` + pipeline, rendered back as editable source.
 #[tauri::command]
 pub async fn get_mongo_view(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     view: String,
 ) -> AppResult<MongoViewDefinition> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let conn = mongo_for(state.inner(), &connection_id)?;
     aggregation::read_view(&conn, &view).await
 }
@@ -226,7 +253,19 @@ pub struct SaveViewArgs {
 /// Disabled stages are dropped rather than stored: a view has no notion of a
 /// switched-off stage, and writing one in would change what the view returns.
 #[tauri::command]
-pub async fn save_mongo_view(state: State<'_, AppState>, args: SaveViewArgs) -> AppResult<()> {
+pub async fn save_mongo_view(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    args: SaveViewArgs,
+) -> AppResult<()> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &args.connection_id,
+    )
+    .await;
     let conn = mongo_for(state.inner(), &args.connection_id)?;
     let stages = RunPipelineArgs {
         connection_id: args.connection_id.clone(),

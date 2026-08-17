@@ -8,7 +8,47 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-08-17
+
 ### Añadido
+
+- **Los índices de MongoDB ya se pueden inspeccionar y editar, desde un gestor
+  de índices dedicado.** Eran visibles pero intocables: la pestaña de
+  estructura los listaba en solo lectura, `apply_structure_change` rechaza
+  MongoDB, y el analizador de sentencias del editor de consultas nunca ha
+  conocido `createIndex`. Gestionar un índice significaba salir de HuginnDB
+  hacia `mongosh`. **Índices…** en cualquier colección abre ahora una pestaña
+  con el catálogo real, con crear, ocultar, reemplazar y eliminar.
+  - **La lista es una herramienta, no un catálogo.** Junto a las claves y sus
+    propiedades muestra el **tamaño** de cada índice y cuántas operaciones ha
+    servido desde el último reinicio del contador. Un índice con meses de
+    actividad y cero usos es uno que nadie consulta y que cada escritura paga
+    por mantener — lo más útil que puede decir esta vista, y la razón de que
+    no sea solo una lista de nombres. Ambas columnas vienen de
+    `$collStats`/`$indexStats`, que necesitan sus propios privilegios, así que
+    se omiten en vez de mostrarse como ceros cuando el rol de la conexión no
+    puede leerlas.
+  - **Ocultar está junto a eliminar, a propósito.** Un índice oculto es
+    ignorado por el planificador de consultas mientras el servidor lo sigue
+    manteniendo al día, así que el efecto de quitar uno se puede medir y
+    deshacer al instante. Eliminar un índice grande y arrepentirse cuesta una
+    reconstrucción completa.
+  - Crear cubre las claves (dirección o tipo por clave, mediante un selector,
+    con un modo de texto crudo para lo exótico), `unique`, `sparse`, `hidden`,
+    TTL, expresiones de filtro parcial, collations, pesos de texto y una vía
+    de escape para fusionar cualquier opción que el formulario no tenga como
+    campo. **Editar es un eliminar más un crear** — MongoDB no puede alterar
+    un índice en su sitio — algo que el diálogo indica y una confirmación
+    repite antes de ejecutarlo.
+  - **Nada de lo que informa el servidor se descarta en silencio.** El
+    catálogo se lee de los documentos crudos de `listIndexes` en vez de a
+    través del `IndexModel` tipado del driver, que solo conserva nombres,
+    nombres de campo y `unique`; toda opción más allá de esas — incluidas las
+    que añada un futuro servidor — sobrevive hasta el editor y de vuelta.
+    Reutilizar esa forma tipada habría reconstruido `{ createdAt: -1 }` en
+    ascendente la primera vez que alguien corrigiera una errata en él.
+  - `_id_` se rechaza para eliminar, ocultar y reemplazar por el backend, no
+    solo se deshabilita visualmente.
 
 - **Las vistas de MongoDB ya se pueden editar, con un editor de agregaciones al
   estilo Compass.** Hasta ahora una vista de MongoDB se podía consultar pero no
@@ -64,8 +104,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     expresión y constructores BSON. Usa los nombres de token que ya estilan
     todos los temas, así que los temas personalizados colorean pipelines sin
     saber que existe.
-
-## [1.16.0] — 2026-08-17
 
 ### Cambiado
 
@@ -250,6 +288,66 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   pestaña — ahora cada pestaña guarda su modo de fila de forma independiente
   del resto de pestañas y ventanas, sembrado una sola vez desde el valor por
   defecto global (sin cambios) la primera vez que se abre.
+
+- **El rail de entornos ahora se desplaza, y Tema/Ajustes siguen siendo
+  alcanzables.** El rail era una única columna plana con su pie fijado por
+  `mt-auto`, que solo fija mientras hay espacio libre. En torno a ocho o nueve
+  entornos, los avatares llenaban el rail y empujaban el interruptor de tema y
+  el botón de ajustes más allá de su borde inferior, y el `overflow-hidden`
+  del shell los recortaba — sin scroll para alcanzarlos y sin ninguna pista de
+  que algo se hubiera perdido. Los entornos ahora se desplazan en su propio
+  contenedor, y "+", Tema y Ajustes se sitúan en una franja fija debajo. "+"
+  se sacó a propósito de la lista que se desplaza: crear un entorno no
+  debería significar desplazarse más allá de todos los que ya tienes.
+
+- **Una conexión multi-base de datos dejaba de poder explorarse tras unos
+  minutos de inactividad, aunque el árbol la siguiera mostrando como
+  conectada.** Expandir una base de datos en una conexión de tipo servidor
+  (Postgres/MySQL/SQL Server sin `database` fija) abre un pool sintético por
+  base de datos (`<parent>::db::<database>`), y desde la 1.13.0 uno de esos
+  que lleva inactivo se cierra por el proceso de fondo tras
+  `connections.childIdleTtlSecs` (5 minutos por defecto) — a propósito, para
+  que la huella de conexiones de una sesión larga no crezca sin parar. Lo que
+  no se tuvo en cuenta es que la conexión *padre* que el árbol realmente
+  refleja se mantiene sana todo el tiempo (su propio keepalive sigue teniendo
+  éxito), así que el árbol seguía informando "conectado" mientras el pool
+  hijo que el siguiente clic necesitaba de verdad ya no estaba —
+  apareciendo como un error `not connected: <id>`, o, cuando el clic solo
+  disparaba la lista de columnas, un esqueleto de carga indefinido (el store
+  `loadColumns`/`loadIndexes` no tenía manejo de errores, así que una llamada
+  rechazada simplemente se quedaba colgada). Cualquier comando que resuelve
+  un id de conexión ahora reabre de forma transparente un pool hijo cerrado,
+  con las mismas credenciales cacheadas que usó la primera vez, antes de la
+  búsqueda habitual — el cierre en sí no cambia, solo su efecto en el
+  siguiente clic. Las llamadas de solo lectura a metadatos (`list_tables`,
+  `list_columns`, el ping del keepalive, …) ganaron también un tiempo límite
+  de 20 segundos, así que un socket que un NAT o un firewall cerró en
+  silencio a medias falla rápido en vez de colgarse — antes el único tiempo
+  límite en todo el backend protegía el cierre de pools, no las consultas.
+  SQL Server necesitó un arreglo más debajo de este: una consulta cancelada
+  por ese nuevo tiempo límite podía devolverse al pool como sana con su flujo
+  TDS a medio leer — una sesión ahora solo vuelve al pool inactivo una vez
+  que su resultado se ha clasificado realmente como dejando el flujo en un
+  punto limpio, nunca ante un future cancelado.
+- **El conector `huginndb-mcp` podía fallar una llamada por lo demás exitosa
+  con `invalid input: empty reply`, de forma más visible contra SQL Server.**
+  El fallo está en el puente local que usa el sidecar para reutilizar los
+  propios pools de la app de escritorio: toda llamada a una tool empieza con
+  un viaje de ida y vuelta `EnsureConnected` cuyo valor de éxito es
+  `Value::Null`, y el formato de cable envolvía el payload de una respuesta
+  en un `Option<Value>` a secas — que `serde_json` colapsa a "ausente" ante
+  *cualquier* `null`, sea lo que sea que envuelva. Un éxito legítimo con
+  `Value::Null` era por tanto indistinguible de no haber recibido respuesta
+  alguna. El fallo es independiente del driver — puede darse en la primera
+  llamada de cualquier tool contra cualquier conexión mientras el bridge esté
+  activo — pero SQL Server fue donde se notó, probablemente porque los demás
+  drivers se probaron con el sidecar en su modo independiente (sin bridge),
+  donde esta ruta de código nunca se ejecuta. El payload ahora se envuelve un
+  nivel más adentro para que el cable pueda distinguir "un valor null" de
+  "ningún valor"; la versión del protocolo del bridge se incrementa en
+  consecuencia, así que un sidecar antiguo que un cliente mantenga vivo a
+  través de una actualización de la app degrada a su propio pool local en vez
+  de malinterpretar la nueva forma a mitad de una llamada.
 
 ## [1.15.0] — 2026-08-14
 

@@ -1667,6 +1667,7 @@ function TableRow({
   const tableNodeKey = `table:${k}`;
   const tableOpen = cs.expanded.has(tableNodeKey);
   const cols = cs.columns[k];
+  const colError = cs.columnErrors?.[k];
   const isView = t.kind === "view";
   // See `ConnectionActionsMenu`'s matching state/comment: keeps the row
   // looking targeted once the pointer has moved off it onto the open menu.
@@ -1737,7 +1738,10 @@ function TableRow({
             <button
               onClick={() => {
                 toggleNode(connectionId, tableNodeKey);
-                if (!cols) loadColumns(connectionId, t.schema, t.name);
+                // Don't auto-relaunch a failed load on every toggle — the
+                // retry button below is the explicit way to try again while
+                // the error is still showing.
+                if (!cols && !colError) loadColumns(connectionId, t.schema, t.name);
               }}
               className="flex flex-1 items-center gap-1 py-1"
             >
@@ -1853,6 +1857,16 @@ function TableRow({
                     </span>
                   </div>
                 ))
+              ) : colError ? (
+                <button
+                  type="button"
+                  onClick={() => loadColumns(connectionId, t.schema, t.name)}
+                  className="flex items-center gap-1 py-1 text-2xs text-destructive/80 hover:text-destructive"
+                  title={colError}
+                >
+                  <RefreshCw className="h-2.5 w-2.5 shrink-0" />
+                  <span className="truncate">{ct("schema.columnsLoadError")}</span>
+                </button>
               ) : (
                 <ColumnSkeleton label={loadingLabel} />
               )}

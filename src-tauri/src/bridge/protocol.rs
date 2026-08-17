@@ -32,7 +32,16 @@ use serde_json::Value;
 /// alive across an app update (the exact situation gotcha #23's installer hook
 /// exists for). A mismatch must degrade to the local-pool fallback, not to a
 /// deserialisation error mid-tool-call.
-pub const PROTOCOL_VERSION: u32 = 1;
+///
+/// `2`: [`BridgeResponse::ok`] started wrapping its payload in [`OkWrapper`]
+/// instead of carrying a bare `Option<Value>`, fixing a bug where a
+/// legitimate `Value::Null` success (e.g. `EnsureConnected`, or `insert_row`
+/// with no primary key to report) collapsed to indistinguishable-from-absent
+/// on the old wire shape and was misreported as "empty reply". An old
+/// sidecar's client can't parse the new `{"ok":{"value":…}}` shape as success
+/// — bumping this forces that mismatch through the handshake version check
+/// below, not into a silent misparse mid-call.
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Opening frame. Sent once, before any request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -213,12 +222,30 @@ impl BridgeRequest {
     }
 }
 
+/// A successful reply's payload, wrapped one level deeper than a bare
+/// `Value` so `Option<OkWrapper>` survives the wire roundtrip even when
+/// `value` is itself `Value::Null`.
+///
+/// `Option<Value>` cannot make that distinction: `serde_json` collapses any
+/// `null` token to `None` on deserialisation regardless of what type it's
+/// wrapped in, so a genuine success carrying `Value::Null` (e.g.
+/// `EnsureConnected`, or `insert_row` with no primary key to report) was
+/// indistinguishable from the key being absent entirely — misreported as
+/// "empty reply" (`BridgeClient::call`'s `(None, None)` arm) even though the
+/// call had, in fact, succeeded. `OkWrapper` itself is never `null` at the
+/// wire's top level — only its `value` field can be — so `Option<OkWrapper>`
+/// round-trips correctly no matter what `value` holds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OkWrapper {
+    pub value: Value,
+}
+
 /// One reply. Exactly one of the two fields is set.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ok: Option<Value>,
+    pub ok: Option<OkWrapper>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub err: Option<String>,
 }
@@ -226,7 +253,7 @@ pub struct BridgeResponse {
 impl BridgeResponse {
     pub fn ok(value: Value) -> Self {
         Self {
-            ok: Some(value),
+            ok: Some(OkWrapper { value }),
             err: None,
         }
     }
@@ -262,6 +289,30 @@ mod tests {
         // Single-line: the framing is newline-delimited, so an embedded newline
         // in the encoding would desynchronise the stream.
         assert!(!line.contains('\n'));
+    }
+
+    #[test]
+    fn a_null_success_payload_round_trips_as_ok_not_empty_reply() {
+        // Regression test for the bug where `Value::Null` — a legitimate
+        // success payload (`EnsureConnected`, or `insert_row` with no PK to
+        // report) — collapsed to an absent key through `Option<Value>`'s
+        // serde roundtrip, making a real success indistinguishable from
+        // "empty reply" on the client side (`BridgeClient::call`'s
+        // `(None, None)` arm).
+        let response = BridgeResponse::ok(Value::Null);
+        let line = serde_json::to_string(&response).unwrap();
+
+        // The wire form must still carry an `ok` key even though the payload
+        // inside it is null.
+        assert!(line.contains("\"ok\""), "expected an `ok` key in {line:?}");
+
+        let back: BridgeResponse = serde_json::from_str(&line).unwrap();
+        assert!(
+            back.ok.is_some(),
+            "a Value::Null success must deserialize as Some(..), not None: {line:?}"
+        );
+        assert_eq!(back.ok.unwrap().value, Value::Null);
+        assert!(back.err.is_none());
     }
 
     #[test]

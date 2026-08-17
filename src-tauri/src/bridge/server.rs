@@ -364,6 +364,7 @@ async fn dispatch(
             .await?;
         return Ok(Value::Null);
     }
+    crate::commands::connection::ensure_database_view(app, state, None, &target).await;
     crate::bridge::exec::execute(state, &BridgeSink { app }, request).await
 }
 

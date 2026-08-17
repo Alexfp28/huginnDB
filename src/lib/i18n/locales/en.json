@@ -273,6 +273,7 @@
     "title": "Schema",
     "refresh": "Refresh",
     "loadingColumns": "loading…",
+    "columnsLoadError": "Couldn't load columns — click to retry",
     "tableOpenTooltip": "Open in a tab",
     "sectionTables": "tables",
     "sectionViews": "views",

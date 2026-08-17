@@ -94,6 +94,8 @@ pub struct ExportTarget {
 /// `dest_path` directly instead of opening its own dialog. Rejects MongoDB.
 #[tauri::command]
 pub async fn export_databases(
+    app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     targets: Vec<ExportTarget>,
     data_mode: DataMode,
@@ -113,6 +115,13 @@ pub async fn export_databases(
     )?;
 
     for target in &targets {
+        crate::commands::connection::ensure_database_view(
+            &app,
+            state.inner(),
+            Some(window.label()),
+            &target.connection_id,
+        )
+        .await;
         let pool = pool_for(state.inner(), &target.connection_id)?;
         if matches!(&pool, DbPool::Mongo(_)) {
             return Err(AppError::InvalidInput(format!(
@@ -242,11 +251,19 @@ pub fn write_text_file(file_path: String, contents: String) -> AppResult<()> {
 #[tauri::command]
 pub async fn export_table(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
     table: String,
 ) -> AppResult<String> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
@@ -318,6 +335,7 @@ pub async fn export_table(
 #[tauri::command]
 pub async fn export_table_rows(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -326,6 +344,13 @@ pub async fn export_table_rows(
     search: Option<String>,
     search_columns: Option<Vec<String>>,
 ) -> AppResult<String> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(

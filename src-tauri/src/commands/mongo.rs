@@ -53,11 +53,19 @@ fn mongo_conn(pool: &DbPool) -> AppResult<&crate::state::MongoConn> {
 #[tauri::command]
 pub async fn export_collection(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     collection: String,
     filters: Option<Vec<ColumnFilter>>,
 ) -> AppResult<String> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;
@@ -106,11 +114,20 @@ pub async fn export_collection(
 /// shape). Server-generated `_id`s are kept as written when present.
 #[tauri::command]
 pub async fn import_collection(
+    app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     collection: String,
     file_path: String,
 ) -> AppResult<u64> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;

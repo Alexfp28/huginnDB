@@ -105,7 +105,7 @@ pub fn spawn(
             if idle < interval.as_millis() as u64 {
                 continue;
             }
-            if let Err(e) = ping(&pool).await {
+            if let Err(e) = crate::error::with_timeout("keepalive ping", ping(&pool)).await {
                 let msg = e.to_string();
                 log_bus::broadcast(
                     &app,

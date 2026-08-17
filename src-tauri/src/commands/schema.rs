@@ -128,10 +128,23 @@ fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
 /// List visible databases / schemas / catalogs for the connection.
 #[tauri::command]
 pub async fn list_databases(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
 ) -> AppResult<Vec<DatabaseInfo>> {
-    list_databases_inner(state.inner(), &connection_id).await
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
+    crate::error::with_timeout(
+        "list_databases",
+        list_databases_inner(state.inner(), &connection_id),
+    )
+    .await
 }
 
 /// Borrowed-state core of [`list_databases`], reused by the headless MCP
@@ -194,11 +207,20 @@ pub async fn list_databases_inner(
 /// injection defense available.
 #[tauri::command]
 pub async fn create_database(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     name: String,
 ) -> AppResult<()> {
     crate::db::ddl::validate_ident("database", &name)?;
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
@@ -244,6 +266,8 @@ pub async fn create_database(
 /// to the caller unchanged.
 #[tauri::command]
 pub async fn drop_database(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     name: String,
@@ -261,6 +285,13 @@ pub async fn drop_database(
             _ => {}
         }
     }
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
@@ -309,6 +340,8 @@ pub async fn drop_database(
 /// front gives a clean error instead of a cryptic server-side one.
 #[tauri::command]
 pub async fn create_collection(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     name: String,
@@ -324,6 +357,13 @@ pub async fn create_collection(
             "collection names starting with 'system.' are reserved by MongoDB".into(),
         ));
     }
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     match &pool {
         DbPool::Mongo(conn) => {
@@ -343,11 +383,24 @@ pub async fn create_collection(
 /// avoid N+1 round-trips. See [`TableInfo::row_count`] for per-driver details.
 #[tauri::command]
 pub async fn list_tables(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     _database: Option<String>,
 ) -> AppResult<Vec<TableInfo>> {
-    list_tables_inner(state.inner(), &connection_id).await
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
+    crate::error::with_timeout(
+        "list_tables",
+        list_tables_inner(state.inner(), &connection_id),
+    )
+    .await
 }
 
 /// Borrowed-state core of [`list_tables`], reused by the headless MCP
@@ -548,12 +601,25 @@ pub async fn list_tables_inner(state: &AppState, connection_id: &str) -> AppResu
 /// UI simple — they fall back to a plain text input.
 #[tauri::command]
 pub async fn list_columns(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
     table: String,
 ) -> AppResult<Vec<ColumnInfo>> {
-    list_columns_inner(state.inner(), &connection_id, schema, table).await
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
+    crate::error::with_timeout(
+        "list_columns",
+        list_columns_inner(state.inner(), &connection_id, schema, table),
+    )
+    .await
 }
 
 /// Borrowed-state variant of [`list_columns`] so other command handlers can
@@ -780,12 +846,25 @@ pub async fn list_columns_inner(
 /// List indexes for `schema.table`, with the columns each one covers.
 #[tauri::command]
 pub async fn list_indexes(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
     table: String,
 ) -> AppResult<Vec<IndexInfo>> {
-    list_indexes_inner(state.inner(), &connection_id, schema, table).await
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
+    crate::error::with_timeout(
+        "list_indexes",
+        list_indexes_inner(state.inner(), &connection_id, schema, table),
+    )
+    .await
 }
 
 /// Borrowed-state core of [`list_indexes`], reused by the headless MCP
@@ -896,11 +975,20 @@ pub async fn list_indexes_inner(
 /// `SECURITY.md` — never applied to free-form user input.
 #[tauri::command]
 pub async fn drop_table(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
     table: String,
 ) -> AppResult<()> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let db = crate::db::mongo::schema::resolve_db(conn)?;
@@ -940,11 +1028,20 @@ pub async fn drop_table(
 /// is used per the `SECURITY.md` rule.
 #[tauri::command]
 pub async fn empty_table(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
     table: String,
 ) -> AppResult<()> {
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let db = crate::db::mongo::schema::resolve_db(conn)?;
@@ -987,6 +1084,8 @@ pub async fn empty_table(
 /// before it reaches the command (see `SchemaExplorer` rename dialog).
 #[tauri::command]
 pub async fn rename_table(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -998,6 +1097,13 @@ pub async fn rename_table(
             "rename_table: new_name must not be empty".into(),
         ));
     }
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
@@ -1070,10 +1176,23 @@ pub async fn rename_table(
 /// - **SQLite** — `SELECT sqlite_version()`.
 #[tauri::command]
 pub async fn server_version(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
 ) -> AppResult<String> {
-    server_version_inner(state.inner(), &connection_id).await
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
+    crate::error::with_timeout(
+        "server_version",
+        server_version_inner(state.inner(), &connection_id),
+    )
+    .await
 }
 
 /// Borrowed-state core of [`server_version`], reused by the headless MCP
@@ -1129,10 +1248,23 @@ pub async fn server_version_inner(state: &AppState, connection_id: &str) -> AppR
 /// instead of failing the whole panel.
 #[tauri::command]
 pub async fn list_users(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
 ) -> AppResult<Vec<UserInfo>> {
-    list_users_inner(state.inner(), &connection_id).await
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
+    crate::error::with_timeout(
+        "list_users",
+        list_users_inner(state.inner(), &connection_id),
+    )
+    .await
 }
 
 /// Borrowed-state core of [`list_users`], reused by the headless MCP
@@ -1247,11 +1379,24 @@ pub async fn list_users_inner(state: &AppState, connection_id: &str) -> AppResul
 /// List the privileges granted to `user` (as returned by [`list_users`]).
 #[tauri::command]
 pub async fn list_privileges(
+    app: tauri::AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     user: String,
 ) -> AppResult<Vec<PrivilegeInfo>> {
-    list_privileges_inner(state.inner(), &connection_id, user).await
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
+    crate::error::with_timeout(
+        "list_privileges",
+        list_privileges_inner(state.inner(), &connection_id, user),
+    )
+    .await
 }
 
 /// Borrowed-state core of [`list_privileges`], reused by the headless MCP

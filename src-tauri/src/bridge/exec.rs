@@ -53,22 +53,39 @@ pub async fn execute(
             state.connections.read().get(connection_id),
             Some(crate::state::DbPool::Mongo(_))
         )),
+        // Metadata reads get the same `with_timeout` ceiling their GUI command
+        // counterparts do (`commands::schema`/`structure`) — this is the *other*
+        // caller of these `_inner` functions (see the module docs), so without
+        // its own wrap here a half-dead socket would hang an MCP tool call
+        // indefinitely even though the desktop command for the same operation
+        // fails fast.
         ListDatabases { connection_id } => serde_json::to_value(
-            crate::commands::schema::list_databases_inner(state, connection_id).await?,
+            crate::error::with_timeout(
+                "list_databases",
+                crate::commands::schema::list_databases_inner(state, connection_id),
+            )
+            .await?,
         )?,
         ListTables { connection_id } => serde_json::to_value(
-            crate::commands::schema::list_tables_inner(state, connection_id).await?,
+            crate::error::with_timeout(
+                "list_tables",
+                crate::commands::schema::list_tables_inner(state, connection_id),
+            )
+            .await?,
         )?,
         GetTableStructure {
             connection_id,
             schema,
             table,
         } => serde_json::to_value(
-            crate::commands::structure::get_table_structure_inner(
-                state,
-                connection_id,
-                schema.clone(),
-                table.clone(),
+            crate::error::with_timeout(
+                "get_table_structure",
+                crate::commands::structure::get_table_structure_inner(
+                    state,
+                    connection_id,
+                    schema.clone(),
+                    table.clone(),
+                ),
             )
             .await?,
         )?,
@@ -77,26 +94,40 @@ pub async fn execute(
             schema,
             table,
         } => serde_json::to_value(
-            crate::commands::schema::list_indexes_inner(
-                state,
-                connection_id,
-                schema.clone(),
-                table.clone(),
+            crate::error::with_timeout(
+                "list_indexes",
+                crate::commands::schema::list_indexes_inner(
+                    state,
+                    connection_id,
+                    schema.clone(),
+                    table.clone(),
+                ),
             )
             .await?,
         )?,
         ServerVersion { connection_id } => Value::String(
-            crate::commands::schema::server_version_inner(state, connection_id).await?,
+            crate::error::with_timeout(
+                "server_version",
+                crate::commands::schema::server_version_inner(state, connection_id),
+            )
+            .await?,
         ),
         ListUsers { connection_id } => serde_json::to_value(
-            crate::commands::schema::list_users_inner(state, connection_id).await?,
+            crate::error::with_timeout(
+                "list_users",
+                crate::commands::schema::list_users_inner(state, connection_id),
+            )
+            .await?,
         )?,
         ListPrivileges {
             connection_id,
             user,
         } => serde_json::to_value(
-            crate::commands::schema::list_privileges_inner(state, connection_id, user.clone())
-                .await?,
+            crate::error::with_timeout(
+                "list_privileges",
+                crate::commands::schema::list_privileges_inner(state, connection_id, user.clone()),
+            )
+            .await?,
         )?,
         RunStatement {
             connection_id, sql, ..

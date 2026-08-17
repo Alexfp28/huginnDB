@@ -94,6 +94,11 @@ pub const MAX_LIFETIME: Duration = Duration::from_secs(1800);
 /// the same actionable error as the server refusing us.
 pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Ceiling for a single read-only introspection call (metadata listing, the
+/// keepalive ping) — never for a data query, whose runtime is the user's own
+/// SQL, not ours to bound. See [`crate::error::with_timeout`].
+pub const OPERATION_TIMEOUT: Duration = Duration::from_secs(20);
+
 /// The server budget in force for `profile`: its own override when it has one,
 /// else the global preference. Clamped into the supported range, so a
 /// hand-edited `0` in `profiles.json` can't make a connection unopenable.

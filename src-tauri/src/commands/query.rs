@@ -382,6 +382,13 @@ pub async fn execute_query(
     sql: String,
 ) -> AppResult<QueryResult> {
     let sink = log_bus::TauriSink::new(&app, window.label());
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     execute_with_state(&sink, state.inner(), &connection_id, &sql).await
 }
 
@@ -598,6 +605,13 @@ pub async fn execute_batch(
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
     let sink = log_bus::TauriSink::new(&app, window.label());
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     execute_batch_inner(&sink, state.inner(), connection_id, statements).await
 }
 
@@ -1132,6 +1146,13 @@ pub async fn fetch_table_data(
     with_count: Option<bool>,
 ) -> AppResult<QueryResult> {
     let sink = log_bus::TauriSink::new(&app, window.label());
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     fetch_table_data_inner(
         &sink,
         state.inner(),
@@ -1479,6 +1500,13 @@ pub async fn count_table_rows(
     search_columns: Option<Vec<String>>,
 ) -> AppResult<CountResult> {
     let sink = log_bus::TauriSink::new(&app, window.label());
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     count_table_rows_inner(
         &sink,
         state.inner(),
@@ -1759,6 +1787,13 @@ pub async fn update_cell(
     column_type: Option<String>,
 ) -> AppResult<u64> {
     let sink = log_bus::TauriSink::new(&app, window.label());
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     update_cell_inner(
         &sink,
         state.inner(),
@@ -2044,6 +2079,13 @@ pub async fn unset_field(
     field: String,
 ) -> AppResult<u64> {
     let sink = log_bus::TauriSink::new(&app, window.label());
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     let pool = pool_for(state.inner(), &connection_id)?;
     let driver = pool.driver_name();
     let DbPool::Mongo(conn) = &pool else {
@@ -2135,6 +2177,13 @@ pub async fn delete_rows(
     pk_value_rows: Vec<Vec<Value>>,
 ) -> AppResult<u64> {
     let sink = log_bus::TauriSink::new(&app, window.label());
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     delete_rows_inner(
         &sink,
         state.inner(),
@@ -2321,6 +2370,13 @@ pub async fn insert_row(
     values: Vec<RowValue>,
 ) -> AppResult<Value> {
     let sink = log_bus::TauriSink::new(&app, window.label());
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
     insert_row_inner(
         &sink,
         state.inner(),
@@ -2634,6 +2690,8 @@ fn pick_label_column(cols: &[crate::commands::schema::ColumnInfo]) -> Option<Str
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn fetch_fk_options(
+    app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
     schema: Option<String>,
@@ -2643,6 +2701,18 @@ pub async fn fetch_fk_options(
     search: Option<String>,
     limit: i64,
 ) -> AppResult<FkOptionsPage> {
+    // Reopen a reaped child pool *before* the catalog lookup below — it goes
+    // through `list_columns_inner`, which resolves the pool itself and would
+    // otherwise fail with `NotConnected` before this function ever reaches
+    // its own `pool_for` call further down.
+    crate::commands::connection::ensure_database_view(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &connection_id,
+    )
+    .await;
+
     // Catalog validation. Failing here means the target was dropped or
     // moved out from under us; the frontend treats this as "fall back to
     // plain input".

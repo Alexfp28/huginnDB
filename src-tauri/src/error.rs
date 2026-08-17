@@ -74,6 +74,14 @@ pub enum AppError {
     #[error("not found: {0}")]
     NotFound(String),
 
+    /// A network operation exceeded its allotted budget. Most likely the
+    /// underlying socket died silently — a NAT/firewall dropping an idle
+    /// connection without a FIN/RST — rather than the server refusing
+    /// anything, so nothing else in this enum fits: no driver error was ever
+    /// raised, the call simply never came back.
+    #[error("operation timed out: {0}")]
+    OperationTimedOut(String),
+
     /// The connection's driver does not support the requested operation (e.g.
     /// view editing against MongoDB). Distinct from [`Self::InvalidInput`]:
     /// the argument was well-formed, the *backend* can't honour it.
@@ -217,3 +225,22 @@ impl Serialize for AppError {
 
 /// Shorthand for `Result<T, AppError>`.
 pub type AppResult<T> = Result<T, AppError>;
+
+/// Run `fut`, turning a stall past [`crate::db::pool::OPERATION_TIMEOUT`] into
+/// an [`AppError::OperationTimedOut`] instead of hanging forever.
+///
+/// Reserved for read-only introspection (metadata listing, the keepalive
+/// ping) that is fast by nature — a data query the user typed can legitimately
+/// run long, so query/bulk/dump paths never wrap their work in this.
+pub async fn with_timeout<T>(
+    what: &str,
+    fut: impl std::future::Future<Output = AppResult<T>>,
+) -> AppResult<T> {
+    match tokio::time::timeout(crate::db::pool::OPERATION_TIMEOUT, fut).await {
+        Ok(result) => result,
+        Err(_) => Err(AppError::OperationTimedOut(format!(
+            "{what} took longer than {}s — the connection may be unresponsive",
+            crate::db::pool::OPERATION_TIMEOUT.as_secs()
+        ))),
+    }
+}

@@ -21,6 +21,15 @@ interface ConnectionSchema {
   columns: Record<string, ColumnInfo[]>;
   /** Indexes keyed by `${schema}.${table}`. */
   indexes: Record<string, IndexInfo[]>;
+  /**
+   * Error from the last `loadColumns` call for a given table key, if it
+   * failed. Lets the explorer stop showing a loading skeleton forever on a
+   * rejected promise (a timed-out or `NotConnected` metadata call) and offer
+   * a retry instead. Cleared on the next successful load for that key.
+   */
+  columnErrors: Record<string, string>;
+  /** Same as `columnErrors`, for `loadIndexes`. */
+  indexErrors: Record<string, string>;
   /** Set of tree-node keys (e.g. `schema:public`, `table:public.users`). */
   expanded: Set<string>;
   loading: boolean;
@@ -68,6 +77,8 @@ function emptyState(): ConnectionSchema {
     tables: [],
     columns: {},
     indexes: {},
+    columnErrors: {},
+    indexErrors: {},
     expanded: new Set(),
     loading: false,
     error: null,
@@ -164,30 +175,82 @@ export const useSchema = create<SchemaState>((set, get) => ({
     }));
   },
   loadColumns: async (connectionId, schema, table) => {
-    const cols = await api.listColumns(connectionId, schema, table);
-    const cur = get().byConnection[connectionId] ?? emptyState();
-    set((state) => ({
-      byConnection: {
-        ...state.byConnection,
-        [connectionId]: {
-          ...cur,
-          columns: { ...cur.columns, [tableKey(schema, table)]: cols },
-        },
-      },
-    }));
+    const key = tableKey(schema, table);
+    try {
+      const cols = await api.listColumns(connectionId, schema, table);
+      set((state) => {
+        // A response outliving its slice (the connection was dropped while
+        // this call was in flight — see the note in `refresh`'s catch
+        // branch) must not resurrect it.
+        const current = state.byConnection[connectionId];
+        if (!current) return state;
+        // Drop the key entirely rather than storing `undefined`, so
+        // `cs.columnErrors?.[key]` reads as absent, not as a falsy value.
+        const { [key]: _cleared, ...columnErrors } = current.columnErrors;
+        return {
+          byConnection: {
+            ...state.byConnection,
+            [connectionId]: {
+              ...current,
+              columns: { ...current.columns, [key]: cols },
+              columnErrors,
+            },
+          },
+        };
+      });
+    } catch (e) {
+      // Never let a rejected promise here leave the explorer's column cell
+      // stuck on its loading skeleton forever — record the error instead so
+      // the UI can render a retry affordance.
+      set((state) => {
+        const current = state.byConnection[connectionId];
+        if (!current) return state;
+        return {
+          byConnection: {
+            ...state.byConnection,
+            [connectionId]: {
+              ...current,
+              columnErrors: { ...current.columnErrors, [key]: String(e) },
+            },
+          },
+        };
+      });
+    }
   },
   loadIndexes: async (connectionId, schema, table) => {
-    const idx = await api.listIndexes(connectionId, schema, table);
-    const cur = get().byConnection[connectionId] ?? emptyState();
-    set((state) => ({
-      byConnection: {
-        ...state.byConnection,
-        [connectionId]: {
-          ...cur,
-          indexes: { ...cur.indexes, [tableKey(schema, table)]: idx },
-        },
-      },
-    }));
+    const key = tableKey(schema, table);
+    try {
+      const idx = await api.listIndexes(connectionId, schema, table);
+      set((state) => {
+        const current = state.byConnection[connectionId];
+        if (!current) return state;
+        const { [key]: _cleared, ...rest } = current.indexErrors;
+        return {
+          byConnection: {
+            ...state.byConnection,
+            [connectionId]: {
+              ...current,
+              indexes: { ...current.indexes, [key]: idx },
+              indexErrors: rest,
+            },
+          },
+        };
+      });
+    } catch (e) {
+      set((state) => {
+        const current = state.byConnection[connectionId];
+        if (!current) return state;
+        return {
+          byConnection: {
+            ...state.byConnection,
+            [connectionId]: {
+              ...current,
+              indexErrors: { ...current.indexErrors, [key]: String(e) },
+            },
+          },
+        };
+      });
+    }
   },
   replaceExpanded: (connectionId, expanded) => {
     const cur = get().byConnection[connectionId] ?? emptyState();

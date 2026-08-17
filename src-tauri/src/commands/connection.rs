@@ -691,6 +691,39 @@ pub fn database_view_id(parent_id: &str, database: &str) -> String {
     format!("{parent_id}::db::{database}")
 }
 
+/// If `id` names a `<parent>::db::<database>` view the idle reaper
+/// (`pool_reaper.rs`) has since closed, transparently reopen it with the same
+/// cached credentials `open_database_view` used originally — exactly as if
+/// the user had just re-expanded that database in the tree.
+///
+/// The reaper closing an idle child pool is deliberate policy (see
+/// `pool_reaper.rs`'s module docs); the bug this fixes is that its effect used
+/// to be invisible until the *next* click on that database failed with
+/// `NotConnected`, even though the parent connection the tree shows as
+/// "connected" genuinely still is. This makes the reopen part of that click
+/// instead of a surprise on it.
+///
+/// A no-op for an already-open view or a top-level id — including one that
+/// was never open in the first place, or a MongoDB/SQLite parent (both of
+/// which take a fast, already-idempotent path inside
+/// [`open_database_view_inner`]). Never errors: if the reopen fails (bad
+/// credentials, server gone), the `pool_for` lookup that runs right after
+/// this call is what reports `NotConnected`, unchanged — this only removes
+/// the false negative the reaper introduced, it never masks a real one.
+pub async fn ensure_database_view(
+    app: &AppHandle,
+    state: &AppState,
+    window_label: Option<&str>,
+    id: &str,
+) {
+    if state.connections.read().get(id).is_some() {
+        return;
+    }
+    if let Some((parent_id, database)) = id.split_once("::db::") {
+        let _ = open_database_view_inner(app, state, window_label, parent_id, database).await;
+    }
+}
+
 /// Resolve (or open) the synthetic per-database Mongo pool for `parent_id`
 /// bound to `database` — the Mongo half of [`open_database_view`], pulled out
 /// as a free function because it needs neither an `AppHandle`/`Window` nor
@@ -745,8 +778,29 @@ pub async fn open_database_view(
     parent_id: String,
     database: String,
 ) -> AppResult<String> {
-    let window_label = Some(window.label());
-    let child_id = database_view_id(&parent_id, &database);
+    open_database_view_inner(
+        &app,
+        state.inner(),
+        Some(window.label()),
+        &parent_id,
+        &database,
+    )
+    .await
+}
+
+/// The reusable body of [`open_database_view`] — no `AppHandle`/`Window`
+/// dependency beyond what's threaded in explicitly, so [`ensure_database_view`]
+/// and the MCP bridge (`bridge::server::dispatch`) can reopen a child pool the
+/// idle reaper (`pool_reaper.rs`) has since closed, exactly as if the user had
+/// just re-expanded that database.
+async fn open_database_view_inner(
+    app: &AppHandle,
+    state: &AppState,
+    window_label: Option<&str>,
+    parent_id: &str,
+    database: &str,
+) -> AppResult<String> {
+    let child_id = database_view_id(parent_id, database);
     if state.connections.read().get(&child_id).is_some() {
         return Ok(child_id);
     }
@@ -762,7 +816,7 @@ pub async fn open_database_view(
     if matches!(parent.driver, Driver::Sqlite) {
         // SQLite has a single file = single database; per-DB browsing is
         // not meaningful. Treat this as a no-op alias.
-        return Ok(parent_id);
+        return Ok(parent_id.to_string());
     }
 
     // MongoDB: a single client reaches every database in the cluster, so a
@@ -776,19 +830,19 @@ pub async fn open_database_view(
     // gesture otherwise, leaving Mongo tools with no way to target a specific
     // database on a connection with none bound.
     if matches!(parent.driver, Driver::Mongo) {
-        return resolve_mongo_database_view(&state, &parent_id, &database).await;
+        return resolve_mongo_database_view(state, parent_id, database).await;
     }
 
     // Clone the parent profile and substitute the database. The child uses
     // the same credentials and (if configured) SSH tunnel as the parent —
     // resolved from the keychain the same way `connect` does it.
     let mut child = parent.clone();
-    child.database = database.clone();
+    child.database = database.to_string();
 
     // Prefer the session-cached secrets from the parent's `connect` (they may
     // have come from the CLI / dialog and never touched the keychain); only
     // fall back to the keychain when nothing was cached.
-    let cached = state.session_secrets.read().get(&parent_id).cloned();
+    let cached = state.session_secrets.read().get(parent_id).cloned();
     let pw = match cached.as_ref().and_then(|s| s.password.clone()) {
         Some(p) => p,
         None => resolve_password(&parent)?,
@@ -798,7 +852,7 @@ pub async fn open_database_view(
         None => resolve_ssh_secret(&parent)?,
     };
     let known_hosts = state.known_hosts.clone();
-    let policy = pool_policy(state.inner(), &parent);
+    let policy = pool_policy(state, &parent);
     let max_child_pools = state.prefs.read().connections.max_child_pools;
 
     // Enforce the per-connection view cap *before* opening, not after: the
@@ -809,21 +863,13 @@ pub async fn open_database_view(
     if max_child_pools > 0 {
         let over_cap: Vec<String> = {
             let conns = state.connections.read();
-            let existing = conns.children_by_lru(&parent_id);
+            let existing = conns.children_by_lru(parent_id);
             // `+ 1` accounts for the child we are about to add.
             let excess = (existing.len() + 1).saturating_sub(max_child_pools as usize);
             existing.into_iter().take(excess).collect()
         };
         for victim in over_cap {
-            close_view(
-                &app,
-                state.inner(),
-                window_label,
-                parent.driver,
-                &victim,
-                "cap",
-            )
-            .await;
+            close_view(app, state, window_label, parent.driver, &victim, "cap").await;
         }
     }
 
@@ -856,15 +902,8 @@ pub async fn open_database_view(
                             return Err(exhausted_to_error(exhausted));
                         };
                         reclaimable.remove(0);
-                        close_view(
-                            &app,
-                            state.inner(),
-                            window_label,
-                            parent.driver,
-                            &victim,
-                            "budget",
-                        )
-                        .await;
+                        close_view(app, state, window_label, parent.driver, &victim, "budget")
+                            .await;
                     }
                 }
             }
@@ -874,7 +913,7 @@ pub async fn open_database_view(
 
     let start = Instant::now();
     log_connection(
-        &app,
+        app,
         window_label,
         &child_id,
         parent.driver,
@@ -896,7 +935,7 @@ pub async fn open_database_view(
                 },
             );
             log_connection(
-                &app,
+                app,
                 window_label,
                 &child_id,
                 parent.driver,
@@ -907,10 +946,10 @@ pub async fn open_database_view(
             Ok(child_id)
         }
         Err(e) => {
-            let e = annotate_connection_limit(state.inner(), e);
+            let e = annotate_connection_limit(state, e);
             let msg = e.to_string();
             log_connection(
-                &app,
+                app,
                 window_label,
                 &child_id,
                 parent.driver,

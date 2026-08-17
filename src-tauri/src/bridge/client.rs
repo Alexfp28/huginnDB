@@ -183,7 +183,7 @@ impl BridgeClient {
         let response: BridgeResponse = serde_json::from_str(&line)
             .map_err(|e| BridgeError::Remote(format!("malformed reply: {e}")))?;
         match (response.ok, response.err) {
-            (Some(value), _) => Ok(value),
+            (Some(wrapper), _) => Ok(wrapper.value),
             (None, Some(err)) => Err(BridgeError::Remote(err)),
             (None, None) => Err(BridgeError::Remote("empty reply".into())),
         }

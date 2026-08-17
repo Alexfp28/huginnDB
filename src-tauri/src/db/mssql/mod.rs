@@ -112,6 +112,7 @@ impl MsSqlPool {
             inner: self.inner.clone(),
             client: Some(client),
             _permit: permit,
+            healthy: false,
         })
     }
 
@@ -205,6 +206,13 @@ pub struct PooledClient {
     /// `None` only after [`Self::classify`] has decided this session is unusable.
     client: Option<MsSqlClient>,
     _permit: OwnedSemaphorePermit,
+    /// Set only by [`Self::classify`], and only when the result proves the TDS
+    /// stream is at a clean boundary (`Ok`, or the server rejecting the
+    /// statement). Starts `false` so a guard dropped without ever completing a
+    /// `classify` call — most notably one cancelled mid-`.await` by an external
+    /// `tokio::time::timeout` — is discarded rather than handed to the next
+    /// caller with the stream left mid-read.
+    healthy: bool,
 }
 
 impl PooledClient {
@@ -296,10 +304,11 @@ impl PooledClient {
     /// TLS, encoding) means we no longer know where we are in the stream, so
     /// reusing it would corrupt the *next* caller's query rather than this one.
     fn classify<T>(&mut self, result: tiberius::Result<T>) -> AppResult<T> {
+        self.healthy = result_leaves_session_healthy(&result);
         match result {
             Ok(v) => Ok(v),
             Err(e) => {
-                if !matches!(e, tiberius::error::Error::Server(_)) {
+                if !self.healthy {
                     self.client = None;
                 }
                 Err(AppError::MsSql(e))
@@ -308,14 +317,31 @@ impl PooledClient {
     }
 }
 
+/// Whether a `tiberius` result leaves the TDS stream at a clean boundary safe
+/// to hand to the next caller: success, or the server rejecting the statement
+/// (syntax error, permission denied, constraint violation). Anything else —
+/// I/O, protocol, TLS, encoding — means we no longer know where we are in the
+/// stream, so the session must not be reused.
+fn result_leaves_session_healthy<T>(result: &tiberius::Result<T>) -> bool {
+    match result {
+        Ok(_) => true,
+        Err(e) => matches!(e, tiberius::error::Error::Server(_)),
+    }
+}
+
 impl Drop for PooledClient {
     fn drop(&mut self) {
-        if let Some(client) = self.client.take() {
-            // `try_lock` cannot fail in practice (the lock is only ever held
-            // for a push/pop), and dropping the session on contention is
-            // strictly better than blocking in `Drop`.
-            if let Ok(mut idle) = self.inner.idle.try_lock() {
-                idle.push((client, Instant::now()));
+        // Only a session `classify` has proven is at a clean stream boundary
+        // goes back to `idle` — anything else (including "never classified at
+        // all", the cancelled-future case) is left to close with this guard.
+        if self.healthy {
+            if let Some(client) = self.client.take() {
+                // `try_lock` cannot fail in practice (the lock is only ever held
+                // for a push/pop), and dropping the session on contention is
+                // strictly better than blocking in `Drop`.
+                if let Ok(mut idle) = self.inner.idle.try_lock() {
+                    idle.push((client, Instant::now()));
+                }
             }
         }
     }
@@ -525,7 +551,25 @@ pub async fn open_pool(
 
 #[cfg(test)]
 mod tests {
-    use super::binary_convert;
+    use super::{binary_convert, result_leaves_session_healthy};
+
+    #[test]
+    fn a_successful_result_leaves_the_session_healthy() {
+        assert!(result_leaves_session_healthy::<()>(&Ok(())));
+    }
+
+    #[test]
+    fn a_transport_level_error_leaves_the_session_unhealthy() {
+        // `Error::Server(TokenError)` (the other branch `classify` treats as
+        // healthy) has no public constructor in `tiberius` — `TokenError`'s
+        // fields are all `pub(crate)` there — so it can't be built from this
+        // crate for a test. `Utf8` stands in for the whole non-`Server`
+        // family (I/O, protocol, TLS, encoding): the predicate is a single
+        // `matches!` arm, and every one of those variants takes the same
+        // "unhealthy" branch.
+        let result: tiberius::Result<()> = Err(tiberius::error::Error::Utf8);
+        assert!(!result_leaves_session_healthy(&result));
+    }
 
     #[test]
     fn wraps_only_binary_columns_in_a_hex_convert() {
