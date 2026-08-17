@@ -87,6 +87,21 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     taglineKey: "whatsNew.releases.1_16_0.tagline",
     highlights: [
       {
+        icon: Layers,
+        titleKey: "whatsNew.releases.1_16_0.items.mongoAggregation.title",
+        bodyKey: "whatsNew.releases.1_16_0.items.mongoAggregation.body",
+      },
+      {
+        icon: ListTree,
+        titleKey: "whatsNew.releases.1_16_0.items.mongoIndexes.title",
+        bodyKey: "whatsNew.releases.1_16_0.items.mongoIndexes.body",
+      },
+      {
+        icon: Plug,
+        titleKey: "whatsNew.releases.1_16_0.items.connectionReliability.title",
+        bodyKey: "whatsNew.releases.1_16_0.items.connectionReliability.body",
+      },
+      {
         icon: ImagePlus,
         titleKey: "whatsNew.releases.1_16_0.items.brandIdentity.title",
         bodyKey: "whatsNew.releases.1_16_0.items.brandIdentity.body",
@@ -95,16 +110,6 @@ export const RELEASE_NOTES: ReleaseNote[] = [
         icon: Palette,
         titleKey: "whatsNew.releases.1_16_0.items.themePairs.title",
         bodyKey: "whatsNew.releases.1_16_0.items.themePairs.body",
-      },
-      {
-        icon: Layers,
-        titleKey: "whatsNew.releases.1_16_0.items.brandBlue.title",
-        bodyKey: "whatsNew.releases.1_16_0.items.brandBlue.body",
-      },
-      {
-        icon: Eye,
-        titleKey: "whatsNew.releases.1_16_0.items.themeToggleFix.title",
-        bodyKey: "whatsNew.releases.1_16_0.items.themeToggleFix.body",
       },
     ],
   },

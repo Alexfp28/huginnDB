@@ -1358,8 +1358,20 @@
     "gotIt": "Got it",
     "releases": {
       "1_16_0": {
-        "tagline": "HuginnDB gets a real visual identity: a new comic logo, a brand palette reaching every button, focus ring and grid header, every built-in theme now paired light/dark, and a mode toggle that finally respects the theme you're already on.",
+        "tagline": "MongoDB gets a real editing surface — a Compass-style aggregation editor for views and a full index manager — plus a connection-reliability fix for long-idle multi-database sessions, and a visual refresh: a new logo and light/dark pairs for every built-in theme.",
         "items": {
+          "mongoAggregation": {
+            "title": "Edit MongoDB views with a Compass-style aggregation editor",
+            "body": "\"New aggregation…\" on any collection opens a scratch pipeline, and \"Edit pipeline…\" on any view loads its stored one — both in a Stages view (one card per stage, its own sample output) or a single Text editor, with export as a mongosh call, a bare pipeline, or a db.createView(…) snippet. $out and $merge are refused before they ever reach the server."
+          },
+          "mongoIndexes": {
+            "title": "A real index manager for MongoDB",
+            "body": "\"Indexes…\" on any collection opens the real catalogue — create, hide, replace and drop — showing each index's size and how many operations it's served since the counter was last reset, so you can spot the ones nobody queries. Editing is a drop plus a create, since MongoDB can't alter an index in place."
+          },
+          "connectionReliability": {
+            "title": "Multi-database connections stay usable after sitting idle",
+            "body": "A server-style connection (Postgres/MySQL/SQL Server) used to stop browsing a database after a few idle minutes even though the tree still showed it connected — the reaped child pool behind it is now reopened transparently on the next click. The huginndb-mcp connector also stopped misreporting a legitimate null result as an empty reply."
+          },
           "brandIdentity": {
             "title": "A real brand identity, not just an icon",
             "body": "The old raven/rune mark is gone — a new comic logo now leads the About card, the launch splash, and the medallion every empty screen shares (connections tree, console, saved queries, an empty result set), each with its own glyph as a corner badge. Every installer icon, from the Windows taskbar down to Android/iOS, was regenerated from it, and the dev tab finally has a favicon."
@@ -1367,14 +1379,6 @@
           "themePairs": {
             "title": "Every built-in theme now has a light/dark twin",
             "body": "Summer Dark and Neon Light join the roster, and High Contrast now works in both directions — ten themes total, each with a real counterpart instead of stranding you on a HuginnDB default. The 26-colour editor in Preferences → Appearance is also split into four labelled sections (Surfaces, Actions & brand, Status colours, Borders & focus) so related tokens read together."
-          },
-          "brandBlue": {
-            "title": "Buttons, focus rings and the grid speak brand blue",
-            "body": "Filled buttons get a 2px edge and a short blue glow on hover, inputs and selects share one clean focus treatment, and the data grid's headers and column-resize handles pick up the same accent. Two new editor themes — HuginnDB Dark and HuginnDB Light — bring Monaco into the same palette; huginn-dark is now the default for fresh installs."
-          },
-          "themeToggleFix": {
-            "title": "Light/dark toggle keeps you on your own theme",
-            "body": "Switching modes on any preset other than the two HuginnDB defaults used to reset you to HuginnDB Dark/Light instead of its actual counterpart. Every theme now points at its own pair, so Claude, Neon, Summer and High Contrast toggle correctly."
           }
         }
       },

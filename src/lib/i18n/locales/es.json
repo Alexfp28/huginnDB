@@ -1358,8 +1358,20 @@
     "gotIt": "Entendido",
     "releases": {
       "1_16_0": {
-        "tagline": "HuginnDB estrena identidad visual de verdad: nuevo logo cómic, una paleta de marca que llega a botones, anillos de foco y cabeceras del grid, todos los temas integrados emparejados claro/oscuro, y un toggle de modo que por fin respeta el tema en el que estás.",
+        "tagline": "MongoDB gana una superficie de edición de verdad — un editor de agregación al estilo Compass para vistas y un gestor de índices completo — más una corrección de fiabilidad en conexiones multi-base de larga duración, y un repaso visual: nuevo logo y pareja claro/oscuro para todos los temas integrados.",
         "items": {
+          "mongoAggregation": {
+            "title": "Edita vistas de MongoDB con un editor de agregación al estilo Compass",
+            "body": "\"Nueva agregación…\" en cualquier colección abre un pipeline en blanco, y \"Editar pipeline…\" en cualquier vista carga el suyo guardado — ambos en modo Etapas (una tarjeta por etapa con su propia muestra de salida) o en un único editor de Texto, con exportación como llamada mongosh, el pipeline a secas, o un snippet db.createView(…). $out y $merge se rechazan antes de llegar al servidor."
+          },
+          "mongoIndexes": {
+            "title": "Gestor de índices de verdad para MongoDB",
+            "body": "\"Índices…\" en cualquier colección abre el catálogo real — crear, ocultar, reemplazar y eliminar — mostrando el tamaño de cada índice y cuántas operaciones ha servido desde el último reinicio del contador, para detectar los que nadie consulta. Editar es eliminar y volver a crear, porque MongoDB no puede alterar un índice en el sitio."
+          },
+          "connectionReliability": {
+            "title": "Las conexiones multi-base siguen funcionando tras estar inactivas",
+            "body": "Una conexión de tipo servidor (Postgres/MySQL/SQL Server) dejaba de poder explorar una base de datos tras unos minutos inactiva, aunque el árbol la siguiera mostrando conectada — el pool hijo reciclado detrás de ella ahora se reabre de forma transparente en el siguiente clic. El conector huginndb-mcp también dejó de confundir un resultado nulo legítimo con una respuesta vacía."
+          },
           "brandIdentity": {
             "title": "Una identidad de marca de verdad, no solo un icono",
             "body": "La antigua marca del cuervo y las runas desaparece — un nuevo logo cómic lidera ahora la tarjeta de Acerca de, el splash de arranque y el medallón que comparten todas las pantallas vacías (árbol de conexiones, consola, consultas guardadas, un resultado vacío), cada una con su propio glifo como chapa en la esquina. Todos los iconos de instalador, desde la barra de tareas de Windows hasta Android/iOS, se han regenerado a partir de él, y la pestaña de desarrollo por fin tiene favicon."
@@ -1367,14 +1379,6 @@
           "themePairs": {
             "title": "Todos los temas integrados tienen ahora pareja claro/oscuro",
             "body": "Summer Dark y Neon Light se suman al catálogo, y High Contrast ya funciona en ambas direcciones — diez temas en total, cada uno con una contraparte real en lugar de dejarte varado en un HuginnDB por defecto. El editor de 26 colores de Preferencias → Apariencia también se divide en cuatro secciones etiquetadas (Superficies, Acciones y marca, Colores de estado, Bordes y foco) para que los tokens relacionados se lean juntos."
-          },
-          "brandBlue": {
-            "title": "Botones, anillos de foco y el grid hablan azul de marca",
-            "body": "Los botones rellenos ganan un borde de 2px y un resplandor azul breve al pasar el ratón, los inputs y selects comparten un único tratamiento de foco limpio, y las cabeceras del grid y los tiradores de redimensionado de columna adoptan el mismo acento. Dos temas de editor nuevos —HuginnDB Dark y HuginnDB Light— llevan Monaco a la misma paleta; huginn-dark es ahora el valor por defecto en instalaciones nuevas."
-          },
-          "themeToggleFix": {
-            "title": "El toggle claro/oscuro te deja en tu propio tema",
-            "body": "Cambiar de modo en cualquier preset que no fuera uno de los dos por defecto de HuginnDB te reseteaba a HuginnDB Dark/Light en lugar de a su contraparte real. Ahora cada tema apunta a su propia pareja, así que Claude, Neon, Summer y High Contrast cambian correctamente."
           }
         }
       },
