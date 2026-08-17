@@ -6,7 +6,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
-## [Unreleased]
+## [1.16.0] — 2026-08-17
 
 ### Cambiado
 

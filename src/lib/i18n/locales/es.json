@@ -1202,6 +1202,27 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_16_0": {
+        "tagline": "HuginnDB estrena identidad visual de verdad: nuevo logo cómic, una paleta de marca que llega a botones, anillos de foco y cabeceras del grid, todos los temas integrados emparejados claro/oscuro, y un toggle de modo que por fin respeta el tema en el que estás.",
+        "items": {
+          "brandIdentity": {
+            "title": "Una identidad de marca de verdad, no solo un icono",
+            "body": "La antigua marca del cuervo y las runas desaparece — un nuevo logo cómic lidera ahora la tarjeta de Acerca de, el splash de arranque y el medallón que comparten todas las pantallas vacías (árbol de conexiones, consola, consultas guardadas, un resultado vacío), cada una con su propio glifo como chapa en la esquina. Todos los iconos de instalador, desde la barra de tareas de Windows hasta Android/iOS, se han regenerado a partir de él, y la pestaña de desarrollo por fin tiene favicon."
+          },
+          "themePairs": {
+            "title": "Todos los temas integrados tienen ahora pareja claro/oscuro",
+            "body": "Summer Dark y Neon Light se suman al catálogo, y High Contrast ya funciona en ambas direcciones — diez temas en total, cada uno con una contraparte real en lugar de dejarte varado en un HuginnDB por defecto. El editor de 26 colores de Preferencias → Apariencia también se divide en cuatro secciones etiquetadas (Superficies, Acciones y marca, Colores de estado, Bordes y foco) para que los tokens relacionados se lean juntos."
+          },
+          "brandBlue": {
+            "title": "Botones, anillos de foco y el grid hablan azul de marca",
+            "body": "Los botones rellenos ganan un borde de 2px y un resplandor azul breve al pasar el ratón, los inputs y selects comparten un único tratamiento de foco limpio, y las cabeceras del grid y los tiradores de redimensionado de columna adoptan el mismo acento. Dos temas de editor nuevos —HuginnDB Dark y HuginnDB Light— llevan Monaco a la misma paleta; huginn-dark es ahora el valor por defecto en instalaciones nuevas."
+          },
+          "themeToggleFix": {
+            "title": "El toggle claro/oscuro te deja en tu propio tema",
+            "body": "Cambiar de modo en cualquier preset que no fuera uno de los dos por defecto de HuginnDB te reseteaba a HuginnDB Dark/Light en lugar de a su contraparte real. Ahora cada tema apunta a su propia pareja, así que Claude, Neon, Summer y High Contrast cambian correctamente."
+          }
+        }
+      },
       "1_15_0": {
         "tagline": "Los entornos tienen cara propia, Linux por fin tiene instaladores directos en la página de releases, y se liman dos asperezas: el plegado compartido donde no debía y un botón de reiniciar que se quedaba mudo.",
         "items": {

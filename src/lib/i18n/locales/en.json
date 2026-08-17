@@ -1202,6 +1202,27 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_16_0": {
+        "tagline": "HuginnDB gets a real visual identity: a new comic logo, a brand palette reaching every button, focus ring and grid header, every built-in theme now paired light/dark, and a mode toggle that finally respects the theme you're already on.",
+        "items": {
+          "brandIdentity": {
+            "title": "A real brand identity, not just an icon",
+            "body": "The old raven/rune mark is gone — a new comic logo now leads the About card, the launch splash, and the medallion every empty screen shares (connections tree, console, saved queries, an empty result set), each with its own glyph as a corner badge. Every installer icon, from the Windows taskbar down to Android/iOS, was regenerated from it, and the dev tab finally has a favicon."
+          },
+          "themePairs": {
+            "title": "Every built-in theme now has a light/dark twin",
+            "body": "Summer Dark and Neon Light join the roster, and High Contrast now works in both directions — ten themes total, each with a real counterpart instead of stranding you on a HuginnDB default. The 26-colour editor in Preferences → Appearance is also split into four labelled sections (Surfaces, Actions & brand, Status colours, Borders & focus) so related tokens read together."
+          },
+          "brandBlue": {
+            "title": "Buttons, focus rings and the grid speak brand blue",
+            "body": "Filled buttons get a 2px edge and a short blue glow on hover, inputs and selects share one clean focus treatment, and the data grid's headers and column-resize handles pick up the same accent. Two new editor themes — HuginnDB Dark and HuginnDB Light — bring Monaco into the same palette; huginn-dark is now the default for fresh installs."
+          },
+          "themeToggleFix": {
+            "title": "Light/dark toggle keeps you on your own theme",
+            "body": "Switching modes on any preset other than the two HuginnDB defaults used to reset you to HuginnDB Dark/Light instead of its actual counterpart. Every theme now points at its own pair, so Claude, Neon, Summer and High Contrast toggle correctly."
+          }
+        }
+      },
       "1_15_0": {
         "tagline": "Environments get a face of their own, Linux finally gets installers straight off the releases page, and two rough edges — fold state shared where it shouldn't be, and a restart button that went silent — are filed down.",
         "items": {
