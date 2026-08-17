@@ -153,13 +153,16 @@ export const useThemeStore = create<ThemeState>()(
         const active = resolveActive(get());
         if (active.mode === mode) return;
         if (active.builtin) {
-          // Switch to the corresponding built-in (dark <-> light) if possible.
-          const target = BUILT_IN_THEMES.find((t) => t.id === mode);
+          // Switch to this theme's own pair (see Theme.pairId in themes.ts),
+          // not just whichever built-in happens to have id "dark"/"light" —
+          // that literal match only ever hit the HuginnDB pair and reset
+          // every other preset to it on toggle (issue #132).
+          const target = BUILT_IN_THEMES.find((t) => t.id === active.pairId);
           if (target) {
             set({ themeId: target.id });
             applyTheme(target);
-            return;
           }
+          return;
         }
         const updated: Theme = { ...active, mode };
         set((s) => ({

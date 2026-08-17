@@ -10,6 +10,17 @@ export interface Theme {
   name: string;
   mode: ThemeMode;
   builtin?: boolean;
+  /**
+   * Id of this theme's light/dark counterpart within the same family (e.g.
+   * "summer" <-> "summer-dark"). Every built-in theme must set this — it's
+   * what `setActiveMode` (stores/preferences/theme.ts) uses to land the
+   * light/dark toggle on the right theme instead of resetting to the
+   * HuginnDB default (issue #132: the old logic looked up the built-in whose
+   * *id* literally equaled "dark"/"light", which only ever matched the
+   * HuginnDB pair). Undefined on custom themes, which flip `mode` in place
+   * instead of switching to another theme.
+   */
+  pairId?: string;
   colors: ThemeColors;
 }
 
@@ -105,6 +116,54 @@ export const COLOR_KEYS: { key: keyof ThemeColors; label: string }[] = [
   { key: "ring", label: "Focus ring" },
 ];
 
+/**
+ * Groups COLOR_KEYS for the Appearance colour editor, replacing the old flat
+ * 26-row grid (every token in declaration order, unrelated ones side by
+ * side) with sections a user can actually scan: surfaces paired with their
+ * own text colour, then actions/brand, semantic status colours, and finally
+ * borders/focus. Order here is display order; COLOR_KEYS stays the single
+ * source of truth for labels and for themeTransfer.ts's key enumeration
+ * (which doesn't care about grouping).
+ */
+export const COLOR_GROUPS: { title: string; keys: (keyof ThemeColors)[] }[] = [
+  {
+    title: "Surfaces",
+    keys: [
+      "background",
+      "foreground",
+      "card",
+      "cardForeground",
+      "popover",
+      "popoverForeground",
+      "secondary",
+      "secondaryForeground",
+      "muted",
+      "mutedForeground",
+      "accent",
+      "accentForeground",
+    ],
+  },
+  {
+    title: "Actions & brand",
+    keys: ["primary", "primaryForeground", "brand", "brandForeground", "brandHover"],
+  },
+  {
+    title: "Status colours",
+    keys: [
+      "success",
+      "successForeground",
+      "warning",
+      "warningForeground",
+      "destructive",
+      "destructiveForeground",
+    ],
+  },
+  {
+    title: "Borders & focus",
+    keys: ["border", "input", "ring"],
+  },
+];
+
 export const BUILT_IN_THEMES: Theme[] = [
   {
     // The brand palette (see the visual-language brief): a slate/navy ramp
@@ -119,6 +178,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: "HuginnDB Dark",
     mode: "dark",
     builtin: true,
+    pairId: "light",
     colors: {
       background: "#020617",
       foreground: "#f8fafc",
@@ -165,6 +225,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: "HuginnDB Light",
     mode: "light",
     builtin: true,
+    pairId: "dark",
     colors: {
       background: "#ffffff",
       foreground: "#0f172a",
@@ -198,80 +259,6 @@ export const BUILT_IN_THEMES: Theme[] = [
     },
   },
   {
-    id: "dim",
-    name: "Dim",
-    mode: "dark",
-    builtin: true,
-    colors: {
-      background: "#1c1f26",
-      foreground: "#d8dce4",
-      card: "#22262e",
-      cardForeground: "#d8dce4",
-      popover: "#22262e",
-      popoverForeground: "#d8dce4",
-      primary: "#7dd3fc",
-      primaryForeground: "#0c1118",
-      secondary: "#2a2f38",
-      secondaryForeground: "#d8dce4",
-      muted: "#262a32",
-      mutedForeground: "#969ca9",
-      accent: "#323844",
-      accentForeground: "#d8dce4",
-      brand: "#7dd3fc",
-      brandForeground: "#0c1118",
-      brandHover: "#a5e4fd",
-      success: "#4ade80",
-      successForeground: "#0c1118",
-      warning: "#fbbf24",
-      warningForeground: "#0c1118",
-      pk: "#fbbf24",
-      fk: "#7dd3fc",
-      numeric: "#fbbf24",
-      destructive: "#ef4444",
-      destructiveForeground: "#fef2f2",
-      border: "#323844",
-      input: "#323844",
-      ring: "#7dd3fc",
-    },
-  },
-  {
-    id: "solarized-dark",
-    name: "Solarized Dark",
-    mode: "dark",
-    builtin: true,
-    colors: {
-      background: "#002b36",
-      foreground: "#eee8d5",
-      card: "#073642",
-      cardForeground: "#eee8d5",
-      popover: "#073642",
-      popoverForeground: "#eee8d5",
-      primary: "#b58900",
-      primaryForeground: "#002b36",
-      secondary: "#0a3a47",
-      secondaryForeground: "#eee8d5",
-      muted: "#0a3a47",
-      mutedForeground: "#93a1a1",
-      accent: "#268bd2",
-      accentForeground: "#fdf6e3",
-      brand: "#268bd2",
-      brandForeground: "#fdf6e3",
-      brandHover: "#3da3e8",
-      success: "#859900",
-      successForeground: "#fdf6e3",
-      warning: "#b58900",
-      warningForeground: "#002b36",
-      pk: "#b58900",
-      fk: "#268bd2",
-      numeric: "#b58900",
-      destructive: "#dc322f",
-      destructiveForeground: "#fdf6e3",
-      border: "#0a3a47",
-      input: "#0a3a47",
-      ring: "#268bd2",
-    },
-  },
-  {
     // Inspired by Anthropic's Claude product palette: warm paper-cream
     // background, terracotta-orange accent, soft sepia greys for text and
     // borders. Aims for the same calm, document-like feel as Claude.ai.
@@ -279,6 +266,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: "Claude Light",
     mode: "light",
     builtin: true,
+    pairId: "claude-dark",
     colors: {
       background: "#f5f4ed",
       foreground: "#3d3929",
@@ -316,6 +304,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: "Claude Dark",
     mode: "dark",
     builtin: true,
+    pairId: "claude-light",
     colors: {
       background: "#1f1e1b",
       foreground: "#e8e3d4",
@@ -359,6 +348,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: "Neon",
     mode: "dark",
     builtin: true,
+    pairId: "neon-light",
     colors: {
       background: "#05080a",
       foreground: "#e8fff2",
@@ -392,6 +382,49 @@ export const BUILT_IN_THEMES: Theme[] = [
     },
   },
   {
+    // Light counterpart to Neon: same lab-on-paper energy but on a bright
+    // mint-white surface, so the saturated hues have to deepen to stay
+    // legible as fills/text (a raw #39ff14 on white has poor contrast) while
+    // keeping the family's signature — green primary/brand, cyan fk, yellow
+    // pk/numeric, hot-pink destructive — recognisable at a glance.
+    id: "neon-light",
+    name: "Neon Light",
+    mode: "light",
+    builtin: true,
+    pairId: "neon",
+    colors: {
+      background: "#f3fff8",
+      foreground: "#04170d",
+      card: "#ffffff",
+      cardForeground: "#04170d",
+      popover: "#ffffff",
+      popoverForeground: "#04170d",
+      primary: "#12a150",
+      primaryForeground: "#f3fff8",
+      secondary: "#e3fbea",
+      secondaryForeground: "#073c1c",
+      muted: "#eafcf1",
+      mutedForeground: "#3c6b52",
+      accent: "#d8f7e3",
+      accentForeground: "#0a3d1f",
+      brand: "#12a150",
+      brandForeground: "#ffffff",
+      brandHover: "#0d7d3e",
+      success: "#12a150",
+      successForeground: "#ffffff",
+      warning: "#c98a00",
+      warningForeground: "#241a00",
+      pk: "#9c7c00",
+      fk: "#0089a8",
+      numeric: "#9c7c00",
+      destructive: "#d81b46",
+      destructiveForeground: "#ffffff",
+      border: "#cdeedb",
+      input: "#cdeedb",
+      ring: "#12a150",
+    },
+  },
+  {
     // Warm, light "beach" palette: sun-bleached sand background, a single
     // saturated ocean-teal brand/ring accent, and coral for destructive
     // actions. Kept in the light-mode family (like "light"/"claude-light")
@@ -401,6 +434,7 @@ export const BUILT_IN_THEMES: Theme[] = [
     name: "Summer",
     mode: "light",
     builtin: true,
+    pairId: "summer-dark",
     colors: {
       background: "#fef9ef",
       foreground: "#22333b",
@@ -434,10 +468,53 @@ export const BUILT_IN_THEMES: Theme[] = [
     },
   },
   {
+    // Dark counterpart to Summer: a night-beach palette (deep ocean-teal
+    // surfaces, sand-cream text) keeping the same coral primary and teal
+    // brand hues, both brightened slightly to stay vivid against the dark
+    // background the way Claude Dark brightens Claude Light's terracotta.
+    id: "summer-dark",
+    name: "Summer Dark",
+    mode: "dark",
+    builtin: true,
+    pairId: "summer",
+    colors: {
+      background: "#0b2027",
+      foreground: "#fdf6e8",
+      card: "#102a32",
+      cardForeground: "#fdf6e8",
+      popover: "#102a32",
+      popoverForeground: "#fdf6e8",
+      primary: "#ff7a5c",
+      primaryForeground: "#1a0b06",
+      secondary: "#163a40",
+      secondaryForeground: "#bfeae6",
+      muted: "#13343b",
+      mutedForeground: "#8db3ae",
+      accent: "#1d4a50",
+      accentForeground: "#bdf0ea",
+      brand: "#1fd8c4",
+      brandForeground: "#062521",
+      brandHover: "#4de9d8",
+      success: "#4ecb84",
+      successForeground: "#06210f",
+      warning: "#ffbf4d",
+      warningForeground: "#2b1900",
+      pk: "#ffbf6b",
+      fk: "#5fd0e0",
+      numeric: "#ffbf6b",
+      destructive: "#ff6161",
+      destructiveForeground: "#2b0505",
+      border: "#1d4a50",
+      input: "#1d4a50",
+      ring: "#1fd8c4",
+    },
+  },
+  {
     id: "high-contrast",
     name: "High Contrast",
     mode: "dark",
     builtin: true,
+    pairId: "high-contrast-light",
     colors: {
       background: "#000000",
       foreground: "#ffffff",
@@ -468,6 +545,49 @@ export const BUILT_IN_THEMES: Theme[] = [
       border: "#ffffff",
       input: "#ffffff",
       ring: "#ffeb3b",
+    },
+  },
+  {
+    // Light counterpart to High Contrast: pure white/black inverted, keeping
+    // the same maximum-contrast idiom (solid black border/text, no
+    // greyscale softening) and the identical signal yellow for
+    // primary/brand/ring — a yellow chip with black text reads as "high
+    // contrast" regardless of which side is inverted.
+    id: "high-contrast-light",
+    name: "High Contrast Light",
+    mode: "light",
+    builtin: true,
+    pairId: "high-contrast",
+    colors: {
+      background: "#ffffff",
+      foreground: "#000000",
+      card: "#f5f5f5",
+      cardForeground: "#000000",
+      popover: "#f5f5f5",
+      popoverForeground: "#000000",
+      primary: "#ffeb3b",
+      primaryForeground: "#000000",
+      secondary: "#f0f0f0",
+      secondaryForeground: "#000000",
+      muted: "#eeeeee",
+      mutedForeground: "#333333",
+      accent: "#e0e0e0",
+      accentForeground: "#000000",
+      brand: "#ffeb3b",
+      brandForeground: "#000000",
+      brandHover: "#fbc02d",
+      success: "#00873c",
+      successForeground: "#ffffff",
+      warning: "#ff6f00",
+      warningForeground: "#000000",
+      pk: "#8a6d00",
+      fk: "#0066cc",
+      numeric: "#8a6d00",
+      destructive: "#c62828",
+      destructiveForeground: "#ffffff",
+      border: "#000000",
+      input: "#000000",
+      ring: "#7a5d00",
     },
   },
 ];

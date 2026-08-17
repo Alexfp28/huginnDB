@@ -78,7 +78,7 @@ Sources: [DBeaver editions](https://dbeaver.com/edition/) · [DBeaver MongoDB su
 - **MCP connector.** `huginndb-mcp`, a headless stdio server, lets an AI coding assistant browse schemas, run queries, and (opt-in, per connection) write — see [`docs/MCP.md`](docs/MCP.md).
 - **Saved queries.** A local library with name, description, and tags. Open any entry into a fresh query tab.
 - **Multi-window.** Pop a connection's workspace, or even a single tab, out into its own OS window.
-- **Themes.** Five built-in presets (HuginnDB Dark, HuginnDB Light, Dim, Solarized Dark, High Contrast) plus a visual colour editor. Editing a preset forks it into a new custom theme so the originals stay pristine.
+- **Themes.** Ten built-in presets — HuginnDB, Claude, Summer, Neon, and High Contrast, each with a light/dark pair — plus a visual colour editor grouped by surfaces, actions, status, and borders. Editing a preset forks it into a new custom theme so the originals stay pristine.
 - **Resizable layout.** Both horizontal (sidebar) and vertical (editor / results) splits are draggable, and the arrangement is restored across restarts.
 
 ## Status
