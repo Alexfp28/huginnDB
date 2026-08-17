@@ -10,6 +10,32 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Todos los temas integrados forman ahora pareja claro/oscuro, y el
+  catálogo se recortó y reequilibró en consecuencia.** Se eliminan `Dim` y
+  `Solarized Dark` — ambos eran presets de un solo modo de los que no se
+  podía salir con el toggle sin acabar en un tema por defecto de HuginnDB
+  (ver la entrada de Corregido más abajo), y ninguno tenía identidad
+  suficiente para justificar construirle una contraparte. Se añaden `Summer
+  Dark` (una paleta "playa de noche" que conserva el coral/turquesa de Summer,
+  aclarado para una superficie oscura, igual que Claude Dark aclara la
+  terracota de Claude Light), `Neon Light` (la contraparte "laboratorio sobre
+  papel" de la paleta casi negra de Neon — cada tono saturado se oscurece para
+  seguir siendo legible sobre una superficie clara, pero el verde
+  primary/brand, el cian de `fk`, el amarillo de `pk`/`numeric` y el rosa
+  fuerte de `destructive` mantienen la familia reconocible) y `High Contrast
+  Light` (el mismo lenguaje de contraste máximo invertido a blanco/negro,
+  conservando el mismo amarillo de señal para primary/brand/ring). En total,
+  diez temas integrados: HuginnDB, Claude, Summer, Neon y High Contrast, cada
+  uno con su pareja claro/oscuro.
+  - El editor de 26 colores de Preferencias → Apariencia era una única
+    rejilla plana de 2 columnas en orden de declaración — tokens sin relación
+    (por ejemplo, `border` junto a `input`, tres filas después de
+    `brandHover`) uno al lado del otro sin ninguna agrupación visual. Ahora se
+    divide en cuatro secciones etiquetadas — Superficies, Acciones y marca,
+    Colores de estado, Bordes y foco — mediante un nuevo export
+    `COLOR_GROUPS` en `lib/themes.ts`, de forma que un par
+    background/foreground y sus vecinos se leen juntos en vez de tener que
+    buscarlos con scroll.
 - **Toda la interfaz sigue ahora el lenguaje visual de marca de HuginnDB.** El
   universo del logo —contornos negros suaves, esquinas redondeadas, volumen
   ligero, un único azul eléctrico— se aplica como una capa *contenida* sobre la
@@ -99,6 +125,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Cambiar entre claro/oscuro en un tema integrado que no fuera uno de los
+  dos por defecto de HuginnDB lo reseteaba a `HuginnDB Dark`/`HuginnDB Light`
+  en lugar de cambiar a la contraparte propia de ese tema (issue #132).**
+  `setActiveMode` buscaba el destino con
+  `BUILT_IN_THEMES.find(t => t.id === mode)` — una coincidencia literal
+  contra el *string* de modo `"dark"`/`"light"`, que solo resolvía a los dos
+  temas cuyo `id` coincide justo con su modo. Cualquier otro preset (Claude,
+  Dim, Solarized Dark, Neon, Summer, High Contrast) no encontraba nada,
+  caía en silencio en una rama muerta que mutaba `mode` sobre un tema que
+  nunca llegaba a escribirse de vuelta en `customThemes`, y el selector
+  claro/oscuro de la barra simplemente dejaba al usuario en el HuginnDB por
+  defecto que coincidiera con el modo destino. Se arregla dando a cada tema
+  integrado un `pairId` explícito que apunta a su contraparte claro/oscuro
+  (`lib/themes.ts`), y haciendo que `setActiveMode` resuelva a través de él
+  en vez de adivinar a partir del string de modo. Esto es también el motivo
+  por el que ahora cada tema integrado necesita una contraparte real — ver la
+  entrada de Cambiado de arriba.
 - **Sustituir un icono de la app ya no deja el anterior embebido en el
   binario.** `tauri_build::build()` solo declara `tauri.conf.json` y
   `capabilities/` como entradas de compilación, y cargo rastrea *únicamente* lo

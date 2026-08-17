@@ -8,6 +8,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Every built-in theme now ships as a light/dark pair, and the roster was
+  trimmed and rebalanced accordingly.** Removed `Dim` and `Solarized Dark` —
+  both were single-mode presets nobody could toggle out of without landing on
+  a HuginnDB default (see the Fixed entry below), and neither had enough of
+  an identity to justify building a counterpart for. Added `Summer Dark` (a
+  night-beach palette keeping Summer's coral/teal hues, brightened for a dark
+  surface, the same way Claude Dark brightens Claude Light's terracotta),
+  `Neon Light` (the lab-on-paper counterpart to Neon's near-black palette —
+  every saturated hue deepens to stay legible on a bright surface, but the
+  green primary/brand, cyan `fk`, yellow `pk`/`numeric` and hot-pink
+  `destructive` keep the family recognisable), and `High Contrast Light` (the
+  same maximum-contrast idiom inverted to white/black, keeping the identical
+  signal yellow for primary/brand/ring). Ten built-in themes in total now:
+  HuginnDB, Claude, Summer, Neon, and High Contrast, each with a light/dark
+  pair.
+  - The Appearance settings page's 26-colour editor was a single flat
+    2-column grid in declaration order — unrelated tokens (say, `border` next
+    to `input`, three rows after `brandHover`) sitting side by side with no
+    visual grouping. It's now split into four labelled sections — Surfaces,
+    Actions & brand, Status colours, Borders & focus — via a new
+    `COLOR_GROUPS` export in `lib/themes.ts`, so a background/foreground pair
+    and its siblings read together instead of being found by scrolling.
 - **The whole interface now follows the HuginnDB brand visual language.** The
   logo's world — soft black outlines, rounded corners, light volume, one
   electric blue — is applied as a *contained* layer over the existing
@@ -89,6 +111,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Toggling light/dark mode on a built-in theme other than the two HuginnDB
+  defaults reset it to `HuginnDB Dark`/`HuginnDB Light` instead of switching
+  to that theme's own counterpart (issue #132).** `setActiveMode` looked up
+  the target with `BUILT_IN_THEMES.find(t => t.id === mode)` — a literal
+  match against the *mode string* `"dark"`/`"light"`, which only ever
+  resolved to the two themes whose `id` happens to equal their mode. Every
+  other preset (Claude, Dim, Solarized Dark, Neon, Summer, High Contrast) hit
+  no match, silently fell through to a dead branch that mutated `mode` on a
+  theme never actually written back to `customThemes`, and the toolbar's
+  dark/light select simply landed the user on whichever HuginnDB default
+  matched the target mode. Fixed by giving every built-in theme an explicit
+  `pairId` pointing at its light/dark counterpart (`lib/themes.ts`) and
+  having `setActiveMode` resolve through it instead of guessing from the mode
+  string. This is also why every built-in now needs a real counterpart — see
+  the Changed entry above.
 - **Replacing an app icon no longer leaves the old one embedded in the
   binary.** `tauri_build::build()` declares only `tauri.conf.json` and
   `capabilities/` as build inputs, and cargo tracks *only* what a build script
