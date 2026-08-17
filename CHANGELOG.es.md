@@ -8,6 +8,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Unreleased]
 
+### Añadido
+
+- **Objetivo de paquete `.rpm`**, junto a los ya existentes `.deb`/`.AppImage`,
+  para distribuciones de la familia Fedora/openSUSE/RHEL. El empaquetador rpm
+  de Tauri (el crate `rpm`) es Rust puro — sin `rpmbuild` ni paquetes de
+  sistema adicionales — así que se construye desde la misma tanda de release
+  en `ubuntu-22.04` sin cambios en CI más allá de la lista de objetivos en
+  `tauri.conf.json`. Se añadió también `bundle.license: "MIT"`, ya que una
+  cabecera de licencia vacía en un paquete RPM se muestra como "Unspecified".
+  Probado mediante `workflow_dispatch` con la etiqueta desechable
+  `v0.0.0-test` (ejecución #62): ambas tandas se completaron y el release en
+  borrador incluyó un `HuginnDB-1.16.0-1.x86_64.rpm` válido junto al resto de
+  artefactos. Eso confirma que la salida del empaquetador está bien formada —
+  la instalación/arranque real en una máquina Fedora/openSUSE sigue sin
+  verificar (ver el punto 7 de `ROADMAP.md`).
+
 ## [1.16.0] — 2026-08-17
 
 ### Añadido

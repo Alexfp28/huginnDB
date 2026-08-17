@@ -4,12 +4,12 @@ HuginnDB handles credentials and runs arbitrary SQL against user-configured data
 
 ## Supported versions
 
-Until HuginnDB reaches `1.0`, only the latest tagged release on `main` is supported with security fixes. Pre-release builds (`alpha`, `beta`) receive fixes on a best-effort basis.
+Only the latest tagged release is supported with security fixes.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| `main`  | :white_check_mark: |
-| < `0.1` | :x:                |
+| Version         | Supported          |
+| ---------------- | ------------------ |
+| latest (`1.16.x`) | :white_check_mark: |
+| older             | :x:                |
 
 ## Reporting a vulnerability
 
