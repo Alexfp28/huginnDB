@@ -297,6 +297,7 @@
       "renameView": "Rename view…",
       "dropView": "Drop view…",
       "newAggregation": "New aggregation…",
+      "manageIndexes": "Indexes…",
       "editViewPipeline": "Edit pipeline…"
     },
     "rename": {
@@ -648,6 +649,8 @@
       "add": "Add foreign key"
     },
     "readOnlyMongo": "Read-only (MongoDB)",
+    "indexManagerHint": "MongoDB indexes are edited in the index manager — this view is read-only.",
+    "openIndexManager": "Open index manager",
     "readOnlySqlServer": "Read-only (SQL Server)"
   },
   "view": {
@@ -726,6 +729,90 @@
       "pending": "Building the snippet…"
     }
   },
+  "indexes": {
+    "title": "Indexes",
+    "refresh": "Refresh",
+    "create": "New index",
+    "loading": "Reading the index catalogue…",
+    "noCollection": "No collection selected.",
+    "actions": "Index actions",
+    "edit": "Edit…",
+    "hide": "Hide",
+    "unhide": "Unhide",
+    "drop": "Drop",
+    "idIndexLocked": "MongoDB maintains the `_id_` index for every collection — it cannot be edited, hidden or dropped.",
+    "confirmDrop": "Drop the index \"{{name}}\" on {{collection}}?\n\nQueries relying on it fall back to a collection scan. Rebuilding it later costs a full pass over the collection.",
+    "confirmReplace": "Replace the index \"{{name}}\"?\n\nMongoDB cannot alter an index in place, so this drops it and builds a new one. The collection runs without that index while the new one builds.",
+    "usageSince": "Operations served since {{date}}",
+    "usageUnknownSince": "Operations served since the counter was last reset",
+    "columns": {
+      "name": "Name",
+      "keys": "Keys",
+      "properties": "Properties",
+      "size": "Size",
+      "usage": "Uses"
+    },
+    "kind": {
+      "regular": "Regular",
+      "text": "Text",
+      "geo": "Geospatial",
+      "hashed": "Hashed",
+      "wildcard": "Wildcard",
+      "ttl": "TTL"
+    },
+    "flags": {
+      "unique": "Unique",
+      "uniqueHint": "Rejects a second document with the same key values.",
+      "sparse": "Sparse",
+      "sparseHint": "Skips documents that don't have the indexed field at all.",
+      "hidden": "Hidden",
+      "hiddenHint": "Kept up to date but ignored by the planner — the reversible way to measure dropping it."
+    },
+    "badge": {
+      "ttl": "TTL {{seconds}}s",
+      "partial": "Partial",
+      "collation": "Collation",
+      "extra": "Other options"
+    },
+    "keyValue": {
+      "1": "1 — ascending",
+      "-1": "-1 — descending",
+      "text": "\"text\"",
+      "2dsphere": "\"2dsphere\"",
+      "2d": "\"2d\"",
+      "hashed": "\"hashed\""
+    },
+    "editor": {
+      "titleCreate": "New index",
+      "titleEdit": "Replace \"{{name}}\"",
+      "descriptionCreate": "The index to build on {{collection}}.",
+      "descriptionEdit": "MongoDB cannot alter an index in place: saving drops this one and builds the index below in its place.",
+      "keys": "Keys",
+      "keysRaw": "Edit as text",
+      "keysForm": "Edit as fields",
+      "fieldPlaceholder": "field path, e.g. customData.format",
+      "addKey": "Add key",
+      "removeKey": "Remove this key",
+      "name": "Name",
+      "namePlaceholder": "left blank, the server derives one from the keys",
+      "advanced": "Advanced options",
+      "ttl": "Expire after (seconds)",
+      "ttlPlaceholder": "no expiry",
+      "ttlHint": "Single-field indexes over a date only: MongoDB deletes a document this long after that date.",
+      "partial": "Partial filter expression",
+      "partialHint": "Index only the documents this matches. A smaller index, usable only by queries that imply the same condition.",
+      "collation": "Collation",
+      "collationHint": "Language-aware comparison rules. A query must use the same collation to use the index.",
+      "weights": "Text weights",
+      "weightsHint": "Text indexes only: how much each field counts towards the relevance score.",
+      "defaultLanguage": "Default language",
+      "extra": "Other options",
+      "extraHint": "Merged into the index spec as written — for anything this form has no field for.",
+      "create": "Create index",
+      "replace": "Replace index",
+      "saving": "Working…"
+    }
+  },
   "tabs": {
     "queryFileName": "query.sql",
     "tableFallback": "Table",
@@ -749,7 +836,8 @@
     "emptyOpenSomething": "Open a table from the schema explorer, or create a new query tab.",
     "emptyConnectFirst": "Select or create a connection to begin.",
     "detachedUnavailable": "This tab is no longer available.",
-    "aggregationSuffix": "aggregation"
+    "aggregationSuffix": "aggregation",
+    "indexesSuffix": "indexes"
   },
   "tabSwitcher": {
     "title": "Switch tab",

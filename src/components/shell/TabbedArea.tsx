@@ -66,6 +66,7 @@ import { QueryEditorTab } from "@/components/query/QueryEditorTab";
 import { StructureEditorTab } from "@/components/schema/StructureEditorTab";
 import { ViewEditorTab } from "@/components/schema/ViewEditorTab";
 import { AggregationTab } from "@/components/aggregation/AggregationTab";
+import { MongoIndexesTab } from "@/components/indexes/MongoIndexesTab";
 import { SecurityTab } from "@/components/schema/SecurityTab";
 import { WorkspacePicker } from "@/components/connection/WorkspacePicker";
 import {
@@ -116,6 +117,12 @@ interface AggregationPanelParams {
   collection?: string;
   view?: string;
   mode: "new" | "edit";
+}
+interface IndexesPanelParams {
+  tabId: string;
+  connectionId: string;
+  schema?: string;
+  collection?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,12 +196,25 @@ function AggregationPanel(props: IDockviewPanelProps<AggregationPanelParams>) {
   );
 }
 
+function IndexesPanel(props: IDockviewPanelProps<IndexesPanelParams>) {
+  const { tabId, connectionId, schema, collection } = props.params;
+  return (
+    <MongoIndexesTab
+      tabId={tabId}
+      connectionId={connectionId}
+      schema={schema}
+      collection={collection}
+    />
+  );
+}
+
 const INNER_COMPONENTS = {
   table: TablePanel,
   query: QueryPanel,
   structure: StructurePanel,
   view: ViewPanel,
   aggregation: AggregationPanel,
+  indexes: IndexesPanel,
   security: SecurityPanel,
 };
 

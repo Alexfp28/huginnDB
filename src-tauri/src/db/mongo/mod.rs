@@ -11,6 +11,9 @@
 //!   (`{create|collMod, viewOn, pipeline}`), MongoDB's answer to `CREATE VIEW`.
 //! * [`schema`] — introspection (databases, collections, inferred fields,
 //!   indexes). MongoDB is schemaless, so field lists are *sampled*.
+//! * [`indexes`] — the index manager's catalogue + create/hide/recreate/drop.
+//!   Separate from [`schema`]'s `list_indexes`, which is deliberately lossy to
+//!   fit the SQL explorer's DTO; see that module's own doc comment.
 //! * [`shell`]  — a bounded parser for `db.coll.method(...)` statements.
 //! * [`values`] — BSON ⇄ JSON conversion (display + round-trip).
 //!
@@ -21,6 +24,7 @@
 //! single-port tunnel model can't represent — see the roadmap).
 
 pub mod aggregation;
+pub mod indexes;
 pub mod query;
 pub mod schema;
 pub mod shell;

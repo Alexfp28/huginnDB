@@ -297,6 +297,7 @@
       "renameView": "Renombrar vista…",
       "dropView": "Eliminar vista…",
       "newAggregation": "Nueva agregación…",
+      "manageIndexes": "Índices…",
       "editViewPipeline": "Editar pipeline…"
     },
     "rename": {
@@ -648,6 +649,8 @@
       "add": "Añadir clave foránea"
     },
     "readOnlyMongo": "Solo lectura (MongoDB)",
+    "indexManagerHint": "Los índices de MongoDB se editan en el gestor de índices; esta vista es de solo lectura.",
+    "openIndexManager": "Abrir el gestor de índices",
     "readOnlySqlServer": "Solo lectura (SQL Server)"
   },
   "view": {
@@ -726,6 +729,90 @@
       "pending": "Generando el fragmento…"
     }
   },
+  "indexes": {
+    "title": "Índices",
+    "refresh": "Actualizar",
+    "create": "Nuevo índice",
+    "loading": "Leyendo el catálogo de índices…",
+    "noCollection": "No hay ninguna colección seleccionada.",
+    "actions": "Acciones del índice",
+    "edit": "Editar…",
+    "hide": "Ocultar",
+    "unhide": "Mostrar",
+    "drop": "Eliminar",
+    "idIndexLocked": "MongoDB mantiene el índice `_id_` en todas las colecciones: no se puede editar, ocultar ni eliminar.",
+    "confirmDrop": "¿Eliminar el índice «{{name}}» de {{collection}}?\n\nLas consultas que dependan de él pasarán a recorrer la colección entera. Volver a crearlo después cuesta una pasada completa.",
+    "confirmReplace": "¿Reemplazar el índice «{{name}}»?\n\nMongoDB no permite alterar un índice sobre la marcha, así que se elimina y se crea uno nuevo. Mientras se construye, la colección se queda sin ese índice.",
+    "usageSince": "Operaciones atendidas desde {{date}}",
+    "usageUnknownSince": "Operaciones atendidas desde el último reinicio del contador",
+    "columns": {
+      "name": "Nombre",
+      "keys": "Claves",
+      "properties": "Propiedades",
+      "size": "Tamaño",
+      "usage": "Usos"
+    },
+    "kind": {
+      "regular": "Normal",
+      "text": "Texto",
+      "geo": "Geoespacial",
+      "hashed": "Hash",
+      "wildcard": "Comodín",
+      "ttl": "TTL"
+    },
+    "flags": {
+      "unique": "Único",
+      "uniqueHint": "Rechaza un segundo documento con los mismos valores de clave.",
+      "sparse": "Disperso",
+      "sparseHint": "Omite los documentos que no tienen el campo indexado.",
+      "hidden": "Oculto",
+      "hiddenHint": "Se mantiene actualizado pero el planificador lo ignora: la forma reversible de medir qué pasa si lo eliminas."
+    },
+    "badge": {
+      "ttl": "TTL {{seconds}}s",
+      "partial": "Parcial",
+      "collation": "Collation",
+      "extra": "Otras opciones"
+    },
+    "keyValue": {
+      "1": "1 — ascendente",
+      "-1": "-1 — descendente",
+      "text": "\"text\"",
+      "2dsphere": "\"2dsphere\"",
+      "2d": "\"2d\"",
+      "hashed": "\"hashed\""
+    },
+    "editor": {
+      "titleCreate": "Nuevo índice",
+      "titleEdit": "Reemplazar «{{name}}»",
+      "descriptionCreate": "El índice que se creará en {{collection}}.",
+      "descriptionEdit": "MongoDB no permite alterar un índice sobre la marcha: al guardar se elimina este y se crea en su lugar el de abajo.",
+      "keys": "Claves",
+      "keysRaw": "Editar como texto",
+      "keysForm": "Editar como campos",
+      "fieldPlaceholder": "ruta del campo, p. ej. customData.format",
+      "addKey": "Añadir clave",
+      "removeKey": "Quitar esta clave",
+      "name": "Nombre",
+      "namePlaceholder": "en blanco, el servidor lo deriva de las claves",
+      "advanced": "Opciones avanzadas",
+      "ttl": "Caducar a los (segundos)",
+      "ttlPlaceholder": "sin caducidad",
+      "ttlHint": "Solo para índices de un único campo de tipo fecha: MongoDB borra el documento pasado ese tiempo desde esa fecha.",
+      "partial": "Filtro parcial",
+      "partialHint": "Indexa solo los documentos que cumplan esto. Un índice más pequeño, utilizable únicamente por consultas que impliquen la misma condición.",
+      "collation": "Collation",
+      "collationHint": "Reglas de comparación por idioma. Una consulta debe usar la misma collation para poder aprovechar el índice.",
+      "weights": "Pesos de texto",
+      "weightsHint": "Solo en índices de texto: cuánto cuenta cada campo en la puntuación de relevancia.",
+      "defaultLanguage": "Idioma por defecto",
+      "extra": "Otras opciones",
+      "extraHint": "Se fusionan tal cual en la definición del índice: para cualquier cosa que este formulario no cubra.",
+      "create": "Crear índice",
+      "replace": "Reemplazar índice",
+      "saving": "Trabajando…"
+    }
+  },
   "tabs": {
     "queryFileName": "query.sql",
     "tableFallback": "Tabla",
@@ -749,7 +836,8 @@
     "emptyOpenSomething": "Abre una tabla desde el explorador de esquemas o crea una nueva pestaña de query.",
     "emptyConnectFirst": "Selecciona o crea una conexión para empezar.",
     "detachedUnavailable": "Esta pestaña ya no está disponible.",
-    "aggregationSuffix": "agregación"
+    "aggregationSuffix": "agregación",
+    "indexesSuffix": "índices"
   },
   "tabSwitcher": {
     "title": "Cambiar de pestaña",

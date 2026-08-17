@@ -42,7 +42,9 @@ import type {
   RowValue,
   SortSpec,
   StartupArgs,
+  MongoIndexInfo,
   MongoViewDefinition,
+  NewMongoIndexSpec,
   PipelineStageInput,
   PipelineText,
   StagePreview,
@@ -380,6 +382,51 @@ export const api = {
     stages?: PipelineStageInput[];
     create: boolean;
   }) => invoke<void>("save_mongo_view", { args }),
+
+  // MongoDB index manager ---------------------------------------------------
+  //
+  // Same source-text contract as the aggregation editor above: index keys,
+  // partial filters, collations and weights cross as the text the user typed
+  // and are parsed in Rust. There is no `alterMongoIndex` because MongoDB has
+  // none — `recreateMongoIndex` is a drop plus a create, and it says so.
+
+  /** A collection's full index catalogue, with sizes and usage counters when
+   *  the connection's role can read `$collStats` / `$indexStats`. */
+  listMongoIndexes: (connectionId: string, collection: string) =>
+    invoke<MongoIndexInfo[]>("list_mongo_indexes", { connectionId, collection }),
+
+  createMongoIndex: (args: {
+    connectionId: string;
+    collection: string;
+    spec: NewMongoIndexSpec;
+  }) => invoke<void>("create_mongo_index", { args }),
+
+  /** Replace an index: drops `originalName`, then creates `spec`. The new
+   *  spec is parsed before the drop, so a malformed filter costs an error
+   *  rather than the index. */
+  recreateMongoIndex: (args: {
+    connectionId: string;
+    collection: string;
+    originalName: string;
+    spec: NewMongoIndexSpec;
+  }) => invoke<void>("recreate_mongo_index", { args }),
+
+  dropMongoIndex: (connectionId: string, collection: string, name: string) =>
+    invoke<void>("drop_mongo_index", { connectionId, collection, name }),
+
+  /** Hide or unhide an index — the reversible rehearsal for dropping it. */
+  setMongoIndexHidden: (
+    connectionId: string,
+    collection: string,
+    name: string,
+    hidden: boolean,
+  ) =>
+    invoke<void>("set_mongo_index_hidden", {
+      connectionId,
+      collection,
+      name,
+      hidden,
+    }),
 
   // Query execution ------------------------------------------------------
 

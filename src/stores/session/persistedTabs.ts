@@ -136,14 +136,16 @@ function snapshotFor(connectionId: string): ConnectionTabState {
   const schemaSlice = useSchema.getState().byConnection[connectionId];
   const tabs: PersistedTab[] = tabsState.tabs
     .filter((t) => t.connectionId === connectionId)
-    // Structure-editor, view-editor and aggregation tabs are ephemeral working
-    // sessions (a half-built "new table"/"new view", an in-progress edit, or a
-    // scratch pipeline) — don't persist them across restarts.
+    // Structure-editor, view-editor, aggregation and index-manager tabs are
+    // ephemeral working sessions (a half-built "new table"/"new view", an
+    // in-progress edit, a scratch pipeline, or a look at one collection's
+    // indexes) — don't persist them across restarts.
     .filter(
       (t) =>
         t.kind !== "structure" &&
         t.kind !== "view" &&
-        t.kind !== "aggregation",
+        t.kind !== "aggregation" &&
+        t.kind !== "indexes",
     )
     .map((t) => ({
       id: t.id,

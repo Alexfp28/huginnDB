@@ -35,6 +35,7 @@ import { QueryEditorTab } from "@/components/query/QueryEditorTab";
 import { StructureEditorTab } from "@/components/schema/StructureEditorTab";
 import { ViewEditorTab } from "@/components/schema/ViewEditorTab";
 import { AggregationTab } from "@/components/aggregation/AggregationTab";
+import { MongoIndexesTab } from "@/components/indexes/MongoIndexesTab";
 import { SecurityTab } from "@/components/schema/SecurityTab";
 import { useTabs } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
@@ -87,6 +88,15 @@ function TabBody({ tab }: { tab: AppTab }) {
           collection={tab.table}
           view={tab.view}
           mode={tab.viewMode ?? "new"}
+        />
+      );
+    case "indexes":
+      return (
+        <MongoIndexesTab
+          tabId={tab.id}
+          connectionId={tab.connectionId}
+          schema={tab.schema}
+          collection={tab.table}
         />
       );
     case "security":

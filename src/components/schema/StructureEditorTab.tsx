@@ -39,7 +39,7 @@ import {
   parseColumnType,
   type ColumnTypeCategory,
 } from "@/lib/db/columnTypes";
-import { supportsDdlEditing } from "@/lib/db/driver";
+import { supportsDdlEditing, supportsIndexManager } from "@/lib/db/driver";
 import type {
   ColumnDef,
   Driver,
@@ -384,11 +384,41 @@ export function StructureEditorTab({
             />
           )}
           {section === "indexes" && (
-            <IndexesEditor
-              indexes={indexes}
-              columns={columns}
-              onChange={setIndexes}
-            />
+            <>
+              {/* MongoDB indexes are editable — just not here. This editor
+                  diffs a `TableStructure` into DDL, and its `IndexDef` (name +
+                  column names + unique) can't carry a per-key direction, a
+                  TTL or a partial filter. The index manager is that surface;
+                  pointing at it beats leaving the section looking inert. */}
+              {supportsIndexManager(driver) && table && (
+                <div className="mb-3 flex items-center justify-between gap-3 rounded border border-border/50 bg-muted/30 px-3 py-2 text-xs">
+                  <span className="text-muted-foreground">
+                    {t("structure.indexManagerHint")}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      useTabs.getState().open({
+                        kind: "indexes",
+                        title: `${table} (${t("tabs.indexesSuffix")})`,
+                        connectionId,
+                        schema,
+                        table,
+                      })
+                    }
+                  >
+                    <KeyRound className="mr-1 h-3.5 w-3.5" />
+                    {t("structure.openIndexManager")}
+                  </Button>
+                </div>
+              )}
+              <IndexesEditor
+                indexes={indexes}
+                columns={columns}
+                onChange={setIndexes}
+              />
+            </>
           )}
           {section === "fks" && (
             <ForeignKeysEditor

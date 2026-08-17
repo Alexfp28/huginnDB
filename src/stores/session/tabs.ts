@@ -82,7 +82,11 @@ export const useTabs = create<TabsState>((set, get) => ({
     if (
       input.kind === "table" ||
       input.kind === "security" ||
-      input.kind === "aggregation"
+      input.kind === "aggregation" ||
+      // The index manager is a view onto one collection's catalogue, not a
+      // draft: a second tab for the same collection would be two windows onto
+      // the same list, drifting apart after the first create.
+      input.kind === "indexes"
     ) {
       const existing = get().tabs.find(
         (t) =>

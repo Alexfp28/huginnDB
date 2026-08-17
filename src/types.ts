@@ -219,6 +219,79 @@ export interface IndexInfo {
   unique: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// MongoDB index manager — mirror of the Rust DTOs in
+// src-tauri/src/db/mongo/indexes.rs.
+//
+// Deliberately NOT `IndexInfo`: that one carries a name, field names and
+// `unique`, which is everything the SQL explorer's tree needs and nowhere near
+// enough to rebuild a Mongo index. Recreating `{ createdAt: -1 }` from a list
+// of field names would silently make it ascending.
+// ---------------------------------------------------------------------------
+
+/** One entry of an index's `key` document, in order. */
+export interface MongoIndexKey {
+  /** Indexed field path (`customData.format`, `tags`, `$**`). */
+  field: string;
+  /** The key's value as source text: `1`, `-1`, `"text"`, `"2dsphere"`,
+   *  `"hashed"`. A union of direction and index type, so it stays text. */
+  value: string;
+}
+
+/** Derived label for an index's shape; not a server concept. */
+export type MongoIndexKind =
+  | "regular"
+  | "text"
+  | "geo"
+  | "hashed"
+  | "wildcard"
+  | "ttl";
+
+export interface MongoIndexInfo {
+  name: string;
+  keys: MongoIndexKey[];
+  /** The whole `key` document as source text — what the editor loads and what
+   *  a recreate sends back, so exotic keys round-trip intact. */
+  keysSource: string;
+  unique: boolean;
+  sparse: boolean;
+  hidden: boolean;
+  expireAfterSeconds?: number | null;
+  partialFilterExpression?: string | null;
+  collation?: string | null;
+  weights?: string | null;
+  defaultLanguage?: string | null;
+  kind: MongoIndexKind;
+  /** `_id_`: undroppable, unhidable. */
+  isId: boolean;
+  /** Null when the role can't read `$collStats`. */
+  sizeBytes?: number | null;
+  /** Null when the role can't read `$indexStats`. Zero ops over a long
+   *  `usageSince` is an index nobody is using. */
+  usageOps?: number | null;
+  usageSince?: string | null;
+  /** Every option the DTO doesn't model, as a source-text document. */
+  extraOptions?: string | null;
+}
+
+/** The index the editor wants to exist. Documents are source text, parsed in
+ *  Rust — the frontend never parses BSON (gotcha #33). */
+export interface NewMongoIndexSpec {
+  keys: string;
+  /** Omitted lets the server derive `field_1_other_-1`. */
+  name?: string | null;
+  unique: boolean;
+  sparse: boolean;
+  hidden: boolean;
+  expireAfterSeconds?: number | null;
+  partialFilterExpression?: string | null;
+  collation?: string | null;
+  weights?: string | null;
+  defaultLanguage?: string | null;
+  /** Escape hatch for options the dialog has no field for. */
+  extraOptions?: string | null;
+}
+
 /**
  * One server-side user/role in the "Security" panel. Field meaning is
  * driver-specific — see `list_users` in `src-tauri/src/commands/schema.rs`.
@@ -443,7 +516,8 @@ export type TabKind =
   | "structure"
   | "security"
   | "view"
-  | "aggregation";
+  | "aggregation"
+  | "indexes";
 
 /** New-table vs edit-existing for a structure tab. Reused as-is for view
  *  tabs ("new" view vs "edit" an existing one) — same semantics, no need

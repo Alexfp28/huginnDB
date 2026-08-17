@@ -14,6 +14,7 @@ pub mod dump;
 pub mod feedback;
 pub mod mcp;
 pub mod mongo;
+pub mod mongo_indexes;
 pub mod origins;
 pub mod prefs;
 pub mod query;

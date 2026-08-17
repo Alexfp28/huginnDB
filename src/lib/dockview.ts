@@ -200,6 +200,13 @@ export function syncTabPanels(api: DockviewApi, tabs: AppTab[]): void {
         view: tab.view,
         mode: tab.viewMode ?? "new",
       };
+    } else if (tab.kind === "indexes") {
+      params = {
+        tabId: tab.id,
+        connectionId: tab.connectionId,
+        schema: tab.schema,
+        collection: tab.table,
+      };
     } else {
       params = { tabId: tab.id, connectionId: tab.connectionId };
     }

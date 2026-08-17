@@ -58,6 +58,17 @@ export function supportsSqlDump(driver: Driver | undefined): boolean {
   return driver !== "mongodb" && driver !== "sqlserver";
 }
 
+/** The dedicated index manager (list / create / hide / recreate / drop).
+ *
+ *  MongoDB-only, and not because the other engines lack indexes — they have
+ *  them *inside* the structure editor, diffed into `CREATE INDEX` /
+ *  `DROP INDEX` along with the rest of the table. MongoDB has no DDL to diff,
+ *  so its indexes need their own surface and their own commands
+ *  (`commands::mongo_indexes`, which refuses every other driver). */
+export function supportsIndexManager(driver: Driver | undefined): boolean {
+  return driver === "mongodb";
+}
+
 /** Server-level `CREATE DATABASE` / `DROP DATABASE`. SQLite's file *is* the
  *  database and MongoDB creates them implicitly on first write. */
 export function supportsCreateDatabase(driver: Driver | undefined): boolean {
