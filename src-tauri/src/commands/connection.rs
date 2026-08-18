@@ -12,8 +12,8 @@ use crate::ssh_known_hosts;
 use crate::state::{ActivePool, AppState, ConnectionProfile, Driver, StartupArgs};
 use crate::store;
 use crate::transfer::{
-    ConflictAction, ConflictResolution, ExportFile, ExportMetadata, ExportedProfile,
-    ExportedSecret, ImportAnalysis, ImportConflict, ImportResult,
+    self, ConflictAction, ConflictResolution, ExportFile, ExportMetadata, ImportAnalysis,
+    ImportResult, KIND_PROFILES,
 };
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -1108,22 +1108,14 @@ pub fn analyze_import_file(
             export.meta.version
         )));
     }
+    if !export.meta.kind.is_empty() && export.meta.kind != KIND_PROFILES {
+        return Err(AppError::Transfer(
+            "this file is an environment export — use Import Environment instead".into(),
+        ));
+    }
 
     let profiles = state.profiles.read();
-    let conflicts = export
-        .profiles
-        .iter()
-        .filter_map(|ep| {
-            profiles
-                .iter()
-                .find(|p| p.id == ep.profile.id)
-                .map(|existing| ImportConflict {
-                    id: ep.profile.id.clone(),
-                    existing_name: existing.name.clone(),
-                    incoming_name: ep.profile.name.clone(),
-                })
-        })
-        .collect();
+    let conflicts = transfer::detect_conflicts(&profiles, &export.profiles);
 
     Ok(ImportAnalysis {
         total: export.profiles.len(),
@@ -1164,34 +1156,11 @@ pub async fn export_profiles(
         }
     };
 
-    let mut exported_profiles = Vec::with_capacity(profiles_snapshot.len());
-    for profile in &profiles_snapshot {
-        let secrets = if include_passwords {
-            let pp = passphrase.as_deref().unwrap();
-            let db_password = if matches!(profile.driver, Driver::Sqlite) {
-                None
-            } else {
-                keychain::get_password(&profile.keyring_account())?
-                    .map(|pw| crate::transfer::encrypt_secret(&pw, pp))
-                    .transpose()?
-            };
-            let ssh_secret = profile
-                .ssh_keyring_account()
-                .and_then(|acct| keychain::get_password(&acct).ok().flatten())
-                .map(|s| crate::transfer::encrypt_secret(&s, pp))
-                .transpose()?;
-            Some(ExportedSecret {
-                db_password,
-                ssh_secret,
-            })
-        } else {
-            None
-        };
-        exported_profiles.push(ExportedProfile {
-            profile: profile.clone(),
-            secrets,
-        });
-    }
+    let exported_profiles = transfer::build_exported_profiles(
+        &profiles_snapshot,
+        include_passwords,
+        passphrase.as_deref(),
+    )?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let file = ExportFile {
@@ -1200,6 +1169,7 @@ pub async fn export_profiles(
             app: "huginndb".into(),
             exported_at: now.clone(),
             encrypted: include_passwords,
+            kind: KIND_PROFILES.into(),
         },
         profiles: exported_profiles,
     };
@@ -1252,6 +1222,11 @@ pub fn import_profiles(
             export.meta.version
         )));
     }
+    if !export.meta.kind.is_empty() && export.meta.kind != KIND_PROFILES {
+        return Err(AppError::Transfer(
+            "this file is an environment export — use Import Environment instead".into(),
+        ));
+    }
     if export.meta.encrypted && passphrase.is_none() {
         return Err(AppError::Transfer(
             "this export file contains encrypted passwords — provide a passphrase".into(),
@@ -1263,6 +1238,37 @@ pub fn import_profiles(
         .map(|r| (r.id, r.action))
         .collect();
 
+    let result = {
+        let mut profiles = state.profiles.write();
+        let result = apply_profile_imports(
+            &mut profiles,
+            export.profiles,
+            passphrase.as_deref(),
+            &resolution_map,
+        )?;
+        store::save_profiles(&profiles)?;
+        result
+    };
+    let _ = app.emit(PROFILES_CHANGED_EVENT, ());
+    Ok(result)
+}
+
+/// Apply a set of exported profiles onto `profiles`, honoring
+/// `resolution_map` for ids that already exist there. Shared by
+/// [`import_profiles`] and `import_environment` (`commands::prefs`) — the
+/// conflict/rename/keychain rules are identical either way, only *where* the
+/// exported profiles came from (a standalone bundle vs. an environment's
+/// slice of one) differs.
+///
+/// Every imported profile receives a **fresh UUID** regardless of whether it
+/// came with one in the file, to avoid keychain-account collisions with
+/// profiles already on this machine.
+pub(crate) fn apply_profile_imports(
+    profiles: &mut Vec<ConnectionProfile>,
+    exported: Vec<transfer::ExportedProfile>,
+    passphrase: Option<&str>,
+    resolution_map: &std::collections::HashMap<String, ConflictAction>,
+) -> AppResult<ImportResult> {
     let mut result = ImportResult {
         imported: vec![],
         skipped: vec![],
@@ -1270,9 +1276,7 @@ pub fn import_profiles(
         needs_password: vec![],
     };
 
-    let mut profiles = state.profiles.write();
-
-    for ep in export.profiles {
+    for ep in exported {
         // Determine action for profiles that conflict with an existing id.
         let conflict_action = if profiles.iter().any(|p| p.id == ep.profile.id) {
             resolution_map
@@ -1335,7 +1339,7 @@ pub fn import_profiles(
 
         // Decrypt and store secrets if present.
         let has_secrets = if let Some(secrets) = &ep.secrets {
-            let pp = passphrase.as_deref().unwrap_or("");
+            let pp = passphrase.unwrap_or("");
             let mut any = false;
             if let Some(enc_pw) = &secrets.db_password {
                 if !matches!(new_profile.driver, Driver::Sqlite) {
@@ -1364,8 +1368,6 @@ pub fn import_profiles(
         result.imported.push(new_id);
     }
 
-    store::save_profiles(&profiles)?;
-    let _ = app.emit(PROFILES_CHANGED_EVENT, ());
     Ok(result)
 }
 

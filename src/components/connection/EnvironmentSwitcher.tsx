@@ -16,7 +16,7 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Download, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   DropdownMenu,
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown";
 import { useEnvironments, environmentLabel } from "@/stores/session/environments";
 import { useEnvironmentEditor } from "@/stores/dialogs/environmentEditor";
+import { useEnvironmentTransfer } from "@/stores/dialogs/environmentTransfer";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { isAvatarImage } from "@/lib/environmentAvatar";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ export function EnvironmentSwitcher() {
 
   const openCreate = useEnvironmentEditor((s) => s.openCreate);
   const openEdit = useEnvironmentEditor((s) => s.openEdit);
+  const openExport = useEnvironmentTransfer((s) => s.openExport);
 
   const ordered = useMemo(
     () => [...environments].sort((a, b) => a.order - b.order),
@@ -124,6 +126,21 @@ export function EnvironmentSwitcher() {
                   }}
                 >
                   <Pencil className="h-3 w-3" />
+                </span>
+              )}
+              {isMain && (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className="shrink-0 opacity-0 group-hover/env:opacity-70 hover:!opacity-100"
+                  title={t("environments.export")}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openExport(env.id);
+                  }}
+                >
+                  <Download className="h-3 w-3" />
                 </span>
               )}
               {isMain && ordered.length > 1 && (

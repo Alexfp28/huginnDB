@@ -49,7 +49,8 @@
     "none": "None",
     "replicateFrom": "Start from «{{name}}»",
     "replicateConnections": "Reopen the same connections and their tabs",
-    "replicateLayout": "Reuse the pane layout"
+    "replicateLayout": "Reuse the pane layout",
+    "export": "Export…"
   },
   "panels": {
     "schema": "Schema",
@@ -64,6 +65,7 @@
       "manageConnections": "Manage connections…",
       "importProfiles": "Import profiles…",
       "exportProfiles": "Export profiles…",
+      "importEnvironment": "Import environment…",
       "disconnectAll": "Disconnect all"
     },
     "window": {
@@ -1249,6 +1251,20 @@
       "summarySkipped": "{{count}} skipped.",
       "summaryRenamed": "{{count}} renamed to avoid duplicates.",
       "needsPassword": "{{count}} profile(s) were imported without a password. Open each connection to set a password before connecting."
+    },
+    "exportEnvironment": {
+      "title": "Export \"{{name}}\"",
+      "description": "Exports this environment's name, colour, theme, the connection profiles it groups, and its registered shared origins (name and path only — never a passphrase). Tabs and pane layout stay on this machine.",
+      "exportButton": "Export environment"
+    },
+    "importEnvironment": {
+      "title": "Import environment",
+      "pickTitle": "Select environment export file",
+      "pickDescription": "Select a HuginnDB environment export file (.json) to import. It is always added as a new environment — nothing already configured is touched.",
+      "importButton": "Import environment",
+      "done": "\"{{name}}\" imported",
+      "summaryOrigins": "{{count}} shared origin(s) registered — encrypted ones will ask for their passphrase on the next sync.",
+      "switchNow": "Switch to it now"
     }
   },
   "console": {

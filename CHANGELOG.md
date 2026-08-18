@@ -8,6 +8,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Export/import an environment as a self-contained bundle.** Each row in
+  `EnvironmentSwitcher` gets a new "Export…" action (`export_environment`)
+  that writes a JSON file with the environment's name/colour/theme, the
+  connection profiles it references, and its registered shared origins
+  (name + path only — never a passphrase, matching `origins.rs`'s existing
+  threat model of keeping the secret out-of-band). File → "Import
+  environment…" (`import_environment`) reads one of these back and **always
+  creates a brand-new environment** — it never merges into or overwrites one
+  already configured, so a colleague's exported environment can never
+  collide with your own origins, connections, or environment list. Deliberately
+  excluded: tabs, dockview geometry and launch state, which are session
+  artifacts tied to the machine that produced them (see gotcha #10) rather
+  than part of the environment's portable identity. The new environment's
+  connections tree is scoped to exactly the imported profiles via the
+  existing `visible_connections` filter (#107), and none of them are
+  auto-connected. Connection-profile conflicts reuse `import_profiles`'s
+  exact conflict-resolution UI (overwrite/skip/rename); an imported encrypted
+  origin surfaces the same "no passphrase stored" state a freshly-added one
+  does, resolved on the next sync.
 - **`.rpm` bundle target**, alongside the existing `.deb`/`.AppImage`, for
   Fedora/openSUSE/RHEL-family distros. Tauri's rpm bundler (the `rpm` crate)
   is pure Rust — no `rpmbuild` or extra system packages — so it builds from
