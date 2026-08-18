@@ -36,7 +36,7 @@
 //! a version-specific geo tunable) can't be expressed at all. A raw
 //! `createIndexes` command can send whatever the server accepts.
 
-use super::schema::resolve_db;
+use super::schema::{resolve_db, validate_collection};
 use super::shell::parse_relaxed_value;
 use super::values::bson_to_shell_text;
 use crate::error::{AppError, AppResult};
@@ -248,20 +248,6 @@ impl NewMongoIndexSpec {
         }
         Ok(spec)
     }
-}
-
-/// Reject a collection name that can't hold a user index.
-fn validate_collection(collection: &str) -> AppResult<&str> {
-    let name = collection.trim();
-    if name.is_empty() {
-        return Err(AppError::InvalidInput("no collection given".into()));
-    }
-    if name.starts_with("system.") {
-        return Err(AppError::InvalidInput(
-            "`system.` is reserved for MongoDB's own collections".into(),
-        ));
-    }
-    Ok(name)
 }
 
 /// Reject an operation the `_id` index doesn't support.

@@ -55,6 +55,26 @@ type MsSqlClient = Client<Compat<TcpStream>>;
 /// other driver's.
 const DEFAULT_MAX_SESSIONS: usize = 4;
 
+/// The TCP port a *default* SQL Server instance listens on.
+///
+/// A named instance normally gets a dynamic port instead — that is what the
+/// SQL Browser exists to hand out. So a port other than this one, typed
+/// alongside an instance name, is the user telling us the instance has a
+/// static port, and that is exactly the value [`Reach::Browser`] falls back to
+/// when the Browser doesn't answer.
+const DEFAULT_PORT: u16 = 1433;
+
+/// How a TDS session reaches the server.
+#[derive(Clone, Copy, Debug)]
+enum Reach {
+    /// Straight to the configured host:port — a default instance.
+    Port,
+    /// A named instance, whose port is discovered through the SQL Browser
+    /// (UDP 1434). `fallback_port` is the static port the user typed, if any,
+    /// tried when the Browser doesn't answer.
+    Browser { fallback_port: Option<u16> },
+}
+
 /// The `DbPool::MsSql` payload: a cheaply clonable handle onto the shared pool.
 #[derive(Clone)]
 pub struct MsSqlPool {
@@ -65,9 +85,9 @@ struct Inner {
     /// Everything needed to open a *new* session, so the pool can grow lazily
     /// and replace sessions the server dropped.
     cfg: Config,
-    /// Whether the target is a named instance, which has to be reached through
-    /// the SQL Browser rather than a fixed port.
-    named_instance: bool,
+    /// How a new session reaches the server: straight to the configured port,
+    /// or through the SQL Browser for a named instance.
+    reach: Reach,
     /// Concurrency bound. A permit is held for as long as a caller holds a
     /// [`PooledClient`], so `max_sessions` callers can work at once and the
     /// rest queue.
@@ -106,7 +126,7 @@ impl MsSqlPool {
         };
         let client = match existing {
             Some(c) => c,
-            None => connect(&self.inner.cfg, self.inner.named_instance).await?,
+            None => connect(&self.inner.cfg, self.inner.reach).await?,
         };
         Ok(PooledClient {
             inner: self.inner.clone(),
@@ -395,38 +415,108 @@ pub fn is_output_clause_conflict(e: &AppError) -> bool {
 }
 
 /// Open one TDS session against `cfg`.
-async fn connect(cfg: &Config, named_instance: bool) -> AppResult<MsSqlClient> {
-    let tcp = if named_instance {
+async fn connect(cfg: &Config, reach: Reach) -> AppResult<MsSqlClient> {
+    let tcp = match reach {
+        Reach::Port => TcpStream::connect(cfg.get_addr())
+            .await
+            .map_err(AppError::Io)?,
         // Resolves the instance's dynamic port through the SQL Browser
         // (UDP 1434) and connects to it.
-        use tiberius::SqlBrowser;
-        TcpStream::connect_named(cfg)
-            .await
-            .map_err(AppError::MsSql)?
-    } else {
-        TcpStream::connect(cfg.get_addr())
-            .await
-            .map_err(AppError::Io)?
+        Reach::Browser { fallback_port } => {
+            use tiberius::SqlBrowser;
+            match TcpStream::connect_named(cfg).await {
+                Ok(tcp) => tcp,
+                Err(browser_err) => {
+                    // The Browser is a separate UDP service from the instance's
+                    // own TCP port, and on an on-prem host it is routinely
+                    // stopped or firewalled off while the instance itself is
+                    // perfectly reachable on a static port. When the user has
+                    // told us that port, try it before giving up:
+                    // `instance_name` is only ever read by the Browser lookup,
+                    // so the TDS login that follows is unaffected by having
+                    // skipped it. A port left at the default is *not* a signal
+                    // — retrying 1433 on a host whose UDP is being dropped
+                    // would usually just pay a second connect timeout for
+                    // nothing.
+                    let Some(port) = fallback_port else {
+                        return Err(AppError::MsSql(browser_err));
+                    };
+                    TcpStream::connect(cfg.get_addr()).await.map_err(|e| {
+                        // Report *both* causes: told only about the port, the
+                        // user has no way to tell a stopped Browser from a
+                        // wrong port number.
+                        AppError::Io(std::io::Error::other(format!(
+                            "the SQL Server Browser did not answer on UDP 1434 \
+                             ({browser_err}), and the static port {port} refused the \
+                             connection too ({e}) — start the SQL Server Browser \
+                             service, or set the instance's static TCP port here"
+                        )))
+                    })?
+                }
+            }
+        }
     };
     tcp.set_nodelay(true)?;
     Ok(Client::connect(cfg.clone(), tcp.compat_write()).await?)
 }
 
+/// Split an SSMS-style `HOST\INSTANCE` into its two parts.
+///
+/// SQL Server Management Studio has a single "Server name" box, so that is the
+/// form every SQL Server user has been trained to type — and pasting it into
+/// either of our two fields used to fail, with an error that named neither
+/// instances nor the Browser. In the host field the backslash made DNS
+/// resolution fail; in the instance field it was handed to
+/// [`Config::instance_name`] verbatim, and the Browser only ever reports the
+/// bare instance name (`INSTANCE`, never `HOST\INSTANCE`), so nothing matched.
+///
+/// Precedence: a plain instance field wins over a suffix carried by the host
+/// (the user filled the dedicated field in, so mean it), and a prefix on the
+/// instance field is used as the host only when the host field is empty —
+/// never overriding a host the caller already resolved, which is what keeps an
+/// SSH tunnel's `127.0.0.1` substitution intact.
+fn split_instance(host: &str, instance: Option<&str>) -> (String, Option<String>) {
+    let clean = |s: &str| {
+        let s = s.trim();
+        (!s.is_empty()).then(|| s.to_string())
+    };
+    let (host_prefix, host_suffix) = match host.split_once('\\') {
+        Some((h, i)) => (clean(h), clean(i)),
+        None => (clean(host), None),
+    };
+    let (inst_prefix, inst_name) = match instance.and_then(clean) {
+        Some(raw) => match raw.split_once('\\') {
+            Some((h, i)) => (clean(h), clean(i)),
+            None => (None, clean(&raw)),
+        },
+        None => (None, None),
+    };
+    (
+        host_prefix.or(inst_prefix).unwrap_or_default(),
+        inst_name.or(host_suffix),
+    )
+}
+
 /// Build the `tiberius` [`Config`] for `profile`.
 ///
-/// `host`/`port` are passed explicitly so an SSH tunnel can substitute
-/// `127.0.0.1:<local-port>` without mutating the profile — same contract as
-/// [`crate::db::pool::build_url`]. Returns the config plus whether a named
-/// instance has to be resolved through the SQL Browser.
+/// `host`/`port`/`instance` are passed explicitly so an SSH tunnel can
+/// substitute `127.0.0.1:<local-port>` without mutating the profile — same
+/// contract as [`crate::db::pool::build_url`] — and so the `HOST\INSTANCE`
+/// normalisation in [`split_instance`] happens once, in [`open_pool`], before
+/// the tunnel decision that depends on it.
 fn build_config(
     profile: &ConnectionProfile,
     password: &str,
     host: &str,
     port: u16,
-) -> AppResult<(Config, bool)> {
+    instance: Option<&str>,
+) -> AppResult<(Config, Reach)> {
     let opts = profile.mssql.clone().unwrap_or_default();
     let mut cfg = Config::new();
     cfg.host(host);
+    // Set even for a named instance, whose real port the Browser hands out and
+    // `connect_named` substitutes: it is what `Reach::Browser`'s fallback
+    // connects to when the Browser doesn't answer.
     cfg.port(port);
     // A blank database is a legitimate choice ("connect to the server, then let
     // me pick from the tree"); SQL Server falls back to the login's default
@@ -436,12 +526,14 @@ fn build_config(
     }
     cfg.application_name("HuginnDB");
 
-    let named_instance = match opts.instance.as_deref().map(str::trim) {
-        Some(inst) if !inst.is_empty() => {
+    let reach = match instance {
+        Some(inst) => {
             cfg.instance_name(inst);
-            true
+            Reach::Browser {
+                fallback_port: (port != DEFAULT_PORT && port != 0).then_some(port),
+            }
         }
-        _ => false,
+        None => Reach::Port,
     };
 
     // Be explicit rather than relying on tiberius's default (`Required` when
@@ -459,7 +551,7 @@ fn build_config(
     }
 
     cfg.authentication(auth_method(&opts, &profile.username, password)?);
-    Ok((cfg, named_instance))
+    Ok((cfg, reach))
 }
 
 /// Translate the profile's auth mode into a `tiberius` [`AuthMethod`].
@@ -501,26 +593,35 @@ pub async fn open_pool(
     known_hosts: SharedKnownHosts,
     limits: crate::db::pool::PoolLimits,
 ) -> AppResult<(DbPool, Option<SshTunnelHandle>)> {
-    let (host, port, handle) = match profile.ssh_tunnel.as_ref() {
-        Some(tunnel) => {
-            let h = ssh::open_tunnel(tunnel, ssh_secret, &profile.host, profile.port, known_hosts)
-                .await?;
-            ("127.0.0.1".to_string(), h.local_port, Some(h))
-        }
-        None => (profile.host.clone(), profile.port, None),
-    };
-
-    let (cfg, named_instance) = build_config(profile, password, &host, port)?;
+    // Normalise `HOST\INSTANCE` before anything else looks at either field:
+    // the tunnel below is opened against the *host*, so a backslash left in it
+    // would be tunnelled to a hostname that cannot resolve.
+    let (server, instance) = split_instance(
+        &profile.host,
+        profile.mssql.as_ref().and_then(|o| o.instance.as_deref()),
+    );
     // A named instance is resolved through the SQL Browser, which the tunnel
     // does not forward (it is a separate UDP service on 1434). Fail loudly
-    // rather than silently connecting to the wrong port.
-    if named_instance && handle.is_some() {
+    // rather than silently connecting to the wrong port — and before opening
+    // the tunnel, so the refusal doesn't cost an SSH handshake first.
+    if instance.is_some() && profile.ssh_tunnel.is_some() {
         return Err(AppError::InvalidInput(
             "a named SQL Server instance cannot be reached through an SSH tunnel — \
              tunnel the instance's own TCP port and leave the instance name empty"
                 .into(),
         ));
     }
+
+    let (host, port, handle) = match profile.ssh_tunnel.as_ref() {
+        Some(tunnel) => {
+            let h =
+                ssh::open_tunnel(tunnel, ssh_secret, &server, profile.port, known_hosts).await?;
+            ("127.0.0.1".to_string(), h.local_port, Some(h))
+        }
+        None => (server, profile.port, None),
+    };
+
+    let (cfg, reach) = build_config(profile, password, &host, port, instance.as_deref())?;
 
     // Honour the grant the endpoint registry made for this server rather than
     // a constant of our own: a TDS session costs the server exactly what a
@@ -532,7 +633,7 @@ pub async fn open_pool(
     let pool = MsSqlPool {
         inner: Arc::new(Inner {
             cfg,
-            named_instance,
+            reach,
             permits: Arc::new(Semaphore::new(max_sessions)),
             idle: Mutex::new(Vec::new()),
         }),
@@ -551,7 +652,57 @@ pub async fn open_pool(
 
 #[cfg(test)]
 mod tests {
-    use super::{binary_convert, result_leaves_session_healthy};
+    use super::{binary_convert, result_leaves_session_healthy, split_instance};
+
+    #[test]
+    fn accepts_the_ssms_host_backslash_instance_form_in_either_field() {
+        // Pasted whole into the host field.
+        assert_eq!(
+            split_instance("SRV\\INST", None),
+            ("SRV".into(), Some("INST".into()))
+        );
+        // Pasted whole into the instance field.
+        assert_eq!(
+            split_instance("", Some("SRV\\INST")),
+            ("SRV".into(), Some("INST".into()))
+        );
+        // Already split by hand — the shape the dialog's placeholder asks for.
+        assert_eq!(
+            split_instance("SRV", Some("INST")),
+            ("SRV".into(), Some("INST".into()))
+        );
+    }
+
+    #[test]
+    fn an_explicit_instance_field_wins_over_a_suffix_on_the_host() {
+        assert_eq!(
+            split_instance("SRV\\ONE", Some("TWO")),
+            ("SRV".into(), Some("TWO".into()))
+        );
+    }
+
+    #[test]
+    fn a_prefix_on_the_instance_field_never_overrides_a_resolved_host() {
+        // The host argument is what an SSH tunnel substitutes; a stray prefix
+        // in the instance field must not steer the connection away from it.
+        assert_eq!(
+            split_instance("127.0.0.1", Some("OTHER\\INST")),
+            ("127.0.0.1".into(), Some("INST".into()))
+        );
+    }
+
+    #[test]
+    fn blank_and_default_instances_stay_none() {
+        assert_eq!(split_instance("SRV", None), ("SRV".into(), None));
+        assert_eq!(split_instance("SRV", Some("   ")), ("SRV".into(), None));
+        // A trailing backslash is a default instance spelled clumsily, not an
+        // instance named "".
+        assert_eq!(split_instance("SRV\\", None), ("SRV".into(), None));
+        assert_eq!(
+            split_instance("  SRV  ", Some(" INST ")),
+            ("SRV".into(), Some("INST".into()))
+        );
+    }
 
     #[test]
     fn a_successful_result_leaves_the_session_healthy() {

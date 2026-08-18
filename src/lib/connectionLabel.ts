@@ -50,6 +50,27 @@ export function parentConnectionId(connectionId: string): string {
 }
 
 /**
+ * Mint the synthetic id `open_database_view` registers for `db` under
+ * `parentId`. The separator lives here, next to the parsers that consume it,
+ * so no caller has to spell `::db::` out a second time.
+ */
+export function databaseViewId(parentId: string, db: string): string {
+  return `${parentId}${DB_SEP}${db}`;
+}
+
+/**
+ * Whether `id` is one of `parentId`'s per-database children.
+ *
+ * Lets a caller holding only a profile id find every synthetic slice opened
+ * beneath it — which is what refreshing a multi-DB connection needs, since
+ * the tables the user is looking at live in the *child* slices and never in
+ * the parent's (see `useSchema.refreshTree`).
+ */
+export function isDatabaseViewOf(id: string, parentId: string): boolean {
+  return id.startsWith(`${parentId}${DB_SEP}`);
+}
+
+/**
  * Resolve a connectionId to its driver, for surfaces that show a
  * `DriverBadge` next to the connection (the workspace tab strip). Shares the
  * `<parent>::db::<db>` parsing with [`resolveConnectionLabel`] — a synthetic

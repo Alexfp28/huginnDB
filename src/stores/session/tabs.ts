@@ -243,6 +243,32 @@ export const useTabs = create<TabsState>((set, get) => ({
 }));
 
 /**
+ * Close every tab bound to a (connection, schema, table) triple.
+ *
+ * The companion to [`retitleTabsForTableRename`] for the one rename that
+ * *can't* be retitled: a MongoDB `renameCollection` that also moves the
+ * collection to another database. The destination lives behind a different
+ * connection id (its own `<parent>::db::<db>` pool), so a retitled tab would
+ * keep querying the database the collection just left.
+ */
+export function closeTabsForTable(
+  connectionId: string,
+  schema: string | undefined,
+  table: string,
+): void {
+  const { tabs, close } = useTabs.getState();
+  for (const tab of tabs) {
+    if (
+      tab.connectionId === connectionId &&
+      tab.schema === schema &&
+      tab.table === table
+    ) {
+      close(tab.id);
+    }
+  }
+}
+
+/**
  * Retitle every open table-data or structure tab pointing at a table that
  * was just renamed, so it doesn't keep showing (or, for structure tabs,
  * re-fetching) the old name. Called from both places a rename can happen:

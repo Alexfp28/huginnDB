@@ -281,13 +281,24 @@ export const api = {
     invoke<void>("empty_table", { connectionId, schema, table }),
 
   /** `ALTER TABLE … RENAME TO` (or `RENAME TABLE` on MySQL) for a
-   *  catalog-sourced (schema, table) pair. */
+   *  catalog-sourced (schema, table) pair — `renameCollection` on MongoDB.
+   *
+   *  `newSchema` is MongoDB-only (the destination database, when the rename
+   *  also moves the collection); the SQL drivers ignore it. */
   renameTable: (
     connectionId: string,
     schema: string | undefined,
     table: string,
     newName: string,
-  ) => invoke<void>("rename_table", { connectionId, schema, table, newName }),
+    newSchema?: string,
+  ) =>
+    invoke<void>("rename_table", {
+      connectionId,
+      schema,
+      table,
+      newName,
+      newSchema,
+    }),
 
   /**
    * Return a short version string for the connected server, e.g.

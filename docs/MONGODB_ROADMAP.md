@@ -278,7 +278,9 @@ with the UI in `src/components/aggregation/`:
 Known limits, deliberate:
 - **A view cannot be renamed.** MongoDB has no rename for a view; the only path
   is drop + recreate, which is a destructive gesture rather than a rename, so
-  the explorer offers no "Rename view" for Mongo.
+  the explorer offers no "Rename view" for Mongo. A *collection* can be renamed
+  — see the entry below — and `rename_collection` refuses a view up front with
+  a message saying so, rather than relaying the server's own error.
 - **`collation` is not round-tripped.** `createView` accepts one; the editor
   neither shows nor preserves it, so redefining a view that has a collation
   through `collMod` drops it. Hook: carry `options.collation` on
@@ -288,6 +290,27 @@ Known limits, deliberate:
   Pipelines carry filters and field paths rather than stored data, so this is
   rare; the fix is the same one item #8 needs — a non-lossy display form.
 - **No `explain`.** See item #9.
+
+### 13. Rename a collection
+✅ **Shipped.** `renameCollection` is a run-command on the `admin` database
+that qualifies both sides with a database name (`db.collection`), so moving a
+collection to another database is the same operation as renaming it and the
+explorer offers both from one dialog. Lives in `db/mongo/schema.rs`
+(`rename_collection`) and is dispatched from the shared `rename_table`
+command's MongoDB arm, so the tree, the tab retitling and the refresh are the
+driver-agnostic ones the SQL drivers already use.
+
+Three rules worth keeping:
+- **`dropTarget` is always `false`.** Renaming onto an existing collection has
+  to surface as an error, not as a silent drop of whatever was there.
+- **Views are refused before the round trip**, with a message that says to
+  recreate instead (see item #12's note).
+- **A cross-database move copies the documents server-side**, so it costs time
+  proportional to the collection and needs privileges on both databases. The
+  dialog says so before submitting, and closes the collection's open tabs
+  afterwards — the destination lives behind a different `<parent>::db::<db>`
+  connection id, so a retitled tab would keep querying the database the
+  collection just left.
 
 ### 10. Proper editor language for MongoDB
 The editor reuses Monaco's `sql` language for syntax highlighting; mongosh would
