@@ -1132,6 +1132,7 @@
       "openCommandActions": "Abrir la paleta de comandos (solo acciones)",
       "toggleTabSwitcher": "Cambiar entre pestañas abiertas",
       "refreshData": "Refrescar datos",
+      "refreshSchema": "Recargar esquema",
       "refreshHint": "Ctrl/Cmd+R también refresca siempre.",
       "runQuery": "Ejecutar query en el editor activo",
       "expandSelectedCell": "Expandir celda seleccionada",

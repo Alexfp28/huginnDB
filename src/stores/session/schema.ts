@@ -6,6 +6,7 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
+import { isDatabaseViewOf, parentConnectionId } from "@/lib/connectionLabel";
 import type {
   ColumnInfo,
   DatabaseInfo,
@@ -45,8 +46,28 @@ interface ConnectionSchema {
 
 interface SchemaState {
   byConnection: Record<string, ConnectionSchema>;
-  /** Re-fetch databases + tables for `connectionId`. */
+  /**
+   * Re-fetch databases + tables for `connectionId`, **invalidating** the
+   * cached columns/indexes with them and re-loading the ones whose tree node
+   * is still open.
+   *
+   * This only ever touches the one slice it is given. On a multi-DB
+   * connection that is almost never the slice the user is looking at — use
+   * [`refreshTree`] from anything holding a profile id.
+   */
   refresh: (connectionId: string) => Promise<void>;
+  /**
+   * Refresh a connection *and* every per-database child slice opened beneath
+   * it (`<parent>::db::<db>`).
+   *
+   * A server-wide connection's tables live in the child slices, never in the
+   * parent's — the parent's `list_tables` answers for the login's default
+   * database (Postgres) or for nothing at all (MySQL, where `SELECT
+   * DATABASE()` is NULL). So a plain `refresh(parentId)` re-fetched a list
+   * nobody renders and left the visible subtree untouched, which is what made
+   * "Refresh" look broken for a table created outside the app.
+   */
+  refreshTree: (connectionId: string) => Promise<void>;
   /** Toggle a tree-node key in the `expanded` set. */
   toggleNode: (connectionId: string, key: string) => void;
   /** Populate `columns[tableKey(schema, table)]`. */
@@ -109,6 +130,20 @@ export const useSchema = create<SchemaState>((set, get) => ({
         api.listDatabases(connectionId),
         api.listTables(connectionId),
       ]);
+      // Tables whose per-table metadata was cached *and* whose node is still
+      // open — read before the wipe below so they can be re-fetched after it.
+      // Computed here rather than inside the `set` updater to keep that
+      // updater a pure state transition.
+      const before = get().byConnection[connectionId];
+      const reloadColumns: TableInfo[] = [];
+      const reloadIndexes: TableInfo[] = [];
+      for (const t of tables) {
+        if (!before) break;
+        const k = tableKey(t.schema, t.name);
+        if (!before.expanded.has(`table:${k}`)) continue;
+        if (before.columns[k] || before.columnErrors[k]) reloadColumns.push(t);
+        if (before.indexes[k] || before.indexErrors[k]) reloadIndexes.push(t);
+      }
       set((state) => {
         // Discard a response that outlived its slice — see the note in the
         // catch below.
@@ -121,12 +156,31 @@ export const useSchema = create<SchemaState>((set, get) => ({
               ...current,
               databases,
               tables,
+              // Invalidate the per-table metadata too. Keeping it across a
+              // refresh is what made an `ALTER TABLE ADD COLUMN` performed
+              // outside the app invisible forever: `TableRow` only calls
+              // `loadColumns` when the key is *absent* (a deliberate guard, so
+              // collapsing and re-expanding doesn't re-query), and the only
+              // other thing that ever cleared these was `drop()` on
+              // disconnect. "Refresh" has to mean the schema, not just the
+              // table list.
+              columns: {},
+              indexes: {},
+              columnErrors: {},
+              indexErrors: {},
               loading: false,
               initialized: true,
             },
           },
         };
       });
+      // Re-populate what the user has open, so an expanded table comes back
+      // with its (now current) columns instead of an empty node the guard
+      // above would never fill on its own.
+      await Promise.all([
+        ...reloadColumns.map((t) => get().loadColumns(connectionId, t.schema, t.name)),
+        ...reloadIndexes.map((t) => get().loadIndexes(connectionId, t.schema, t.name)),
+      ]);
     } catch (e) {
       set((state) => {
         // If `drop(connectionId)` ran while this call was in flight, the
@@ -161,6 +215,21 @@ export const useSchema = create<SchemaState>((set, get) => ({
         };
       });
     }
+  },
+  refreshTree: async (connectionId) => {
+    // Accept either id shape: a child id resolves to its parent, so a caller
+    // never has to know which one it is holding.
+    const parent = parentConnectionId(connectionId);
+    const ids = new Set([
+      parent,
+      connectionId,
+      ...Object.keys(get().byConnection).filter((id) =>
+        isDatabaseViewOf(id, parent),
+      ),
+    ]);
+    // Per-connection failures are already captured on each slice's `error`,
+    // so one unreachable child can't abort the rest.
+    await Promise.all([...ids].map((id) => get().refresh(id)));
   },
   toggleNode: (connectionId, key) => {
     const cur = get().byConnection[connectionId] ?? emptyState();

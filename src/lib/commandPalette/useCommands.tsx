@@ -134,7 +134,10 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   const connect = useConnections((s) => s.connect);
   const disconnect = useConnections((s) => s.disconnect);
   const byConnection = useSchema((s) => s.byConnection);
-  const refreshSchema = useSchema((s) => s.refresh);
+  // `refreshTree`, not `refresh`: `selected` is always a profile id (gotcha
+  // #32), and on a multi-DB connection the tables live in the per-database
+  // child slices beneath it.
+  const refreshSchema = useSchema((s) => s.refreshTree);
   const tabs = useTabs((s) => s.tabs);
   const activeTabId = useTabs((s) => s.activeId);
   const selected = useUi((s) => s.selectedConnectionId);
@@ -234,6 +237,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         detail: resolveConnectionLabel(profiles, selected),
         keywords: "refresh reload schema tables recargar esquema",
         icon: <RefreshCw className="h-4 w-4" />,
+        combo: combo("refreshSchema"),
         run: () => void refreshSchema(selected),
       });
     }

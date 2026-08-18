@@ -1132,6 +1132,7 @@
       "openCommandActions": "Open command palette (actions only)",
       "toggleTabSwitcher": "Switch between open tabs",
       "refreshData": "Refresh data",
+      "refreshSchema": "Refresh schema",
       "refreshHint": "Ctrl/Cmd+R also always refreshes.",
       "runQuery": "Run query in active editor",
       "expandSelectedCell": "Expand selected cell",

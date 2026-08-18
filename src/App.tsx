@@ -618,6 +618,9 @@ export default function App() {
   const refreshCombo = usePreferences((s) =>
     getBinding(s.prefs.keybindings, "refreshData"),
   );
+  const refreshSchemaCombo = usePreferences((s) =>
+    getBinding(s.prefs.keybindings, "refreshSchema"),
+  );
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing) return;
@@ -644,6 +647,14 @@ export default function App() {
         toggleSwitcher();
         return;
       }
+      // Checked *before* `refreshData` below, whose hard-coded `Ctrl/Cmd+R`
+      // alias would otherwise swallow the default `Ctrl+Shift+R` (with Shift
+      // held, `e.key` is `"R"`).
+      if (!e.repeat && matchesBinding(e, refreshSchemaCombo)) {
+        e.preventDefault();
+        if (selected) void useSchema.getState().refreshTree(selected);
+        return;
+      }
       // `Ctrl/Cmd+R` is a permanent alias on top of the rebindable
       // `refreshData` combo (default F5) — always intercepting the native
       // WebView reload is a safety necessity, not a preference, so it can't
@@ -651,7 +662,9 @@ export default function App() {
       if (
         !e.repeat &&
         (matchesBinding(e, refreshCombo) ||
-          ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")))
+          ((e.ctrlKey || e.metaKey) &&
+            !e.shiftKey &&
+            (e.key === "r" || e.key === "R")))
       ) {
         // Redirect to the same "refresh" action already offered as a
         // button: the active table tab's data if one is open, otherwise the
@@ -665,7 +678,9 @@ export default function App() {
         if (activeTab?.kind === "table" && refreshTable(activeTab.id)) {
           return;
         }
-        if (selected) void useSchema.getState().refresh(selected);
+        // `refreshTree`: `selected` is always a profile id, and a multi-DB
+        // connection keeps its tables in the child slices under it.
+        if (selected) void useSchema.getState().refreshTree(selected);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -681,6 +696,7 @@ export default function App() {
     paletteActionsCombo,
     switcherCombo,
     refreshCombo,
+    refreshSchemaCombo,
   ]);
 
   // Stable derived breadcrumb metadata; both inputs are reference-stable

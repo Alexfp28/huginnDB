@@ -299,6 +299,7 @@ export function ConnectionActionsMenu({
   const isActive = useConnections((s) => s.active.has(connectionId));
   const cs = useSchema((s) => s.byConnection[connectionId]);
   const refresh = useSchema((s) => s.refresh);
+  const refreshTree = useSchema((s) => s.refreshTree);
   const [createDbOpen, setCreateDbOpen] = useState(false);
   const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
   const [dbPickerOpen, setDbPickerOpen] = useState(false);
@@ -348,7 +349,11 @@ export function ConnectionActionsMenu({
               <ContextMenuAction
                 icon={RefreshCw}
                 label={t("schema.refresh")}
-                onSelect={() => refresh(connectionId)}
+                // `refreshTree`, not `refresh`: on a multi-DB connection the
+                // tables under this row live in the per-database child slices,
+                // and refreshing only the profile id left every one of them
+                // stale (see the store's note on `refreshTree`).
+                onSelect={() => void refreshTree(connectionId)}
               />
               {canCreateDatabase && (
                 <ContextMenuAction
@@ -1253,6 +1258,29 @@ function DatabaseRoot({
     }
   };
 
+  /**
+   * Refresh what this node actually shows.
+   *
+   * The tables under a database live in its synthetic
+   * `<parent>::db::<db>` slice, so refreshing the *parent* — which is what
+   * this menu used to do — re-fetched a table list nobody renders and left
+   * the visible subtree exactly as it was. A table created outside the app
+   * never appeared, no matter how many times "Refresh" was clicked. Both
+   * slices are refreshed: the parent for the database list itself, the child
+   * for this database's collections/tables.
+   *
+   * `resolveChildId` opens the pool when this database has never been
+   * expanded, the same lazy-open every other action in this menu does.
+   */
+  const refreshThisDatabase = async () => {
+    const id = await resolveChildId();
+    const schema = useSchema.getState();
+    await Promise.all([
+      schema.refresh(parentId),
+      id ? schema.refresh(id) : Promise.resolve(),
+    ]);
+  };
+
   // "New query here": open a query tab scoped to *this* database.
   const openQueryHere = async () => {
     const id = await resolveChildId();
@@ -1411,7 +1439,7 @@ function DatabaseRoot({
           <ContextMenuAction
             icon={RefreshCw}
             label={t("schema.refresh")}
-            onSelect={() => void useSchema.getState().refresh(parentId)}
+            onSelect={() => void refreshThisDatabase()}
           />
           <ContextMenuSeparator />
           <ContextMenuAction

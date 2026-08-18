@@ -16,6 +16,7 @@ export type ActionId =
   | "openCommandActions"
   | "toggleTabSwitcher"
   | "refreshData"
+  | "refreshSchema"
   | "runQuery"
   | "expandSelectedCell";
 
@@ -45,6 +46,11 @@ export const ACTIONS: ActionSpec[] = [
   { id: "openCommandActions", defaultCombo: "Ctrl+Shift+P", labelKey: "settings.shortcuts.openCommandActions" },
   { id: "toggleTabSwitcher", defaultCombo: "Ctrl+P", labelKey: "settings.shortcuts.toggleTabSwitcher" },
   { id: "refreshData", defaultCombo: "F5", labelKey: "settings.shortcuts.refreshData" },
+  // Deliberately a *different* action from `refreshData`: F5 refreshes the
+  // rows of the table you are looking at, this one re-reads the catalog
+  // (databases, tables, and the columns of every open node) for the selected
+  // connection and every per-database view under it.
+  { id: "refreshSchema", defaultCombo: "Ctrl+Shift+R", labelKey: "settings.shortcuts.refreshSchema" },
   { id: "runQuery", defaultCombo: "Ctrl+Enter", labelKey: "settings.shortcuts.runQuery" },
   { id: "expandSelectedCell", defaultCombo: "Space", labelKey: "settings.shortcuts.expandSelectedCell" },
 ];
