@@ -1240,7 +1240,7 @@ pub fn import_profiles(
 
     let result = {
         let mut profiles = state.profiles.write();
-        let result = apply_profile_imports(
+        let (result, _id_map) = apply_profile_imports(
             &mut profiles,
             export.profiles,
             passphrase.as_deref(),
@@ -1257,24 +1257,29 @@ pub fn import_profiles(
 /// `resolution_map` for ids that already exist there. Shared by
 /// [`import_profiles`] and `import_environment` (`commands::prefs`) — the
 /// conflict/rename/keychain rules are identical either way, only *where* the
-/// exported profiles came from (a standalone bundle vs. an environment's
-/// slice of one) differs.
+/// exported profiles came from (a standalone bundle vs. an environment
+/// bundle's shared profile pool) differs.
 ///
 /// Every imported profile receives a **fresh UUID** regardless of whether it
 /// came with one in the file, to avoid keychain-account collisions with
-/// profiles already on this machine.
+/// profiles already on this machine. The second return value maps each
+/// *original* profile id to that fresh one (skipped profiles are absent) —
+/// `import_profiles` has no use for it, but `import_environment` needs it to
+/// translate each environment bundle's `connection_ids` into the ids that
+/// actually landed in `profiles.json`.
 pub(crate) fn apply_profile_imports(
     profiles: &mut Vec<ConnectionProfile>,
     exported: Vec<transfer::ExportedProfile>,
     passphrase: Option<&str>,
     resolution_map: &std::collections::HashMap<String, ConflictAction>,
-) -> AppResult<ImportResult> {
+) -> AppResult<(ImportResult, std::collections::HashMap<String, String>)> {
     let mut result = ImportResult {
         imported: vec![],
         skipped: vec![],
         renamed: vec![],
         needs_password: vec![],
     };
+    let mut id_map = std::collections::HashMap::new();
 
     for ep in exported {
         // Determine action for profiles that conflict with an existing id.
@@ -1308,6 +1313,7 @@ pub(crate) fn apply_profile_imports(
 
         // Always assign a fresh UUID to avoid keychain collisions.
         let new_id = Uuid::new_v4().to_string();
+        id_map.insert(ep.profile.id.clone(), new_id.clone());
         let original_name = ep.profile.name.clone();
 
         // Ensure the display name is unique; append " (imported)" or " (2)" etc.
@@ -1368,7 +1374,7 @@ pub(crate) fn apply_profile_imports(
         result.imported.push(new_id);
     }
 
-    Ok(result)
+    Ok((result, id_map))
 }
 
 // ---------------------------------------------------------------------------
@@ -1557,5 +1563,83 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, AppError::NotConnected(_)));
+    }
+
+    fn profile(id: &str, name: &str) -> ConnectionProfile {
+        ConnectionProfile {
+            id: id.into(),
+            name: name.into(),
+            driver: crate::state::Driver::Postgres,
+            host: "localhost".into(),
+            port: 5432,
+            database: String::new(),
+            username: "u".into(),
+            ssl: false,
+            ssh_tunnel: None,
+            connection_string: None,
+            auth_source: None,
+            mssql: None,
+            ephemeral: false,
+            group: None,
+            visible_databases: None,
+            mcp_write: Default::default(),
+            max_connections: None,
+            origin_id: None,
+        }
+    }
+
+    fn exported(id: &str, name: &str) -> transfer::ExportedProfile {
+        transfer::ExportedProfile {
+            profile: profile(id, name),
+            secrets: None,
+        }
+    }
+
+    #[test]
+    fn apply_profile_imports_maps_original_ids_to_fresh_ones() {
+        // `import_environment` needs this map to translate a bundle's
+        // `connection_ids` (the original, pre-import ids) into whatever
+        // actually landed in `profiles.json` — every imported profile gets a
+        // fresh UUID, never its original id (to avoid keychain collisions).
+        let mut profiles = Vec::new();
+        let (result, id_map) = apply_profile_imports(
+            &mut profiles,
+            vec![exported("orig-a", "A"), exported("orig-b", "B")],
+            None,
+            &std::collections::HashMap::new(),
+        )
+        .unwrap();
+
+        assert_eq!(result.imported.len(), 2);
+        assert_eq!(id_map.len(), 2);
+        let new_a = id_map.get("orig-a").expect("orig-a mapped");
+        let new_b = id_map.get("orig-b").expect("orig-b mapped");
+        assert_ne!(new_a, "orig-a", "must not reuse the original id");
+        assert!(result.imported.contains(new_a));
+        assert!(result.imported.contains(new_b));
+        assert!(profiles.iter().any(|p| &p.id == new_a && p.name == "A"));
+    }
+
+    #[test]
+    fn apply_profile_imports_skipped_profiles_are_absent_from_the_id_map() {
+        let mut profiles = Vec::new();
+        let mut resolutions = std::collections::HashMap::new();
+        resolutions.insert("orig-a".to_string(), ConflictAction::Skip);
+        // Pre-seed a profile with the same id so it registers as a conflict.
+        profiles.push(profile("orig-a", "Existing"));
+
+        let (result, id_map) = apply_profile_imports(
+            &mut profiles,
+            vec![exported("orig-a", "A")],
+            None,
+            &resolutions,
+        )
+        .unwrap();
+
+        assert_eq!(result.skipped, vec!["orig-a".to_string()]);
+        assert!(
+            !id_map.contains_key("orig-a"),
+            "a skipped profile must not appear in the id map"
+        );
     }
 }

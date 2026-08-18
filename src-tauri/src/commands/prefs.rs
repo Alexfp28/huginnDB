@@ -12,7 +12,8 @@ use crate::store;
 use crate::tab_state::{self, ConnectionTabState, Environment, LaunchState, Origin};
 use crate::transfer::{
     self, ConflictAction, ConflictResolution, EnvironmentExportFile, EnvironmentImportAnalysis,
-    EnvironmentImportResult, ExportMetadata, ExportedEnvironment, ExportedOrigin, KIND_ENVIRONMENT,
+    EnvironmentImportAnalysisEntry, EnvironmentImportResult, ExportMetadata, ExportedEnvironment,
+    ExportedEnvironmentBundle, ExportedOrigin, ImportedEnvironment, KIND_ENVIRONMENT,
 };
 use tauri::{AppHandle, Emitter, State};
 
@@ -385,39 +386,54 @@ fn referenced_profile_ids(env: &Environment) -> std::collections::HashSet<String
     ids
 }
 
-/// Export one environment: its cosmetics, the connection profiles it
-/// references, and its registered shared origins (name + path only — never
-/// the passphrase, which stays in this machine's keychain; see
-/// `commands::origins`).
+/// Export one or more environments into a single bundle: each one's
+/// cosmetics and registered shared origins (name + path only — never the
+/// passphrase, which stays in this machine's keychain; see
+/// `commands::origins`), plus a single deduplicated pool of the connection
+/// profiles any of them reference.
 ///
 /// Tabs, dockview geometry and launch state are deliberately left out — they
-/// are session artifacts tied to this machine, not part of the environment's
+/// are session artifacts tied to this machine, not part of an environment's
 /// portable identity (CLAUDE.md gotcha #10).
 #[tauri::command]
-pub async fn export_environment(
+pub async fn export_environments(
     app: AppHandle,
     state: State<'_, AppState>,
-    id: String,
+    ids: Vec<String>,
     include_passwords: bool,
     passphrase: Option<String>,
 ) -> AppResult<String> {
+    if ids.is_empty() {
+        return Err(AppError::InvalidInput(
+            "select at least one environment to export".into(),
+        ));
+    }
     if include_passwords && passphrase.is_none() {
         return Err(AppError::InvalidInput(
             "a passphrase is required when include_passwords is true".into(),
         ));
     }
 
-    let env = {
+    let envs: Vec<Environment> = {
         let guard = state.tab_state.read();
-        guard
-            .environments
-            .iter()
-            .find(|e| e.id == id)
-            .cloned()
-            .ok_or_else(|| AppError::InvalidInput(format!("no environment with id {id}")))?
+        ids.iter()
+            .map(|id| {
+                guard
+                    .environments
+                    .iter()
+                    .find(|e| &e.id == id)
+                    .cloned()
+                    .ok_or_else(|| AppError::InvalidInput(format!("no environment with id {id}")))
+            })
+            .collect::<AppResult<Vec<_>>>()?
     };
-    let profile_ids = referenced_profile_ids(&env);
 
+    // Union of every profile any selected environment references — not one
+    // copy per environment (see `EnvironmentExportFile`'s doc).
+    let mut profile_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for env in &envs {
+        profile_ids.extend(referenced_profile_ids(env));
+    }
     let profiles_snapshot: Vec<ConnectionProfile> = {
         let guard = state.profiles.read();
         guard
@@ -432,6 +448,31 @@ pub async fn export_environment(
         passphrase.as_deref(),
     )?;
 
+    let bundles: Vec<ExportedEnvironmentBundle> = envs
+        .iter()
+        .map(|env| {
+            let mut connection_ids: Vec<String> = referenced_profile_ids(env).into_iter().collect();
+            connection_ids.sort();
+            ExportedEnvironmentBundle {
+                environment: ExportedEnvironment {
+                    name: env.name.clone(),
+                    color: env.color.clone(),
+                    icon: env.icon.clone(),
+                    theme_id: env.theme_id.clone(),
+                },
+                connection_ids,
+                origins: env
+                    .origins
+                    .iter()
+                    .map(|o| ExportedOrigin {
+                        name: o.name.clone(),
+                        path: o.path.clone(),
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
+
     let now = chrono::Utc::now().to_rfc3339();
     let file = EnvironmentExportFile {
         meta: ExportMetadata {
@@ -441,33 +482,24 @@ pub async fn export_environment(
             encrypted: include_passwords,
             kind: KIND_ENVIRONMENT.into(),
         },
-        environment: ExportedEnvironment {
-            name: env.name.clone(),
-            color: env.color.clone(),
-            icon: env.icon.clone(),
-            theme_id: env.theme_id.clone(),
-        },
+        environments: bundles,
         profiles: exported_profiles,
-        origins: env
-            .origins
-            .iter()
-            .map(|o| ExportedOrigin {
-                name: o.name.clone(),
-                path: o.path.clone(),
-            })
-            .collect(),
     };
 
     let json = serde_json::to_string_pretty(&file)?;
 
     let date_part = now.get(..10).unwrap_or("export");
-    let suggested = format!("huginndb-environment-{date_part}.json");
+    let suggested = if envs.len() == 1 {
+        format!("huginndb-environment-{date_part}.json")
+    } else {
+        format!("huginndb-environments-{date_part}.json")
+    };
 
     use tauri_plugin_dialog::DialogExt;
     let path = app
         .dialog()
         .file()
-        .set_title("Export environment")
+        .set_title("Export environments")
         .set_file_name(&suggested)
         .add_filter("JSON", &["json"])
         .blocking_save_file()
@@ -505,27 +537,39 @@ pub fn analyze_environment_import(
     let profiles = state.profiles.read();
     let conflicts = transfer::detect_conflicts(&profiles, &export.profiles);
 
+    let environments = export
+        .environments
+        .iter()
+        .map(|b| EnvironmentImportAnalysisEntry {
+            name: b.environment.name.clone(),
+            connection_count: b.connection_ids.len(),
+            origins: b.origins.clone(),
+        })
+        .collect();
+
     Ok(EnvironmentImportAnalysis {
-        environment_name: export.environment.name,
+        environments,
         total_profiles: export.profiles.len(),
         encrypted: export.meta.encrypted,
         conflicts,
-        origins: export.origins,
     })
 }
 
-/// Import an environment export as a **new** environment — never merged into
-/// an existing one, which is what makes this safe to run repeatedly and what
+/// Import an environment export: every bundle in the file becomes a **new**
+/// environment — none is ever merged into or overwritten on top of one that
+/// already exists, which is what makes this safe to run repeatedly and what
 /// guarantees the origins/cosmetics below never collide with anything already
-/// configured.
+/// configured. The only real conflict surface is the shared connection-profile
+/// pool (`profiles.json` is global), resolved once for the whole file via
+/// `apply_profile_imports` — not once per environment.
 ///
-/// The new environment's connection-tree is scoped to exactly the imported
-/// profiles via `launch.visible_connections` (the same DataGrip-style filter
-/// #107 already added), rather than showing every profile on the machine —
-/// that is what makes the imported set read as "this environment's
-/// connections" instead of just adding them to the global pile. None of them
-/// are auto-connected (`launch.active_connections` stays empty): importing an
-/// environment should not silently open N live database connections.
+/// Each new environment's connection-tree is scoped to exactly the profiles
+/// its bundle referenced via `launch.visible_connections` (the same
+/// DataGrip-style filter #107 already added), translated through the
+/// import's original-id → new-id map so a skipped or renamed profile is
+/// reflected correctly. None are auto-connected (`launch.active_connections`
+/// stays empty): importing an environment should not silently open N live
+/// database connections.
 ///
 /// Each origin is registered with a fresh id and no stored passphrase. An
 /// encrypted one surfaces the same "no passphrase stored" state a freshly
@@ -564,22 +608,22 @@ pub fn import_environment(
         .map(|r| (r.id, r.action))
         .collect();
 
-    let profile_result = {
+    let (profile_result, id_map) = {
         let mut profiles = state.profiles.write();
-        let result = apply_profile_imports(
+        let (result, id_map) = apply_profile_imports(
             &mut profiles,
             export.profiles,
             passphrase.as_deref(),
             &resolution_map,
         )?;
         store::save_profiles(&profiles)?;
-        result
+        (result, id_map)
     };
     let _ = app.emit(PROFILES_CHANGED_EVENT, ());
 
-    let (snapshot, new_env_id, origin_ids) = {
+    let (snapshot, imported_environments) = {
         let mut guard = state.tab_state.write();
-        let order = guard
+        let base_order = guard
             .environments
             .iter()
             .map(|e| e.order)
@@ -587,49 +631,69 @@ pub fn import_environment(
             .unwrap_or(0)
             + 1;
 
-        let mut origins = Vec::with_capacity(export.origins.len());
-        let mut origin_ids = Vec::with_capacity(export.origins.len());
-        for eo in &export.origins {
-            let oid = uuid::Uuid::new_v4().to_string();
-            origin_ids.push(oid.clone());
-            origins.push(Origin {
-                id: oid,
-                name: eo.name.clone(),
-                path: eo.path.clone(),
-                last_synced_at: None,
+        let mut imported_environments = Vec::with_capacity(export.environments.len());
+        for (i, bundle) in export.environments.into_iter().enumerate() {
+            let ExportedEnvironmentBundle {
+                environment,
+                connection_ids,
+                origins: bundle_origins,
+            } = bundle;
+
+            let mut origins = Vec::with_capacity(bundle_origins.len());
+            let mut origin_ids = Vec::with_capacity(bundle_origins.len());
+            for eo in bundle_origins {
+                let oid = uuid::Uuid::new_v4().to_string();
+                origin_ids.push(oid.clone());
+                origins.push(Origin {
+                    id: oid,
+                    name: eo.name,
+                    path: eo.path,
+                    last_synced_at: None,
+                });
+            }
+
+            // Translate this bundle's original connection ids into whatever
+            // they actually landed as — a skipped profile has no entry here.
+            let visible: Vec<String> = connection_ids
+                .iter()
+                .filter_map(|orig| id_map.get(orig).cloned())
+                .collect();
+            let visible_connections = if visible.is_empty() {
+                None
+            } else {
+                Some(visible)
+            };
+
+            let env_id = uuid::Uuid::new_v4().to_string();
+            let name = environment.name.clone();
+            let env = Environment {
+                id: env_id.clone(),
+                name: environment.name,
+                color: environment.color,
+                icon: environment.icon,
+                order: base_order + i as i32,
+                theme_id: environment.theme_id,
+                origins,
+                launch: LaunchState {
+                    visible_connections,
+                    ..LaunchState::default()
+                },
+                ..Environment::default()
+            };
+            imported_environments.push(ImportedEnvironment {
+                environment_id: env_id,
+                name,
+                origin_ids,
             });
+            guard.environments.push(env);
         }
-
-        let visible_connections = if profile_result.imported.is_empty() {
-            None
-        } else {
-            Some(profile_result.imported.clone())
-        };
-
-        let env = Environment {
-            id: uuid::Uuid::new_v4().to_string(),
-            name: export.environment.name,
-            color: export.environment.color,
-            icon: export.environment.icon,
-            order,
-            theme_id: export.environment.theme_id,
-            origins,
-            launch: LaunchState {
-                visible_connections,
-                ..LaunchState::default()
-            },
-            ..Environment::default()
-        };
-        let new_env_id = env.id.clone();
-        guard.environments.push(env);
-        (guard.clone(), new_env_id, origin_ids)
+        (guard.clone(), imported_environments)
     };
     tab_state::save_tab_state(&snapshot)?;
 
     Ok(EnvironmentImportResult {
-        environment_id: new_env_id,
+        environments: imported_environments,
         profiles: profile_result,
-        origin_ids,
     })
 }
 

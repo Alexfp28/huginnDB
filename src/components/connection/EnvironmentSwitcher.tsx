@@ -137,7 +137,7 @@ export function EnvironmentSwitcher() {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    openExport(env.id);
+                    openExport([env.id]);
                   }}
                 >
                   <Download className="h-3 w-3" />

@@ -10,11 +10,14 @@
  *   ├── Manage connections…
  *   ├── Import profiles…
  *   ├── Export profiles…
+ *   ├── Export environments…
  *   └── Import environment…
  *
- * ("Export environment…" is per-environment, so it lives in
- * `EnvironmentSwitcher`'s per-row menu instead of here — this menu has no
- * particular environment to act on.)
+ * `ExportEnvironmentDialog` is also opened from a per-row shortcut in
+ * `EnvironmentSwitcher` (pre-checking just that row) — this is still its only
+ * *mount* point, matching every other dialog here, since where a dialog
+ * mounts and what triggers it are independent (`useEnvironmentTransfer` is
+ * the shared store both trigger points write to).
  */
 
 import { useTranslation } from "react-i18next";
@@ -33,6 +36,7 @@ import {
 import { ConnectionDialog } from "@/components/connection/dialogs/ConnectionDialog";
 import { ExportProfilesDialog } from "@/components/connection/dialogs/ExportProfilesDialog";
 import { ImportProfilesDialog } from "@/components/connection/dialogs/ImportProfilesDialog";
+import { ExportEnvironmentDialog } from "@/components/connection/dialogs/ExportEnvironmentDialog";
 import { ImportEnvironmentDialog } from "@/components/connection/dialogs/ImportEnvironmentDialog";
 
 interface Props {
@@ -55,6 +59,10 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
   const setExportOpen = useConnectionDialog((s) => s.setExportOpen);
   const importOpen = useConnectionDialog((s) => s.importOpen);
   const setImportOpen = useConnectionDialog((s) => s.setImportOpen);
+  const exportEnvOpen = useEnvironmentTransfer((s) => s.exportOpen);
+  const exportEnvPreselect = useEnvironmentTransfer((s) => s.exportPreselect);
+  const openExportEnv = useEnvironmentTransfer((s) => s.openExport);
+  const closeExportEnv = useEnvironmentTransfer((s) => s.closeExport);
   const importEnvOpen = useEnvironmentTransfer((s) => s.importOpen);
   const setImportEnvOpen = useEnvironmentTransfer((s) => s.setImportOpen);
   const { t } = useTranslation();
@@ -97,6 +105,10 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
             {t("menu.file.exportProfiles")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => openExportEnv()}>
+            <Download className="mr-2 h-3.5 w-3.5" />
+            {t("menu.file.exportEnvironments")}
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setImportEnvOpen(true)}>
             <Upload className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.importEnvironment")}
@@ -112,6 +124,11 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
       />
       <ExportProfilesDialog open={exportOpen} onOpenChange={setExportOpen} />
       <ImportProfilesDialog open={importOpen} onOpenChange={setImportOpen} />
+      <ExportEnvironmentDialog
+        open={exportEnvOpen}
+        preselect={exportEnvPreselect}
+        onClose={closeExportEnv}
+      />
       <ImportEnvironmentDialog open={importEnvOpen} onOpenChange={setImportEnvOpen} />
     </>
   );

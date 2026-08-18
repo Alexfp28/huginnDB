@@ -8,25 +8,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- **Export/import an environment as a self-contained bundle.** Each row in
-  `EnvironmentSwitcher` gets a new "Export…" action (`export_environment`)
-  that writes a JSON file with the environment's name/colour/theme, the
-  connection profiles it references, and its registered shared origins
-  (name + path only — never a passphrase, matching `origins.rs`'s existing
-  threat model of keeping the secret out-of-band). File → "Import
-  environment…" (`import_environment`) reads one of these back and **always
-  creates a brand-new environment** — it never merges into or overwrites one
-  already configured, so a colleague's exported environment can never
-  collide with your own origins, connections, or environment list. Deliberately
-  excluded: tabs, dockview geometry and launch state, which are session
-  artifacts tied to the machine that produced them (see gotcha #10) rather
-  than part of the environment's portable identity. The new environment's
-  connections tree is scoped to exactly the imported profiles via the
-  existing `visible_connections` filter (#107), and none of them are
-  auto-connected. Connection-profile conflicts reuse `import_profiles`'s
-  exact conflict-resolution UI (overwrite/skip/rename); an imported encrypted
-  origin surfaces the same "no passphrase stored" state a freshly-added one
-  does, resolved on the next sync.
+- **Export/import one or more environments as a self-contained bundle.**
+  File → "Export environments…" opens a checklist (default: everything
+  selected) that writes a single JSON file with each picked environment's
+  name/colour/theme, its registered shared origins (name + path only — never
+  a passphrase, matching `origins.rs`'s existing threat model of keeping the
+  secret out-of-band), and one deduplicated pool of the connection profiles
+  any of them reference (a connection shared by two selected environments is
+  written once, not duplicated). The same dialog also opens pre-checked to
+  just one row from a shortcut in `EnvironmentSwitcher`. File → "Import
+  environment…" reads one of these files back and **always creates brand-new
+  environments** — one per bundle in the file, never merged into or
+  overwritten on top of ones that already exist, so a colleague's exported
+  environments can never collide with your own origins, connections, or
+  environment list. Deliberately excluded: tabs, dockview geometry and
+  launch state, which are session artifacts tied to the machine that
+  produced them (see gotcha #10) rather than part of an environment's
+  portable identity. Each new environment's connections tree is scoped to
+  exactly its own imported profiles via the existing `visible_connections`
+  filter (#107), and none of them are auto-connected. Connection-profile
+  conflicts are resolved once for the whole file, reusing
+  `import_profiles`'s exact conflict-resolution UI (overwrite/skip/rename);
+  an imported encrypted origin surfaces the same "no passphrase stored"
+  state a freshly-added one does, resolved on the next sync.
 - **`.rpm` bundle target**, alongside the existing `.deb`/`.AppImage`, for
   Fedora/openSUSE/RHEL-family distros. Tauri's rpm bundler (the `rpm` crate)
   is pure Rust — no `rpmbuild` or extra system packages — so it builds from

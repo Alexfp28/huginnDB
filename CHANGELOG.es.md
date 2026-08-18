@@ -10,26 +10,32 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
-- **Exportar/importar un entorno como paquete autocontenido.** Cada fila de
-  `EnvironmentSwitcher` tiene ahora una acción "Exportar…"
-  (`export_environment`) que escribe un JSON con el nombre/color/tema del
-  entorno, los perfiles de conexión que referencia, y sus orígenes
-  compartidos registrados (solo nombre y ruta — nunca la contraseña de
-  cifrado, siguiendo el mismo modelo de amenaza que ya tenía `origins.rs`
-  de mantener el secreto fuera de banda). File → "Importar entorno…"
-  (`import_environment`) lee uno de estos ficheros y **siempre crea un
-  entorno nuevo** — nunca fusiona ni sobrescribe uno ya configurado, así que
-  el entorno exportado por un compañero nunca puede colisionar con tus
+- **Exportar/importar uno o varios entornos como paquete autocontenido.**
+  File → "Exportar entornos…" abre una checklist (por defecto todo
+  seleccionado) que escribe un único JSON con, por cada entorno elegido, su
+  nombre/color/tema, sus orígenes compartidos registrados (solo nombre y
+  ruta — nunca la contraseña de cifrado, siguiendo el mismo modelo de
+  amenaza que ya tenía `origins.rs` de mantener el secreto fuera de banda),
+  y un único conjunto deduplicado de los perfiles de conexión que
+  referencian entre todos (una conexión compartida por dos entornos
+  seleccionados se escribe una sola vez, no se duplica). El mismo diálogo
+  también se abre preseleccionando una sola fila desde un atajo en
+  `EnvironmentSwitcher`. File → "Importar entorno…" lee uno de estos
+  ficheros y **siempre crea entornos nuevos** — uno por cada paquete del
+  fichero, nunca fusionados ni sobrescritos sobre uno ya existente, así que
+  los entornos exportados por un compañero nunca pueden colisionar con tus
   propios orígenes, conexiones o lista de entornos. Quedan deliberadamente
-  fuera: pestañas, geometría del dockview y el estado de lanzamiento, que son
-  artefactos de sesión ligados a la máquina que los produjo (ver gotcha #10)
-  y no parte de la identidad portable del entorno. El árbol de conexiones del
-  entorno nuevo queda acotado exactamente a los perfiles importados mediante
-  el filtro `visible_connections` ya existente (#107), y ninguno se conecta
-  automáticamente. Los conflictos de perfiles de conexión reutilizan la
-  misma UI de resolución de `import_profiles` (sobreescribir/omitir/renombrar);
-  un origen importado cifrado muestra el mismo estado de "sin contraseña
-  guardada" que uno recién añadido, resuelto en la siguiente sincronización.
+  fuera: pestañas, geometría del dockview y el estado de lanzamiento, que
+  son artefactos de sesión ligados a la máquina que los produjo (ver gotcha
+  #10) y no parte de la identidad portable de un entorno. El árbol de
+  conexiones de cada entorno nuevo queda acotado exactamente a sus propios
+  perfiles importados mediante el filtro `visible_connections` ya existente
+  (#107), y ninguno se conecta automáticamente. Los conflictos de perfiles
+  de conexión se resuelven una sola vez para todo el fichero, reutilizando
+  la misma UI de resolución de `import_profiles`
+  (sobreescribir/omitir/renombrar); un origen importado cifrado muestra el
+  mismo estado de "sin contraseña guardada" que uno recién añadido, resuelto
+  en la siguiente sincronización.
 - **Objetivo de paquete `.rpm`**, junto a los ya existentes `.deb`/`.AppImage`,
   para distribuciones de la familia Fedora/openSUSE/RHEL. El empaquetador rpm
   de Tauri (el crate `rpm`) es Rust puro — sin `rpmbuild` ni paquetes de

@@ -65,6 +65,7 @@
       "manageConnections": "Manage connections…",
       "importProfiles": "Import profiles…",
       "exportProfiles": "Export profiles…",
+      "exportEnvironments": "Export environments…",
       "importEnvironment": "Import environment…",
       "disconnectAll": "Disconnect all"
     },
@@ -1257,17 +1258,20 @@
       "needsPassword": "{{count}} profile(s) were imported without a password. Open each connection to set a password before connecting."
     },
     "exportEnvironment": {
-      "title": "Export \"{{name}}\"",
-      "description": "Exports this environment's name, colour, theme, the connection profiles it groups, and its registered shared origins (name and path only — never a passphrase). Tabs and pane layout stay on this machine.",
-      "exportButton": "Export environment"
+      "title": "Export environments",
+      "description": "For each environment selected below: its name, colour and theme, the connection profiles it groups, and its registered shared origins (name and path only — never a passphrase). Tabs and pane layout stay on this machine. Connections shared by more than one selected environment are written once, not duplicated.",
+      "environments": "Environments to export",
+      "exportButton": "Export {{count}} environment(s)"
     },
     "importEnvironment": {
       "title": "Import environment",
       "pickTitle": "Select environment export file",
-      "pickDescription": "Select a HuginnDB environment export file (.json) to import. It is always added as a new environment — nothing already configured is touched.",
-      "importButton": "Import environment",
-      "done": "\"{{name}}\" imported",
-      "summaryOrigins": "{{count}} shared origin(s) registered — encrypted ones will ask for their passphrase on the next sync.",
+      "pickDescription": "Select a HuginnDB environment export file (.json) to import. Every environment it contains is always added as new — nothing already configured is touched.",
+      "reviewDescription": "This file contains {{count}} environment(s):",
+      "reviewCounts": "{{connections}} connection(s) · {{origins}} origin(s)",
+      "importButton": "Import {{count}} environment(s)",
+      "done": "{{count}} environment(s) imported",
+      "doneEntry": "\"{{name}}\" — {{origins}} shared origin(s) registered (encrypted ones will ask for their passphrase on the next sync)",
       "switchNow": "Switch to it now"
     }
   },

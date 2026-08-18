@@ -1158,23 +1158,41 @@ export interface ExportedOrigin {
   path: string;
 }
 
-/** Summary returned by `analyzeEnvironmentImport`. */
-export interface EnvironmentImportAnalysis {
-  environmentName: string;
-  totalProfiles: number;
-  encrypted: boolean;
-  conflicts: ImportConflict[];
+/**
+ * Display summary for one environment inside an `EnvironmentImportAnalysis`
+ * — enough for the picker to show what each one is without decrypting or
+ * importing anything yet.
+ */
+export interface EnvironmentImportAnalysisEntry {
+  name: string;
+  connectionCount: number;
   /** For display only — origins never conflict, since import always lands in
    *  a brand-new environment. */
   origins: ExportedOrigin[];
 }
 
-/** Result returned by `importEnvironment`. */
-export interface EnvironmentImportResult {
+/** Summary returned by `analyzeEnvironmentImport`. One entry per environment
+ *  in the file; `conflicts`/`totalProfiles`/`encrypted` apply to the file's
+ *  shared connection-profile pool as a whole. */
+export interface EnvironmentImportAnalysis {
+  environments: EnvironmentImportAnalysisEntry[];
+  totalProfiles: number;
+  encrypted: boolean;
+  conflicts: ImportConflict[];
+}
+
+/** One environment created by `importEnvironment`. */
+export interface ImportedEnvironment {
   environmentId: string;
-  profiles: ImportResult;
-  /** Ids of the origins registered in the new environment, in file order. */
+  name: string;
+  /** Ids of the origins registered in this environment, in file order. */
   originIds: string[];
+}
+
+/** Result returned by `importEnvironment` — one entry per bundle in the file. */
+export interface EnvironmentImportResult {
+  environments: ImportedEnvironment[];
+  profiles: ImportResult;
 }
 
 // ---------------------------------------------------------------------------
