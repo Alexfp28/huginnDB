@@ -25,6 +25,8 @@ import type {
   DatabaseInfo,
   DataMode,
   Diagnostics,
+  EnvironmentImportAnalysis,
+  EnvironmentImportResult,
   ExportTarget,
   FeedbackKind,
   FkOptionsPage,
@@ -744,6 +746,57 @@ export const api = {
     conflictResolutions?: ConflictResolution[],
   ) =>
     invoke<ImportResult>("import_profiles", {
+      filePath,
+      passphrase,
+      conflictResolutions: conflictResolutions ?? [],
+    }),
+
+  // Environment export / import ---------------------------------------------
+  // An environment's *portable* identity: its cosmetics, the connection
+  // profiles it groups, and its shared origins (name + path, never a
+  // passphrase). Tabs and dockview geometry never leave the machine that
+  // produced them (CLAUDE.md gotcha #10) — see the module doc in
+  // `src-tauri/src/transfer.rs`. Importing always creates a brand-new
+  // environment; it never merges into one that already exists.
+
+  /**
+   * Export one environment (its cosmetics, referenced connection profiles,
+   * and registered origins) to a user-chosen JSON file. Same
+   * `includePasswords`/`passphrase` contract as `exportProfiles`. Returns the
+   * path of the written file.
+   */
+  exportEnvironment: (
+    id: string,
+    includePasswords: boolean,
+    passphrase?: string,
+  ) =>
+    invoke<string>("export_environment", {
+      id,
+      includePasswords,
+      passphrase,
+    }),
+
+  /**
+   * Parse an environment export file and return metadata for the
+   * conflict-resolution UI — same shape of step as `analyzeImportFile`, plus
+   * the environment's name and the origins it will register.
+   */
+  analyzeEnvironmentImport: (filePath: string) =>
+    invoke<EnvironmentImportAnalysis>("analyze_environment_import", {
+      filePath,
+    }),
+
+  /**
+   * Import an environment export as a new environment. `conflictResolutions`
+   * must cover every id returned in `analyze.conflicts`, exactly like
+   * `importProfiles`.
+   */
+  importEnvironment: (
+    filePath: string,
+    passphrase?: string,
+    conflictResolutions?: ConflictResolution[],
+  ) =>
+    invoke<EnvironmentImportResult>("import_environment", {
       filePath,
       passphrase,
       conflictResolutions: conflictResolutions ?? [],

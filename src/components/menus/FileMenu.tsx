@@ -9,23 +9,31 @@
  *   ├── New connection…
  *   ├── Manage connections…
  *   ├── Import profiles…
- *   └── Export profiles…
+ *   ├── Export profiles…
+ *   └── Import environment…
+ *
+ * ("Export environment…" is per-environment, so it lives in
+ * `EnvironmentSwitcher`'s per-row menu instead of here — this menu has no
+ * particular environment to act on.)
  */
 
 import { useTranslation } from "react-i18next";
 import { ChevronDown, Download, FolderOpen, Plus, Settings, Upload } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
+import { useEnvironmentTransfer } from "@/stores/dialogs/environmentTransfer";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
 import { ConnectionDialog } from "@/components/connection/dialogs/ConnectionDialog";
 import { ExportProfilesDialog } from "@/components/connection/dialogs/ExportProfilesDialog";
 import { ImportProfilesDialog } from "@/components/connection/dialogs/ImportProfilesDialog";
+import { ImportEnvironmentDialog } from "@/components/connection/dialogs/ImportEnvironmentDialog";
 
 interface Props {
   selectedConnectionId: string | null;
@@ -47,6 +55,8 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
   const setExportOpen = useConnectionDialog((s) => s.setExportOpen);
   const importOpen = useConnectionDialog((s) => s.importOpen);
   const setImportOpen = useConnectionDialog((s) => s.setImportOpen);
+  const importEnvOpen = useEnvironmentTransfer((s) => s.importOpen);
+  const setImportEnvOpen = useEnvironmentTransfer((s) => s.setImportOpen);
   const { t } = useTranslation();
 
   // Which profile the manager opens focused on: `null` starts a new draft
@@ -86,6 +96,11 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
             <Download className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.exportProfiles")}
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setImportEnvOpen(true)}>
+            <Upload className="mr-2 h-3.5 w-3.5" />
+            {t("menu.file.importEnvironment")}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -97,6 +112,7 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
       />
       <ExportProfilesDialog open={exportOpen} onOpenChange={setExportOpen} />
       <ImportProfilesDialog open={importOpen} onOpenChange={setImportOpen} />
+      <ImportEnvironmentDialog open={importEnvOpen} onOpenChange={setImportEnvOpen} />
     </>
   );
 }

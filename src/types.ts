@@ -1145,6 +1145,36 @@ export interface ImportResult {
   needs_password: string[];
 }
 
+/**
+ * A shared origin's registration as it travels through an environment
+ * export/import — name and path only, mirroring `ExportedOrigin` in
+ * `src-tauri/src/transfer.rs`. Never carries a passphrase: that stays in the
+ * exporting machine's keychain, same threat model as `Origin` itself.
+ */
+export interface ExportedOrigin {
+  name: string;
+  path: string;
+}
+
+/** Summary returned by `analyzeEnvironmentImport`. */
+export interface EnvironmentImportAnalysis {
+  environmentName: string;
+  totalProfiles: number;
+  encrypted: boolean;
+  conflicts: ImportConflict[];
+  /** For display only — origins never conflict, since import always lands in
+   *  a brand-new environment. */
+  origins: ExportedOrigin[];
+}
+
+/** Result returned by `importEnvironment`. */
+export interface EnvironmentImportResult {
+  environmentId: string;
+  profiles: ImportResult;
+  /** Ids of the origins registered in the new environment, in file order. */
+  originIds: string[];
+}
+
 // ---------------------------------------------------------------------------
 // CLI args — mirror of src-tauri/src/state.rs StartupArgs
 // ---------------------------------------------------------------------------

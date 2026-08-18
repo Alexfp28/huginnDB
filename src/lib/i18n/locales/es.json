@@ -49,7 +49,8 @@
     "none": "Ninguno",
     "replicateFrom": "Partir de «{{name}}»",
     "replicateConnections": "Reabrir las mismas conexiones y sus pestañas",
-    "replicateLayout": "Reutilizar la distribución de paneles"
+    "replicateLayout": "Reutilizar la distribución de paneles",
+    "export": "Exportar…"
   },
   "panels": {
     "schema": "Esquema",
@@ -64,6 +65,7 @@
       "manageConnections": "Gestionar conexiones…",
       "importProfiles": "Importar perfiles…",
       "exportProfiles": "Exportar perfiles…",
+      "importEnvironment": "Importar entorno…",
       "disconnectAll": "Desconectar todas"
     },
     "window": {
@@ -1249,6 +1251,20 @@
       "summarySkipped": "{{count}} omitido(s).",
       "summaryRenamed": "{{count}} renombrado(s) para evitar duplicados.",
       "needsPassword": "{{count}} perfil(es) se importaron sin contraseña. Abre cada conexión para configurarla antes de conectar."
+    },
+    "exportEnvironment": {
+      "title": "Exportar «{{name}}»",
+      "description": "Exporta el nombre, color y tema de este entorno, los perfiles de conexión que agrupa, y sus orígenes compartidos registrados (solo nombre y ruta — nunca la contraseña de cifrado). Las pestañas y la distribución de paneles se quedan en esta máquina.",
+      "exportButton": "Exportar entorno"
+    },
+    "importEnvironment": {
+      "title": "Importar entorno",
+      "pickTitle": "Seleccionar fichero de exportación de entorno",
+      "pickDescription": "Selecciona un fichero de exportación de entorno de HuginnDB (.json) para importar. Siempre se añade como un entorno nuevo — nada de lo ya configurado se toca.",
+      "importButton": "Importar entorno",
+      "done": "«{{name}}» importado",
+      "summaryOrigins": "{{count}} origen(es) compartido(s) registrado(s) — los cifrados pedirán su contraseña en la próxima sincronización.",
+      "switchNow": "Cambiar a él ahora"
     }
   },
   "console": {

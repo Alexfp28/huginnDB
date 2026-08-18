@@ -4,10 +4,16 @@
 //! startup and writes back via the matching setters (debounced on the
 //! frontend side to avoid hammering the disk while a user drags a slider).
 
+use crate::commands::connection::{apply_profile_imports, PROFILES_CHANGED_EVENT};
 use crate::error::{AppError, AppResult};
 use crate::prefs::{self, Preferences};
-use crate::state::AppState;
-use crate::tab_state::{self, ConnectionTabState, Environment, LaunchState};
+use crate::state::{AppState, ConnectionProfile};
+use crate::store;
+use crate::tab_state::{self, ConnectionTabState, Environment, LaunchState, Origin};
+use crate::transfer::{
+    self, ConflictAction, ConflictResolution, EnvironmentExportFile, EnvironmentImportAnalysis,
+    EnvironmentImportResult, ExportMetadata, ExportedEnvironment, ExportedOrigin, KIND_ENVIRONMENT,
+};
 use tauri::{AppHandle, Emitter, State};
 
 /// Broadcast (unscoped — every window) after a successful `update_preferences`,
@@ -348,4 +354,316 @@ pub fn reorder_environments(state: State<'_, AppState>, ids: Vec<String>) -> App
     };
     tab_state::save_tab_state(&snapshot)?;
     Ok(())
+}
+
+// --- Environment export/import ------------------------------------------
+//
+// An environment's portable identity is its cosmetics + the connections it
+// groups + the shared origins it pulls from — never its tabs or dockview
+// geometry (see the module doc in `crate::transfer`). Import always creates a
+// brand-new environment, so there is nothing for origins (or the environment
+// itself) to conflict with; only the connection profiles can, because
+// `profiles.json` is global. That reuses `import_profiles`'s exact
+// conflict/rename/keychain machinery via `apply_profile_imports`.
+
+/// Every connection id this environment references, anywhere: its remembered
+/// tab state, what was live at last close, the focused connection, and the
+/// per-connection database-visibility overrides. Deleting a profile already
+/// sweeps all of these (gotcha #27), so in practice every id here resolves to
+/// a real profile — but the export still filters defensively rather than
+/// assuming that.
+fn referenced_profile_ids(env: &Environment) -> std::collections::HashSet<String> {
+    let mut ids: std::collections::HashSet<String> = env.connections.keys().cloned().collect();
+    ids.extend(env.launch.active_connections.iter().cloned());
+    if let Some(sel) = &env.launch.selected_connection_id {
+        ids.insert(sel.clone());
+    }
+    if let Some(visible) = &env.launch.visible_connections {
+        ids.extend(visible.iter().cloned());
+    }
+    ids.extend(env.launch.database_visibility.keys().cloned());
+    ids
+}
+
+/// Export one environment: its cosmetics, the connection profiles it
+/// references, and its registered shared origins (name + path only — never
+/// the passphrase, which stays in this machine's keychain; see
+/// `commands::origins`).
+///
+/// Tabs, dockview geometry and launch state are deliberately left out — they
+/// are session artifacts tied to this machine, not part of the environment's
+/// portable identity (CLAUDE.md gotcha #10).
+#[tauri::command]
+pub async fn export_environment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    include_passwords: bool,
+    passphrase: Option<String>,
+) -> AppResult<String> {
+    if include_passwords && passphrase.is_none() {
+        return Err(AppError::InvalidInput(
+            "a passphrase is required when include_passwords is true".into(),
+        ));
+    }
+
+    let env = {
+        let guard = state.tab_state.read();
+        guard
+            .environments
+            .iter()
+            .find(|e| e.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::InvalidInput(format!("no environment with id {id}")))?
+    };
+    let profile_ids = referenced_profile_ids(&env);
+
+    let profiles_snapshot: Vec<ConnectionProfile> = {
+        let guard = state.profiles.read();
+        guard
+            .iter()
+            .filter(|p| profile_ids.contains(&p.id))
+            .cloned()
+            .collect()
+    };
+    let exported_profiles = transfer::build_exported_profiles(
+        &profiles_snapshot,
+        include_passwords,
+        passphrase.as_deref(),
+    )?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let file = EnvironmentExportFile {
+        meta: ExportMetadata {
+            version: 1,
+            app: "huginndb".into(),
+            exported_at: now.clone(),
+            encrypted: include_passwords,
+            kind: KIND_ENVIRONMENT.into(),
+        },
+        environment: ExportedEnvironment {
+            name: env.name.clone(),
+            color: env.color.clone(),
+            icon: env.icon.clone(),
+            theme_id: env.theme_id.clone(),
+        },
+        profiles: exported_profiles,
+        origins: env
+            .origins
+            .iter()
+            .map(|o| ExportedOrigin {
+                name: o.name.clone(),
+                path: o.path.clone(),
+            })
+            .collect(),
+    };
+
+    let json = serde_json::to_string_pretty(&file)?;
+
+    let date_part = now.get(..10).unwrap_or("export");
+    let suggested = format!("huginndb-environment-{date_part}.json");
+
+    use tauri_plugin_dialog::DialogExt;
+    let path = app
+        .dialog()
+        .file()
+        .set_title("Export environment")
+        .set_file_name(&suggested)
+        .add_filter("JSON", &["json"])
+        .blocking_save_file()
+        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+
+    let dest = path.to_string();
+    std::fs::write(&dest, json)?;
+    Ok(dest)
+}
+
+/// Read and parse an environment export without decrypting anything or
+/// touching any state. Mirrors `analyze_import_file`: the frontend calls this
+/// first to drive the same conflict-resolution step, before collecting a
+/// passphrase (if `encrypted`) and calling `import_environment`.
+#[tauri::command]
+pub fn analyze_environment_import(
+    state: State<'_, AppState>,
+    file_path: String,
+) -> AppResult<EnvironmentImportAnalysis> {
+    let data = std::fs::read_to_string(&file_path)?;
+    let export: EnvironmentExportFile = serde_json::from_str(&data)?;
+
+    if export.meta.version != 1 {
+        return Err(AppError::Transfer(format!(
+            "unsupported export format version {}",
+            export.meta.version
+        )));
+    }
+    if export.meta.kind != KIND_ENVIRONMENT {
+        return Err(AppError::Transfer(
+            "this file is not an environment export".into(),
+        ));
+    }
+
+    let profiles = state.profiles.read();
+    let conflicts = transfer::detect_conflicts(&profiles, &export.profiles);
+
+    Ok(EnvironmentImportAnalysis {
+        environment_name: export.environment.name,
+        total_profiles: export.profiles.len(),
+        encrypted: export.meta.encrypted,
+        conflicts,
+        origins: export.origins,
+    })
+}
+
+/// Import an environment export as a **new** environment — never merged into
+/// an existing one, which is what makes this safe to run repeatedly and what
+/// guarantees the origins/cosmetics below never collide with anything already
+/// configured.
+///
+/// The new environment's connection-tree is scoped to exactly the imported
+/// profiles via `launch.visible_connections` (the same DataGrip-style filter
+/// #107 already added), rather than showing every profile on the machine —
+/// that is what makes the imported set read as "this environment's
+/// connections" instead of just adding them to the global pile. None of them
+/// are auto-connected (`launch.active_connections` stays empty): importing an
+/// environment should not silently open N live database connections.
+///
+/// Each origin is registered with a fresh id and no stored passphrase. An
+/// encrypted one surfaces the same "no passphrase stored" state a freshly
+/// `add_origin`-ed one would, on the next sync — there's nothing special to
+/// resolve here at import time.
+#[tauri::command]
+pub fn import_environment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    file_path: String,
+    passphrase: Option<String>,
+    conflict_resolutions: Vec<ConflictResolution>,
+) -> AppResult<EnvironmentImportResult> {
+    let data = std::fs::read_to_string(&file_path)?;
+    let export: EnvironmentExportFile = serde_json::from_str(&data)?;
+
+    if export.meta.version != 1 {
+        return Err(AppError::Transfer(format!(
+            "unsupported export format version {}",
+            export.meta.version
+        )));
+    }
+    if export.meta.kind != KIND_ENVIRONMENT {
+        return Err(AppError::Transfer(
+            "this file is not an environment export".into(),
+        ));
+    }
+    if export.meta.encrypted && passphrase.is_none() {
+        return Err(AppError::Transfer(
+            "this export file contains encrypted passwords — provide a passphrase".into(),
+        ));
+    }
+
+    let resolution_map: std::collections::HashMap<String, ConflictAction> = conflict_resolutions
+        .into_iter()
+        .map(|r| (r.id, r.action))
+        .collect();
+
+    let profile_result = {
+        let mut profiles = state.profiles.write();
+        let result = apply_profile_imports(
+            &mut profiles,
+            export.profiles,
+            passphrase.as_deref(),
+            &resolution_map,
+        )?;
+        store::save_profiles(&profiles)?;
+        result
+    };
+    let _ = app.emit(PROFILES_CHANGED_EVENT, ());
+
+    let (snapshot, new_env_id, origin_ids) = {
+        let mut guard = state.tab_state.write();
+        let order = guard
+            .environments
+            .iter()
+            .map(|e| e.order)
+            .max()
+            .unwrap_or(0)
+            + 1;
+
+        let mut origins = Vec::with_capacity(export.origins.len());
+        let mut origin_ids = Vec::with_capacity(export.origins.len());
+        for eo in &export.origins {
+            let oid = uuid::Uuid::new_v4().to_string();
+            origin_ids.push(oid.clone());
+            origins.push(Origin {
+                id: oid,
+                name: eo.name.clone(),
+                path: eo.path.clone(),
+                last_synced_at: None,
+            });
+        }
+
+        let visible_connections = if profile_result.imported.is_empty() {
+            None
+        } else {
+            Some(profile_result.imported.clone())
+        };
+
+        let env = Environment {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: export.environment.name,
+            color: export.environment.color,
+            icon: export.environment.icon,
+            order,
+            theme_id: export.environment.theme_id,
+            origins,
+            launch: LaunchState {
+                visible_connections,
+                ..LaunchState::default()
+            },
+            ..Environment::default()
+        };
+        let new_env_id = env.id.clone();
+        guard.environments.push(env);
+        (guard.clone(), new_env_id, origin_ids)
+    };
+    tab_state::save_tab_state(&snapshot)?;
+
+    Ok(EnvironmentImportResult {
+        environment_id: new_env_id,
+        profiles: profile_result,
+        origin_ids,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn referenced_profile_ids_covers_every_slot_that_can_name_a_connection() {
+        let mut env = Environment::default();
+        env.connections
+            .insert("from-tabs".into(), ConnectionTabState::default());
+        env.launch.active_connections = vec!["from-active".into()];
+        env.launch.selected_connection_id = Some("from-selected".into());
+        env.launch.visible_connections = Some(vec!["from-visible".into()]);
+        env.launch
+            .database_visibility
+            .insert("from-db-visibility".into(), None);
+
+        let ids = referenced_profile_ids(&env);
+        for expected in [
+            "from-tabs",
+            "from-active",
+            "from-selected",
+            "from-visible",
+            "from-db-visibility",
+        ] {
+            assert!(ids.contains(expected), "missing {expected}");
+        }
+        assert_eq!(ids.len(), 5);
+    }
+
+    #[test]
+    fn referenced_profile_ids_is_empty_for_a_fresh_environment() {
+        assert!(referenced_profile_ids(&Environment::default()).is_empty());
+    }
 }

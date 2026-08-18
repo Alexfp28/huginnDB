@@ -44,7 +44,8 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 use crate::error::{AppError, AppResult};
-use crate::state::ConnectionProfile;
+use crate::keychain;
+use crate::state::{ConnectionProfile, Driver};
 
 // ---------------------------------------------------------------------------
 // File-format types
@@ -69,7 +70,21 @@ pub struct ExportMetadata {
     /// `true` when `ExportedSecret` values are AES-256-GCM ciphertext;
     /// `false` when `secrets` is `null` for every profile.
     pub encrypted: bool,
+    /// `"profiles"` (a plain profile bundle) or `"environment"` (an
+    /// [`EnvironmentExportFile`]). `#[serde(default)]` so a pre-existing
+    /// profile-bundle file — written before this field existed — loads as
+    /// `""`, which every `kind` check below treats the same as `"profiles"`.
+    /// Lets `import_profiles` refuse an environment file (and vice versa)
+    /// with a clear error instead of silently importing half of it.
+    #[serde(default)]
+    pub kind: String,
 }
+
+/// A profile bundle's `meta.kind` — also the default for a legacy file that
+/// predates the field.
+pub const KIND_PROFILES: &str = "profiles";
+/// An [`EnvironmentExportFile`]'s `meta.kind`.
+pub const KIND_ENVIRONMENT: &str = "environment";
 
 /// One profile entry inside the export file.
 #[derive(Debug, Serialize, Deserialize)]
@@ -155,6 +170,147 @@ pub struct ImportResult {
 }
 
 // ---------------------------------------------------------------------------
+// Environment export/import
+// ---------------------------------------------------------------------------
+//
+// An environment's *portable* identity is its name/color/icon/theme, the
+// connection profiles it groups, and the shared origins it pulls from — not
+// its tabs, dockview geometry or launch state. Those are session artifacts
+// tied to the machine that produced them (CLAUDE.md gotcha #10: the inner
+// dockview's geometry is a JSON blob keyed to panel ids from that machine's
+// `useTabs`), so portability stops at "which connections, from where".
+//
+// Importing an environment always creates a **new** one — never merges into
+// an existing one — so there is nothing for its origins or cosmetic fields to
+// conflict with. The only genuine conflict is at the connection-profile layer
+// (`profiles.json` is global), which is why this reuses the exact
+// `ImportConflict` / `ConflictAction` / `ImportResult` machinery `import_profiles`
+// already has, rather than inventing a parallel one.
+
+/// Top-level wrapper for an exported environment. Shares [`ExportMetadata`]
+/// with [`ExportFile`] (with `meta.kind` set to [`KIND_ENVIRONMENT`]) so both
+/// formats carry the same version/encryption header.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EnvironmentExportFile {
+    pub meta: ExportMetadata,
+    pub environment: ExportedEnvironment,
+    pub profiles: Vec<ExportedProfile>,
+    pub origins: Vec<ExportedOrigin>,
+}
+
+/// The environment's cosmetic identity. Deliberately has no `id`: import
+/// always mints a fresh one, since it never merges into an existing
+/// environment (see the module-level note above).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportedEnvironment {
+    pub name: String,
+    pub color: Option<String>,
+    pub icon: Option<String>,
+    pub theme_id: Option<String>,
+}
+
+/// A shared origin's *registration* — name and path only, never its
+/// passphrase. Mirrors the threat model `origins.rs` already documents: the
+/// passphrase travels out-of-band (the admin tells the new hire), never
+/// through a file. An imported encrypted origin surfaces the same "no
+/// passphrase stored" state a freshly `add_origin`-ed one does until the user
+/// enters it.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportedOrigin {
+    pub name: String,
+    pub path: String,
+}
+
+/// Summary returned by `analyze_environment_import`. Mirrors [`ImportAnalysis`]
+/// but scoped to what an environment import needs decided up front.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EnvironmentImportAnalysis {
+    pub environment_name: String,
+    pub total_profiles: usize,
+    pub encrypted: bool,
+    pub conflicts: Vec<ImportConflict>,
+    /// For display only ("N shared origins will be registered") — origins
+    /// never conflict, since import always lands in a brand-new environment.
+    pub origins: Vec<ExportedOrigin>,
+}
+
+/// Result of `import_environment`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EnvironmentImportResult {
+    pub environment_id: String,
+    pub profiles: ImportResult,
+    /// Ids of the origins registered in the new environment, in file order.
+    pub origin_ids: Vec<String>,
+}
+
+/// Profiles in `incoming` whose `id` already exists in `existing`. Shared by
+/// `analyze_import_file` and `analyze_environment_import` — the conflict rule
+/// (same id, different bundle) doesn't care which command found it.
+pub fn detect_conflicts(
+    existing: &[ConnectionProfile],
+    incoming: &[ExportedProfile],
+) -> Vec<ImportConflict> {
+    incoming
+        .iter()
+        .filter_map(|ep| {
+            existing
+                .iter()
+                .find(|p| p.id == ep.profile.id)
+                .map(|found| ImportConflict {
+                    id: ep.profile.id.clone(),
+                    existing_name: found.name.clone(),
+                    incoming_name: ep.profile.name.clone(),
+                })
+        })
+        .collect()
+}
+
+/// Build the `profiles` section of an export file: snapshot each profile's
+/// metadata and, when `include_passwords` is set, its keychain secrets
+/// encrypted with `passphrase`. Shared by `export_profiles` and
+/// `export_environment` — same rules either way, just a different subset of
+/// profiles feeding in.
+pub fn build_exported_profiles(
+    profiles: &[ConnectionProfile],
+    include_passwords: bool,
+    passphrase: Option<&str>,
+) -> AppResult<Vec<ExportedProfile>> {
+    let mut exported = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        let secrets = if include_passwords {
+            let pp = passphrase.ok_or_else(|| {
+                AppError::InvalidInput(
+                    "a passphrase is required when include_passwords is true".into(),
+                )
+            })?;
+            let db_password = if matches!(profile.driver, Driver::Sqlite) {
+                None
+            } else {
+                keychain::get_password(&profile.keyring_account())?
+                    .map(|pw| encrypt_secret(&pw, pp))
+                    .transpose()?
+            };
+            let ssh_secret = profile
+                .ssh_keyring_account()
+                .and_then(|acct| keychain::get_password(&acct).ok().flatten())
+                .map(|s| encrypt_secret(&s, pp))
+                .transpose()?;
+            Some(ExportedSecret {
+                db_password,
+                ssh_secret,
+            })
+        } else {
+            None
+        };
+        exported.push(ExportedProfile {
+            profile: profile.clone(),
+            secrets,
+        });
+    }
+    Ok(exported)
+}
+
+// ---------------------------------------------------------------------------
 // Encryption helpers
 // ---------------------------------------------------------------------------
 
@@ -222,4 +378,77 @@ fn derive_key(passphrase: &str, salt: &[u8]) -> [u8; KEY_LEN] {
     let mut key = [0u8; KEY_LEN];
     pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), salt, PBKDF2_ITERATIONS, &mut key);
     key
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::Driver;
+
+    fn profile(id: &str, name: &str) -> ConnectionProfile {
+        ConnectionProfile {
+            id: id.into(),
+            name: name.into(),
+            driver: Driver::Postgres,
+            host: "localhost".into(),
+            port: 5432,
+            database: String::new(),
+            username: "u".into(),
+            ssl: false,
+            ssh_tunnel: None,
+            connection_string: None,
+            auth_source: None,
+            mssql: None,
+            ephemeral: false,
+            group: None,
+            visible_databases: None,
+            mcp_write: Default::default(),
+            max_connections: None,
+            origin_id: None,
+        }
+    }
+
+    fn exported(id: &str, name: &str) -> ExportedProfile {
+        ExportedProfile {
+            profile: profile(id, name),
+            secrets: None,
+        }
+    }
+
+    #[test]
+    fn detect_conflicts_matches_by_id_not_name() {
+        // A profile renamed on either side is still the same connection — the
+        // conflict is keyed on `id`, and the two names are carried through so
+        // the UI can show both.
+        let existing = vec![profile("a", "Prod")];
+        let incoming = vec![
+            exported("a", "Prod (renamed upstream)"),
+            exported("b", "New"),
+        ];
+        let conflicts = detect_conflicts(&existing, &incoming);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].id, "a");
+        assert_eq!(conflicts[0].existing_name, "Prod");
+        assert_eq!(conflicts[0].incoming_name, "Prod (renamed upstream)");
+    }
+
+    #[test]
+    fn detect_conflicts_is_empty_when_no_ids_overlap() {
+        let existing = vec![profile("a", "Prod")];
+        let incoming = vec![exported("b", "New")];
+        assert!(detect_conflicts(&existing, &incoming).is_empty());
+    }
+
+    #[test]
+    fn export_metadata_kind_defaults_to_empty_for_legacy_files() {
+        // A profile bundle written before `kind` existed must still parse,
+        // and every `kind` check downstream (import_profiles,
+        // analyze_import_file) treats "" the same as `KIND_PROFILES`.
+        let legacy = r#"{
+            "version": 1, "app": "huginndb",
+            "exported_at": "2020-01-01T00:00:00Z", "encrypted": false
+        }"#;
+        let meta: ExportMetadata = serde_json::from_str(legacy).unwrap();
+        assert_eq!(meta.kind, "");
+    }
 }
