@@ -274,6 +274,8 @@
     "refresh": "Refresh",
     "loadingColumns": "loading…",
     "columnsLoadError": "Couldn't load columns — click to retry",
+    "expandColumns": "Show columns",
+    "collapseColumns": "Hide columns",
     "tableOpenTooltip": "Open in a tab",
     "sectionTables": "tables",
     "sectionViews": "views",
