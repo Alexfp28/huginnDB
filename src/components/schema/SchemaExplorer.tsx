@@ -56,7 +56,11 @@ import {
 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useSchema, tableKey } from "@/stores/session/schema";
-import { useTabs, retitleTabsForTableRename } from "@/stores/session/tabs";
+import {
+  useTabs,
+  closeTabsForTable,
+  retitleTabsForTableRename,
+} from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
 import { tableTabTitle } from "@/lib/connectionLabel";
@@ -71,6 +75,14 @@ import { splitSql } from "@/lib/sql/sqlSplit";
 import type { SchemaTableMetric } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Segmented } from "@/components/ui/segmented";
 import {
   ContextMenu,
@@ -104,6 +116,7 @@ import type { Driver, TableInfo } from "@/types";
 import {
   supportsCreateDatabase,
   supportsDdlEditing,
+  supportsRenameTable,
   supportsSqlDump,
 } from "@/lib/db/driver";
 
@@ -807,10 +820,14 @@ function SingleDbExplorer({
         <RenameTableDialog
           connectionId={connectionId}
           target={renameTarget}
+          driver={driver}
+          databases={cs.databases.map((d) => d.name)}
           onClose={() => setRenameTarget(null)}
           onDone={() => {
             setRenameTarget(null);
-            refresh(connectionId);
+            // `refreshTree`: a MongoDB rename can move the collection into
+            // another database, whose slice is a sibling of this one.
+            void useSchema.getState().refreshTree(connectionId);
           }}
         />
       )}
@@ -1742,10 +1759,13 @@ function TableRow({
   };
 
   const isMongo = actions.driver === "mongodb";
-  /** Rename and the view editor need a DDL builder for the driver; SQL Server
+  /** Structure and view editing need a DDL builder for the driver; SQL Server
    *  doesn't have one yet, so it gets the same read-only treatment MongoDB has
    *  — except that its structure *view* is real (see below). */
   const canEditDdl = supportsDdlEditing(actions.driver);
+  /** Rename is its own capability: it needs no DDL builder, so MongoDB has it
+   *  (`renameCollection`) even though everything above is unavailable there. */
+  const canRename = supportsRenameTable(actions.driver);
 
   return (
     <ContextMenu onOpenChange={setMenuOpen}>
@@ -1952,8 +1972,10 @@ function TableRow({
             live here too (#65) but has moved to the DataGrid toolbar's "Add
             data"/"Export data" controls (see `TableDataTab.tsx`), which act on
             the collection you're actually viewing instead of requiring a
-            tree round-trip. No SQL DDL (structure editing is read-only /
-            rename is unsupported for Mongo). */}
+            tree round-trip. No SQL DDL — structure editing is read-only for
+            Mongo — but rename *is* offered: `renameCollection` needs no DDL
+            builder, and it can move the collection to another database while
+            it is at it. */}
         {isMongo && !isView && (
           <>
             <ContextMenuSeparator />
@@ -1992,6 +2014,13 @@ function TableRow({
               }
             />
             <ContextMenuSeparator />
+            {canRename && (
+              <ContextMenuAction
+                icon={PencilLine}
+                label={ct("schema.context.rename")}
+                onSelect={() => actions.onRename(t)}
+              />
+            )}
             <ContextMenuAction
               icon={Eraser}
               label={ct("schema.context.empty")}
@@ -2065,7 +2094,9 @@ function TableRow({
                 })
               }
             />
-            {canEditDdl && (
+            {/* Its own capability, not `canEditDdl`: rename needs no DDL
+                builder, which is why MongoDB has it too (below). */}
+            {canRename && (
               <ContextMenuAction
                 icon={PencilLine}
                 label={ct("schema.context.rename")}
@@ -2154,34 +2185,62 @@ function qualifyForCopy(
 function RenameTableDialog({
   connectionId,
   target,
+  driver,
+  databases,
   onClose,
   onDone,
 }: {
   connectionId: string;
   target: TableInfo;
+  /** Drives the MongoDB-only "move to another database" affordance. */
+  driver: Driver | undefined;
+  /** Databases offered as a move destination. MongoDB-only, and already the
+   *  whole cluster's list — `list_databases` is not scoped to the handle's
+   *  own database there. */
+  databases: string[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
   const [newName, setNewName] = useState(target.name);
+  // MongoDB's `renameCollection` qualifies both sides with a database, so
+  // moving between them is the same operation as renaming — no other driver
+  // gets this, since a cross-schema move is a separate statement there (and
+  // doesn't exist at all on SQLite).
+  const canMove = driver === "mongodb" && databases.length > 0;
+  const [newDb, setNewDb] = useState(target.schema ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const moving = canMove && newDb !== (target.schema ?? "");
 
   const submit = async () => {
     const trimmed = newName.trim();
-    if (!trimmed || trimmed === target.name) return;
+    if (!trimmed || (trimmed === target.name && !moving)) return;
     setSubmitting(true);
     setError(null);
     try {
-      await api.renameTable(connectionId, target.schema, target.name, trimmed);
-      retitleTabsForTableRename(
-        useConnections.getState().profiles,
+      await api.renameTable(
         connectionId,
         target.schema,
         target.name,
         trimmed,
-        t("tabs.structureSuffix"),
+        moving ? newDb : undefined,
       );
+      if (moving) {
+        // The collection now lives behind a different connection id (the
+        // destination database's own child pool), so a retitled tab would
+        // keep querying the database it just left.
+        closeTabsForTable(connectionId, target.schema, target.name);
+      } else {
+        retitleTabsForTableRename(
+          useConnections.getState().profiles,
+          connectionId,
+          target.schema,
+          target.name,
+          trimmed,
+          t("tabs.structureSuffix"),
+        );
+      }
       onDone();
     } catch (e) {
       setError(String(e));
@@ -2207,6 +2266,30 @@ function RenameTableDialog({
             if (e.key === "Enter") submit();
           }}
         />
+        {canMove && (
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">
+              {t("schema.rename.targetDatabase")}
+            </Label>
+            <Select value={newDb} onValueChange={setNewDb}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {databases.map((db) => (
+                  <SelectItem key={db} value={db}>
+                    {db}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {moving && (
+              <p className="text-xs text-muted-foreground">
+                {t("schema.rename.moveHint")}
+              </p>
+            )}
+          </div>
+        )}
         {error && (
           <div className="text-xs text-destructive">
             {t("schema.rename.failed", { message: error })}
@@ -2221,7 +2304,7 @@ function RenameTableDialog({
             disabled={
               submitting ||
               !newName.trim() ||
-              newName.trim() === target.name
+              (newName.trim() === target.name && !moving)
             }
           >
             {submitting ? t("schema.rename.renaming") : t("schema.rename.submit")}

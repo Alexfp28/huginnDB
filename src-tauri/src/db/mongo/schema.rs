@@ -95,6 +95,91 @@ pub async fn list_collections(conn: &MongoConn) -> AppResult<Vec<TableInfo>> {
     Ok(out)
 }
 
+/// Reject a collection name no user operation may target.
+///
+/// Lives here rather than in [`super::indexes`] (its first caller) because
+/// every collection-level write needs the same two checks and a second copy
+/// would be one edit away from disagreeing with this one.
+pub(super) fn validate_collection(collection: &str) -> AppResult<&str> {
+    let name = collection.trim();
+    if name.is_empty() {
+        return Err(AppError::InvalidInput("no collection given".into()));
+    }
+    if name.starts_with("system.") {
+        return Err(AppError::InvalidInput(
+            "`system.` is reserved for MongoDB's own collections".into(),
+        ));
+    }
+    Ok(name)
+}
+
+/// Rename a collection, optionally moving it into another database.
+///
+/// MongoDB's `renameCollection` is a command on the **`admin`** database and
+/// takes fully-qualified `db.collection` names on both sides, which is also
+/// what makes moving between databases free: the destination is just a
+/// different qualifier. That is why this doesn't go through
+/// [`resolve_db`]-scoped helpers the way the rest of this module does — but the
+/// *source* database still comes from the connection handle, so a rename can
+/// only ever start from the database the user is browsing.
+///
+/// Two deliberate refusals:
+///
+/// * **`dropTarget` is always `false`.** Renaming onto an existing collection
+///   must surface as an error, never as a silent drop of whatever was there.
+/// * **A view cannot be renamed.** MongoDB has no rename for one; the only
+///   path is drop + recreate, which is a destructive gesture rather than a
+///   rename (the same reasoning `docs/MONGODB_ROADMAP.md` records for the view
+///   editor). The check is made here rather than left to the server so the
+///   message says what to do instead.
+///
+/// Note that a cross-database rename copies the documents server-side, so it
+/// is proportional to the collection's size and needs a role with rights on
+/// both databases — the caller warns about both before submitting.
+pub async fn rename_collection(
+    conn: &MongoConn,
+    from: &str,
+    to: &str,
+    to_db: Option<&str>,
+) -> AppResult<()> {
+    let from = validate_collection(from)?;
+    let to = validate_collection(to)?;
+    let db = resolve_db(conn)?;
+    let src_db = db.name().to_string();
+    let dst_db = match to_db.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(name) => name.to_string(),
+        None => src_db.clone(),
+    };
+    if src_db == dst_db && from == to {
+        return Ok(());
+    }
+    reject_view_rename(&db, from).await?;
+    conn.client
+        .database("admin")
+        .run_command(doc! {
+            "renameCollection": format!("{src_db}.{from}"),
+            "to": format!("{dst_db}.{to}"),
+            "dropTarget": false,
+        })
+        .await?;
+    Ok(())
+}
+
+/// Fail if `name` is a view rather than a collection. See
+/// [`rename_collection`] for why this is refused up front.
+async fn reject_view_rename(db: &mongodb::Database, name: &str) -> AppResult<()> {
+    let mut cursor = db.list_collections().filter(doc! {"name": name}).await?;
+    while cursor.advance().await? {
+        if cursor.deserialize_current()?.collection_type == CollectionType::View {
+            return Err(AppError::InvalidInput(format!(
+                "`{name}` is a view — MongoDB cannot rename a view; recreate it under the new \
+                 name and drop this one"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// On-disk size (data + indexes) per collection name, sourced from a single
 /// `$collStats` aggregation run at the database level — one round trip for
 /// every collection at once, rather than a `collStats` command per collection

@@ -69,6 +69,17 @@ export function supportsIndexManager(driver: Driver | undefined): boolean {
   return driver === "mongodb";
 }
 
+/** Renaming a table or collection.
+ *
+ *  Deliberately *not* folded into `supportsDdlEditing`: MongoDB has no DDL to
+ *  diff, but it does have `renameCollection`, so gating rename on the DDL
+ *  builder hid a capability the engine has. SQL Server is the one driver left
+ *  out — T-SQL renames through `EXEC sp_rename`, whose arguments are strings
+ *  rather than identifiers, and that is wired up with the rest of its DDL. */
+export function supportsRenameTable(driver: Driver | undefined): boolean {
+  return driver !== "sqlserver";
+}
+
 /** Server-level `CREATE DATABASE` / `DROP DATABASE`. SQLite's file *is* the
  *  database and MongoDB creates them implicitly on first write. */
 export function supportsCreateDatabase(driver: Driver | undefined): boolean {

@@ -4,6 +4,66 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Added
+
+- **Rename a MongoDB collection**, optionally moving it into another database
+  in the same operation. `renameCollection` is a run-command on the `admin`
+  database that qualifies both sides with a database name, so the move comes
+  free with the rename — there is no separate "move" operation to build. The
+  entry sits in the collection's context menu next to Empty/Drop, and the
+  rename dialog grows a destination-database picker (MongoDB only) with a
+  warning that a cross-database move copies the documents server-side and
+  needs privileges on both databases. `dropTarget` is always `false`: renaming
+  onto an existing collection is an error the user sees, never a silent drop
+  of whatever was there. Views are refused up front with a message that says
+  what to do instead — MongoDB has no rename for a view, only drop + recreate,
+  which is why the view editor has never offered one either. Rename is now
+  gated by its own `supportsRenameTable` capability rather than by
+  `supportsDdlEditing`: it needs no DDL builder, which is exactly why MongoDB
+  can have it while structure editing stays read-only there.
+- **A dedicated "Refresh schema" shortcut** (default `Ctrl+Shift+R`),
+  rebindable alongside the others in Settings → Shortcuts. `F5` still
+  refreshes the active grid's rows; this one re-reads the catalog.
+
+### Fixed
+
+- **"Refresh" now reloads the database you are actually looking at.** On a
+  multi-DB connection the tables live in the synthetic `<parent>::db::<db>`
+  child slices, but the Database node's menu, the connection row's menu and
+  the command palette all refreshed the *parent* id — re-fetching a table list
+  nobody renders (on MySQL the parent pool has no database selected at all, so
+  it is legitimately empty) and leaving the visible subtree untouched. A table
+  created outside the app never appeared no matter how many times Refresh was
+  clicked. The new `useSchema.refreshTree` refreshes a connection together
+  with every per-database view opened beneath it, and the Database node
+  refreshes its own child explicitly.
+- **A refresh now invalidates cached columns and indexes.** It only ever
+  re-fetched the database and table lists, spreading the rest of the slice
+  through untouched — and since the explorer deliberately only loads a table's
+  columns when they are *absent* (so collapsing and re-expanding doesn't
+  re-query), a column added outside the app stayed invisible until the
+  connection was dropped. Expanded tables are re-loaded immediately after the
+  wipe, so an open node comes back with its current columns.
+- **SQL Server: `SERVIDOR\INSTANCIA` is accepted, in either field.** SSMS has
+  a single "Server name" box and splits the combined form itself; HuginnDB
+  split nothing, so pasting it into the instance field produced a SQL Browser
+  lookup that could never match (the Browser only reports the bare instance
+  name) and pasting it into the host field failed DNS resolution with an error
+  that never mentioned instances. Both fields now normalise through
+  `split_instance`, on the backend (authoritative — it also covers the CLI and
+  the MCP connector) and in the connection dialog on blur, so the user sees
+  the split rather than having it happen silently.
+- **SQL Server: a stopped or firewalled SQL Browser no longer blocks a named
+  instance with a static port.** UDP 1434 is a separate service from the
+  instance's own TCP port; when the Browser doesn't answer, the port typed in
+  the dialog is now tried before giving up, and a failure reports both causes
+  instead of only the last one. A port left at the default 1433 is
+  deliberately not treated as a static-port hint.
+- **SQL Server: the "named instance cannot be tunnelled" refusal is raised
+  before the SSH tunnel is opened**, instead of after paying for the handshake.
+
 ## [1.16.1] — 2026-08-18
 
 ### Added

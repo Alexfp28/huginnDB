@@ -1075,13 +1075,23 @@ pub async fn empty_table(
     Ok(())
 }
 
-/// Rename a table. Same identifier-source guarantees as [`drop_table`].
+/// Rename a table, or a MongoDB collection. Same identifier-source guarantees
+/// as [`drop_table`].
 ///
 /// MySQL uses `RENAME TABLE old TO new`; Postgres and SQLite both accept
 /// `ALTER TABLE old RENAME TO new`. The new name is sent as a quoted
 /// identifier (never bound) because SQL does not allow binding for DDL
 /// identifiers — but the caller's UI restricts the value to safe characters
 /// before it reaches the command (see `SchemaExplorer` rename dialog).
+///
+/// `new_schema` is MongoDB-only: `renameCollection` qualifies both sides with
+/// a database, so moving a collection to another one costs nothing extra. The
+/// SQL drivers ignore it — a cross-schema move is a different operation there
+/// (`ALTER TABLE … SET SCHEMA` on Postgres, nothing at all on SQLite) and is
+/// not offered by the UI.
+// A Tauri command's arguments *are* its IPC payload, so folding them into a
+// struct would change the wire shape rather than simplify anything.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn rename_table(
     app: tauri::AppHandle,
@@ -1091,6 +1101,7 @@ pub async fn rename_table(
     schema: Option<String>,
     table: String,
     new_name: String,
+    new_schema: Option<String>,
 ) -> AppResult<()> {
     if new_name.trim().is_empty() {
         return Err(AppError::InvalidInput(
@@ -1105,10 +1116,18 @@ pub async fn rename_table(
     )
     .await;
     let pool = pool_for(state.inner(), &connection_id)?;
-    if matches!(&pool, DbPool::Mongo(_)) {
-        return Err(AppError::InvalidInput(
-            "renaming collections is not supported in this version".into(),
-        ));
+    // MongoDB has no DDL to build: `renameCollection` is a run-command on
+    // `admin` that takes both sides fully qualified, so it also covers the
+    // move-to-another-database case the SQL drivers don't offer.
+    if let DbPool::Mongo(conn) = &pool {
+        crate::db::mongo::schema::rename_collection(
+            conn,
+            &table,
+            new_name.trim(),
+            new_schema.as_deref(),
+        )
+        .await?;
+        return Ok(());
     }
     let dialect = Dialect::try_of(&pool)?;
     let new_ident = dialect.quote_ident(new_name.trim());
@@ -1159,7 +1178,7 @@ pub async fn rename_table(
         DbPool::MsSql(p) => {
             p.acquire().await?.simple_execute(&sql).await?;
         }
-        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
+        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     }
     Ok(())
 }

@@ -311,6 +311,8 @@
       "description": "Rename {{name}} to:",
       "newName": "New name",
       "submit": "Rename",
+      "targetDatabase": "Destination database",
+      "moveHint": "Moving the collection to another database copies its documents server-side: it takes as long as the collection is big and needs privileges on both databases. Open tabs for this collection will be closed.",
       "renaming": "Renaming…",
       "failed": "Rename failed: {{message}}"
     },
