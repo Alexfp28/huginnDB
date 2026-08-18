@@ -1736,6 +1736,7 @@ function TableRow({
             )}
           >
             <button
+              type="button"
               onClick={() => {
                 toggleNode(connectionId, tableNodeKey);
                 // Don't auto-relaunch a failed load on every toggle — the
@@ -1743,13 +1744,39 @@ function TableRow({
                 // the error is still showing.
                 if (!cols && !colError) loadColumns(connectionId, t.schema, t.name);
               }}
-              className="flex flex-1 items-center gap-1 py-1"
+              // Only the chevron toggles the column list now — the rest of
+              // the row opens the table in a tab (below). A single click
+              // anywhere used to expand columns, which surprised users
+              // coming from IDEs where clicking a table row opens it.
+              className="-my-1 -ml-1 shrink-0 rounded p-1.5 hover:bg-accent/60"
+              aria-label={
+                tableOpen ? ct("schema.collapseColumns") : ct("schema.expandColumns")
+              }
+              title={tableOpen ? ct("schema.collapseColumns") : ct("schema.expandColumns")}
             >
               {tableOpen ? (
                 <ChevronDown className="h-3 w-3" />
               ) : (
                 <ChevronRight className="h-3 w-3" />
               )}
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                actions.openTab({
+                  kind: "table",
+                  title: tableTabTitle(
+                    useConnections.getState().profiles,
+                    connectionId,
+                    t.name,
+                  ),
+                  connectionId,
+                  schema: t.schema,
+                  table: t.name,
+                })
+              }
+              className="flex flex-1 items-center gap-1 py-1 text-left"
+            >
               {isView ? (
                 <Eye
                   className={cn(
@@ -1778,20 +1805,6 @@ function TableRow({
                     ? "font-semibold text-brand"
                     : "font-medium text-foreground",
                 )}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  actions.openTab({
-                    kind: "table",
-                    title: tableTabTitle(
-                      useConnections.getState().profiles,
-                      connectionId,
-                      t.name,
-                    ),
-                    connectionId,
-                    schema: t.schema,
-                    table: t.name,
-                  });
-                }}
               >
                 {t.name}
               </span>

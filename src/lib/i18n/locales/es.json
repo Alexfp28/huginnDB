@@ -274,6 +274,8 @@
     "refresh": "Actualizar",
     "loadingColumns": "cargando…",
     "columnsLoadError": "No se pudieron cargar las columnas — clic para reintentar",
+    "expandColumns": "Mostrar columnas",
+    "collapseColumns": "Ocultar columnas",
     "tableOpenTooltip": "Abierta en una pestaña",
     "sectionTables": "tablas",
     "sectionViews": "vistas",
