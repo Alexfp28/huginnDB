@@ -146,6 +146,7 @@
       "sqlitePathPlaceholder": "C:\\ruta\\al\\fichero.db",
       "mssqlInstance": "Nombre de instancia (opcional)",
       "mssqlInstancePlaceholder": "SQLEXPRESS",
+      "mssqlInstanceHint": "Puedes pegar «SERVIDOR\\INSTANCIA» aquí o en el campo de host: se separa solo. Con instancia, el puerto lo resuelve el SQL Browser (UDP 1434); el puerto indicado se usa como alternativa si el Browser no responde.",
       "mssqlTrustCert": "Confiar en el certificado del servidor",
       "mssqlTrustCertHint": "Necesario para los certificados autofirmados que usan la mayoría de instalaciones on-premise.",
       "mssqlAuth": "Autenticación",

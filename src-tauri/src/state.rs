@@ -87,8 +87,11 @@ pub enum MsSqlAuth {
 /// fields that mean nothing to them.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MsSqlOptions {
-    /// Named instance (`SQLEXPRESS` in `HOST\SQLEXPRESS`). When set, the port
-    /// is discovered through the SQL Browser instead of being used as given.
+    /// Named instance (`SQLEXPRESS` in `HOST\SQLEXPRESS`). The combined
+    /// `HOST\INSTANCE` form is accepted here and in [`ConnectionProfile::host`]
+    /// — see `db::mssql::split_instance`. When set, the port is discovered
+    /// through the SQL Browser instead of being used as given, except as the
+    /// fallback tried when the Browser doesn't answer.
     #[serde(default)]
     pub instance: Option<String>,
     /// Accept the server's TLS certificate without validating it. Most on-prem

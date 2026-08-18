@@ -80,7 +80,7 @@ import type {
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { usePreferences } from "@/stores/preferences/preferences";
-import { driverMismatchHint } from "@/lib/db/driver";
+import { driverMismatchHint, splitSqlServerName } from "@/lib/db/driver";
 
 interface Props {
   open: boolean;
@@ -707,6 +707,25 @@ export function ConnectionDialog({
     setSelectedIds(new Set());
   }
 
+  /**
+   * Accept SSMS's single-box `HOST\INSTANCE` in either field and split it in
+   * place on blur.
+   *
+   * SSMS has one "Server name" input, so that is the form users know; typed
+   * into our host field the backslash broke DNS resolution, and typed into the
+   * instance field it was sent to the SQL Browser, which only ever answers to
+   * the bare instance name. The backend normalises this too (`split_instance`,
+   * the authoritative copy — it also covers the CLI and the MCP connector);
+   * doing it here as well is so the user *sees* the split before saving rather
+   * than having it happen silently.
+   */
+  function normalizeServerName() {
+    if (driver !== "sqlserver") return;
+    const next = splitSqlServerName(host, mssqlInstance);
+    if (next.host !== host) setHost(next.host);
+    if (next.instance !== mssqlInstance) setMssqlInstance(next.instance);
+  }
+
   function onDriverChange(d: Driver) {
     setDriver(d);
     if (port === DEFAULT_PORTS[driver] || port === 0) {
@@ -1179,6 +1198,7 @@ export function ConnectionDialog({
                               <Input
                                 value={host}
                                 onChange={(e) => setHost(e.target.value)}
+                                onBlur={normalizeServerName}
                               />
                             </Field>
                           </div>
@@ -1238,12 +1258,16 @@ export function ConnectionDialog({
                           <>
                             <Field
                               label={t("connectionDialog.fields.mssqlInstance")}
+                              hint={t(
+                                "connectionDialog.fields.mssqlInstanceHint",
+                              )}
                             >
                               <Input
                                 value={mssqlInstance}
                                 onChange={(e) =>
                                   setMssqlInstance(e.target.value)
                                 }
+                                onBlur={normalizeServerName}
                                 placeholder={t(
                                   "connectionDialog.fields.mssqlInstancePlaceholder",
                                 )}

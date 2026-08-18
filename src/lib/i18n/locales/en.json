@@ -146,6 +146,7 @@
       "sqlitePathPlaceholder": "C:\\path\\to\\database.db",
       "mssqlInstance": "Instance name (optional)",
       "mssqlInstancePlaceholder": "SQLEXPRESS",
+      "mssqlInstanceHint": "You can paste \"SERVER\\INSTANCE\" here or into the host field — it is split for you. With an instance set, the port is resolved by the SQL Browser (UDP 1434); the port above is used as a fallback if the Browser doesn't answer.",
       "mssqlTrustCert": "Trust server certificate",
       "mssqlTrustCertHint": "Required for the self-signed certificates most on-premise instances use.",
       "mssqlAuth": "Authentication",

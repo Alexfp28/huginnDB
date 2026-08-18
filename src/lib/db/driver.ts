@@ -75,6 +75,36 @@ export function supportsCreateDatabase(driver: Driver | undefined): boolean {
   return driver === "postgres" || driver === "mysql" || driver === "sqlserver";
 }
 
+/**
+ * Split an SSMS-style `HOST\INSTANCE` server name into its two parts.
+ *
+ * The twin of `split_instance` in `src-tauri/src/db/mssql/mod.rs`, which is
+ * the authoritative one (it also covers the CLI and the MCP connector). This
+ * copy exists only so the connection dialog can *show* the user the split
+ * before saving, instead of silently normalising behind their back. Keep the
+ * two in sync — the Rust side carries the precedence rationale.
+ */
+export function splitSqlServerName(
+  host: string,
+  instance: string,
+): { host: string; instance: string } {
+  const clean = (s: string) => s.trim();
+  const [hostPrefix, hostSuffix] = splitOnce(host);
+  const raw = clean(instance);
+  const [instPrefix, instName] = raw.includes("\\")
+    ? splitOnce(raw)
+    : ["", raw];
+  return {
+    host: clean(hostPrefix) || clean(instPrefix),
+    instance: clean(instName) || clean(hostSuffix),
+  };
+}
+
+function splitOnce(value: string): [string, string] {
+  const i = value.indexOf("\\");
+  return i < 0 ? [value, ""] : [value.slice(0, i), value.slice(i + 1)];
+}
+
 /** Canonicalize a free-form driver string; `null` when empty/unrecognized. */
 export function normalizeDriver(
   value: string | null | undefined,
@@ -110,6 +140,22 @@ export function driverMismatchHint(error: string): string | null {
     (e.includes("protocol error") || e.includes("token"))
   ) {
     return "the server didn't respond as SQL Server — check the port (1433 by default), or the instance name if this is a named instance.";
+  }
+  // A named instance whose SQL Browser never answered. tiberius reports this
+  // as a plain lookup failure that names neither the Browser nor UDP 1434, so
+  // without this the user has no way to tell it apart from a wrong hostname.
+  if (
+    e.includes("sql server error") &&
+    (e.includes("no response from the browser") ||
+      e.includes("could not find") ||
+      e.includes("instance"))
+  ) {
+    return "the SQL Server Browser (UDP 1434) didn't answer — start that service on the host, or enter the instance's static TCP port in the port field, which is used as a fallback.";
+  }
+  // A backslash left in the host field: `HOST\INSTANCE` is not a hostname, so
+  // resolution fails long before TDS is involved.
+  if (e.includes("failed to lookup address information") && e.includes("\\")) {
+    return "a server name like HOST\\INSTANCE belongs in the instance field, not the host — HuginnDB splits it for you when you leave the field.";
   }
   return null;
 }

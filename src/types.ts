@@ -23,9 +23,11 @@ export type MsSqlAuth = "sql" | "windows";
  * dropped on the IPC round-trip.
  */
 export interface MsSqlOptions {
-  /** Named instance (the `SQLEXPRESS` of `HOST\SQLEXPRESS`). When set, the
-   *  port is discovered through the SQL Browser instead of being used as
-   *  given, so the port field is ignored. */
+  /** Named instance (the `SQLEXPRESS` of `HOST\SQLEXPRESS`). The combined
+   *  `HOST\INSTANCE` form SSMS asks for is accepted here (and in the host
+   *  field) and split by `split_instance` on the backend. When set, the port
+   *  is discovered through the SQL Browser instead of being used as given —
+   *  except as the fallback tried when the Browser doesn't answer. */
   instance?: string | null;
   /** Accept the server's TLS certificate without validating it. Required in
    *  practice for the self-signed certificates most on-prem instances
