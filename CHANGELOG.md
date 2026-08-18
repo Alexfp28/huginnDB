@@ -4,10 +4,40 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
-## [Unreleased]
+## [1.16.1] — 2026-08-18
 
 ### Added
 
+- **Export/import an environment as a self-contained bundle.** Each row in
+  `EnvironmentSwitcher` gets a new "Export…" action (`export_environment`)
+  that writes a JSON file with the environment's name/colour/theme, the
+  connection profiles it references, and its registered shared origins
+  (name + path only — never a passphrase, matching `origins.rs`'s existing
+  threat model of keeping the secret out-of-band). File → "Import
+  environment…" (`import_environment`) reads one of these back and **always
+  creates a brand-new environment** — it never merges into or overwrites one
+  already configured, so a colleague's exported environment can never
+  collide with your own origins, connections, or environment list. Deliberately
+  excluded: tabs, dockview geometry and launch state, which are session
+  artifacts tied to the machine that produced them (see gotcha #10) rather
+  than part of the environment's portable identity. The new environment's
+  connections tree is scoped to exactly the imported profiles via the
+  existing `visible_connections` filter (#107), and none of them are
+  auto-connected. Connection-profile conflicts reuse `import_profiles`'s
+  exact conflict-resolution UI (overwrite/skip/rename); an imported encrypted
+  origin surfaces the same "no passphrase stored" state a freshly-added one
+  does, resolved on the next sync.
+- **`.rpm` bundle target**, alongside the existing `.deb`/`.AppImage`, for
+  Fedora/openSUSE/RHEL-family distros. Tauri's rpm bundler (the `rpm` crate)
+  is pure Rust — no `rpmbuild` or extra system packages — so it builds from
+  the same `ubuntu-22.04` release leg with no CI changes beyond the
+  `tauri.conf.json` target list. Added `bundle.license: "MIT"` alongside it,
+  since an unset License header on an RPM package reads as "Unspecified."
+  Smoke-tested via `workflow_dispatch` with the `v0.0.0-test` throwaway tag
+  (run #62): both legs completed and the draft release carried a valid
+  `HuginnDB-1.16.0-1.x86_64.rpm` alongside the usual assets. That confirms
+  the bundler output is well-formed — actual install/launch on a real
+  Fedora/openSUSE box is still unverified (see `ROADMAP.md` item 7).
 - **Rename a MongoDB collection**, optionally moving it into another database
   in the same operation. `renameCollection` is a run-command on the `admin`
   database that qualifies both sides with a database name, so the move comes
@@ -46,7 +76,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   re-query), a column added outside the app stayed invisible until the
   connection was dropped. Expanded tables are re-loaded immediately after the
   wipe, so an open node comes back with its current columns.
-- **SQL Server: `SERVIDOR\INSTANCIA` is accepted, in either field.** SSMS has
+- **SQL Server: `SERVER\INSTANCE` is accepted, in either field.** SSMS has
   a single "Server name" box and splits the combined form itself; HuginnDB
   split nothing, so pasting it into the instance field produced a SQL Browser
   lookup that could never match (the Browser only reports the bare instance
@@ -63,43 +93,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   deliberately not treated as a static-port hint.
 - **SQL Server: the "named instance cannot be tunnelled" refusal is raised
   before the SSH tunnel is opened**, instead of after paying for the handshake.
-
-## [1.16.1] — 2026-08-18
-
-### Added
-
-- **Export/import an environment as a self-contained bundle.** Each row in
-  `EnvironmentSwitcher` gets a new "Export…" action (`export_environment`)
-  that writes a JSON file with the environment's name/colour/theme, the
-  connection profiles it references, and its registered shared origins
-  (name + path only — never a passphrase, matching `origins.rs`'s existing
-  threat model of keeping the secret out-of-band). File → "Import
-  environment…" (`import_environment`) reads one of these back and **always
-  creates a brand-new environment** — it never merges into or overwrites one
-  already configured, so a colleague's exported environment can never
-  collide with your own origins, connections, or environment list. Deliberately
-  excluded: tabs, dockview geometry and launch state, which are session
-  artifacts tied to the machine that produced them (see gotcha #10) rather
-  than part of the environment's portable identity. The new environment's
-  connections tree is scoped to exactly the imported profiles via the
-  existing `visible_connections` filter (#107), and none of them are
-  auto-connected. Connection-profile conflicts reuse `import_profiles`'s
-  exact conflict-resolution UI (overwrite/skip/rename); an imported encrypted
-  origin surfaces the same "no passphrase stored" state a freshly-added one
-  does, resolved on the next sync.
-- **`.rpm` bundle target**, alongside the existing `.deb`/`.AppImage`, for
-  Fedora/openSUSE/RHEL-family distros. Tauri's rpm bundler (the `rpm` crate)
-  is pure Rust — no `rpmbuild` or extra system packages — so it builds from
-  the same `ubuntu-22.04` release leg with no CI changes beyond the
-  `tauri.conf.json` target list. Added `bundle.license: "MIT"` alongside it,
-  since an unset License header on an RPM package reads as "Unspecified."
-  Smoke-tested via `workflow_dispatch` with the `v0.0.0-test` throwaway tag
-  (run #62): both legs completed and the draft release carried a valid
-  `HuginnDB-1.16.0-1.x86_64.rpm` alongside the usual assets. That confirms
-  the bundler output is well-formed — actual install/launch on a real
-  Fedora/openSUSE box is still unverified (see `ROADMAP.md` item 7).
-
-### Fixed
 
 - **Clicking a table row in the schema tree almost anywhere but its name
   expanded the column preview instead of opening the table.** `TableRow`

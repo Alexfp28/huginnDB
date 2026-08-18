@@ -43,8 +43,66 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   artefactos. Eso confirma que la salida del empaquetador está bien formada —
   la instalación/arranque real en una máquina Fedora/openSUSE sigue sin
   verificar (ver el punto 7 de `ROADMAP.md`).
+- **Renombrar una colección de MongoDB**, moviéndola opcionalmente a otra
+  base de datos en la misma operación. `renameCollection` es un run-command
+  sobre la base `admin` que cualifica ambos lados con el nombre de la base,
+  así que el movimiento sale gratis con el renombrado: no hay una operación
+  "mover" aparte que construir. La entrada aparece en el menú contextual de
+  la colección junto a Vaciar/Eliminar, y el diálogo de renombrado incorpora
+  un selector de base de destino (solo MongoDB) con un aviso de que un
+  movimiento entre bases copia los documentos en el servidor y requiere
+  permisos en ambas. `dropTarget` es siempre `false`: renombrar sobre una
+  colección existente es un error que el usuario ve, nunca un borrado
+  silencioso de lo que hubiera allí. Las vistas se rechazan de antemano con
+  un mensaje que dice qué hacer en su lugar — MongoDB no sabe renombrar una
+  vista, solo eliminar y recrear, que es también la razón por la que el
+  editor de vistas nunca lo ofreció. El renombrado pasa a depender de su
+  propia capacidad `supportsRenameTable` en vez de `supportsDdlEditing`: no
+  necesita un constructor de DDL, que es justo por lo que MongoDB puede
+  tenerlo mientras la edición de estructura sigue siendo de solo lectura ahí.
+- **Atajo propio para "Recargar esquema"** (`Ctrl+Shift+R` por defecto),
+  reasignable junto a los demás en Ajustes → Atajos. `F5` sigue recargando
+  las filas de la rejilla activa; este relee el catálogo.
 
 ### Corregido
+
+- **"Actualizar" ahora recarga la base de datos que estás mirando de
+  verdad.** En una conexión multi-BD las tablas viven en los slices hijos
+  sintéticos `<padre>::db::<bd>`, pero el menú del nodo de base de datos, el
+  de la fila de conexión y la paleta de comandos refrescaban el id *padre*:
+  volvían a pedir una lista de tablas que nadie pinta (en MySQL el pool padre
+  no tiene base seleccionada, así que legítimamente viene vacía) y dejaban
+  intacto el subárbol visible. Una tabla creada fuera de la app no aparecía
+  por muchas veces que se pulsara Actualizar. El nuevo
+  `useSchema.refreshTree` refresca una conexión junto con todas las vistas
+  por base abiertas debajo, y el nodo de base de datos refresca su propio
+  hijo explícitamente.
+- **Actualizar ahora invalida las columnas e índices cacheados.** Solo volvía
+  a pedir las listas de bases y de tablas, arrastrando el resto del slice sin
+  tocarlo — y como el explorador carga las columnas de una tabla solo cuando
+  *faltan* (para que plegar y desplegar no vuelva a consultar), una columna
+  añadida fuera de la app seguía invisible hasta desconectar. Las tablas
+  desplegadas se recargan justo después del vaciado, así que un nodo abierto
+  vuelve con sus columnas actuales.
+- **SQL Server: se acepta `SERVIDOR\INSTANCIA`, en cualquiera de los dos
+  campos.** SSMS tiene una única caja "Nombre del servidor" y separa esa
+  forma él mismo; HuginnDB no separaba nada, así que pegarla en el campo de
+  instancia producía una consulta al SQL Browser que jamás podía casar (el
+  Browser solo publica el nombre corto de la instancia) y pegarla en el campo
+  de host fallaba en la resolución DNS con un error que no mencionaba
+  instancias. Ahora ambos campos se normalizan con `split_instance`, en el
+  backend (autoritativo — cubre también la CLI y el conector MCP) y en el
+  diálogo de conexión al salir del campo, para que el usuario vea la
+  separación en vez de que ocurra en silencio.
+- **SQL Server: un SQL Browser parado o bloqueado por firewall ya no impide
+  conectar a una instancia nombrada con puerto estático.** UDP 1434 es un
+  servicio distinto del puerto TCP de la propia instancia; si el Browser no
+  responde, ahora se prueba el puerto indicado en el diálogo antes de
+  rendirse, y el fallo informa de ambas causas en lugar de solo la última. Un
+  puerto dejado en el 1433 por defecto no se interpreta como puerto estático.
+- **SQL Server: el rechazo de "una instancia nombrada no se puede tunelizar"
+  se evalúa antes de abrir el túnel SSH**, en vez de después de pagar el
+  handshake.
 
 - **Al hacer clic en una fila de tabla del árbol de esquema en casi
   cualquier punto salvo su nombre se expandía la vista previa de columnas
