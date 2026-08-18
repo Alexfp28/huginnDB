@@ -6,7 +6,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
-## [Unreleased]
+## [1.16.1] — 2026-08-18
 
 ### Añadido
 
@@ -23,6 +23,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   artefactos. Eso confirma que la salida del empaquetador está bien formada —
   la instalación/arranque real en una máquina Fedora/openSUSE sigue sin
   verificar (ver el punto 7 de `ROADMAP.md`).
+
+### Corregido
+
+- **Al hacer clic en una fila de tabla del árbol de esquema en casi
+  cualquier punto salvo su nombre se expandía la vista previa de columnas
+  en lugar de abrir la tabla.** `TableRow` envolvía toda la fila — chevron,
+  icono, nombre, punto de "abrir en pestaña" y badge de métrica — en un
+  único botón que alternaba la lista de columnas, dejando solo el `<span>`
+  del nombre aislado mediante `stopPropagation` para abrir una pestaña en su
+  lugar. Todo IDE del que este proyecto toma referencia vincula un clic
+  simple en la fila a abrirla, así que apuntar a la fila y caer un píxel
+  fuera de ese estrecho `<span>` del nombre seguía sorprendiendo a los
+  usuarios con un expandir/colapsar no deseado. La fila ahora renderiza dos
+  botones hermanos: uno dedicado solo al chevron que alterna las columnas
+  (con etiquetas aria `schema.expandColumns`/`schema.collapseColumns`,
+  en/es), y un segundo botón que cubre todo lo demás y abre la pestaña de
+  la tabla.
 
 ## [1.16.0] — 2026-08-17
 
