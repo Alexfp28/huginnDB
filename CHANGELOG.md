@@ -20,6 +20,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the bundler output is well-formed — actual install/launch on a real
   Fedora/openSUSE box is still unverified (see `ROADMAP.md` item 7).
 
+### Fixed
+
+- **Clicking a table row in the schema tree almost anywhere but its name
+  expanded the column preview instead of opening the table.** `TableRow`
+  wrapped the whole row — chevron, icon, name, "open in tab" dot and metric
+  badge — in a single button that toggled the column list, with only the
+  name `<span>` carved out via `stopPropagation` to open a tab instead. Every
+  IDE this project takes cues from binds a plain click on the row to opening
+  it, so aiming for the row and landing a pixel outside that narrow name
+  span kept surprising users with an unwanted expand/collapse. The row now
+  renders two sibling buttons: a dedicated chevron-only button that toggles
+  the columns (with `schema.expandColumns`/`schema.collapseColumns`
+  aria-labels, en/es), and a second button covering everything else that
+  opens the table tab.
+
 ## [1.16.0] — 2026-08-17
 
 ### Added
