@@ -180,6 +180,12 @@ pub struct ImportResult {
 // dockview's geometry is a JSON blob keyed to panel ids from that machine's
 // `useTabs`), so portability stops at "which connections, from where".
 //
+// A single export can bundle **more than one** environment — the picker lets
+// the user select any subset — so the file format is one file, N environment
+// bundles, and one deduplicated pool of connection profiles the bundles
+// reference by id (see `EnvironmentExportFile`'s doc for why they're not
+// duplicated per environment).
+//
 // Importing an environment always creates a **new** one — never merges into
 // an existing one — so there is nothing for its origins or cosmetic fields to
 // conflict with. The only genuine conflict is at the connection-profile layer
@@ -187,14 +193,37 @@ pub struct ImportResult {
 // `ImportConflict` / `ConflictAction` / `ImportResult` machinery `import_profiles`
 // already has, rather than inventing a parallel one.
 
-/// Top-level wrapper for an exported environment. Shares [`ExportMetadata`]
-/// with [`ExportFile`] (with `meta.kind` set to [`KIND_ENVIRONMENT`]) so both
-/// formats carry the same version/encryption header.
+/// Top-level wrapper for one or more exported environments. Shares
+/// [`ExportMetadata`] with [`ExportFile`] (with `meta.kind` set to
+/// [`KIND_ENVIRONMENT`]) so both formats carry the same version/encryption
+/// header.
+///
+/// `profiles` is a single **deduplicated** union of every connection profile
+/// referenced by any environment in `environments` — not one copy per
+/// environment. Two exported environments sharing a connection (a common
+/// "Producción" + "Staging" split against the same jump-box server) would
+/// otherwise duplicate that profile, its secrets, and — on import — its
+/// keychain entry. Each bundle instead lists which of the shared `profiles`
+/// it references by id, resolved back into that environment's
+/// `launch.visible_connections` after import (`connection_ids` names
+/// *original* ids, the same ones `ExportedProfile.profile.id` carries; the
+/// map from original id to post-import fresh id is threaded through
+/// `apply_profile_imports`'s second return value).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EnvironmentExportFile {
     pub meta: ExportMetadata,
-    pub environment: ExportedEnvironment,
+    pub environments: Vec<ExportedEnvironmentBundle>,
     pub profiles: Vec<ExportedProfile>,
+}
+
+/// One environment's slice of an [`EnvironmentExportFile`]: its cosmetic
+/// identity, which of the file's shared `profiles` it groups, and its own
+/// registered origins.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportedEnvironmentBundle {
+    pub environment: ExportedEnvironment,
+    /// Ids into the sibling `EnvironmentExportFile::profiles` list.
+    pub connection_ids: Vec<String>,
     pub origins: Vec<ExportedOrigin>,
 }
 
@@ -215,31 +244,52 @@ pub struct ExportedEnvironment {
 /// through a file. An imported encrypted origin surfaces the same "no
 /// passphrase stored" state a freshly `add_origin`-ed one does until the user
 /// enters it.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportedOrigin {
     pub name: String,
     pub path: String,
 }
 
 /// Summary returned by `analyze_environment_import`. Mirrors [`ImportAnalysis`]
-/// but scoped to what an environment import needs decided up front.
+/// but scoped to what an environment import needs decided up front — one
+/// entry per environment in the file, plus the conflicts and encryption flag
+/// that apply to the file's shared `profiles` as a whole.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EnvironmentImportAnalysis {
-    pub environment_name: String,
+    pub environments: Vec<EnvironmentImportAnalysisEntry>,
     pub total_profiles: usize,
     pub encrypted: bool,
     pub conflicts: Vec<ImportConflict>,
+}
+
+/// Display summary for one environment inside an
+/// [`EnvironmentImportAnalysis`] — enough for the picker to show what each
+/// one is without decrypting or importing anything yet.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EnvironmentImportAnalysisEntry {
+    pub name: String,
+    pub connection_count: usize,
     /// For display only ("N shared origins will be registered") — origins
     /// never conflict, since import always lands in a brand-new environment.
     pub origins: Vec<ExportedOrigin>,
 }
 
-/// Result of `import_environment`.
+/// Result of `import_environment` — one new environment per bundle in the
+/// file, plus the shared profile-import outcome (imported/skipped/renamed
+/// apply across the whole file, not per environment, since `profiles` is a
+/// single deduplicated list).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EnvironmentImportResult {
-    pub environment_id: String,
+    pub environments: Vec<ImportedEnvironment>,
     pub profiles: ImportResult,
-    /// Ids of the origins registered in the new environment, in file order.
+}
+
+/// One environment created by `import_environment`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ImportedEnvironment {
+    pub environment_id: String,
+    pub name: String,
+    /// Ids of the origins registered in this environment, in file order.
     pub origin_ids: Vec<String>,
 }
 

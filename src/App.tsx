@@ -51,8 +51,6 @@ import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { TabSwitcher, useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { SettingsDialog } from "@/components/settings/dialogs/SettingsDialog";
 import { EnvironmentEditorDialog } from "@/components/connection/dialogs/EnvironmentEditorDialog";
-import { ExportEnvironmentDialog } from "@/components/connection/dialogs/ExportEnvironmentDialog";
-import { useEnvironmentTransfer } from "@/stores/dialogs/environmentTransfer";
 import { startLogBridge } from "@/lib/bridges/log-bridge";
 import { startCliConnectBridge } from "@/lib/bridges/cli-connect-bridge";
 import { startConnectionHealthBridge } from "@/lib/bridges/connection-health-bridge";
@@ -108,8 +106,6 @@ export default function App() {
   const refreshSchema = useSchema((s) => s.refresh);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
-  const exportEnvId = useEnvironmentTransfer((s) => s.exportEnvId);
-  const closeExportEnv = useEnvironmentTransfer((s) => s.closeExport);
   const cliArgsHandled = useRef(false);
   /** Set when a CLI ad-hoc launch has no `--driver` and no configured default
    *  — opens the driver picker; the params resume once the user chooses. */
@@ -775,7 +771,6 @@ export default function App() {
         </header>
         <SettingsDialog />
         <EnvironmentEditorDialog />
-        <ExportEnvironmentDialog environmentId={exportEnvId} onClose={closeExportEnv} />
         <div className="flex-1 overflow-hidden">
           <AppShell />
         </div>

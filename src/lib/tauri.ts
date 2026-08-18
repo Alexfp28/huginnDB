@@ -771,18 +771,19 @@ export const api = {
   // environment; it never merges into one that already exists.
 
   /**
-   * Export one environment (its cosmetics, referenced connection profiles,
-   * and registered origins) to a user-chosen JSON file. Same
+   * Export one or more environments (each one's cosmetics and registered
+   * origins, plus a single deduplicated pool of the connection profiles any
+   * of them reference) to a user-chosen JSON file. Same
    * `includePasswords`/`passphrase` contract as `exportProfiles`. Returns the
    * path of the written file.
    */
-  exportEnvironment: (
-    id: string,
+  exportEnvironments: (
+    ids: string[],
     includePasswords: boolean,
     passphrase?: string,
   ) =>
-    invoke<string>("export_environment", {
-      id,
+    invoke<string>("export_environments", {
+      ids,
       includePasswords,
       passphrase,
     }),
@@ -790,7 +791,8 @@ export const api = {
   /**
    * Parse an environment export file and return metadata for the
    * conflict-resolution UI — same shape of step as `analyzeImportFile`, plus
-   * the environment's name and the origins it will register.
+   * one entry per environment in the file with its name and the origins it
+   * will register.
    */
   analyzeEnvironmentImport: (filePath: string) =>
     invoke<EnvironmentImportAnalysis>("analyze_environment_import", {
@@ -798,9 +800,9 @@ export const api = {
     }),
 
   /**
-   * Import an environment export as a new environment. `conflictResolutions`
-   * must cover every id returned in `analyze.conflicts`, exactly like
-   * `importProfiles`.
+   * Import an environment export — every bundle in the file becomes a new
+   * environment. `conflictResolutions` must cover every id returned in
+   * `analyze.conflicts`, exactly like `importProfiles`.
    */
   importEnvironment: (
     filePath: string,

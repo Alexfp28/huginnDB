@@ -1,15 +1,19 @@
 /**
  * Multi-step dialog for importing an environment export — mirrors
- * `ImportProfilesDialog`'s steps, with two differences: the "done" step also
- * reports how many shared origins were registered (and offers to switch into
- * the new environment right away), and importing always creates a **new**
- * environment rather than touching anything already configured.
+ * `ImportProfilesDialog`'s steps, with three differences: a "review" step
+ * lists every environment the file contains (a file can bundle more than
+ * one, see `ExportEnvironmentDialog`), the "done" step reports how many
+ * shared origins were registered per environment, and importing always
+ * creates **new** environments rather than touching anything already
+ * configured.
  *
  * Steps:
  *  1. "pick"       — file picker + quick analysis
- *  2. "passphrase" — only if the file has encrypted secrets
- *  3. "conflicts"  — resolve conflicts with existing connection profiles
- *  4. "done"       — result summary
+ *  2. "review"     — which environments (and how many connections/origins
+ *                    each) are about to be created
+ *  3. "passphrase" — only if the file has encrypted secrets
+ *  4. "conflicts"  — resolve conflicts with existing connection profiles
+ *  5. "done"       — result summary
  */
 
 import { useState } from "react";
@@ -35,7 +39,7 @@ import type {
   EnvironmentImportResult,
 } from "@/types";
 
-type Step = "pick" | "passphrase" | "conflicts" | "done";
+type Step = "pick" | "review" | "passphrase" | "conflicts" | "done";
 
 interface Props {
   open: boolean;
@@ -75,10 +79,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
           defaults[c.id] = "rename";
         }
         setResolutions(defaults);
-        setStep(info.encrypted ? "passphrase" : info.conflicts.length > 0 ? "conflicts" : "pick");
-        if (!info.encrypted && info.conflicts.length === 0) {
-          await doImport(picked, undefined, []);
-        }
+        setStep("review");
       } catch (e) {
         setError(String(e));
       } finally {
@@ -86,6 +87,17 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
       }
     } catch {
       // Dialog cancelled.
+    }
+  }
+
+  function handleReviewNext() {
+    if (!analysis) return;
+    if (analysis.encrypted) {
+      setStep("passphrase");
+    } else if (analysis.conflicts.length > 0) {
+      setStep("conflicts");
+    } else {
+      void doImport(filePath, undefined, []);
     }
   }
 
@@ -166,6 +178,41 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               <Button size="sm" onClick={handlePickFile} disabled={loading}>
                 <Upload className="mr-1.5 h-3.5 w-3.5" />
                 {t("transfer.import.browse")}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {/* Step: review */}
+        {step === "review" && analysis && (
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-muted-foreground">
+              {t("transfer.importEnvironment.reviewDescription", {
+                count: analysis.environments.length,
+              })}
+            </p>
+            <div className="divide-y divide-border rounded-md border border-border max-h-56 overflow-y-auto">
+              {analysis.environments.map((env, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 px-3 py-2">
+                  <span className="truncate text-xs font-medium">
+                    {env.name || t("environments.defaultName")}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                    {t("transfer.importEnvironment.reviewCounts", {
+                      connections: env.connectionCount,
+                      origins: env.origins.length,
+                    })}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {error && <p className="text-[11px] text-destructive">{error}</p>}
+            <DialogFooter>
+              <Button variant="ghost" size="sm" onClick={handleClose}>
+                {t("common.cancel")}
+              </Button>
+              <Button size="sm" onClick={handleReviewNext} disabled={loading}>
+                {t("common.continue")}
               </Button>
             </DialogFooter>
           </div>
@@ -254,29 +301,36 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                 {t("common.cancel")}
               </Button>
               <Button size="sm" onClick={handleConflictsNext} disabled={loading}>
-                {t("transfer.importEnvironment.importButton")}
+                {t("transfer.importEnvironment.importButton", {
+                  count: analysis.environments.length,
+                })}
               </Button>
             </DialogFooter>
           </div>
         )}
 
         {/* Step: done */}
-        {step === "done" && result && analysis && (
+        {step === "done" && result && (
           <div className="space-y-4 py-2">
             <div className="flex items-center gap-2 text-sm font-medium text-success">
               <CheckCircle2 className="h-4 w-4" />
-              {t("transfer.importEnvironment.done", { name: analysis.environmentName || t("environments.defaultName") })}
+              {t("transfer.importEnvironment.done", { count: result.environments.length })}
             </div>
             <div className="space-y-1 text-xs text-muted-foreground">
+              {result.environments.map((env) => (
+                <p key={env.environmentId}>
+                  {t("transfer.importEnvironment.doneEntry", {
+                    name: env.name || t("environments.defaultName"),
+                    origins: env.originIds.length,
+                  })}
+                </p>
+              ))}
               <p>{t("transfer.import.summaryImported", { count: result.profiles.imported.length })}</p>
               {result.profiles.skipped.length > 0 && (
                 <p>{t("transfer.import.summarySkipped", { count: result.profiles.skipped.length })}</p>
               )}
               {result.profiles.renamed.length > 0 && (
                 <p>{t("transfer.import.summaryRenamed", { count: result.profiles.renamed.length })}</p>
-              )}
-              {result.originIds.length > 0 && (
-                <p>{t("transfer.importEnvironment.summaryOrigins", { count: result.originIds.length })}</p>
               )}
             </div>
             {result.profiles.needs_password.length > 0 && (
@@ -289,15 +343,17 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               <Button variant="ghost" size="sm" onClick={handleClose}>
                 {t("common.close")}
               </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  void switchTo(result.environmentId);
-                  handleClose();
-                }}
-              >
-                {t("transfer.importEnvironment.switchNow")}
-              </Button>
+              {result.environments.length === 1 && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    void switchTo(result.environments[0].environmentId);
+                    handleClose();
+                  }}
+                >
+                  {t("transfer.importEnvironment.switchNow")}
+                </Button>
+              )}
             </DialogFooter>
           </div>
         )}

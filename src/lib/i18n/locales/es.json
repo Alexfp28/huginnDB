@@ -65,6 +65,7 @@
       "manageConnections": "Gestionar conexiones…",
       "importProfiles": "Importar perfiles…",
       "exportProfiles": "Exportar perfiles…",
+      "exportEnvironments": "Exportar entornos…",
       "importEnvironment": "Importar entorno…",
       "disconnectAll": "Desconectar todas"
     },
@@ -1257,17 +1258,20 @@
       "needsPassword": "{{count}} perfil(es) se importaron sin contraseña. Abre cada conexión para configurarla antes de conectar."
     },
     "exportEnvironment": {
-      "title": "Exportar «{{name}}»",
-      "description": "Exporta el nombre, color y tema de este entorno, los perfiles de conexión que agrupa, y sus orígenes compartidos registrados (solo nombre y ruta — nunca la contraseña de cifrado). Las pestañas y la distribución de paneles se quedan en esta máquina.",
-      "exportButton": "Exportar entorno"
+      "title": "Exportar entornos",
+      "description": "Para cada entorno seleccionado abajo: su nombre, color y tema, los perfiles de conexión que agrupa, y sus orígenes compartidos registrados (solo nombre y ruta — nunca la contraseña de cifrado). Las pestañas y la distribución de paneles se quedan en esta máquina. Las conexiones compartidas por más de un entorno seleccionado se escriben una sola vez, no se duplican.",
+      "environments": "Entornos a exportar",
+      "exportButton": "Exportar {{count}} entorno(s)"
     },
     "importEnvironment": {
       "title": "Importar entorno",
       "pickTitle": "Seleccionar fichero de exportación de entorno",
-      "pickDescription": "Selecciona un fichero de exportación de entorno de HuginnDB (.json) para importar. Siempre se añade como un entorno nuevo — nada de lo ya configurado se toca.",
-      "importButton": "Importar entorno",
-      "done": "«{{name}}» importado",
-      "summaryOrigins": "{{count}} origen(es) compartido(s) registrado(s) — los cifrados pedirán su contraseña en la próxima sincronización.",
+      "pickDescription": "Selecciona un fichero de exportación de entorno de HuginnDB (.json) para importar. Cada entorno que contiene se añade siempre como nuevo — nada de lo ya configurado se toca.",
+      "reviewDescription": "Este fichero contiene {{count}} entorno(s):",
+      "reviewCounts": "{{connections}} conexión(es) · {{origins}} origen(es)",
+      "importButton": "Importar {{count}} entorno(s)",
+      "done": "{{count}} entorno(s) importado(s)",
+      "doneEntry": "«{{name}}» — {{origins}} origen(es) compartido(s) registrado(s) (los cifrados pedirán su contraseña en la próxima sincronización)",
       "switchNow": "Cambiar a él ahora"
     }
   },
