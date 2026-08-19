@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **`docs/MCP.md` (+ the Spanish twin) now documents the two independent
+  approval gates a write passes through**, after a report of a connection set
+  to `full` whose schema change was still refused — by the AI client, not by
+  the connector. New "When the client blocks the call, not the connector"
+  subsection: a table for telling a connector refusal (a tool result naming
+  the policy, plus a line in `mcp-audit.log`) from a client-side block (the
+  call never reaches the connector, so the audit log stays silent), why
+  Claude Code's auto-mode classifier treats DDL against a live server as a
+  migration against unrecognised infrastructure by default, and the four
+  client-side remedies — a one-off retry from `/permissions`, a specific
+  request (explicit intent clears the classifier's soft blocks), a
+  `permissions.allow` rule for the tool, or `autoMode.environment` /
+  `autoMode.allow` entries describing the instance. All of them belong to
+  whoever runs the client; documenting them does not loosen the connector,
+  whose own policy still applies after the client approves the call.
+
 ### Fixed
 
 - **SQL Server: negative `decimal`/`numeric` values rendered as a

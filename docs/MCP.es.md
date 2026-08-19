@@ -257,7 +257,10 @@ conexión son baratas. Una conexión de una sola base de datos (con
   lanza tu cliente MCP; no puede mostrar un prompt. La aprobación por acción
   («¿permitir esta herramienta?») la pide el cliente (Claude Code / Desktop /
   Cursor la piden). El papel del conector es la *política* (qué se permite) y
-  la *auditoría*.
+  la *auditoría*. Son dos puertas independientes, y un nivel `full` es un
+  *techo*, no una instrucción para el cliente — ver [Cuando el bloqueo viene
+  del cliente, no del
+  conector](#cuando-el-bloqueo-viene-del-cliente-no-del-conector).
 - **Log de auditoría.** Cada escritura (éxito o fallo) añade una línea a
   `mcp-audit.log`, en el mismo directorio de configuración que `profiles.json`.
   Las lecturas no se registran, así que el fichero es un registro limpio de las
@@ -275,6 +278,78 @@ conexión son baratas. Una conexión de una sola base de datos (con
   nunca las registra ni las persiste (el log de auditoría registra sentencias
   y recuentos de filas, nunca credenciales).
 - **Límite de filas.** `--max-rows` acota cada conjunto de resultados.
+
+### Cuando el bloqueo viene del cliente, no del conector
+
+Una escritura la puede rechazar *cualquiera* de las dos puertas, y cada una
+responde a un dueño distinto. El síntoma que despista: una conexión en `full`
+en Ajustes → MCP y el asistente diciendo aun así que no puede ejecutar un
+`CREATE`/`ALTER`/`DROP`.
+
+Distinguirlas lleva un segundo:
+
+| | Rechazo del conector | Bloqueo del cliente |
+| --- | --- | --- |
+| Qué ves | Un *resultado* de la herramienta nombrando el nivel: *«connection … has MCP write policy "read-only", which does not permit this operation (needs at least "full")»* | La denegación del propio cliente. En el modo auto de Claude Code el motivo suele ser el texto fijo `Blocked by classifier` |
+| `mcp-audit.log` | Se añadió una línea (los rechazos también se registran) | **Nada** — la llamada nunca llegó al conector |
+| Quién lo cambia | Tú, en HuginnDB → Ajustes → MCP | Quien ejecuta el cliente de IA, en *su* configuración |
+
+En concreto con Claude Code: en [modo auto](https://code.claude.com/docs/en/permission-modes#eliminate-prompts-with-auto-mode)
+un segundo modelo — el clasificador — revisa cada acción en lugar de
+preguntarle al usuario, y las llamadas a herramientas MCP pasan por ahí. Su
+lista de bloqueos por defecto incluye *«production deploys and migrations»* y
+*«modifying shared infrastructure»*, y hasta que nombres objetivos concretos
+trata cualquier host o namespace cuyo nombre lleve `prod` como objetivo remoto
+sensible. Un DDL contra un servidor de base de datos real encaja justo ahí,
+diga lo que diga la política de HuginnDB — y el clasificador no tiene forma de
+saber que el servidor es una instancia de pruebas desechable si nadie se lo
+dice.
+
+Los arreglos viven todos en el lado del cliente, y todos son decisión de la
+persona que lo ejecuta — el conector no puede ni debe intentar influir en ellos:
+
+- **Puntual:** abrir `/permissions` → **Recently denied** y pulsar `r` sobre la
+  entrada para reintentarla con aprobación manual.
+- **Ser específico en la petición.** La intención explícita del usuario levanta
+  los bloqueos blandos del clasificador; una genérica no. *«ordena el esquema»*
+  no autoriza un DDL, *«ejecuta este `ALTER TABLE` en la base `sandbox`»* sí.
+- **Pre-aprobar la herramienta** con una [regla
+  allow](https://code.claude.com/docs/en/permissions#permission-rule-syntax) en
+  `~/.claude/settings.json`, que se resuelve *antes* de que corra el
+  clasificador. El segmento del servidor tiene que ser literal — un glob sin
+  anclar se ignora:
+
+  ```json
+  {
+    "permissions": {
+      "allow": ["mcp__huginndb__run_query"]
+    }
+  }
+  ```
+
+- **Dar contexto al clasificador** sobre la base de datos con entradas
+  [`autoMode`](https://code.claude.com/docs/en/auto-mode-config) (solo en
+  settings de usuario o gestionados — el clasificador ignora a propósito el
+  `.claude/settings.json` del repo). Mantén `"$defaults"` o reemplazas las
+  reglas integradas por completo:
+
+  ```json
+  {
+    "autoMode": {
+      "environment": ["$defaults", "Key internal services: the `sandbox` SQL Server instance at db-test.example.internal is a disposable test database, restored nightly from a fixture"],
+      "allow": ["$defaults", "Schema changes on the `sandbox` database through the huginndb MCP connector are allowed: it holds no production data"]
+    }
+  }
+  ```
+
+- **O salir del modo auto** (Shift+Tab → Manual) y aprobar cada llamada a mano.
+
+Nada de esto afloja el conector: su política se relee de disco en cada intento
+de escritura y se aplica *después* de que el cliente haya aprobado la llamada,
+así que una conexión dejada en `read-only` sigue siendo de solo lectura por
+permisiva que sea la configuración del cliente. Esa asimetría es justamente el
+punto — el cliente controla *a este asistente en esta máquina*, el nivel de
+escritura controla *la base de datos*.
 
 ## Drivers soportados
 

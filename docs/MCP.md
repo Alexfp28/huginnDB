@@ -293,7 +293,10 @@ only needed when `list_connections` shows an empty `database`.
 - **Approval stays with the client.** The connector is a headless process your
   MCP client spawns; it can't show a prompt. The per-action "allow this tool?"
   approval is the client's job (Claude Code / Desktop / Cursor all ask). The
-  connector's role is *policy* (what's allowed) plus *audit*.
+  connector's role is *policy* (what's allowed) plus *audit*. The two gates are
+  independent, and a write policy of `full` is a *ceiling*, not an instruction
+  to the client — see [When the client blocks the call, not the
+  connector](#when-the-client-blocks-the-call-not-the-connector).
 - **Audit log.** Every write (success or failure) appends a line to
   `mcp-audit.log`, in the same config directory as `profiles.json`. Reads are
   not logged, so the file is a clean record of state-changing operations.
@@ -308,6 +311,74 @@ only needed when `list_connections` shows an empty `database`.
   exactly like the desktop app. The connector never logs or persists them (the
   audit log records statements and row counts, never credentials).
 - **Row cap.** `--max-rows` bounds every result set.
+
+### When the client blocks the call, not the connector
+
+A write can be refused by *either* gate, and they answer to different owners.
+The symptom that trips people up: a connection set to `full` in Settings → MCP,
+and the AI assistant still reports it can't run a `CREATE`/`ALTER`/`DROP`.
+
+Telling them apart takes a second:
+
+| | Refused by the connector | Blocked by the client |
+| --- | --- | --- |
+| What you see | A tool *result* naming the level: *"connection … has MCP write policy "read-only", which does not permit this operation (needs at least "full")"* | The client's own denial. In Claude Code's auto mode the reason is usually the fixed text `Blocked by classifier` |
+| `mcp-audit.log` | A line was appended (refusals are logged too) | **Nothing** — the call never reached the connector |
+| Who changes it | You, in HuginnDB → Settings → MCP | Whoever runs the AI client, in *their* client config |
+
+Claude Code specifically: in [auto mode](https://code.claude.com/docs/en/permission-modes#eliminate-prompts-with-auto-mode)
+a second model — the classifier — reviews each action instead of prompting the
+user, and MCP tool calls go through it. Its default block list includes
+*"production deploys and migrations"* and *"modifying shared infrastructure"*,
+and until you name concrete targets it treats any host or namespace whose name
+carries `prod` as a sensitive remote target. Schema DDL against a live database
+server reads as exactly that, whatever HuginnDB's own policy says — and the
+classifier has no way to know the server is a disposable test instance unless
+someone tells it.
+
+The fixes all live on the client side, and all of them are the human's call to
+make — the connector cannot and should not try to influence them:
+
+- **One-off:** open `/permissions` → **Recently denied**, press `r` on the
+  entry to retry it with a manual approval.
+- **Be specific in the request.** Explicit user intent clears the classifier's
+  soft blocks; a general one doesn't. *"tidy up the schema"* won't authorise a
+  DDL, *"run this `ALTER TABLE` on the `sandbox` database"* does.
+- **Pre-approve the tool** with an [allow
+  rule](https://code.claude.com/docs/en/permissions#permission-rule-syntax) in
+  `~/.claude/settings.json`, which resolves *before* the classifier runs. The
+  server segment has to be literal — an unanchored glob is ignored:
+
+  ```json
+  {
+    "permissions": {
+      "allow": ["mcp__huginndb__run_query"]
+    }
+  }
+  ```
+
+- **Give the classifier context** about the database with
+  [`autoMode`](https://code.claude.com/docs/en/auto-mode-config) entries (user
+  or managed settings only — the classifier deliberately ignores a repo's
+  `.claude/settings.json`). Keep `"$defaults"` or you replace the built-in
+  rules wholesale:
+
+  ```json
+  {
+    "autoMode": {
+      "environment": ["$defaults", "Key internal services: the `sandbox` SQL Server instance at db-test.example.internal is a disposable test database, restored nightly from a fixture"],
+      "allow": ["$defaults", "Schema changes on the `sandbox` database through the huginndb MCP connector are allowed: it holds no production data"]
+    }
+  }
+  ```
+
+- **Or leave auto mode** (Shift+Tab → Manual) and approve each call yourself.
+
+None of this loosens the connector: its own policy is re-read from disk on
+every write attempt and applies *after* the client has approved the call, so a
+connection left at `read-only` stays read-only no matter how permissive the
+client's config is. That asymmetry is the point — the client gates *this
+assistant on this machine*, the write policy gates *the database*.
 
 ## Supported drivers
 
