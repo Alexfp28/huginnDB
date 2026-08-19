@@ -91,9 +91,16 @@ export interface JsonSchemaModePrefs {
   hover: boolean;
 }
 
+/** A parsed library entry, plus the source it was parsed from. */
+export interface PublishedSchema {
+  uri: string;
+  /** The raw document, used only to tell a real change from a no-op. */
+  body: string;
+  schema: unknown;
+}
+
 let installed: Monaco | null = null;
-let library = new Map<string, unknown>();
-let libraryRevision = 0;
+let library: PublishedSchema[] = [];
 const associations = new Map<string, Association>();
 let lastSignature = "";
 let modePrefs: JsonSchemaModePrefs = {
@@ -160,9 +167,8 @@ export function setModePrefs(next: JsonSchemaModePrefs): void {
     next.hover !== modePrefs.hover;
   if (!changed) return;
   modePrefs = next;
-  // Validation rides in the diagnostics options, so force a rebuild past the
-  // signature guard.
-  lastSignature = "";
+  // `validation` is part of the signature, so `flush` picks the change up on its
+  // own; completion and hover live in the mode configuration instead.
   flush();
   applyModeConfiguration();
 }
@@ -190,13 +196,13 @@ function applyModeConfiguration(): void {
  * Replace the published library. `entries` must already be parsed — see
  * `stores/jsonSchemas.ts`, which skips any entry whose body is not valid JSON so
  * a half-written draft never validates anybody's cells.
+ *
+ * Cheap to call with unchanged content: {@link flush} compares the actual bodies,
+ * so renaming a schema — or any refetch that returns the same documents — does not
+ * reach `setDiagnosticsOptions`, and therefore does not restart the worker.
  */
-export function setSchemaLibrary(
-  entries: { uri: string; schema: unknown }[],
-  revision: number,
-): void {
-  library = new Map(entries.map((e) => [e.uri, e.schema]));
-  libraryRevision = revision;
+export function setSchemaLibrary(entries: PublishedSchema[]): void {
+  library = entries;
   flush();
 }
 
@@ -222,9 +228,21 @@ function flush(): void {
   // bind is not lost.
   if (!installed) return;
 
-  const signature = `${libraryRevision}|${[...associations.keys()].sort().join(",")}`;
-  // Guard because every call stops the JSON worker and recomputes the markers of
-  // every JSON model — cheap once per session, ruinous per keystroke.
+  // The guard compares what the worker actually consumes: which schema documents
+  // exist and which models they are attached to. It is deliberately NOT a
+  // monotonic revision counter — the store bumps one of those on every save, so a
+  // rename would restart the worker on each keystroke. A body comparison is a
+  // handful of `memcmp`s and only runs when the library is republished.
+  const signature = [
+    ...library.map((e) => `${e.uri} ${e.body}`),
+    "--",
+    ...[...associations.entries()]
+      .map(([uri, a]) => `${uri}=>${a.schemaUri}`)
+      .sort(),
+    `mode:${modePrefs.validation}`,
+  ].join("");
+  // Every call past here stops the JSON worker and recomputes the markers of
+  // every JSON model — fine once per real change, ruinous per keystroke.
   if (signature === lastSignature) return;
   lastSignature = signature;
 
@@ -236,7 +254,7 @@ function flush(): void {
     // The whole library by URI and with no `fileMatch`: registered so a `$ref`
     // from one user schema to another resolves, without applying anywhere by
     // itself.
-    ...[...library].map(([uri, schema]) => ({ uri, schema })),
+    ...library.map((e) => ({ uri: e.uri, schema: e.schema })),
     // The bundled meta-schema, with no `schema` body so it resolves from the
     // worker's own contributions rather than the network.
     { uri: DRAFT_07_URI, fileMatch: [`*${SCHEMA_SUFFIX}`] },

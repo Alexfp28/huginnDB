@@ -77,6 +77,11 @@ export function JsonSchemasSection() {
   const [filter, setFilter] = useState("");
   const [body, setBody] = useState("");
   const [bodyDirty, setBodyDirty] = useState(false);
+  // Name and description are edited locally and flushed on a timer, the same
+  // 400 ms the preferences store uses. Without this every keystroke is an IPC
+  // round trip plus a disk write plus a change broadcast to every window.
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [fullscreen, setFullscreen] = useState(false);
   const [editingBinding, setEditingBinding] = useState<JsonSchemaBinding | null>(
     null,
@@ -98,12 +103,39 @@ export function JsonSchemasSection() {
     }
   }, [schemas, selectedId]);
 
-  // Load the body when the selection changes, not on every render — otherwise an
+  // Load the fields when the selection changes, not on every render — otherwise an
   // in-progress edit would be reverted by the store refresh its own save causes.
   useEffect(() => {
     setBody(selected?.body ?? "");
     setBodyDirty(false);
+    setName(selected?.name ?? "");
+    setDescription(selected?.description ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id]);
+
+  // Flush a debounced name/description edit. Guarded on an actual difference so
+  // merely selecting an entry never writes.
+  useEffect(() => {
+    if (!selected) return;
+    const trimmed = name.trim();
+    const nextDescription = description.trim() || null;
+    if (
+      (trimmed === selected.name || !trimmed) &&
+      nextDescription === (selected.description ?? null)
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void saveSchema({
+        id: selected.id,
+        name: trimmed || selected.name,
+        description: nextDescription,
+        body: selected.body,
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, description, selected?.id, selected?.name, selected?.description]);
 
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -149,9 +181,11 @@ export function JsonSchemasSection() {
     }
   }, [body]);
 
-  async function createFrom(name: string, newBody: string) {
+  // `newName` rather than `name`: the outer `name` is the debounced edit buffer for
+  // the *selected* entry, and shadowing it here would read as a bug.
+  async function createFrom(newName: string, newBody: string) {
     const saved = await saveSchema({
-      name,
+      name: newName,
       body: newBody,
       source: "manual",
     });
@@ -163,8 +197,10 @@ export function JsonSchemasSection() {
     try {
       await saveSchema({
         id: selected.id,
-        name: selected.name,
-        description: selected.description ?? null,
+        // The locally-edited name, so an in-flight rename is not lost by saving
+        // the body first.
+        name: name.trim() || selected.name,
+        description: description.trim() || null,
         body,
       });
       setBodyDirty(false);
@@ -323,15 +359,8 @@ export function JsonSchemasSection() {
               <>
                 <div className="flex items-center gap-2">
                   <Input
-                    value={selected.name}
-                    onChange={(e) =>
-                      void saveSchema({
-                        id: selected.id,
-                        name: e.target.value,
-                        description: selected.description ?? null,
-                        body: selected.body,
-                      })
-                    }
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                     className="h-7 text-xs"
                     placeholder={t("jsonSchemas.detail.namePlaceholder")}
                   />
@@ -355,15 +384,8 @@ export function JsonSchemasSection() {
                   </Button>
                 </div>
                 <Input
-                  value={selected.description ?? ""}
-                  onChange={(e) =>
-                    void saveSchema({
-                      id: selected.id,
-                      name: selected.name,
-                      description: e.target.value,
-                      body: selected.body,
-                    })
-                  }
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                   className="h-7 text-xs"
                   placeholder={t("jsonSchemas.detail.descriptionPlaceholder")}
                 />

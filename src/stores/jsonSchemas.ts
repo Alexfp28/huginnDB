@@ -28,7 +28,10 @@
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
 import { parentConnectionId } from "@/lib/connectionLabel";
-import { setSchemaLibrary } from "@/lib/monaco/monacoJson";
+import {
+  setSchemaLibrary,
+  type PublishedSchema,
+} from "@/lib/monaco/monacoJson";
 import type {
   JsonSchemaBinding,
   JsonSchemaEntry,
@@ -126,17 +129,23 @@ export function draftBinding(
  * something the user never wrote. A broken entry simply stops applying, and the
  * Settings list flags it.
  */
-function publish(schemas: JsonSchemaEntry[], revision: number) {
-  const entries: { uri: string; schema: unknown }[] = [];
+function publish(schemas: JsonSchemaEntry[]) {
+  const entries: PublishedSchema[] = [];
   const errors: Record<string, string> = {};
   for (const s of schemas) {
     try {
-      entries.push({ uri: schemaUri(s.id), schema: JSON.parse(s.body) });
+      entries.push({
+        uri: schemaUri(s.id),
+        body: s.body,
+        schema: JSON.parse(s.body),
+      });
     } catch (e) {
       errors[s.id] = e instanceof Error ? e.message : String(e);
     }
   }
-  setSchemaLibrary(entries, revision);
+  // Cheap when nothing actually changed: the Monaco side compares bodies, so a
+  // rename does not restart the JSON worker.
+  setSchemaLibrary(entries);
   return errors;
 }
 
@@ -161,17 +170,17 @@ export const useJsonSchemas = create<JsonSchemasState>((set, get) => ({
 
   reload: async () => {
     const lib = await api.listJsonSchemas();
-    const revision = get().revision + 1;
-    const parseErrors = publish(lib.schemas, revision);
-    set({
+    const parseErrors = publish(lib.schemas);
+    set((s) => ({
       schemas: lib.schemas,
       bindings: lib.bindings,
-      revision,
+      revision: s.revision + 1,
       loaded: true,
       parseErrors,
-      // Any cached resolution may now name a different schema, or none.
+      // Any cached resolution may now name a different schema, or none. Safe to
+      // drop wholesale: it is refilled by one call per data tab.
       resolved: {},
-    });
+    }));
   },
 
   ensureResolved: async (connectionId, dbSchema, table, columns) => {
@@ -230,10 +239,27 @@ export const useJsonSchemas = create<JsonSchemasState>((set, get) => ({
 
   saveSchema: async (args) => {
     const saved = await api.saveJsonSchema(args);
-    await get().reload();
+    // Splice rather than refetch. Editing a schema cannot change *which* schema
+    // wins for a column — only the bindings decide that — so the resolution cache
+    // stays, and a name edit does not throw away every grid's warm lookup. The
+    // body may have changed, so Monaco is republished; its own guard makes that a
+    // no-op when the documents are identical.
+    set((s) => {
+      const schemas = s.schemas.some((x) => x.id === saved.id)
+        ? s.schemas.map((x) => (x.id === saved.id ? saved : x))
+        : [...s.schemas, saved];
+      return {
+        schemas,
+        revision: s.revision + 1,
+        parseErrors: publish(schemas),
+      };
+    });
     return saved;
   },
 
+  // The rest change bindings (or remove a schema out from under them), so the
+  // resolution cache genuinely has to go. A full reload is the honest way to do
+  // that, and these are all one-off user actions rather than keystrokes.
   deleteSchema: async (id) => {
     const dropped = await api.deleteJsonSchema(id);
     await get().reload();
