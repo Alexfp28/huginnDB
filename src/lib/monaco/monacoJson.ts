@@ -61,6 +61,17 @@ const CELL_SUFFIX = ".hdbcell.json";
  *  the opposite of "the most specific rule wins". */
 const SCHEMA_SUFFIX = ".hdbschema.json";
 
+/**
+ * Separators for the change-detection signature below.
+ *
+ * Only ever compared against themselves, so any sequence works — these are chosen
+ * to be things a schema URI or body cannot contain, and to stay visible in the
+ * source. (An earlier version used raw NUL bytes, which worked and was a bad idea:
+ * invisible in an editor, and enough to make `grep` treat the file as binary.)
+ */
+const FIELD_SEP = "\u0000";
+const RECORD_SEP = "\u0001";
+
 interface Association {
   /** The last path segment, which is what goes in `fileMatch`. */
   fileName: string;
@@ -110,7 +121,7 @@ let modePrefs: JsonSchemaModePrefs = {
 };
 
 /** Last path segment of a model URI — what `fileMatch` matches on. */
-export function fileNameOf(path: string): string {
+function fileNameOf(path: string): string {
   const parts = path.split("/");
   return parts[parts.length - 1] ?? path;
 }
@@ -234,13 +245,13 @@ function flush(): void {
   // rename would restart the worker on each keystroke. A body comparison is a
   // handful of `memcmp`s and only runs when the library is republished.
   const signature = [
-    ...library.map((e) => `${e.uri} ${e.body}`),
+    ...library.map((e) => `${e.uri}${FIELD_SEP}${e.body}`),
     "--",
     ...[...associations.entries()]
       .map(([uri, a]) => `${uri}=>${a.schemaUri}`)
       .sort(),
     `mode:${modePrefs.validation}`,
-  ].join("");
+  ].join(RECORD_SEP);
   // Every call past here stops the JSON worker and recomputes the markers of
   // every JSON model — fine once per real change, ruinous per keystroke.
   if (signature === lastSignature) return;

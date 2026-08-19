@@ -23,7 +23,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Braces, FileJson, Pencil, Settings2, Sparkles, X } from "lucide-react";
+import { FileJson, Pencil, Settings2, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -287,7 +287,3 @@ export function SchemaBindingBadge({
     </>
   );
 }
-
-/** The icon the expand affordances swap in when a column has a schema attached
- *  — the discoverability path for someone who never opens the heavy editor. */
-export { Braces as SchemaBoundIcon };
