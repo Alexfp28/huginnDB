@@ -18,9 +18,12 @@ configuración que merece la pena documentar; cualquier otro que hable MCP (el
 agente integrado de un editor, un harness a medida, …) funciona igual en
 cuanto le indiques la ruta al binario.
 
-Es un proceso **separado**. No comparte las conexiones abiertas de la app de
-escritorio en ejecución; abre sus propios *pools* de forma perezosa, bajo
-demanda, y solo para las conexiones que expongas explícitamente. Cada conexión
+Es un proceso **separado**. Por defecto abre sus propios *pools* de forma
+perezosa, bajo demanda, y solo para las conexiones que expongas explícitamente:
+no comparte los de la app de escritorio en ejecución. *Puede* compartirlos si
+activas **Ajustes → Conexiones → Compartir pools con el conector MCP**, lo que
+da a toda la máquina un único presupuesto de conexiones por servidor; ver
+[Compartir los pools de la app](#compartir-los-pools-de-la-app). Cada conexión
 expuesta tiene un **nivel de escritura** — `read-only` (por defecto), `data` o
 `full` — configurado por conexión en **Ajustes → MCP**; las lecturas siempre
 funcionan, y las escrituras solo se ejecutan si el nivel de esa conexión lo
@@ -192,6 +195,61 @@ Codex.
 | `--allow-writes` | — | **Obsoleto e ignorado.** Las escrituras ahora se gobiernan por conexión mediante el nivel de escritura configurado en Ajustes → MCP (ver [Seguridad](#seguridad)); este flag ya no concede nada y solo imprime un aviso de obsolescencia. |
 
 Los flags aceptan tanto `--flag valor` como `--flag=valor`.
+
+## Huella de conexiones
+
+El conector es un proceso **separado** de la app de escritorio de HuginnDB, con
+sus propios pools de conexiones. No comparte los de la app. Eso tiene una
+consecuencia que conviene conocer antes de apuntarlo a una base de datos que
+también usa otra gente:
+
+- Cada cliente MCP que tenga `huginndb-mcp` configurado lanza **su propia
+  copia**. Claude Code y Claude Desktop configurados contra el mismo perfil son
+  dos procesos, cada uno con su pool.
+- Esos pools se suman a los de la app de escritorio, a los del origen de datos de
+  tu IDE y a los de cualquier backend que apunte al mismo servidor. Todos cuentan
+  contra el mismo `max_connections` del servidor.
+
+Dos valores por defecto lo mantienen acotado:
+
+- **`--max-connections` vale `2`** por conexión expuesta, en lugar del `5` de la
+  app de escritorio. MCP es petición/respuesta sobre stdio y las herramientas se
+  despachan de una en una, así que un pool mayor no compra nada aquí. Es además
+  un presupuesto *por servidor* dentro de este proceso: dos conexiones expuestas
+  que apunten al mismo host lo comparten en lugar de tener una cada una.
+- **Los pools inactivos se cierran a los 5 minutos** sin llamadas. El conector es
+  de vida larga pero su trabajo va a ráfagas; un pool abierto para una pregunta no
+  se mantiene el resto de la semana. Se reabre de forma transparente en la
+  siguiente llamada.
+
+### Compartir los pools de la app
+
+Si la app de escritorio está en ejecución, puede atender las consultas del
+conector con *sus propios* pools — activa **Ajustes → Conexiones → Compartir
+pools con el conector MCP**. Entonces:
+
+- Toda la máquina tiene un único presupuesto por servidor. La app es dueña de
+  todas las conexiones; el conector (y cualquier otro conector, uno por cliente
+  MCP) no abre ninguna.
+- La actividad del conector aparece en la **Consola** de la app en directo — cada
+  exploración, consulta y escritura, en el momento — en lugar de solo en
+  `mcp-audit.log` a posteriori. Las escrituras se siguen auditando en ese fichero
+  igualmente.
+- El nivel de escritura lo vuelve a comprobar la app, de forma independiente a la
+  comprobación del propio conector.
+
+Está **desactivado por defecto**, porque abre un listener (solo loopback y
+protegido por token) que da frente a todas las bases de datos que tengas
+guardadas. Cuando la app no está en ejecución —o el ajuste está apagado— el
+conector abre sus propios pools exactamente como se describe arriba, y lo indica
+por stderr si pierde la app a mitad de sesión.
+
+Si un servidor sigue justo, fija un techo por conexión en HuginnDB (Ajustes →
+Conexiones, o el campo **Máximo de conexiones** de la propia conexión). Se guarda
+en `profiles.json`, que este conector lee, así que se aplica al sidecar sin
+configuración adicional. Ajustes → Conexiones muestra además cuántos pools
+mantiene la app de escritorio ahora mismo, y permite liberar los de cada base de
+datos a demanda.
 
 ## Herramientas
 

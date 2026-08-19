@@ -18,10 +18,16 @@
  */
 
 import type { AppLanguage } from "@/types";
-import mcpRaw from "../../../docs/MCP.md?raw";
-import mcpEsRaw from "../../../docs/MCP.es.md?raw";
+import connectionsRaw from "../../../docs/CONNECTIONS.md?raw";
+import connectionsEsRaw from "../../../docs/CONNECTIONS.es.md?raw";
 import environmentsRaw from "../../../docs/ENVIRONMENTS.md?raw";
 import environmentsEsRaw from "../../../docs/ENVIRONMENTS.es.md?raw";
+import mongodbRaw from "../../../docs/MONGODB.md?raw";
+import mongodbEsRaw from "../../../docs/MONGODB.es.md?raw";
+import sqlServerRaw from "../../../docs/SQL_SERVER.md?raw";
+import sqlServerEsRaw from "../../../docs/SQL_SERVER.es.md?raw";
+import mcpRaw from "../../../docs/MCP.md?raw";
+import mcpEsRaw from "../../../docs/MCP.es.md?raw";
 
 export interface DocEntry {
   /** Stable id (used as the selected-doc key and React key). */
@@ -41,7 +47,18 @@ export interface DocEntry {
 const dates: Record<string, string | undefined> =
   typeof __DOC_UPDATED__ !== "undefined" ? __DOC_UPDATED__ : {};
 
+// Reading order, not alphabetical: a connection is the first thing anyone needs,
+// the per-driver guides only matter once you have one, and MCP is the optional
+// extra. `DocsDialog` opens on the first entry.
 export const DOCS: DocEntry[] = [
+  {
+    id: "connections",
+    titleKey: "docs.entries.connections.title",
+    descriptionKey: "docs.entries.connections.description",
+    path: "docs/CONNECTIONS.md",
+    bodies: { en: connectionsRaw, es: connectionsEsRaw },
+    updated: dates["docs/CONNECTIONS.md"] ?? null,
+  },
   {
     id: "environments",
     titleKey: "docs.entries.environments.title",
@@ -49,6 +66,22 @@ export const DOCS: DocEntry[] = [
     path: "docs/ENVIRONMENTS.md",
     bodies: { en: environmentsRaw, es: environmentsEsRaw },
     updated: dates["docs/ENVIRONMENTS.md"] ?? null,
+  },
+  {
+    id: "mongodb",
+    titleKey: "docs.entries.mongodb.title",
+    descriptionKey: "docs.entries.mongodb.description",
+    path: "docs/MONGODB.md",
+    bodies: { en: mongodbRaw, es: mongodbEsRaw },
+    updated: dates["docs/MONGODB.md"] ?? null,
+  },
+  {
+    id: "sqlserver",
+    titleKey: "docs.entries.sqlserver.title",
+    descriptionKey: "docs.entries.sqlserver.description",
+    path: "docs/SQL_SERVER.md",
+    bodies: { en: sqlServerRaw, es: sqlServerEsRaw },
+    updated: dates["docs/SQL_SERVER.md"] ?? null,
   },
   {
     id: "mcp",

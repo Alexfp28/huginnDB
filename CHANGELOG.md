@@ -6,6 +6,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Three new user guides, in the app and in the repo: Connections, MongoDB
+  and SQL Server.** Help → Documentation had exactly two entries
+  (Environments and the MCP connector), so most of what the app does was
+  documented only in the README's feature list or not at all. The new ones
+  cover, respectively: creating a connection per driver and what each one
+  needs, why SSL is explicit in both directions, SSH tunnels (auth, the
+  local-port fallback, host-key policy, and the two cases that can't be
+  tunnelled), what "leave the database blank" actually does on each engine,
+  where passwords live and what never touches disk, the connection-limit
+  preferences and the per-server override, keepalive and the reconnect
+  affordance, every CLI flag including the ephemeral-by-construction ad-hoc
+  form, encrypted export/import with the MongoDB URI caveat, and shared
+  origins with their real threat model — the `mongosh` dialect the query
+  editor accepts and what it deliberately refuses, the document editor's
+  path-addressing and type fidelity rules, aggregation pipelines and views
+  (including why `$out`/`$merge` are refused), the index manager and why
+  MongoDB is the only driver with one, renaming/moving a collection, and a
+  table of what isn't implemented with the reason — and `HOST\INSTANCE`
+  handling with the SQL Browser, certificate trust, Windows auth, how each
+  value type is rendered (`decimal` exact, `money` through a double, `bit` as
+  0/1, binary as hex), the write-side specifics visible in the Console, and
+  the four surfaces still gated off.
+- **`docs/README.md` as an index of the docs folder** (with its Spanish
+  twin), separating user guides from internal design notes and documenting
+  the four steps for adding a guide — the file, the `docs.ts` entry, the i18n
+  keys, and the `vite.config.ts` `DOC_FILES` path that injects its
+  last-updated date — plus the constraints of the in-app markdown renderer.
+  The root README's Docs section now links it and each guide; it previously
+  didn't mention `ENVIRONMENTS.md` at all.
+- The in-app viewer's entries are ordered by reading order rather than
+  alphabetically (Connections → Environments → MongoDB → SQL Server → MCP),
+  since the dialog opens on the first one.
+
+### Fixed
+
+- **`docs/MCP.es.md` was missing the whole "Connection footprint" section**,
+  including "Sharing the app's pools", and its intro still said the connector
+  *cannot* share the desktop app's pools — which stopped being true when the
+  `Share pools with the MCP connector` preference landed. Both are now in sync
+  with the English original.
+
 ### Changed
 
 - **`docs/MCP.md` (+ the Spanish twin) now documents the two independent

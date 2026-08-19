@@ -1,0 +1,182 @@
+# MongoDB
+
+MongoDB is a first-class driver, not a bolt-on: the same explorer, grid, tabs
+and MCP connector serve it. But it is the one engine with no SQL, so several
+surfaces work differently, and a few SQL-only ones don't exist there at all.
+This page is what changes.
+
+## Connecting
+
+The connection dialog is field-driven (host, port, database, username, **Auth
+source**) and builds the `mongodb://` URI live from what you type. The password
+is stored in the OS keychain and is *not* embedded in the URI.
+
+**Edit connection string** unlocks the URI for what the form can't express:
+Atlas (`mongodb+srv://…`), replica sets, and any extra URI option. Once you
+edit it by hand, that string is what gets used verbatim — the discrete fields
+become best-effort conveniences.
+
+Two limits worth knowing up front:
+
+- **SSH tunnelling works for `mongodb://host:port`, not for
+  `mongodb+srv://`.** An SRV record resolves to several replica-set hosts and
+  one tunnel can only front one of them.
+- Leaving the database blank is fine: the connection opens at cluster level and
+  the explorer lists the databases. Collections live under each database node.
+
+## Browsing
+
+Databases → collections → fields and indexes, same tree as everywhere else. The
+field list is **inferred** from a sample of documents, because a collection has
+no declared schema; it is a reading aid, not a contract, and a field only some
+documents carry is still shown.
+
+Collection sizes and index sizes/usage come from `$collStats` and `$indexStats`
+and are **best-effort**: a role without the privilege leaves the column out
+entirely rather than showing zeros that would read as "unused".
+
+## The query editor speaks `mongosh`, in a bounded dialect
+
+The editor takes shell syntax, not SQL:
+
+```js
+db.orders.find({ status: "open", total: { $gt: 100 } }).sort({ createdAt: -1 }).limit(50)
+```
+
+- **Methods**: `find`, `findOne`, `aggregate`, `countDocuments` (`count`),
+  `distinct`, `insertOne`, `insertMany`, `updateOne`, `updateMany`,
+  `replaceOne`, `deleteOne`, `deleteMany`.
+- **Chained modifiers**: `.sort({…})`, `.limit(n)`, `.skip(n)`,
+  `.projection({…})`.
+- **Relaxed JSON**: unquoted keys, single quotes, trailing commas, `//` and
+  `/* */` comments.
+- **BSON constructors**: `ObjectId(…)`, `ISODate(…)` / `new Date(…)`,
+  `NumberLong/Int/Double/Decimal(…)`.
+
+It is deliberately **not** a JavaScript engine. There are no variables, no
+expressions, no `for` loops. Anything outside the grammar — an unknown method, a
+JS expression — is refused with a clear error rather than half-parsed into
+something that runs. Still open on the roadmap: `explain`, `bulkWrite`,
+`findAndModify`, change streams, GridFS.
+
+## Editing documents
+
+The grid's **List view** turns into a document editor for MongoDB: nested values
+fold, each field edits in place, and there are affordances a SQL row doesn't
+need — add a field (`$set`), delete a field (`$unset`), and a **BSON type
+picker**.
+
+Three things about it are deliberate:
+
+- **A field is addressed by its path** (`customData.format`, `tags.2`), not by
+  its position in the display. Filtering or sorting the view can't misdirect a
+  write.
+- **Edits keep the server's type.** The display is lossy on purpose — `Int32`,
+  `Int64` and `Double` all arrive as plain JSON numbers, `ObjectId`, `Date` and
+  `Decimal128` all as strings — so the type is carried alongside each value
+  rather than guessed from it. Fixing a typo in a `NumberLong` writes a
+  `NumberLong` back, not an `Int32` that happens to fit. Use the type picker
+  when you actually *want* to change a field's type.
+- **Values whose display form can't be parsed back are not editable inline**:
+  `Binary`, `DbPointer`, `MinKey`, `MaxKey`. The grid shows
+  `Binary(Generic, 12 bytes)`, and committing that text is not a thing anyone
+  wants. The type picker is their escape hatch — it writes a fresh value of the
+  chosen type.
+
+One limit: **a field's key cannot be renamed in place**. A rename is a `$set` of
+the new key plus an `$unset` of the old one, and doing that safely needs one
+atomic document-level update rather than the per-field writes this view uses.
+
+## Aggregation pipelines and views
+
+A MongoDB view *is* a stored aggregation pipeline, so there is no separate view
+editor: **New aggregation…** on a collection and **Edit pipeline…** on a view
+open the same surface.
+
+- **Stages** mode gives one card per stage: pick the operator, write the body,
+  drag to reorder, and toggle a stage off without deleting it. **Text** mode is
+  the whole pipeline as one array. Switching modes requires the pipeline to
+  parse, and text mode has nowhere to keep a disabled stage — you get told
+  before it's dropped.
+- The **preview** runs as you type, on a debounce, over a bounded sample (the
+  **Sample** control), and each stage card shows what *its* prefix of the
+  pipeline emitted. So you see where a stage stopped matching, not just the
+  final output.
+- **`$out` and `$merge` are refused**, in previews and in saved views alike. The
+  preview runs while you type; a write stage would overwrite a real collection
+  mid-edit.
+- **Save as view…** stores the pipeline as a view (`create`), and re-saving an
+  open view updates it (`collMod`). Preview output is read-only — a computed
+  document has no `_id` to write back through.
+- Pipeline text is parsed by the same parser the query editor uses, so
+  `ObjectId(…)` in a `$match` stays an `ObjectId` on the round trip. Opening a
+  view and saving it unchanged does not quietly stop it matching anything.
+  Types with no constructor in the grammar (`Binary`, `Timestamp`, `MinKey`,
+  `MaxKey`) fall back to Extended JSON — the documented lossy edge.
+
+## Indexes
+
+**Indexes…** on a collection opens a dedicated index manager. MongoDB is the
+only driver with one, and not because the others lack indexes: theirs live
+inside the structure editor, diffed into `CREATE INDEX` / `DROP INDEX` along
+with the rest of the table. MongoDB has no DDL to diff.
+
+- The list is read from the raw `listIndexes` reply, so **everything survives a
+  round trip**: per-key direction (`1` / `-1`) and type (`text`, `2dsphere`,
+  `hashed`), `unique`, `sparse`, TTL (`expireAfterSeconds`),
+  `partialFilterExpression`, `collation`, `weights`, `hidden` — and anything not
+  modelled explicitly is kept as source text. Rebuilding `{ createdAt: -1 }`
+  from a list of field names would recreate it *ascending*: invisible in
+  testing, permanent in the data.
+- An index whose keys the picker can't express opens in **raw** mode instead of
+  being flattened into something it can show.
+- **Edit is drop + create.** MongoDB can't alter an index in place, so the new
+  spec is parsed and validated *before* the old one is dropped, and the
+  confirmation says the collection runs without that index while the new one
+  builds.
+- **Hide** is the reversible rehearsal for **Drop**: a hidden index is kept up
+  to date but ignored by the planner, so you can measure what dropping it would
+  cost and undo it instantly. That is why it sits next to Drop in the menu.
+- `_id_` can't be edited, hidden or dropped — the server owns it, and the
+  backend refuses it rather than only greying out the button.
+- **Size** and **Uses** are best-effort, as above.
+- Index writes are **not** exposed over the MCP connector.
+
+## Renaming and moving a collection
+
+**Rename…** works on collections (`renameCollection` on the `admin` database),
+which is also how a collection *moves*: rename it to `otherDb.name` and the
+documents are copied server-side. That takes as long as the collection is big
+and needs privileges on both databases, so the dialog says so. Renaming onto an
+existing collection errors rather than dropping it.
+
+A cross-database move **closes the collection's open tabs** instead of
+retitling them: the destination sits behind a different connection node, and a
+retitled tab would keep querying the database the collection just left.
+
+A **view** can't be renamed — recreate it under the new name.
+
+## What isn't there (and why)
+
+| Surface | State |
+| --- | --- |
+| Structure editor (`ALTER TABLE`-style) | Not applicable. There is no schema to alter; fields are created by writing them. Structure is read-only, indexes have their own manager. |
+| `.sql` export / import | Not applicable. A collection exports and imports as **JSON** instead (**Export collection (JSON)…** in its context menu). |
+| `$jsonSchema` validator editor | Open on the roadmap. Read/write a collection's validator via `collMod`. |
+| Multi-document transactions | Open. Needs an explicit `ClientSession` threaded through the CRUD helpers; a replica set is required server-side. |
+| Typed `_id` round-trip | Open. A 24-hex-character `_id` is treated as an `ObjectId`; a genuine 24-hex *string* `_id` is the one ambiguous case. |
+| `explain` | Open. The aggregation editor previews output but shows no query plan. |
+| `mongodb+srv://` through an SSH tunnel | Open. See "Connecting" above. |
+
+`docs/MONGODB_ROADMAP.md` tracks the full done/deferred split with the
+implementation hooks for each.
+
+## Over MCP
+
+Every read tool works against MongoDB: `list_databases`, `list_tables`
+(collections), `describe_table`, `list_indexes`, `browse_table`, and `run_query`
+with the same `mongosh` grammar (reads are `find` / `aggregate` /
+`countDocuments` / `distinct`). The write tools work too, gated by the same
+per-connection write policy as the SQL drivers. On a connection with no
+database bound, pass `schema` — the database name — or the collection list comes
+back empty. See [`MCP.md`](MCP.md).
