@@ -214,3 +214,59 @@ a `feat:` for the binary.
 2. **Write-mode in v1, or read-only only?** Recommendation: read-only v1.
 3. **Default connection exposure: all, or opt-in per profile-id?**
    Recommendation: opt-in.
+
+## Open: could this ship through a marketplace instead of a per-machine install?
+
+Raised after a user observed that installing the connector is a manual,
+per-machine step, and that an assistant's permissions look better governed
+when they come from the AI app's own per-user settings than from what HuginnDB
+has configured.
+
+**First, the premise needs narrowing.** Approval already belongs entirely to
+the client: every MCP tool call goes through the client's permission system
+(in Claude Code, `allow`/`ask`/`deny` rules plus the auto-mode classifier —
+see the "When the client blocks the call, not the connector" section of
+`docs/MCP.md`). The per-connection write policy is not a competing permission
+model; it is a second, server-side ceiling applied *after* the client has
+approved the call, and it is the only one of the two that HuginnDB can
+guarantee. So a marketplace does not change *who decides*: it changes
+**distribution**. The one exception is genuinely about permissions —
+organization controls on claude.ai connectors, where an admin can set a tool
+to `ask` or `blocked` centrally and that decision overrides even a user's
+allow rules. That exception is also the route we can't take:
+
+| Route | Verdict |
+| --- | --- |
+| **claude.ai connector directory** | **Not viable.** Connectors are *remote* servers (HTTP/SSE + OAuth). This connector reads `profiles.json` and the OS keychain and opens pools against the user's own host/LAN. Listing it would require a hosted relay — credentials leaving the machine, plus cloud sync of profiles, both explicitly out of scope. |
+| **Claude Code plugin marketplace** | **Viable today.** A plugin is a git repo with `.claude-plugin/plugin.json` and a root `.mcp.json`, which supports `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}` and a `bin/` directory placed on the Bash `PATH`. Anthropic runs a reviewed community marketplace (`anthropics/claude-plugins-community`) with a submission form and a `claude plugin validate` check. Install becomes `/plugin marketplace add Alexfp28/huginnDB` + `/plugin install`, with no hand-edited JSON. |
+| **Claude Desktop extension (`.mcpb`)** | **Viable**, and the closest thing to a marketplace for *local* servers: a zip + `manifest.json`, one-click install from Settings → Extensions with a per-extension toggle. Whether Anthropic accepts `.mcpb` submissions into a curated directory (as opposed to sideloading) is unconfirmed — check the current `claude.com/docs/connectors/custom/desktop-extensions`. |
+
+Neither viable route can bundle the binary: `huginndb-mcp` is a compiled
+per-target sidecar shipped by the app's own installer (gotcha #22), and
+committing four target triples into a plugin repo is not an option. Both would
+need a small launcher that resolves the *installed* sidecar — the same
+`current_exe()`-relative logic `get_mcp_connector_info` already implements,
+plus a `HUGINNDB_MCP_PATH` escape hatch.
+
+Two prerequisites worth doing on their own merits, whichever route is picked:
+
+1. **Move `--connections` out of argv.** The exposed profile list currently
+   lives in the client's config, so changing *which* connections are reachable
+   means editing that config and restarting the client — while the write
+   policy, the more security-relevant half, is already re-read from disk on
+   every write attempt. If the sidecar read the list from HuginnDB's own state
+   (a file written by Settings → MCP, with argv still winning when passed),
+   the client-side command collapses to a bare `huginndb-mcp`. That is exactly
+   what a plugin or `.mcpb` needs in order to be a single artifact that works
+   for everyone, and it moves exposure control into the app that owns the
+   profiles.
+2. **Declare `_meta["anthropic/requiresUserInteraction"] = true` on the write
+   tools.** This is available now, with no marketplace involved: it forces an
+   explicit approval prompt on every call, even in auto mode and even when an
+   allow rule matches (Claude Code v2.1.199+; older and other clients ignore
+   it). `rmcp` 2.2 already models it (`Tool::meta` / `with_meta`), so the
+   change is confined to the router setup in `src-tauri/src/mcp/mod.rs`. It
+   delivers the "the user approves it in the app" property directly, without
+   giving up the write policy — and it needs a decision on scope: always on
+   for `insert_row`/`update_cell`/`delete_rows`, and for `run_query` only when
+   some exposed connection is above `read-only`.

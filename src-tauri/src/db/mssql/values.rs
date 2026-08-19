@@ -14,9 +14,13 @@
 //!   reported type name. Emitting `0`/`1` keeps that path working and matches
 //!   the MySQL `TINYINT(1)` precedent (gotcha #15), where forcing a Rust `bool`
 //!   would have thrown information away.
-//! * **`decimal`/`numeric`/`money` decode to a *string*.** They are arbitrary
+//! * **`decimal`/`numeric` decode to a *string*.** They are arbitrary
 //!   precision on the server; routing them through an `f64` would silently
-//!   round. Same reasoning as the other drivers' handling of `NUMERIC`.
+//!   round. Same reasoning as the other drivers' handling of `NUMERIC`. The
+//!   string is built by [`numeric_to_string`], **not** by `Numeric`'s own
+//!   `Display` — see that function for why. (`money`/`smallmoney` are a
+//!   different story: `tiberius` decodes them to `ColumnData::F64` at the
+//!   protocol layer, before we ever see them, so they ride the `f64` branch.)
 //!
 //! Anything that cannot be decoded degrades to `Value::Null` rather than
 //! failing the whole query — again matching [`crate::db::values`].
@@ -48,7 +52,9 @@ pub fn mssql_value(row: &Row, idx: usize) -> Value {
             .as_ref()
             .map(|b| Value::from(format!("0x{}", hex(b))))
             .unwrap_or(Value::Null),
-        ColumnData::Numeric(v) => v.map(|n| Value::from(n.to_string())).unwrap_or(Value::Null),
+        ColumnData::Numeric(v) => v
+            .map(|n| Value::from(numeric_to_string(n)))
+            .unwrap_or(Value::Null),
         ColumnData::Xml(v) => v
             .as_ref()
             .map(|x| Value::from(x.as_ref().to_string()))
@@ -152,7 +158,10 @@ pub fn first_i64(row: &Row) -> Option<i64> {
         ColumnData::I16(v) => v.map(i64::from),
         ColumnData::I32(v) => v.map(i64::from),
         ColumnData::I64(v) => *v,
-        ColumnData::Numeric(v) => v.and_then(|n| n.to_string().parse::<i64>().ok()),
+        // `int_part()` rather than parsing the rendered string: the string
+        // carries a decimal point whenever the scale is non-zero (`"5.0"` for a
+        // `decimal(18,0)`), which `parse::<i64>` rejects outright.
+        ColumnData::Numeric(v) => v.and_then(|n| i64::try_from(n.int_part()).ok()),
         _ => None,
     }
 }
@@ -163,6 +172,46 @@ pub fn first_string(row: &Row) -> Option<String> {
         ColumnData::String(v) => v.as_ref().map(|s| s.to_string()),
         _ => None,
     }
+}
+
+/// Render a TDS `decimal`/`numeric` exactly, from its raw mantissa and scale.
+///
+/// **Do not replace this with `Numeric::to_string()`.** `tiberius`'s `Display`
+/// impl is `write!(f, "{}.{:0pad$}", self.int_part(), self.dec_part(), pad =
+/// scale)`, and both halves are derived from one signed `i128`, so a negative
+/// value emits its sign *twice* and loses the zero-padding of the fractional
+/// part at the same time: `decimal(18,9)` holding `-18.9` (mantissa
+/// `-18_900_000_000`) renders as `-18.-900000000`, and `-18.09` as `-18.-9`.
+/// Values whose magnitude is below 1 lose the sign entirely instead
+/// (`int_part()` of `-0.5` is `0`, so it renders `0.-5`). A `scale` of 0 still
+/// gets a `.0` tail. None of those strings is a number any parser accepts,
+/// which is what made the artifact reachable from the grid, the row-copy /
+/// CSV-export paths and the `huginndb-mcp` connector alike (`.sql` export is
+/// the one consumer spared, only because it refuses SQL Server outright —
+/// gotcha #31).
+///
+/// So: take the sign off the mantissa once, format the magnitude as digits,
+/// left-pad it to at least `scale + 1` digits (values below 1 need the leading
+/// zero) and split it `scale` digits from the right. No `f64` anywhere — the
+/// whole reason these columns travel as text is that they hold values an
+/// `f64` cannot represent.
+fn numeric_to_string(n: tiberius::numeric::Numeric) -> String {
+    let sign = if n.value() < 0 { "-" } else { "" };
+    // `unsigned_abs` so `i128::MIN` doesn't overflow on negation.
+    let digits = n.value().unsigned_abs().to_string();
+    let scale = usize::from(n.scale());
+
+    if scale == 0 {
+        return format!("{sign}{digits}");
+    }
+
+    let digits = if digits.len() <= scale {
+        format!("{digits:0>width$}", width = scale + 1)
+    } else {
+        digits
+    };
+    let split = digits.len() - scale;
+    format!("{sign}{}.{}", &digits[..split], &digits[split..])
 }
 
 fn finite_f32(v: f32) -> Option<Value> {
@@ -186,8 +235,62 @@ fn hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::type_name;
+    use super::{numeric_to_string, type_name};
+    use tiberius::numeric::Numeric;
     use tiberius::ColumnType;
+
+    /// The regression this function exists for: `tiberius`'s own `Display`
+    /// renders these as `-18.-900000000`, `-18.-9` and `0.-5`.
+    #[test]
+    fn renders_negative_decimals_with_one_sign() {
+        assert_eq!(
+            numeric_to_string(Numeric::new_with_scale(-18_900_000_000, 9)),
+            "-18.900000000"
+        );
+        assert_eq!(
+            numeric_to_string(Numeric::new_with_scale(-1809, 2)),
+            "-18.09"
+        );
+        assert_eq!(numeric_to_string(Numeric::new_with_scale(-5, 1)), "-0.5");
+        assert_eq!(
+            numeric_to_string(Numeric::new_with_scale(-1, 9)),
+            "-0.000000001"
+        );
+    }
+
+    #[test]
+    fn keeps_scale_and_padding_on_positive_values() {
+        assert_eq!(
+            numeric_to_string(Numeric::new_with_scale(18_900_000_000, 9)),
+            "18.900000000"
+        );
+        assert_eq!(numeric_to_string(Numeric::new_with_scale(1809, 2)), "18.09");
+        assert_eq!(numeric_to_string(Numeric::new_with_scale(5, 1)), "0.5");
+        assert_eq!(numeric_to_string(Numeric::new_with_scale(0, 4)), "0.0000");
+    }
+
+    /// A `decimal(18,0)` is an integer and must not grow a `.0` tail — that
+    /// string is also what `first_i64` used to try (and fail) to parse.
+    #[test]
+    fn scale_zero_renders_as_an_integer() {
+        assert_eq!(numeric_to_string(Numeric::new_with_scale(23, 0)), "23");
+        assert_eq!(numeric_to_string(Numeric::new_with_scale(-23, 0)), "-23");
+    }
+
+    /// 38 digits of precision is the type's ceiling, and the point of routing
+    /// these columns through text is that no `f64` step rounds them.
+    #[test]
+    fn survives_full_38_digit_precision() {
+        let mantissa = 12_345_678_901_234_567_890_123_456_789_012_345_678i128;
+        assert_eq!(
+            numeric_to_string(Numeric::new_with_scale(mantissa, 10)),
+            "1234567890123456789012345678.9012345678"
+        );
+        assert_eq!(
+            numeric_to_string(Numeric::new_with_scale(-mantissa, 10)),
+            "-1234567890123456789012345678.9012345678"
+        );
+    }
 
     #[test]
     fn maps_protocol_types_to_tsql_names() {

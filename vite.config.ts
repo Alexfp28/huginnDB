@@ -12,7 +12,13 @@ const host = process.env.TAURI_DEV_HOST;
  * be computed at build time; the registry in `src/lib/docs.ts` imports the
  * same files' contents via `?raw` and reads the dates from `__DOC_UPDATED__`.
  */
-const DOC_FILES = ["docs/ENVIRONMENTS.md", "docs/MCP.md"];
+const DOC_FILES = [
+  "docs/CONNECTIONS.md",
+  "docs/ENVIRONMENTS.md",
+  "docs/MONGODB.md",
+  "docs/SQL_SERVER.md",
+  "docs/MCP.md",
+];
 
 /**
  * Map each doc file to its last-commit date (ISO 8601) for `__DOC_UPDATED__`.

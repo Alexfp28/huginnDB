@@ -1366,9 +1366,21 @@
     "updated": "Updated {{date}}",
     "empty": "No documentation is available.",
     "entries": {
+      "connections": {
+        "title": "Connections",
+        "description": "Drivers, tunnels, limits and where passwords live"
+      },
       "environments": {
         "title": "Environments",
         "description": "Keep separate working sets of connections"
+      },
+      "mongodb": {
+        "title": "MongoDB",
+        "description": "Shell queries, documents, pipelines and indexes"
+      },
+      "sqlserver": {
+        "title": "SQL Server",
+        "description": "Named instances, value types and current limits"
       },
       "mcp": {
         "title": "MCP connector",

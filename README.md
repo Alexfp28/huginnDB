@@ -178,7 +178,12 @@ Then in HuginnDB: **+** in the Connections panel → **SQLite** → paste the pa
 
 ## Docs
 
-[MCP connector](docs/MCP.md) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+User guides live in [`docs/`](docs/README.md), and the same files are readable
+inside the app under **Help → Documentation**. Each one has a Spanish twin.
+
+[Connections](docs/CONNECTIONS.md) · [Environments](docs/ENVIRONMENTS.md) · [MongoDB](docs/MONGODB.md) · [SQL Server](docs/SQL_SERVER.md) · [MCP connector](docs/MCP.md)
+
+[Roadmap](ROADMAP.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 PRs welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) first. Newcomer-friendly issues are labelled `good first issue`.
 

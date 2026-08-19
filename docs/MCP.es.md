@@ -18,9 +18,12 @@ configuración que merece la pena documentar; cualquier otro que hable MCP (el
 agente integrado de un editor, un harness a medida, …) funciona igual en
 cuanto le indiques la ruta al binario.
 
-Es un proceso **separado**. No comparte las conexiones abiertas de la app de
-escritorio en ejecución; abre sus propios *pools* de forma perezosa, bajo
-demanda, y solo para las conexiones que expongas explícitamente. Cada conexión
+Es un proceso **separado**. Por defecto abre sus propios *pools* de forma
+perezosa, bajo demanda, y solo para las conexiones que expongas explícitamente:
+no comparte los de la app de escritorio en ejecución. *Puede* compartirlos si
+activas **Ajustes → Conexiones → Compartir pools con el conector MCP**, lo que
+da a toda la máquina un único presupuesto de conexiones por servidor; ver
+[Compartir los pools de la app](#compartir-los-pools-de-la-app). Cada conexión
 expuesta tiene un **nivel de escritura** — `read-only` (por defecto), `data` o
 `full` — configurado por conexión en **Ajustes → MCP**; las lecturas siempre
 funcionan, y las escrituras solo se ejecutan si el nivel de esa conexión lo
@@ -193,6 +196,61 @@ Codex.
 
 Los flags aceptan tanto `--flag valor` como `--flag=valor`.
 
+## Huella de conexiones
+
+El conector es un proceso **separado** de la app de escritorio de HuginnDB, con
+sus propios pools de conexiones. No comparte los de la app. Eso tiene una
+consecuencia que conviene conocer antes de apuntarlo a una base de datos que
+también usa otra gente:
+
+- Cada cliente MCP que tenga `huginndb-mcp` configurado lanza **su propia
+  copia**. Claude Code y Claude Desktop configurados contra el mismo perfil son
+  dos procesos, cada uno con su pool.
+- Esos pools se suman a los de la app de escritorio, a los del origen de datos de
+  tu IDE y a los de cualquier backend que apunte al mismo servidor. Todos cuentan
+  contra el mismo `max_connections` del servidor.
+
+Dos valores por defecto lo mantienen acotado:
+
+- **`--max-connections` vale `2`** por conexión expuesta, en lugar del `5` de la
+  app de escritorio. MCP es petición/respuesta sobre stdio y las herramientas se
+  despachan de una en una, así que un pool mayor no compra nada aquí. Es además
+  un presupuesto *por servidor* dentro de este proceso: dos conexiones expuestas
+  que apunten al mismo host lo comparten en lugar de tener una cada una.
+- **Los pools inactivos se cierran a los 5 minutos** sin llamadas. El conector es
+  de vida larga pero su trabajo va a ráfagas; un pool abierto para una pregunta no
+  se mantiene el resto de la semana. Se reabre de forma transparente en la
+  siguiente llamada.
+
+### Compartir los pools de la app
+
+Si la app de escritorio está en ejecución, puede atender las consultas del
+conector con *sus propios* pools — activa **Ajustes → Conexiones → Compartir
+pools con el conector MCP**. Entonces:
+
+- Toda la máquina tiene un único presupuesto por servidor. La app es dueña de
+  todas las conexiones; el conector (y cualquier otro conector, uno por cliente
+  MCP) no abre ninguna.
+- La actividad del conector aparece en la **Consola** de la app en directo — cada
+  exploración, consulta y escritura, en el momento — en lugar de solo en
+  `mcp-audit.log` a posteriori. Las escrituras se siguen auditando en ese fichero
+  igualmente.
+- El nivel de escritura lo vuelve a comprobar la app, de forma independiente a la
+  comprobación del propio conector.
+
+Está **desactivado por defecto**, porque abre un listener (solo loopback y
+protegido por token) que da frente a todas las bases de datos que tengas
+guardadas. Cuando la app no está en ejecución —o el ajuste está apagado— el
+conector abre sus propios pools exactamente como se describe arriba, y lo indica
+por stderr si pierde la app a mitad de sesión.
+
+Si un servidor sigue justo, fija un techo por conexión en HuginnDB (Ajustes →
+Conexiones, o el campo **Máximo de conexiones** de la propia conexión). Se guarda
+en `profiles.json`, que este conector lee, así que se aplica al sidecar sin
+configuración adicional. Ajustes → Conexiones muestra además cuántos pools
+mantiene la app de escritorio ahora mismo, y permite liberar los de cada base de
+datos a demanda.
+
 ## Herramientas
 
 | Herramienta | Qué hace |
@@ -257,7 +315,10 @@ conexión son baratas. Una conexión de una sola base de datos (con
   lanza tu cliente MCP; no puede mostrar un prompt. La aprobación por acción
   («¿permitir esta herramienta?») la pide el cliente (Claude Code / Desktop /
   Cursor la piden). El papel del conector es la *política* (qué se permite) y
-  la *auditoría*.
+  la *auditoría*. Son dos puertas independientes, y un nivel `full` es un
+  *techo*, no una instrucción para el cliente — ver [Cuando el bloqueo viene
+  del cliente, no del
+  conector](#cuando-el-bloqueo-viene-del-cliente-no-del-conector).
 - **Log de auditoría.** Cada escritura (éxito o fallo) añade una línea a
   `mcp-audit.log`, en el mismo directorio de configuración que `profiles.json`.
   Las lecturas no se registran, así que el fichero es un registro limpio de las
@@ -275,6 +336,78 @@ conexión son baratas. Una conexión de una sola base de datos (con
   nunca las registra ni las persiste (el log de auditoría registra sentencias
   y recuentos de filas, nunca credenciales).
 - **Límite de filas.** `--max-rows` acota cada conjunto de resultados.
+
+### Cuando el bloqueo viene del cliente, no del conector
+
+Una escritura la puede rechazar *cualquiera* de las dos puertas, y cada una
+responde a un dueño distinto. El síntoma que despista: una conexión en `full`
+en Ajustes → MCP y el asistente diciendo aun así que no puede ejecutar un
+`CREATE`/`ALTER`/`DROP`.
+
+Distinguirlas lleva un segundo:
+
+| | Rechazo del conector | Bloqueo del cliente |
+| --- | --- | --- |
+| Qué ves | Un *resultado* de la herramienta nombrando el nivel: *«connection … has MCP write policy "read-only", which does not permit this operation (needs at least "full")»* | La denegación del propio cliente. En el modo auto de Claude Code el motivo suele ser el texto fijo `Blocked by classifier` |
+| `mcp-audit.log` | Se añadió una línea (los rechazos también se registran) | **Nada** — la llamada nunca llegó al conector |
+| Quién lo cambia | Tú, en HuginnDB → Ajustes → MCP | Quien ejecuta el cliente de IA, en *su* configuración |
+
+En concreto con Claude Code: en [modo auto](https://code.claude.com/docs/en/permission-modes#eliminate-prompts-with-auto-mode)
+un segundo modelo — el clasificador — revisa cada acción en lugar de
+preguntarle al usuario, y las llamadas a herramientas MCP pasan por ahí. Su
+lista de bloqueos por defecto incluye *«production deploys and migrations»* y
+*«modifying shared infrastructure»*, y hasta que nombres objetivos concretos
+trata cualquier host o namespace cuyo nombre lleve `prod` como objetivo remoto
+sensible. Un DDL contra un servidor de base de datos real encaja justo ahí,
+diga lo que diga la política de HuginnDB — y el clasificador no tiene forma de
+saber que el servidor es una instancia de pruebas desechable si nadie se lo
+dice.
+
+Los arreglos viven todos en el lado del cliente, y todos son decisión de la
+persona que lo ejecuta — el conector no puede ni debe intentar influir en ellos:
+
+- **Puntual:** abrir `/permissions` → **Recently denied** y pulsar `r` sobre la
+  entrada para reintentarla con aprobación manual.
+- **Ser específico en la petición.** La intención explícita del usuario levanta
+  los bloqueos blandos del clasificador; una genérica no. *«ordena el esquema»*
+  no autoriza un DDL, *«ejecuta este `ALTER TABLE` en la base `sandbox`»* sí.
+- **Pre-aprobar la herramienta** con una [regla
+  allow](https://code.claude.com/docs/en/permissions#permission-rule-syntax) en
+  `~/.claude/settings.json`, que se resuelve *antes* de que corra el
+  clasificador. El segmento del servidor tiene que ser literal — un glob sin
+  anclar se ignora:
+
+  ```json
+  {
+    "permissions": {
+      "allow": ["mcp__huginndb__run_query"]
+    }
+  }
+  ```
+
+- **Dar contexto al clasificador** sobre la base de datos con entradas
+  [`autoMode`](https://code.claude.com/docs/en/auto-mode-config) (solo en
+  settings de usuario o gestionados — el clasificador ignora a propósito el
+  `.claude/settings.json` del repo). Mantén `"$defaults"` o reemplazas las
+  reglas integradas por completo:
+
+  ```json
+  {
+    "autoMode": {
+      "environment": ["$defaults", "Key internal services: the `sandbox` SQL Server instance at db-test.example.internal is a disposable test database, restored nightly from a fixture"],
+      "allow": ["$defaults", "Schema changes on the `sandbox` database through the huginndb MCP connector are allowed: it holds no production data"]
+    }
+  }
+  ```
+
+- **O salir del modo auto** (Shift+Tab → Manual) y aprobar cada llamada a mano.
+
+Nada de esto afloja el conector: su política se relee de disco en cada intento
+de escritura y se aplica *después* de que el cliente haya aprobado la llamada,
+así que una conexión dejada en `read-only` sigue siendo de solo lectura por
+permisiva que sea la configuración del cliente. Esa asimetría es justamente el
+punto — el cliente controla *a este asistente en esta máquina*, el nivel de
+escritura controla *la base de datos*.
 
 ## Drivers soportados
 

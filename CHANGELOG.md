@@ -4,6 +4,106 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Added
+
+- **Three new user guides, in the app and in the repo: Connections, MongoDB
+  and SQL Server.** Help → Documentation had exactly two entries
+  (Environments and the MCP connector), so most of what the app does was
+  documented only in the README's feature list or not at all. The new ones
+  cover, respectively: creating a connection per driver and what each one
+  needs, why SSL is explicit in both directions, SSH tunnels (auth, the
+  local-port fallback, host-key policy, and the two cases that can't be
+  tunnelled), what "leave the database blank" actually does on each engine,
+  where passwords live and what never touches disk, the connection-limit
+  preferences and the per-server override, keepalive and the reconnect
+  affordance, every CLI flag including the ephemeral-by-construction ad-hoc
+  form, encrypted export/import with the MongoDB URI caveat, and shared
+  origins with their real threat model — the `mongosh` dialect the query
+  editor accepts and what it deliberately refuses, the document editor's
+  path-addressing and type fidelity rules, aggregation pipelines and views
+  (including why `$out`/`$merge` are refused), the index manager and why
+  MongoDB is the only driver with one, renaming/moving a collection, and a
+  table of what isn't implemented with the reason — and `HOST\INSTANCE`
+  handling with the SQL Browser, certificate trust, Windows auth, how each
+  value type is rendered (`decimal` exact, `money` through a double, `bit` as
+  0/1, binary as hex), the write-side specifics visible in the Console, and
+  the four surfaces still gated off.
+- **`docs/README.md` as an index of the docs folder** (with its Spanish
+  twin), separating user guides from internal design notes and documenting
+  the four steps for adding a guide — the file, the `docs.ts` entry, the i18n
+  keys, and the `vite.config.ts` `DOC_FILES` path that injects its
+  last-updated date — plus the constraints of the in-app markdown renderer.
+  The root README's Docs section now links it and each guide; it previously
+  didn't mention `ENVIRONMENTS.md` at all.
+- The in-app viewer's entries are ordered by reading order rather than
+  alphabetically (Connections → Environments → MongoDB → SQL Server → MCP),
+  since the dialog opens on the first one.
+
+### Fixed
+
+- **`docs/MCP.es.md` was missing the whole "Connection footprint" section**,
+  including "Sharing the app's pools", and its intro still said the connector
+  *cannot* share the desktop app's pools — which stopped being true when the
+  `Share pools with the MCP connector` preference landed. Both are now in sync
+  with the English original.
+
+### Changed
+
+- **`docs/MCP.md` (+ the Spanish twin) now documents the two independent
+  approval gates a write passes through**, after a report of a connection set
+  to `full` whose schema change was still refused — by the AI client, not by
+  the connector. New "When the client blocks the call, not the connector"
+  subsection: a table for telling a connector refusal (a tool result naming
+  the policy, plus a line in `mcp-audit.log`) from a client-side block (the
+  call never reaches the connector, so the audit log stays silent), why
+  Claude Code's auto-mode classifier treats DDL against a live server as a
+  migration against unrecognised infrastructure by default, and the four
+  client-side remedies — a one-off retry from `/permissions`, a specific
+  request (explicit intent clears the classifier's soft blocks), a
+  `permissions.allow` rule for the tool, or `autoMode.environment` /
+  `autoMode.allow` entries describing the instance. All of them belong to
+  whoever runs the client; documenting them does not loosen the connector,
+  whose own policy still applies after the client approves the call.
+
+- **`docs/MCP_CONNECTOR_ROADMAP.md`: an open section on distributing the
+  connector through a marketplace instead of a per-machine install.** Records
+  the three candidate routes and their verdicts — the claude.ai connector
+  directory is not viable (it lists *remote* servers, and this one reads
+  `profiles.json`, the OS keychain and the user's own network), while the
+  Claude Code plugin marketplace and a Claude Desktop `.mcpb` extension both
+  are — plus the constraint they share (neither can bundle a per-target
+  compiled sidecar, so both need a launcher that resolves the installed one)
+  and the two prerequisites worth doing regardless: moving the exposed-profile
+  list out of `--connections` into HuginnDB's own state, and declaring
+  `_meta["anthropic/requiresUserInteraction"]` on the write tools. Also states
+  plainly why "the marketplace governs permissions better" narrows to a
+  distribution question: approval already belongs entirely to the client, and
+  the write policy is a second, server-side ceiling applied after it.
+
+### Fixed
+
+- **SQL Server: negative `decimal`/`numeric` values rendered as a
+  malformed string** (`-18.900000000` came back as `-18.-900000000`).
+  `tiberius`'s `Display for Numeric` formats the integer and fractional
+  halves separately — `write!(f, "{}.{:0pad$}", n.int_part(), n.dec_part())`
+  — and both are derived from the same signed `i128` mantissa, so a negative
+  value emits its sign twice *and* loses the zero-padding of the fractional
+  part in the same breath: `-18.09` came out as `-18.-9`, `-0.000000001` as
+  `0.-00000001`, and a value below 1 lost the sign entirely (`-0.5` → `0.-5`,
+  because `int_part()` of it is `0`). A `decimal(18,0)` also grew a spurious
+  `.0` tail. `mssql_value` now formats these columns itself from the raw
+  mantissa and scale (`numeric_to_string`) instead of calling `to_string()`:
+  sign taken off once, magnitude zero-padded to at least `scale + 1` digits,
+  split `scale` digits from the right — no `f64` step anywhere, which is the
+  whole reason these columns travel as text. Affected every consumer of a
+  negative decimal equally: the data grid, CSV/JSON copy-and-export, and the
+  `huginndb-mcp` connector, where it was reported. `first_i64` (the
+  `COUNT(*)`/row-estimate path) stopped round-tripping through the same
+  broken string too — it reads `int_part()` directly, since the rendered form
+  of any non-zero scale is not something `parse::<i64>` accepts.
+
 ## [1.16.1] — 2026-08-18
 
 ### Added
