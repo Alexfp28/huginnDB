@@ -4,6 +4,30 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Fixed
+
+- **SQL Server: negative `decimal`/`numeric` values rendered as a
+  malformed string** (`-18.900000000` came back as `-18.-900000000`).
+  `tiberius`'s `Display for Numeric` formats the integer and fractional
+  halves separately — `write!(f, "{}.{:0pad$}", n.int_part(), n.dec_part())`
+  — and both are derived from the same signed `i128` mantissa, so a negative
+  value emits its sign twice *and* loses the zero-padding of the fractional
+  part in the same breath: `-18.09` came out as `-18.-9`, `-0.000000001` as
+  `0.-00000001`, and a value below 1 lost the sign entirely (`-0.5` → `0.-5`,
+  because `int_part()` of it is `0`). A `decimal(18,0)` also grew a spurious
+  `.0` tail. `mssql_value` now formats these columns itself from the raw
+  mantissa and scale (`numeric_to_string`) instead of calling `to_string()`:
+  sign taken off once, magnitude zero-padded to at least `scale + 1` digits,
+  split `scale` digits from the right — no `f64` step anywhere, which is the
+  whole reason these columns travel as text. Affected every consumer of a
+  negative decimal equally: the data grid, CSV/JSON copy-and-export, and the
+  `huginndb-mcp` connector, where it was reported. `first_i64` (the
+  `COUNT(*)`/row-estimate path) stopped round-tripping through the same
+  broken string too — it reads `int_part()` directly, since the rendered form
+  of any non-zero scale is not something `parse::<i64>` accepts.
+
 ## [1.16.1] — 2026-08-18
 
 ### Added
