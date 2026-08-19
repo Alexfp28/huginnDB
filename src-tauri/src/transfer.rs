@@ -44,6 +44,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 use crate::error::{AppError, AppResult};
+use crate::json_schemas::{JsonSchemaBinding, JsonSchemaItem};
 use crate::keychain;
 use crate::state::{ConnectionProfile, Driver};
 
@@ -85,6 +86,8 @@ pub struct ExportMetadata {
 pub const KIND_PROFILES: &str = "profiles";
 /// An [`EnvironmentExportFile`]'s `meta.kind`.
 pub const KIND_ENVIRONMENT: &str = "environment";
+/// A [`JsonSchemaExportFile`]'s `meta.kind`.
+pub const KIND_JSON_SCHEMAS: &str = "json-schemas";
 
 /// One profile entry inside the export file.
 #[derive(Debug, Serialize, Deserialize)]
@@ -134,7 +137,7 @@ pub struct ImportConflict {
 }
 
 /// Per-conflict action chosen by the user.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConflictAction {
     /// Replace the existing profile (and its keychain entries) with the
@@ -214,6 +217,84 @@ pub struct EnvironmentExportFile {
     pub meta: ExportMetadata,
     pub environments: Vec<ExportedEnvironmentBundle>,
     pub profiles: Vec<ExportedProfile>,
+    /// Optional JSON Schema library slice, present when the user ticked
+    /// "include JSON Schemas".
+    ///
+    /// Schemas are **global**, not owned by an environment (see
+    /// [`crate::json_schemas`]), so this is not part of an environment's
+    /// portable identity the way `origins` and `connection_ids` are — it rides
+    /// along so one file can set up a new machine. `#[serde(default)]` so every
+    /// file written before 1.17.0 still loads, and `skip_serializing_if` so an
+    /// export without them stays byte-identical to a 1.16 one.
+    #[serde(default, skip_serializing_if = "JsonSchemaBundle::is_empty")]
+    pub json_schemas: JsonSchemaBundle,
+}
+
+/// The portable JSON Schema payload.
+///
+/// One type with three homes: flattened into a standalone
+/// [`JsonSchemaExportFile`], carried by [`EnvironmentExportFile`], and — from
+/// 1.18.0 — by the plain [`ExportFile`] a shared origin publishes. That reuse is
+/// what makes the origin work purely additive: one `#[serde(default)]` field.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct JsonSchemaBundle {
+    #[serde(default)]
+    pub schemas: Vec<JsonSchemaItem>,
+    #[serde(default)]
+    pub bindings: Vec<JsonSchemaBinding>,
+}
+
+impl JsonSchemaBundle {
+    pub fn is_empty(&self) -> bool {
+        self.schemas.is_empty() && self.bindings.is_empty()
+    }
+}
+
+/// A standalone schema-library export.
+///
+/// No passphrase and no `encrypted` payload: a JSON Schema is not a secret and
+/// there is no keychain material anywhere in it, so [`ExportMetadata::encrypted`]
+/// is always `false` here.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JsonSchemaExportFile {
+    pub meta: ExportMetadata,
+    #[serde(flatten)]
+    pub bundle: JsonSchemaBundle,
+}
+
+/// Summary returned by `analyze_json_schema_import`, so the wizard can show
+/// what a file holds — and what it will have to disable — before committing.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JsonSchemaImportAnalysis {
+    pub total_schemas: usize,
+    pub total_bindings: usize,
+    /// Schemas in the file whose **name** already exists locally. Keyed on the
+    /// name rather than the id, unlike [`detect_conflicts`] — see
+    /// [`crate::json_schemas::JsonSchemaItem::name`] for why an id can never
+    /// collide here and a name always will.
+    pub conflicts: Vec<ImportConflict>,
+    /// How many bindings would land disabled because they name a connection
+    /// this machine does not have. Reported up front so the count is not a
+    /// surprise buried in the result.
+    pub bindings_unresolvable: usize,
+}
+
+/// Outcome of `import_json_schemas`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct JsonSchemaImportResult {
+    /// Names of schemas added as new entries.
+    pub imported: Vec<String>,
+    pub skipped: Vec<String>,
+    pub overwritten: Vec<String>,
+    /// `(original name, stored name)` for each renamed entry.
+    pub renamed: Vec<(String, String)>,
+    pub bindings_imported: usize,
+    /// Imported with `enabled: false` because their connection is unknown here.
+    pub bindings_disabled: usize,
+    /// Dropped because the schema they point at was skipped.
+    pub bindings_dropped: usize,
+    /// Not inserted because an identical rule already existed.
+    pub bindings_duplicate: usize,
 }
 
 /// One environment's slice of an [`EnvironmentExportFile`]: its cosmetic
@@ -260,6 +341,14 @@ pub struct EnvironmentImportAnalysis {
     pub total_profiles: usize,
     pub encrypted: bool,
     pub conflicts: Vec<ImportConflict>,
+    /// How many JSON Schemas ride along in this file, for display only. Schema
+    /// name conflicts are resolved by the *same* `conflict_resolutions` list as
+    /// the profiles, keyed by the incoming schema id, so they need no separate
+    /// step in the wizard.
+    #[serde(default)]
+    pub total_json_schemas: usize,
+    #[serde(default)]
+    pub total_json_schema_bindings: usize,
 }
 
 /// Display summary for one environment inside an
@@ -282,6 +371,11 @@ pub struct EnvironmentImportAnalysisEntry {
 pub struct EnvironmentImportResult {
     pub environments: Vec<ImportedEnvironment>,
     pub profiles: ImportResult,
+    /// Present only when the file carried a JSON Schema bundle. `None` is
+    /// meaningfully different from a zeroed result: it means the exporter did
+    /// not tick the box, so the UI says nothing rather than "0 schemas".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_schemas: Option<JsonSchemaImportResult>,
 }
 
 /// One environment created by `import_environment`.
@@ -500,5 +594,82 @@ mod tests {
         }"#;
         let meta: ExportMetadata = serde_json::from_str(legacy).unwrap();
         assert_eq!(meta.kind, "");
+    }
+
+    #[test]
+    fn the_three_export_kinds_are_distinct() {
+        // Each importer rejects the other two by exact match, so a collision
+        // here would let one silently import half of another kind of file.
+        assert_ne!(KIND_PROFILES, KIND_ENVIRONMENT);
+        assert_ne!(KIND_PROFILES, KIND_JSON_SCHEMAS);
+        assert_ne!(KIND_ENVIRONMENT, KIND_JSON_SCHEMAS);
+    }
+
+    #[test]
+    fn an_environment_export_written_before_1_17_still_parses() {
+        // The direct analogue of the `kind` test above: `json_schemas` is a
+        // `#[serde(default)]` addition, so every file already in the wild loads
+        // unchanged and simply carries an empty bundle.
+        let legacy = r#"{
+            "meta": {
+                "version": 1, "app": "huginndb",
+                "exported_at": "2020-01-01T00:00:00Z",
+                "encrypted": false, "kind": "environment"
+            },
+            "environments": [],
+            "profiles": []
+        }"#;
+        let file: EnvironmentExportFile = serde_json::from_str(legacy).unwrap();
+        assert!(file.json_schemas.is_empty());
+    }
+
+    #[test]
+    fn an_export_without_schemas_serialises_no_json_schemas_key() {
+        // `skip_serializing_if` keeps a 1.17 export that did not opt in
+        // byte-identical to a 1.16 one, so diffing two exports stays useful.
+        let file = EnvironmentExportFile {
+            meta: ExportMetadata {
+                version: 1,
+                app: "huginndb".into(),
+                exported_at: "2026-08-19T00:00:00Z".into(),
+                encrypted: false,
+                kind: KIND_ENVIRONMENT.into(),
+            },
+            environments: vec![],
+            profiles: vec![],
+            json_schemas: JsonSchemaBundle::default(),
+        };
+        let json = serde_json::to_string(&file).unwrap();
+        assert!(!json.contains("json_schemas"));
+    }
+
+    #[test]
+    fn a_json_schema_export_file_round_trips_its_flattened_bundle() {
+        let file = JsonSchemaExportFile {
+            meta: ExportMetadata {
+                version: 1,
+                app: "huginndb".into(),
+                exported_at: "2026-08-19T00:00:00Z".into(),
+                encrypted: false,
+                kind: KIND_JSON_SCHEMAS.into(),
+            },
+            bundle: JsonSchemaBundle {
+                schemas: vec![JsonSchemaItem {
+                    id: "s1".into(),
+                    name: "cfg".into(),
+                    body: r#"{"type":"object"}"#.into(),
+                    ..Default::default()
+                }],
+                bindings: vec![],
+            },
+        };
+        let json = serde_json::to_string(&file).unwrap();
+        // Flattened: `schemas` sits next to `meta`, not nested under a `bundle`.
+        assert!(json.contains(r#""schemas""#));
+        assert!(!json.contains(r#""bundle""#));
+        let back: JsonSchemaExportFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.meta.kind, KIND_JSON_SCHEMAS);
+        assert_eq!(back.bundle.schemas.len(), 1);
+        assert_eq!(back.bundle.schemas[0].name, "cfg");
     }
 }

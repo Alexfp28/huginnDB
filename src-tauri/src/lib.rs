@@ -20,6 +20,7 @@ mod bridge;
 mod commands;
 mod db;
 mod error;
+pub mod json_schemas;
 mod keepalive;
 mod keychain;
 mod log_bus;
@@ -351,6 +352,20 @@ pub fn run() {
             commands::prefs::export_environments,
             commands::prefs::analyze_environment_import,
             commands::prefs::import_environment,
+            commands::json_schemas::list_json_schemas,
+            commands::json_schemas::save_json_schema,
+            commands::json_schemas::delete_json_schema,
+            commands::json_schemas::save_json_schema_binding,
+            commands::json_schemas::delete_json_schema_binding,
+            commands::json_schemas::reorder_json_schema_bindings,
+            commands::json_schemas::rename_json_schema_binding_column,
+            commands::json_schemas::resolve_json_schemas_for_columns,
+            commands::json_schemas::resolve_json_schema,
+            commands::json_schemas::explain_json_schema_bindings,
+            commands::json_schemas::infer_json_schema,
+            commands::json_schemas::export_json_schemas,
+            commands::json_schemas::analyze_json_schema_import,
+            commands::json_schemas::import_json_schemas,
             commands::origins::list_origins,
             commands::origins::add_origin,
             commands::origins::update_origin,

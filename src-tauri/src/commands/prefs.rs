@@ -402,6 +402,7 @@ pub async fn export_environments(
     ids: Vec<String>,
     include_passwords: bool,
     passphrase: Option<String>,
+    include_json_schemas: Option<bool>,
 ) -> AppResult<String> {
     if ids.is_empty() {
         return Err(AppError::InvalidInput(
@@ -473,6 +474,18 @@ pub async fn export_environments(
         })
         .collect();
 
+    // The whole library, not a per-environment slice: schemas are global
+    // (`crate::json_schemas`), so there is no subset an environment "owns".
+    // Riding along in this file is a convenience for setting up a machine, not
+    // a claim that the environment contains them.
+    let json_schemas = if include_json_schemas.unwrap_or(false) {
+        let guard = state.json_schemas.read();
+        let ids: Vec<String> = guard.schemas.iter().map(|s| s.id.clone()).collect();
+        crate::json_schemas::import::collect_bundle(&guard, &ids, true)
+    } else {
+        transfer::JsonSchemaBundle::default()
+    };
+
     let now = chrono::Utc::now().to_rfc3339();
     let file = EnvironmentExportFile {
         meta: ExportMetadata {
@@ -484,6 +497,7 @@ pub async fn export_environments(
         },
         environments: bundles,
         profiles: exported_profiles,
+        json_schemas,
     };
 
     let json = serde_json::to_string_pretty(&file)?;
@@ -552,6 +566,8 @@ pub fn analyze_environment_import(
         total_profiles: export.profiles.len(),
         encrypted: export.meta.encrypted,
         conflicts,
+        total_json_schemas: export.json_schemas.schemas.len(),
+        total_json_schema_bindings: export.json_schemas.bindings.len(),
     })
 }
 
@@ -608,18 +624,54 @@ pub fn import_environment(
         .map(|r| (r.id, r.action))
         .collect();
 
-    let (profile_result, id_map) = {
+    let (profile_result, id_map, overwritten_ids) = {
         let mut profiles = state.profiles.write();
-        let (result, id_map) = apply_profile_imports(
+        let (result, id_map, overwritten_ids) = apply_profile_imports(
             &mut profiles,
             export.profiles,
             passphrase.as_deref(),
             &resolution_map,
         )?;
         store::save_profiles(&profiles)?;
-        (result, id_map)
+        (result, id_map, overwritten_ids)
     };
     let _ = app.emit(PROFILES_CHANGED_EVENT, ());
+
+    // JSON Schemas, when the file carried them. Two passes, in this order:
+    // first repoint local bindings whose profile was *overwritten* (a fresh
+    // uuid is minted even then, so they would silently stop matching), then
+    // merge the file's own schemas, translating their bindings through the same
+    // `id_map` that `launch.visible_connections` uses below.
+    let schema_result = {
+        let bundle = export.json_schemas;
+        let has_bundle = !bundle.is_empty();
+        if !has_bundle && overwritten_ids.is_empty() {
+            None
+        } else {
+            let now = chrono::Utc::now().to_rfc3339();
+            let mut lib = state.json_schemas.write();
+            crate::json_schemas::remap_connection_ids(&mut lib, &overwritten_ids);
+            let outcome = if has_bundle {
+                Some(crate::json_schemas::import::apply_imports(
+                    &mut lib,
+                    bundle,
+                    &resolution_map,
+                    &crate::json_schemas::import::ConnectionRemap::IdMap(&id_map),
+                    &now,
+                ))
+            } else {
+                None
+            };
+            let snapshot = lib.clone();
+            drop(lib);
+            crate::json_schemas::save_library(&snapshot)?;
+            let _ = app.emit(
+                crate::commands::json_schemas::JSON_SCHEMAS_CHANGED_EVENT,
+                (),
+            );
+            outcome
+        }
+    };
 
     let (snapshot, imported_environments) = {
         let mut guard = state.tab_state.write();
@@ -694,6 +746,7 @@ pub fn import_environment(
     Ok(EnvironmentImportResult {
         environments: imported_environments,
         profiles: profile_result,
+        json_schemas: schema_result,
     })
 }
 

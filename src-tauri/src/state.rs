@@ -683,6 +683,11 @@ pub struct AppState {
     pub prefs: Arc<RwLock<crate::prefs::Preferences>>,
     /// Per-connection tab state loaded from `tab_state.json`.
     pub tab_state: Arc<RwLock<crate::tab_state::PersistedTabState>>,
+    /// User-defined JSON Schema library loaded from `json_schemas.json`.
+    ///
+    /// Global rather than per environment, and in a file of its own rather than
+    /// in `prefs.json` — see [`crate::json_schemas`] for both arguments.
+    pub json_schemas: Arc<RwLock<crate::json_schemas::JsonSchemaLibrary>>,
     /// Trusted SSH host-key fingerprints loaded from `known_hosts.json`.
     /// Shared with every SSH tunnel opened during the session.
     pub known_hosts: crate::ssh_known_hosts::SharedKnownHosts,
@@ -729,6 +734,7 @@ impl AppState {
         let profiles = crate::store::load_profiles().unwrap_or_default();
         let prefs = crate::prefs::load_preferences();
         let tab_state = crate::tab_state::load_tab_state();
+        let json_schemas = crate::json_schemas::load_library();
         Self {
             connections: Arc::new(RwLock::new(ActiveConnections::default())),
             session_secrets: Arc::new(RwLock::new(HashMap::new())),
@@ -737,6 +743,7 @@ impl AppState {
             profiles: Arc::new(RwLock::new(profiles)),
             prefs: Arc::new(RwLock::new(prefs)),
             tab_state: Arc::new(RwLock::new(tab_state)),
+            json_schemas: Arc::new(RwLock::new(json_schemas)),
             known_hosts: crate::ssh_known_hosts::load_shared(),
             startup_args,
             pending_cli_connect: Arc::new(RwLock::new(None)),
