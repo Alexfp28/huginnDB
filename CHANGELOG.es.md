@@ -6,6 +6,185 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
+## [Sin publicar]
+
+### Añadido
+
+- **Una biblioteca de esquemas JSON definidos por el usuario, y vínculos por
+  columna que hacen que el editor de celda entienda de esquemas.** Un HuginnDB
+  usado como almacén de configuración acaba con columnas `json`/`jsonb`/`TEXT` que
+  contienen documentos de cientos de líneas con un contrato real, aunque no escrito
+  en ninguna parte, y el editor de celda trataba todos ellos como JSON anónimo:
+  resaltado de sintaxis, una insignia de válido/no válido y nada más. Ahora
+  mantienes una biblioteca de esquemas (un nombre, una descripción opcional y el
+  documento tal y como lo escribiste, en un `json_schemas.json` propio) más una
+  lista aparte de vínculos que dicen a qué columnas se aplica cada uno. Vincula uno
+  y Monaco empieza a completar nombres de propiedad, a sugerir valores de
+  enumeración, a mostrar la `description` de cada propiedad al pasar el ratón y a
+  subrayar los valores que no encajan. El autocompletado y la documentación al
+  pasar el ratón son lo que cambia una jornada de trabajo; la validación es la
+  mitad más pequeña.
+
+  La biblioteca es **global, no está adscrita a un entorno**, y eso es una lectura
+  deliberada de lo que significa un vínculo. Un vínculo dice «la columna de esta
+  tabla tiene esta forma», que es un hecho sobre el *servidor*, no sobre si estás
+  mirando Producción o Staging. Adscribirla a un entorno daría a la misma tabla un
+  esquema en un entorno y no en otro, que es el bug de `visible_databases` (gotcha
+  #27) por tercera vez. También vive en un fichero propio y no en `prefs.json`,
+  porque el cuerpo de un esquema real son 50–200 KB y `prefs.json` se reescribe en
+  cada `Ctrl`+rueda del grid.
+
+- **La validación nunca impide guardar, por construcción.** Nada en la ruta de
+  guardado lee los marcadores, y los diagnósticos están configurados con severidad
+  de aviso para que una violación ni siquiera *parezca* que bloquea. La base de
+  datos es la autoridad; un esquema es una ayuda. El día que el esquema de alguien
+  esté ligeramente mal, seguirá pudiendo editar sus propios datos.
+
+- **Una cascada de más-específico-gana, implementada una sola vez, en Rust.** Un
+  vínculo nombra una conexión, un esquema/base de datos, una tabla y una columna;
+  todos los ejes menos la columna admiten «cualquiera», y tabla y columna aceptan
+  un glob simple con `*`, así que una regla puede cubrir `*_json` en todo un
+  servidor o exactamente una columna de una tabla. La especificidad va
+  `columna > tabla > esquema/base de datos > conexión`, y que la conexión sea el eje
+  *más ligero* es la parte contraintuitiva que hace funcionar el caso que motivó
+  todo: una regla general sobre una conexión entera debe perder frente a una que
+  nombra la tabla y la columna exactas, mientras que entre dos reglas por lo demás
+  idénticas debe ganar la fijada — que es justamente para lo que sirve un eje de
+  desempate. Así, un esquema por defecto para `configuration` en todas partes más
+  una excepción en la tabla cuya forma difiere son dos reglas, no doce. El frontend
+  no reimplementa nada de esto: sería una segunda implementación de una sola
+  gramática (gotchas #30/#33), y la deriva sería silenciosa, porque un fallo de
+  resolución no es un error, es «no ha aparecido el autocompletado», que nadie
+  reporta. La resolución es una llamada por pestaña de datos, cacheada por
+  relación, así que es la granularidad y no el lenguaje lo que responde a la
+  objeción de rendimiento.
+
+- **«Crear a partir de este valor», porque pedirle a alguien que escriba un esquema
+  JSON a mano tiene una tasa de adopción cercana a cero.** La insignia redacta uno
+  a partir del documento que tienes delante: le pones nombre, revisas el borrador y
+  queda creado y vinculado sin salir del editor. Sus reglas están documentadas en
+  vez de ser magia, y dos de ellas existen para que no produzca un esquema que
+  rechace las filas de las que se redactó: `required` es la *intersección* de las
+  claves presentes en todas las muestras, nunca la unión, y un `enum` solo se
+  escribe cuando un valor se ha repetido de verdad — tres valores distintos en tres
+  filas son un tamaño de muestra, no un dominio cerrado. Siempre declara `$schema`,
+  que es funcional y no decorativo: sin él el servicio de lenguaje valida con
+  semántica 2020-12 en lugar de draft-07. La salida es estable byte a byte para la
+  misma entrada, así que regenerar un esquema produce un diff legible.
+
+- **Tres superficies vinculan una columna, en orden decreciente de uso.** La que
+  importa es una **insignia en la cabecera del editor de celda** (tanto en el modal
+  como en el panel lateral acoplado), junto a la insignia de JSON válido: nombra el
+  esquema resuelto, dice «sin esquema» en bajo contraste cuando no hay ninguno, y su
+  desplegable vincula cualquier entrada de la biblioteca, redacta una nueva o
+  desvincula. Es la superficie universal: es la única que tienen MongoDB y SQL
+  Server. Segunda, una **sección nueva de Ajustes → Esquemas JSON**: la biblioteca a
+  la izquierda, el documento de la entrada seleccionada a la derecha en un panel
+  Monaco que edita en el sitio y se expande a pantalla completa con F11 en vez de
+  apilar un segundo modal, y debajo la tabla completa de vínculos en orden de
+  resolución. Tercera, un **campo por columna en el editor de estructura de tabla**,
+  deliberadamente acotado — ver *Cambiado*.
+
+- **La tabla de vínculos muestra la cascada en vez de listarla.** Un eje comodín
+  dibuja el glifo `*` y nunca una celda vacía, porque una celda vacía se lee como
+  «aún sin rellenar», el error de lectura más común en cualquier tabla de
+  precedencia. El orden de las filas *es* la precedencia, ya que el backend las
+  devuelve ordenadas. Y una caja **«Probar una columna»** responde a la pregunta que
+  esta feature va a generar más — *¿por qué no se aplica mi regla?* — a través del
+  mismo resolutor que usa el editor, así que la respuesta no puede discrepar de lo
+  que ocurre al editar. Un contador de coincidencias en vivo era la alternativa y es
+  peor: tendría que recorrer los catálogos de todas las conexiones vivas y aun así
+  solo cubriría lo que esté conectado.
+
+- **Export/import de fichero independiente (`meta.kind = "json-schemas"`), más
+  inclusión opcional en la exportación de un entorno.** Sin contraseña en ninguno de
+  los dos casos: un esquema no contiene secretos ni material del llavero. La regla
+  interesante es qué pasa con un vínculo fijado a una *conexión*, dado que el
+  identificador de una conexión es un uuid local a la máquina que lo acuñó: al
+  importarlo en otra, ese vínculo llega **desactivado**, conservando su ámbito
+  original. No se ensancha a «cualquier conexión» (eso cambiaría el significado de la
+  regla) ni se descarta en silencio (eso perdería la intención sin que nadie se
+  entere), y el asistente de importación dice el número antes de escribir nada. Una
+  importación de entorno, en cambio, lo traduce, a través del mismo mapa de
+  identificadores original→nuevo que ya usa `launch.visible_connections`.
+
+- **Una guía nueva, `docs/JSON_SCHEMAS.md`** (con su gemela en español), en el
+  repositorio y en Ayuda → Documentación. Cubre la vía de 30 segundos, la cascada
+  con un ejemplo resuelto de dos reglas, los límites exactos del esquema inferido,
+  la advertencia sobre compartir y una sección de «lo que esto no es», que incluye
+  los tres comportamientos del servicio de lenguaje lo bastante sorprendentes como
+  para convertirse en preguntas de soporte: el `$schema` propio de un documento
+  tiene prioridad sobre su vínculo, un solo `$ref` sin resolver impide que se valide
+  el documento entero, y nunca se descarga nada de la red.
+
+- **Tres preferencias: validación, autocompletado y ayuda al pasar el ratón.**
+  Separadas porque el servicio de lenguaje las separa: un esquema aproximado ya sirve
+  para autocompletar mucho antes de que alguien quiera subrayados rojos. Viven en la
+  sección de Esquemas JSON y no bajo Editor, la misma decisión que ya toma
+  `AppearanceSection` con el grupo de vista de datos. Además, cuatro acciones nuevas
+  en la paleta de comandos y tres entradas de salto a preferencia.
+
+### Cambiado
+
+- **El editor de celda pasa ahora a Monaco un `path` de modelo estable.** Este era
+  el cambio habilitante de todo lo anterior: los esquemas se asocian por `fileMatch`
+  contra la URI del modelo, y el `inmemory://model/N` autogenerado que recibe un
+  editor pelado no coincide con nada registrable, así que ningún esquema podía
+  aplicarse. La ruta lleva qué superficie la posee, porque el modal y el panel
+  acoplado pueden estar abiertos a la vez y dos editores que comparten ruta comparten
+  modelo: el primero en desmontarse lo destruiría bajo el otro.
+
+- **Los botones de expandir en línea dicen cuándo hay un esquema vinculado**,
+  mostrando `{}` en lugar del glifo de expandir y nombrando el esquema en su tooltip.
+  El doble clic sigue abriendo el mismo editor en línea de una sola línea (el gotcha
+  #12 se mantiene); solo cambian el icono y el tooltip. Un `<input>` de una línea no
+  puede ofrecer autocompletado ni validación, así que la única pista útil es que
+  merece la pena escalar.
+
+- **Una columna vinculada fuerza el modo JSON del editor**, por encima de la
+  heurística de tipo de contenido. Esa heurística solo responde «json» cuando el
+  texto parsea, lo que dejaría un documento momentáneamente roto sin ninguna
+  validación, precisamente cuando es más útil. Un vínculo es el usuario afirmando que
+  la columna contiene JSON.
+
+- **El editor de estructura de tabla gana una afordancia `{}` por columna, acotada
+  fuera del DDL.** Un vínculo es metadato local del editor, no un cambio de esquema:
+  vive en su propio estado y no en la columna de trabajo, así que no puede colarse en
+  el payload de `preview_structure_change` ni volver a disparar la previsualización de
+  DDL (gotcha #16). Se guarda en el momento de elegirlo, va detrás de un separador
+  discontinuo con la etiqueta `local`, y está desactivado mientras se diseña una tabla
+  que aún no existe. Los renombrados de columna se siguen tras un apply correcto, en
+  modo best-effort: el DDL ya ha corrido, así que un fallo ahí es un aviso y nunca un
+  rollback.
+
+- **`ExportEnvironmentDialog` gana un interruptor opcional «Incluir los esquemas JSON
+  y sus vínculos».** Los esquemas son globales, así que esto empaqueta la biblioteca
+  completa junto al entorno en lugar de hacerla parte de él: un solo fichero para
+  preparar una máquina nueva.
+
+- **Borrar una conexión elimina también los vínculos fijados a ella**, indicando
+  cuántos. El identificador de un perfil es un uuid que no se reutiliza jamás, así que
+  ese vínculo no puede volver a coincidir: es una regla provablemente muerta y no algo
+  inerte pero posiblemente significativo, lo que la convierte en un payload con clave
+  que merece ser segado (gotcha #27). La asimetría es lo que lo hace seguro: el
+  esquema, el artefacto caro, no se toca nunca.
+
+### Corregido
+
+- **Reimportar perfiles de conexión con «sobrescribir» ya no rompe en silencio nada
+  indexado por el identificador del perfil.** `apply_profile_imports` acuña un uuid
+  nuevo incluso al sobrescribir un perfil existente, algo de lo que antes no dependía
+  nada y que por tanto era invisible. Con los vínculos en juego significa que una
+  sobrescritura deja de hacer coincidir en silencio todas las reglas fijadas a ese
+  perfil: sin error, el autocompletado simplemente desaparece, y el barrido del
+  borrado nunca salta porque no se ha borrado nada. La función devuelve ahora el
+  subconjunto de sobrescrituras de su mapa de identificadores, y ambos llamantes lo
+  usan para reapuntar los vínculos afectados.
+
+- `EnvironmentImportAnalysis` declaraba un campo `totalProfiles` en `src/types.ts`
+  mientras que `transfer.rs` envía `total_profiles`. Nadie lo leía, así que nada
+  estaba roto, pero la siguiente persona que lo leyera habría obtenido `undefined`.
+
 ## [1.16.2] — 2026-08-19
 
 ### Añadido
