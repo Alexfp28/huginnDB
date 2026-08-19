@@ -51,9 +51,9 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { cn } from "@/lib/utils";
 import { useEnvironmentEditor } from "@/stores/dialogs/environmentEditor";
+import { useEnvironmentDeleteConfirm } from "@/stores/dialogs/environmentDeleteConfirm";
 import {
   environmentLabel,
   useEnvironments,
@@ -93,10 +93,10 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
   const switching = useEnvironments((s) => s.switching);
   const switchTo = useEnvironments((s) => s.switchTo);
   const lastReplicate = useEnvironments((s) => s.lastReplicate);
-  const remove = useEnvironments((s) => s.remove);
   const reorder = useEnvironments((s) => s.reorder);
   const openCreate = useEnvironmentEditor((s) => s.openCreate);
   const openEdit = useEnvironmentEditor((s) => s.openEdit);
+  const openDeleteConfirm = useEnvironmentDeleteConfirm((s) => s.open);
 
   const schemaOpen = useSessionPanelLayout((s) => s.schemaOpen);
   const toggleSchema = useSessionPanelLayout((s) => s.toggleSchema);
@@ -167,7 +167,8 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
                   isActive={env.id === activeId}
                   schemaOpen={schemaOpen}
                   switching={switching}
-                  canDelete={ordered.length > 1}
+                  canRename={!env.originId}
+                  canDelete={ordered.length > 1 && !env.originId}
                   onClick={() => handleClick(env.id)}
                   onRename={() =>
                     openEdit({
@@ -178,20 +179,9 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
                       themeId: env.themeId,
                     })
                   }
-                  onDelete={() => {
-                    // Same irreversible-tabs/layout warning as the status-bar
-                    // switcher's delete action — connections/credentials are
-                    // untouched, only this environment's session state.
-                    if (
-                      confirmIrreversible(
-                        t("environments.deleteConfirm", {
-                          name: environmentLabel(env, defaultName),
-                        }),
-                      )
-                    ) {
-                      void remove(env.id);
-                    }
-                  }}
+                  onDelete={() =>
+                    openDeleteConfirm(env.id, environmentLabel(env, defaultName))
+                  }
                   renameLabel={t("environments.rename")}
                   deleteLabel={t("environments.delete")}
                 />
@@ -314,6 +304,11 @@ interface SortableEnvironmentButtonProps {
   isActive: boolean;
   schemaOpen: boolean;
   switching: boolean;
+  /** A mirrored environment (#108) is read-only: renaming/deleting it here
+   *  would just be discarded on the next sync from its origin, so both are
+   *  false whenever `env.originId` is set — released only via the
+   *  vanished-environment notice's adopt/retire. */
+  canRename: boolean;
   canDelete: boolean;
   onClick: () => void;
   onRename: () => void;
@@ -328,6 +323,7 @@ function SortableEnvironmentButton({
   isActive,
   schemaOpen,
   switching,
+  canRename,
   canDelete,
   onClick,
   onRename,
@@ -416,10 +412,12 @@ function SortableEnvironmentButton({
         </ContextMenuTrigger>
       </SimpleTooltip>
       <ContextMenuContent className="w-48 text-xs">
-        <ContextMenuItem onSelect={onRename}>
-          <Pencil className="mr-2 h-3.5 w-3.5" />
-          {renameLabel}
-        </ContextMenuItem>
+        {canRename && (
+          <ContextMenuItem onSelect={onRename}>
+            <Pencil className="mr-2 h-3.5 w-3.5" />
+            {renameLabel}
+          </ContextMenuItem>
+        )}
         {canDelete && (
           <ContextMenuItem
             className="text-destructive focus:text-destructive"

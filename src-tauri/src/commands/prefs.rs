@@ -319,6 +319,34 @@ pub fn delete_environment(state: State<'_, AppState>, id: String) -> AppResult<(
     Ok(())
 }
 
+/// Detach an environment from the origin that mirrors it (#108 continuous
+/// environment sync's "adopt", the environment-level twin of clearing a
+/// connection profile's `origin_id`).
+///
+/// Clears only `origin_id`/`origin_source_id`. Cosmetics, connections and
+/// session state are left exactly as they were at the moment of adoption —
+/// the next `sync_origin` run for that origin will no longer touch this
+/// environment, and it becomes an ordinary local one.
+#[tauri::command]
+pub fn adopt_environment(state: State<'_, AppState>, id: String) -> AppResult<Environment> {
+    let (snapshot, saved) = {
+        let mut guard = state.tab_state.write();
+        let saved = {
+            let env = guard
+                .environments
+                .iter_mut()
+                .find(|e| e.id == id)
+                .ok_or_else(|| AppError::InvalidInput(format!("no environment with id {id}")))?;
+            env.origin_id = None;
+            env.origin_source_id = None;
+            env.clone()
+        };
+        (guard.clone(), saved)
+    };
+    tab_state::save_tab_state(&snapshot)?;
+    Ok(saved)
+}
+
 /// Switch the active environment.
 ///
 /// Backend-side this is just a pointer move plus a write; the expensive part is
@@ -459,6 +487,7 @@ pub async fn export_environments(
                     color: env.color.clone(),
                     icon: env.icon.clone(),
                     theme_id: env.theme_id.clone(),
+                    source_environment_id: env.id.clone(),
                 },
                 connection_ids,
                 origins: env

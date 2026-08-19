@@ -346,6 +346,7 @@ pub fn run() {
             commands::prefs::list_environments,
             commands::prefs::save_environment,
             commands::prefs::delete_environment,
+            commands::prefs::adopt_environment,
             commands::prefs::set_active_environment,
             commands::prefs::reorder_environments,
             commands::prefs::export_environments,

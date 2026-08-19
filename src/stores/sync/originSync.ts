@@ -22,6 +22,7 @@
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
+import { useEnvironments } from "@/stores/session/environments";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Origin } from "@/types";
 
@@ -42,15 +43,30 @@ export interface VanishedConnection {
   noticedAt: string;
 }
 
+/** One environment mirror (#108) whose origin stopped publishing its bundle. */
+export interface VanishedEnvironment {
+  environmentId: string;
+  originId: string;
+  originName: string;
+  /** RFC 3339; when the sync that noticed it ran. */
+  noticedAt: string;
+}
+
 interface OriginSyncState {
   /** Keyed by profile id so a component can look one up while rendering a row. */
   vanished: Record<string, VanishedConnection>;
+  /** Keyed by environment id, same shape/purpose as `vanished` one level up. */
+  vanishedEnvironments: Record<string, VanishedEnvironment>;
   /**
    * Profile ids the user has already decided about. Filtered out of every later
    * sync so a connection that stays absent from the file — which it will, that
    * being the point — cannot re-raise its notice on the next poll.
    */
   decided: string[];
+  /** Same as `decided`, for environment ids. Kept as a separate list: the two
+   *  id spaces never overlap, but conflating them would make either lookup
+   *  ambiguous to read. */
+  decidedEnvironments: string[];
   /** Ids whose metadata update is waiting for the connection to close. */
   deferred: string[];
   syncing: boolean;
@@ -63,11 +79,36 @@ interface OriginSyncState {
   adopt: (profileId: string) => Promise<void>;
   /** Drop the connection and its stored credentials. */
   retire: (profileId: string) => Promise<void>;
+  /** Keep the environment, as the user's own: clears its `originId`/
+   *  `originSourceId` via `adopt_environment`. */
+  adoptEnvironment: (environmentId: string) => Promise<void>;
+  /** Drop the environment and the session state it remembered. */
+  retireEnvironment: (environmentId: string) => Promise<void>;
+  /**
+   * Raise a vanished-notice for every connection and environment the given
+   * origin owns, *before* it's actually removed from the registry.
+   *
+   * Without this, removing an origin orphaned its connections (and, once
+   * environment-mirroring shipped, its environments) forever: the only path
+   * that ever populates `vanished`/`vanishedEnvironments` is `syncAll()`,
+   * which iterates `listOrigins()` — and a removed origin is no longer in
+   * that list, so it can never again report anything as vanished. The
+   * profile/environment keeps its `origin_id` (removing an origin
+   * deliberately leaves what it imported in place — see `remove_origin`'s
+   * doc comment), which makes `ConnectionDialog.isFromOrigin` (and the
+   * equivalent environment gating) block editing/deleting it, with no
+   * `adopt`/`retire` ever offered. Synthesizing the notice here — from local
+   * state, while the origin's name is still known — reuses the exact same
+   * decide-later flow a real sync produces, instead of inventing a second one.
+   */
+  noticeOriginRemoved: (origin: Origin) => void;
 }
 
 export const useOriginSync = create<OriginSyncState>((set, get) => ({
   vanished: {},
+  vanishedEnvironments: {},
   decided: [],
+  decidedEnvironments: [],
   deferred: [],
   syncing: false,
   errors: {},
@@ -91,14 +132,19 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
 
     const errors: Record<string, string> = {};
     const found: Record<string, VanishedConnection> = {};
+    const foundEnvironments: Record<string, VanishedEnvironment> = {};
     const held: string[] = [];
     let touchedProfiles = false;
+    let touchedEnvironments = false;
 
     for (const origin of origins) {
       try {
         const report = await api.syncOrigin(origin.id);
         if (report.added.length > 0 || report.updated.length > 0) {
           touchedProfiles = true;
+        }
+        if (report.environmentsAdded.length > 0 || report.environmentsUpdated.length > 0) {
+          touchedEnvironments = true;
         }
         held.push(...report.deferred);
         // `suspicious` already means the backend cleared `vanished`, so this
@@ -108,6 +154,17 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
           if (get().decided.includes(profileId)) continue;
           found[profileId] = {
             profileId,
+            originId: origin.id,
+            originName: origin.name,
+            noticedAt: report.syncedAt,
+          };
+        }
+        // Same reasoning as above, one level up: `environmentsSuspicious`
+        // already means the backend cleared `environmentsVanished`.
+        for (const environmentId of report.environmentsVanished) {
+          if (get().decidedEnvironments.includes(environmentId)) continue;
+          foundEnvironments[environmentId] = {
+            environmentId,
             originId: origin.id,
             originName: origin.name,
             noticedAt: report.syncedAt,
@@ -130,8 +187,15 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
     // held back this time. An origin that failed to read contributes nothing, so
     // its held-back ids drop out until the next successful sweep re-reports
     // them; the trigger below and the poll both re-check, so this self-heals.
-    set({ vanished: found, deferred: held, errors, syncing: false });
+    set({
+      vanished: found,
+      vanishedEnvironments: foundEnvironments,
+      deferred: held,
+      errors,
+      syncing: false,
+    });
     if (touchedProfiles) await useConnections.getState().refreshProfiles();
+    if (touchedEnvironments) await useEnvironments.getState().load();
   },
 
   adopt: async (profileId) => {
@@ -150,13 +214,69 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
 
   retire: async (profileId) => {
     // `remove` deletes the profile and its keychain entries. The caller is
-    // responsible for confirming first (`confirmIrreversible`) — this is the
+    // responsible for confirming first (a real confirm dialog) — this is the
     // deletion the user chose, not one the shared file imposed.
     await useConnections.getState().remove(profileId);
     set((s) => ({
       decided: [...s.decided, profileId],
       vanished: withoutKey(s.vanished, profileId),
     }));
+  },
+
+  adoptEnvironment: async (environmentId) => {
+    await api.adoptEnvironment(environmentId);
+    await useEnvironments.getState().load();
+    set((s) => ({
+      decidedEnvironments: [...s.decidedEnvironments, environmentId],
+      vanishedEnvironments: withoutKey(s.vanishedEnvironments, environmentId),
+    }));
+  },
+
+  retireEnvironment: async (environmentId) => {
+    // `remove` deletes the environment and the session state it remembered.
+    // The caller is responsible for confirming first (a real confirm dialog).
+    await useEnvironments.getState().remove(environmentId);
+    set((s) => ({
+      decidedEnvironments: [...s.decidedEnvironments, environmentId],
+      vanishedEnvironments: withoutKey(s.vanishedEnvironments, environmentId),
+    }));
+  },
+
+  noticeOriginRemoved: (origin) => {
+    const noticedAt = new Date().toISOString();
+    const ownedProfiles = useConnections
+      .getState()
+      .profiles.filter((p) => p.origin_id === origin.id);
+    const ownedEnvironments = useEnvironments
+      .getState()
+      .environments.filter((e) => e.originId === origin.id);
+    if (ownedProfiles.length === 0 && ownedEnvironments.length === 0) return;
+    set((s) => {
+      const found = { ...s.vanished };
+      for (const profile of ownedProfiles) {
+        // A connection already decided about (adopted/retired earlier, e.g.
+        // via a genuine sync) shouldn't be re-raised just because the origin
+        // itself is now gone.
+        if (s.decided.includes(profile.id)) continue;
+        found[profile.id] = {
+          profileId: profile.id,
+          originId: origin.id,
+          originName: origin.name,
+          noticedAt,
+        };
+      }
+      const foundEnvironments = { ...s.vanishedEnvironments };
+      for (const env of ownedEnvironments) {
+        if (s.decidedEnvironments.includes(env.id)) continue;
+        foundEnvironments[env.id] = {
+          environmentId: env.id,
+          originId: origin.id,
+          originName: origin.name,
+          noticedAt,
+        };
+      }
+      return { vanished: found, vanishedEnvironments: foundEnvironments };
+    });
   },
 }));
 

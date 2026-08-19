@@ -656,6 +656,12 @@ export const api = {
   deleteEnvironment: (id: string) =>
     invoke<void>("delete_environment", { id }),
 
+  /** Detach an environment from the origin that mirrors it (#108), so it
+   *  becomes an ordinary local environment — the "keep as mine" action for a
+   *  vanished mirrored environment. Cosmetics/connections are left as-is. */
+  adoptEnvironment: (id: string) =>
+    invoke<Environment>("adopt_environment", { id }),
+
   /** Point the backend at a different environment. Callers must orchestrate
    *  the frontend side around this — see `useEnvironments.switchTo`. */
   setActiveEnvironment: (id: string) =>

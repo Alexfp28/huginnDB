@@ -227,15 +227,26 @@ pub struct ExportedEnvironmentBundle {
     pub origins: Vec<ExportedOrigin>,
 }
 
-/// The environment's cosmetic identity. Deliberately has no `id`: import
-/// always mints a fresh one, since it never merges into an existing
-/// environment (see the module-level note above).
+/// The environment's cosmetic identity. Deliberately has no portable `id`:
+/// the one-shot `import_environment` always mints a fresh one, since it never
+/// merges into an existing environment (see the module-level note above).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExportedEnvironment {
     pub name: String,
     pub color: Option<String>,
     pub icon: Option<String>,
     pub theme_id: Option<String>,
+    /// The publisher's own `Environment.id` at export time. `import_environment`
+    /// ignores this field on purpose — it always mints a fresh local id. It
+    /// exists for the *other* consumer of this file shape: an origin (#108)
+    /// registered against a `kind = "environment"` export, whose continuous
+    /// `sync_origin` pull needs a stable way to recognise "the same" bundle
+    /// across repeated syncs (`tab_state::Environment::origin_source_id`).
+    /// `#[serde(default)]` so a file exported before this field existed still
+    /// parses — it just can never be matched by the sync path, only imported
+    /// once.
+    #[serde(default)]
+    pub source_environment_id: String,
 }
 
 /// A shared origin's *registration* — name and path only, never its

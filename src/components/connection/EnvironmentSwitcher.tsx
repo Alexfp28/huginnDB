@@ -28,7 +28,7 @@ import {
 import { useEnvironments, environmentLabel } from "@/stores/session/environments";
 import { useEnvironmentEditor } from "@/stores/dialogs/environmentEditor";
 import { useEnvironmentTransfer } from "@/stores/dialogs/environmentTransfer";
-import { confirmIrreversible } from "@/lib/confirmDestructive";
+import { useEnvironmentDeleteConfirm } from "@/stores/dialogs/environmentDeleteConfirm";
 import { isAvatarImage } from "@/lib/environmentAvatar";
 import { cn } from "@/lib/utils";
 import type { Environment } from "@/types";
@@ -42,11 +42,11 @@ export function EnvironmentSwitcher() {
   const switching = useEnvironments((s) => s.switching);
   const switchTo = useEnvironments((s) => s.switchTo);
   const lastReplicate = useEnvironments((s) => s.lastReplicate);
-  const remove = useEnvironments((s) => s.remove);
 
   const openCreate = useEnvironmentEditor((s) => s.openCreate);
   const openEdit = useEnvironmentEditor((s) => s.openEdit);
   const openExport = useEnvironmentTransfer((s) => s.openExport);
+  const openDeleteConfirm = useEnvironmentDeleteConfirm((s) => s.open);
 
   const ordered = useMemo(
     () => [...environments].sort((a, b) => a.order - b.order),
@@ -106,7 +106,12 @@ export function EnvironmentSwitcher() {
               <span className="min-w-0 flex-1 truncate">
                 {environmentLabel(env, defaultName)}
               </span>
-              {isMain && (
+              {/* A mirrored environment (#108) is read-only: the next sync
+                  from its origin overwrites name/color/icon/theme anyway, so
+                  renaming it here would just be discarded. Released only via
+                  the vanished-environment notice's adopt/retire, same as an
+                  origin-owned connection profile. */}
+              {isMain && !env.originId && (
                 <span
                   role="button"
                   tabIndex={-1}
@@ -143,7 +148,7 @@ export function EnvironmentSwitcher() {
                   <Download className="h-3 w-3" />
                 </span>
               )}
-              {isMain && ordered.length > 1 && (
+              {isMain && ordered.length > 1 && !env.originId && (
                 <span
                   role="button"
                   tabIndex={-1}
@@ -152,22 +157,7 @@ export function EnvironmentSwitcher() {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    // Discards this environment's tabs and layout. Connection
-                    // profiles and credentials are untouched, and the prompt
-                    // says so — the word "environment" alone could easily read
-                    // as "delete these connections".
-                    // Always asks, regardless of `ui.confirmDestructive`: an
-                    // environment's tabs and pane layout exist nowhere else
-                    // and can't be rebuilt from the database.
-                    if (
-                      confirmIrreversible(
-                        t("environments.deleteConfirm", {
-                          name: environmentLabel(env, defaultName),
-                        }),
-                      )
-                    ) {
-                      void remove(env.id);
-                    }
+                    openDeleteConfirm(env.id, environmentLabel(env, defaultName));
                   }}
                 >
                   <Trash2 className="h-3 w-3" />

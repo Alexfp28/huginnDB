@@ -114,6 +114,7 @@
   "connections": {
     "disconnectTooltip": "Disconnect",
     "deleteConfirm": "Delete connection \"{{name}}\"?",
+    "bulkDeleteTitle": "Delete {{count}} connections",
     "bulkDeleteConfirm": "Delete {{count}} connections? This cannot be undone.",
     "selectConnection": "Select {{name}}",
     "selectedCount": "{{count}} selected",
@@ -1680,7 +1681,11 @@
     "syncNow": "Sync now",
     "empty": "No shared origins yet. Point one at an exported profiles file on a network share.",
     "remove": "Remove origin",
-    "removeConfirm": "Remove the origin \"{{name}}\"?\n\nIts stored passphrase is forgotten. The connections it imported stay — they are not deleted.",
+    "removeConfirmTitle": "Remove origin \"{{name}}\"",
+    "removeConfirmPassphraseNote": "Its stored passphrase is forgotten.",
+    "removeConfirmConnectionsNote": "{{count}} connections it imported stay locally, flagged so you can decide whether to keep or delete them.",
+    "removeConfirmEnvironmentsNote": "{{count}} environments it published also stay, flagged the same way.",
+    "removeConfirmNothingNote": "This origin hasn't imported any connections or environments.",
     "lastSynced": "Last synced {{when}}",
     "neverSynced": "Never synced",
     "pathPlaceholder": "\\\\server\\huginndb\\clients.json",
@@ -1697,6 +1702,15 @@
       "retireConfirm": "Delete the connection \"{{name}}\"?\n\nIts stored password is removed from your keychain too. This cannot be undone.",
       "mark": "\"{{origin}}\" no longer offers this connection — resolve it from the schema tree or Settings → Shared origins.",
       "pending": "Disappeared connections"
+    },
+    "vanishedEnvironments": {
+      "titleNamed": "\"{{name}}\" is no longer published",
+      "body": "\"{{origin}}\" no longer includes this environment in the shared file. Keep it as your own, or delete it together with its tabs and layout.",
+      "keep": "Keep as mine",
+      "keepTooltip": "Stop tracking the origin and keep the environment locally, editable again.",
+      "retire": "Delete",
+      "retireConfirm": "Delete the environment \"{{name}}\"?\n\nIts tabs and layout are lost. The connections it groups are not deleted.",
+      "pending": "Disappeared environments"
     }
   }
 }

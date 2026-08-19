@@ -12,8 +12,11 @@ import { useTranslation } from "react-i18next";
 import { FolderSync, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useOriginSync } from "@/stores/sync/originSync";
+import { useConnections } from "@/stores/session/connections";
+import { useEnvironments } from "@/stores/session/environments";
 import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
-import { confirmIrreversible } from "@/lib/confirmDestructive";
+import { VanishedEnvironmentNotice } from "@/components/common/VanishedEnvironmentNotice";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -25,15 +28,43 @@ export function OriginsSection() {
   const errors = useOriginSync((s) => s.errors);
   const syncAll = useOriginSync((s) => s.syncAll);
   const vanished = useOriginSync((s) => s.vanished);
+  const vanishedEnvironments = useOriginSync((s) => s.vanishedEnvironments);
+  const noticeOriginRemoved = useOriginSync((s) => s.noticeOriginRemoved);
+  const profiles = useConnections((s) => s.profiles);
+  const environments = useEnvironments((s) => s.environments);
 
   // Derive the id list here rather than in the selector: `Object.keys` returns a
   // fresh array on every call and would re-render forever (gotcha #1).
   const vanishedIds = useMemo(() => Object.keys(vanished), [vanished]);
+  const vanishedEnvironmentIds = useMemo(
+    () => Object.keys(vanishedEnvironments),
+    [vanishedEnvironments],
+  );
 
   const [origins, setOrigins] = useState<Origin[]>([]);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ name: "", path: "", passphrase: "" });
   const [busy, setBusy] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<Origin | null>(null);
+  const [removing, setRemoving] = useState(false);
+
+  // How many connections/environments will be flagged as orphaned if this
+  // origin goes — shown in the confirm dialog so "what it published stays"
+  // isn't an abstract warning.
+  const affectedConnectionCount = useMemo(
+    () =>
+      pendingRemove
+        ? profiles.filter((p) => p.origin_id === pendingRemove.id).length
+        : 0,
+    [profiles, pendingRemove],
+  );
+  const affectedEnvironmentCount = useMemo(
+    () =>
+      pendingRemove
+        ? environments.filter((e) => e.originId === pendingRemove.id).length
+        : 0,
+    [environments, pendingRemove],
+  );
 
   async function reload() {
     try {
@@ -47,6 +78,23 @@ export function OriginsSection() {
   useEffect(() => {
     void reload();
   }, []);
+
+  async function performRemove() {
+    if (!pendingRemove) return;
+    setRemoving(true);
+    try {
+      // Raise the vanished-notice *before* the origin is gone: once removed
+      // it drops out of `listOrigins()`, and `syncAll()` — the only other
+      // place that populates `vanished` — has nothing left to iterate to
+      // ever report these as orphaned.
+      noticeOriginRemoved(pendingRemove);
+      await api.removeOrigin(pendingRemove.id);
+      await reload();
+      setPendingRemove(null);
+    } finally {
+      setRemoving(false);
+    }
+  }
 
   async function submit() {
     if (!draft.path.trim()) return;
@@ -133,13 +181,7 @@ export function OriginsSection() {
               <button
                 className="shrink-0 text-muted-foreground/60 hover:text-destructive"
                 title={t("origins.remove")}
-                onClick={() => {
-                  // Irreversible: the stored passphrase goes with it. The
-                  // imported connections deliberately stay — see `remove_origin`.
-                  if (confirmIrreversible(t("origins.removeConfirm", { name: o.name }))) {
-                    void api.removeOrigin(o.id).then(reload);
-                  }
-                }}
+                onClick={() => setPendingRemove(o)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -161,6 +203,21 @@ export function OriginsSection() {
               key={id}
               profileId={id}
               showConnection
+              className="mx-0 mt-2"
+            />
+          ))}
+        </div>
+      )}
+
+      {vanishedEnvironmentIds.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("origins.vanishedEnvironments.pending")}
+          </h4>
+          {vanishedEnvironmentIds.map((id) => (
+            <VanishedEnvironmentNotice
+              key={id}
+              environmentId={id}
               className="mx-0 mt-2"
             />
           ))}
@@ -200,6 +257,37 @@ export function OriginsSection() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingRemove}
+        onOpenChange={(open) => !open && setPendingRemove(null)}
+        title={t("origins.removeConfirmTitle", { name: pendingRemove?.name ?? "" })}
+        description={
+          <div className="space-y-1">
+            <p>{t("origins.removeConfirmPassphraseNote")}</p>
+            {affectedConnectionCount === 0 && affectedEnvironmentCount === 0 && (
+              <p>{t("origins.removeConfirmNothingNote")}</p>
+            )}
+            {affectedConnectionCount > 0 && (
+              <p>
+                {t("origins.removeConfirmConnectionsNote", {
+                  count: affectedConnectionCount,
+                })}
+              </p>
+            )}
+            {affectedEnvironmentCount > 0 && (
+              <p>
+                {t("origins.removeConfirmEnvironmentsNote", {
+                  count: affectedEnvironmentCount,
+                })}
+              </p>
+            )}
+          </div>
+        }
+        confirmLabel={t("origins.remove")}
+        confirming={removing}
+        onConfirm={() => void performRemove()}
+      />
     </div>
   );
 }

@@ -114,6 +114,7 @@
   "connections": {
     "disconnectTooltip": "Desconectar",
     "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",
+    "bulkDeleteTitle": "Eliminar {{count}} conexiones",
     "bulkDeleteConfirm": "¿Eliminar {{count}} conexiones? Esta acción no se puede deshacer.",
     "selectConnection": "Seleccionar {{name}}",
     "selectedCount": "{{count}} seleccionadas",
@@ -1680,7 +1681,11 @@
     "syncNow": "Sincronizar ahora",
     "empty": "Aún no hay orígenes. Apunta uno a un fichero de perfiles exportado en una ruta de red.",
     "remove": "Quitar origen",
-    "removeConfirm": "¿Quitar el origen «{{name}}»?\n\nSe olvida su passphrase guardada. Las conexiones que importó se quedan: no se borran.",
+    "removeConfirmTitle": "Quitar origen «{{name}}»",
+    "removeConfirmPassphraseNote": "Se olvida su passphrase guardada.",
+    "removeConfirmConnectionsNote": "{{count}} conexiones que importó se quedan en local, marcadas para que decidas si las conservas o las eliminas.",
+    "removeConfirmEnvironmentsNote": "{{count}} entornos que publicaba también se quedan, marcados de la misma forma.",
+    "removeConfirmNothingNote": "Este origen no ha importado ninguna conexión ni entorno.",
     "lastSynced": "Última sincronización: {{when}}",
     "neverSynced": "Sin sincronizar",
     "pathPlaceholder": "\\\\servidor\\huginndb\\clientes.json",
@@ -1697,6 +1702,15 @@
       "retireConfirm": "¿Borrar la conexión «{{name}}»?\n\nTambién se elimina su contraseña del almacén de credenciales. Esto no se puede deshacer.",
       "mark": "«{{origin}}» ya no ofrece esta conexión: resuélvelo desde el árbol de esquema o en Ajustes → Orígenes compartidos.",
       "pending": "Conexiones desaparecidas"
+    },
+    "vanishedEnvironments": {
+      "titleNamed": "«{{name}}» ya no se publica",
+      "body": "«{{origin}}» ya no incluye este entorno en el fichero compartido. Consérvalo como tuyo o bórralo junto con sus pestañas y su disposición.",
+      "keep": "Conservar como mío",
+      "keepTooltip": "Deja de seguir el origen y guarda el entorno en local, editable de nuevo.",
+      "retire": "Borrar",
+      "retireConfirm": "¿Borrar el entorno «{{name}}»?\n\nSe pierden sus pestañas y su disposición. Las conexiones que agrupa no se borran.",
+      "pending": "Entornos desaparecidos"
     }
   }
 }
