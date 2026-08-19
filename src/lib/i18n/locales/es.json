@@ -67,7 +67,9 @@
       "exportProfiles": "Exportar perfiles…",
       "exportEnvironments": "Exportar entornos…",
       "importEnvironment": "Importar entorno…",
-      "disconnectAll": "Desconectar todas"
+      "disconnectAll": "Desconectar todas",
+      "exportJsonSchemas": "Exportar esquemas JSON…",
+      "importJsonSchemas": "Importar esquemas JSON…"
     },
     "window": {
       "label": "Ventana",
@@ -535,7 +537,8 @@
       "newRow": "Nueva fila",
       "insertHint": "Enter inserta · Esc descarta",
       "changeType": "Cambiar el tipo"
-    }
+    },
+    "expandEditorWithSchema": "Editar en Monaco — esquema «{{name}}» vinculado"
   },
   "tableData": {
     "refresh": "Actualizar",
@@ -639,7 +642,11 @@
       "auto": "Auto",
       "default": "Por defecto",
       "add": "Añadir columna",
-      "remove": "Eliminar columna"
+      "remove": "Eliminar columna",
+      "jsonSchema": "Esquema JSON",
+      "jsonSchemaLocal": "local",
+      "jsonSchemaHint": "Metadatos del editor guardados en esta máquina. Se guardan en el momento de elegirlos y nunca forman parte del DDL de abajo.",
+      "jsonSchemaNewHint": "Disponible cuando la tabla exista."
     },
     "typeCategory": {
       "integer": "Enteros",
@@ -663,7 +670,8 @@
     "readOnlyMongo": "Solo lectura (MongoDB)",
     "indexManagerHint": "Los índices de MongoDB se editan en el gestor de índices; esta vista es de solo lectura.",
     "openIndexManager": "Abrir el gestor de índices",
-    "readOnlySqlServer": "Solo lectura (SQL Server)"
+    "readOnlySqlServer": "Solo lectura (SQL Server)",
+    "jsonSchemaRenameFailed": "La tabla se ha modificado, pero un vínculo de esquema JSON no ha podido seguir el renombrado: {{message}}"
   },
   "view": {
     "loading": "Cargando vista…",
@@ -993,6 +1001,10 @@
       "origins": {
         "label": "Orígenes",
         "desc": "Perfiles desde carpeta compartida"
+      },
+      "jsonSchemas": {
+        "label": "Esquemas JSON",
+        "desc": "Validación por columna"
       }
     },
     "general": {
@@ -1264,7 +1276,9 @@
       "title": "Exportar entornos",
       "description": "Para cada entorno seleccionado abajo: su nombre, color y tema, los perfiles de conexión que agrupa, y sus orígenes compartidos registrados (solo nombre y ruta — nunca la contraseña de cifrado). Las pestañas y la distribución de paneles se quedan en esta máquina. Las conexiones compartidas por más de un entorno seleccionado se escriben una sola vez, no se duplican.",
       "environments": "Entornos a exportar",
-      "exportButton": "Exportar {{count}} entorno(s)"
+      "exportButton": "Exportar {{count}} entorno(s)",
+      "includeJsonSchemas": "Incluir los esquemas JSON y sus vínculos",
+      "includeJsonSchemasHint": "Los esquemas son globales, no propiedad de un entorno, así que esto empaqueta la biblioteca completa junto al entorno: cómodo para preparar una máquina nueva con un solo archivo."
     },
     "importEnvironment": {
       "title": "Importar entorno",
@@ -1275,7 +1289,173 @@
       "importButton": "Importar {{count}} entorno(s)",
       "done": "{{count}} entorno(s) importado(s)",
       "doneEntry": "«{{name}}» — {{origins}} origen(es) compartido(s) registrado(s) (los cifrados pedirán su contraseña en la próxima sincronización)",
-      "switchNow": "Cambiar a él ahora"
+      "switchNow": "Cambiar a él ahora",
+      "doneSchemas": "También se han importado {{schemas}} esquema(s) y {{bindings}} vínculo(s)."
+    },
+    "exportJsonSchemas": {
+      "title": "Exportar esquemas JSON",
+      "description": "Elige qué esquemas escribir en un archivo. No hace falta contraseña: un esquema no contiene secretos.",
+      "includeBindings": "Incluir sus vínculos de columna",
+      "includeBindingsHint": "Un vínculo fijado a una conexión llega desactivado a otra máquina, porque el identificador de una conexión es local a la máquina que la creó.",
+      "exportButton": "Exportar"
+    },
+    "importJsonSchemas": {
+      "title": "Importar esquemas JSON",
+      "pickTitle": "Selecciona una exportación de esquemas JSON",
+      "pickDescription": "Elige un archivo exportado desde HuginnDB.",
+      "reviewDescription": "{{schemas}} esquema(s) y {{bindings}} vínculo(s) en este archivo.",
+      "unresolvedWarning": "{{count}} vínculo(s) nombran una conexión que no existe aquí, así que se importarán desactivados. Se conserva su ámbito, para que puedas apuntarlos a una conexión después.",
+      "importButton": "Importar",
+      "done": "{{count}} esquema(s) importados.",
+      "doneBindings": "{{imported}} vínculo(s) importados, {{disabled}} de ellos desactivados."
+    }
+  },
+  "jsonSchemas": {
+    "title": "Esquemas JSON",
+    "description": "Vincula un esquema JSON a una columna para que el editor de celda ofrezca autocompletado, documentación al pasar el ratón y validación en vivo. Los esquemas son globales: no dependen del entorno, y la validación nunca impide guardar.",
+    "fullGuide": "Leer la guía completa de esquemas JSON",
+    "library": {
+      "new": "Nuevo esquema",
+      "addFromFile": "Añadir desde archivo…",
+      "addFromFileTitle": "Selecciona un archivo de esquema JSON",
+      "filterPlaceholder": "Filtrar esquemas…",
+      "noMatches": "Ningún esquema coincide con el filtro.",
+      "bindingCount": "{{count}} vínculo(s)",
+      "unbound": "sin vincular",
+      "invalidBody": "Este esquema no es JSON válido: se ignora hasta que se corrija.",
+      "defaultName": "Esquema nuevo",
+      "fileNotJson": "Ese archivo no es JSON válido: {{message}}"
+    },
+    "empty": {
+      "title": "Aún no hay esquemas JSON",
+      "body": "Abre una celda JSON en el editor Monaco y usa la insignia de esquema de su cabecera para crear uno a partir del valor que estás viendo: es la vía más rápida. O empieza desde una plantilla:",
+      "orImport": "También puedes importar un paquete de esquemas exportado desde otra máquina."
+    },
+    "templates": {
+      "object": {
+        "name": "Objeto abierto",
+        "desc": "Propiedades con tipo, se permiten claves extra."
+      },
+      "strict": {
+        "name": "Objeto estricto",
+        "desc": "Solo las claves requeridas; cualquier otra es un error."
+      },
+      "enumField": {
+        "name": "Campo con enum",
+        "desc": "Una propiedad con un conjunto fijo de valores, para que el editor los sugiera."
+      }
+    },
+    "detail": {
+      "namePlaceholder": "Nombre del esquema",
+      "descriptionPlaceholder": "¿Para qué sirve este esquema? (opcional)",
+      "body": "Cuerpo del esquema",
+      "saveBody": "Guardar cuerpo",
+      "revert": "Descartar cambios",
+      "bodySaved": "Esquema guardado",
+      "bodyInvalid": "JSON no válido: {{message}}",
+      "format": "Formatear",
+      "fullscreen": "Pantalla completa",
+      "exitFullscreen": "Salir de pantalla completa",
+      "duplicate": "Duplicar",
+      "delete": "Eliminar esquema",
+      "selectPrompt": "Elige un esquema a la izquierda o crea uno.",
+      "externalRefs": "Estas referencias no se pueden resolver sin conexión, y una sola referencia sin resolver impide que se valide el documento entero: {{refs}}",
+      "noDraftDeclared": "No se ha declarado \"$schema\". Sin él el editor valida con semántica 2020-12 en lugar de draft-07."
+    },
+    "deleteConfirm": "¿Eliminar el esquema «{{name}}»?\n\nSu cuerpo no existe en ningún otro sitio y no se puede recuperar.",
+    "deleteConfirmBound": "¿Eliminar el esquema «{{name}}»?\n\n{{count}} vínculo(s) apuntan a él y también se eliminan, así que esas columnas pierden el autocompletado y la validación. Su cuerpo no existe en ningún otro sitio y no se puede recuperar.",
+    "bindings": {
+      "title": "Vínculos",
+      "cascadeHint": "Gana la primera fila que coincida con una columna. Se listan de más específica a más general; `*` significa «cualquiera».",
+      "empty": "Aún no hay vínculos. Un esquema no hace nada hasta que se vincula a una columna.",
+      "new": "Nuevo vínculo",
+      "col": {
+        "rank": "#",
+        "connection": "Conexión",
+        "dbSchema": "Esquema / base de datos",
+        "table": "Tabla",
+        "column": "Columna",
+        "schema": "Esquema JSON",
+        "enabled": "Activo"
+      },
+      "remove": "Quitar vínculo",
+      "missingSchema": "Apunta a un esquema que ya no existe.",
+      "unknownConnection": "conexión no encontrada",
+      "saveError": "No se pudo guardar este vínculo: {{message}}"
+    },
+    "scope": {
+      "connection": "Conexión",
+      "connectionAny": "Cualquier conexión",
+      "dbSchema": "Esquema / base de datos",
+      "dbSchemaAny": "Cualquiera",
+      "table": "Tabla",
+      "tablePlaceholder": "Nombre o patrón como config_*",
+      "column": "Columna",
+      "columnPlaceholder": "Nombre o patrón como *_json",
+      "columnMissing": "(sin columna)",
+      "globHint": "`*` coincide con cualquier secuencia de caracteres y no distingue mayúsculas. En MongoDB se puede vincular un campo anidado con la misma forma de ruta con puntos que usa `$set`."
+    },
+    "test": {
+      "title": "Probar una columna",
+      "hint": "Comprueba a qué esquema se resuelve una columna, sin abrirla.",
+      "placeholder": "esquema.tabla.columna",
+      "run": "Resolver",
+      "match": "→ {{name}} (de la fila n.º {{rank}})",
+      "noMatch": "→ ningún esquema coincide"
+    },
+    "prefs": {
+      "title": "Comportamiento",
+      "validation": {
+        "label": "Validar contra el esquema vinculado",
+        "desc": "Subraya los valores que no cumplen el esquema. Desactivado, el esquema solo sirve para autocompletar y para la ayuda al pasar el ratón. La validación nunca impide guardar."
+      },
+      "completion": {
+        "label": "Sugerir claves y valores",
+        "desc": "Ofrece las propiedades y los valores de enumeración del esquema mientras escribes en una celda JSON."
+      },
+      "hover": {
+        "label": "Mostrar descripciones al pasar el ratón",
+        "desc": "Lee la `description` de una propiedad del esquema al pasar el ratón por su clave."
+      }
+    },
+    "badge": {
+      "none": "sin esquema",
+      "noneTooltip": "Esta columna no tiene ningún esquema JSON vinculado. Haz clic para vincular uno.",
+      "boundTooltip": "Esquema «{{name}}» — {{scope}}",
+      "inherited": "heredado",
+      "inheritedTooltip": "Lo aplica una regla más amplia ({{scope}}). Edítala en Ajustes para cambiar dónde se aplica.",
+      "ownSchema": "$schema propio",
+      "ownSchemaTooltip": "Este documento declara su propio $schema ({{uri}}), que tiene prioridad, así que el vínculo se ignora. No se descarga nada de la red.",
+      "menuTitle": "Esquema de «{{column}}»",
+      "emptyLibrary": "Tu biblioteca está vacía.",
+      "infer": "Crear a partir de este valor…",
+      "inferNeedsJson": "El valor debe ser JSON válido para inferir un esquema a partir de él.",
+      "unlink": "Desvincular",
+      "editRule": "Editar esta regla en Ajustes…",
+      "manage": "Gestionar esquemas JSON…"
+    },
+    "infer": {
+      "title": "Crear un esquema a partir de este valor",
+      "description": "Se inspecciona el valor del editor y se redacta un esquema a partir de él. Puedes refinarlo después en Ajustes → Esquemas JSON.",
+      "name": "Nombre",
+      "namePlaceholder": "p. ej. product-config",
+      "preview": "Esquema inferido",
+      "strict": "Objeto estricto",
+      "strictHint": "Rechazar cualquier propiedad que no apareciera en las muestras.",
+      "linkAlso": "Vincularlo ya a {{scope}}",
+      "create": "Crear",
+      "notJson": "El valor actual no es JSON válido, así que no se puede inferir nada.",
+      "truncated": "Los arrays grandes se han muestreado y el anidamiento muy profundo se ha recortado.",
+      "mixed": "Estos campos contenían más de una forma, así que se han emitido como anyOf: {{paths}}"
+    },
+    "toast": {
+      "bound": "«{{name}}» vinculado a {{scope}}",
+      "boundShadowing": "«{{name}}» vinculado a {{scope}}. Anula la regla más amplia «{{previous}}».",
+      "unbound": "Esquema desvinculado de {{scope}}",
+      "created": "Esquema «{{name}}» creado",
+      "deleted": "Esquema «{{name}}» eliminado",
+      "deletedWithBindings": "Esquema «{{name}}» eliminado, junto con {{count}} vínculo(s)",
+      "saveFailed": "No se pudo guardar: {{message}}"
     }
   },
   "console": {

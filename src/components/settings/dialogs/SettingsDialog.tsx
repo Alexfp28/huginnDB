@@ -24,6 +24,7 @@ import {
   Network,
   Cog,
   FolderSync,
+  FileJson,
   FileText,
   Keyboard,
   Palette,
@@ -53,6 +54,7 @@ import { ConnectionsSection } from "@/components/settings/sections/ConnectionsSe
 import { AppearanceSection } from "@/components/settings/sections/AppearanceSection";
 import { ShortcutsSection } from "@/components/settings/sections/ShortcutsSection";
 import { McpSection } from "@/components/settings/sections/McpSection";
+import { JsonSchemasSection } from "@/components/settings/sections/JsonSchemasSection";
 import { OriginsSection } from "@/components/settings/sections/OriginsSection";
 import { AboutSection } from "@/components/settings/sections/AboutSection";
 
@@ -72,6 +74,9 @@ const SECTIONS: {
   { id: "connections", icon: Network },
   { id: "appearance", icon: Palette },
   { id: "shortcuts", icon: Keyboard },
+  // Grouped with Origins rather than with Editor: both are user *content*
+  // shared across machines, not knobs on how the app looks or behaves.
+  { id: "jsonSchemas", icon: FileJson },
   { id: "origins", icon: FolderSync },
   { id: "mcp", icon: Cable },
   { id: "about", icon: Info },
@@ -159,6 +164,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             {section === "connections" && <ConnectionsSection />}
             {section === "appearance" && <AppearanceSection />}
             {section === "shortcuts" && <ShortcutsSection />}
+            {section === "jsonSchemas" && <JsonSchemasSection />}
             {section === "origins" && <OriginsSection />}
             {section === "mcp" && <McpSection />}
             {section === "about" && <AboutSection />}

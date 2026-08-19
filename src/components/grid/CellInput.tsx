@@ -18,7 +18,7 @@
 
 import { forwardRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Maximize2 } from "lucide-react";
+import { Braces, Maximize2 } from "lucide-react";
 
 interface CellInputProps {
   /** Current value; `null` renders a "NULL" placeholder. */
@@ -38,6 +38,15 @@ interface CellInputProps {
   onExpand?: () => void;
   /** Tooltip for the expand button. */
   expandTitle?: string;
+  /**
+   * The column has a JSON Schema attached, so the expand button says so.
+   *
+   * This is the discoverability path for anyone who never opens the heavy
+   * editor: a one-line `<input>` cannot offer completion or validation, so the
+   * only hint that the schema exists is that escalating is worth it. Double-click
+   * behaviour is unchanged (gotcha #12) — this swaps an icon, nothing more.
+   */
+  schemaBound?: boolean;
 }
 
 export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
@@ -53,6 +62,7 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
       onCancel,
       onExpand,
       expandTitle,
+      schemaBound,
     },
     ref,
   ) {
@@ -89,13 +99,21 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
             tabIndex={-1}
             title={expandTitle}
             disabled={disabled}
-            className="shrink-0 rounded px-1 text-muted-foreground/80 hover:text-foreground"
+            className={
+              schemaBound
+                ? "shrink-0 rounded px-1 text-brand hover:text-brand/80"
+                : "shrink-0 rounded px-1 text-muted-foreground/80 hover:text-foreground"
+            }
             // Keep focus on the input so blur-commit doesn't fire before we
             // hand the current value off to the modal editor.
             onMouseDown={(e) => e.preventDefault()}
             onClick={onExpand}
           >
-            <Maximize2 className="h-3 w-3" />
+            {schemaBound ? (
+              <Braces className="h-3 w-3" />
+            ) : (
+              <Maximize2 className="h-3 w-3" />
+            )}
           </button>
         )}
         {nullable && (

@@ -54,6 +54,7 @@ import {
   KeyRound,
   Workflow,
   X,
+  FileJson,
 } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
@@ -114,6 +115,7 @@ const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
   connections: <Plug className="h-4 w-4" />,
   appearance: <Palette className="h-4 w-4" />,
   shortcuts: <Keyboard className="h-4 w-4" />,
+  jsonSchemas: <FileJson className="h-4 w-4" />,
   origins: <FolderOpen className="h-4 w-4" />,
   mcp: <Cable className="h-4 w-4" />,
   about: <Info className="h-4 w-4" />,

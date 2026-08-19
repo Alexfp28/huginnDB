@@ -15,6 +15,7 @@ export type SettingsSection =
   | "connections"
   | "appearance"
   | "shortcuts"
+  | "jsonSchemas"
   | "origins"
   | "mcp"
   | "about";

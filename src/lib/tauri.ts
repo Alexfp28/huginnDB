@@ -62,6 +62,15 @@ import type {
   EnvironmentList,
   Origin,
   OriginSyncReport,
+  JsonSchemaLibrary,
+  JsonSchemaEntry,
+  JsonSchemaBinding,
+  JsonSchemaSource,
+  JsonSchemaMatch,
+  JsonSchemaInferResult,
+  JsonSchemaImportAnalysis,
+  JsonSchemaImportResult,
+  ResolvedJsonSchema,
 } from "@/types";
 
 export const api = {
@@ -665,6 +674,103 @@ export const api = {
   reorderEnvironments: (ids: string[]) =>
     invoke<void>("reorder_environments", { ids }),
 
+  // JSON Schemas ------------------------------------------------------------
+  //
+  // The cascade that decides which schema applies to a column lives only in
+  // Rust (see `src-tauri/src/json_schemas/mod.rs`): a second implementation
+  // here would be the same one-grammar-two-parsers trap gotchas #30/#33 exist
+  // to prevent, and a resolution bug is not an error, it is "the autocompletion
+  // did not appear" — which nobody reports. The frontend therefore caches
+  // *results*, never re-derives them.
+
+  /** The whole library: schemas plus the bindings that attach them. */
+  listJsonSchemas: () => invoke<JsonSchemaLibrary>("list_json_schemas"),
+
+  /** Create (omit `id`) or update one schema. Discrete arguments rather than the
+   *  whole entry, so a form cannot overwrite `createdAt` / `originId`. */
+  saveJsonSchema: (args: {
+    id?: string;
+    name: string;
+    description?: string | null;
+    body: string;
+    source?: JsonSchemaSource;
+  }) => invoke<JsonSchemaEntry>("save_json_schema", args),
+
+  /** Delete a schema and cascade to its bindings. Returns how many went, so the
+   *  UI can say so; the confirmation itself is the caller's. */
+  deleteJsonSchema: (id: string) => invoke<number>("delete_json_schema", { id }),
+
+  /** Create (empty `id`) or update one binding. Here the full record *is* the
+   *  right payload — every field is the user's to set. */
+  saveJsonSchemaBinding: (binding: JsonSchemaBinding) =>
+    invoke<JsonSchemaBinding>("save_json_schema_binding", { binding }),
+
+  deleteJsonSchemaBinding: (id: string) =>
+    invoke<void>("delete_json_schema_binding", { id }),
+
+  /** Reassign binding `order` to match `ids`. Matters because `order` is the
+   *  cascade's documented tie-break. */
+  reorderJsonSchemaBindings: (ids: string[]) =>
+    invoke<void>("reorder_json_schema_bindings", { ids }),
+
+  /** Move literal bindings after a column rename. Called by the structure editor
+   *  *after* a successful apply, best-effort: the DDL already ran. */
+  renameJsonSchemaBindingColumn: (args: {
+    connectionId?: string | null;
+    dbSchema?: string | null;
+    table?: string | null;
+    from: string;
+    to: string;
+  }) => invoke<number>("rename_json_schema_binding_column", args),
+
+  /** Resolve every column of one relation in a single call — made once per data
+   *  tab, never once per cell. Only the columns that matched come back. */
+  resolveJsonSchemasForColumns: (args: {
+    connectionId?: string | null;
+    dbSchema?: string | null;
+    table?: string | null;
+    columns: string[];
+  }) => invoke<ResolvedJsonSchema[]>("resolve_json_schemas_for_columns", args),
+
+  /** Resolve one column: the MongoDB dotted-path case, where the field path is
+   *  not known until the user expands it. */
+  resolveJsonSchema: (args: {
+    connectionId?: string | null;
+    dbSchema?: string | null;
+    table?: string | null;
+    column: string;
+  }) => invoke<ResolvedJsonSchema | null>("resolve_json_schema", args),
+
+  /** The full ranked cascade for one column — answers "why this schema?", and
+   *  more often "why is my rule not applying?". */
+  explainJsonSchemaBindings: (args: {
+    connectionId?: string | null;
+    dbSchema?: string | null;
+    table?: string | null;
+    column: string;
+  }) => invoke<JsonSchemaMatch[]>("explain_json_schema_bindings", args),
+
+  /** Draft a schema from sample values the caller already has in memory. */
+  inferJsonSchema: (values: unknown[], closedObjects?: boolean) =>
+    invoke<JsonSchemaInferResult>("infer_json_schema", { values, closedObjects }),
+
+  /** Write the selected schemas to a file the user picks; returns the path.
+   *  No passphrase: a JSON Schema carries no secret. */
+  exportJsonSchemas: (ids: string[], includeBindings?: boolean) =>
+    invoke<string>("export_json_schemas", { ids, includeBindings }),
+
+  analyzeJsonSchemaImport: (filePath: string) =>
+    invoke<JsonSchemaImportAnalysis>("analyze_json_schema_import", { filePath }),
+
+  importJsonSchemas: (
+    filePath: string,
+    conflictResolutions: ConflictResolution[],
+  ) =>
+    invoke<JsonSchemaImportResult>("import_json_schemas", {
+      filePath,
+      conflictResolutions,
+    }),
+
   // Shared origins ---------------------------------------------------------
 
   /** Origins registered in the active environment. */
@@ -781,11 +887,13 @@ export const api = {
     ids: string[],
     includePasswords: boolean,
     passphrase?: string,
+    includeJsonSchemas?: boolean,
   ) =>
     invoke<string>("export_environments", {
       ids,
       includePasswords,
       passphrase,
+      includeJsonSchemas,
     }),
 
   /**

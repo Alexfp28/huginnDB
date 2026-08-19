@@ -803,6 +803,13 @@ export interface EditorPrefs {
    * since been removed, still renders cleanly.
    */
   theme: string;
+  /** Underline values that violate the JSON Schema bound to their column.
+   *  Never gates a save — the database is the authority, the schema is an aid. */
+  jsonSchemaValidation: boolean;
+  /** Offer the bound schema's properties and enum values while typing. */
+  jsonSchemaCompletion: boolean;
+  /** Show a property's schema `description` on hover. */
+  jsonSchemaHover: boolean;
 }
 
 export interface GridPrefs {
@@ -1191,6 +1198,11 @@ export interface EnvironmentImportAnalysis {
   totalProfiles: number;
   encrypted: boolean;
   conflicts: ImportConflict[];
+  /** How many JSON Schemas ride along, for display only. Their name conflicts
+   *  are resolved by the *same* `conflictResolutions` list as the profiles,
+   *  keyed by the incoming schema id, so they need no extra wizard step. */
+  totalJsonSchemas: number;
+  totalJsonSchemaBindings: number;
 }
 
 /** One environment created by `importEnvironment`. */
@@ -1205,6 +1217,10 @@ export interface ImportedEnvironment {
 export interface EnvironmentImportResult {
   environments: ImportedEnvironment[];
   profiles: ImportResult;
+  /** Present only when the file carried a schema bundle. `undefined` differs
+   *  meaningfully from a zeroed result: the exporter never ticked the box, so
+   *  the UI stays silent rather than reporting "0 schemas". */
+  jsonSchemas?: JsonSchemaImportResult | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1276,4 +1292,131 @@ export interface AppFlavor {
 export interface IssueOutcome {
   url: string;
   created: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// JSON Schemas — mirror of src-tauri/src/json_schemas/mod.rs
+// ---------------------------------------------------------------------------
+
+/** Where a library entry came from. `imported` covers both a file import and
+ *  (from 1.18.0) an origin sync, told apart by `originId` being set. */
+export type JsonSchemaSource = "manual" | "imported" | "inferred";
+
+/** One schema in the user library.
+ *
+ *  Mirrors `JsonSchemaItem`. `body` is the document as **source text**, exactly
+ *  as typed: the backend never parses it, so a draft that is momentarily
+ *  invalid still saves. */
+export interface JsonSchemaEntry {
+  id: string;
+  /** Display name, and the conflict key on import (a schema id can never
+   *  collide across machines; a name always will). */
+  name: string;
+  description?: string | null;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  source: JsonSchemaSource;
+  /** Owning shared origin (1.18.0). Always null for a locally-authored entry. */
+  originId?: string | null;
+}
+
+/** A rule attaching one schema to a set of columns.
+ *
+ *  Every axis but `column` may be `null`, meaning "any". `table` and `column`
+ *  accept a simple `*` glob, matched case-insensitively.
+ *
+ *  `connectionId` is always a **profile** id, never a synthetic
+ *  `<parent>::db::<db>` one — pass it through `parentConnectionId`
+ *  (`lib/connectionLabel.ts`) before saving, or the rule will never match on a
+ *  server-wide connection. */
+export interface JsonSchemaBinding {
+  id: string;
+  schemaId: string;
+  connectionId?: string | null;
+  /** Whatever the explorer calls a schema for that driver: a Postgres schema,
+   *  a MySQL/MongoDB *database*, `main` on SQLite. */
+  dbSchema?: string | null;
+  table?: string | null;
+  /** Required. Admits dots, so a MongoDB nested field can be bound by the same
+   *  dotted path form `$set` takes (`customData.format`). */
+  column: string;
+  enabled: boolean;
+  /** Tie-break among equally specific bindings, ascending. */
+  order: number;
+  originId?: string | null;
+}
+
+/** The whole persisted library, from `listJsonSchemas`. */
+export interface JsonSchemaLibrary {
+  version: number;
+  schemas: JsonSchemaEntry[];
+  bindings: JsonSchemaBinding[];
+}
+
+/** The schema that won the cascade for one column.
+ *
+ *  `specificity` and `bindingId` come back so the UI can say *why* this schema
+ *  applies without a second call. */
+export interface ResolvedJsonSchema {
+  /** Echoed, because the batch call returns a list rather than a map. */
+  column: string;
+  schemaId: string;
+  name: string;
+  body: string;
+  bindingId: string;
+  specificity: number;
+  /** True when the winning rule names this exact column literally, false when
+   *  it was inherited from a broader one. Decides whether "unlink" may be
+   *  offered — unlinking an inherited rule would affect other columns too. */
+  exact: boolean;
+}
+
+/** One entry of the ranked cascade from `explainJsonSchemaBindings`. */
+export interface JsonSchemaMatch {
+  binding: JsonSchemaBinding;
+  schemaId: string;
+  schemaName: string;
+  specificity: number;
+  /** 1-based rank; `1` is the winner. */
+  rank: number;
+}
+
+/** What `inferJsonSchema` warns about. */
+export interface JsonSchemaInferStats {
+  samples: number;
+  truncatedDepth: boolean;
+  truncatedArrays: boolean;
+  /** Dotted paths that held structurally different types and became `anyOf`. */
+  mixedPaths: string[];
+}
+
+/** A drafted schema, pretty-printed and ready for an editor. */
+export interface JsonSchemaInferResult {
+  body: string;
+  stats: JsonSchemaInferStats;
+}
+
+/** Summary from `analyzeJsonSchemaImport`. Snake_case on the wire, like the
+ *  rest of `transfer.rs`. */
+export interface JsonSchemaImportAnalysis {
+  total_schemas: number;
+  total_bindings: number;
+  conflicts: ImportConflict[];
+  /** How many bindings would land disabled because they name a connection this
+   *  machine does not have. */
+  bindings_unresolvable: number;
+}
+
+/** Result of `importJsonSchemas`. */
+export interface JsonSchemaImportResult {
+  imported: string[];
+  skipped: string[];
+  overwritten: string[];
+  /** `[original name, stored name]` per renamed entry. */
+  renamed: [string, string][];
+  bindings_imported: number;
+  bindings_disabled: number;
+  bindings_dropped: number;
+  bindings_duplicate: number;
 }

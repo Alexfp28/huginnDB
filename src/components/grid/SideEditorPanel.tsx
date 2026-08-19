@@ -89,7 +89,11 @@ export function SideEditorPanel() {
     loadedTargetRef.current = next;
     baselineRef.current = next.value;
     setValue(next.value);
-    setLanguage(detectLanguage(next.value ?? ""));
+    // A binding is the user asserting this column holds JSON, so honour it over
+    // the heuristic: `detectLanguage` returns "json" only when the text parses,
+    // which would leave a momentarily-broken document with no validation at all
+    // — precisely when it is most useful.
+    setLanguage(next.binding ? "json" : detectLanguage(next.value ?? ""));
     // New cell/session → force a fresh Monaco model (see `editorKey`).
     setEditorKey((k) => k + 1);
   }
@@ -258,6 +262,8 @@ export function SideEditorPanel() {
         language={language}
         onLanguageChange={setLanguage}
         readonly={readonly}
+        surface="side"
+        binding={target?.binding}
         editorKey={editorKey}
       />
       {saveError && (

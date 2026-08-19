@@ -125,7 +125,11 @@ import {
   toSqlInsert as rowToSqlInsert,
   toSqlUpdate as rowToSqlUpdate,
 } from "@/lib/grid/copyFormats";
-import { useCellEditor } from "@/stores/grid/cellEditor";
+import {
+  useCellEditor,
+  type CellBindingContext,
+} from "@/stores/grid/cellEditor";
+import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
 import { useSessionPanelLayout, isSideEditorOpen } from "@/stores/session/panelLayout";
 import type { Driver } from "@/types";
 
@@ -1813,6 +1817,45 @@ export function DataGrid({
     toggleRowKey,
   };
 
+  // Resolve the relation's schema bindings once, when the grid mounts for a
+  // table. One IPC call per data tab — never per cell, and never per render.
+  const ensureResolvedSchemas = useJsonSchemas((s) => s.ensureResolved);
+  const resolvedSchemas = useJsonSchemas((s) => s.resolved);
+  const schemaRevision = useJsonSchemas((s) => s.revision);
+  useEffect(() => {
+    if (!tableName) return;
+    void ensureResolvedSchemas(
+      connectionId,
+      tableSchema,
+      tableName,
+      result.columns.map((c) => c.name),
+    );
+    // `schemaRevision` re-runs it after any library change, since the store
+    // clears the cache on every mutation.
+  }, [
+    connectionId,
+    tableSchema,
+    tableName,
+    result.columns,
+    ensureResolvedSchemas,
+    schemaRevision,
+  ]);
+
+  /**
+   * Name of the schema bound to `column`, or `null`.
+   *
+   * Only used to *signal* — the expand buttons swap their icon and tooltip so the
+   * feature is discoverable without opening Settings. Double-click still goes to
+   * the inline `CellInput` (gotcha #12 stands); only the icon changed.
+   */
+  const boundSchemaNames = useMemo(() => {
+    if (!tableName) return new Map<string, string>();
+    const key = relationKey(connectionId, tableSchema, tableName);
+    const bucket = resolvedSchemas[key];
+    if (!bucket) return new Map<string, string>();
+    return new Map(Object.entries(bucket).map(([col, hit]) => [col, hit.name]));
+  }, [connectionId, tableSchema, tableName, resolvedSchemas]);
+
   const columns = useMemo<ColumnDef<CellValue[]>[]>(
     () =>
       result.columns.map((col, idx) => ({
@@ -2023,7 +2066,14 @@ export function DataGrid({
                 onCommit={commit}
                 onCancel={() => setInlineEdit(null)}
                 onExpand={expand}
-                expandTitle={t("dataGrid.expandEditor")}
+                schemaBound={boundSchemaNames.has(inlineEdit.column.name)}
+                expandTitle={
+                  boundSchemaNames.has(inlineEdit.column.name)
+                    ? t("dataGrid.expandEditorWithSchema", {
+                        name: boundSchemaNames.get(inlineEdit.column.name),
+                      })
+                    : t("dataGrid.expandEditor")
+                }
               />
             );
           }
@@ -2100,6 +2150,7 @@ export function DataGrid({
       connectionId,
       tableSchema,
       onCellSave,
+      boundSchemaNames,
       t,
     ],
   );
@@ -2115,6 +2166,32 @@ export function DataGrid({
     state: { columnSizing },
     onColumnSizingChange: handleColumnSizingChange,
   });
+
+  /**
+   * Coordinates for the JSON Schema cascade.
+   *
+   * All four axes are already props of this component; before this they were
+   * dropped at the editor boundary, which is why a schema could not be bound at
+   * all. `column.name` is the field's *dotted path* when the value came from the
+   * document view (see `onExpandField`, which synthesises the column that way),
+   * so a MongoDB nested binding needs nothing extra.
+   *
+   * Returns `undefined` without a table name: a query result has no column
+   * identity, and a binding created there would be an accidental wildcard.
+   */
+  function bindingContextFor(
+    column: ColumnMeta,
+    field?: { path: string[]; type: string },
+  ): CellBindingContext | undefined {
+    if (!tableName) return undefined;
+    return {
+      connectionId,
+      dbSchema: tableSchema,
+      table: tableName,
+      column: column.name,
+      bsonType: field?.type,
+    };
+  }
 
   /** Open the heavyweight Monaco modal directly (read-only view, or the
    *  "expand" escalation from the inline editor / CellPreview). */
@@ -2144,6 +2221,7 @@ export function DataGrid({
       ownerId: tabId,
       columnName: column.name,
       value,
+      binding: bindingContextFor(column, field),
       readonly: !canSave,
       onSave: canSave
         ? (v) =>
@@ -3027,6 +3105,7 @@ export function DataGrid({
           initialValue={editorTarget.value}
           columnName={editorTarget.column.name}
           ownerId={tabId}
+          binding={bindingContextFor(editorTarget.column, editorTarget.field)}
           readonly={
             !editable || !(editorTarget.field ? onFieldSave : onCellSave)
           }

@@ -60,6 +60,18 @@ pub struct EditorPrefs {
     /// catalogue stays the single source of truth — the backend just
     /// round-trips whatever id the user picked.
     pub theme: String,
+    /// Underline values that violate the JSON Schema bound to their column.
+    ///
+    /// Three switches rather than one because the language service splits them,
+    /// and because a loose schema is useful for completion long before anyone
+    /// wants squiggles. This one maps to `schemaValidation`, *not* to
+    /// `diagnostics`: silencing the latter would also hide plain syntax errors.
+    /// And it never gates a save — the database is the authority.
+    pub json_schema_validation: bool,
+    /// Offer the bound schema's properties and enum values while typing.
+    pub json_schema_completion: bool,
+    /// Show a property's schema `description` on hover.
+    pub json_schema_hover: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -256,6 +268,11 @@ impl Default for EditorPrefs {
             // The brand editor theme, matching `resolveMonacoTheme`'s own
             // fallback. Installs that already picked a theme keep it.
             theme: "huginn-dark".into(),
+            // All on: a bound schema that did nothing visible would read as
+            // broken, and the user opted in by creating the binding.
+            json_schema_validation: true,
+            json_schema_completion: true,
+            json_schema_hover: true,
         }
     }
 }

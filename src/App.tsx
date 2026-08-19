@@ -56,6 +56,9 @@ import { startCliConnectBridge } from "@/lib/bridges/cli-connect-bridge";
 import { startConnectionHealthBridge } from "@/lib/bridges/connection-health-bridge";
 import { startConnectionSyncBridge } from "@/lib/bridges/connection-sync-bridge";
 import { startPrefsSyncBridge } from "@/lib/bridges/prefs-sync-bridge";
+import { startJsonSchemaBridge } from "@/lib/bridges/json-schema-bridge";
+import { useJsonSchemas } from "@/stores/jsonSchemas";
+import { setModePrefs } from "@/lib/monaco/monacoJson";
 import { flushAllTabState, persistLaunchState } from "@/stores/session/persistedTabs";
 import { useEnvironments } from "@/stores/session/environments";
 import { startPeriodicOriginSync } from "@/stores/sync/originSync";
@@ -575,6 +578,42 @@ export default function App() {
     let unlisten: (() => void) | null = null;
     let cancelled = false;
     void startPrefsSyncBridge().then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // Keep the JSON language service in step with the three schema switches.
+  // Subscribed as primitives, so this effect fires only when one actually flips
+  // (gotcha #1) rather than on every preferences write.
+  const jsonSchemaValidation = usePreferences(
+    (s) => s.prefs.editor.jsonSchemaValidation,
+  );
+  const jsonSchemaCompletion = usePreferences(
+    (s) => s.prefs.editor.jsonSchemaCompletion,
+  );
+  const jsonSchemaHover = usePreferences((s) => s.prefs.editor.jsonSchemaHover);
+  useEffect(() => {
+    setModePrefs({
+      validation: jsonSchemaValidation,
+      completion: jsonSchemaCompletion,
+      hover: jsonSchemaHover,
+    });
+  }, [jsonSchemaValidation, jsonSchemaCompletion, jsonSchemaHover]);
+
+  // The JSON Schema library: hydrate once, then keep in step with the other
+  // windows. Unlike tab state, this is global config every window reads and
+  // writes (see the bridge for why its listener is deliberately unscoped), so
+  // there is no main-window-only guard here.
+  useEffect(() => {
+    void useJsonSchemas.getState().load();
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    void startJsonSchemaBridge().then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
     });
