@@ -655,6 +655,18 @@ export interface RowValue {
 export interface DraftCell {
   value: string | null;
   touched: boolean;
+  /**
+   * Type the value must be written as, overriding the column's catalog type.
+   *
+   * Only the list view's draft card sets it, and only on MongoDB: a collection
+   * has no schema, so the type a new field is stored with is a *choice*, not a
+   * property of the column. Inferring it from the text would write an `Int32`
+   * into a field the collection holds as a `Long` — the same fidelity trap
+   * gotcha #29 documents for edits. Absent → the catalog type is used, which is
+   * what every SQL insert wants (it is what tells the backend a MySQL `BIT`
+   * needs its `CAST`, gotcha #15).
+   */
+  type?: string;
 }
 
 /** Inline draft row state owned by `TableDataTab`. */

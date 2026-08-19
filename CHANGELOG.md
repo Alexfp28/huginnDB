@@ -41,6 +41,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   alphabetically (Connections → Environments → MongoDB → SQL Server → MCP),
   since the dialog opens on the first one.
 
+- **The list view can now insert a row / document.** "Insert" was hidden
+  whenever the grid was in list mode, which left the mode read-mostly: you
+  could edit any field of an existing document and delete it, but adding one
+  meant switching back to the table view. The draft is drawn as a card pinned
+  above the documents — one `key : control` line per field, using the very same
+  controls the table's draft row uses (auto-PK placeholder, FK combobox, BIT
+  0/1 selector, plain input), now extracted into a shared `DraftCellControl` so
+  the two surfaces can't drift on the details that matter (a BIT column has to
+  emit the numeric string the backend's `CAST` expects, gotcha #15). It commits
+  through the same `insert_row` call: switching view mode changes how the draft
+  is drawn, never what it writes. Two deliberate differences from the table's
+  row: focus leaving the card does **not** commit (a card is a form, and it
+  hosts a type picker whose popover lives outside it — a blur-commit would fire
+  the INSERT the moment that picker opened), so Enter or "Save" commits and Esc
+  or "✕" discards; and on MongoDB each field carries its own **BSON type
+  picker**, sent as `insert_row`'s type hint. That last part is the point of
+  doing it here rather than reusing the table's fixed-type row: a collection has
+  no schema, so the type a new field is stored with is a choice, and inferring
+  it from the text would write an `Int32` into a field the collection holds as a
+  `Long` — the fidelity trap gotcha #29 documents for edits, one step earlier.
+  The field set is still the result's column list (on MongoDB, the top-level
+  keys of the current page); extra fields are added to the new document with the
+  per-document `+` once it exists.
+
 ### Fixed
 
 - **`docs/MCP.es.md` was missing the whole "Connection footprint" section**,
@@ -68,6 +92,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `COUNT(*)`/row-estimate path) stopped round-tripping through the same
   broken string too — it reads `int_part()` directly, since the rendered form
   of any non-zero scale is not something `parse::<i64>` accepts.
+
+- **A pending insert row appeared and vanished instantly when started from a
+  menu.** Reported as "the draft row flashes and is gone"; the toolbar's
+  "Insert" button worked, both menu entries (the row's right-click menu and the
+  toolbar's overflow menu, which is where the button moves on a narrow pane)
+  did not. Both of those are Radix menus, and Radix's `FocusScope` restores
+  focus to whatever was focused before the menu opened from inside its own
+  `setTimeout(…, 0)` on unmount. The grid focused the draft's first cell in a
+  `requestAnimationFrame`, which fired *before* that timeout — so Radix pulled
+  focus straight back out of the just-mounted row, the row's focus-leave
+  handler ran, and a draft nobody has typed into is silently cancelled (by
+  design: it would otherwise send an `INSERT () VALUES ()`). The focus is now
+  granted in a `setTimeout` chained *after* the frame, which is always queued
+  after Radix's, so the draft keeps focus whichever way the two callbacks
+  interleave. The frame is still what waits for the row to mount.
+
+- **Enter or Escape inside an FK value picker committed or discarded the whole
+  draft.** The draft binds Enter to "insert this row" and Escape to "discard
+  it" at the row level, and `FkCombobox` called `preventDefault` on the keys it
+  handles but never `stopPropagation` — so opening the picker with Enter fired
+  the INSERT with a half-filled row, and closing it with Escape threw the draft
+  away. Both handlers (the trigger and the panel's search field) now stop the
+  event at the combobox, which is the only component that has consumed it.
+
+- **The list view's empty state was the one empty screen with no branding.** A
+  collection or table with no rows rendered a bare grey "No rows" line, while
+  the table view has shown the shared `EmptyState` frame — halftone wash,
+  medallion, the sticker mark with a per-state glyph — since the brand pass.
+  The list view now uses the same frame (and so does an aggregation preview
+  whose pipeline returned nothing), suppressed while an insert card is open:
+  the surface is no longer empty, it is a form.
 
 ### Changed
 

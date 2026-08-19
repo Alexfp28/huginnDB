@@ -878,7 +878,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       .map(([column, c]) => ({
         column,
         value: c.value,
+        // A per-cell type wins over the catalog one: the list view's draft card
+        // lets a MongoDB field be written as a chosen BSON type, and only the
+        // cell knows about it (see `DraftCell.type`).
         columnType:
+          c.type ??
           cols?.find((col) => col.name === column)?.data_type ??
           result?.columns.find((col) => col.name === column)?.data_type,
       }));

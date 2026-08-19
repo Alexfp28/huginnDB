@@ -531,6 +531,9 @@
       "opaqueType": "This type cannot be edited inline — its displayed form is not the stored value. Change the type to replace it.",
       "expand": "Expand",
       "collapse": "Collapse",
+      "newDocument": "New document",
+      "newRow": "New row",
+      "insertHint": "Enter inserts · Esc discards",
       "changeType": "Change type"
     }
   },

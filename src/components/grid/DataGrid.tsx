@@ -103,6 +103,10 @@ import { BitInput } from "@/components/grid/BitInput";
 import { CellEditor } from "@/components/grid/dialogs/CellEditor";
 import { CellInput } from "@/components/grid/CellInput";
 import { CellPreview } from "@/components/grid/CellPreview";
+import {
+  DraftCellControl,
+  firstEditableColumn,
+} from "@/components/grid/DraftCellControl";
 import { FkCombobox } from "@/components/ui/fk-combobox";
 import {
   ContextMenu,
@@ -1124,16 +1128,31 @@ export function DataGrid({
    * Focus the first editable draft cell when a draft is created so the
    * user can start typing immediately. Re-runs only when a new draft
    * appears (identity-stable boolean).
+   *
+   * The focus is granted in a `setTimeout` *chained after* a frame, not inside
+   * the frame itself, and that ordering is load-bearing. "Insert row" is
+   * reachable from two Radix menus (the row context menu and the toolbar's
+   * overflow menu), and Radix's `FocusScope` restores focus to whatever was
+   * focused before the menu opened from inside its own `setTimeout(…, 0)` on
+   * unmount. Focusing synchronously in the frame therefore lost the race: Radix
+   * pulled focus out of the just-mounted draft a tick later, the row's
+   * focus-leave handler fired, and an untouched draft is silently cancelled —
+   * so the row appeared and vanished instantly (the only reliable way to insert
+   * was the toolbar button, which involves no menu). Our timeout is always
+   * queued after Radix's, so the draft ends up focused either way.
    */
   const draftActive = !!draftRow;
   useEffect(() => {
-    if (draftActive) {
-      // Defer until the row is mounted.
-      const id = requestAnimationFrame(() => {
-        firstDraftInputRef.current?.focus();
-      });
-      return () => cancelAnimationFrame(id);
-    }
+    if (!draftActive) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // The frame is what waits for the row / card to be mounted.
+    const frame = requestAnimationFrame(() => {
+      timer = setTimeout(() => firstDraftInputRef.current?.focus(), 0);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer !== undefined) clearTimeout(timer);
+    };
   }, [draftActive]);
 
   /** Full Monaco editor (opened via CellPreview F11 or double-click). */
@@ -2428,32 +2447,33 @@ export function DataGrid({
    * The grid's own toolbar actions, in the same two-presentation shape the
    * parent's slots use (`GridToolbarItem`) so the bar and the overflow menu
    * are built from one list each. `null` when the action doesn't apply — no
-   * insert callback, or list view, which has no columns to fit.
+   * insert callback, or list view, which has no columns to fit. Insert itself
+   * *is* offered in list view: the draft is drawn as a card there (see
+   * `DraftDocumentCard`) and commits through the same `insert_row` call.
    */
-  const insertItem: GridToolbarItem | null =
-    onInsertRow && viewMode !== "list"
-      ? {
-          id: "insert",
-          bar: (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 px-2 text-xs"
-              onClick={onInsertRow}
-              title={t("dataGrid.insertNewRow")}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t("dataGrid.insert")}
-            </Button>
-          ),
-          menu: (
-            <DropdownMenuItem className="text-xs" onSelect={onInsertRow}>
-              <Plus className="mr-2 h-3.5 w-3.5" />
-              {t("dataGrid.insertNewRow")}
-            </DropdownMenuItem>
-          ),
-        }
-      : null;
+  const insertItem: GridToolbarItem | null = onInsertRow
+    ? {
+        id: "insert",
+        bar: (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={onInsertRow}
+            title={t("dataGrid.insertNewRow")}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t("dataGrid.insert")}
+          </Button>
+        ),
+        menu: (
+          <DropdownMenuItem className="text-xs" onSelect={onInsertRow}>
+            <Plus className="mr-2 h-3.5 w-3.5" />
+            {t("dataGrid.insertNewRow")}
+          </DropdownMenuItem>
+        ),
+      }
+    : null;
 
   // Same auto-fit as double-clicking a column's edge, applied to every column
   // — the discoverable form of that gesture.
@@ -2719,6 +2739,25 @@ export function DataGrid({
             }
             copyToClipboard={copyToClipboard}
             emptyLabel={t("dataGrid.noRows")}
+            draft={
+              draftRow && onDraftCellChange && onDraftCommit && onDraftCancel
+                ? {
+                    row: draftRow,
+                    columns: draftColumns ?? [],
+                    // Same switch the cards use: only the MongoDB tab supplies
+                    // the `$unset` callback, and only there is a field's type a
+                    // per-document choice.
+                    documentMode: !!onFieldDelete,
+                    bitDisplay,
+                    connectionId,
+                    tableSchema,
+                    focusRef: firstDraftInputRef,
+                    onChange: onDraftCellChange,
+                    onCommit: onDraftCommit,
+                    onCancel: onDraftCancel,
+                  }
+                : null
+            }
           />
         ) : (
         <>
@@ -3275,17 +3314,10 @@ function DraftRowView({
   }, [draftColumns]);
 
   /** First non-auto-PK column index — used to bind the focus-on-mount ref. */
-  const firstEditableIdx = useMemo(() => {
-    for (let i = 0; i < columns.length; i++) {
-      const info = infoByName.get(columns[i].name);
-      if (!info) return i;
-      const isAutoPk =
-        info.is_primary_key &&
-        /int|serial|rowid/i.test(info.data_type);
-      if (!isAutoPk) return i;
-    }
-    return 0;
-  }, [columns, infoByName]);
+  const firstEditableIdx = useMemo(
+    () => firstEditableColumn(columns, infoByName),
+    [columns, infoByName],
+  );
 
   function handleRowBlur() {
     // Wait one tick for focus to settle on the new target.
@@ -3321,80 +3353,24 @@ function DraftRowView({
         {columns.map((col, idx) => {
           const cell: DraftCell =
             draft.cells[col.name] ?? { value: null, touched: false };
-          const info = infoByName.get(col.name);
-          const isAutoPk =
-            info?.is_primary_key &&
-            /int|serial|rowid/i.test(info.data_type);
           return (
             <td
               key={col.name}
               className="border-b border-border/50 border-r border-r-border/70 px-1 py-0.5"
             >
-              {isAutoPk ? (
-                <span
-                  className="block px-1 font-mono text-[11px] italic text-muted-foreground/60"
-                  title="Auto-generated by the database"
-                >
-                  auto
-                </span>
-              ) : info?.referenced_table && connectionId ? (
-                // Single-column FK: pick a valid referenced value instead
-                // of typing one. The combobox owns its own NULL handling
-                // when the column is nullable, so we don't render the
-                // separate "∅" button used for plain inputs.
-                <FkCombobox
-                  ref={
-                    idx === firstEditableIdx
-                      ? (firstInputRef as React.MutableRefObject<HTMLButtonElement | null>)
-                      : undefined
-                  }
-                  connectionId={connectionId}
-                  refSchema={
-                    info.referenced_schema ?? tableSchema ?? undefined
-                  }
-                  refTable={info.referenced_table}
-                  refColumn={info.referenced_column ?? "id"}
-                  value={cell.value}
-                  nullable={info.nullable}
-                  disabled={draft.saving}
-                  onChange={(v) =>
-                    onChange?.(col.name, { value: v, touched: true })
-                  }
-                />
-              ) : info && isBitType(info.data_type) ? (
-                // BIT column: dedicated 0/1 control instead of a text field.
-                // Emits the numeric string the backend's CAST expects and
-                // seeds a non-null column to 0 (gotcha #15). Row-level
-                // onBlur / onKeyDown still drive commit & cancel.
-                <BitInput
-                  autoFocus={idx === firstEditableIdx}
-                  value={cell.value}
-                  bitDisplay={bitDisplay}
-                  nullable={info.nullable}
-                  disabled={draft.saving}
-                  seedDefault={!info.nullable}
-                  onSelect={(v) =>
-                    onChange?.(col.name, { value: v, touched: true })
-                  }
-                />
-              ) : (
-                // Row-level onBlur / onKeyDown drive commit & cancel here, so
-                // CellInput is left unwired (no onCommit / onCancel).
-                <CellInput
-                  ref={
-                    idx === firstEditableIdx
-                      ? (firstInputRef as React.MutableRefObject<HTMLInputElement | null>)
-                      : undefined
-                  }
-                  value={cell.value}
-                  nullable={info?.nullable}
-                  nullActive={cell.value === null && cell.touched}
-                  disabled={draft.saving}
-                  onChange={(v) =>
-                    onChange?.(col.name, { value: v, touched: true })
-                  }
-                />
-              )}
+              {/* Row-level onBlur / onKeyDown drive commit & cancel, so the
+                  control itself is mounted unwired. */}
+              <DraftCellControl
+                info={infoByName.get(col.name)}
+                cell={cell}
+                saving={draft.saving}
+                autoFocus={idx === firstEditableIdx}
+                focusRef={idx === firstEditableIdx ? firstInputRef : undefined}
+                connectionId={connectionId}
+                tableSchema={tableSchema}
+                bitDisplay={bitDisplay}
+                onChange={(next) => onChange?.(col.name, next)}
+              />
             </td>
           );
         })}
