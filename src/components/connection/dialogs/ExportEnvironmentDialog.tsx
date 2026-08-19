@@ -45,6 +45,10 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
   const environments = useEnvironments((s) => s.environments);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [includePasswords, setIncludePasswords] = useState(false);
+  // Opt-in, and off by default: schemas are global rather than owned by an
+  // environment, so bundling them is a convenience for setting up a machine, not
+  // part of what makes an environment portable (gotcha #35).
+  const [includeJsonSchemas, setIncludeJsonSchemas] = useState(false);
   const [passphrase, setPassphrase] = useState("");
   const [passphraseConfirm, setPassphraseConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -95,6 +99,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
         Array.from(selected),
         includePasswords,
         includePasswords ? passphrase : undefined,
+        includeJsonSchemas,
       );
       toast.success(t("transfer.export.success", { path }));
       handleOpenChange(false);
@@ -108,6 +113,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
   function handleOpenChange(v: boolean) {
     if (!v) {
       setIncludePasswords(false);
+      setIncludeJsonSchemas(false);
       setPassphrase("");
       setPassphraseConfirm("");
       onClose();
@@ -178,6 +184,26 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
             <Label htmlFor="export-env-include-passwords" className="cursor-pointer text-xs">
               {t("transfer.export.includePasswords")}
             </Label>
+          </div>
+
+          {/* JSON Schemas ride along, but are not part of the environment. */}
+          <div className="flex items-start gap-3">
+            <Switch
+              id="export-env-include-json-schemas"
+              checked={includeJsonSchemas}
+              onCheckedChange={setIncludeJsonSchemas}
+            />
+            <div className="min-w-0">
+              <Label
+                htmlFor="export-env-include-json-schemas"
+                className="cursor-pointer text-xs"
+              >
+                {t("transfer.exportEnvironment.includeJsonSchemas")}
+              </Label>
+              <p className="text-2xs text-muted-foreground">
+                {t("transfer.exportEnvironment.includeJsonSchemasHint")}
+              </p>
+            </div>
           </div>
 
           {/* Security warning + passphrase fields */}

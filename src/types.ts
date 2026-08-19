@@ -1191,18 +1191,20 @@ export interface EnvironmentImportAnalysisEntry {
 }
 
 /** Summary returned by `analyzeEnvironmentImport`. One entry per environment
- *  in the file; `conflicts`/`totalProfiles`/`encrypted` apply to the file's
+ *  in the file; `conflicts`/`total_profiles`/`encrypted` apply to the file's
  *  shared connection-profile pool as a whole. */
 export interface EnvironmentImportAnalysis {
   environments: EnvironmentImportAnalysisEntry[];
-  totalProfiles: number;
+  /** Snake_case on the wire: unlike the persisted state, `transfer.rs` carries no
+   *  `rename_all`, so these DTOs keep Rust's field names. */
+  total_profiles: number;
   encrypted: boolean;
   conflicts: ImportConflict[];
   /** How many JSON Schemas ride along, for display only. Their name conflicts
    *  are resolved by the *same* `conflictResolutions` list as the profiles,
    *  keyed by the incoming schema id, so they need no extra wizard step. */
-  totalJsonSchemas: number;
-  totalJsonSchemaBindings: number;
+  total_json_schemas: number;
+  total_json_schema_bindings: number;
 }
 
 /** One environment created by `importEnvironment`. */
@@ -1220,7 +1222,7 @@ export interface EnvironmentImportResult {
   /** Present only when the file carried a schema bundle. `undefined` differs
    *  meaningfully from a zeroed result: the exporter never ticked the box, so
    *  the UI stays silent rather than reporting "0 schemas". */
-  jsonSchemas?: JsonSchemaImportResult | null;
+  json_schemas?: JsonSchemaImportResult | null;
 }
 
 // ---------------------------------------------------------------------------

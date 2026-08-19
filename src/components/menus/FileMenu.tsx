@@ -38,6 +38,9 @@ import { ExportProfilesDialog } from "@/components/connection/dialogs/ExportProf
 import { ImportProfilesDialog } from "@/components/connection/dialogs/ImportProfilesDialog";
 import { ExportEnvironmentDialog } from "@/components/connection/dialogs/ExportEnvironmentDialog";
 import { ImportEnvironmentDialog } from "@/components/connection/dialogs/ImportEnvironmentDialog";
+import { ExportJsonSchemasDialog } from "@/components/jsonSchema/dialogs/ExportJsonSchemasDialog";
+import { ImportJsonSchemasDialog } from "@/components/jsonSchema/dialogs/ImportJsonSchemasDialog";
+import { useJsonSchemaTransfer } from "@/stores/dialogs/jsonSchemaTransfer";
 
 interface Props {
   selectedConnectionId: string | null;
@@ -63,6 +66,12 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
   const exportEnvPreselect = useEnvironmentTransfer((s) => s.exportPreselect);
   const openExportEnv = useEnvironmentTransfer((s) => s.openExport);
   const closeExportEnv = useEnvironmentTransfer((s) => s.closeExport);
+  const exportSchemasOpen = useJsonSchemaTransfer((s) => s.exportOpen);
+  const exportSchemasPreselect = useJsonSchemaTransfer((s) => s.exportPreselect);
+  const openExportSchemas = useJsonSchemaTransfer((s) => s.openExport);
+  const closeExportSchemas = useJsonSchemaTransfer((s) => s.closeExport);
+  const importSchemasOpen = useJsonSchemaTransfer((s) => s.importOpen);
+  const setImportSchemasOpen = useJsonSchemaTransfer((s) => s.setImportOpen);
   const importEnvOpen = useEnvironmentTransfer((s) => s.importOpen);
   const setImportEnvOpen = useEnvironmentTransfer((s) => s.setImportOpen);
   const { t } = useTranslation();
@@ -113,6 +122,15 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
             <Upload className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.importEnvironment")}
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => openExportSchemas()}>
+            <Download className="mr-2 h-3.5 w-3.5" />
+            {t("menu.file.exportJsonSchemas")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setImportSchemasOpen(true)}>
+            <Upload className="mr-2 h-3.5 w-3.5" />
+            {t("menu.file.importJsonSchemas")}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -130,6 +148,18 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
         onClose={closeExportEnv}
       />
       <ImportEnvironmentDialog open={importEnvOpen} onOpenChange={setImportEnvOpen} />
+      {/* Mounted here and nowhere else, like the environment pair above: the
+          Settings section reaches them through the store rather than rendering a
+          second copy, which would double-render and steal focus. */}
+      <ExportJsonSchemasDialog
+        open={exportSchemasOpen}
+        preselect={exportSchemasPreselect}
+        onClose={closeExportSchemas}
+      />
+      <ImportJsonSchemasDialog
+        open={importSchemasOpen}
+        onOpenChange={setImportSchemasOpen}
+      />
     </>
   );
 }

@@ -332,6 +332,17 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               {result.profiles.renamed.length > 0 && (
                 <p>{t("transfer.import.summaryRenamed", { count: result.profiles.renamed.length })}</p>
               )}
+              {result.json_schemas && (
+                <p className="text-muted-foreground">
+                  {t("transfer.importEnvironment.doneSchemas", {
+                    schemas:
+                      result.json_schemas.imported.length +
+                      result.json_schemas.overwritten.length +
+                      result.json_schemas.renamed.length,
+                    bindings: result.json_schemas.bindings_imported,
+                  })}
+                </p>
+              )}
             </div>
             {result.profiles.needs_password.length > 0 && (
               <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/40 px-3 py-2 text-2xs text-warning">

@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/tauri";
+import { SchemaBindingBadge } from "@/components/jsonSchema/SchemaBindingBadge";
+import { useJsonSchemas } from "@/stores/jsonSchemas";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs, retitleTabsForTableRename } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
@@ -181,6 +183,35 @@ export function StructureEditorTab({
     void reload();
   }, [reload]);
 
+  // JSON Schema bindings for this table.
+  //
+  // Deliberately in their own state, NOT on `WorkingColumn`: a binding is local
+  // editor metadata, not DDL. `desired` below is built with
+  // `columns.map(({ _key, ...c }) => c)`, so a field added to `WorkingColumn`
+  // would ride into the `preview_structure_change` payload unless someone
+  // remembered to strip it — and would re-trigger the debounced DDL preview on
+  // every pick. Keeping it in a separate map makes that impossible by
+  // construction (gotcha #16).
+  // Only the warm-up call lives here; each badge reads the cache itself.
+  const ensureResolvedSchemas = useJsonSchemas((s) => s.ensureResolved);
+  const schemaRevision = useJsonSchemas((s) => s.revision);
+  const columnNames = useMemo(
+    () => columns.map((c) => c.name).filter(Boolean),
+    [columns],
+  );
+  useEffect(() => {
+    if (mode !== "edit" || columnNames.length === 0) return;
+    void ensureResolvedSchemas(connectionId, schema, name, columnNames);
+  }, [
+    mode,
+    connectionId,
+    schema,
+    name,
+    columnNames,
+    ensureResolvedSchemas,
+    schemaRevision,
+  ]);
+
   /** Assemble the desired structure from the working state. */
   const desired = useMemo<TableStructure>(
     () => ({
@@ -238,6 +269,26 @@ export function StructureEditorTab({
     const priorName = original?.name;
     try {
       await api.applyStructureChange({ connectionId, original, desired });
+      // Follow column renames so a binding does not silently stop matching.
+      // Best-effort on purpose: the DDL has already run, so a failure here is a
+      // toast, never a rollback.
+      for (const c of columns) {
+        if (c.originalName && c.originalName !== c.name) {
+          try {
+            await api.renameJsonSchemaBindingColumn({
+              connectionId,
+              dbSchema: schema ?? null,
+              table: desired.name,
+              from: c.originalName,
+              to: c.name,
+            });
+          } catch (e) {
+            toast.error(
+              t("structure.jsonSchemaRenameFailed", { message: String(e) }),
+            );
+          }
+        }
+      }
       // Refresh the explorer so the new/edited table shows immediately.
       await refreshSchema(connectionId);
       if (mode === "new") {
@@ -381,6 +432,11 @@ export function StructureEditorTab({
               onPatch={patchColumn}
               onRemove={removeColumn}
               onAdd={addColumn}
+              bindingContext={
+                mode === "edit"
+                  ? { connectionId, dbSchema: schema, table: name }
+                  : undefined
+              }
             />
           )}
           {section === "indexes" && (
@@ -522,6 +578,7 @@ function ColumnsEditor({
   onPatch,
   onRemove,
   onAdd,
+  bindingContext,
 }: {
   columns: WorkingColumn[];
   driver: Driver | undefined;
@@ -529,6 +586,20 @@ function ColumnsEditor({
   onPatch: (key: string, patch: Partial<WorkingColumn>) => void;
   onRemove: (key: string) => void;
   onAdd: () => void;
+  /**
+   * Coordinates for the per-column JSON Schema affordance, or `undefined` while
+   * designing a table that does not exist yet — there is nothing to anchor a
+   * binding to, and writing one for a table the apply might not create would
+   * leave litter behind.
+   *
+   * Rendered as an icon in the trailing actions cell rather than as a new column:
+   * this table already carries 8–11 of them, and a twelfth would crush it.
+   */
+  bindingContext?: {
+    connectionId: string;
+    dbSchema?: string;
+    table: string;
+  };
 }) {
   const { t } = useTranslation();
   // MySQL is the only driver where UNSIGNED/ZEROFILL are meaningful — the
@@ -576,6 +647,14 @@ function ColumnsEditor({
               <th className="w-32 border-b border-border px-1.5 py-1.5 font-medium">
                 {t("structure.col.default")}
               </th>
+              {bindingContext && (
+                <th
+                  className="w-10 border-b border-l-2 border-dashed border-border px-1 py-1.5 text-center font-medium"
+                  title={t("structure.col.jsonSchemaHint")}
+                >
+                  {"{}"}
+                </th>
+              )}
               <th className="w-8 border-b border-border" />
             </tr>
           </thead>
@@ -672,6 +751,32 @@ function ColumnsEditor({
                     className={cn(cellInputClass, "font-mono")}
                   />
                 </td>
+                {bindingContext && (
+                  <td className="border-l-2 border-dashed border-border px-1 py-0.5 text-center">
+                    {c.name ? (
+                      // Saves the instant it is picked, out of band: it is local
+                      // metadata and must never enter the DDL diff below.
+                      <SchemaBindingBadge
+                        variant="compact"
+                        language="json"
+                        value=""
+                        binding={{
+                          connectionId: bindingContext.connectionId,
+                          dbSchema: bindingContext.dbSchema,
+                          table: bindingContext.table,
+                          column: c.name,
+                        }}
+                      />
+                    ) : (
+                      <span
+                        className="text-muted-foreground/30"
+                        title={t("structure.col.jsonSchemaNewHint")}
+                      >
+                        —
+                      </span>
+                    )}
+                  </td>
+                )}
                 <td className="px-1 py-0.5 text-center">
                   <button
                     className="text-muted-foreground/40 opacity-0 hover:text-destructive group-hover/col:opacity-100"

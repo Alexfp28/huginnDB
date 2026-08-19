@@ -399,4 +399,41 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: onOff((p) => p.grid.listLineNumbers),
     toggle: (p, w) => w.updateGrid({ listLineNumbers: !p.grid.listLineNumbers }),
   },
+
+  // --- JSON Schemas ------------------------------------------------------
+  // Their `section` is "jsonSchemas" rather than "editor" because that is where
+  // the `PrefRow`s live, and `prefId` is the whole join between the two — a typo
+  // degrades silently to "the section opens, nothing is highlighted".
+  {
+    prefId: "editor.jsonSchemaValidation",
+    section: "jsonSchemas",
+    labelKey: "jsonSchemas.prefs.validation.label",
+    descKey: "jsonSchemas.prefs.validation.desc",
+    keywords:
+      "json schema validation validate squiggle errors esquema json validacion validar errores subrayado",
+    value: onOff((p) => p.editor.jsonSchemaValidation),
+    toggle: (p, w) =>
+      w.updateEditor({ jsonSchemaValidation: !p.editor.jsonSchemaValidation }),
+  },
+  {
+    prefId: "editor.jsonSchemaCompletion",
+    section: "jsonSchemas",
+    labelKey: "jsonSchemas.prefs.completion.label",
+    descKey: "jsonSchemas.prefs.completion.desc",
+    keywords:
+      "json schema autocomplete completion suggestions intellisense esquema json autocompletado sugerencias",
+    value: onOff((p) => p.editor.jsonSchemaCompletion),
+    toggle: (p, w) =>
+      w.updateEditor({ jsonSchemaCompletion: !p.editor.jsonSchemaCompletion }),
+  },
+  {
+    prefId: "editor.jsonSchemaHover",
+    section: "jsonSchemas",
+    labelKey: "jsonSchemas.prefs.hover.label",
+    descKey: "jsonSchemas.prefs.hover.desc",
+    keywords:
+      "json schema hover tooltip documentation description esquema json descripcion ayuda contextual",
+    value: onOff((p) => p.editor.jsonSchemaHover),
+    toggle: (p, w) => w.updateEditor({ jsonSchemaHover: !p.editor.jsonSchemaHover }),
+  },
 ];
