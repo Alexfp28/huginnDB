@@ -24,6 +24,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   whoever runs the client; documenting them does not loosen the connector,
   whose own policy still applies after the client approves the call.
 
+- **`docs/MCP_CONNECTOR_ROADMAP.md`: an open section on distributing the
+  connector through a marketplace instead of a per-machine install.** Records
+  the three candidate routes and their verdicts — the claude.ai connector
+  directory is not viable (it lists *remote* servers, and this one reads
+  `profiles.json`, the OS keychain and the user's own network), while the
+  Claude Code plugin marketplace and a Claude Desktop `.mcpb` extension both
+  are — plus the constraint they share (neither can bundle a per-target
+  compiled sidecar, so both need a launcher that resolves the installed one)
+  and the two prerequisites worth doing regardless: moving the exposed-profile
+  list out of `--connections` into HuginnDB's own state, and declaring
+  `_meta["anthropic/requiresUserInteraction"]` on the write tools. Also states
+  plainly why "the marketplace governs permissions better" narrows to a
+  distribution question: approval already belongs entirely to the client, and
+  the write policy is a second, server-side ceiling applied after it.
+
 ### Fixed
 
 - **SQL Server: negative `decimal`/`numeric` values rendered as a
