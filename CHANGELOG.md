@@ -4,6 +4,171 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Added
+
+- **A library of user-defined JSON Schemas, and per-column bindings that make the
+  cell editor schema-aware.** A HuginnDB used as a configuration store ends up
+  with `json`/`jsonb`/`TEXT` columns holding documents hundreds of lines long that
+  have a real, if unwritten, contract — and the cell editor treated every one of
+  them as anonymous JSON: syntax highlighting, a valid/invalid badge, and nothing
+  else. You now keep a library of schemas (a name, an optional description, and
+  the document exactly as you typed it, in a `json_schemas.json` of its own) plus
+  a separate list of bindings saying which columns each one applies to. Attach one
+  and Monaco starts completing property names, suggesting enum values, showing each
+  property's `description` on hover, and underlining values that do not fit. The
+  completion and the hover documentation are the part that changes a working day;
+  the validation is the smaller half.
+
+  The library is **global — not scoped to an environment**, and that is a
+  deliberate reading of what a binding means. A binding says "this table's column
+  looks like this", which is a fact about the *server*, not about whether you are
+  looking at Production or Staging. Scoping it to an environment would give the
+  same table a schema in one environment and not in another, which is the
+  `visible_databases` bug (gotcha #27) a third time. It also lives in a file of its
+  own rather than in `prefs.json`, because a real schema body is 50–200 KB and
+  `prefs.json` is rewritten on every `Ctrl`+wheel of the grid.
+
+- **Validation never blocks a save, by construction.** Nothing in the commit path
+  reads markers, and the diagnostics are configured at warning severity so a
+  violation does not even *look* like it blocks. The database is the authority; a
+  schema is an aid. The day someone's schema is slightly wrong they can still edit
+  their own data.
+
+- **A most-specific-wins cascade, implemented once, in Rust.** A binding names a
+  connection, a schema/database, a table and a column; every axis but the column
+  may be "any", and the table and column accept a simple `*` glob, so one rule can
+  cover `*_json` across a whole server or exactly one column of one table.
+  Specificity runs `column > table > schema/database > connection`, and connection
+  being the *lightest* axis is the counter-intuitive part that makes the motivating
+  case work: a blanket rule over a whole connection must lose to a rule naming the
+  exact table and column, while between two otherwise identical rules the pinned
+  one should win — which is precisely what a tie-break axis is for. So a default
+  schema for `configuration` everywhere plus one override on the table whose shape
+  differs is two rules, not twelve. The frontend never re-derives any of this: it
+  would be a second implementation of one grammar (gotchas #30/#33), and the drift
+  would be silent, because a resolution bug is not an error — it is "the completion
+  did not appear", which nobody reports. Resolution is one call per data tab,
+  cached per relation, so the granularity rather than the language answers the
+  performance question.
+
+- **"Create from this value", because asking anyone to write a JSON Schema by hand
+  has an adoption rate near zero.** The badge drafts one from the document in front
+  of you: name it, review the draft, and it is created and linked without leaving
+  the editor. Its rules are documented rather than magic, and two of them exist to
+  stop it producing a schema that rejects the rows it was drafted from: `required`
+  is the *intersection* of keys present in every sample, never the union, and an
+  `enum` is only written when a value actually repeated — three distinct values
+  across three rows is a sample size, not a closed domain. It always states
+  `$schema`, which is load-bearing rather than decorative: without it the language
+  service validates with 2020-12 semantics instead of draft-07. Output is
+  byte-stable for the same input, so regenerating a schema produces a readable diff.
+
+- **Three surfaces bind a column, in decreasing order of how often you will use
+  them.** The one that matters is a **badge in the cell editor's header rail** (in
+  both the modal and the docked side panel), beside the JSON-valid chip: it names
+  the resolved schema, reads "no schema" in low contrast when there is none, and its
+  dropdown links any library entry, drafts a new one, or unlinks. This is the
+  universal surface — it is the only one MongoDB and SQL Server have. Second, a
+  **new Settings → JSON Schemas section**: the library on the left, the selected
+  entry's document on the right in a Monaco pane that edits in place and expands to
+  fullscreen with F11 rather than stacking a second modal, and the full bindings
+  table underneath in resolution order. Third, a **per-column field in the table
+  structure editor**, deliberately fenced off — see *Changed* below.
+
+- **The bindings table shows the cascade rather than listing it.** A wildcard axis
+  draws the glyph `*` and never an empty cell, because an empty cell reads as "not
+  filled in yet" — the most common misreading of any precedence table. Row order
+  *is* precedence, since the backend returns bindings ranked. And a **"Test a
+  column"** box answers the question this feature will generate most — *why is my
+  rule not applying?* — through the same resolver the editor uses, so the answer
+  cannot disagree with what happens while editing. A live match counter was the
+  alternative and is worse: it would have to walk the catalogues of every live
+  connection and would still only cover whatever happens to be connected.
+
+- **Standalone export/import (`meta.kind = "json-schemas"`), plus opt-in inclusion
+  in an environment export.** No passphrase in either case: a schema carries no
+  secret and no keychain material. The interesting rule is what happens to a
+  binding pinned to a *connection*, since a connection id is a uuid local to the
+  machine that minted it: on import elsewhere such a binding arrives **switched
+  off**, with its original scope preserved. It is not widened to "any connection"
+  (that would change what the rule means) and not dropped silently (that would lose
+  the intent with no way to notice) — and the import wizard states the count before
+  writing anything. An environment import translates instead, through the same
+  original-to-new id map `launch.visible_connections` already uses.
+
+- **A new user guide, `docs/JSON_SCHEMAS.md`** (with its Spanish twin), in the repo
+  and under Help → Documentation. It covers the 30-second route, the cascade with a
+  worked two-rule example, the exact limits of the drafted schema, the sharing
+  caveat, and a "what this is not" section — including the three language-service
+  behaviours that are surprising enough to be support questions: a document's own
+  `$schema` takes precedence over its binding, one unresolvable `$ref` stops the
+  whole document being validated, and nothing is ever fetched from the network.
+
+- **Three preferences — validation, completion and hover.** Split because the
+  language service splits them: a rough schema is useful for completion long before
+  anyone wants red underlines. They live in the JSON Schemas section rather than
+  under Editor, the same call `AppearanceSection` already makes for the data-view
+  group. Also four new command-palette actions and three jump-to-setting entries.
+
+### Changed
+
+- **The cell editor now gives Monaco a stable model `path`.** This was the enabling
+  change for everything above: schemas attach by `fileMatch` against the model URI,
+  and the auto-generated `inmemory://model/N` a bare editor gets matches nothing
+  that can be registered, so no schema could apply at all. The path carries which
+  surface owns it, because the modal and the docked panel can be open at once and
+  two editors sharing a path share a model — whichever unmounted first would destroy
+  it under the other.
+
+- **The inline expand buttons say when a schema is attached**, rendering `{}`
+  instead of the expand glyph and naming the schema in their tooltip. Double-click
+  still opens the same one-line inline editor (gotcha #12 stands); only the icon and
+  the tooltip changed. A one-line `<input>` cannot offer completion or validation,
+  so the only useful hint is that escalating is worth it.
+
+- **A bound column forces the editor into JSON mode**, overriding the content-type
+  heuristic. That heuristic only answers "json" when the text parses, which would
+  leave a momentarily-broken document with no validation at all — precisely when it
+  is most useful. A binding is the user asserting the column holds JSON.
+
+- **The table structure editor gained a per-column `{}` affordance, fenced off from
+  the DDL.** A binding is local editor metadata, not a schema change: it lives in
+  its own state rather than on the working column, so it cannot ride into the
+  `preview_structure_change` payload or re-trigger the debounced DDL preview
+  (gotcha #16). It saves the instant it is picked, sits behind a dashed divider
+  under a `local` tag, and is disabled while designing a table that does not exist
+  yet. Column renames are followed after a successful apply, best-effort — the DDL
+  has already run, so a failure there is a toast and never a rollback.
+
+- **`ExportEnvironmentDialog` grew an opt-in "Include JSON Schemas and their
+  bindings" switch.** Schemas are global, so this packs the whole library alongside
+  the environment rather than making them part of it — one file to set up a new
+  machine.
+
+- **Deleting a connection now also drops the bindings pinned to it**, reporting how
+  many. A profile id is a uuid that is never reused, so such a binding can never
+  match again: it is a provably dead rule rather than something inert but possibly
+  meaningful, which makes it a keyed payload worth reaping (gotcha #27). The
+  asymmetry is what makes that safe — the schema, the expensive artefact, is never
+  touched.
+
+### Fixed
+
+- **Re-importing connection profiles with "overwrite" no longer silently breaks
+  anything keyed on the profile id.** `apply_profile_imports` mints a fresh uuid
+  even when overwriting an existing profile, which nothing depended on before and so
+  was invisible. With bindings in the picture it means an overwrite quietly stops
+  every rule pinned to that profile from matching — no error, the completion simply
+  disappears, and the delete-time sweep never fires because nothing was deleted. The
+  function now returns the overwrite subset of its id map, and both callers use it to
+  repoint the affected bindings.
+
+- `EnvironmentImportAnalysis` declared a `totalProfiles` field in `src/types.ts`
+  while `transfer.rs` sends `total_profiles`. Nothing read it, so nothing was broken,
+  but the next person to read it would have got `undefined`.
+
 ## [1.16.2] — 2026-08-19
 
 ### Added

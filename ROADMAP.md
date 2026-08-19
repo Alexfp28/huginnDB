@@ -33,6 +33,7 @@ in a roadmap and now don't:
 | View editor (create/edit/rename/drop, live preview) | 1.10.0 | SQL drivers. MongoDB views go through the aggregation editor instead — see the next row. |
 | MongoDB aggregation editor + view editing | 1.16.0 | Stage-by-stage and text modes with live per-stage previews; "Save as view" / `collMod`. See `CLAUDE.md` gotcha #33 and `docs/MONGODB_ROADMAP.md` item #12. |
 | MongoDB index manager (list, create, hide, replace, drop) | 1.16.0 | Read from raw `listIndexes` documents (not the lossy typed `IndexModel`), so any option beyond name/keys/`unique` round-trips. See `CLAUDE.md` gotcha #34 and `docs/MONGODB_ROADMAP.md` item #1. |
+| JSON Schema library + per-column bindings | 1.17.0 | User-defined schemas attached to columns, driving completion, hover documentation and advisory validation in the cell editor. Global rather than per-environment, resolved by a most-specific-wins cascade that exists only in Rust. See `CLAUDE.md` gotcha #39 and `docs/JSON_SCHEMAS.md`. |
 | MCP connector (`huginndb-mcp`) | 1.7.0 (binary) → 1.9.0 (per-connection write policy) | Read-only by default; `read-only`/`data`/`full` policy per connection, audited writes. See `docs/MCP_CONNECTOR_ROADMAP.md` and `docs/MCP.md`. |
 | Canary pre-release channel | 1.11.0 | Side-by-side opt-in build for dogfooding against real profiles before a stable release. See `docs/CANARY.md`. |
 | Reconnect-on-launch + session-level workspace layout | 1.11.0 | Restores live connections, focus, and pane geometry at startup. |

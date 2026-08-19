@@ -1557,6 +1557,10 @@
         "title": "Entornos",
         "description": "Mantén conjuntos de conexiones separados"
       },
+      "jsonSchemas": {
+        "title": "Esquemas JSON",
+        "description": "Autocompletado y validación por columna para columnas JSON"
+      },
       "mongodb": {
         "title": "MongoDB",
         "description": "Consultas de shell, documentos, pipelines e índices"

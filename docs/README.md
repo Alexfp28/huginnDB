@@ -12,6 +12,7 @@ language that has none.
 | --- | --- |
 | [Connections](CONNECTIONS.md) · [es](CONNECTIONS.es.md) | Creating connections per driver, SSL, SSH tunnels, where passwords live, server-wide connections, pool limits, keepalive, the CLI flags, export/import, and shared origins. |
 | [Environments](ENVIRONMENTS.md) · [es](ENVIRONMENTS.es.md) | Named working sets: which connections are in play, which tabs and layout come back, and what an environment does *not* own. |
+| [JSON Schemas](JSON_SCHEMAS.md) · [es](JSON_SCHEMAS.es.md) | Attaching a JSON Schema to a column for completion, hover documentation and advisory validation: the library, the most-specific-wins cascade, drafting one from a value, and sharing. |
 | [MongoDB](MONGODB.md) · [es](MONGODB.es.md) | The `mongosh` query dialect, the document editor, aggregation pipelines and views, the index manager, renaming/moving a collection, and what isn't there. |
 | [SQL Server](SQL_SERVER.md) · [es](SQL_SERVER.es.md) | `HOST\INSTANCE` and the SQL Browser, certificate trust, Windows auth, how values are rendered, and the surfaces not implemented yet. |
 | [MCP connector](MCP.md) · [es](MCP.es.md) | Exposing your databases to an AI client: the binary, per-client config, the per-connection write policy, the audit log, and what to do when the client itself blocks a call. |

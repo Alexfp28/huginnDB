@@ -22,6 +22,8 @@ import connectionsRaw from "../../../docs/CONNECTIONS.md?raw";
 import connectionsEsRaw from "../../../docs/CONNECTIONS.es.md?raw";
 import environmentsRaw from "../../../docs/ENVIRONMENTS.md?raw";
 import environmentsEsRaw from "../../../docs/ENVIRONMENTS.es.md?raw";
+import jsonSchemasRaw from "../../../docs/JSON_SCHEMAS.md?raw";
+import jsonSchemasEsRaw from "../../../docs/JSON_SCHEMAS.es.md?raw";
 import mongodbRaw from "../../../docs/MONGODB.md?raw";
 import mongodbEsRaw from "../../../docs/MONGODB.es.md?raw";
 import sqlServerRaw from "../../../docs/SQL_SERVER.md?raw";
@@ -66,6 +68,17 @@ export const DOCS: DocEntry[] = [
     path: "docs/ENVIRONMENTS.md",
     bodies: { en: environmentsRaw, es: environmentsEsRaw },
     updated: dates["docs/ENVIRONMENTS.md"] ?? null,
+  },
+  {
+    // Cross-driver rather than per-driver, so it sits before the per-engine
+    // guides: it applies to any column holding JSON, and `jsonb` on Postgres is
+    // where it pays off as much as anywhere.
+    id: "jsonSchemas",
+    titleKey: "docs.entries.jsonSchemas.title",
+    descriptionKey: "docs.entries.jsonSchemas.description",
+    path: "docs/JSON_SCHEMAS.md",
+    bodies: { en: jsonSchemasRaw, es: jsonSchemasEsRaw },
+    updated: dates["docs/JSON_SCHEMAS.md"] ?? null,
   },
   {
     id: "mongodb",

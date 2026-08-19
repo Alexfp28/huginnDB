@@ -1557,6 +1557,10 @@
         "title": "Environments",
         "description": "Keep separate working sets of connections"
       },
+      "jsonSchemas": {
+        "title": "JSON Schemas",
+        "description": "Per-column completion and validation for JSON columns"
+      },
       "mongodb": {
         "title": "MongoDB",
         "description": "Shell queries, documents, pipelines and indexes"

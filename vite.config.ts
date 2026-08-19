@@ -15,6 +15,7 @@ const host = process.env.TAURI_DEV_HOST;
 const DOC_FILES = [
   "docs/CONNECTIONS.md",
   "docs/ENVIRONMENTS.md",
+  "docs/JSON_SCHEMAS.md",
   "docs/MONGODB.md",
   "docs/SQL_SERVER.md",
   "docs/MCP.md",
