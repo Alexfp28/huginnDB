@@ -6,6 +6,119 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
+## [1.16.2] — 2026-08-19
+
+### Añadido
+
+- **Tres nuevas guías de usuario, en la app y en el repo: Conexiones, MongoDB
+  y SQL Server.** Ayuda → Documentación tenía exactamente dos entradas
+  (Entornos y el conector MCP), así que la mayor parte de lo que hace la app
+  solo estaba documentado en la lista de características del README o no
+  estaba documentado en absoluto. Las nuevas cubren, respectivamente: crear
+  una conexión por cada driver y qué necesita cada uno, por qué SSL es
+  explícito en ambas direcciones, túneles SSH (autenticación, el fallback de
+  puerto local, la política de host-key y los dos casos que no se pueden
+  tunelizar), qué hace realmente "dejar la base de datos en blanco" en cada
+  motor, dónde viven las contraseñas y qué nunca toca disco, las preferencias
+  de límite de conexiones y su override por servidor, el keepalive y la
+  affordance de reconexión, cada flag de la CLI incluida la forma ad-hoc
+  efímera por construcción, exportación/importación cifrada con la salvedad
+  de la URI de MongoDB, y los orígenes compartidos con su modelo de amenaza
+  real — el dialecto `mongosh` que acepta el editor de consultas y lo que
+  rechaza deliberadamente, las reglas de direccionamiento por ruta y
+  fidelidad de tipos del editor de documentos, los pipelines de agregación y
+  las vistas (incluido por qué se rechazan `$out`/`$merge`), el gestor de
+  índices y por qué MongoDB es el único driver que lo tiene, renombrar/mover
+  una colección, y una tabla de lo que no está implementado con el motivo —
+  y el manejo de `HOST\INSTANCIA` con el SQL Browser, la confianza de
+  certificados, la autenticación de Windows, cómo se renderiza cada tipo de
+  valor (`decimal` exacto, `money` a través de un double, `bit` como 0/1,
+  binario como hex), los detalles de escritura visibles en la Consola, y las
+  cuatro superficies aún deshabilitadas.
+- **`docs/README.md` como índice de la carpeta docs** (con su gemelo en
+  español), separando las guías de usuario de las notas de diseño internas y
+  documentando los cuatro pasos para añadir una guía — el fichero, la entrada
+  en `docs.ts`, las claves i18n y la ruta `DOC_FILES` de `vite.config.ts` que
+  inyecta su fecha de última actualización — además de las restricciones del
+  renderizador de markdown integrado en la app. La sección Docs del README
+  raíz ahora enlaza a ese índice y a cada guía; antes no mencionaba
+  `ENVIRONMENTS.md` en absoluto.
+- Las entradas del visor integrado se ordenan por orden de lectura en lugar
+  de alfabéticamente (Conexiones → Entornos → MongoDB → SQL Server → MCP),
+  ya que el diálogo se abre en la primera.
+
+### Corregido
+
+- **A `docs/MCP.es.md` le faltaba toda la sección "Huella de conexiones"**,
+  incluyendo "Compartir los pools de la app", y su introducción seguía
+  diciendo que el conector _no puede_ compartir los pools de la app de
+  escritorio — lo cual dejó de ser cierto cuando llegó la preferencia
+  `Share pools with the MCP connector`. Ambas ya están sincronizadas con el
+  original en inglés.
+
+- **SQL Server: los valores `decimal`/`numeric` negativos se renderizaban
+  como una cadena malformada** (`-18.900000000` volvía como
+  `-18.-900000000`). El `Display for Numeric` de `tiberius` formatea la
+  parte entera y la fraccionaria por separado —
+  `write!(f, "{}.{:0pad$}", n.int_part(), n.dec_part())` — y ambas se derivan
+  de la misma mantisa `i128` con signo, así que un valor negativo emite su
+  signo dos veces _y_ pierde el relleno de ceros de la parte fraccionaria en
+  el mismo aliento: `-18.09` salía como `-18.-9`, `-0.000000001` como
+  `0.-00000001`, y un valor menor que 1 perdía el signo por completo
+  (`-0.5` → `0.-5`, porque `int_part()` de ese valor es `0`). Un
+  `decimal(18,0)` también crecía una cola `.0` espuria. `mssql_value` ahora
+  formatea estas columnas él mismo a partir de la mantisa y la escala en
+  crudo (`numeric_to_string`) en lugar de llamar a `to_string()`: el signo se
+  quita una sola vez, la magnitud se rellena con ceros hasta al menos
+  `scale + 1` dígitos, se separan `scale` dígitos por la derecha — sin ningún
+  paso por `f64`, que es precisamente la razón por la que estas columnas
+  viajan como texto. Afectaba por igual a todo consumidor de un decimal
+  negativo: la rejilla de datos, la copia/exportación a CSV/JSON, y el
+  conector `huginndb-mcp`, donde se reportó. `first_i64` (la ruta de
+  `COUNT(*)`/estimación de filas) también dejó de perder el round-trip por la
+  misma cadena rota — lee `int_part()` directamente, ya que la forma
+  renderizada de cualquier escala distinta de cero no es algo que
+  `parse::<i64>` acepte.
+
+### Cambiado
+
+- **`docs/MCP.md` (+ el gemelo en español) ahora documenta las dos barreras
+  de aprobación independientes por las que pasa una escritura**, tras el
+  reporte de una conexión con política `full` cuyo cambio de esquema seguía
+  rechazándose — por el cliente de IA, no por el conector. Nueva subsección
+  "Cuando el cliente bloquea la llamada, no el conector": una tabla para
+  distinguir un rechazo del conector (un resultado de tool que nombra la
+  política, más una línea en `mcp-audit.log`) de un bloqueo del lado del
+  cliente (la llamada nunca llega al conector, así que el audit log queda en
+  silencio), por qué el clasificador de modo automático de Claude Code trata
+  el DDL contra un servidor real como una migración contra infraestructura no
+  reconocida por defecto, y los cuatro remedios del lado del cliente — un
+  reintento puntual desde `/permissions`, una petición explícita (la
+  intención explícita despeja los bloqueos suaves del clasificador), una
+  regla `permissions.allow` para el tool, o entradas
+  `autoMode.environment`/`autoMode.allow` que describan la instancia. Todos
+  ellos dependen de quien ejecute el cliente; documentarlos no relaja el
+  conector, cuya propia política sigue aplicándose después de que el cliente
+  apruebe la llamada.
+
+- **`docs/MCP_CONNECTOR_ROADMAP.md`: una sección abierta sobre distribuir el
+  conector a través de un marketplace en vez de una instalación por
+  máquina.** Registra las tres rutas candidatas y sus veredictos — el
+  directorio de conectores de claude.ai no es viable (lista servidores
+  _remotos_, y este lee `profiles.json`, el keychain del sistema y la propia
+  red del usuario), mientras que el marketplace de plugins de Claude Code y
+  una extensión `.mcpb` de Claude Desktop sí lo son — más la restricción que
+  comparten (ninguno puede empaquetar un sidecar compilado por destino, así
+  que ambos necesitan un lanzador que resuelva el ya instalado) y los dos
+  prerrequisitos que merece la pena hacer en cualquier caso: sacar la lista
+  de perfiles expuestos de `--connections` hacia el propio estado de
+  HuginnDB, y declarar `_meta["anthropic/requiresUserInteraction"]` en los
+  tools de escritura. También deja claro por qué "el marketplace gobierna
+  mejor los permisos" se reduce a una cuestión de distribución: la
+  aprobación ya pertenece por completo al cliente, y la política de
+  escritura es un segundo techo, del lado del servidor, aplicado después de
+  ella.
+
 ## [1.16.1] — 2026-08-18
 
 ### Añadido
@@ -75,7 +188,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **"Actualizar" ahora recarga la base de datos que estás mirando de
   verdad.** En una conexión multi-BD las tablas viven en los slices hijos
   sintéticos `<padre>::db::<bd>`, pero el menú del nodo de base de datos, el
-  de la fila de conexión y la paleta de comandos refrescaban el id *padre*:
+  de la fila de conexión y la paleta de comandos refrescaban el id _padre_:
   volvían a pedir una lista de tablas que nadie pinta (en MySQL el pool padre
   no tiene base seleccionada, así que legítimamente viene vacía) y dejaban
   intacto el subárbol visible. Una tabla creada fuera de la app no aparecía
@@ -86,7 +199,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **Actualizar ahora invalida las columnas e índices cacheados.** Solo volvía
   a pedir las listas de bases y de tablas, arrastrando el resto del slice sin
   tocarlo — y como el explorador carga las columnas de una tabla solo cuando
-  *faltan* (para que plegar y desplegar no vuelva a consultar), una columna
+  _faltan_ (para que plegar y desplegar no vuelva a consultar), una columna
   añadida fuera de la app seguía invisible hasta desconectar. Las tablas
   desplegadas se recargan justo después del vaciado, así que un nodo abierto
   vuelve con sus columnas actuales.
@@ -172,17 +285,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   modificar: `commands/view.rs` rechaza MongoDB a propósito, porque una "vista"
   de Mongo no tiene un cuerpo `CREATE VIEW` que comparar — es un pipeline de
   agregación guardado sobre una colección de origen (`{create|collMod, viewOn,
-  pipeline}`). El nuevo editor de agregaciones es la superficie paralela, y se
+pipeline}`). El nuevo editor de agregaciones es la superficie paralela, y se
   abre de dos formas: **Nueva agregación…** sobre cualquier colección (un
   pipeline de trabajo, que "Guardar como vista" convierte en una vista real) y
   **Editar pipeline…** sobre cualquier vista (con su pipeline cargado; al
   guardar se ejecuta `collMod`). Eliminar una vista de Mongo también funciona
   ya: `drop_view` tiene ahora una rama Mongo, porque esa operación concreta no
   necesita DDL.
-  - **Dos modos sobre un mismo pipeline.** *Etapas* da a cada etapa su propia
+  - **Dos modos sobre un mismo pipeline.** _Etapas_ da a cada etapa su propia
     tarjeta con su propia salida —el pipeline truncado tras esa etapa—, que es
     lo que hace legible una cadena de dieciséis `$lookup` en lugar de un único
-    resultado opaco. *Texto* es el array completo en un solo editor con la
+    resultado opaco. _Texto_ es el array completo en un solo editor con la
     salida del pipeline al lado. Cambiar de modo es una conversión que pasa por
     el backend (`format_mongo_pipeline`), porque partir un array literal en
     etapas requiere la gramática y el cuerpo de una etapa está lleno de comas.
@@ -230,14 +343,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   podía salir con el toggle sin acabar en un tema por defecto de HuginnDB
   (ver la entrada de Corregido más abajo), y ninguno tenía identidad
   suficiente para justificar construirle una contraparte. Se añaden `Summer
-  Dark` (una paleta "playa de noche" que conserva el coral/turquesa de Summer,
+Dark` (una paleta "playa de noche" que conserva el coral/turquesa de Summer,
   aclarado para una superficie oscura, igual que Claude Dark aclara la
   terracota de Claude Light), `Neon Light` (la contraparte "laboratorio sobre
   papel" de la paleta casi negra de Neon — cada tono saturado se oscurece para
   seguir siendo legible sobre una superficie clara, pero el verde
   primary/brand, el cian de `fk`, el amarillo de `pk`/`numeric` y el rosa
   fuerte de `destructive` mantienen la familia reconocible) y `High Contrast
-  Light` (el mismo lenguaje de contraste máximo invertido a blanco/negro,
+Light` (el mismo lenguaje de contraste máximo invertido a blanco/negro,
   conservando el mismo amarillo de señal para primary/brand/ring). En total,
   diez temas integrados: HuginnDB, Claude, Summer, Neon y High Contrast, cada
   uno con su pareja claro/oscuro.
@@ -252,7 +365,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     buscarlos con scroll.
 - **Toda la interfaz sigue ahora el lenguaje visual de marca de HuginnDB.** El
   universo del logo —contornos negros suaves, esquinas redondeadas, volumen
-  ligero, un único azul eléctrico— se aplica como una capa *contenida* sobre la
+  ligero, un único azul eléctrico— se aplica como una capa _contenida_ sobre la
   herramienta keyboard-first existente: las superficies de trabajo (grid, SQL,
   JSON) se mantienen tranquilas y la personalidad aparece en las affordances,
   los estados y las pantallas vacías.
@@ -344,7 +457,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   en lugar de cambiar a la contraparte propia de ese tema (issue #132).**
   `setActiveMode` buscaba el destino con
   `BUILT_IN_THEMES.find(t => t.id === mode)` — una coincidencia literal
-  contra el *string* de modo `"dark"`/`"light"`, que solo resolvía a los dos
+  contra el _string_ de modo `"dark"`/`"light"`, que solo resolvía a los dos
   temas cuyo `id` coincide justo con su modo. Cualquier otro preset (Claude,
   Dim, Solarized Dark, Neon, Summer, High Contrast) no encontraba nada,
   caía en silencio en una rama muerta que mutaba `mode` sobre un tema que
@@ -358,7 +471,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   entrada de Cambiado de arriba.
 - **Sustituir un icono de la app ya no deja el anterior embebido en el
   binario.** `tauri_build::build()` solo declara `tauri.conf.json` y
-  `capabilities/` como entradas de compilación, y cargo rastrea *únicamente* lo
+  `capabilities/` como entradas de compilación, y cargo rastrea _únicamente_ lo
   que un build script declara — así que cambiar `icons/*` dejaba el crate como
   fresco mientras las dos copias del icono que se hornean al compilar (el
   recurso Win32 del ejecutable y el `default_window_icon` del contexto
@@ -425,7 +538,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   que lleva inactivo se cierra por el proceso de fondo tras
   `connections.childIdleTtlSecs` (5 minutos por defecto) — a propósito, para
   que la huella de conexiones de una sesión larga no crezca sin parar. Lo que
-  no se tuvo en cuenta es que la conexión *padre* que el árbol realmente
+  no se tuvo en cuenta es que la conexión _padre_ que el árbol realmente
   refleja se mantiene sana todo el tiempo (su propio keepalive sigue teniendo
   éxito), así que el árbol seguía informando "conectado" mientras el pool
   hijo que el siguiente clic necesitaba de verdad ya no estaba —
@@ -453,7 +566,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   un viaje de ida y vuelta `EnsureConnected` cuyo valor de éxito es
   `Value::Null`, y el formato de cable envolvía el payload de una respuesta
   en un `Option<Value>` a secas — que `serde_json` colapsa a "ausente" ante
-  *cualquier* `null`, sea lo que sea que envuelva. Un éxito legítimo con
+  _cualquier_ `null`, sea lo que sea que envuelva. Un éxito legítimo con
   `Value::Null` era por tanto indistinguible de no haber recibido respuesta
   alguna. El fallo es independiente del driver — puede darse en la primera
   llamada de cualquier tool contra cualquier conexión mientras el bridge esté
@@ -498,14 +611,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   se activa por que el valor sea una URL `data:image/`, no por que el campo no
   esté vacío.
   Un comando nuevo en el backend (`read_image_data_url`) hace la lectura, porque
-  el diálogo nativo devuelve una *ruta* que el webview no puede abrir por sí
+  el diálogo nativo devuelve una _ruta_ que el webview no puede abrir por sí
   mismo. Valida el formato por los bytes mágicos del archivo y no por su
   extensión, y rechaza cualquier cosa por encima de 12 MB, así que un archivo
   inservible se rechaza con un mensaje claro en vez de convertirse en una URL
   `data:` que ningún `<img>` va a cargar. La ruta de arrastrar y soltar no pasa
   por él — el navegador ya tiene los bytes.
 
-- **Ya se publican artefactos de release para Linux.** Cada release *podía*
+- **Ya se publican artefactos de release para Linux.** Cada release _podía_
   haberlos incluido desde hace tiempo: `bundle.targets` en
   `tauri.conf.json` lista `deb` y `appimage` desde la 1.7.0, y
   `.github/workflows/release.yml` ya tenía tanto la pata `ubuntu-22.04` de la
@@ -548,12 +661,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   en `CLAUDE.md`: WiX v3 quedó archivado en febrero de 2025 y su `light.exe`
   dejó de ejecutarse en los runners de Windows de GitHub), así que las
   releases llevan varias versiones publicando un `-setup.exe` mientras tres
-  sitios del README —  la instrucción de descarga, el consejo del SHA-256 en la
+  sitios del README — la instrucción de descarga, el consejo del SHA-256 en la
   nota de SmartScreen y la línea de empaquetado del stack — seguían nombrando
   el MSI. Quien siguiera el README buscaba un archivo que no está adjunto a la
   release.
 
-- **Plegar un grupo de conexiones en una pantalla lo plegaba silenciosamente en todas las demás donde estuviera visible a la vez.** `useConnectionGroupCollapse` (`src/lib/connection/useConnectionGroups.ts`) lo comparten el menú Archivo, el diálogo de gestión de conexiones, el selector de la barra de estado y el árbol de Esquema del entorno; en el modo por defecto "recordar" leía `prefs.ui.collapsedConnectionGroups` como un selector de Zustand en vivo, así que cada instancia montada se volvía a renderizar a partir del mismo valor en cada toggle. Abrir el diálogo de gestión de conexiones con el árbol de un entorno ya con un grupo abierto lo mostraba también abierto ahí (esperable — es la misma disposición recordada), pero plegar ese grupo *dentro del diálogo* también lo plegaba en vivo en el árbol de detrás, porque ambas pantallas eran en realidad una única instancia compartida del estado de plegado, no vistas independientes que simplemente partían de la misma disposición guardada. El hook ahora siembra, al montarse, un override de sesión propio de cada instancia a partir del conjunto persistido, y cada toggle — en los tres modos, no solo en los forzados "expandido"/"plegado" — solo toca el estado local de esa instancia; los toggles en modo "recordar" siguen escribiéndose a disco, así que la *siguiente* pantalla en montarse (incluido un futuro arranque de la app) recoge la disposición más reciente, pero una pantalla que ya está abierta en otro sitio deja de recolocarse sin que el usuario lo pida. No cambia ninguna preferencia ni el formato en disco.
+- **Plegar un grupo de conexiones en una pantalla lo plegaba silenciosamente en todas las demás donde estuviera visible a la vez.** `useConnectionGroupCollapse` (`src/lib/connection/useConnectionGroups.ts`) lo comparten el menú Archivo, el diálogo de gestión de conexiones, el selector de la barra de estado y el árbol de Esquema del entorno; en el modo por defecto "recordar" leía `prefs.ui.collapsedConnectionGroups` como un selector de Zustand en vivo, así que cada instancia montada se volvía a renderizar a partir del mismo valor en cada toggle. Abrir el diálogo de gestión de conexiones con el árbol de un entorno ya con un grupo abierto lo mostraba también abierto ahí (esperable — es la misma disposición recordada), pero plegar ese grupo _dentro del diálogo_ también lo plegaba en vivo en el árbol de detrás, porque ambas pantallas eran en realidad una única instancia compartida del estado de plegado, no vistas independientes que simplemente partían de la misma disposición guardada. El hook ahora siembra, al montarse, un override de sesión propio de cada instancia a partir del conjunto persistido, y cada toggle — en los tres modos, no solo en los forzados "expandido"/"plegado" — solo toca el estado local de esa instancia; los toggles en modo "recordar" siguen escribiéndose a disco, así que la _siguiente_ pantalla en montarse (incluido un futuro arranque de la app) recoge la disposición más reciente, pero una pantalla que ya está abierta en otro sitio deja de recolocarse sin que el usuario lo pida. No cambia ninguna preferencia ni el formato en disco.
 
 - **El botón "Reiniciar ahora" no daba ningún feedback tras pulsarlo, lo que invitaba a pulsarlo varias veces.** `installAndRelaunch` (`src/stores/update.ts`) pasaba directamente de `readyToRestart` a un estado transitorio `ready` justo antes de `installUpdate()`/`relaunchApp()` — pero todo lo que ocurre en medio (una comprobación asíncrona del sidecar de MCP, y su diálogo de confirmación si algún cliente lo tiene abierto ahora mismo) se ejecutaba mientras el store seguía reportando `readyToRestart`, así que tanto `UpdateBanner` como la tarjeta de actualizaciones de Ajustes → Acerca de seguían mostrando la etiqueta inactiva "Reiniciar ahora" / "Instalar y reiniciar" con el botón totalmente pulsable. Ahora se fija un nuevo estado `installing` de forma síncrona en el instante en que se ejecuta el handler del click, antes de cualquier `await`; ambos componentes deshabilitan su botón de instalar (y en el banner también los controles de descarte) y muestran un spinner con la etiqueta "Reiniciando…" durante todo ese hueco. `installAndRelaunch` también corta en seco si se vuelve a invocar mientras ya está en `installing`/`ready`, así que una doble invocación accidental no puede encolar una segunda instalación aunque un click se cuele.
 
@@ -566,10 +679,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   seleccionada y un puñado fijo de acciones (nueva consulta, preferencias,
   tema, idioma) — filtradas con un `includes()` de subcadena. Ahora indexa
   trece grupos y los ordena por relevancia:
-
   - **Cada preferencia individual**, al estilo de VS Code: escribir `#ajuste`
     (o simplemente `wrap`) encuentra «Ajustar líneas largas», muestra su valor
-    actual y Enter abre Preferencias en esa sección y baja hasta *esa fila*,
+    actual y Enter abre Preferencias en esa sección y baja hasta _esa fila_,
     resaltándola. Los ajustes booleanos además se pueden alternar sin salir de
     la paleta con Alt+Enter, que la deja abierta para que el valor se actualice
     bajo el cursor. Cada atajo reasignable se indexa igual, con su combinación
@@ -578,7 +690,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     Informar/sugerir, Buscar actualizaciones, Acerca de y la página de MCP).
   - **Navegación**: pestañas abiertas (Enter salta, Alt+Enter cierra),
     conexiones guardadas (Alt+Enter desconecta una activa), entornos, las bases
-    de datos de un servidor multi-base, tablas y vistas de *todas* las
+    de datos de un servidor multi-base, tablas y vistas de _todas_ las
     conexiones abiertas y no solo de la seleccionada, consultas guardadas y las
     últimas 20 entradas del historial.
   - **Acciones** que solo existían en un menú: nueva conexión, gestionar
@@ -606,7 +718,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 - **La paleta puede indexar bajo demanda las tablas de un servidor
   multi-base.** Una conexión a todo el servidor arranca con solo la lista de
-  *bases de datos* cargada — las tablas de cada base llegan en su propio
+  _bases de datos_ cargada — las tablas de cada base llegan en su propio
   fragmento `<padre>::db::<nombre>`, y solo cuando algo abre esa vista — así que
   un servidor recién conectado ofrecía bases de datos y ninguna tabla que
   buscar. El modo `@` ahora incluye también una entrada «Indexar todas las bases
@@ -662,7 +774,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   rejilla incorpora además un botón para la versión "ajustar todas", para que
   no dependa de un gesto que hay que conocer — tanto en pestañas de tabla como
   en resultados de consulta. El ajuste se mide sobre el texto tal y como se
-  *dibuja* (se aplican el modo de visualización de BIT, el marcador de NULL y
+  _dibuja_ (se aplican el modo de visualización de BIT, el marcador de NULL y
   el tope de "truncar texto largo en") y se limita a 900 px, para que una columna ancha no eche el resto de la fila fuera de la
   pantalla; arrastrando a mano se sigue pudiendo ir tan ancho como se quiera.
 
@@ -688,7 +800,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   trabajo", algo que nunca fue la intención. Consola ahora se ancla abajo
   con su propia cabecera colapsable; Guardadas se colapsa/expande desde un
   botón en una nueva barra de actividad derecha; el editor de celda es un
-  simple split flexbox *dentro* de la isla del espacio de trabajo en vez de
+  simple split flexbox _dentro_ de la isla del espacio de trabajo en vez de
   un grupo dockview hermano (así que abrirlo o cerrarlo ya no puede disparar
   el efecto secundario de dockview de redistribuir proporcionalmente los
   paneles vecinos); y el propio espacio de trabajo es una tarjeta "isla" fija
@@ -715,7 +827,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   cuadrado redondeado — ver la siguiente entrada) con su nombre debajo; un
   "+" al final abre el mismo diálogo de creación que ya tenía el selector de
   la barra de estado. Al hacer clic en un entorno que no es el activo se
-  cambia a él *y* se abre el panel de Esquema en un solo gesto; al hacer clic
+  cambia a él _y_ se abre el panel de Esquema en un solo gesto; al hacer clic
   en el ya activo simplemente se colapsa/expande Esquema — ya no hay un
   botón de alternancia dedicado aparte, porque sería redundante con este.
   Al hacer clic derecho sobre un avatar se abre el mismo menú de
@@ -776,7 +888,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 - **El menú de pestañas desbordadas («∨ N») es la tira de pestañas puesta de
   canto.** Reutiliza el propio componente de cada pestaña oculta, así que cada
-  fila llegaba con la geometría *horizontal* de la tira: un margen de 7px por
+  fila llegaba con la geometría _horizontal_ de la tira: un margen de 7px por
   un solo lado y el ancho de recorte de la tira dentro de un desplegable con
   sitio de sobra, más dos barras de scroll, una de ellas horizontal. Los chips
   se quedan — mismo fondo hundido, mismo relleno y misma elevación, así que el
@@ -848,11 +960,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   aportación al problema.
 - **Presupuesto de conexiones por servidor.** La unidad de contabilidad pasa a
   ser el servidor, no la conexión guardada. `Máximo de conexiones por
-  servidor` es toda la asignación que HuginnDB gastará contra un host,
+servidor` es toda la asignación que HuginnDB gastará contra un host,
   compartida por cada conexión y cada vista por base de datos que llegue a él
   — así que tres conexiones apuntando a la misma máquina PostgreSQL ya no
   reciben tres asignaciones independientes, que es exactamente cómo la huella
-  llegó a no tener límite. Dos conexiones detrás de túneles SSH *distintos*
+  llegó a no tener límite. Dos conexiones detrás de túneles SSH _distintos_
   que ambas dicen `localhost:5432` se tratan correctamente como servidores
   distintos; dos que conectan con usuarios distintos se tratan correctamente
   como el mismo, porque el límite del servidor es global.
@@ -864,15 +976,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   lugar de soltar una cadena del driver.
 - **Límite por conexión** — las conexiones tienen ahora un campo **Máximo de
   conexiones para este servidor**. La capacidad de conexión es un hecho del
-  *servidor*, así que vive en la conexión: viaja con la exportación/
+  _servidor_, así que vive en la conexión: viaja con la exportación/
   importación de perfiles, se sincroniza por orígenes compartidos y el sidecar
   `huginndb-mcp` lo respeta automáticamente porque lee el mismo
   `profiles.json`. Vacío significa "usa la preferencia global".
 - **`huginndb-mcp --max-connections <n>`** — techo del pool por conexión
   expuesta para el conector headless, con `2` por defecto. Ver la nueva
   sección "Connection footprint" en `docs/MCP.md`.
-- **Compartir pools con el conector MCP** (Ajustes → Conexiones → *Compartir
-  pools con el conector MCP*, desactivado por defecto). Con la opción
+- **Compartir pools con el conector MCP** (Ajustes → Conexiones → _Compartir
+  pools con el conector MCP_, desactivado por defecto). Con la opción
   activada, un sidecar `huginndb-mcp` en marcha deja de abrir sus propios
   pools y pide a la aplicación de escritorio que ejecute sus consultas. La
   máquina pasa entonces a tener **un presupuesto por servidor** por muchos
@@ -970,7 +1082,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `tabla.columna` referenciada, la nulabilidad cuando el catálogo la conoce y
   el estado de ordenación actual — y está traducido, cosa que nunca estuvo. El
   texto antiguo ofrecía "Ctrl/Cmd+clic para añadir una columna", que se leía
-  como una oferta de *crear* una columna: incorrecto, y alarmante en una
+  como una oferta de _crear_ una columna: incorrecto, y alarmante en una
   ventana que además ejecuta DDL. La ordenación sigue siendo descubrible por
   la flecha de cada cabecera.
 - **"Bases de datos a mostrar" ya no se filtra entre entornos.** El
@@ -995,8 +1107,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **Los filtros del árbol de conexiones sobreviven con la reconexión
   automática desactivada.** Qué conexiones se muestran, qué filas están
   plegadas y los nuevos subconjuntos de bases por entorno se restauran al
-  entrar en un entorno independientemente de la preferencia *Reconectar al
-  arrancar*. Describen cómo se ve un entorno, no qué reabre; detrás de esa
+  entrar en un entorno independientemente de la preferencia _Reconectar al
+  arrancar_. Describen cómo se ve un entorno, no qué reabre; detrás de esa
   condición, entrar en un entorno con la reconexión desactivada dejaba en
   pantalla los filtros del entorno anterior.
 - **`too many connections` en servidores compartidos.** La huella de
@@ -1076,7 +1188,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   es un servicio UDP aparte que el túnel no reenvía. Tuneliza el puerto TCP
   propio de la instancia y deja el campo de instancia vacío.
 
-
 ## [1.12.1] — 2026-08-05
 
 ### Añadido
@@ -1137,8 +1248,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   (MongoDB) y por esquema (SQL) del árbol de esquema se eliminaron ahora
   que la barra de herramientas de la rejilla y los nuevos diálogos a
   nivel de conexión/base de datos cubren lo mismo — las entradas por
-  esquema en particular estaban mal etiquetadas (exportaban la *base de
-  datos completa*, no el esquema pulsado). La exportación/importación a
+  esquema en particular estaban mal etiquetadas (exportaban la _base de
+  datos completa_, no el esquema pulsado). La exportación/importación a
   nivel de conexión y de base de datos se mantienen en el árbol. El
   sufijo "(Beta)" de "Exportar base de datos…"/"Importar .sql…" ha
   desaparecido.
@@ -1256,7 +1367,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   arrancar, a las conexiones que estaban activas la última vez que se cerró
   — usando las credenciales ya guardadas en el llavero del sistema. Antes la
   app arrancaba desconectada y había que reconectar cada host a mano (y, por
-  el bug de disposición descrito más abajo, en el *orden correcto*) para
+  el bug de disposición descrito más abajo, en el _orden correcto_) para
   recuperar el espacio de trabajo. Las conexiones cuya contraseña no está
   guardada, o cuyo host es inalcanzable, se omiten sin bloquear el arranque;
   el interruptor permite desactivar la función por completo. El estado de
@@ -1269,7 +1380,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 - **Canal de compilación canary.** Un nuevo canal de pre-lanzamiento opt-in
   permite dogfoodear un cambio contra perfiles de conexión reales de
-  producción *antes* de que se publique en un release estable — sin
+  producción _antes_ de que se publique en un release estable — sin
   necesidad de un release completo. Una compilación canary (compilada con la
   nueva feature de Cargo `canary`, junto con
   `src-tauri/tauri.canary.conf.json`) se instala en paralelo con la app
@@ -1288,7 +1399,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 - **Indicador de sandbox para la compilación canary.** Como el canary
   comparte el bundle de UI (y el llavero del SO) con la app estable, una vez
-  *dentro* de la ventana las dos eran indistinguibles — fácil confundir el
+  _dentro_ de la ventana las dos eran indistinguibles — fácil confundir el
   sandbox con la instalación real. La compilación canary ahora deja su
   identidad inconfundible: una cinta ámbar persistente "SANDBOX · HuginnDB
   Canary" fijada sobre la cabecera (mencionando el directorio de estado
@@ -1307,7 +1418,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **La disposición del panel de trabajo ahora es de nivel de sesión, no por
   conexión.** La geometría de división/flotación del dockview interno (cómo
   se organizan las pestañas de tabla/consulta abiertas) se guardaba antes de
-  forma redundante bajo *cada* conexión en `tab_state.json`, aunque un único
+  forma redundante bajo _cada_ conexión en `tab_state.json`, aunque un único
   dockview interno aloja las pestañas de todas las conexiones a la vez. Al
   restaurar, ganaba la conexión a la que te conectaras primero — así que la
   disposición solo volvía si te reconectabas en un orden concreto. Ahora se
@@ -1319,7 +1430,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 - **«Sacar a ventana flotante» ahora abre una ventana del sistema operativo
   real e independiente.** La acción de una pestaña llamaba antes a
-  `addFloatingGroup` de dockview, que solo separa el panel *dentro* de los
+  `addFloatingGroup` de dockview, que solo separa el panel _dentro_ de los
   límites del propio espacio de trabajo interno — el panel flotante se podía
   arrastrar, pero nunca más allá de los bordes del panel de workspace del que
   salía, lo cual frustraba el propósito cuando lo que se quería era, por
@@ -1362,9 +1473,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   en su array de dependencias, así que cada pulsación de tecla —que
   actualiza `inlineEdit.value`— reconstruía todo el array `columns`,
   entregando a cada columna una función `cell` con una referencia nueva.
-  `flexRender` de TanStack trata `columnDef.cell` como un *tipo* de
+  `flexRender` de TanStack trata `columnDef.cell` como un _tipo_ de
   componente (`typeof Comp === "function"` → `React.createElement(Comp,
-  props)`), así que una referencia nueva en cada render se interpreta como
+props)`), así que una referencia nueva en cada render se interpreta como
   un tipo de elemento distinto para cada celda de la rejilla — forzando un
   desmontaje y remontaje completo de todo el cuerpo de la tabla, incluido
   el `<input>` que estuviera en edición. Un input `autoFocus` recién
@@ -1398,7 +1509,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   tenía una consulta para leer la definición de una vista (`pg_get_viewdef`
   / `information_schema.views` / `sqlite_master.sql` nunca se llamaban). La
   única forma de tocar una vista era escribir a mano `CREATE OR REPLACE
-  VIEW` en el editor de consultas — exactamente la experiencia de SQL en
+VIEW` en el editor de consultas — exactamente la experiencia de SQL en
   crudo al estilo HeidiSQL que el mantenedor quería evitar, sobre todo en
   vistas con varios JOIN donde es difícil saber qué columnas/filas produce
   realmente la definición solo leyendo el SQL. En vez de construir un
@@ -1429,8 +1540,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   rango inclusivo en una sola condición; el usuario tenía que apilar una fila
   `gt`/`gte` y otra `lt`/`lte`. `FilterOp::Between` es ahora una única
   variante compartida consumida por `build_filter_clause` (SQL: `col BETWEEN
-  ? AND ?` / `BETWEEN $N AND $N+1`) y por `build_filter` de Mongo (`{ $gte,
-  $lte }`), respaldada por un nuevo campo `value2` en `ColumnFilter`
+? AND ?` / `BETWEEN $N AND $N+1`) y por `build_filter` de Mongo (`{ $gte,
+$lte }`), respaldada por un nuevo campo `value2` en `ColumnFilter`
   (añadido tanto en el struct de Rust como en su espejo de TypeScript — un
   valor que serde descartaría en silencio si no, ver gotcha #14). El diálogo
   lo ofrece junto a `gt`/`gte`/`lt`/`lte` para columnas numéricas/de fecha y
@@ -1441,7 +1552,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   doble clic y entrar en modo edición (#78).** Antes la única forma de ver
   el contenido completo de una celda larga era hacer doble clic, lo que en
   una celda editable también entraba en modo edición inline — un efecto
-  secundario no deseado cuando el usuario solo quería *leer* el valor. La
+  secundario no deseado cuando el usuario solo quería _leer_ el valor. La
   rama plana (sin edición) del renderizador de celdas de `DataGrid` ahora
   comprueba si la celda coincide con `selectedCell` (fijado con un clic
   simple, comparado por la misma identidad referencial
@@ -1531,10 +1642,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **Las herramientas de escritura del conector MCP podían quedar forzadas
   a solo lectura para una base de datos MongoDB sobre la que tenían acceso
   explícito `data`/`full`.** Reportado por un usuario que recibía `has MCP
-  write policy "read-only"` en `update_cell` contra una conexión cuyo nivel
+write policy "read-only"` en `update_cell` contra una conexión cuyo nivel
   en Ajustes → MCP era en realidad `data`. La comprobación de escritura
   (`Huginn::require_class`) verificaba la política contra el id de pool
-  *resuelto* de `resolve_mongo_target` en vez del id de perfil real. En una
+  _resuelto_ de `resolve_mongo_target` en vez del id de perfil real. En una
   conexión Mongo multi-base de datos (con `database` de nivel superior
   vacío — el caso habitual, ya que HuginnDB no obliga a elegir una base de
   datos al conectar), una llamada de herramienta que nombra un
@@ -1687,14 +1798,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   acotado, así que Tauri los entregaba a todas las ventanas. Ahora la consola de
   cada ventana muestra solo su propia actividad; los avisos realmente globales
   (como la caída de una conexión compartida) siguen llegando a todas.
-  
 - **Las columnas booleanas de MySQL mostraban `NULL` en vez de su valor (#68).**
   Una columna `TINYINT(1)` / `BOOL` / `BOOLEAN` la reporta el driver con el
   nombre de tipo `BOOLEAN`, que el decodificador de valores no reconocía como
   entero — así que cada celda booleana caía a una decodificación de texto no
   válida para la columna y colapsaba a `NULL`. Las columnas booleanas ahora
   muestran su valor almacenado (`0` / `1`), como cualquier otro entero.
-  
+
 ### Añadido
 
 - **Filtro avanzado por columna (#66).** Un nuevo botón de filtro en la barra
@@ -1752,7 +1862,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   (no vacío, sin el prefijo reservado `system.`); los drivers no-Mongo se
   rechazan (crean tablas a través del editor de estructura).
 - **Elegir qué bases de datos muestra una conexión, al estilo DataGrip
-  (#64).** Una conexión multi-base listaba *todas* las bases del servidor y
+  (#64).** Una conexión multi-base listaba _todas_ las bases del servidor y
   precargaba sus tablas en segundo plano — ruidoso y lento en servidores con
   decenas de bases. Una nueva lista de selección (el botón de casillas en la
   cabecera del explorador multi-base) permite elegir el subconjunto con el que
@@ -1786,7 +1896,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **Conectar a un servidor con muchas bases es ahora instantáneo — el
   explorador ya no precachea las tablas de todas las bases al conectar.** El
   explorador multi-base precargaba en segundo plano la lista de tablas de
-  *cada* base justo tras conectar, así que una conexión con 19+ bases se quedaba
+  _cada_ base justo tras conectar, así que una conexión con 19+ bases se quedaba
   un momento en "Cacheando esquema… n/m" antes de asentarse. Esa precarga solo
   era una optimización de búsqueda y ahora es redundante con el selector de
   bases visibles (#64) y el ámbito de base activa: las bases se cargan de forma
@@ -1979,7 +2089,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `list_privileges`. Se compila tras una feature de cargo opcional `mcp`
   (`cargo build --features mcp --bin huginndb-mcp`), así que un
   `pnpm tauri:build` normal no se ve afectado. Consulta [`docs/MCP.md`](docs/MCP.md).
-  
+
 ### Corregido
 
 - **Las conexiones multi-base ahora muestran un nombre en la barra de título
@@ -2055,15 +2165,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     que siempre pide confirmación, independientemente de la preferencia
     "confirmar acciones destructivas".
 - **Duplicar conexión (#38).** El gestor de conexiones incorpora una acción
-  *Duplicar* que clona el perfil seleccionado en un borrador nuevo con el nombre
+  _Duplicar_ que clona el perfil seleccionado en un borrador nuevo con el nombre
   uniquificado ("… (copia)"), listo para ajustar y guardar. La contraseña no se
   copia a propósito — las credenciales se indexan por id de perfil en el
   keychain del SO y el clon recibe un id nuevo — así que un aviso recuerda
   reintroducirla antes de conectar.
 - **Modo de despliegue de grupos configurable (#40).** Una nueva preferencia en
   General (`Grupos de conexiones`) controla cómo aparecen los grupos de carpetas
-  en el menú Archivo y en el gestor de conexiones — *siempre desplegados*,
-  *siempre plegados* o *recordar por grupo* (el comportamiento anterior). Los
+  en el menú Archivo y en el gestor de conexiones — _siempre desplegados_,
+  _siempre plegados_ o _recordar por grupo_ (el comportamiento anterior). Los
   grupos del menú Archivo ahora también son colapsables, igual que el switcher
   de la barra de estado.
 - **Logos de marca en el desplegable de driver.** El selector de driver del
@@ -2089,7 +2199,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   anteriormente.** El editor lateral acoplado (y el modal) reutilizaban un único
   modelo de Monaco entre celdas, así que tras editar un registro, seleccionar la
   misma columna en otro registro y pulsar Ctrl+Z restauraba el valor del
-  registro *anterior*. Ahora Monaco se remonta con una pila de deshacer vacía en
+  registro _anterior_. Ahora Monaco se remonta con una pila de deshacer vacía en
   cada carga de celda, de modo que el deshacer queda acotado a la sesión de
   edición actual; escribir dentro de una celda se sigue deshaciendo con
   normalidad.
@@ -2126,13 +2236,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   difícil saber qué tenías abierto o saltar a una tabla concreta. Cuatro
   novedades lo resuelven:
   - **Conmutador rápido de pestañas abiertas (Ctrl/Cmd+P).** Un overlay
-    centrado en el teclado que lista las pestañas *actualmente abiertas* en
+    centrado en el teclado que lista las pestañas _actualmente abiertas_ en
     todas las conexiones, agrupadas primero las fijadas y luego por
     `conexión · base de datos`. Busca por nombre, navega con las flechas,
     Enter salta (y apunta el espacio de trabajo a la conexión de esa
     pestaña), y cada fila fija/desfija o cierra en línea (Suprimir cierra la
     resaltada). Distinto de la paleta de comandos (Ctrl+K), que abre cosas
-    *nuevas*.
+    _nuevas_.
   - **Marcadores de tabla abierta en el árbol de esquema.** Toda tabla que
     está abierta en una pestaña muestra ahora un punto suave de marca en el
     árbol — no solo la activa — así que puedes ver de un vistazo qué tienes
@@ -2224,7 +2334,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   cambio vuelca su catálogo tal cual desde `sqlite_master` (más fiel que
   reconstruir el DDL — conserva las restricciones `CHECK`, etc.) entre
   `PRAGMA foreign_keys=OFF/ON`. «Importar .sql…» elige un fichero y lo
-  ejecuta a través del ejecutor de lotes de consultas *ya existente* (la
+  ejecuta a través del ejecutor de lotes de consultas _ya existente_ (la
   misma ruta `splitSql` + `execute_batch` que ya usa el editor de consultas)
   en vez de una segunda vía de ejecución, protegido tras la confirmación de
   acción destructiva. Marcado Beta en la UI — verificado hasta ahora solo
@@ -2253,7 +2363,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   consulta +). Los disparadores de menú/contexto se envuelven en el propio
   trigger para que el tooltip se dispare al pasar el ratón mientras el menú
   sigue abriéndose al clic. El único caso que se deja deliberadamente en
-  `title=""` nativo es un tooltip que vive *dentro* de contenido de menú
+  `title=""` nativo es un tooltip que vive _dentro_ de contenido de menú
   abierto (el reconectar/desconectar de las filas de conexión, las muestras
   de color de pestaña): un tooltip de Radix ahí choca con el propio manejo
   de hover/portal del menú, y un tooltip nativo del SO no lo hace.
@@ -2525,7 +2635,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   comparte el mismo `AppState` de backend, pero cada frontend guardaba una
   copia privada de `active`/`profiles`/`prefs` tomada solo al arrancar, sin
   ningún puente de vuelta — peor que simple desactualización en el caso de
-  las preferencias, ya que cada guardado envía el blob *entero* (no un
+  las preferencias, ya que cada guardado envía el blob _entero_ (no un
   diff): dos ventanas cambiando ajustes distintos podían perder en silencio
   el que se guardara primero en cuanto se disparara el guardado con
   retardo de la otra. `connect`/`disconnect`/`save_profile`/
@@ -2760,7 +2870,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   el mismo código que el arranque en frío y se reenvía por un nuevo evento
   `huginndb://cli-connect` (con búfer en el backend para sobrevivir a un
   lanzamiento que coincida con el arranque de la ventana).
-- **Reporte de incidencias integrado.** Una nueva entrada *Reportar / sugerir*
+- **Reporte de incidencias integrado.** Una nueva entrada _Reportar / sugerir_
   (menú Archivo, y una acción «Reportar este error» en las entradas con error de
   la Consola) abre un diálogo para crear un **bug** o una **sugerencia de
   feature** directamente en el tracker de GitHub. Con un Personal Access Token
@@ -2827,7 +2937,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   pasando por el llavero del SO. Editar un perfil guardado vuelve a poblar el
   formulario cuando su URI es representable, y se abre en modo de edición cruda
   en caso contrario.
-- **`authSource` para MongoDB.** Un campo dedicado *Auth source* (p.ej. `admin`)
+- **`authSource` para MongoDB.** Un campo dedicado _Auth source_ (p.ej. `admin`)
   se añade a la cadena de conexión como `?authSource=…`, y un nuevo flag de CLI
   `--auth-source` cubre la ruta ad-hoc sin URI
   (`--host … --auth-source admin`). Antes la única forma de configurarlo era
@@ -2897,7 +3007,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   de tabla.** `list_tables` serializaba las estadísticas ausentes de recuento de
   filas / tamaño como JSON `null`; el badge de métrica del explorador solo se
   protegía contra `undefined`, así que un `null` llegaba a `formatBytes` y lanzaba
-  *"Cannot read properties of null (reading 'toFixed')"* — tumbando todo el
+  _"Cannot read properties of null (reading 'toFixed')"_ — tumbando todo el
   panel. Esto afectaba a las conexiones CLI/ad-hoc y a builds de SQLite sin
   `dbstat`, y aparecía al filtrar porque el filtro fuerza la expansión de todas
   las secciones (renderizando badges que antes estaban colapsados). El backend
@@ -2907,7 +3017,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **Abrir o cerrar el editor de celda lateral ya no reinicia la división Esquema /
   Espacio de trabajo.** El editor lateral se acopla como hermano en la fila
   `[Esquema | Espacio de trabajo | Celda]`, y dockview redistribuye el espacio
-  liberado/ocupado proporcionalmente entre *todos* los hermanos cuando se añade o
+  liberado/ocupado proporcionalmente entre _todos_ los hermanos cuando se añade o
   elimina un hijo — redimensionando silenciosamente el panel de Esquema cada vez.
   El ancho de Esquema se recuerda ahora mientras el editor lateral está ausente y
   se vuelve a imponer en cada apertura/cierre, de modo que solo el panel de
@@ -2969,7 +3079,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   como un volcado hexadecimal.** Cuando el servidor marca una columna de texto
   como binaria (dependiente de charset/collation), sqlx la reporta como
   `LONGBLOB` y `try_get::<String>` la rechazaba en una comprobación de
-  compatibilidad de tipo *antes* de mirar los bytes, así que el valor caía a hex
+  compatibilidad de tipo _antes_ de mirar los bytes, así que el valor caía a hex
   sin importar su contenido. Ahora leemos los bytes crudos y validamos el UTF-8
   nosotros mismos, de modo que el texto UTF-8 válido se decodifica como texto.
 
@@ -3099,7 +3209,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **Ctrl+S en el editor lateral acoplado no limpiaba la guarda de cambios sin
   guardar.** Cuando una celda estaba seleccionada con el panel lateral abierto, el
   panel flotante de previsualización de celda era el que capturaba Ctrl+S y
-  persistía *su* valor obsoleto (pre-edición), así que las ediciones del panel
+  persistía _su_ valor obsoleto (pre-edición), así que las ediciones del panel
   lateral no se guardaban y su línea base sucia nunca se reiniciaba — moverse a
   otra celda hacía saltar entonces el diálogo de descartar cambios. El panel
   lateral posee ahora Ctrl+S (fase de captura, con precedencia sobre la

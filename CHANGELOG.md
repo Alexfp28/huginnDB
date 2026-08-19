@@ -4,7 +4,7 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
-## [Unreleased]
+## [1.16.2] — 2026-08-19
 
 ### Added
 
@@ -45,9 +45,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **`docs/MCP.es.md` was missing the whole "Connection footprint" section**,
   including "Sharing the app's pools", and its intro still said the connector
-  *cannot* share the desktop app's pools — which stopped being true when the
+  _cannot_ share the desktop app's pools — which stopped being true when the
   `Share pools with the MCP connector` preference landed. Both are now in sync
   with the English original.
+
+- **SQL Server: negative `decimal`/`numeric` values rendered as a
+  malformed string** (`-18.900000000` came back as `-18.-900000000`).
+  `tiberius`'s `Display for Numeric` formats the integer and fractional
+  halves separately — `write!(f, "{}.{:0pad$}", n.int_part(), n.dec_part())`
+  — and both are derived from the same signed `i128` mantissa, so a negative
+  value emits its sign twice _and_ loses the zero-padding of the fractional
+  part in the same breath: `-18.09` came out as `-18.-9`, `-0.000000001` as
+  `0.-00000001`, and a value below 1 lost the sign entirely (`-0.5` → `0.-5`,
+  because `int_part()` of it is `0`). A `decimal(18,0)` also grew a spurious
+  `.0` tail. `mssql_value` now formats these columns itself from the raw
+  mantissa and scale (`numeric_to_string`) instead of calling `to_string()`:
+  sign taken off once, magnitude zero-padded to at least `scale + 1` digits,
+  split `scale` digits from the right — no `f64` step anywhere, which is the
+  whole reason these columns travel as text. Affected every consumer of a
+  negative decimal equally: the data grid, CSV/JSON copy-and-export, and the
+  `huginndb-mcp` connector, where it was reported. `first_i64` (the
+  `COUNT(*)`/row-estimate path) stopped round-tripping through the same
+  broken string too — it reads `int_part()` directly, since the rendered form
+  of any non-zero scale is not something `parse::<i64>` accepts.
 
 ### Changed
 
@@ -70,7 +90,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **`docs/MCP_CONNECTOR_ROADMAP.md`: an open section on distributing the
   connector through a marketplace instead of a per-machine install.** Records
   the three candidate routes and their verdicts — the claude.ai connector
-  directory is not viable (it lists *remote* servers, and this one reads
+  directory is not viable (it lists _remote_ servers, and this one reads
   `profiles.json`, the OS keychain and the user's own network), while the
   Claude Code plugin marketplace and a Claude Desktop `.mcpb` extension both
   are — plus the constraint they share (neither can bundle a per-target
@@ -81,28 +101,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   plainly why "the marketplace governs permissions better" narrows to a
   distribution question: approval already belongs entirely to the client, and
   the write policy is a second, server-side ceiling applied after it.
-
-### Fixed
-
-- **SQL Server: negative `decimal`/`numeric` values rendered as a
-  malformed string** (`-18.900000000` came back as `-18.-900000000`).
-  `tiberius`'s `Display for Numeric` formats the integer and fractional
-  halves separately — `write!(f, "{}.{:0pad$}", n.int_part(), n.dec_part())`
-  — and both are derived from the same signed `i128` mantissa, so a negative
-  value emits its sign twice *and* loses the zero-padding of the fractional
-  part in the same breath: `-18.09` came out as `-18.-9`, `-0.000000001` as
-  `0.-00000001`, and a value below 1 lost the sign entirely (`-0.5` → `0.-5`,
-  because `int_part()` of it is `0`). A `decimal(18,0)` also grew a spurious
-  `.0` tail. `mssql_value` now formats these columns itself from the raw
-  mantissa and scale (`numeric_to_string`) instead of calling `to_string()`:
-  sign taken off once, magnitude zero-padded to at least `scale + 1` digits,
-  split `scale` digits from the right — no `f64` step anywhere, which is the
-  whole reason these columns travel as text. Affected every consumer of a
-  negative decimal equally: the data grid, CSV/JSON copy-and-export, and the
-  `huginndb-mcp` connector, where it was reported. `first_i64` (the
-  `COUNT(*)`/row-estimate path) stopped round-tripping through the same
-  broken string too — it reads `int_part()` directly, since the rendered form
-  of any non-zero scale is not something `parse::<i64>` accepts.
 
 ## [1.16.1] — 2026-08-18
 
@@ -166,7 +164,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **"Refresh" now reloads the database you are actually looking at.** On a
   multi-DB connection the tables live in the synthetic `<parent>::db::<db>`
   child slices, but the Database node's menu, the connection row's menu and
-  the command palette all refreshed the *parent* id — re-fetching a table list
+  the command palette all refreshed the _parent_ id — re-fetching a table list
   nobody renders (on MySQL the parent pool has no database selected at all, so
   it is legitimately empty) and leaving the visible subtree untouched. A table
   created outside the app never appeared no matter how many times Refresh was
@@ -176,7 +174,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **A refresh now invalidates cached columns and indexes.** It only ever
   re-fetched the database and table lists, spreading the rest of the slice
   through untouched — and since the explorer deliberately only loads a table's
-  columns when they are *absent* (so collapsing and re-expanding doesn't
+  columns when they are _absent_ (so collapsing and re-expanding doesn't
   re-query), a column added outside the app stayed invisible until the
   connection was dropped. Expanded tables are re-loaded immediately after the
   wipe, so an open node comes back with its current columns.
@@ -258,10 +256,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   and **Edit pipeline…** on any view (its pipeline loaded, saving runs
   `collMod`). Dropping a Mongo view also works now — `drop_view` grew a Mongo
   arm, since that one operation needs no DDL at all.
-  - **Two modes over one pipeline.** *Stages* gives each stage its own card
+  - **Two modes over one pipeline.** _Stages_ gives each stage its own card
     with its own output — the pipeline truncated after that stage — which is
     what makes a sixteen-stage `$lookup` chain readable instead of one opaque
-    result. *Text* is the whole array in a single editor with the pipeline's
+    result. _Text_ is the whole array in a single editor with the pipeline's
     output beside it. Switching between them is a conversion routed through the
     backend (`format_mongo_pipeline`), because splitting an array literal into
     stages needs the grammar and a stage body is full of commas.
@@ -323,7 +321,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     and its siblings read together instead of being found by scrolling.
 - **The whole interface now follows the HuginnDB brand visual language.** The
   logo's world — soft black outlines, rounded corners, light volume, one
-  electric blue — is applied as a *contained* layer over the existing
+  electric blue — is applied as a _contained_ layer over the existing
   keyboard-first tool: the working surfaces (grid, SQL, JSON) stay quiet, and
   the personality shows up in affordances, states and empty screens.
   - The two default themes were repainted on the brand palette: a slate/navy
@@ -406,7 +404,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   defaults reset it to `HuginnDB Dark`/`HuginnDB Light` instead of switching
   to that theme's own counterpart (issue #132).** `setActiveMode` looked up
   the target with `BUILT_IN_THEMES.find(t => t.id === mode)` — a literal
-  match against the *mode string* `"dark"`/`"light"`, which only ever
+  match against the _mode string_ `"dark"`/`"light"`, which only ever
   resolved to the two themes whose `id` happens to equal their mode. Every
   other preset (Claude, Dim, Solarized Dark, Neon, Summer, High Contrast) hit
   no match, silently fell through to a dead branch that mutated `mode` on a
@@ -419,7 +417,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the Changed entry above.
 - **Replacing an app icon no longer leaves the old one embedded in the
   binary.** `tauri_build::build()` declares only `tauri.conf.json` and
-  `capabilities/` as build inputs, and cargo tracks *only* what a build script
+  `capabilities/` as build inputs, and cargo tracks _only_ what a build script
   declares — so changing `icons/*` left the crate looking fresh while both
   compile-time copies of the icon (the executable's Win32 resource and the
   generated context's `default_window_icon`) kept the previous artwork, with no
@@ -479,7 +477,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   (`<parent>::db::<database>`), and since 1.13.0 an idle one of those is closed
   by the background reaper after `connections.childIdleTtlSecs` (default 5
   minutes) — deliberately, to stop a long session's connection footprint from
-  only ever growing. What wasn't accounted for is that the *parent* connection
+  only ever growing. What wasn't accounted for is that the _parent_ connection
   the tree actually reflects stays healthy the whole time (its own heartbeat
   keeps succeeding), so the tree kept reporting "connected" while the child
   pool the next click actually needed was already gone — surfacing as either a
@@ -503,7 +501,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   in the local bridge the sidecar uses to reuse the desktop app's own pools:
   every tool call opens with an `EnsureConnected` round trip whose success
   value is `Value::Null`, and the wire format wrapped a reply's payload in a
-  bare `Option<Value>` — which `serde_json` collapses to "absent" for *any*
+  bare `Option<Value>` — which `serde_json` collapses to "absent" for _any_
   `null`, regardless of what it's wrapping. A legitimate `Value::Null` success
   was therefore indistinguishable from no reply at all. The bug is agnostic to
   driver — it can hit the first call of any tool against any connection while
@@ -545,13 +543,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   exactly as it has since that picker was removed: the image branch is gated on
   the value being a `data:image/` URL, not on the field being non-empty.
   One new backend command (`read_image_data_url`) does the reading, because the
-  native picker hands back a *path* the webview cannot open itself. It
+  native picker hands back a _path_ the webview cannot open itself. It
   validates the format from the file's magic bytes rather than its extension
   and refuses anything over 12 MB, so an unusable file is rejected with a clear
   message instead of turning into a data URL no `<img>` will load. The drop
   path never touches it — the browser already has the bytes.
 
-- **Linux release artifacts are now published.** Every release already *could*
+- **Linux release artifacts are now published.** Every release already _could_
   have shipped them: `tauri.conf.json`'s `bundle.targets` has listed `deb` and
   `appimage` since 1.7.0, and `.github/workflows/release.yml` carried both the
   `ubuntu-22.04` matrix leg and its apt build-deps
@@ -595,7 +593,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   advice, and the tech-stack bundling line — still named the MSI. Anyone
   following the README looked for a file that isn't attached to the release.
 
-- **Folding a connection group in one surface silently folded it everywhere else it was on screen.** `useConnectionGroupCollapse` (`src/lib/connection/useConnectionGroups.ts`) is shared by the File menu, the connections manager dialog, the status-bar switcher and the environment's Schema tree; in the default "remember" mode it read `prefs.ui.collapsedConnectionGroups` as a live Zustand selector, so every mounted instance re-rendered off the same value on every toggle. Opening the connections manager while an environment's tree already had a group open showed it open too (as expected — same remembered layout), but collapsing that group *inside the dialog* also collapsed it live in the tree behind it, because both surfaces were really one shared instance of the fold state rather than independent views that merely started from the same saved arrangement. The hook now seeds a per-instance session override from the persisted set once, at mount, and every toggle — in all three expand modes, not just the forced "expanded"/"collapsed" ones — only touches that instance's local state; "remember" toggles still write through to disk so the *next* surface to mount (including a future app launch) picks up the latest arrangement, but an already-open surface elsewhere is no longer reshaped out from under the user. No preference or on-disk schema changed.
+- **Folding a connection group in one surface silently folded it everywhere else it was on screen.** `useConnectionGroupCollapse` (`src/lib/connection/useConnectionGroups.ts`) is shared by the File menu, the connections manager dialog, the status-bar switcher and the environment's Schema tree; in the default "remember" mode it read `prefs.ui.collapsedConnectionGroups` as a live Zustand selector, so every mounted instance re-rendered off the same value on every toggle. Opening the connections manager while an environment's tree already had a group open showed it open too (as expected — same remembered layout), but collapsing that group _inside the dialog_ also collapsed it live in the tree behind it, because both surfaces were really one shared instance of the fold state rather than independent views that merely started from the same saved arrangement. The hook now seeds a per-instance session override from the persisted set once, at mount, and every toggle — in all three expand modes, not just the forced "expanded"/"collapsed" ones — only touches that instance's local state; "remember" toggles still write through to disk so the _next_ surface to mount (including a future app launch) picks up the latest arrangement, but an already-open surface elsewhere is no longer reshaped out from under the user. No preference or on-disk schema changed.
 
 - **The "Restart now" button gave no feedback after being clicked, inviting repeat clicks.** `installAndRelaunch` (`src/stores/update.ts`) went straight from `readyToRestart` to a transient `ready` right before `installUpdate()`/`relaunchApp()` — but everything in between (an async MCP-sidecar check, and its confirmation dialog if a client currently holds the sidecar) ran while the store still reported `readyToRestart`, so both `UpdateBanner` and the Settings → About updates card kept rendering the idle "Restart now" / "Install and relaunch" label with the button fully clickable. A new `installing` status is now set synchronously the instant the click handler runs, before any `await`; both components disable their install button and the banner's dismiss controls and swap in a spinner + "Restarting…" label for the whole gap. `installAndRelaunch` also short-circuits if it's called again while already `installing`/`ready`, so a stray double-invocation can't queue a second install even if a click slips through.
 
@@ -608,10 +606,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   fixed handful of actions (new query, preferences, theme, language) — filtered
   with a plain substring `includes()`. It now indexes thirteen groups and ranks
   them:
-
   - **Every individual preference**, VS Code style: typing `#wrap` (or just
     `wrap`) finds "Soft-wrap long lines", shows its current value, and Enter
-    opens Preferences on that section and scrolls to *that row*, flashing it.
+    opens Preferences on that section and scrolls to _that row_, flashing it.
     Boolean settings can also be flipped without leaving the palette with
     Alt+Enter, which keeps it open so the value badge updates under the cursor.
     Every rebindable shortcut is indexed the same way, with its current combo.
@@ -619,7 +616,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     Check for updates, About, the MCP setup page).
   - **Navigation**: open tabs (Enter jumps, Alt+Enter closes), saved
     connections (Alt+Enter disconnects a live one), environments, the databases
-    of a multi-database server, tables and views across *every* connected
+    of a multi-database server, tables and views across _every_ connected
     connection rather than only the selected one, saved queries and the last 20
     entries of the query history.
   - **Actions** that previously existed only in a menu: new/manage connection,
@@ -644,7 +641,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   parity). Rebindable like the rest, under Settings → Shortcuts.
 
 - **The palette can index a multi-database server's tables on demand.** A
-  server-wide connection starts with only its *database* list loaded — each
+  server-wide connection starts with only its _database_ list loaded — each
   database's tables arrive under its own `<parent>::db::<name>` slice, and only
   once something opens that view — so a freshly connected server had databases
   to offer and no tables to search. `@` mode now also lists an "Index all
@@ -695,7 +692,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   handle's tooltip spells both gestures out. The grid's toolbar also gets a
   button for the fit-everything version, so it isn't only reachable through a
   gesture you have to know about — table tabs and query results alike.
-  The fit is measured against the text as *rendered* (BIT display mode, the
+  The fit is measured against the text as _rendered_ (BIT display mode, the
   NULL placeholder, the "truncate long text at" cap all apply) and capped at
   900 px, so one wide column can't push the rest of the row off-screen;
   dragging by hand still goes as wide as you like.
@@ -719,7 +716,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   drag, tab together, or float — which visually implied you could spin up
   more "workspaces," never the intent. Console now docks to the bottom with
   its own collapsible header; Saved collapses/expands from a button in a new
-  right-hand activity bar; the cell editor is a plain flex split *inside* the
+  right-hand activity bar; the cell editor is a plain flex split _inside_ the
   workspace island rather than a sibling dockview group (so opening/closing
   it can no longer trigger dockview's proportional-reflow-of-siblings side
   effect); and the workspace itself is a fixed, un-draggable "island" card
@@ -741,7 +738,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   own avatar (initials over its accent colour, in a rounded square — see the
   next entry) with its name underneath; a trailing "+" opens the same
   create dialog the status-bar switcher already had. Clicking a
-  non-active environment switches to it *and* opens the Schema panel in one
+  non-active environment switches to it _and_ opens the Schema panel in one
   gesture; clicking the already-active one just collapses/expands Schema —
   there is no separate dedicated toggle button anymore since that would be
   redundant with it. Right-clicking an avatar opens the same rename/delete
@@ -796,7 +793,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **The tab overflow menu ("∨ N") is the tab strip stood on its side.** It
   re-uses each hidden tab's own tab component, so every row arrived with the
-  strip's *horizontal* geometry: a one-sided 7px margin, the strip's
+  strip's _horizontal_ geometry: a one-sided 7px margin, the strip's
   truncation width inside a popover with room to spare, and two scrollbars,
   one of them horizontal. The chips stay — same trench backdrop, same fill and
   elevation, so the popover reads as part of the same surface — but each is
@@ -865,7 +862,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   allowance HuginnDB will spend against one host, shared by every connection and
   every database view that reaches it — so three connections pointing at the
   same Postgres box no longer get three independent allowances, which is exactly
-  how the footprint managed to be unbounded. Two connections behind *different*
+  how the footprint managed to be unbounded. Two connections behind _different_
   SSH tunnels that both name `localhost:5432` are correctly treated as different
   servers; two connecting as different users are correctly treated as the same
   one, since the server's limit is global.
@@ -875,15 +872,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   If there is genuinely nothing to reclaim, the error names the budget and where
   to raise it instead of surfacing a driver string.
 - **Per-connection limit** — connections now have a **Max connections for this
-  server** field. Connection capacity is a fact about a *server*, so it lives on
+  server** field. Connection capacity is a fact about a _server_, so it lives on
   the connection: it travels with profile export/import, syncs through shared
   origins, and the `huginndb-mcp` sidecar honours it automatically because it
   reads the same `profiles.json`. Blank means "use the global preference".
 - **`huginndb-mcp --max-connections <n>`** — pool ceiling per exposed
   connection for the headless connector, defaulting to `2`. See the new
   "Connection footprint" section in `docs/MCP.md`.
-- **Pool sharing with the MCP connector** (Settings → Connections → *Share
-  pools with the MCP connector*, off by default). With it on, a running
+- **Pool sharing with the MCP connector** (Settings → Connections → _Share
+  pools with the MCP connector_, off by default). With it on, a running
   `huginndb-mcp` sidecar stops opening its own pools and asks the desktop app to
   run its queries instead. The machine then has **one budget per server**
   however many MCP clients are configured — until now each spawned its own
@@ -968,7 +965,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   clips), the full type, primary/foreign key with the referenced
   `table.column`, nullability when the catalog knows it, and the current sort
   state — and it is translated, which it never was. The old text offered
-  "Ctrl/Cmd+click to add a column", which read as an offer to *create* a
+  "Ctrl/Cmd+click to add a column", which read as an offer to _create_ a
   column: wrong, and alarming in a window that also runs DDL. Sorting stays
   discoverable through the arrow glyph on every header.
 
@@ -991,7 +988,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **The connection tree's filters now survive with auto-reconnect off.** Which
   connections are shown, which rows are folded, and the new per-environment
   database subsets are restored when an environment is entered regardless of the
-  *Reconnect on launch* preference. They describe how an environment looks, not
+  _Reconnect on launch_ preference. They describe how an environment looks, not
   what it reopens; behind that gate, entering an environment with reconnect off
   left the previous one's filters on screen.
 - **`too many connections` on shared servers.** HuginnDB's connection footprint
@@ -1070,7 +1067,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   opens a dialog that reuses the DataGrid's own advanced-filter condition
   builder for the match side, plus a column/field → value editor for the
   set side; a debounced preview shows the exact `UPDATE ... SET ... WHERE
-  ...` (or `db.<collection>.updateMany(...)` for MongoDB) and how many
+...` (or `db.<collection>.updateMany(...)` for MongoDB) and how many
   rows currently match before anything runs. An empty filter is rejected
   unless explicitly acknowledged, so a blank condition can't silently turn
   into a full-table update.
@@ -1113,7 +1110,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   "Import…" context-menu entries were removed now that the DataGrid toolbar
   and the new connection-/database-level dialogs cover the same ground —
   the per-schema entries in particular were mislabelled (they exported the
-  *whole database*, not the clicked schema). Connection-level and
+  _whole database_, not the clicked schema). Connection-level and
   per-database export/import remain in the tree. The "(Beta)" suffix on
   "Export database…"/"Import .sql…" is gone.
 - The structure editor's columns table was redesigned with the app's own
@@ -1215,7 +1212,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   were live when it was last closed — using the credentials already in the
   OS keychain. Previously the app opened disconnected and you had to
   reconnect to each host by hand (and, because of the layout bug below, in
-  the *right order*) to get your workspace back. Connections whose password
+  the _right order_) to get your workspace back. Connections whose password
   isn't stored, or whose host is unreachable, are skipped without blocking
   startup; the toggle lets you opt out entirely. The launch state — which
   connections were live, which one was focused, and which tab was active — is
@@ -1225,7 +1222,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   pools happen to reopen, and even an abrupt exit leaves something to restore.
 
 - **Canary build channel.** A new opt-in pre-release channel lets a change be
-  dogfooded against real production connection profiles *before* it ships in a
+  dogfooded against real production connection profiles _before_ it ships in a
   stable release — no full release required. A canary build (compiled with the
   new `canary` Cargo feature, paired with `src-tauri/tauri.canary.conf.json`)
   installs side-by-side with the stable app: it has its own bundle identifier
@@ -1234,14 +1231,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `HuginnDB-Canary` config directory. That isolation means a canary can safely
   exercise destructive, one-way on-disk migrations without ever touching the
   stable install's `profiles.json` / `tab_state.json` / `prefs.json`. The OS
-  keychain service is deliberately *shared*, so the canary reuses the passwords
+  keychain service is deliberately _shared_, so the canary reuses the passwords
   the stable build already stored rather than forcing them to be re-entered.
   Builds are produced by a manual `canary` GitHub Actions workflow from any
   branch or commit and published to a single rolling `canary` release; see
   `docs/CANARY.md`.
 
 - **Sandbox indicator for the canary build.** Because the canary shares the UI
-  bundle (and the OS keychain) with the stable app, once you were *inside* the
+  bundle (and the OS keychain) with the stable app, once you were _inside_ the
   window the two were indistinguishable — easy to mistake the sandbox for your
   real install. The canary build now makes its identity unmistakable: a
   persistent amber "SANDBOX · HuginnDB Canary" ribbon pinned above the header
@@ -1257,7 +1254,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **The row-count no longer blocks the first rows from appearing, and a
   whole-table count is now an instant estimate.** Opening a table/collection
-  used to compute the data page *and* an exact `COUNT(*)` (`count_documents`
+  used to compute the data page _and_ an exact `COUNT(*)` (`count_documents`
   on MongoDB) in a single round trip, returning nothing to the grid until
   both finished. On a multi-million-row table the count dominated, so the
   first paint waited seconds on a query whose 100 rows were already in hand —
@@ -1279,7 +1276,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   The top toolbar of a table/collection tab previously crowded four different
   concerns into its left edge — the reload button, the advanced-filter button,
   the MongoDB table/list view toggle, and a cramped fixed-width (`w-56`) search
-  box — while a *second* bottom status strip carried the row zoom and the
+  box — while a _second_ bottom status strip carried the row zoom and the
   pagination controls. Worse, the row total was shown twice: "37 rows of 37"
   top-right and "1–37 / 37" bottom-right. Everything now lives in one bar:
   - **Left (actions):** refresh · advanced filter · the search box — which is
@@ -1303,7 +1300,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **The workspace pane layout is now session-level, not per-connection.**
   The inner-dockview split/float geometry (how you've arranged the open
-  table/query tabs) used to be stored redundantly under *every* connection
+  table/query tabs) used to be stored redundantly under _every_ connection
   in `tab_state.json`, even though a single inner dockview hosts all
   connections' tabs at once. On restore, whichever connection you happened
   to connect to first won — so the layout only came back if you reconnected
@@ -1315,7 +1312,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **"Float in new window" now opens a real, independent OS window.** A tab's
   "Sacar a ventana flotante" action used to call dockview's
-  `addFloatingGroup`, which only detaches the panel *within* the inner
+  `addFloatingGroup`, which only detaches the panel _within_ the inner
   workspace's own bounds — the floating panel could be dragged around, but
   never past the edges of the workspace pane it came from, which defeated the
   point when you wanted, say, the cell editor free of the table view
@@ -1328,6 +1325,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Applies to every tab kind (table, query, structure, view, security). Like
   "New window", these windows are ephemeral — they don't touch
   `tab_state.json` and aren't restored across restarts.
+
 ### Fixed
 
 - **Double-clicking a cell's text no longer fails to enter inline-edit
@@ -1339,7 +1337,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   where `user-select: none` (set table-wide, see `DataGrid.tsx`'s
   `select-none` note) suppresses `dblclick` specifically when there's
   selectable text under the pointer, while double-clicking the cell's empty
-  padding (no text glyph under the cursor, which is what made it *look*
+  padding (no text glyph under the cursor, which is what made it _look_
   like clicking "the border" was the trick) worked fine. The `<td>`'s
   `onClick` handler now also checks the native `click` event's own
   `detail` (the OS click count, unaffected by that quirk): a second click
@@ -1353,8 +1351,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   every keystroke — which updates `inlineEdit.value` — rebuilt the entire
   `columns` array, handing every column's `cell` renderer a brand-new arrow
   function reference. TanStack's `flexRender` treats `columnDef.cell` as a
-  component *type* (`typeof Comp === "function"` → `React.createElement(Comp,
-  props)`), so a new reference each render reads to React as a different
+  component _type_ (`typeof Comp === "function"` → `React.createElement(Comp,
+props)`), so a new reference each render reads to React as a different
   element type for every cell in the grid — forcing a full unmount +
   remount of the whole table body, including whatever `<input>` was mid-edit.
   A freshly-mounted `autoFocus` input always plants its caret at the end,
@@ -1400,7 +1398,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `ViewDefinition`: `CREATE OR REPLACE VIEW` on Postgres/MySQL (with an
   explicit `ALTER VIEW … RENAME TO` / `RENAME TABLE` first when the name
   changed), and always drop+recreate on SQLite (no `CREATE OR REPLACE
-  VIEW` / `ALTER VIEW` there) — informational only in the UI, since a view
+VIEW` / `ALTER VIEW` there) — informational only in the UI, since a view
   holds no data of its own to lose. Five new Tauri commands
   (`get_view_definition`, `preview_view_change`, `apply_view_change`,
   `rename_view`, `drop_view`) mirror the existing
@@ -1408,7 +1406,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   shape. MongoDB is excluded in this version, same as table-structure
   editing — its "views" are read-only aggregation-pipeline collections
   with a fundamentally different edit model (`collMod`/`createView`).
-  
 - **A `between` operator in the Advanced Filter, unifying range filtering across
   every driver (#81).** The advanced-filter builder already offered
   `contains`/`not_contains`/`starts_with`/`ends_with` consistently on Postgres,
@@ -1429,7 +1426,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   mode (#78).** Previously the only way to view a long cell's untruncated
   content was to double-click, which for an editable cell also entered
   inline-edit mode — an unwanted side effect when the user only wanted to
-  *read* the value. The `DataGrid` cell renderer's plain (non-editing)
+  _read_ the value. The `DataGrid` cell renderer's plain (non-editing)
   branch now checks whether the cell matches `selectedCell` (set on plain
   single click, compared by the same `rowValues`/`row.original` referential
   identity used everywhere else in the grid — see gotcha #7) and, if so,
@@ -1509,7 +1506,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   user hitting `has MCP write policy "read-only"` on `update_cell` against a
   connection whose Settings → MCP level was actually `data`. The write gate
   (`Huginn::require_class`) was checking the policy against
-  `resolve_mongo_target`'s *resolved* pool id rather than the real profile id.
+  `resolve_mongo_target`'s _resolved_ pool id rather than the real profile id.
   For a multi-database Mongo connection (empty top-level `database` — the
   common case, since HuginnDB doesn't require picking one at connect time), a
   tool call naming a `schema`/`database` resolves to the synthetic
@@ -1525,7 +1522,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **`updateMany`/`updateOne` rejected an aggregation-pipeline update
   (`db.coll.updateMany(filter, [{ $set: {...} }])`)** with `argument 2 must be
-  a document`, even though the underlying `mongodb` driver has supported
+a document`, even though the underlying `mongodb` driver has supported
   pipeline-style updates since server 4.2. The mongosh-style parser
   (`db/mongo/shell.rs`) only ever built a plain `Document` for the `update`
   argument. It now accepts either shape — a new `UpdateSpec` enum
@@ -1706,7 +1703,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   (non-empty, no reserved `system.` prefix); non-Mongo drivers are rejected
   (they create tables through the structure editor).
 - **Choose which databases a connection shows, DataGrip-style (#64).** A
-  multi-database connection listed *every* database on the server and warmed
+  multi-database connection listed _every_ database on the server and warmed
   all of them in the background — noisy and slow on servers with dozens of
   databases. A new checklist (the list-checks button in the multi-DB explorer
   header) lets you pick the subset you actually work with; the explorer then
@@ -1739,7 +1736,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   gives them the window permissions they need in general.
 - **Connecting to a many-database server is now instant — the explorer no
   longer eagerly caches every database's tables on connect.** The multi-DB
-  explorer used to warm the table list of *every* database in the background
+  explorer used to warm the table list of _every_ database in the background
   right after connecting, so a connection with 19+ databases sat visibly
   "Caching schema… n/m" for a moment before settling. That eager warm was only
   ever a search optimization, and it is now redundant with the visible-databases
@@ -1918,7 +1915,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `list_privileges`. Built behind an optional `mcp` cargo feature
   (`cargo build --features mcp --bin huginndb-mcp`), so a normal
   `pnpm tauri:build` is unaffected. See [`docs/MCP.md`](docs/MCP.md).
-  
+
 ### Fixed
 
 - **Multi-database connections now show a name in the title bar (#51).** The
@@ -1990,7 +1987,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     range, plus per-row checkboxes on hover) with a **bulk delete** that always
     asks for confirmation, regardless of the "confirm destructive actions"
     preference.
-- **Duplicate connection (#38).** The connections manager gained a *Duplicate*
+- **Duplicate connection (#38).** The connections manager gained a _Duplicate_
   action that clones the selected profile into a fresh draft with a uniquified
   name ("… (copy)"), ready to tweak and save. The password is intentionally not
   carried over — credentials are keyed by profile id in the OS keychain and the
@@ -1998,8 +1995,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   connecting.
 - **Configurable connection-group expand mode (#40).** A new General preference
   (`Connection groups`) controls how folder groups start out in the File menu
-  and the connections manager — *always expanded*, *always collapsed*, or
-  *remember per group* (the previous behaviour). The File menu's groups are now
+  and the connections manager — _always expanded_, _always collapsed_, or
+  _remember per group_ (the previous behaviour). The File menu's groups are now
   collapsible too, matching the status-bar switcher.
 
 - **Brand logos in the driver dropdown.** The connection editor's driver
@@ -2022,7 +2019,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **Cell editor undo no longer reaches into the previously-edited cell.** The
   docked side editor (and the modal) reused a single Monaco model across cells,
   so after editing one row, selecting the same column on another row and
-  pressing Ctrl+Z restored the *previous* row's value. Monaco is now remounted
+  pressing Ctrl+Z restored the _previous_ row's value. Monaco is now remounted
   with a fresh, empty undo stack on each cell load, so undo stays scoped to the
   current editing session; typing within a cell still undoes normally.
 - **Boolean BIT cell picker no longer collapses on open (#44).** Editing an
@@ -2053,11 +2050,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **Tab management overhaul.** With many tabs open it was hard to tell what
   you had open or jump to a specific table. Four additions address that:
   - **Open-tabs quick switcher (Ctrl/Cmd+P).** A keyboard-first overlay
-    listing *currently open* tabs across every connection, grouped pinned-first
+    listing _currently open_ tabs across every connection, grouped pinned-first
     then by `connection · database`. Search by name, navigate with the arrows,
     Enter jumps (and points the workspace at that tab's connection), and each
     row pins/unpins or closes inline (Delete closes the highlighted one).
-    Distinct from the command palette (Ctrl+K), which opens *new* things.
+    Distinct from the command palette (Ctrl+K), which opens _new_ things.
   - **Open-table markers in the schema tree.** Every table that's open in a
     tab now shows a soft brand dot in the tree — not just the active one — so
     you can see at a glance what you already have open while browsing.
@@ -2133,7 +2130,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   catalog verbatim from `sqlite_master` (higher fidelity than reconstructing
   DDL — it keeps `CHECK` constraints etc.) bracketed by
   `PRAGMA foreign_keys=OFF/ON`. "Import .sql…" picks a file and runs it
-  through the *existing* query batch runner (the same `splitSql` +
+  through the _existing_ query batch runner (the same `splitSql` +
   `execute_batch` path the query editor already uses) instead of a second
   execution path, gated behind the destructive-action confirmation. Labelled
   Beta in the UI — verified by type-checking and `cargo check` only so far,
@@ -2157,7 +2154,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   toggles, the connections switcher) and the workspace tabs (label, actions ⋮,
   close, new-query +). Menu/context triggers are wrapped at the trigger so the
   tooltip fires on hover while the menu still opens on click. The one case left
-  on native `title=""` — deliberately — is a tooltip that lives *inside* open
+  on native `title=""` — deliberately — is a tooltip that lives _inside_ open
   menu content (the connection rows' reconnect/disconnect, the tab colour
   swatches): a Radix tooltip there fights the menu's own hover/portal handling,
   and a native OS tooltip doesn't.
@@ -2279,7 +2276,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   only offered "New query here" / "Security" and a created database was stuck.
   A new `validate_ident`-guarded `drop_database` backend command closes the
   synthetic per-database pool (awaiting `Pool::close`) before issuing `DROP
-  DATABASE`, so Postgres doesn't reject it for having live sessions; on success
+DATABASE`, so Postgres doesn't reject it for having live sessions; on success
   the UI tears down that database's tabs + schema slice and refreshes the tree.
 - **Connection groups shown as folders in the File menu (#20).** The File menu
   listed every connection flat, so a profile's `group` had no visible effect
@@ -2390,7 +2387,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   preference changes.** Every Tauri window shares one backend `AppState`,
   but each window's frontend held a private snapshot of `active`/`profiles`/
   `prefs` taken once at boot with no bridge back out — worse than staleness
-  for preferences specifically, since every save sends the *entire* blob
+  for preferences specifically, since every save sends the _entire_ blob
   (not a diff): two windows changing different settings would silently lose
   whichever saved first the moment the other's debounced write landed.
   `connect`/`disconnect`/`save_profile`/`delete_profile`/`import_profiles`/
@@ -3292,4 +3289,3 @@ follows SemVer.
   binary value fell through to the `String` fallback, failed to decode,
   and surfaced as NULL. A dedicated branch now folds the raw bytes into
   a big-endian unsigned integer and ships it as a number.
-
