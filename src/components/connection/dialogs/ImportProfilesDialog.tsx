@@ -61,10 +61,17 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
       try {
         const info = await api.analyzeImportFile(picked);
         setAnalysis(info);
-        // Pre-fill resolutions: conflicts default to "rename".
+        // Pre-fill resolutions: conflicts default to "skip". A conflict here
+        // is matched by id (`detect_conflicts`), so it is never a coincidence
+        // — it is definitionally the same connection already present. "Rename"
+        // used to be the default, which silently duplicated every profile
+        // under a fresh id with a " (imported)" suffix on a straight
+        // export-then-reimport of one's own profiles, the single most common
+        // reason to hit this screen. "Skip" is the safe, idempotent default;
+        // Overwrite/Rename stay one click away for the cases that want them.
         const defaults: Record<string, ConflictAction> = {};
         for (const c of info.conflicts) {
-          defaults[c.id] = "rename";
+          defaults[c.id] = "skip";
         }
         setResolutions(defaults);
         setStep(info.encrypted ? "passphrase" : info.conflicts.length > 0 ? "conflicts" : "pick");
@@ -95,7 +102,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
     if (!analysis || !filePath) return;
     const resolved: ConflictResolution[] = analysis.conflicts.map((c) => ({
       id: c.id,
-      action: resolutions[c.id] ?? "rename",
+      action: resolutions[c.id] ?? "skip",
     }));
     await doImport(filePath, analysis.encrypted ? passphrase : undefined, resolved);
   }

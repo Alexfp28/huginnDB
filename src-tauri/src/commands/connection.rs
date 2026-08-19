@@ -1283,11 +1283,17 @@ pub(crate) fn apply_profile_imports(
 
     for ep in exported {
         // Determine action for profiles that conflict with an existing id.
+        // Conflicts are matched by id (`detect_conflicts`), so a conflict here
+        // is never a coincidence — it is definitionally the same connection
+        // already present. The fallback for one the caller left unresolved is
+        // therefore `Skip`, not `Rename`: renaming would silently create a
+        // second, independent copy of a profile that already exists, which is
+        // almost never what "I didn't touch that row" was meant to request.
         let conflict_action = if profiles.iter().any(|p| p.id == ep.profile.id) {
             resolution_map
                 .get(&ep.profile.id)
                 .cloned()
-                .unwrap_or(ConflictAction::Rename)
+                .unwrap_or(ConflictAction::Skip)
         } else {
             ConflictAction::Rename // effectively: just insert as new
         };
@@ -1641,5 +1647,29 @@ mod tests {
             !id_map.contains_key("orig-a"),
             "a skipped profile must not appear in the id map"
         );
+    }
+
+    #[test]
+    fn an_unresolved_conflict_defaults_to_skip_not_rename() {
+        // A conflict is matched by id, so it is never a coincidence — it is
+        // definitionally the same connection already present (the exact case
+        // hit by exporting one's own profiles and reimporting them
+        // unchanged). Leaving it unresolved must not silently duplicate it
+        // under a fresh id with a " (imported)" suffix.
+        let mut profiles = vec![profile("orig-a", "A")];
+
+        let (result, id_map) = apply_profile_imports(
+            &mut profiles,
+            vec![exported("orig-a", "A")],
+            None,
+            &std::collections::HashMap::new(),
+        )
+        .unwrap();
+
+        assert_eq!(result.skipped, vec!["orig-a".to_string()]);
+        assert!(result.imported.is_empty());
+        assert!(result.renamed.is_empty());
+        assert!(!id_map.contains_key("orig-a"));
+        assert_eq!(profiles.len(), 1, "no duplicate profile must be created");
     }
 }
