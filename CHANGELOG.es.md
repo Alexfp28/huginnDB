@@ -47,6 +47,35 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   de alfabéticamente (Conexiones → Entornos → MongoDB → SQL Server → MCP),
   ya que el diálogo se abre en la primera.
 
+- **La vista de lista ya puede insertar una fila / documento.** «Insertar»
+  quedaba oculto siempre que la rejilla estaba en modo lista, lo que dejaba
+  ese modo casi de solo lectura: se podía editar cualquier campo de un
+  documento existente y borrarlo, pero añadir uno obligaba a volver a la
+  vista de tabla. El borrador se dibuja como una tarjeta fijada encima de los
+  documentos — una línea `clave : control` por campo, con exactamente los
+  mismos controles que usa la fila borrador de la tabla (marcador de PK
+  autogenerada, combo de FK, selector 0/1 para BIT, input plano), ahora
+  extraídos a un `DraftCellControl` compartido para que las dos superficies no
+  puedan divergir en los detalles que importan (una columna BIT tiene que
+  emitir la cadena numérica que espera el `CAST` del backend, gotcha #15). Se
+  confirma con la misma llamada `insert_row`: cambiar de modo de vista cambia
+  cómo se *dibuja* el borrador, nunca lo que escribe. Dos diferencias
+  deliberadas respecto a la fila de la tabla: que el foco salga de la tarjeta
+  **no** la confirma (una tarjeta es un formulario, y aloja un selector de
+  tipo cuyo popover vive fuera de ella — confirmar al perder el foco
+  dispararía el INSERT en el instante en que se abriera ese selector), así que
+  Enter o «Guardar» confirma y Esc o «✕» descarta; y en MongoDB cada campo
+  lleva su propio **selector de tipo BSON**, enviado como pista de tipo de
+  `insert_row`. Esto último es la razón de hacerlo aquí en vez de reutilizar
+  la fila de tipos fijos de la tabla: una colección no tiene esquema, así que
+  el tipo con el que se guarda un campo nuevo es una *decisión*, e inferirlo
+  del texto escribiría un `Int32` en un campo que la colección guarda como
+  `Long` — la trampa de fidelidad que el gotcha #29 documenta para las
+  ediciones, un paso antes. El conjunto de campos sigue siendo la lista de
+  columnas del resultado (en MongoDB, las claves de primer nivel de la página
+  actual); los campos extra se añaden al documento nuevo con el `+` por
+  documento una vez que existe.
+
 ### Corregido
 
 - **A `docs/MCP.es.md` le faltaba toda la sección "Huella de conexiones"**,
@@ -79,6 +108,42 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   misma cadena rota — lee `int_part()` directamente, ya que la forma
   renderizada de cualquier escala distinta de cero no es algo que
   `parse::<i64>` acepte.
+
+- **La fila pendiente de insertar aparecía y desaparecía al instante cuando se
+  iniciaba desde un menú.** Reportado como «la fila borrador parpadea y
+  desaparece»; el botón «Insertar» de la barra de herramientas funcionaba, las
+  dos entradas de menú (el menú contextual de la fila y el menú de desborde de
+  la barra, donde el botón se mueve cuando el panel es estrecho) no. Ambas son
+  menús de Radix, y el `FocusScope` de Radix restaura el foco al elemento que
+  lo tenía antes de abrirse el menú desde su propio `setTimeout(…, 0)` al
+  desmontarse. La rejilla enfocaba la primera celda del borrador en un
+  `requestAnimationFrame`, que se ejecutaba *antes* de ese timeout — así que
+  Radix se llevaba el foco de vuelta fuera de la fila recién montada, se
+  disparaba el manejador de salida de foco de la fila, y un borrador en el que
+  nadie ha escrito se cancela en silencio (a propósito: de lo contrario
+  enviaría un `INSERT () VALUES ()`). El foco se concede ahora en un
+  `setTimeout` encadenado *después* del frame, que siempre queda encolado
+  detrás del de Radix, así que el borrador conserva el foco sea cual sea el
+  orden en que se intercalen las dos callbacks. El frame sigue siendo lo que
+  espera a que la fila esté montada.
+
+- **Enter o Escape dentro de un selector de valores de FK confirmaba o
+  descartaba el borrador entero.** El borrador vincula Enter a «inserta esta
+  fila» y Escape a «descártala» a nivel de fila, y `FkCombobox` llamaba a
+  `preventDefault` en las teclas que maneja pero nunca a `stopPropagation` —
+  así que abrir el selector con Enter disparaba el INSERT con una fila a
+  medias, y cerrarlo con Escape tiraba el borrador. Ambos manejadores (el
+  disparador y el campo de búsqueda del panel) detienen ya el evento en el
+  combo, el único componente que lo ha consumido.
+
+- **El estado vacío de la vista de lista era la única pantalla vacía sin
+  identidad visual.** Una colección o tabla sin filas renderizaba una línea
+  gris «Sin filas» a secas, mientras que la vista de tabla muestra el marco
+  compartido `EmptyState` — trama de semitonos, medallón, la marca con su
+  glifo por estado — desde el rediseño de marca. La vista de lista usa ya ese
+  mismo marco (y también la previsualización de una agregación cuyo pipeline
+  no devolvió nada), suprimido mientras hay una tarjeta de inserción abierta:
+  la superficie ya no está vacía, es un formulario.
 
 ### Cambiado
 

@@ -226,11 +226,20 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
           onKeyDown={(e) => {
             // Open on Enter/Down so keyboard users can reach the panel
             // without a mouse click.
+            //
+            // `stopPropagation` matters as much as `preventDefault` here: this
+            // combobox is mounted inside the grid's INSERT draft (row or card),
+            // whose container binds Enter to "commit the draft" and Escape to
+            // "discard it". Letting these keys bubble meant opening the picker
+            // with Enter fired the INSERT with a half-filled draft, and closing
+            // the picker with Escape threw the whole draft away.
             if (!open && (e.key === "Enter" || e.key === "ArrowDown")) {
               e.preventDefault();
+              e.stopPropagation();
               setOpen(true);
             } else if (open && e.key === "Escape") {
               e.preventDefault();
+              e.stopPropagation();
               setOpen(false);
             }
           }}
@@ -264,6 +273,9 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     e.preventDefault();
+                    // Same reason as the trigger above: Escape closes the
+                    // panel, it does not discard the draft around it.
+                    e.stopPropagation();
                     setOpen(false);
                     triggerRef.current?.focus();
                   }

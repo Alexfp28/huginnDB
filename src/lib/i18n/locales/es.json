@@ -531,6 +531,9 @@
       "opaqueType": "Este tipo no se puede editar en línea: lo que se muestra no es el valor almacenado. Cambia el tipo para reemplazarlo.",
       "expand": "Desplegar",
       "collapse": "Plegar",
+      "newDocument": "Nuevo documento",
+      "newRow": "Nueva fila",
+      "insertHint": "Enter inserta · Esc descarta",
       "changeType": "Cambiar el tipo"
     }
   },

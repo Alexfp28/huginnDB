@@ -21,6 +21,10 @@
  *   (`$unset`, behind the destructive-action confirmation). SQL rows have a
  *   fixed column set, so those three affordances are hidden there — a column is
  *   not a per-row thing.
+ * - a whole new row/document is inserted here too, as a draft card pinned above
+ *   the documents (`DraftDocumentCard`) — the same draft state and the same
+ *   `insert_row` call the table view's pinned draft row uses, so view mode
+ *   changes how the draft is drawn and nothing about what it writes.
  *
  * Two structural notes:
  *
@@ -33,18 +37,34 @@
  *   follows every commit.
  */
 
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MutableRefObject,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Inbox,
   Maximize2,
   Plus,
   Trash2,
   X,
 } from "lucide-react";
+import { EmptyState } from "@/components/common/EmptyState";
+import { Button } from "@/components/ui/button";
+import {
+  DraftCellControl,
+  firstEditableColumn,
+  isAutoPkColumn,
+} from "@/components/grid/DraftCellControl";
 import {
   Select,
   SelectContent,
@@ -66,7 +86,14 @@ import {
   type DocField,
 } from "@/lib/grid/documentTree";
 import { cn } from "@/lib/utils";
-import type { BsonTypeTree, CellValue, ColumnMeta } from "@/types";
+import type {
+  BsonTypeTree,
+  CellValue,
+  ColumnInfo,
+  ColumnMeta,
+  DraftCell,
+  DraftRow,
+} from "@/types";
 
 /** Commit one field. `path` is the field path from the document root, `value`
  *  the text the editor produced (`null` for SQL NULL / BSON null), `typeHint`
@@ -106,6 +133,36 @@ interface DocumentListViewProps {
   ) => void;
   copyToClipboard: (text: string) => void;
   emptyLabel: string;
+  /** Inline INSERT card, pinned above the documents. Absent → this surface
+   *  isn't insertable (a pipeline preview, a read-only query result). */
+  draft?: ListDraft | null;
+}
+
+/**
+ * Everything the list view needs to render an inline INSERT as a card.
+ *
+ * The state itself lives where the table view's draft row already keeps it
+ * (`TableDataTab`), and the commit goes through the very same `insert_row`
+ * call: switching view mode changes how the draft is *drawn*, never what it
+ * writes. That is also why the field set is the result's column list rather
+ * than a free-form document builder — on MongoDB those are the top-level keys
+ * of the current page, and extra fields are added to the new document with the
+ * per-document `+` once it exists.
+ */
+export interface ListDraft {
+  row: DraftRow;
+  /** Catalog info per column (PK / nullable / FK / type), when available. */
+  columns: ColumnInfo[];
+  /** MongoDB: each field may be written as a chosen BSON type. */
+  documentMode: boolean;
+  bitDisplay: "true_false" | "zero_one";
+  connectionId?: string;
+  tableSchema?: string;
+  /** Receives the first editable control, so the grid can focus it on mount. */
+  focusRef?: MutableRefObject<HTMLElement | null>;
+  onChange: (column: string, cell: DraftCell) => void;
+  onCommit: () => void;
+  onCancel: () => void;
 }
 
 export function DocumentListView({
@@ -124,16 +181,25 @@ export function DocumentListView({
   onExpandField,
   copyToClipboard,
   emptyLabel,
+  draft,
 }: DocumentListViewProps) {
-  if (rows.length === 0) {
-    return (
-      <div className="px-4 py-8 text-center text-xs text-muted-foreground">
-        {emptyLabel}
-      </div>
-    );
+  // An empty relation gets the shared branded empty frame, the same one the
+  // table view shows in place of its rows — an unadorned grey line here was the
+  // one place the list view fell out of that family. Suppressed while a draft
+  // card is open: the surface is no longer empty, it is a form.
+  if (rows.length === 0 && !draft) {
+    return <EmptyState size="sm" icon={Inbox} title={emptyLabel} />;
   }
   return (
     <div className="divide-y divide-border/60">
+      {draft && (
+        <DraftDocumentCard
+          columns={columns}
+          fontSize={fontSize}
+          showTypes={showTypes}
+          draft={draft}
+        />
+      )}
       {rows.map((rowValues, i) => (
         <DocumentCard
           key={i}
@@ -154,6 +220,179 @@ export function DocumentListView({
           copyToClipboard={copyToClipboard}
         />
       ))}
+    </div>
+  );
+}
+
+/**
+ * The list view's inline INSERT: one card of `key : <control>` lines, pinned
+ * above the documents exactly where the table view pins its draft row.
+ *
+ * Two deliberate differences from that row:
+ *
+ * - **Focus leaving the card does not commit.** The row commits on blur because
+ *   a grid row is a strip of cells you tab out of; a card is a form, and it
+ *   hosts a Radix type picker whose popover lives in a portal *outside* the
+ *   card — a blur-commit would fire the INSERT the moment the user opened that
+ *   picker. Enter or "Save" commits, Esc or "✕" discards.
+ * - **On MongoDB every field carries its own BSON type**, written into the
+ *   draft cell and sent as `insert_row`'s type hint. Inferring it from the text
+ *   would store `"301353073"` as an `Int32` where the collection holds a
+ *   `Long`, which is the fidelity trap gotcha #29 documents one level up.
+ */
+function DraftDocumentCard({
+  columns,
+  fontSize,
+  showTypes,
+  draft,
+}: {
+  columns: ColumnMeta[];
+  fontSize?: string | number;
+  showTypes: boolean;
+  draft: ListDraft;
+}) {
+  const { t } = useTranslation();
+  const infoByName = useMemo(() => {
+    const m = new Map<string, ColumnInfo>();
+    for (const c of draft.columns) m.set(c.name, c);
+    return m;
+  }, [draft.columns]);
+  const firstEditableIdx = useMemo(
+    () => firstEditableColumn(columns, infoByName),
+    [columns, infoByName],
+  );
+  const saving = draft.row.saving;
+
+  function handleKeyDown(e: ReactKeyboardEvent) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      draft.onCancel();
+    } else if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      draft.onCommit();
+    }
+  }
+
+  return (
+    <div
+      className="border-l-2 border-l-primary bg-primary/5 px-3 py-2"
+      onKeyDown={handleKeyDown}
+    >
+      <div className="mb-1 flex items-center gap-2">
+        <span className="shrink-0 text-3xs font-medium text-primary">
+          {saving ? "…" : "+"}
+        </span>
+        <span className="text-3xs uppercase text-muted-foreground/70">
+          {draft.documentMode
+            ? t("dataGrid.list.newDocument")
+            : t("dataGrid.list.newRow")}
+        </span>
+        <span className="text-3xs text-muted-foreground/50">
+          {t("dataGrid.list.insertHint")}
+        </span>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          <Button
+            size="sm"
+            className="h-6 px-2 text-xs"
+            disabled={saving}
+            onClick={draft.onCommit}
+          >
+            {t("common.save")}
+          </Button>
+          <button
+            type="button"
+            className="rounded p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            title={t("common.cancel")}
+            disabled={saving}
+            onClick={draft.onCancel}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      </div>
+
+      <div className="space-y-px" style={{ fontSize }}>
+        {columns.map((col, idx) => {
+          const cell: DraftCell =
+            draft.row.cells[col.name] ?? { value: null, touched: false };
+          const info = infoByName.get(col.name);
+          const type = cell.type ?? draftTypeFor(info?.data_type);
+          return (
+            <div
+              key={col.name}
+              className="flex items-center gap-2 font-mono leading-relaxed"
+            >
+              <span className="w-10 shrink-0" />
+              <span className="flex min-w-0 flex-1 items-center gap-1">
+                <span className="w-3 shrink-0" />
+                <span className="w-32 shrink-0 truncate font-semibold text-foreground/90">
+                  {col.name}
+                </span>
+                <span className="shrink-0 text-muted-foreground/60">:</span>
+                <span className="min-w-0 flex-1">
+                  <DraftCellControl
+                    info={info}
+                    cell={cell}
+                    saving={saving}
+                    autoFocus={idx === firstEditableIdx}
+                    focusRef={
+                      idx === firstEditableIdx ? draft.focusRef : undefined
+                    }
+                    connectionId={draft.connectionId}
+                    tableSchema={draft.tableSchema}
+                    bitDisplay={draft.bitDisplay}
+                    onChange={(next) => draft.onChange(col.name, next)}
+                  />
+                </span>
+              </span>
+              {showTypes &&
+                (draft.documentMode && !isAutoPkColumn(info) ? (
+                  // The picker's own Enter / Escape must not reach the card's
+                  // keyboard handler below, which reads them as "insert now" /
+                  // "discard the draft". Radix renders the popover in a portal,
+                  // but a portal still bubbles through the *React* tree, so the
+                  // guard has to sit here rather than on the content.
+                  <span
+                    className="shrink-0"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <Select
+                      value={typeValue(type)}
+                      onValueChange={(v) =>
+                        draft.onChange(col.name, { ...cell, type: v as BsonType })
+                      }
+                    >
+                      <SelectTrigger className="h-5 w-32 shrink-0 border-0 bg-transparent px-1 text-3xs text-muted-foreground/70 focus:ring-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BSON_TYPES.map((bsonType) => (
+                          <SelectItem
+                            key={bsonType}
+                            value={bsonType}
+                            className="text-xs"
+                          >
+                            {typeLabel(bsonType)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </span>
+                ) : (
+                  <span className="w-32 shrink-0 truncate px-1 text-right text-3xs text-muted-foreground/60">
+                    {info?.data_type ?? col.data_type}
+                  </span>
+                ))}
+            </div>
+          );
+        })}
+      </div>
+
+      {draft.row.error && (
+        <div className="mt-1 rounded-sm bg-destructive/10 px-2 py-1 text-3xs text-destructive">
+          {draft.row.error}
+        </div>
+      )}
     </div>
   );
 }
@@ -873,6 +1112,18 @@ function valueClass(type: string): string {
     default:
       return "text-foreground/80";
   }
+}
+
+/**
+ * BSON type a *new* field should default to, from the type the collection was
+ * sampled as. `describe_table` reports a nested document as `"document"` while
+ * the picker (and the backend's type-hint vocabulary) spells it `"object"`, so
+ * that one name is translated rather than silently falling through to `string`.
+ */
+function draftTypeFor(dataType?: string): string {
+  if (!dataType) return "string";
+  if (dataType === "document") return "object";
+  return dataType;
 }
 
 /** The picker only knows the types it can write; anything else (a `dbPointer`,
