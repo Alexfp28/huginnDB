@@ -339,7 +339,7 @@ fn rule_to_action(rule: Option<String>) -> Option<String> {
 }
 
 async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<TableStructure> {
-    let q = format!("PRAGMA table_info(\"{}\")", table.replace('"', "\"\""));
+    let q = format!("PRAGMA table_info({})", Dialect::Sqlite.quote_ident(&table));
     let rows = sqlx::query(&q).fetch_all(p).await?;
     // Detect AUTOINCREMENT from the stored CREATE statement (PRAGMA doesn't
     // expose it).
@@ -378,7 +378,7 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
         .collect();
 
     // Indexes (skip auto-created PK/unique-from-constraint where origin != 'c').
-    let il = format!("PRAGMA index_list(\"{}\")", table.replace('"', "\"\""));
+    let il = format!("PRAGMA index_list({})", Dialect::Sqlite.quote_ident(&table));
     let idx_rows = sqlx::query(&il).fetch_all(p).await?;
     let mut indexes = Vec::new();
     for r in idx_rows {
@@ -388,7 +388,7 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
         }
         let name: String = r.get("name");
         let unique: i64 = r.get("unique");
-        let ii = format!("PRAGMA index_info(\"{}\")", name.replace('"', "\"\""));
+        let ii = format!("PRAGMA index_info({})", Dialect::Sqlite.quote_ident(&name));
         let cols_rows = sqlx::query(&ii).fetch_all(p).await?;
         let cols: Vec<String> = cols_rows.into_iter().map(|c| c.get("name")).collect();
         indexes.push(IndexDef {
@@ -400,8 +400,8 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
 
     // FKs (composite-capable), grouped by id.
     let fl = format!(
-        "PRAGMA foreign_key_list(\"{}\")",
-        table.replace('"', "\"\"")
+        "PRAGMA foreign_key_list({})",
+        Dialect::Sqlite.quote_ident(&table)
     );
     let fk_rows = sqlx::query(&fl).fetch_all(p).await?;
     let mut fk_groups: BTreeMap<i64, ForeignKeyDef> = BTreeMap::new();

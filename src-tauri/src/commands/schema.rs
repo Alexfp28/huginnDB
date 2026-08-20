@@ -476,7 +476,7 @@ pub async fn list_tables_inner(state: &AppState, connection_id: &str) -> AppResu
             // The database name is quoted with backtick-escaping. It comes
             // from DATABASE() (server-side catalog), not user input, so the
             // quoting is a safety measure rather than a SQL-injection guard.
-            let q = format!("SHOW TABLE STATUS FROM `{}`", db.replace('`', "``"));
+            let q = format!("SHOW TABLE STATUS FROM {}", Dialect::Mysql.quote_ident(&db));
             let rows = sqlx::query(&q).fetch_all(&p).await?;
 
             // try_get is used throughout instead of get. sqlx's get() panics
@@ -760,13 +760,13 @@ pub async fn list_columns_inner(
             // PRAGMA does not accept bound parameters; identifiers are
             // quoted defensively even though they come from a trusted
             // catalog lookup.
-            let q = format!("PRAGMA table_info(\"{}\")", table.replace('"', "\"\""));
+            let q = format!("PRAGMA table_info({})", Dialect::Sqlite.quote_ident(&table));
             let rows = sqlx::query(&q).fetch_all(&p).await?;
             // foreign_key_list yields one row per column of each constraint.
             // Group by `id` to filter composite FKs.
             let fk_q = format!(
-                "PRAGMA foreign_key_list(\"{}\")",
-                table.replace('"', "\"\"")
+                "PRAGMA foreign_key_list({})",
+                Dialect::Sqlite.quote_ident(&table)
             );
             let fk_rows = sqlx::query(&fk_q).fetch_all(&p).await?;
             use std::collections::HashMap;
@@ -796,7 +796,10 @@ pub async fn list_columns_inner(
                 .collect();
             let mut pk_cache: HashMap<String, Option<String>> = HashMap::new();
             for target in needs_pk_resolution {
-                let q2 = format!("PRAGMA table_info(\"{}\")", target.replace('"', "\"\""));
+                let q2 = format!(
+                    "PRAGMA table_info({})",
+                    Dialect::Sqlite.quote_ident(&target)
+                );
                 let pk = match sqlx::query(&q2).fetch_all(&p).await {
                     Ok(target_rows) => target_rows
                         .into_iter()
@@ -934,13 +937,13 @@ pub async fn list_indexes_inner(
                 .collect()
         }
         DbPool::Sqlite(p) => {
-            let q = format!("PRAGMA index_list(\"{}\")", table.replace('"', "\"\""));
+            let q = format!("PRAGMA index_list({})", Dialect::Sqlite.quote_ident(&table));
             let rows = sqlx::query(&q).fetch_all(&p).await?;
             let mut out = Vec::new();
             for r in rows {
                 let name: String = r.get("name");
                 let unique: i64 = r.get("unique");
-                let q2 = format!("PRAGMA index_info(\"{}\")", name.replace('"', "\"\""));
+                let q2 = format!("PRAGMA index_info({})", Dialect::Sqlite.quote_ident(&name));
                 let cols_rows = sqlx::query(&q2).fetch_all(&p).await?;
                 let cols: Vec<String> = cols_rows.into_iter().map(|c| c.get("name")).collect();
                 out.push(IndexInfo {
