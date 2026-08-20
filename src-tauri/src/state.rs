@@ -18,6 +18,8 @@ use sqlx::{MySqlPool, PgPool, SqlitePool};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::error::{AppError, AppResult};
+
 /// Database backend selected for a [`ConnectionProfile`].
 ///
 /// `PartialEq`/`Eq`/`Hash` so it can take part in
@@ -772,6 +774,33 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// The live pool for `id`, or [`AppError::NotConnected`].
+    ///
+    /// Every command module had a byte-identical private `pool_for` (seven of
+    /// them) before this existed. Cloning the `DbPool` out under the read lock
+    /// rather than handing back a guard is what keeps the lock off the `await`
+    /// points that follow in the caller — the pools are `Arc`-backed, so the
+    /// clone is cheap.
+    pub fn pool_for(&self, id: &str) -> AppResult<DbPool> {
+        self.connections
+            .read()
+            .get(id)
+            .ok_or_else(|| AppError::NotConnected(id.to_string()))
+    }
+
+    /// The live MongoDB handle for `id`, for a surface that only exists on
+    /// MongoDB (the aggregation editor, the index manager).
+    ///
+    /// `unsupported` is the whole message for the non-Mongo case, not a
+    /// fragment: each caller points the user at the SQL equivalent of its own
+    /// feature, and a templated "X is MongoDB-only" would lose that half.
+    pub fn mongo_for(&self, id: &str, unsupported: &str) -> AppResult<MongoConn> {
+        match self.pool_for(id)? {
+            DbPool::Mongo(conn) => Ok(conn),
+            _ => Err(AppError::UnsupportedDriver(unsupported.into())),
+        }
+    }
+
     /// Load any existing profiles, preferences, and tab state from disk;
     /// failures degrade silently to defaults so a corrupted file doesn't
     /// prevent the app from launching.

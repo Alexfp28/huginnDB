@@ -23,14 +23,6 @@ use std::convert::TryFrom;
 use std::io::Write;
 use tauri::{AppHandle, State};
 
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 fn mongo_conn(pool: &DbPool) -> AppResult<&crate::state::MongoConn> {
     match pool {
         DbPool::Mongo(conn) => Ok(conn),
@@ -66,7 +58,7 @@ pub async fn export_collection(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;
     let filters = filters.unwrap_or_default();
@@ -128,7 +120,7 @@ pub async fn import_collection(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;
 

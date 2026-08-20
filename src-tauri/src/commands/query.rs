@@ -299,15 +299,6 @@ pub struct BatchResult {
     pub total_affected: u64,
 }
 
-/// Resolve the active pool for `id`, or fail with [`AppError::NotConnected`].
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 /// One-line, length-capped echo of a statement for the batch summary.
 fn stmt_preview(sql: &str) -> String {
     let one_line = sql.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -412,7 +403,7 @@ pub(crate) async fn execute_with_state(
     connection_id: &str,
     sql: &str,
 ) -> AppResult<QueryResult> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     let driver = pool.driver_name();
     let start = Instant::now();
 
@@ -636,7 +627,7 @@ pub(crate) async fn execute_batch_inner(
     connection_id: String,
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     if let DbPool::Mongo(conn) = &pool {
@@ -1287,7 +1278,7 @@ pub(crate) async fn fetch_table_data_inner(
     if let Some(f) = filters.as_deref() {
         validate_filters(f)?;
     }
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
 
     // MongoDB browse: delegate to the mongo module (find + count). Clone the
     // option args so the SQL path below — though unreachable for mongo — still
@@ -1628,7 +1619,7 @@ pub(crate) async fn count_table_rows_inner(
     search: Option<String>,
     search_columns: Option<Vec<String>>,
 ) -> AppResult<CountResult> {
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     let filters = filters.unwrap_or_default();
@@ -1934,7 +1925,7 @@ pub(crate) async fn update_cell_inner(
         )));
     }
 
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     // MongoDB: update one field of the document addressed by `_id` ($set). The
@@ -2182,7 +2173,7 @@ pub async fn unset_field(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
     let DbPool::Mongo(conn) = &pool else {
         return Err(AppError::InvalidInput(
@@ -2321,7 +2312,7 @@ pub(crate) async fn delete_rows_inner(
         }
     }
 
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     // MongoDB: delete by `_id` ({_id: {$in: [...]}}). Each pk tuple is a single
@@ -2502,7 +2493,7 @@ pub(crate) async fn insert_row_inner(
             "insert_row: no columns supplied".into(),
         ));
     }
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     // MongoDB: insert one document built from the column/value pairs; returns
@@ -2831,7 +2822,7 @@ pub async fn fetch_fk_options(
         None => pick_label_column(&cols),
     };
 
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     // MongoDB has no foreign keys; the FK combobox is not offered for it.
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(

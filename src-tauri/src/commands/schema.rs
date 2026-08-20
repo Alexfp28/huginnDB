@@ -116,15 +116,6 @@ pub struct PrivilegeInfo {
     pub table: Option<String>,
 }
 
-/// Resolve the active pool for `id`, or fail with [`AppError::NotConnected`].
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 /// List visible databases / schemas / catalogs for the connection.
 #[tauri::command]
 pub async fn list_databases(
@@ -153,7 +144,7 @@ pub async fn list_databases_inner(
     state: &AppState,
     connection_id: &str,
 ) -> AppResult<Vec<DatabaseInfo>> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_databases(conn).await;
     }
@@ -221,7 +212,7 @@ pub async fn create_database(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
             let sql = format!("CREATE DATABASE {}", Dialect::Postgres.quote_ident(&name));
@@ -292,7 +283,7 @@ pub async fn drop_database(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
             let sql = format!("DROP DATABASE {}", Dialect::Postgres.quote_ident(&name));
@@ -364,7 +355,7 @@ pub async fn create_collection(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     match &pool {
         DbPool::Mongo(conn) => {
             let db = crate::db::mongo::schema::resolve_db(conn)?;
@@ -407,7 +398,7 @@ pub async fn list_tables(
 /// `list_tables` tool. The `_database` argument the command accepts is unused
 /// (the pool is already bound to one database), so the inner form drops it.
 pub async fn list_tables_inner(state: &AppState, connection_id: &str) -> AppResult<Vec<TableInfo>> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_collections(conn).await;
     }
@@ -630,7 +621,7 @@ pub async fn list_columns_inner(
     schema: Option<String>,
     table: String,
 ) -> AppResult<Vec<ColumnInfo>> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::infer_columns(conn, &table).await;
     }
@@ -875,7 +866,7 @@ pub async fn list_indexes_inner(
     schema: Option<String>,
     table: String,
 ) -> AppResult<Vec<IndexInfo>> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_indexes(conn, &table).await;
     }
@@ -989,7 +980,7 @@ pub async fn drop_table(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let db = crate::db::mongo::schema::resolve_db(conn)?;
         db.collection::<mongodb::bson::Document>(&table)
@@ -1042,7 +1033,7 @@ pub async fn empty_table(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let db = crate::db::mongo::schema::resolve_db(conn)?;
         db.collection::<mongodb::bson::Document>(&table)
@@ -1111,7 +1102,7 @@ pub async fn rename_table(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     // MongoDB has no DDL to build: `renameCollection` is a run-command on
     // `admin` that takes both sides fully qualified, so it also covers the
     // move-to-another-database case the SQL drivers don't offer.
@@ -1213,7 +1204,7 @@ pub async fn server_version(
 /// Borrowed-state core of [`server_version`], reused by the headless MCP
 /// `server_version` tool.
 pub async fn server_version_inner(state: &AppState, connection_id: &str) -> AppResult<String> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let info = conn
             .client
@@ -1285,7 +1276,7 @@ pub async fn list_users(
 /// Borrowed-state core of [`list_users`], reused by the headless MCP
 /// `list_users` tool.
 pub async fn list_users_inner(state: &AppState, connection_id: &str) -> AppResult<Vec<UserInfo>> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_users(conn).await;
     }
@@ -1421,7 +1412,7 @@ pub async fn list_privileges_inner(
     connection_id: &str,
     user: String,
 ) -> AppResult<Vec<PrivilegeInfo>> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         return crate::db::mongo::schema::list_privileges(conn, &user).await;
     }

@@ -17,14 +17,6 @@ use sqlx::Row;
 use std::collections::BTreeMap;
 use tauri::State;
 
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 // ---------------------------------------------------------------------------
 // Introspection
 // ---------------------------------------------------------------------------
@@ -61,7 +53,7 @@ pub async fn get_table_structure_inner(
     schema: Option<String>,
     table: String,
 ) -> AppResult<TableStructure> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     match pool {
         DbPool::Postgres(p) => pg_structure(&p, schema, table).await,
         DbPool::Mysql(p) => mysql_structure(&p, schema, table).await,
@@ -481,7 +473,7 @@ pub async fn preview_structure_change(
         &args.connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "structure editing is not supported on MongoDB in this version".into(),
@@ -522,7 +514,7 @@ pub(crate) async fn apply_structure_change_inner(
     state: &AppState,
     args: StructureChangeArgs,
 ) -> AppResult<()> {
-    let pool = pool_for(state, &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "structure editing is not supported on MongoDB in this version".into(),

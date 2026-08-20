@@ -16,14 +16,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use tauri::State;
 
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 // ---------------------------------------------------------------------------
 // Introspection
 // ---------------------------------------------------------------------------
@@ -88,7 +80,7 @@ pub async fn get_view_definition(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::MsSql(_)) {
         return Err(AppError::UnsupportedDriver(
             "the view editor does not support SQL Server yet".into(),
@@ -189,7 +181,7 @@ pub async fn preview_view_change(
         &args.connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let (statements, drop_and_recreate) =
         build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
@@ -213,7 +205,7 @@ pub async fn apply_view_change(
         &args.connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let (statements, _) = build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
 
@@ -274,7 +266,7 @@ pub async fn rename_view(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let new_ident = dialect.quote_ident(new_name.trim());
     let sql = match dialect {
@@ -342,7 +334,7 @@ pub async fn drop_view(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     // MongoDB is the one driver whose views this module can otherwise not
     // touch — but *dropping* one needs no DDL at all (a view lives in the same
     // namespace as a collection), so it is handled here rather than forcing
