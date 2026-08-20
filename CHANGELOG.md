@@ -8,6 +8,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **A determinate progress bar for the profile/environment import dialogs**, fed
+  by a new `huginndb://import-progress` event emitted from
+  `apply_profile_imports` (`src-tauri/src/commands/connection.rs`) once per
+  profile as it works through the exported list. Now that the import runs off
+  the main thread (see the "not responding" fix below), the window stays
+  responsive during a large import, but the disabled button gave no sense of
+  whether it was almost done or stuck — a real concern once the operation can
+  legitimately take tens of seconds. `ImportProgressBar`
+  (`src/components/connection/dialogs/`) renders "N of total" and is shared by
+  both `ImportProfilesDialog` and `ImportEnvironmentDialog`, each attaching a
+  scoped `listen()` for the duration of its own `doImport` call.
+
+- **"Mark all as: …" bulk actions above the conflict list** in both import
+  dialogs (`ConflictBulkActions`, `src/components/connection/dialogs/`), so
+  resolving a bundle with dozens of conflicting profiles — the exact case a
+  multi-environment import produces — no longer means clicking
+  Rename/Overwrite/Skip on every row individually. Sets every conflict's
+  resolution at once via the same `resolutions` map the per-row buttons write
+  to, so nothing downstream needed to change.
+
 - **A library of user-defined JSON Schemas, and per-column bindings that make the
   cell editor schema-aware.** A HuginnDB used as a configuration store ends up
   with `json`/`jsonb`/`TEXT` columns holding documents hundreds of lines long that
@@ -199,6 +219,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   while `transfer.rs` sends `total_profiles`. Nothing read it, so nothing was broken,
   but the next person to read it would have got `undefined`.
 
+- **The environment-import wizard crashed to a blank window on its last step, with
+  "Cannot read properties of undefined (reading 'length')" in the console.** This is
+  that same snake_case/camelCase mismatch one level over, except this time something
+  *did* read the field: `EnvironmentImportAnalysisEntry.connection_count` and
+  `ImportedEnvironment.environment_id`/`origin_ids` had no `#[serde(rename_all =
+  "camelCase")]`, so they crossed the wire as-is while `src/types.ts` and
+  `ImportEnvironmentDialog.tsx` were written expecting `connectionCount`/
+  `environmentId`/`originIds`. The review step silently showed "undefined
+  conexión(es)"; the done step's `env.originIds.length` threw outright, taking the
+  whole dialog tree down with it (React has no error boundary above `FileMenu`).
+  Reproduced by importing a multi-environment bundle and choosing "Omitir" for every
+  conflicting profile. Both structs now carry `rename_all = "camelCase"` — the
+  `EnvironmentImportResult.json_schemas` / `EnvironmentImportAnalysis.total_profiles`
+  fields one level up deliberately keep snake_case (see the code comments), so this
+  is not a blanket rename.
+
 - **Removing a shared origin no longer orphans what it published forever.**
   `remove_origin` always left the connections (and now environments) it
   imported in place, tagged with a now-dangling `origin_id` — deliberately,
@@ -212,6 +248,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   out. Removing an origin now raises the same vanished-notice immediately,
   from local state, while the origin's name is still known — reusing the
   existing decide-later flow instead of inventing a second one.
+
+- **Importing a bundle with many encrypted connection profiles no longer
+  freezes the window ("not responding" in Windows) for the whole import.**
+  `import_environment` and `import_profiles` were declared as plain, non-async
+  Tauri commands, which Tauri dispatches directly on the app's main thread
+  rather than the async runtime's thread pool. Both call
+  `apply_profile_imports`, which runs `transfer::decrypt_secret` once per
+  encrypted secret — a 600 000-iteration PBKDF2-HMAC-SHA256 key derivation,
+  deliberately slow, with a fresh random salt per secret so there is no shared
+  derivation to cache across them. A single-profile import never surfaced
+  this; importing 13 environments sharing a pool of connection profiles (22 of
+  them conflicting with existing ones) meant dozens of derivations running
+  serially, each costing on the order of a hundred milliseconds or more,
+  blocking the main thread for long enough that Windows reported the app as
+  hung. Both commands are now `async fn`, with the file read, the profile
+  merge/decrypt loop, the JSON-Schema binding remap, and the tab-state write
+  moved into a `tauri::async_runtime::spawn_blocking` closure — the same CPU
+  cost is paid, but off the thread that pumps window messages.
 
 ## [1.16.2] — 2026-08-19
 

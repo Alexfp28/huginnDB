@@ -1260,6 +1260,7 @@
       "passphrase": "Passphrase",
       "passphrasePlaceholder": "Enter the export passphrase",
       "conflictsDescription": "{{count}} profile(s) share an ID with an existing one. Choose how to handle each:",
+      "markAllAs": "Mark all as:",
       "existingAs": "(exists as \"{{name}}\")",
       "action": {
         "overwrite": "Overwrite",
@@ -1271,7 +1272,8 @@
       "summaryImported": "{{count}} profile(s) imported.",
       "summarySkipped": "{{count}} skipped.",
       "summaryRenamed": "{{count}} renamed to avoid duplicates.",
-      "needsPassword": "{{count}} profile(s) were imported without a password. Open each connection to set a password before connecting."
+      "needsPassword": "{{count}} profile(s) were imported without a password. Open each connection to set a password before connecting.",
+      "progress": "Decrypting and importing profiles… {{done}} of {{total}}"
     },
     "exportEnvironment": {
       "title": "Export environments",

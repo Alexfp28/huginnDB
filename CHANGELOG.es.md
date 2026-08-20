@@ -10,6 +10,30 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Una barra de progreso determinista para los diálogos de importar
+  perfiles/entornos**, alimentada por un nuevo evento
+  `huginndb://import-progress` emitido desde `apply_profile_imports`
+  (`src-tauri/src/commands/connection.rs`) una vez por cada perfil a medida
+  que recorre la lista exportada. Ahora que la importación corre fuera del
+  hilo principal (ver el arreglo del «No responde» más abajo), la ventana se
+  mantiene receptiva durante una importación grande, pero el botón
+  deshabilitado no daba ninguna pista de si estaba a punto de terminar o
+  atascado — una preocupación real ahora que la operación puede tardar
+  legítimamente decenas de segundos. `ImportProgressBar`
+  (`src/components/connection/dialogs/`) muestra «N de total» y la comparten
+  tanto `ImportProfilesDialog` como `ImportEnvironmentDialog`, cada uno
+  suscribiendo su propio `listen()` durante la duración de su llamada a
+  `doImport`.
+
+- **Acciones masivas «Marcar todo como: …» sobre la lista de conflictos** en
+  ambos diálogos de importación (`ConflictBulkActions`,
+  `src/components/connection/dialogs/`), para que resolver un lote con
+  decenas de perfiles en conflicto — justo lo que produce una importación de
+  varios entornos — ya no signifique pulsar Mantener ambos/Sobreescribir/
+  Omitir fila por fila. Fija la resolución de todos los conflictos de una vez
+  a través del mismo mapa `resolutions` que ya escriben los botones por fila,
+  así que no hizo falta tocar nada aguas abajo.
+
 - **Una biblioteca de esquemas JSON definidos por el usuario, y vínculos por
   columna que hacen que el editor de celda entienda de esquemas.** Un HuginnDB
   usado como almacén de configuración acaba con columnas `json`/`jsonb`/`TEXT` que
@@ -219,7 +243,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   mientras que `transfer.rs` envía `total_profiles`. Nadie lo leía, así que nada
   estaba roto, pero la siguiente persona que lo leyera habría obtenido `undefined`.
 
-
+- **El asistente de importación de entornos reventaba a ventana en blanco en su
+  último paso, con «Cannot read properties of undefined (reading 'length')» en la
+  consola.** Es el mismo desajuste snake_case/camelCase de un nivel más arriba,
+  solo que esta vez algo sí leía el campo: `EnvironmentImportAnalysisEntry.
+  connection_count` e `ImportedEnvironment.environment_id`/`origin_ids` no llevaban
+  `#[serde(rename_all = "camelCase")]`, así que cruzaban el cable tal cual mientras
+  `src/types.ts` e `ImportEnvironmentDialog.tsx` estaban escritos esperando
+  `connectionCount`/`environmentId`/`originIds`. El paso de revisión mostraba en
+  silencio «undefined conexión(es)»; el paso final, `env.originIds.length`, lanzaba
+  directamente, tumbando todo el árbol de diálogos (React no tiene un límite de
+  error por encima de `FileMenu`). Reproducido importando un lote de varios
+  entornos y eligiendo «Omitir» para cada perfil en conflicto. Ambos structs llevan
+  ahora `rename_all = "camelCase"` — los campos `EnvironmentImportResult.
+  json_schemas` / `EnvironmentImportAnalysis.total_profiles` un nivel por encima se
+  quedan deliberadamente en snake_case (ver los comentarios del código), así que
+  esto no es un cambio de nomenclatura general.
 
 - **Eliminar un origen compartido ya no deja huérfano para siempre lo que
   publicó.** `remove_origin` siempre dejaba en su sitio las conexiones (y ahora
@@ -235,7 +274,30 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   imposible de borrar desde la interfaz, sin salida. Eliminar un origen levanta
   ahora ese mismo aviso de inmediato, a partir del estado local y mientras
   todavía se conoce el nombre del origen, reutilizando el flujo existente de
-  decidir-después en lugar de inventar un segundo.## [1.16.2] — 2026-08-19
+  decidir-después en lugar de inventar un segundo.
+
+- **Importar un lote con muchos perfiles de conexión cifrados ya no bloquea la
+  ventana (Windows la marca «No responde») durante toda la importación.**
+  `import_environment` e `import_profiles` estaban declarados como comandos
+  Tauri síncronos normales, y Tauri los ejecuta directamente en el hilo
+  principal de la app en lugar de en el pool de hilos del runtime asíncrono.
+  Ambos llaman a `apply_profile_imports`, que ejecuta `transfer::decrypt_secret`
+  una vez por cada secreto cifrado: una derivación de clave PBKDF2-HMAC-SHA256
+  de 600.000 iteraciones, deliberadamente lenta, con una sal aleatoria propia
+  por secreto, así que no hay ninguna derivación compartida que se pueda
+  cachear entre ellos. Importar un único perfil nunca sacó esto a la luz;
+  importar 13 entornos que compartían un mismo grupo de perfiles de conexión
+  (22 de ellos en conflicto con perfiles ya existentes) suponía docenas de
+  derivaciones corriendo en serie, cada una costando del orden de cien
+  milisegundos o más, bloqueando el hilo principal el tiempo suficiente para
+  que Windows reportara la app como colgada. Ambos comandos son ahora
+  `async fn`, con la lectura del fichero, el bucle de fusión/descifrado de
+  perfiles, el reapuntado de vínculos de JSON Schema y la escritura del
+  tab-state movidos a un cierre de `tauri::async_runtime::spawn_blocking`: se
+  paga el mismo coste de CPU, pero fuera del hilo que bombea los mensajes de
+  la ventana.
+
+## [1.16.2] — 2026-08-19
 
 ### Añadido
 

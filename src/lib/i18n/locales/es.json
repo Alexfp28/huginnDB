@@ -1260,6 +1260,7 @@
       "passphrase": "Contraseña de exportación",
       "passphrasePlaceholder": "Introduce la contraseña de exportación",
       "conflictsDescription": "{{count}} perfil(es) comparten un ID con uno existente. Elige cómo gestionar cada uno:",
+      "markAllAs": "Marcar todo como:",
       "existingAs": "(existe como \"{{name}}\")",
       "action": {
         "overwrite": "Sobreescribir",
@@ -1271,7 +1272,8 @@
       "summaryImported": "{{count}} perfil(es) importado(s).",
       "summarySkipped": "{{count}} omitido(s).",
       "summaryRenamed": "{{count}} renombrado(s) para evitar duplicados.",
-      "needsPassword": "{{count}} perfil(es) se importaron sin contraseña. Abre cada conexión para configurarla antes de conectar."
+      "needsPassword": "{{count}} perfil(es) se importaron sin contraseña. Abre cada conexión para configurarla antes de conectar.",
+      "progress": "Descifrando e importando perfiles… {{done}} de {{total}}"
     },
     "exportEnvironment": {
       "title": "Exportar entornos",

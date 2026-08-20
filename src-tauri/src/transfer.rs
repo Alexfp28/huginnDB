@@ -365,7 +365,14 @@ pub struct EnvironmentImportAnalysis {
 /// Display summary for one environment inside an
 /// [`EnvironmentImportAnalysis`] — enough for the picker to show what each
 /// one is without decrypting or importing anything yet.
+///
+/// `camelCase` on the wire (unlike its parent [`EnvironmentImportAnalysis`],
+/// which keeps `total_profiles` etc. snake_case): the frontend's
+/// `EnvironmentImportAnalysisEntry` in `src/types.ts` was written expecting
+/// `connectionCount`, and nothing round-trips this type through disk, so
+/// there is no old file format to stay compatible with.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EnvironmentImportAnalysisEntry {
     pub name: String,
     pub connection_count: usize,
@@ -390,7 +397,14 @@ pub struct EnvironmentImportResult {
 }
 
 /// One environment created by `import_environment`.
+///
+/// `camelCase` on the wire, matching `src/types.ts`'s `environmentId` /
+/// `originIds` — this DTO is a command return value, never read back from a
+/// file, so there is no on-disk format to keep snake_case for (contrast
+/// [`EnvironmentImportResult::json_schemas`], which deliberately stays
+/// snake_case one level up).
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportedEnvironment {
     pub environment_id: String,
     pub name: String,

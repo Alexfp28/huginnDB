@@ -10,8 +10,9 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Upload, KeyRound, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Upload, KeyRound, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { ImportProgressBar } from "./ImportProgressBar";
+import { ConflictBulkActions } from "./ConflictBulkActions";
 import type { ConflictAction, ConflictResolution, ImportAnalysis, ImportResult } from "@/types";
+
+// Mirrors `IMPORT_PROGRESS_EVENT` in `src-tauri/src/commands/connection.rs`.
+const IMPORT_PROGRESS_EVENT = "huginndb://import-progress";
 
 type Step = "pick" | "passphrase" | "conflicts" | "done";
 
@@ -45,6 +51,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   async function handlePickFile() {
     try {
@@ -110,6 +117,13 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
   async function doImport(path: string, pp: string | undefined, resolved: ConflictResolution[]) {
     setLoading(true);
     setError(null);
+    // Decrypting each secret is deliberately slow (PBKDF2), so a large
+    // bundle can take a while — listen for the backend's per-profile
+    // progress event and show a determinate bar instead of a bare spinner.
+    const unlisten = await listen<{ done: number; total: number }>(
+      IMPORT_PROGRESS_EVENT,
+      (event) => setProgress(event.payload),
+    );
     try {
       const r = await api.importProfiles(path, pp, resolved);
       setResult(r);
@@ -118,6 +132,8 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
     } catch (e) {
       setError(String(e));
     } finally {
+      unlisten();
+      setProgress(null);
       setLoading(false);
     }
   }
@@ -138,6 +154,13 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
     setResolutions((prev) => ({ ...prev, [id]: action }));
   }
 
+  function setAllResolutions(action: ConflictAction) {
+    if (!analysis) return;
+    const next: Record<string, ConflictAction> = {};
+    for (const c of analysis.conflicts) next[c.id] = action;
+    setResolutions(next);
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
       <DialogContent className="max-w-md">
@@ -147,6 +170,8 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
             {t("transfer.import.title")}
           </DialogTitle>
         </DialogHeader>
+
+        {progress && <ImportProgressBar done={progress.done} total={progress.total} />}
 
         {/* ---------------------------------------------------------------- */}
         {/* Step: pick */}
@@ -211,6 +236,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
                 onClick={handlePassphraseNext}
                 disabled={passphrase.length === 0 || loading}
               >
+                {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {t("common.continue")}
               </Button>
             </DialogFooter>
@@ -227,6 +253,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
                 count: analysis.conflicts.length,
               })}
             </p>
+            <ConflictBulkActions onSelect={setAllResolutions} />
             <div className="divide-y divide-border rounded-md border border-border max-h-56 overflow-y-auto">
               {analysis.conflicts.map((c) => (
                 <div key={c.id} className="px-3 py-2 space-y-1.5">
@@ -265,6 +292,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
                 {t("common.cancel")}
               </Button>
               <Button size="sm" onClick={handleConflictsNext} disabled={loading}>
+                {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {t("transfer.import.importButton", { count: analysis.total })}
               </Button>
             </DialogFooter>

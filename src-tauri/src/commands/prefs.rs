@@ -4,7 +4,9 @@
 //! startup and writes back via the matching setters (debounced on the
 //! frontend side to avoid hammering the disk while a user drags a slider).
 
-use crate::commands::connection::{apply_profile_imports, PROFILES_CHANGED_EVENT};
+use crate::commands::connection::{
+    apply_profile_imports, ImportProgress, IMPORT_PROGRESS_EVENT, PROFILES_CHANGED_EVENT,
+};
 use crate::error::{AppError, AppResult};
 use crate::prefs::{self, Preferences};
 use crate::state::{AppState, ConnectionProfile};
@@ -620,163 +622,186 @@ pub fn analyze_environment_import(
 /// encrypted one surfaces the same "no passphrase stored" state a freshly
 /// `add_origin`-ed one would, on the next sync — there's nothing special to
 /// resolve here at import time.
+///
+/// `async fn` on purpose, with the actual work run via `spawn_blocking`: a
+/// synchronous Tauri command executes on the main thread, and
+/// `apply_profile_imports` runs one 600 000-iteration PBKDF2 derivation per
+/// encrypted secret (`transfer::decrypt_secret`) — deliberately slow, and with
+/// a bundle carrying dozens of environments' worth of connection profiles,
+/// slow enough in aggregate to freeze the window for the whole import (issue:
+/// app reported "not responding" importing 13 environments / 22 conflicting
+/// profiles).
 #[tauri::command]
-pub fn import_environment(
+pub async fn import_environment(
     app: AppHandle,
     state: State<'_, AppState>,
     file_path: String,
     passphrase: Option<String>,
     conflict_resolutions: Vec<ConflictResolution>,
 ) -> AppResult<EnvironmentImportResult> {
-    let data = std::fs::read_to_string(&file_path)?;
-    let export: EnvironmentExportFile = serde_json::from_str(&data)?;
+    let profiles_lock = state.profiles.clone();
+    let json_schemas_lock = state.json_schemas.clone();
+    let tab_state_lock = state.tab_state.clone();
+    let app_for_task = app.clone();
 
-    if export.meta.version != 1 {
-        return Err(AppError::Transfer(format!(
-            "unsupported export format version {}",
-            export.meta.version
-        )));
-    }
-    if export.meta.kind != KIND_ENVIRONMENT {
-        return Err(AppError::Transfer(
-            "this file is not an environment export".into(),
-        ));
-    }
-    if export.meta.encrypted && passphrase.is_none() {
-        return Err(AppError::Transfer(
-            "this export file contains encrypted passwords — provide a passphrase".into(),
-        ));
-    }
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<EnvironmentImportResult> {
+        let data = std::fs::read_to_string(&file_path)?;
+        let export: EnvironmentExportFile = serde_json::from_str(&data)?;
 
-    let resolution_map: std::collections::HashMap<String, ConflictAction> = conflict_resolutions
-        .into_iter()
-        .map(|r| (r.id, r.action))
-        .collect();
-
-    let (profile_result, id_map, overwritten_ids) = {
-        let mut profiles = state.profiles.write();
-        let (result, id_map, overwritten_ids) = apply_profile_imports(
-            &mut profiles,
-            export.profiles,
-            passphrase.as_deref(),
-            &resolution_map,
-        )?;
-        store::save_profiles(&profiles)?;
-        (result, id_map, overwritten_ids)
-    };
-    let _ = app.emit(PROFILES_CHANGED_EVENT, ());
-
-    // JSON Schemas, when the file carried them. Two passes, in this order:
-    // first repoint local bindings whose profile was *overwritten* (a fresh
-    // uuid is minted even then, so they would silently stop matching), then
-    // merge the file's own schemas, translating their bindings through the same
-    // `id_map` that `launch.visible_connections` uses below.
-    let schema_result = {
-        let bundle = export.json_schemas;
-        let has_bundle = !bundle.is_empty();
-        if !has_bundle && overwritten_ids.is_empty() {
-            None
-        } else {
-            let now = chrono::Utc::now().to_rfc3339();
-            let mut lib = state.json_schemas.write();
-            crate::json_schemas::remap_connection_ids(&mut lib, &overwritten_ids);
-            let outcome = if has_bundle {
-                Some(crate::json_schemas::import::apply_imports(
-                    &mut lib,
-                    bundle,
-                    &resolution_map,
-                    &crate::json_schemas::import::ConnectionRemap::IdMap(&id_map),
-                    &now,
-                ))
-            } else {
-                None
-            };
-            let snapshot = lib.clone();
-            drop(lib);
-            crate::json_schemas::save_library(&snapshot)?;
-            let _ = app.emit(
-                crate::commands::json_schemas::JSON_SCHEMAS_CHANGED_EVENT,
-                (),
-            );
-            outcome
+        if export.meta.version != 1 {
+            return Err(AppError::Transfer(format!(
+                "unsupported export format version {}",
+                export.meta.version
+            )));
         }
-    };
+        if export.meta.kind != KIND_ENVIRONMENT {
+            return Err(AppError::Transfer(
+                "this file is not an environment export".into(),
+            ));
+        }
+        if export.meta.encrypted && passphrase.is_none() {
+            return Err(AppError::Transfer(
+                "this export file contains encrypted passwords — provide a passphrase".into(),
+            ));
+        }
 
-    let (snapshot, imported_environments) = {
-        let mut guard = state.tab_state.write();
-        let base_order = guard
-            .environments
-            .iter()
-            .map(|e| e.order)
-            .max()
-            .unwrap_or(0)
-            + 1;
-
-        let mut imported_environments = Vec::with_capacity(export.environments.len());
-        for (i, bundle) in export.environments.into_iter().enumerate() {
-            let ExportedEnvironmentBundle {
-                environment,
-                connection_ids,
-                origins: bundle_origins,
-            } = bundle;
-
-            let mut origins = Vec::with_capacity(bundle_origins.len());
-            let mut origin_ids = Vec::with_capacity(bundle_origins.len());
-            for eo in bundle_origins {
-                let oid = uuid::Uuid::new_v4().to_string();
-                origin_ids.push(oid.clone());
-                origins.push(Origin {
-                    id: oid,
-                    name: eo.name,
-                    path: eo.path,
-                    last_synced_at: None,
-                });
-            }
-
-            // Translate this bundle's original connection ids into whatever
-            // they actually landed as — a skipped profile has no entry here.
-            let visible: Vec<String> = connection_ids
-                .iter()
-                .filter_map(|orig| id_map.get(orig).cloned())
+        let resolution_map: std::collections::HashMap<String, ConflictAction> =
+            conflict_resolutions
+                .into_iter()
+                .map(|r| (r.id, r.action))
                 .collect();
-            let visible_connections = if visible.is_empty() {
+
+        let (profile_result, id_map, overwritten_ids) = {
+            let mut profiles = profiles_lock.write();
+            let (result, id_map, overwritten_ids) = apply_profile_imports(
+                &mut profiles,
+                export.profiles,
+                passphrase.as_deref(),
+                &resolution_map,
+                |done, total| {
+                    let _ =
+                        app_for_task.emit(IMPORT_PROGRESS_EVENT, ImportProgress { done, total });
+                },
+            )?;
+            store::save_profiles(&profiles)?;
+            (result, id_map, overwritten_ids)
+        };
+        let _ = app_for_task.emit(PROFILES_CHANGED_EVENT, ());
+
+        // JSON Schemas, when the file carried them. Two passes, in this order:
+        // first repoint local bindings whose profile was *overwritten* (a fresh
+        // uuid is minted even then, so they would silently stop matching), then
+        // merge the file's own schemas, translating their bindings through the same
+        // `id_map` that `launch.visible_connections` uses below.
+        let schema_result = {
+            let bundle = export.json_schemas;
+            let has_bundle = !bundle.is_empty();
+            if !has_bundle && overwritten_ids.is_empty() {
                 None
             } else {
-                Some(visible)
-            };
+                let now = chrono::Utc::now().to_rfc3339();
+                let mut lib = json_schemas_lock.write();
+                crate::json_schemas::remap_connection_ids(&mut lib, &overwritten_ids);
+                let outcome = if has_bundle {
+                    Some(crate::json_schemas::import::apply_imports(
+                        &mut lib,
+                        bundle,
+                        &resolution_map,
+                        &crate::json_schemas::import::ConnectionRemap::IdMap(&id_map),
+                        &now,
+                    ))
+                } else {
+                    None
+                };
+                let snapshot = lib.clone();
+                drop(lib);
+                crate::json_schemas::save_library(&snapshot)?;
+                let _ = app_for_task.emit(
+                    crate::commands::json_schemas::JSON_SCHEMAS_CHANGED_EVENT,
+                    (),
+                );
+                outcome
+            }
+        };
 
-            let env_id = uuid::Uuid::new_v4().to_string();
-            let name = environment.name.clone();
-            let env = Environment {
-                id: env_id.clone(),
-                name: environment.name,
-                color: environment.color,
-                icon: environment.icon,
-                order: base_order + i as i32,
-                theme_id: environment.theme_id,
-                origins,
-                launch: LaunchState {
-                    visible_connections,
-                    ..LaunchState::default()
-                },
-                ..Environment::default()
-            };
-            imported_environments.push(ImportedEnvironment {
-                environment_id: env_id,
-                name,
-                origin_ids,
-            });
-            guard.environments.push(env);
-        }
-        (guard.clone(), imported_environments)
-    };
-    tab_state::save_tab_state(&snapshot)?;
+        let (snapshot, imported_environments) = {
+            let mut guard = tab_state_lock.write();
+            let base_order = guard
+                .environments
+                .iter()
+                .map(|e| e.order)
+                .max()
+                .unwrap_or(0)
+                + 1;
 
-    Ok(EnvironmentImportResult {
-        environments: imported_environments,
-        profiles: profile_result,
-        json_schemas: schema_result,
+            let mut imported_environments = Vec::with_capacity(export.environments.len());
+            for (i, bundle) in export.environments.into_iter().enumerate() {
+                let ExportedEnvironmentBundle {
+                    environment,
+                    connection_ids,
+                    origins: bundle_origins,
+                } = bundle;
+
+                let mut origins = Vec::with_capacity(bundle_origins.len());
+                let mut origin_ids = Vec::with_capacity(bundle_origins.len());
+                for eo in bundle_origins {
+                    let oid = uuid::Uuid::new_v4().to_string();
+                    origin_ids.push(oid.clone());
+                    origins.push(Origin {
+                        id: oid,
+                        name: eo.name,
+                        path: eo.path,
+                        last_synced_at: None,
+                    });
+                }
+
+                // Translate this bundle's original connection ids into whatever
+                // they actually landed as — a skipped profile has no entry here.
+                let visible: Vec<String> = connection_ids
+                    .iter()
+                    .filter_map(|orig| id_map.get(orig).cloned())
+                    .collect();
+                let visible_connections = if visible.is_empty() {
+                    None
+                } else {
+                    Some(visible)
+                };
+
+                let env_id = uuid::Uuid::new_v4().to_string();
+                let name = environment.name.clone();
+                let env = Environment {
+                    id: env_id.clone(),
+                    name: environment.name,
+                    color: environment.color,
+                    icon: environment.icon,
+                    order: base_order + i as i32,
+                    theme_id: environment.theme_id,
+                    origins,
+                    launch: LaunchState {
+                        visible_connections,
+                        ..LaunchState::default()
+                    },
+                    ..Environment::default()
+                };
+                imported_environments.push(ImportedEnvironment {
+                    environment_id: env_id,
+                    name,
+                    origin_ids,
+                });
+                guard.environments.push(env);
+            }
+            (guard.clone(), imported_environments)
+        };
+        tab_state::save_tab_state(&snapshot)?;
+
+        Ok(EnvironmentImportResult {
+            environments: imported_environments,
+            profiles: profile_result,
+            json_schemas: schema_result,
+        })
     })
+    .await
+    .map_err(|e| AppError::Transfer(format!("environment import task failed: {e}")))?
 }
 
 #[cfg(test)]
