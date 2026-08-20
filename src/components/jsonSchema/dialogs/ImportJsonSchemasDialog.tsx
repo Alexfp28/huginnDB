@@ -75,12 +75,16 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
       const found = await api.analyzeJsonSchemaImport(picked);
       setFilePath(picked);
       setAnalysis(found);
-      // Default every conflict to "rename", the same non-destructive default the
-      // profile importer uses: never overwrite something the user was not asked
-      // about.
+      // Default every conflict to "skip", matching `ImportProfilesDialog`.
+      //
+      // The detection axis differs — schema conflicts match on *name*, profiles on
+      // *id* — but the failure mode is identical and it is the common one:
+      // re-importing your own export with "rename" accumulates `x (imported)`,
+      // `x (2)`, … on every round trip. The conflicts step is still shown, so a
+      // genuinely different schema is one click from Rename or Overwrite.
       setActions(
         Object.fromEntries(
-          found.conflicts.map((c) => [c.id, "rename" as ConflictAction]),
+          found.conflicts.map((c) => [c.id, "skip" as ConflictAction]),
         ),
       );
       setStep(found.conflicts.length > 0 ? "conflicts" : "review");
@@ -151,7 +155,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
                     {c.existing_name}
                   </span>
                   <select
-                    value={actions[c.id] ?? "rename"}
+                    value={actions[c.id] ?? "skip"}
                     onChange={(e) =>
                       setActions((prev) => ({
                         ...prev,
@@ -160,13 +164,13 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
                     }
                     className="h-6 rounded-sm border border-input bg-background px-1 text-xs"
                   >
+                    <option value="skip">{t("transfer.import.action.skip")}</option>
                     <option value="rename">
                       {t("transfer.import.action.rename")}
                     </option>
                     <option value="overwrite">
                       {t("transfer.import.action.overwrite")}
                     </option>
-                    <option value="skip">{t("transfer.import.action.skip")}</option>
                   </select>
                 </div>
               ))}

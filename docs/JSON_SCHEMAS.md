@@ -195,6 +195,13 @@ opt-in switch. Schemas are global rather than owned by the environment, so this
 packs the whole library alongside it — convenient for setting up a new machine
 from a single file.
 
+**Not yet through a shared origin.** A shared origin pointed at an environment
+export syncs the environment and its connections continuously, but it ignores any
+schemas the same file carries: importing that file by hand brings them in, a
+background sync does not. So a shared origin is not a way to keep a team's schema
+library up to date yet — export/import the file for that. Continuous origin sync
+for schemas is planned.
+
 **One caveat, in both directions.** A binding pinned to a *connection* references
 that connection by an identifier local to the machine that created it. On import
 elsewhere, such a binding arrives **switched off**, with its scope preserved so

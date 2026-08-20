@@ -105,13 +105,30 @@ pub fn apply_imports(
 
     for incoming in bundle.schemas {
         let existing_idx = lib.schemas.iter().position(|s| s.name == incoming.name);
-        // Default to `Rename` when the frontend sent no resolution, matching
-        // `apply_profile_imports`. With no conflict, `Rename` simply means
-        // "insert as new".
+        // Default to `Skip` for a conflict the caller left unresolved, matching
+        // `apply_profile_imports`.
+        //
+        // The reason is not the same as the profile importer's, so it is worth
+        // stating. There, a conflict is matched by *id*, so it is definitionally
+        // the same connection and skipping is plainly idempotent. Here it is
+        // matched by *name* (see `JsonSchemaItem::name`), and two people can
+        // genuinely own a different `product-config` — so `Rename` looks like the
+        // safer, lossless answer.
+        //
+        // It is not, in practice: the dominant real-world case is re-importing
+        // your own export, and renaming turns that into `x (imported)`, `x (2)`,
+        // … accumulating a duplicate on every round trip. That was reported as a
+        // real problem for profiles and the same mechanism produces it here. The
+        // conflict step is still shown whenever a name collides, so a genuinely
+        // different schema is one click from `Rename` or `Overwrite`; `Skip` is
+        // only what "I did not touch that row" means.
+        //
+        // Note the branch below: with **no** conflict, this value is irrelevant —
+        // an unmatched entry is always inserted as new.
         let action = resolutions
             .get(&incoming.id)
             .copied()
-            .unwrap_or(ConflictAction::Rename);
+            .unwrap_or(ConflictAction::Skip);
 
         match (existing_idx, action) {
             (Some(_), ConflictAction::Skip) => {

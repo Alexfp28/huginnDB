@@ -124,6 +124,33 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `AppearanceSection` con el grupo de vista de datos. Además, cuatro acciones nuevas
   en la paleta de comandos y tres entradas de salto a preferencia.
 
+
+- **Los orígenes compartidos pueden ahora publicar y sincronizar de forma
+  continua un entorno completo (#108), no solo conexiones sueltas.** Hasta
+  ahora `sync_origin` daba por supuesto que el fichero era un paquete de
+  perfiles (`meta.kind = "profiles"`); apuntar un origen a una exportación de
+  entorno (`meta.kind = "environment"`, el mismo fichero que ya escribe
+  `export_environments`) sincronizaba en silencio solo sus `profiles` y
+  descartaba todas las entradas de `environments`, ya que `serde_json` ignora
+  los campos desconocidos en lugar de fallar. Ahora `sync_origin` lee el tipo
+  declarado del propio fichero y, para una exportación de entorno, reconcilia
+  un entorno espejo local en cada tirón: lo crea la primera vez y refresca su
+  nombre/color/icono/tema y su pertenencia de conexiones
+  (`launch.visible_connections`) en cada sincronización posterior. La
+  correspondencia entre sincronizaciones se hace por
+  `(origin_id, origin_source_id)` — el `Environment.id` del publicador en el
+  momento de exportar, un campo nuevo en `ExportedEnvironment` — y no por
+  nombre ni por posición en el fichero, que pueden cambiar entre
+  sincronizaciones. Un entorno espejo es de solo lectura en el raíl y en el
+  selector (solo se renombra, recolorea o borra vía adoptar/retirar,
+  exactamente como ya ocurría con un perfil de conexión propiedad de un
+  origen) y, si su paquete desaparece en una sincronización posterior, se
+  reporta como desaparecido en lugar de borrarse: la misma regla de «reportar,
+  nunca destruir por iniciativa propia» que ya seguía el lado de las
+  conexiones. Deliberadamente **no** registra automáticamente los orígenes
+  anidados dentro del paquete: un fichero compartido nunca debe poder hacer
+  que una máquina registre más orígenes por su cuenta, eso queda reservado al
+  `import_environment` consciente y puntual.
 ### Cambiado
 
 - **El editor de celda pasa ahora a Monaco un `path` de modelo estable.** Este era
@@ -169,6 +196,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   que merece ser segado (gotcha #27). La asimetría es lo que lo hace seguro: el
   esquema, el artefacto caro, no se toca nunca.
 
+
+- **El borrado masivo de conexiones, el borrado de un entorno y la
+  eliminación de un origen compartido usan ahora un diálogo de confirmación
+  real en lugar del `window.confirm` nativo.** El diálogo para eliminar un
+  origen indica además de antemano cuántas conexiones y entornos publicados
+  por él quedarán marcados como huérfanos por la corrección de abajo, para que
+  «lo que publicó se queda» no sea una advertencia abstracta.
 ### Corregido
 
 - **Reimportar perfiles de conexión con «sobrescribir» ya no rompe en silencio nada
@@ -185,7 +219,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   mientras que `transfer.rs` envía `total_profiles`. Nadie lo leía, así que nada
   estaba roto, pero la siguiente persona que lo leyera habría obtenido `undefined`.
 
-## [1.16.2] — 2026-08-19
+
+
+- **Eliminar un origen compartido ya no deja huérfano para siempre lo que
+  publicó.** `remove_origin` siempre dejaba en su sitio las conexiones (y ahora
+  los entornos) que había importado, etiquetadas con un `origin_id` ya
+  colgante — deliberadamente, para que un cambio de configuración nunca borre
+  en silencio un lote de servidores contra los que alguien tiene trabajo
+  abierto. Pero el único mecanismo que llega a ofrecer liberar una de esas
+  entradas (el aviso de desaparición de `useOriginSync` → adoptar/retirar) se
+  alimentaba exclusivamente de `syncAll()`, que itera los orígenes
+  *actualmente registrados*, y un origen eliminado ya no está en esa lista
+  antes de poder volver a reportar nada como desaparecido. La conexión (o el
+  entorno) se quedaba permanentemente en solo lectura y permanentemente
+  imposible de borrar desde la interfaz, sin salida. Eliminar un origen levanta
+  ahora ese mismo aviso de inmediato, a partir del estado local y mientras
+  todavía se conoce el nombre del origen, reutilizando el flujo existente de
+  decidir-después en lugar de inventar un segundo.## [1.16.2] — 2026-08-19
 
 ### Añadido
 

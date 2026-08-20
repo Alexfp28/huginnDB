@@ -112,6 +112,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   under Editor, the same call `AppearanceSection` already makes for the data-view
   group. Also four new command-palette actions and three jump-to-setting entries.
 
+- **Shared origins can now publish and continuously sync a whole environment
+  (#108), not just loose connections.** Until now `sync_origin` always
+  assumed the file was a plain profile bundle (`meta.kind = "profiles"`);
+  pointing an origin at an environment export (`meta.kind = "environment"`,
+  the same file `export_environments` already writes) silently synced only
+  its `profiles` and dropped every `environments` entry, since `serde_json`
+  ignores unknown fields rather than erroring. `sync_origin` now reads the
+  file's own declared kind and, for an environment export, reconciles a local
+  mirror environment on every pull: creating it the first time, refreshing
+  its name/color/icon/theme and connection membership (`launch.visible_connections`)
+  on every sync after. The match across repeated syncs is by
+  `(origin_id, origin_source_id)` — the publisher's own `Environment.id` at
+  export time, a new field on `ExportedEnvironment` — not by name or position
+  in the file, both of which can change between syncs. A mirrored environment
+  is read-only in the rail/switcher (renamed/recolored/deleted only via
+  adopt/retire, exactly like an origin-owned connection profile already was)
+  and, if its bundle disappears from a later sync, is reported as vanished
+  rather than deleted — same "report, never destroy on our own initiative"
+  rule the connection side already followed. Deliberately does **not**
+  auto-register the origins nested inside the bundle: a shared file must
+  never be able to make a machine register more origins on its own, that
+  stays reserved for the conscious, one-shot `import_environment`.
+
 ### Changed
 
 - **The cell editor now gives Monaco a stable model `path`.** This was the enabling
@@ -154,6 +177,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   asymmetry is what makes that safe — the schema, the expensive artefact, is never
   touched.
 
+- **Bulk-deleting connections, deleting an environment, and removing a
+  shared origin now use a real confirm dialog instead of the native
+  `window.confirm`.** The dialog for removing an origin also states up front
+  how many connections and environments it published will be flagged as
+  orphaned by the fix above, so "what it published stays" isn't an abstract
+  warning.
+
 ### Fixed
 
 - **Re-importing connection profiles with "overwrite" no longer silently breaks
@@ -168,6 +198,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `EnvironmentImportAnalysis` declared a `totalProfiles` field in `src/types.ts`
   while `transfer.rs` sends `total_profiles`. Nothing read it, so nothing was broken,
   but the next person to read it would have got `undefined`.
+
+- **Removing a shared origin no longer orphans what it published forever.**
+  `remove_origin` always left the connections (and now environments) it
+  imported in place, tagged with a now-dangling `origin_id` — deliberately,
+  so a config change never silently deletes a batch of servers someone has
+  work open against. But the only mechanism that ever offers to release such
+  an entry (`useOriginSync`'s vanished-notice → adopt/retire) was fed
+  exclusively by `syncAll()`, which iterates the *currently registered*
+  origins — and a removed origin is gone from that list before it can ever
+  report anything as vanished again. The connection (or environment) stayed
+  permanently read-only and permanently undeletable from the UI, with no way
+  out. Removing an origin now raises the same vanished-notice immediately,
+  from local state, while the origin's name is still known — reusing the
+  existing decide-later flow instead of inventing a second one.
 
 ## [1.16.2] — 2026-08-19
 

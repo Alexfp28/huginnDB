@@ -205,6 +205,14 @@ entornos tiene un interruptor opcional. Los esquemas son globales, no propiedad 
 entorno, así que esto empaqueta la biblioteca completa junto a él: cómodo para
 preparar una máquina nueva con un solo archivo.
 
+**Aún no a través de un origen compartido.** Un origen apuntado a una exportación
+de entorno sincroniza el entorno y sus conexiones de forma continua, pero ignora
+los esquemas que lleve ese mismo archivo: importarlo a mano sí los trae, una
+sincronización en segundo plano no. Así que un origen compartido todavía no sirve
+para mantener al día la biblioteca de esquemas de un equipo — para eso, exporta e
+importa el archivo. La sincronización continua de esquemas vía origen está
+planificada.
+
 **Una advertencia, en ambos casos.** Un vínculo fijado a una *conexión* la
 referencia con un identificador local a la máquina que la creó. Al importarlo en
 otra, ese vínculo llega **desactivado**, conservando su ámbito para que puedas ver

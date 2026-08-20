@@ -974,6 +974,22 @@ export interface Environment {
    * `stores/session/environments.ts`'s `applyLocalView`.
    */
   launch?: LaunchState;
+  /**
+   * Which registered `Origin` this environment mirrors, if any (#108
+   * continuous environment sync). `null`/absent means an ordinary,
+   * locally-owned environment.
+   *
+   * A mirrored environment is read-only the same way an origin-owned
+   * `ConnectionProfile` is: `sync_origin` overwrites its cosmetics and
+   * connection membership on every pull, so renaming/recolouring/deleting it
+   * locally would just be discarded — released only via
+   * `useOriginSync`'s environment adopt/retire, never edited directly.
+   */
+  originId?: string | null;
+  /** The publisher's own `Environment.id` for the mirrored bundle. Paired
+   *  with `originId` to recognise "the same" environment across syncs —
+   *  display/UI code never needs it directly, only `originId`. */
+  originSourceId?: string | null;
 }
 
 /**
@@ -1018,6 +1034,16 @@ export interface OriginSyncReport {
   suspicious: boolean;
   /** RFC 3339 stamp of this run. */
   syncedAt: string;
+  /** Environment ids created by this sync, when the origin publishes whole
+   *  environments (`kind = "environment"`). Empty for a plain profile origin. */
+  environmentsAdded: string[];
+  /** Environment ids whose cosmetics/membership were refreshed from the file. */
+  environmentsUpdated: string[];
+  /** Environment ids this origin owns locally whose bundle disappeared from
+   *  the file. Reported only — never deleted on our own initiative. */
+  environmentsVanished: string[];
+  /** Same purpose as `suspicious`, scoped to the environment count. */
+  environmentsSuspicious: boolean;
 }
 
 /** What `listEnvironments` returns — the list and the active id together, so a

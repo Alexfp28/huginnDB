@@ -133,6 +133,29 @@ pub struct Environment {
     /// this one's).
     #[serde(default)]
     pub theme_id: Option<String>,
+    /// Which registered [`Origin`] this environment mirrors, if any — same
+    /// pattern as [`crate::state::ConnectionProfile::origin_id`], one level up.
+    /// `None` means an ordinary, locally-owned environment.
+    ///
+    /// Set only by `sync_origin`'s continuous-sync path (never by the one-shot
+    /// `import_environment`, which always creates an ordinary local
+    /// environment): a mirrored environment's cosmetics and connection
+    /// membership are overwritten on every sync, so it is read-only in the
+    /// switcher/rail the same way an origin-owned profile is read-only in
+    /// `ConnectionDialog` — released only via adopt/retire, never edited
+    /// directly.
+    #[serde(default)]
+    pub origin_id: Option<String>,
+    /// The publisher's own `Environment.id` for the bundle this environment
+    /// mirrors ([`crate::transfer::ExportedEnvironment::source_environment_id`]).
+    /// Used together with `origin_id` to recognise "the same" environment
+    /// across repeated syncs — `ExportedEnvironment` deliberately carries no
+    /// portable id of its own (a one-shot import always mints a fresh
+    /// `Environment.id`), so this is the continuous-sync path's own way of
+    /// re-casing a bundle it has already mirrored once. `None` unless
+    /// `origin_id` is also set.
+    #[serde(default)]
+    pub origin_source_id: Option<String>,
 }
 
 /// A shared folder this environment imports connections from (#108).

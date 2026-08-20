@@ -182,20 +182,75 @@ fn import_rename_disambiguates_with_imported_then_numbers() {
 }
 
 #[test]
-fn a_missing_resolution_defaults_to_rename() {
-    // Matches `apply_profile_imports`: never overwrite something the user was
-    // not asked about.
+fn an_unresolved_conflict_defaults_to_skip_not_rename() {
+    // Matches `apply_profile_imports`. Renaming would make re-importing your own
+    // export accumulate `cfg (imported)`, `cfg (2)`, … on every round trip, which
+    // is the dominant real case; a genuinely different schema is still one click
+    // from Rename or Overwrite in the conflict step.
     let mut lib = JsonSchemaLibrary::default();
     lib.schemas.push(item("local-1", "cfg", "{\"old\":true}"));
-    apply_imports(
+    let result = apply_imports(
         &mut lib,
         bundle(vec![item("file-9", "cfg", "{\"new\":true}")], vec![]),
         &no_resolutions(),
         &ConnectionRemap::LocalOnly(&known(&[])),
         NOW,
     );
-    assert_eq!(lib.schemas.len(), 2);
+    assert_eq!(result.skipped, vec!["cfg".to_string()]);
+    assert!(result.imported.is_empty());
+    assert!(result.renamed.is_empty());
+    assert_eq!(lib.schemas.len(), 1, "no duplicate schema must be created");
     assert_eq!(lib.schemas[0].body, "{\"old\":true}");
+}
+
+#[test]
+fn an_unresolved_non_conflict_is_still_inserted() {
+    // The `Skip` default applies only to a *conflict*: an incoming schema whose
+    // name is free must still land, or an import of new material would do nothing.
+    let mut lib = JsonSchemaLibrary::default();
+    let result = apply_imports(
+        &mut lib,
+        bundle(
+            vec![item("file-9", "brand-new", "{}")],
+            vec![binding("file-9", None, "payload")],
+        ),
+        &no_resolutions(),
+        &ConnectionRemap::LocalOnly(&known(&[])),
+        NOW,
+    );
+    assert_eq!(result.imported, vec!["brand-new".to_string()]);
+    assert!(result.skipped.is_empty());
+    assert_eq!(lib.schemas.len(), 1);
+    // …and its bindings come with it.
+    assert_eq!(result.bindings_imported, 1);
+}
+
+#[test]
+fn re_importing_an_identical_file_is_a_no_op() {
+    // The property the `Skip` default exists for: the round trip that motivated
+    // the change must leave the library byte-identical.
+    let mut lib = JsonSchemaLibrary::default();
+    lib.schemas.push(item("local-1", "cfg", "{}"));
+    lib.bindings.push(binding("local-1", None, "payload"));
+    let before = (lib.schemas.len(), lib.bindings.len());
+
+    let result = apply_imports(
+        &mut lib,
+        bundle(
+            vec![item("file-9", "cfg", "{}")],
+            vec![binding("file-9", None, "payload")],
+        ),
+        &no_resolutions(),
+        &ConnectionRemap::LocalOnly(&known(&[])),
+        NOW,
+    );
+
+    assert_eq!((lib.schemas.len(), lib.bindings.len()), before);
+    assert_eq!(result.skipped, vec!["cfg".to_string()]);
+    // The binding is dropped rather than duplicated: its schema was skipped, so
+    // it has nothing local to point at.
+    assert_eq!(result.bindings_dropped, 1);
+    assert_eq!(result.bindings_imported, 0);
 }
 
 #[test]

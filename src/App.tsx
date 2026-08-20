@@ -51,6 +51,7 @@ import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { TabSwitcher, useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { SettingsDialog } from "@/components/settings/dialogs/SettingsDialog";
 import { EnvironmentEditorDialog } from "@/components/connection/dialogs/EnvironmentEditorDialog";
+import { EnvironmentDeleteConfirmDialog } from "@/components/connection/dialogs/EnvironmentDeleteConfirmDialog";
 import { startLogBridge } from "@/lib/bridges/log-bridge";
 import { startCliConnectBridge } from "@/lib/bridges/cli-connect-bridge";
 import { startConnectionHealthBridge } from "@/lib/bridges/connection-health-bridge";
@@ -810,6 +811,7 @@ export default function App() {
         </header>
         <SettingsDialog />
         <EnvironmentEditorDialog />
+        <EnvironmentDeleteConfirmDialog />
         <div className="flex-1 overflow-hidden">
           <AppShell />
         </div>
