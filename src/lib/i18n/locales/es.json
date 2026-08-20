@@ -1310,7 +1310,8 @@
     "importJsonSchemas": {
       "title": "Importar esquemas JSON",
       "pickTitle": "Selecciona una exportación de esquemas JSON",
-      "pickDescription": "Elige un archivo exportado desde HuginnDB.",
+      "pickDescription": "Selecciona un archivo para importar.",
+      "pickNote": "Solo acepta un archivo generado por \"Exportar esquemas JSON\" en HuginnDB (incluye vínculos y metadatos). Para añadir un JSON Schema cualquiera a la librería, usa \"Añadir desde archivo…\" en Preferencias → Esquemas JSON.",
       "reviewDescription": "{{schemas}} esquema(s) y {{bindings}} vínculo(s) en este archivo.",
       "unresolvedWarning": "{{count}} vínculo(s) nombran una conexión que no existe aquí, así que se importarán desactivados. Se conserva su ámbito, para que puedas apuntarlos a una conexión después.",
       "importButton": "Importar",

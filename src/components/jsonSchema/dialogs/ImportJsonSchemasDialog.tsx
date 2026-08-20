@@ -137,10 +137,15 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
         </DialogHeader>
 
         {step === "pick" && (
-          <Button variant="outline" onClick={() => void pick()} disabled={busy}>
-            <Upload className="mr-1 h-3.5 w-3.5" />
-            {t("transfer.importJsonSchemas.pickTitle")}
-          </Button>
+          <div className="space-y-3">
+            <p className="rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-[11px] text-primary">
+              {t("transfer.importJsonSchemas.pickNote")}
+            </p>
+            <Button variant="outline" onClick={() => void pick()} disabled={busy}>
+              <Upload className="mr-1 h-3.5 w-3.5" />
+              {t("transfer.importJsonSchemas.pickTitle")}
+            </Button>
+          </div>
         )}
 
         {step === "conflicts" && analysis && (
