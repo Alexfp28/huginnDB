@@ -363,33 +363,23 @@ fn merge_profiles_bundle(
         crate::store::save_profiles(&profiles)?;
     }
 
-    // Secrets land in this user's own keychain, decrypted with their own stored
-    // passphrase. Best-effort per profile: a secret that fails to decrypt leaves
-    // that connection needing a password rather than failing the whole sync.
+    // Secrets land in this user's own keychain, decrypted with the passphrase
+    // stored for this origin. `BestEffort` because this runs unattended (launch,
+    // the 4-hourly poll, "Sync now"): one undecryptable profile must leave that
+    // connection needing a password rather than aborting the whole pass.
+    //
+    // The decryption itself lives in `transfer::land_secrets` — see its doc for
+    // why "no passphrase" can never mean "store the blob as-is".
     for entry in incoming {
         let Some(secrets) = &entry.secrets else {
             continue;
         };
-        if let Some(blob) = &secrets.db_password {
-            let plain = match passphrase {
-                Some(pass) => crate::transfer::decrypt_secret(blob, pass).ok(),
-                None => Some(blob.clone()),
-            };
-            if let Some(p) = plain {
-                let _ = keychain::set_password(&entry.profile.keyring_account(), &p);
-            }
-        }
-        if let (Some(blob), Some(account)) =
-            (&secrets.ssh_secret, entry.profile.ssh_keyring_account())
-        {
-            let plain = match passphrase {
-                Some(pass) => crate::transfer::decrypt_secret(blob, pass).ok(),
-                None => Some(blob.clone()),
-            };
-            if let Some(p) = plain {
-                let _ = keychain::set_password(&account, &p);
-            }
-        }
+        let _ = crate::transfer::land_secrets(
+            &entry.profile,
+            secrets,
+            passphrase,
+            crate::transfer::LandMode::BestEffort,
+        );
     }
 
     Ok(report)

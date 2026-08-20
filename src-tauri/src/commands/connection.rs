@@ -1478,27 +1478,17 @@ pub(crate) fn apply_profile_imports(
         new_profile.id = new_id.clone();
         new_profile.name = final_name;
 
-        // Decrypt and store secrets if present.
-        let has_secrets = if let Some(secrets) = &ep.secrets {
-            let pp = passphrase.unwrap_or("");
-            let mut any = false;
-            if let Some(enc_pw) = &secrets.db_password {
-                if !matches!(new_profile.driver, Driver::Sqlite) {
-                    let pw = crate::transfer::decrypt_secret(enc_pw, pp)?;
-                    keychain::set_password(&new_profile.keyring_account(), &pw)?;
-                    any = true;
-                }
-            }
-            if let Some(enc_ssh) = &secrets.ssh_secret {
-                if let Some(ssh_acct) = new_profile.ssh_keyring_account() {
-                    let secret = crate::transfer::decrypt_secret(enc_ssh, pp)?;
-                    keychain::set_password(&ssh_acct, &secret)?;
-                    any = true;
-                }
-            }
-            any
-        } else {
-            false
+        // Decrypt and store secrets if present. `Strict` because the user is
+        // sitting in the import dialog: a wrong passphrase has to surface here
+        // rather than yielding a pile of connections that cannot authenticate.
+        let has_secrets = match &ep.secrets {
+            Some(secrets) => crate::transfer::land_secrets(
+                &new_profile,
+                secrets,
+                passphrase,
+                crate::transfer::LandMode::Strict,
+            )?,
+            None => false,
         };
 
         if !has_secrets && !matches!(new_profile.driver, Driver::Sqlite) {
