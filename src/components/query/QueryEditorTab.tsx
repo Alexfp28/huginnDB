@@ -64,6 +64,7 @@ import { databaseOfViewId, parentConnectionId } from "@/lib/connectionLabel";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
 import { cn, formatDuration } from "@/lib/utils";
+import { supportsMultipleDatabases } from "@/lib/db/driver";
 import {
   ensureSqlProviders,
   registerSqlEditor,
@@ -539,7 +540,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               <History className="h-3.5 w-3.5" />
             </Button>
 
-            {driver !== "sqlite" && databases.length > 0 && (
+            {supportsMultipleDatabases(driver) && databases.length > 0 && (
               <div className="ml-auto flex items-center gap-1">
                 <Database className="h-3.5 w-3.5 text-muted-foreground" />
                 <Select

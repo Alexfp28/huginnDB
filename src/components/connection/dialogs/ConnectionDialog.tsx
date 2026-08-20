@@ -81,7 +81,11 @@ import type {
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { usePreferences } from "@/stores/preferences/preferences";
-import { driverMismatchHint, splitSqlServerName } from "@/lib/db/driver";
+import {
+  driverMismatchHint,
+  splitSqlServerName,
+  supportsSshTunnel,
+} from "@/lib/db/driver";
 
 interface Props {
   open: boolean;
@@ -541,7 +545,7 @@ export function ConnectionDialog({
     effectiveMongoUri.trim().startsWith("mongodb+srv://");
 
   function buildSshTunnel(): SshTunnel | null {
-    if (!sshEnabled || driver === "sqlite" || isMongoSrv) return null;
+    if (!sshEnabled || !supportsSshTunnel(driver) || isMongoSrv) return null;
     const auth: SshAuth =
       sshAuthMethod === "key"
         ? { kind: "key", path: sshKeyPath }
@@ -862,7 +866,7 @@ export function ConnectionDialog({
     window.setTimeout(() => setErrorCopied(false), 1500);
   }
 
-  const tunnelTabDisabled = driver === "sqlite" || isMongoSrv;
+  const tunnelTabDisabled = !supportsSshTunnel(driver) || isMongoSrv;
   const busy = saving || connecting;
 
   return (

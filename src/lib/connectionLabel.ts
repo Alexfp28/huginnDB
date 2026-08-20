@@ -11,6 +11,7 @@
  */
 
 import type { ConnectionProfile, Driver } from "@/types";
+import { supportsMultipleDatabases } from "@/lib/db/driver";
 
 const DB_SEP = "::db::";
 
@@ -102,6 +103,23 @@ export function resolveConnectionDriver(
     if (parent) return parent.driver;
   }
   return undefined;
+}
+
+/**
+ * Whether `profile` addresses a whole server rather than one database, so the
+ * explorer shows a database layer above the schema tree and each expansion
+ * opens its own `<parent>::db::<db>` view.
+ *
+ * The condition is "no database bound, and the driver has more than one" —
+ * SQLite's file *is* the database, so an empty `database` there means an
+ * unconfigured profile, not a server-wide one. Written out in four places
+ * before this existed, twice as the predicate and twice as its negation, which
+ * is a poor way to keep two halves of one rule in agreement.
+ */
+export function isServerWide(
+  profile: Pick<ConnectionProfile, "driver" | "database"> | undefined | null,
+): boolean {
+  return !!profile && supportsMultipleDatabases(profile.driver) && profile.database === "";
 }
 
 export interface ConnectionParts {

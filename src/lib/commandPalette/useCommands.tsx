@@ -79,6 +79,7 @@ import {
 import { BUILT_IN_THEMES } from "@/lib/themes";
 import { DOCS } from "@/lib/appInfo/docs";
 import {
+  isServerWide,
   parentConnectionId,
   resolveConnectionLabel,
   tabLeafTitle,
@@ -572,7 +573,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     // palette (gotcha #27 — resolved through the shared two-layer helper).
     for (const p of profiles) {
       if (!active.has(p.id)) continue;
-      if (p.driver === "sqlite" || p.database !== "") continue;
+      if (!isServerWide(p)) continue;
       const visible = resolveVisibleDatabases(
         databaseVisibility[p.id],
         p.visible_databases,

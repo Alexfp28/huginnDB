@@ -86,6 +86,52 @@ export function supportsCreateDatabase(driver: Driver | undefined): boolean {
   return driver === "postgres" || driver === "mysql" || driver === "sqlserver";
 }
 
+/** Whether the server hosts more than one database, so a database picker and
+ *  a per-database browse mode make sense. SQLite's file *is* the database, so
+ *  it is the only driver without them. */
+export function supportsMultipleDatabases(driver: Driver | undefined): boolean {
+  return driver !== "sqlite";
+}
+
+/** Whether a connection can be tunnelled over SSH. SQLite opens a local file,
+ *  so there is nothing to forward. (A `mongodb+srv://` URI is also refused,
+ *  but for a different reason — SRV resolution happens client-side against
+ *  DNS, not through the tunnel — so that check stays with the URI it is about.) */
+export function supportsSshTunnel(driver: Driver | undefined): boolean {
+  return driver !== "sqlite";
+}
+
+/** Creating a collection. MongoDB's answer to `CREATE TABLE`, and the only
+ *  driver with it: the SQL engines create a relation through the structure
+ *  editor's DDL instead. */
+export function supportsCreateCollection(driver: Driver | undefined): boolean {
+  return driver === "mongodb";
+}
+
+/** Whether integer columns carry an `UNSIGNED` modifier, which the structure
+ *  editor shows as its own column. MySQL-only — no other dialect we speak has
+ *  unsigned integer types at all. */
+export function supportsUnsignedIntegers(driver: Driver | undefined): boolean {
+  return driver === "mysql";
+}
+
+/**
+ * Why the structure editor is read-only for `driver`, or `null` when it is not.
+ *
+ * The two reasons are genuinely different and the UI says so — SQL Server's
+ * T-SQL DDL builder is simply unwritten, while MongoDB has no DDL to write —
+ * so the copy has to be chosen per driver. Returning the *reason* rather than
+ * having the component compare drivers keeps `supportsDdlEditing` and the
+ * message that explains it from drifting apart: add an engine to one and the
+ * other is right here.
+ */
+export function ddlReadOnlyReason(
+  driver: Driver | undefined,
+): "mssql" | "mongo" | null {
+  if (supportsDdlEditing(driver)) return null;
+  return driver === "sqlserver" ? "mssql" : "mongo";
+}
+
 /** Reordering columns in the structure editor. MySQL-only: `MODIFY COLUMN …
  *  FIRST|AFTER col` (and the equivalent `ADD COLUMN … FIRST|AFTER col`) is
  *  the only way any of our dialects can reposition a column without a full

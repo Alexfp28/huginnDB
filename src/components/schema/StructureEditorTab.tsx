@@ -43,9 +43,11 @@ import {
   type ColumnTypeCategory,
 } from "@/lib/db/columnTypes";
 import {
+  ddlReadOnlyReason,
+  supportsColumnReorder,
   supportsDdlEditing,
   supportsIndexManager,
-  supportsColumnReorder,
+  supportsUnsignedIntegers,
 } from "@/lib/db/driver";
 import type {
   ColumnDef,
@@ -399,7 +401,7 @@ export function StructureEditorTab({
           )}
           {isReadOnly ? (
             <span className="rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground">
-              {driver === "sqlserver"
+              {ddlReadOnlyReason(driver) === "mssql"
                 ? t("structure.readOnlySqlServer")
                 : t("structure.readOnlyMongo")}
             </span>
@@ -623,7 +625,7 @@ function ColumnsEditor({
   // MySQL is the only driver where UNSIGNED/ZEROFILL are meaningful — the
   // columns are omitted entirely for the others instead of rendering
   // permanently-disabled checkboxes.
-  const showUnsignedCols = driver === "mysql";
+  const showUnsignedCols = supportsUnsignedIntegers(driver);
 
   return (
     <div className="space-y-2">

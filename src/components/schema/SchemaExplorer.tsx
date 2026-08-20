@@ -64,7 +64,11 @@ import {
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { useUi } from "@/stores/session/ui";
-import { databaseViewId, tableTabTitle } from "@/lib/connectionLabel";
+import {
+  databaseViewId,
+  isServerWide,
+  tableTabTitle,
+} from "@/lib/connectionLabel";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { api } from "@/lib/tauri";
 import {
@@ -113,7 +117,10 @@ import {
   type ImportScope,
 } from "@/components/schema/dialogs/ImportSqlDialog";
 import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
-import { isTooManyConnections } from "@/lib/db/driver";
+import {
+  isTooManyConnections,
+  supportsCreateCollection,
+} from "@/lib/db/driver";
 import type { Driver, TableInfo } from "@/types";
 import {
   supportsCreateDatabase,
@@ -248,14 +255,13 @@ export function SchemaExplorer({
    */
   filter?: string;
 }) {
-  // Multi-DB mode triggers when the parent profile has no `database` set
-  // (e.g. the user wants to browse every database on the server). SQLite
-  // profiles are inherently single-file, so they never enter this mode.
+  // Multi-DB mode: the profile addresses a whole server rather than one
+  // database, so the tree grows a database layer. See `isServerWide` for why
+  // SQLite is excluded regardless of its `database` field.
   const profile = useConnections((s) =>
     s.profiles.find((p) => p.id === connectionId),
   );
-  const isMultiDb =
-    !!profile && profile.driver !== "sqlite" && profile.database === "";
+  const isMultiDb = isServerWide(profile);
 
   // The origin notice sits above whichever explorer renders (#108). Placed on
   // this wrapper rather than inside the two explorers so single- and multi-DB
@@ -330,9 +336,9 @@ export function ConnectionActionsMenu({
   const [menuOpen, setMenuOpen] = useState(false);
 
   const driver = profile?.driver;
-  const isMultiDb = !!profile && driver !== "sqlite" && profile.database === "";
+  const isMultiDb = isServerWide(profile);
   const canCreateDatabase = supportsCreateDatabase(driver);
-  const canCreateCollection = driver === "mongodb" && !isMultiDb;
+  const canCreateCollection = supportsCreateCollection(driver) && !isMultiDb;
   // Whole-database `.sql` export/import used to require single-DB mode
   // (nothing to pick a database *from* otherwise); the export/import
   // dialogs now handle multi-DB themselves — a database picker for export,
