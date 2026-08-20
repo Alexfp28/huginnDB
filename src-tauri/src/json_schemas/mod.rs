@@ -80,7 +80,7 @@ pub const CURRENT_VERSION: u32 = 1;
 /// [`crate::tab_state`]'s query-body cap is deliberate: a query body is
 /// captured automatically by a debounced autosave the user never asked for, so
 /// trimming it quietly is kind. A schema body is something they just typed.
-pub const MAX_SCHEMA_BYTES: usize = 512 * 1024;
+pub const MAX_SCHEMA_BYTES: usize = 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Model — mirrored in src/types.ts (camelCase on the wire).
