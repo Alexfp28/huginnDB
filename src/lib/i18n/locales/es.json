@@ -1592,9 +1592,11 @@
     "versionLabel": "Versión {{version}}",
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
+    "readMore": "Leer más",
+    "readLess": "Leer menos",
     "releases": {
       "1_17_0": {
-        "tagline": "Una biblioteca de esquemas JSON definidos por el usuario hace que el editor de celda entienda de esquemas — autocompletado, documentación al pasar el ratón y validación orientativa para tus columnas json/jsonb — más un freno definitivo a los cuelgues por falta de memoria en consultas ad-hoc sin límite, orígenes compartidos que ya pueden sincronizar un entorno completo, importaciones masivas más fluidas y reordenación de columnas en MySQL.",
+        "tagline": "Tu editor ya entiende de esquemas JSON — y una consulta descontrolada ya no puede tirar la app.",
         "items": {
           "jsonSchemas": {
             "title": "Una biblioteca de esquemas JSON, vinculada a tus columnas",

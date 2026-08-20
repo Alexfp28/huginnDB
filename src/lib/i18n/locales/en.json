@@ -1592,9 +1592,11 @@
     "versionLabel": "Version {{version}}",
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
+    "readMore": "Read more",
+    "readLess": "Read less",
     "releases": {
       "1_17_0": {
-        "tagline": "A user-defined JSON Schema library makes the cell editor schema-aware — completion, hover docs and advisory validation for your json/jsonb columns — plus a hard stop on out-of-memory crashes from unbounded ad-hoc queries, shared origins that can now sync a whole environment, smoother bulk imports, and MySQL column reordering.",
+        "tagline": "Your editor now understands JSON Schemas — and a runaway query can no longer take down the app.",
         "items": {
           "jsonSchemas": {
             "title": "A JSON Schema library, bound to your columns",
