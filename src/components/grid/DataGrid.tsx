@@ -1267,6 +1267,36 @@ export function DataGrid({
   }, [result.rows, globalFilter]);
 
   /**
+   * Re-resolve `selectedCell` after a refetch replaces every row's array
+   * reference (e.g. `onCellSave` awaiting `fetchData()` while the docked side
+   * editor stays open across the save). Without this, a cell selected before
+   * the save keeps pointing at a now-detached array once the fresh result
+   * lands: the selected-cell "expand" affordance and the `cellPreview` panel
+   * both key off `rowValues` identity (gotcha #7), so they'd silently go
+   * stale — the button vanishes from the grid and, if `cellPreview` is on,
+   * the floating panel keeps showing the pre-save value forever, even though
+   * the side editor is still open and "focused" on that same logical cell.
+   * `visibleRows.includes` is a no-op on a sort/filter reshuffle, which reuses
+   * the same row objects — this only does work on a genuine refetch. Falls
+   * back to clearing the selection when it can't be resolved (no `getRowKey`,
+   * or the row is gone) rather than leaving a phantom target.
+   */
+  useEffect(() => {
+    setSelectedCell((prev) => {
+      if (!prev || visibleRows.includes(prev.rowValues)) return prev;
+      if (!getRowKey) return null;
+      const key = getRowKey(prev.rowValues);
+      if (key === null) return null;
+      const next = visibleRows.find((r) => getRowKey(r) === key);
+      if (!next) return null;
+      return { ...prev, rowValues: next, value: next[prev.colIndex] };
+    });
+    // Deliberately only `visibleRows`: `getRowKey` is a per-render prop and
+    // `selectedCell` is what this effect writes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleRows]);
+
+  /**
    * Visible rows paired with their stable key (or null when unresolvable),
    * memoised so the per-row render and the range-selection math read a stable
    * list. `null`-keyed rows simply can't be selected.
