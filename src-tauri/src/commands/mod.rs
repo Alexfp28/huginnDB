@@ -9,7 +9,6 @@ pub mod aggregation;
 pub mod app;
 pub mod bulk;
 pub mod connection;
-pub mod credentials;
 pub mod dump;
 pub mod feedback;
 pub mod json_schemas;
