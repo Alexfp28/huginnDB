@@ -59,6 +59,20 @@ export function databaseViewId(parentId: string, db: string): string {
 }
 
 /**
+ * The database name inside a synthetic `<parentId>::db::<db>` id, or `""` for
+ * a plain profile id.
+ *
+ * The inverse of [`databaseViewId`], and the reason the separator never has to
+ * leave this module: a caller that repoints a tab at another database by
+ * minting a new id also needs to read the current one back out of it (the query
+ * editor's database selector does exactly that round trip).
+ */
+export function databaseOfViewId(connectionId: string): string {
+  const sep = connectionId.indexOf(DB_SEP);
+  return sep > 0 ? connectionId.slice(sep + DB_SEP.length) : "";
+}
+
+/**
  * Whether `id` is one of `parentId`'s per-database children.
  *
  * Lets a caller holding only a profile id find every synthetic slice opened

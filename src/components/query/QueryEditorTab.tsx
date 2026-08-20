@@ -60,6 +60,7 @@ import {
 } from "@/components/ui/select";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { splitSql } from "@/lib/sql/sqlSplit";
+import { databaseOfViewId, parentConnectionId } from "@/lib/connectionLabel";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
 import { cn, formatDuration } from "@/lib/utils";
@@ -74,7 +75,6 @@ interface Props {
   connectionId: string;
 }
 
-const DB_SEP = "::db::";
 /** Radix Select can't carry an empty value, so the parent / default-database
  *  option uses this sentinel. */
 const DEFAULT_DB = "__default__";
@@ -92,10 +92,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
 
   /** Parent connection id (a query tab may be opened against a `::db::`
    *  child already). Database listing / switching always works off the parent. */
-  const parentId = useMemo(() => {
-    const sep = connectionId.indexOf(DB_SEP);
-    return sep > 0 ? connectionId.slice(0, sep) : connectionId;
-  }, [connectionId]);
+  const parentId = useMemo(() => parentConnectionId(connectionId), [connectionId]);
 
   /** The id the query actually runs against. Starts as the tab's connection
    *  and is repointed to a `parent::db::<name>` child when the user picks a
@@ -106,10 +103,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   useEffect(() => setEffectiveId(connectionId), [connectionId]);
 
   /** Database currently targeted, parsed back out of `effectiveId`. */
-  const selectedDb = useMemo(() => {
-    const sep = effectiveId.indexOf(DB_SEP);
-    return sep > 0 ? effectiveId.slice(sep + DB_SEP.length) : "";
-  }, [effectiveId]);
+  const selectedDb = useMemo(() => databaseOfViewId(effectiveId), [effectiveId]);
 
   const schemaState = useSchema((s) => s.byConnection[effectiveId]);
 

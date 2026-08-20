@@ -22,6 +22,7 @@
 import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
 import { useSchema } from "@/stores/session/schema";
 import { isTooManyConnections } from "@/lib/db/driver";
+import { databaseViewId } from "@/lib/connectionLabel";
 
 /** How many database views may be opened at once. Matches the explorer's. */
 const CONCURRENCY = 3;
@@ -91,7 +92,7 @@ export function unwarmedDatabases(
   byConnection: Record<string, { tables?: unknown[]; initialized?: boolean }>,
 ): string[] {
   return databases.filter((name) => {
-    const slice = byConnection[`${parentId}::db::${name}`];
+    const slice = byConnection[databaseViewId(parentId, name)];
     return !slice?.initialized;
   });
 }

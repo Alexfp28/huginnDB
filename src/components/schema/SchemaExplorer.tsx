@@ -64,7 +64,7 @@ import {
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { useUi } from "@/stores/session/ui";
-import { tableTabTitle } from "@/lib/connectionLabel";
+import { databaseViewId, tableTabTitle } from "@/lib/connectionLabel";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { api } from "@/lib/tauri";
 import {
@@ -998,7 +998,7 @@ function MultiDbExplorer({
     ).filter((db) => !visibleSet || visibleSet.has(db.name));
     for (const db of dbsToWarm) {
       if (inFlightPrefetch.current.size >= PREFETCH_CONCURRENCY) break;
-      const childId = `${parentId}::db::${db.name}`;
+      const childId = databaseViewId(parentId, db.name);
       const childCs = byConnection[childId];
       if (childCs?.initialized || childCs?.loading) continue;
       if (inFlightPrefetch.current.has(childId)) continue;
@@ -1072,7 +1072,7 @@ function MultiDbExplorer({
       ? cs.databases.filter((db) => db.name === activeDatabaseName)
       : cs.databases;
     for (const db of dbsToSearch) {
-      const childId = `${parentId}::db::${db.name}`;
+      const childId = databaseViewId(parentId, db.name);
       const tables = byConnection[childId]?.tables ?? [];
       const byTable = tables.some((t) =>
         matchesFilter(t.name, debouncedNeedle),
@@ -1108,7 +1108,7 @@ function MultiDbExplorer({
   const prefetching =
     filterActive &&
     cs.databases.some((db) => {
-      const childId = `${parentId}::db::${db.name}`;
+      const childId = databaseViewId(parentId, db.name);
       const c = byConnection[childId];
       return !c?.initialized;
     });
@@ -1379,7 +1379,7 @@ function DatabaseRoot({
       return;
     try {
       await api.dropDatabase(parentId, dbName);
-      const droppedId = `${parentId}::db::${dbName}`;
+      const droppedId = databaseViewId(parentId, dbName);
       useTabs.getState().closeForConnection(droppedId);
       useSchema.getState().drop(droppedId);
       await useSchema.getState().refresh(parentId);

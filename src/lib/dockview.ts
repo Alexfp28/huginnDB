@@ -15,6 +15,7 @@
 
 import type { DockviewApi, DockviewTheme } from "dockview-react";
 import type { AppTab } from "@/types";
+import { isDatabaseViewOf } from "@/lib/connectionLabel";
 
 /**
  * Theme for the inner tab dockview (`TabbedArea`). No `gap` — open
@@ -131,10 +132,9 @@ export function clearProtectedPanelsForConnection(
   connectionId: string,
   tabs: AppTab[],
 ): void {
-  const prefix = `${connectionId}::db::`;
   let changed = false;
   for (const [panelId, connId] of protectedPanels) {
-    if (connId === connectionId || connId.startsWith(prefix)) {
+    if (connId === connectionId || isDatabaseViewOf(connId, connectionId)) {
       protectedPanels.delete(panelId);
       changed = true;
     }

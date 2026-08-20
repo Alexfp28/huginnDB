@@ -25,6 +25,7 @@ import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { clearProtectedPanelsForConnection } from "@/lib/dockview";
 import type { ConnectionProfile } from "@/types";
+import { isDatabaseViewOf } from "@/lib/connectionLabel";
 
 interface ConnectionsState {
   /** Profiles persisted on disk (no passwords). */
@@ -197,11 +198,10 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     // (only a restore populates one). The subscription registry is the one
     // thing guaranteed to still list every child that was ever opened this
     // session, regardless of whether it has tabs or a schema slice right now.
-    const prefix = `${id}::db::`;
     const tabsState = useTabs.getState();
     const schemaState = useSchema.getState();
     const childIds = subscribedConnectionIds().filter((cid) =>
-      cid.startsWith(prefix),
+      isDatabaseViewOf(cid, id),
     );
     for (const childId of childIds) {
       await flushTabState(childId);
