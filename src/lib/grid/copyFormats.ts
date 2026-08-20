@@ -174,6 +174,32 @@ function qualifiedTable(
   return quoteIdent(driver, table);
 }
 
+/**
+ * The "Copy SELECT" snippet for a relation: a `SELECT *` for the SQL drivers
+ * and a `find()` for MongoDB, which has no SQL.
+ *
+ * This lives here rather than in the schema tree because per-driver identifier
+ * quoting is a serialisation rule, and this module already owns every other
+ * one. The tree used to assemble the string inline with its own copy of the
+ * quoting triple, and that copy did not double embedded delimiters — so a
+ * table named `a"b` produced a snippet that would not parse. Building it from
+ * `qualifiedTable` means there is one escaping rule to get right.
+ *
+ * Note this is a clipboard snippet, not DDL: nothing here is ever executed by
+ * the app, which is why assembling SQL text in the frontend is fine here and
+ * not in the structure editor (whose statements are built in Rust).
+ */
+export function selectSnippet(
+  driver: Driver | undefined,
+  schema: string | undefined,
+  table: string,
+): string {
+  if (driver === "mongodb") {
+    return `db.${table}.find({}).limit(100)`;
+  }
+  return `SELECT * FROM ${qualifiedTable(driver, schema, table)};`;
+}
+
 // Re-export the plain projector so callers (e.g. CellPreview) can share
 // the same string contract used for clipboard text without re-implementing it.
 export { plain as plainText };

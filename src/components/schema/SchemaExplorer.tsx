@@ -72,6 +72,7 @@ import {
 } from "@/stores/session/persistedTabs";
 import { toast } from "sonner";
 import { splitSql } from "@/lib/sql/sqlSplit";
+import { selectSnippet } from "@/lib/grid/copyFormats";
 import type { SchemaTableMetric } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1749,13 +1750,9 @@ function TableRow({
     void navigator.clipboard.writeText(t.name);
   };
   const copySelect = () => {
-    if (actions.driver === "mongodb") {
-      // MongoDB has no SQL; produce a mongosh find() snippet instead.
-      void navigator.clipboard.writeText(`db.${t.name}.find({}).limit(100)`);
-      return;
-    }
-    const qualified = qualifyForCopy(actions.driver, t.schema, t.name);
-    void navigator.clipboard.writeText(`SELECT * FROM ${qualified};`);
+    void navigator.clipboard.writeText(
+      selectSnippet(actions.driver, t.schema, t.name),
+    );
   };
 
   const isMongo = actions.driver === "mongodb";
@@ -2155,29 +2152,6 @@ function TableRow({
       </ContextMenuContent>
     </ContextMenu>
   );
-}
-
-/** Build the table reference used inside the "Copy SELECT" snippet. We
- *  quote with the driver's conventional identifier delimiters so the
- *  snippet pastes cleanly into the query editor — even for case-sensitive
- *  Postgres identifiers or MySQL reserved words. */
-function qualifyForCopy(
-  driver: Driver | undefined,
-  schema: string,
-  table: string,
-): string {
-  if (driver === "mysql") {
-    return schema
-      ? `\`${schema}\`.\`${table}\``
-      : `\`${table}\``;
-  }
-  // SQL Server accepts double quotes only under QUOTED_IDENTIFIER ON;
-  // brackets always work, and are what a T-SQL user expects to see.
-  if (driver === "sqlserver") {
-    return schema ? `[${schema}].[${table}]` : `[${table}]`;
-  }
-  // postgres / sqlite / unknown — use double quotes.
-  return schema ? `"${schema}"."${table}"` : `"${table}"`;
 }
 
 /** Modal for renaming a table. Validates against empty input and
