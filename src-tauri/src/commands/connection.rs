@@ -1370,10 +1370,13 @@ pub struct ImportProgress {
 /// Every imported profile receives a **fresh UUID** regardless of whether it
 /// came with one in the file, to avoid keychain-account collisions with
 /// profiles already on this machine. The second return value maps each
-/// *original* profile id to that fresh one (skipped profiles are absent) —
+/// *original* profile id to the local id it should now resolve to —
 /// `import_profiles` has no use for it, but `import_environment` needs it to
 /// translate each environment bundle's `connection_ids` into the ids that
-/// actually landed in `profiles.json`.
+/// actually landed in `profiles.json`. A **skipped** profile maps to *itself*:
+/// the conflict was matched by id, so the local profile already answers to it.
+/// Every incoming profile therefore has an entry, and an id missing from this
+/// map genuinely means "did not land".
 ///
 /// The **third** return value is the subset of that map for profiles that were
 /// *overwritten*. Because a fresh UUID is minted even when overwriting, anything
@@ -1382,8 +1385,9 @@ pub struct ImportProgress {
 /// JSON-Schema bindings are exactly that (`crate::json_schemas`), so both
 /// callers feed this map to `json_schemas::remap_connection_ids`. It is
 /// deliberately *only* the overwrite subset: on `Rename` the local profile keeps
-/// its original id and its bindings must stay on it, and a `Skip` has no entry
-/// at all.
+/// its original id and its bindings must stay on it, and on `Skip` nothing was
+/// replaced, so there is nothing to repoint (it appears in the *second* map, as
+/// an identity entry, but never in this one).
 pub(crate) fn apply_profile_imports(
     profiles: &mut Vec<ConnectionProfile>,
     exported: Vec<transfer::ExportedProfile>,
@@ -1425,7 +1429,28 @@ pub(crate) fn apply_profile_imports(
         };
 
         if matches!(conflict_action, ConflictAction::Skip) {
+            // Map the skipped id to *itself*. A conflict is matched by id, so
+            // "skip" means "a profile with this exact id is already here" — the
+            // incoming reference resolves perfectly well, it just resolves to
+            // the local profile instead of a freshly minted one. Leaving the
+            // entry out made `id_map` say "this connection did not land",
+            // which is false, and both consumers acted on it:
+            //
+            //   * `import_environment` builds the new environment's
+            //     `launch.visible_connections` by translating the bundle's
+            //     `connection_ids` through this map, so a skipped connection
+            //     was dropped from the filter — the environment came up hiding
+            //     the very connections it was exported to describe.
+            //   * JSON-Schema bindings are repointed through the same map, and
+            //     an id absent from it is taken to name a connection unknown
+            //     locally, so the binding is *disabled* (gotcha #39). It was
+            //     disabling bindings for profiles that were sitting right
+            //     there under the same id.
+            //
+            // `overwritten_ids` (the third return value) deliberately gets no
+            // entry: nothing was overwritten, so there is nothing to repoint.
             result.skipped.push(ep.profile.id.clone());
+            id_map.insert(ep.profile.id.clone(), ep.profile.id.clone());
             continue;
         }
 
@@ -1747,14 +1772,14 @@ mod tests {
     }
 
     #[test]
-    fn apply_profile_imports_skipped_profiles_are_absent_from_the_id_map() {
+    fn apply_profile_imports_maps_a_skipped_profile_to_itself() {
         let mut profiles = Vec::new();
         let mut resolutions = std::collections::HashMap::new();
         resolutions.insert("orig-a".to_string(), ConflictAction::Skip);
         // Pre-seed a profile with the same id so it registers as a conflict.
         profiles.push(profile("orig-a", "Existing"));
 
-        let (result, id_map, _overwritten) = apply_profile_imports(
+        let (result, id_map, overwritten) = apply_profile_imports(
             &mut profiles,
             vec![exported("orig-a", "A")],
             None,
@@ -1764,10 +1789,18 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.skipped, vec!["orig-a".to_string()]);
-        assert!(
-            !id_map.contains_key("orig-a"),
-            "a skipped profile must not appear in the id map"
+        // The conflict was matched by id, so the local profile already answers
+        // to it: the reference resolves, it just resolves to what is already
+        // here. Callers translate ids through this map to decide what an
+        // imported environment can see and where a JSON-Schema binding points,
+        // and both read a missing entry as "this connection did not land".
+        assert_eq!(
+            id_map.get("orig-a").map(String::as_str),
+            Some("orig-a"),
+            "a skipped profile must map to the local profile it collided with"
         );
+        // Nothing was replaced, so nothing needs repointing.
+        assert!(overwritten.is_empty());
     }
 
     #[test]
@@ -1791,7 +1824,7 @@ mod tests {
         assert_eq!(result.skipped, vec!["orig-a".to_string()]);
         assert!(result.imported.is_empty());
         assert!(result.renamed.is_empty());
-        assert!(!id_map.contains_key("orig-a"));
+        assert_eq!(id_map.get("orig-a").map(String::as_str), Some("orig-a"));
         assert_eq!(profiles.len(), 1, "no duplicate profile must be created");
         // Nothing was overwritten, so no JSON-Schema binding should be
         // repointed either (see the third return value).
