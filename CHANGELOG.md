@@ -6,22 +6,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-### Changed
-
-- **Restyled the "What's new" dialog (`WhatsNewDialog`) to match the brand
-  identity, and rewrote its 1.17.0 hero line.** The dialog previously used a
-  generic `Sparkles` chip and a full paragraph as the tagline; it now leads
-  with the sticker mark over the halftone wash (the same device
-  `AboutSection`/`EmptyState`/the splash screen use), so it repaints with
-  whatever theme is active since every colour is a semantic token. The
-  tagline is now one punchy sentence that says what the release is about at a
-  glance, instead of a summary of every highlight. Each highlight body clamps
-  to two lines with a WhatsApp-style "Read more"/"Read less" toggle
-  (`HighlightBody`) — recent releases carry enough nuance that a body
-  regularly runs 4-5 lines, and the toggle only renders once the clamped
-  text is confirmed to overflow (`scrollHeight` vs `clientHeight`), so a
-  short highlight never grows a dead button that expands to identical text.
-
 ## [1.17.0] — 2026-08-20
 
 ### Added
@@ -265,6 +249,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Profiles already read that way). "Import environment…" is renamed "Import
   environments…" (and its dialog title/file-picker title likewise) since one
   file can bundle more than one environment, matching "Export environments…".
+
+- **Restyled the "What's new" dialog (`WhatsNewDialog`) to match the brand
+  identity, and rewrote its 1.17.0 hero line.** The dialog previously used a
+  generic `Sparkles` chip and a full paragraph as the tagline; it now leads
+  with the sticker mark over the halftone wash (the same device
+  `AboutSection`/`EmptyState`/the splash screen use), so it repaints with
+  whatever theme is active since every colour is a semantic token. The
+  tagline is now one punchy sentence that says what the release is about at a
+  glance, instead of a summary of every highlight. Each highlight body clamps
+  to two lines with a WhatsApp-style "Read more"/"Read less" toggle
+  (`HighlightBody`) — recent releases carry enough nuance that a body
+  regularly runs 4-5 lines, and the toggle only renders once the clamped
+  text is confirmed to overflow (`scrollHeight` vs `clientHeight`), so a
+  short highlight never grows a dead button that expands to identical text.
 
 ### Fixed
 

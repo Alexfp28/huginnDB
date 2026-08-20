@@ -243,6 +243,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   fichero), ya que un mismo fichero puede contener más de un entorno, a
   juego con «Exportar entornos…».
 
+- **Rediseño del diálogo de novedades (`WhatsNewDialog`) para que encaje con
+  la identidad de marca, y reescritura de su frase principal de la 1.17.0.**
+  El diálogo usaba antes un icono `Sparkles` genérico y un párrafo entero
+  como frase de cabecera; ahora arranca con el logotipo sobre el fondo de
+  tramado (el mismo recurso que usan `AboutSection`, `EmptyState` y la
+  pantalla de arranque), de forma que se repinta con el tema activo porque
+  cada color es un token semántico. La frase de cabecera es ahora una única
+  oración contundente que dice de qué va la versión de un vistazo, en lugar
+  de resumir cada novedad. La descripción de cada novedad se recorta a dos
+  líneas con un botón «Leer más»/«Leer menos» al estilo WhatsApp
+  (`HighlightBody`) — las versiones recientes tienen suficiente matiz como
+  para que el texto ocupe 4-5 líneas, y el botón solo aparece cuando el
+  párrafo recortado realmente desborda (`scrollHeight` frente a
+  `clientHeight`), así que una novedad corta nunca genera un botón que no
+  hace nada al pulsarlo.
+
 ### Corregido
 
 - **Reimportar perfiles de conexión con «sobrescribir» ya no rompe en silencio nada
