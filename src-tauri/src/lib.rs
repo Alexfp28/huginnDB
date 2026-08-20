@@ -35,6 +35,7 @@ mod pool_reaper;
 mod prefs;
 mod ssh_known_hosts;
 mod state;
+mod state_file;
 mod store;
 mod tab_state;
 mod transfer;

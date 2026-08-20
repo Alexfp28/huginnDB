@@ -51,11 +51,8 @@
 use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 const TAB_STATE_FILE: &str = "tab_state.json";
-/// Aliased from [`crate::app_identity`] so a `canary` build isolates its state.
-const APP_DIR: &str = crate::app_identity::APP_DIR;
 
 /// Soft cap on how many connections are remembered. Older entries (by
 /// `last_opened`) get pruned at save time.
@@ -700,14 +697,6 @@ pub(crate) fn normalise(state: &mut ConnectionTabState) {
     }
 }
 
-fn tab_state_path() -> AppResult<PathBuf> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| crate::error::AppError::InvalidInput("no config dir available".into()))?;
-    let dir = base.join(APP_DIR);
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join(TAB_STATE_FILE))
-}
-
 /// Load persisted tab state, transparently migrating v1-v4 blobs.
 ///
 /// Falls back to an empty (but valid) container on missing or corrupt
@@ -718,26 +707,16 @@ fn tab_state_path() -> AppResult<PathBuf> {
 /// (`state::AppState::new_with_args`) is responsible for applying it to
 /// `profiles.json`, a file this module never touches.
 pub fn load_tab_state() -> (PersistedTabState, HashMap<String, String>) {
-    let path = match tab_state_path() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[tab_state] cannot resolve path: {e}; using empty state");
-            return (PersistedTabState::default(), HashMap::new());
-        }
-    };
-    if !path.exists() {
+    // `read_bytes` rather than `load_or_default`: the parse target is `RawState`
+    // (the union of every schema version) and the result is a *pair* — the
+    // migrated state plus the origin remap it produced.
+    let Some(bytes) = crate::state_file::read_bytes(TAB_STATE_FILE, "tab_state") else {
         return (PersistedTabState::default(), HashMap::new());
-    }
-    match std::fs::read(&path) {
-        Ok(bytes) => match serde_json::from_slice::<RawState>(&bytes) {
-            Ok(raw) => raw.into_state_with_remap(),
-            Err(e) => {
-                eprintln!("[tab_state] failed to parse {path:?}: {e}; using empty state");
-                (PersistedTabState::default(), HashMap::new())
-            }
-        },
+    };
+    match serde_json::from_slice::<RawState>(&bytes) {
+        Ok(raw) => raw.into_state_with_remap(),
         Err(e) => {
-            eprintln!("[tab_state] failed to read {path:?}: {e}; using empty state");
+            eprintln!("[tab_state] failed to parse {TAB_STATE_FILE}: {e}; using empty state");
             (PersistedTabState::default(), HashMap::new())
         }
     }
@@ -745,12 +724,7 @@ pub fn load_tab_state() -> (PersistedTabState, HashMap<String, String>) {
 
 /// Persist the tab state blob atomically.
 pub fn save_tab_state(state: &PersistedTabState) -> AppResult<()> {
-    let path = tab_state_path()?;
-    let tmp = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(state)?;
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, &path)?;
-    Ok(())
+    crate::state_file::save_atomic(TAB_STATE_FILE, state)
 }
 
 #[cfg(test)]
