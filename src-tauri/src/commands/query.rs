@@ -1044,7 +1044,21 @@ pub(crate) fn build_filter_clause_at(
                     FilterOp::Gt => ">",
                     FilterOp::Gte => ">=",
                     FilterOp::Lt => "<",
-                    _ => "<=",
+                    FilterOp::Lte => "<=",
+                    // Unreachable: the arm above admits only those six. Listed
+                    // by name rather than `_` so that adding a `FilterOp` is a
+                    // compile error here instead of silently inheriting `<=`.
+                    FilterOp::Contains
+                    | FilterOp::NotContains
+                    | FilterOp::StartsWith
+                    | FilterOp::EndsWith
+                    | FilterOp::Between
+                    | FilterOp::In
+                    | FilterOp::NotIn
+                    | FilterOp::IsNull
+                    | FilterOp::IsNotNull => {
+                        unreachable!("non-comparison op in the comparison arm")
+                    }
                 };
                 let ph = placeholder(&mut next_placeholder);
                 parts.push(format!("{col} {sym} {ph}"));
@@ -1137,7 +1151,23 @@ pub(crate) fn build_filter_clause_at(
                     FilterOp::Contains => (format!("%{escaped}%"), like_kw),
                     FilterOp::NotContains => (format!("%{escaped}%"), "NOT LIKE"),
                     FilterOp::StartsWith => (format!("{escaped}%"), like_kw),
-                    _ => (format!("%{escaped}"), like_kw),
+                    FilterOp::EndsWith => (format!("%{escaped}"), like_kw),
+                    // Unreachable, and spelled out for the same reason as the
+                    // comparison arm above: a new `FilterOp` must not quietly
+                    // become a suffix match.
+                    FilterOp::Eq
+                    | FilterOp::Ne
+                    | FilterOp::Gt
+                    | FilterOp::Gte
+                    | FilterOp::Lt
+                    | FilterOp::Lte
+                    | FilterOp::Between
+                    | FilterOp::In
+                    | FilterOp::NotIn
+                    | FilterOp::IsNull
+                    | FilterOp::IsNotNull => {
+                        unreachable!("non-pattern op in the pattern arm")
+                    }
                 };
                 // `NOT LIKE` has no case-insensitive keyword form; on Postgres
                 // fold both sides to lower() so "not contains" stays

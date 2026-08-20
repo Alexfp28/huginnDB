@@ -1052,11 +1052,7 @@ pub async fn empty_table(
     }
     let dialect = Dialect::try_of(&pool)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
-    // SQLite has no TRUNCATE; DELETE FROM with no WHERE clears the table.
-    let sql = match &pool {
-        DbPool::Sqlite(_) => format!("DELETE FROM {qt}"),
-        _ => format!("TRUNCATE TABLE {qt}"),
-    };
+    let sql = dialect.truncate_stmt(&qt);
     match pool {
         DbPool::Postgres(p) => {
             sqlx::query(&sql).execute(&p).await?;
