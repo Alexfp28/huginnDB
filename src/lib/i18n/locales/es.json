@@ -1151,6 +1151,40 @@
           "label": "Numerar los campos",
           "desc": "Numera los campos de cada fila en el margen izquierdo."
         }
+      },
+      "color": {
+        "background": "Fondo",
+        "foreground": "Texto",
+        "card": "Tarjeta",
+        "cardForeground": "Texto de tarjeta",
+        "primary": "Primario",
+        "primaryForeground": "Texto primario",
+        "secondary": "Secundario",
+        "secondaryForeground": "Texto secundario",
+        "muted": "Atenuado",
+        "mutedForeground": "Texto atenuado",
+        "accent": "Acento",
+        "accentForeground": "Texto de acento",
+        "brand": "Marca",
+        "brandForeground": "Texto de marca",
+        "brandHover": "Marca al pasar",
+        "popover": "Popover",
+        "popoverForeground": "Texto de popover",
+        "success": "Éxito",
+        "successForeground": "Texto de éxito",
+        "warning": "Advertencia",
+        "warningForeground": "Texto de advertencia",
+        "destructive": "Destructivo",
+        "destructiveForeground": "Texto destructivo",
+        "border": "Borde",
+        "input": "Borde de campo",
+        "ring": "Anillo de foco"
+      },
+      "colorGroup": {
+        "surfaces": "Superficies",
+        "actions": "Acciones y marca",
+        "status": "Colores de estado",
+        "borders": "Bordes y foco"
       }
     },
     "shortcuts": {

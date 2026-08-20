@@ -1151,6 +1151,40 @@
           "label": "Number fields",
           "desc": "Number the fields of each row in the left-hand gutter."
         }
+      },
+      "color": {
+        "background": "Background",
+        "foreground": "Foreground",
+        "card": "Card",
+        "cardForeground": "Card text",
+        "primary": "Primary",
+        "primaryForeground": "Primary text",
+        "secondary": "Secondary",
+        "secondaryForeground": "Secondary text",
+        "muted": "Muted",
+        "mutedForeground": "Muted text",
+        "accent": "Accent",
+        "accentForeground": "Accent text",
+        "brand": "Brand",
+        "brandForeground": "Brand text",
+        "brandHover": "Brand hover",
+        "popover": "Popover",
+        "popoverForeground": "Popover text",
+        "success": "Success",
+        "successForeground": "Success text",
+        "warning": "Warning",
+        "warningForeground": "Warning text",
+        "destructive": "Destructive",
+        "destructiveForeground": "Destructive text",
+        "border": "Border",
+        "input": "Input border",
+        "ring": "Focus ring"
+      },
+      "colorGroup": {
+        "surfaces": "Surfaces",
+        "actions": "Actions & brand",
+        "status": "Status colours",
+        "borders": "Borders & focus"
       }
     },
     "shortcuts": {
