@@ -503,6 +503,8 @@
     "removeFilter": "Quitar filtro",
     "rows": "filas",
     "of": "de",
+    "truncated": "truncado",
+    "truncatedHint": "El resultado se ha limitado y el resto de filas se ha descartado. Añade un LIMIT/TOP (o un filtro más restrictivo) a tu consulta para ver el resto.",
     "insert": "Insertar",
     "insertNewRow": "Insertar nueva fila",
     "viewModeTable": "Vista de tabla",

@@ -473,6 +473,15 @@ export interface QueryResult {
    * reads it from here instead of guessing — see `bson_type_tree` in
    * `src-tauri/src/db/mongo/values.rs`. */
   row_types?: BsonTypeTree[][] | null;
+  /**
+   * `true` when the driver returned more rows than the ad-hoc query cap
+   * (`MAX_ADHOC_QUERY_ROWS` in `src-tauri/src/commands/query.rs`) and the
+   * excess was discarded rather than sent to the frontend. Only ever set by
+   * `execute_query`/`execute_batch` on a hand-typed SELECT with no
+   * `LIMIT`/`TOP`/`.limit()` of its own — `fetch_table_data` always paginates
+   * server-side and never truncates.
+   */
+  truncated?: boolean;
 }
 
 /** Mirror of a BSON value's type structure (see {@link QueryResult.row_types}):

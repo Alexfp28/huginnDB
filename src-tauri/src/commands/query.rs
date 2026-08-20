@@ -218,6 +218,13 @@ pub struct QueryResult {
     /// For [`fetch_table_data`] only: the total row count of the table
     /// (so the UI can show "1–100 of 12,345").
     pub total: Option<u64>,
+    /// `true` when the driver returned more rows than [`MAX_ADHOC_QUERY_ROWS`]
+    /// and the excess was discarded rather than sent to the frontend. Only
+    /// ever set on a hand-typed SELECT with no `LIMIT`/`TOP`/`.limit()` of its
+    /// own — [`fetch_table_data`] always paginates server-side and never
+    /// truncates.
+    #[serde(default)]
+    pub truncated: bool,
     /// MongoDB only: the per-cell BSON *type* structure mirroring `rows`, one
     /// inner `Vec` per row aligned to `columns` (see
     /// [`crate::db::mongo::values::bson_type_tree`]).
@@ -495,63 +502,67 @@ pub(crate) async fn execute_with_state(
             rows_affected,
             elapsed_ms: start.elapsed().as_millis() as u64,
             total: None,
+            truncated: false,
             row_types: None,
         });
     }
 
-    let (columns, data) = match pool {
+    let ((columns, data), truncated) = match pool {
         DbPool::Postgres(p) => {
-            let rows = try_sql_sink!(
+            let (rows, truncated) = try_sql_sink!(
                 sink,
                 connection_id,
                 driver,
                 sql,
                 start,
-                sqlx::query(sql).fetch_all(&p).await
+                fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
             );
-            pg_result(&rows)
+            (pg_result(&rows), truncated)
         }
         DbPool::Mysql(p) => {
-            let rows = try_sql_sink!(
+            let (rows, truncated) = try_sql_sink!(
                 sink,
                 connection_id,
                 driver,
                 sql,
                 start,
-                sqlx::query(sql).fetch_all(&p).await
+                fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
             );
-            mysql_result(&rows)
+            (mysql_result(&rows), truncated)
         }
         DbPool::Sqlite(p) => {
-            let rows = try_sql_sink!(
+            let (rows, truncated) = try_sql_sink!(
                 sink,
                 connection_id,
                 driver,
                 sql,
                 start,
-                sqlx::query(sql).fetch_all(&p).await
+                fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
             );
-            sqlite_result(&rows)
+            (sqlite_result(&rows), truncated)
         }
         DbPool::MsSql(p) => {
             // A T-SQL batch can return several result sets; the grid shows one,
             // so take the first non-empty one (a `SELECT` preceded by e.g. a
             // `SET NOCOUNT ON` would otherwise look empty).
-            let sets = try_sql_sink!(
+            let (sets, truncated) = try_sql_sink!(
                 sink,
                 connection_id,
                 driver,
                 sql,
                 start,
-                p.query_sets(sql).await
+                p.query_sets_capped(sql, MAX_ADHOC_QUERY_ROWS).await
             );
             let rows = sets.into_iter().find(|s| !s.is_empty()).unwrap_or_default();
             let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
             (
-                cols.into_iter()
-                    .map(|(name, data_type)| ColumnMeta { name, data_type })
-                    .collect::<Vec<_>>(),
-                data,
+                (
+                    cols.into_iter()
+                        .map(|(name, data_type)| ColumnMeta { name, data_type })
+                        .collect::<Vec<_>>(),
+                    data,
+                ),
+                truncated,
             )
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
@@ -562,6 +573,7 @@ pub(crate) async fn execute_with_state(
         columns,
         elapsed_ms: start.elapsed().as_millis() as u64,
         total: None,
+        truncated,
         row_types: None,
     };
     log_sql_sink(
@@ -649,8 +661,8 @@ pub(crate) async fn execute_batch_inner(
                 let is_select = is_read_only(sql);
                 let start = Instant::now();
                 if is_select {
-                    match sqlx::query(sql).fetch_all(&mut *$conn).await {
-                        Ok(rows) => {
+                    match fetch_capped(&mut *$conn, sql, MAX_ADHOC_QUERY_ROWS).await {
+                        Ok((rows, truncated)) => {
                             let (columns, data) = $decode(&rows);
                             let ra = data.len() as u64;
                             total_affected += ra;
@@ -661,6 +673,7 @@ pub(crate) async fn execute_batch_inner(
                                 rows_affected: ra,
                                 elapsed_ms: start.elapsed().as_millis() as u64,
                                 total: None,
+                                truncated,
                                 row_types: None,
                             });
                             outcomes.push(StmtOutcome {
@@ -754,28 +767,32 @@ pub(crate) async fn execute_batch_inner(
                 let is_select = is_read_only(sql);
                 let start = Instant::now();
                 let outcome: AppResult<(u64, Option<QueryResult>)> = if is_select {
-                    $client.simple_query_sets(sql).await.map(|sets| {
-                        let rows = sets.into_iter().find(|s| !s.is_empty()).unwrap_or_default();
-                        let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
-                        let ra = data.len() as u64;
-                        (
-                            ra,
-                            Some(QueryResult {
-                                columns: cols
-                                    .into_iter()
-                                    .map(|(name, data_type)| ColumnMeta { name, data_type })
-                                    .collect(),
-                                rows: data,
-                                rows_affected: ra,
-                                elapsed_ms: start.elapsed().as_millis() as u64,
-                                total: None,
-                                // SQL, so the catalog column type is the hint
-                                // the editor needs; per-cell BSON type trees
-                                // are MongoDB's alone (gotcha #29).
-                                row_types: None,
-                            }),
-                        )
-                    })
+                    $client
+                        .simple_query_sets_capped(sql, MAX_ADHOC_QUERY_ROWS)
+                        .await
+                        .map(|(sets, truncated)| {
+                            let rows = sets.into_iter().find(|s| !s.is_empty()).unwrap_or_default();
+                            let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
+                            let ra = data.len() as u64;
+                            (
+                                ra,
+                                Some(QueryResult {
+                                    columns: cols
+                                        .into_iter()
+                                        .map(|(name, data_type)| ColumnMeta { name, data_type })
+                                        .collect(),
+                                    rows: data,
+                                    rows_affected: ra,
+                                    elapsed_ms: start.elapsed().as_millis() as u64,
+                                    total: None,
+                                    truncated,
+                                    // SQL, so the catalog column type is the hint
+                                    // the editor needs; per-cell BSON type trees
+                                    // are MongoDB's alone (gotcha #29).
+                                    row_types: None,
+                                }),
+                            )
+                        })
                 } else {
                     $client.simple_execute(sql).await.map(|ra| (ra, None))
                 };
@@ -893,6 +910,54 @@ fn escape_like(input: &str) -> String {
 /// user can act on. 1000 is comfortably above any plausible manual selection in
 /// the grid and far below every engine limit.
 pub const MAX_IN_VALUES: usize = 1000;
+
+/// Upper bound on how many rows an ad-hoc query (the editor's `execute_query`/
+/// `execute_batch`, and MongoDB's `find`/`aggregate` shell statements) keeps
+/// from a SELECT/find result.
+///
+/// Unlike [`fetch_table_data`], which always appends its own `LIMIT`/`OFFSET`,
+/// text the user typed carries no such bound — a `SELECT * FROM big_table
+/// WHERE rarely_true` returns however many rows the table has. Every SQL
+/// driver here used to hand that straight to `fetch_all`/`tiberius::
+/// into_results`, which buffer the *entire* result set in memory before
+/// returning, and `DataGrid` then rendered every one of those rows into the
+/// DOM — a non-selective query over a large table reliably took down the
+/// whole app with an out-of-memory crash (no timeout ever ran, because the
+/// "Run" button's clock is cosmetic and never cancels the driver call). Rows
+/// past the cap are still drained off the wire (SQL: to leave the pooled
+/// session/connection at a clean protocol boundary instead of mid-response;
+/// Mongo: the cursor is simply dropped early, which is a supported operation)
+/// — they're discarded, not merely deferred, so backend memory stays bounded
+/// regardless of how many rows the query actually matches.
+pub const MAX_ADHOC_QUERY_ROWS: usize = 50_000;
+
+/// Stream `sql` and keep only the first `cap` rows, still draining (and
+/// discarding) anything past that so the connection is left at a clean
+/// protocol boundary rather than mid-response — see [`MAX_ADHOC_QUERY_ROWS`].
+/// Returns `(rows, truncated)`.
+async fn fetch_capped<'q, 'c, DB, E>(
+    executor: E,
+    sql: &'q str,
+    cap: usize,
+) -> Result<(Vec<DB::Row>, bool), sqlx::Error>
+where
+    DB: sqlx::Database,
+    E: sqlx::Executor<'c, Database = DB>,
+    for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
+{
+    use futures_util::TryStreamExt;
+    let mut stream = sqlx::query(sql).fetch(executor);
+    let mut rows = Vec::new();
+    let mut truncated = false;
+    while let Some(row) = stream.try_next().await? {
+        if rows.len() < cap {
+            rows.push(row);
+        } else {
+            truncated = true;
+        }
+    }
+    Ok((rows, truncated))
+}
 
 /// Reject filter payloads that would build pathological or invalid SQL.
 ///
@@ -1475,6 +1540,7 @@ pub(crate) async fn fetch_table_data_inner(
         columns,
         elapsed_ms,
         total,
+        truncated: false,
         row_types: None,
     })
 }

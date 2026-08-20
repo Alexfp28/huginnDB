@@ -9,7 +9,7 @@
 
 use crate::commands::query::{
     BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp, QueryResult, RowValue, SortSpec,
-    StmtOutcome,
+    StmtOutcome, MAX_ADHOC_QUERY_ROWS,
 };
 use crate::error::AppResult;
 use crate::log_bus::{LogEntry, LogKind, LogSink};
@@ -24,12 +24,39 @@ use super::values::{bson_to_json, bson_type_tree, id_to_bson, json_to_bson, stri
 
 /// Collect a cursor of documents without pulling in an external `Stream` trait
 /// (the `mongodb` cursor exposes `advance` + `deserialize_current` directly).
+/// Used only where the cursor is already server-side bounded (a `.limit()`
+/// the caller applied itself, e.g. [`fetch_collection_data`]'s page size) —
+/// anywhere the document count is driven by hand-typed `mongosh` text with no
+/// such guarantee goes through [`collect_capped`] instead.
 async fn collect(cursor: &mut mongodb::Cursor<Document>) -> AppResult<Vec<Document>> {
     let mut out = Vec::new();
     while cursor.advance().await? {
         out.push(cursor.deserialize_current()?);
     }
     Ok(out)
+}
+
+/// Collect a cursor of documents, keeping only the first `cap` documents.
+///
+/// Unlike the SQL drivers (see [`MAX_ADHOC_QUERY_ROWS`]), there's no clean-
+/// protocol-boundary concern here: a cursor is its own independent server-side
+/// resource, and the driver sends a `killCursors` when it's dropped early —
+/// there's nothing to drain first. Returns `(docs, truncated)`, `truncated`
+/// decided by one extra `advance()` past the cap rather than materialising a
+/// document we're about to discard.
+async fn collect_capped(
+    cursor: &mut mongodb::Cursor<Document>,
+    cap: usize,
+) -> AppResult<(Vec<Document>, bool)> {
+    let mut out = Vec::new();
+    while out.len() < cap {
+        if !cursor.advance().await? {
+            return Ok((out, false));
+        }
+        out.push(cursor.deserialize_current()?);
+    }
+    let truncated = cursor.advance().await?;
+    Ok((out, truncated))
 }
 
 /// Infer a single column's BSON type across a result set: the type of the
@@ -61,7 +88,7 @@ fn infer_column_type<'a>(docs: impl Iterator<Item = Option<&'a Bson>>) -> String
 /// label, so `run_query`/`browse_table` give an MCP client (or the data grid)
 /// a real type signal — the same treatment the read-only structure view
 /// already gives via `infer_columns`' document sampling.
-pub(super) fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64) -> QueryResult {
+pub(super) fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64, truncated: bool) -> QueryResult {
     let mut order: Vec<String> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for d in &docs {
@@ -116,6 +143,7 @@ pub(super) fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64) -> QueryResul
         columns,
         elapsed_ms,
         total: None,
+        truncated,
         row_types: Some(row_types),
     }
 }
@@ -133,6 +161,7 @@ fn scalar_result(name: &str, data_type: &str, value: Value, elapsed_ms: u64) -> 
         rows_affected: 1,
         elapsed_ms,
         total: None,
+        truncated: false,
         row_types: None,
     }
 }
@@ -145,6 +174,7 @@ fn affected_result(count: u64, elapsed_ms: u64) -> QueryResult {
         rows_affected: count,
         elapsed_ms,
         total: None,
+        truncated: false,
         row_types: None,
     }
 }
@@ -181,20 +211,30 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
                 action = action.skip(sk.max(0) as u64);
             }
             let mut cursor = action.await?;
-            let docs = collect(&mut cursor).await?;
-            Ok(docs_to_result(docs, ms()))
+            let (docs, truncated) = collect_capped(&mut cursor, MAX_ADHOC_QUERY_ROWS).await?;
+            Ok(docs_to_result(docs, ms(), truncated))
         }
         MongoOp::Aggregate { pipeline } => {
             let mut cursor = coll.aggregate(pipeline).await?;
-            let docs = collect(&mut cursor).await?;
-            Ok(docs_to_result(docs, ms()))
+            let (docs, truncated) = collect_capped(&mut cursor, MAX_ADHOC_QUERY_ROWS).await?;
+            Ok(docs_to_result(docs, ms(), truncated))
         }
         MongoOp::Count { filter } => {
             let n = coll.count_documents(filter).await?;
             Ok(scalar_result("count", "long", Value::from(n), ms()))
         }
         MongoOp::Distinct { field, filter } => {
-            let values = coll.distinct(&field, filter).await?;
+            // `distinct` has no cursor to cap mid-flight — the driver always
+            // materialises every distinct value into one `Vec` before we get
+            // control. Truncating what we keep still bounds the IPC payload
+            // and the grid's DOM, just not the driver's own peak memory; a
+            // field with an unbounded number of distinct values is rare
+            // enough (and the command is read-only, uncommon in the editor)
+            // that this is an accepted, lesser-scope gap versus `find`/
+            // `aggregate`'s unbounded cursors.
+            let mut values = coll.distinct(&field, filter).await?;
+            let truncated = values.len() > MAX_ADHOC_QUERY_ROWS;
+            values.truncate(MAX_ADHOC_QUERY_ROWS);
             let data_type = infer_column_type(values.iter().map(Some));
             let rows: Vec<Vec<Value>> = values.iter().map(|b| vec![bson_to_json(b)]).collect();
             Ok(QueryResult {
@@ -206,6 +246,7 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
                 rows,
                 elapsed_ms: ms(),
                 total: None,
+                truncated,
                 row_types: None,
             })
         }
@@ -525,7 +566,7 @@ pub async fn fetch_collection_data(
     let mut cursor = action.await?;
     let docs = collect(&mut cursor).await?;
 
-    let mut result = docs_to_result(docs, start.elapsed().as_millis() as u64);
+    let mut result = docs_to_result(docs, start.elapsed().as_millis() as u64, false);
     result.total = total;
     Ok(result)
 }
@@ -712,7 +753,7 @@ mod tests {
             doc_with(&[("_id", Bson::Int32(1)), ("name", Bson::String("a".into()))]),
             doc_with(&[("_id", Bson::Int32(2)), ("name", Bson::String("b".into()))]),
         ];
-        let result = docs_to_result(docs, 0);
+        let result = docs_to_result(docs, 0, false);
         let name_col = result.columns.iter().find(|c| c.name == "name").unwrap();
         assert_eq!(name_col.data_type, "string");
     }
@@ -729,7 +770,7 @@ mod tests {
             ("big", Bson::Int64(301_353_073)),
             ("obj", Bson::Document(nested)),
         ])];
-        let result = docs_to_result(docs, 0);
+        let result = docs_to_result(docs, 0, false);
         let types = result.row_types.expect("mongo results carry row types");
         let index = |name: &str| {
             result
@@ -755,7 +796,7 @@ mod tests {
             doc_with(&[("_id", Bson::Int32(1)), ("name", Bson::String("a".into()))]),
             doc_with(&[("_id", Bson::Int32(2))]),
         ];
-        let result = docs_to_result(docs, 0);
+        let result = docs_to_result(docs, 0, false);
         let types = result.row_types.expect("mongo results carry row types");
         let name = result
             .columns
@@ -771,7 +812,7 @@ mod tests {
             doc_with(&[("value", Bson::Int32(1))]),
             doc_with(&[("value", Bson::String("oops".into()))]),
         ];
-        let result = docs_to_result(docs, 0);
+        let result = docs_to_result(docs, 0, false);
         let col = result.columns.iter().find(|c| c.name == "value").unwrap();
         assert_eq!(col.data_type, "mixed");
     }
@@ -782,7 +823,7 @@ mod tests {
             doc_with(&[("value", Bson::Null)]),
             doc_with(&[("value", Bson::Int64(42))]),
         ];
-        let result = docs_to_result(docs, 0);
+        let result = docs_to_result(docs, 0, false);
         let col = result.columns.iter().find(|c| c.name == "value").unwrap();
         assert_eq!(col.data_type, "long");
     }
@@ -790,7 +831,7 @@ mod tests {
     #[test]
     fn docs_to_result_reports_null_when_field_never_present() {
         let docs = vec![doc_with(&[("_id", Bson::Int32(1))])];
-        let result = docs_to_result(docs, 0);
+        let result = docs_to_result(docs, 0, false);
         assert_eq!(result.columns.len(), 1);
         assert_eq!(result.columns[0].name, "_id");
         assert_eq!(result.columns[0].data_type, "int");

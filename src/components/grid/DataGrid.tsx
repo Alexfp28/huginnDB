@@ -1,7 +1,8 @@
 /**
  * Generic data grid used for both table data and ad-hoc query results.
- * Built on top of TanStack Table; rows are virtualised by the browser
- * via the parent's `overflow-auto`.
+ * Built on top of TanStack Table; the table view's rows are windowed by
+ * `@tanstack/react-virtual` (list view — MongoDB's `DocumentListView` — is
+ * not, see its own file).
  *
  * Visual features:
  * - Numeric columns (int, float, decimal, …) are highlighted in amber.
@@ -37,8 +38,10 @@ import {
   type Row,
   type Updater,
 } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { tableKey } from "@/stores/session/schema";
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowRightCircle,
   ArrowUp,
@@ -2198,6 +2201,33 @@ export function DataGrid({
   });
 
   /**
+   * Windows `<tbody>`'s rows so a large result (up to the backend's
+   * `MAX_ADHOC_QUERY_ROWS` cap, or any bigger table-data page) never mounts
+   * more than a couple dozen real `<tr>`s at once — see the file-header
+   * comment; the previous "virtualised by the browser via overflow-auto" was
+   * never true, every row was a real DOM node.
+   *
+   * `estimateSize` returns the *exact* row height (`rowHeight` is one
+   * persisted px value applied uniformly via `cellStyle`, gotcha #13 — not an
+   * estimate to refine later), so no `measureElement`/dynamic measurement is
+   * needed; the padding-row technique below is exact from the first paint.
+   */
+  const tableRows = table.getRowModel().rows;
+  const rowVirtualizer = useVirtualizer({
+    count: tableRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 8,
+  });
+  // `estimateSize` alone doesn't retroactively resize rows the virtualizer
+  // already cached a size for — `measure()` clears that cache so a Ctrl+wheel
+  // zoom (which changes `rowHeight` without touching row *count*) takes
+  // effect immediately instead of only on the next scroll.
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [rowHeight, rowVirtualizer]);
+
+  /**
    * Coordinates for the JSON Schema cascade.
    *
    * All four axes are already props of this component; before this they were
@@ -2413,12 +2443,21 @@ export function DataGrid({
     const focusCell = (r: number, c: number) => {
       setActiveCell({ r, c });
       setSelectedRowIndex(r);
-      // Keep the cell in view without smooth scrolling (instant per the
-      // no-motion-on-keyboard rule), deferred a frame so the ring has painted.
+      // With virtualized rows, target row `r` may have no DOM node at all
+      // yet (it's outside the currently-mounted window) — `scrollToIndex`
+      // mounts it (a no-op if it's already in view). Keep the cell in view
+      // without smooth scrolling (instant per the no-motion-on-keyboard
+      // rule); two nested frames give React's render (triggered by the
+      // virtualizer's own scroll-driven state update) time to actually mount
+      // the row before the `querySelector` below runs — a single frame can
+      // race it on a jump of more than a screenful of rows.
+      rowVirtualizer.scrollToIndex(r, { align: "auto" });
       requestAnimationFrame(() => {
-        scrollRef.current
-          ?.querySelector<HTMLElement>(`[data-cell="${r}-${c}"]`)
-          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        requestAnimationFrame(() => {
+          scrollRef.current
+            ?.querySelector<HTMLElement>(`[data-cell="${r}-${c}"]`)
+            ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        });
       });
     };
 
@@ -2734,6 +2773,19 @@ export function DataGrid({
               )}
             </span>
           )}
+          {/* Never gated by `showRowCount`/collapse — this is a warning about
+              missing data, not a "nice to have" readout, so it stays visible
+              even when the toolbar is squeezed. See `MAX_ADHOC_QUERY_ROWS`
+              in `src-tauri/src/commands/query.rs`. */}
+          {result.truncated && (
+            <span
+              className="flex items-center gap-1 rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs font-medium text-warning"
+              title={t("dataGrid.truncatedHint")}
+            >
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              {t("dataGrid.truncated")}
+            </span>
+          )}
           {!collapseChrome && fitItem?.bar}
           {!collapseChrome &&
             toolbarTrailing?.map((item) => (
@@ -2987,61 +3039,95 @@ export function DataGrid({
                 onCancel={onDraftCancel}
               />
             )}
-            {table.getRowModel().rows.map((row, i) => {
-              // `rowValues` is the underlying payload (CellValue[]) for this
-              // row — used to resolve identity below rather than `i`, which
-              // is the *filtered display index*.
-              const rowValues = row.original as CellValue[];
-              const rowKey = selectionEnabled
-                ? (getRowKey?.(rowValues) ?? null)
-                : null;
-              // Every prop below is narrowed to "does this concern THIS
-              // row" (isSelected/isMultiSelected/activeColIdx/inlineEditHere)
-              // or already stable across a plain click, so `GridRow`'s
-              // `React.memo` skips re-rendering every row except the (at
-              // most two) actually affected — see `GridRow`'s doc comment.
+            {(() => {
+              const virtualRows = rowVirtualizer.getVirtualItems();
+              // +2: the gutter column and the filler `<th>`'s matching `<td>`
+              // (see the header's own comment on the filler column).
+              const colSpan = result.columns.length + 2;
               return (
-                <GridRow
-                  key={row.id}
-                  row={row}
-                  rowIndex={i}
-                  isSelected={selectedRowIndex === i}
-                  isMultiSelected={rowKey !== null && selectedKeys.has(rowKey)}
-                  rowKey={rowKey}
-                  activeColIdx={activeCell?.r === i ? activeCell.c : null}
-                  inlineEditHere={
-                    inlineEdit && inlineEdit.rowValues === rowValues
-                      ? inlineEdit
-                      : null
-                  }
-                  selectionEnabled={selectionEnabled}
-                  hasSelection={hasSelection}
-                  selectedRows={selectedRows}
-                  zebraStripes={zebraStripes}
-                  cellStyle={cellStyle}
-                  resultColumns={result.columns}
-                  columnIndexByName={columnIndexByName}
-                  columnInfoByName={columnInfoByName}
-                  driver={driver}
-                  tableName={tableName}
-                  tableSchema={tableSchema}
-                  pkColumnNames={pkColumnNames}
-                  editable={editable}
-                  onCellSave={onCellSave}
-                  onNavigateFk={onNavigateFk}
-                  onAddFilter={onAddFilter}
-                  onInsertRow={onInsertRow}
-                  onDuplicateRow={onDuplicateRow}
-                  onDeleteRow={onDeleteRow}
-                  onBulkDelete={onBulkDelete}
-                  scrollRef={scrollRef}
-                  setSelectedRowIndex={setSelectedRowIndex}
-                  setActiveCell={setActiveCell}
-                  setSelectedCell={setSelectedCell}
-                  callbacksRef={rowCallbacksRef}
-                />
+                <>
+                  {virtualRows.length > 0 && (
+                    <tr aria-hidden>
+                      <td
+                        colSpan={colSpan}
+                        style={{ height: virtualRows[0].start, padding: 0, border: 0 }}
+                      />
+                    </tr>
+                  )}
+                  {virtualRows.map((virtualRow) => {
+                    const i = virtualRow.index;
+                    const row = tableRows[i];
+                    // `rowValues` is the underlying payload (CellValue[]) for
+                    // this row — used to resolve identity below rather than
+                    // `i`, which is the *filtered display index*.
+                    const rowValues = row.original as CellValue[];
+                    const rowKey = selectionEnabled
+                      ? (getRowKey?.(rowValues) ?? null)
+                      : null;
+                    // Every prop below is narrowed to "does this concern THIS
+                    // row" (isSelected/isMultiSelected/activeColIdx/inlineEditHere)
+                    // or already stable across a plain click, so `GridRow`'s
+                    // `React.memo` skips re-rendering every row except the (at
+                    // most two) actually affected — see `GridRow`'s doc comment.
+                    return (
+                      <GridRow
+                        key={row.id}
+                        row={row}
+                        rowIndex={i}
+                        isSelected={selectedRowIndex === i}
+                        isMultiSelected={rowKey !== null && selectedKeys.has(rowKey)}
+                        rowKey={rowKey}
+                        activeColIdx={activeCell?.r === i ? activeCell.c : null}
+                        inlineEditHere={
+                          inlineEdit && inlineEdit.rowValues === rowValues
+                            ? inlineEdit
+                            : null
+                        }
+                        selectionEnabled={selectionEnabled}
+                        hasSelection={hasSelection}
+                        selectedRows={selectedRows}
+                        zebraStripes={zebraStripes}
+                        cellStyle={cellStyle}
+                        resultColumns={result.columns}
+                        columnIndexByName={columnIndexByName}
+                        columnInfoByName={columnInfoByName}
+                        driver={driver}
+                        tableName={tableName}
+                        tableSchema={tableSchema}
+                        pkColumnNames={pkColumnNames}
+                        editable={editable}
+                        onCellSave={onCellSave}
+                        onNavigateFk={onNavigateFk}
+                        onAddFilter={onAddFilter}
+                        onInsertRow={onInsertRow}
+                        onDuplicateRow={onDuplicateRow}
+                        onDeleteRow={onDeleteRow}
+                        onBulkDelete={onBulkDelete}
+                        scrollRef={scrollRef}
+                        setSelectedRowIndex={setSelectedRowIndex}
+                        setActiveCell={setActiveCell}
+                        setSelectedCell={setSelectedCell}
+                        callbacksRef={rowCallbacksRef}
+                      />
+                    );
+                  })}
+                  {virtualRows.length > 0 && (
+                    <tr aria-hidden>
+                      <td
+                        colSpan={colSpan}
+                        style={{
+                          height:
+                            rowVirtualizer.getTotalSize() -
+                            virtualRows[virtualRows.length - 1].end,
+                          padding: 0,
+                          border: 0,
+                        }}
+                      />
+                    </tr>
+                  )}
+                </>
               );
-            })}
+            })()}
             {visibleRows.length === 0 && !draftRow && (
               <tr>
                 <td colSpan={result.columns.length + 2}>

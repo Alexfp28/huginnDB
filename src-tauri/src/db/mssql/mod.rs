@@ -35,6 +35,7 @@ use crate::db::ssh::{self, SshTunnelHandle};
 use crate::error::{AppError, AppResult};
 use crate::ssh_known_hosts::SharedKnownHosts;
 use crate::state::{ConnectionProfile, DbPool, MsSqlAuth, MsSqlOptions};
+use futures_util::TryStreamExt;
 use std::sync::Arc;
 use std::time::Instant;
 use tiberius::{AuthMethod, Client, Config, EncryptionLevel, Row};
@@ -199,9 +200,19 @@ impl MsSqlPool {
         self.acquire().await?.simple_execute(sql).await
     }
 
-    /// Unparameterised read returning every result set the batch produced.
-    pub async fn query_sets(&self, sql: &str) -> AppResult<Vec<Vec<Row>>> {
-        self.acquire().await?.simple_query_sets(sql).await
+    /// Unparameterised read returning every result set the batch produced,
+    /// keeping only the first `cap` rows of each — see
+    /// [`crate::commands::query::MAX_ADHOC_QUERY_ROWS`]. Returns whether any
+    /// result set was truncated.
+    pub async fn query_sets_capped(
+        &self,
+        sql: &str,
+        cap: usize,
+    ) -> AppResult<(Vec<Vec<Row>>, bool)> {
+        self.acquire()
+            .await?
+            .simple_query_sets_capped(sql, cap)
+            .await
     }
 
     /// Parameterised single-value read (the `COUNT(*)` shape).
@@ -281,6 +292,51 @@ impl PooledClient {
         let result = async {
             let stream = client.simple_query(sql).await?;
             stream.into_results().await
+        }
+        .await;
+        self.classify(result)
+    }
+
+    /// Same as [`Self::simple_query_sets`], but keeps only the first `cap`
+    /// rows of each result set instead of collecting every row `tiberius`'s
+    /// own `into_results()` would otherwise buffer — see
+    /// [`crate::commands::query::MAX_ADHOC_QUERY_ROWS`].
+    ///
+    /// Rows past the cap are still read off the stream (just not stored):
+    /// unlike dropping the stream early, this leaves the TDS session at the
+    /// clean protocol boundary [`Self::classify`] requires to consider it
+    /// reusable, rather than mid-response with unread bytes still in flight.
+    /// Returns whether any result set was truncated.
+    pub async fn simple_query_sets_capped(
+        &mut self,
+        sql: &str,
+        cap: usize,
+    ) -> AppResult<(Vec<Vec<Row>>, bool)> {
+        let client = self.client_mut()?;
+        let result = async {
+            let mut stream = client.simple_query(sql).await?;
+            let mut results: Vec<Vec<Row>> = Vec::new();
+            let mut current: Option<Vec<Row>> = None;
+            let mut truncated = false;
+            while let Some(item) = stream.try_next().await? {
+                match item {
+                    tiberius::QueryItem::Row(row) => {
+                        let rows = current.get_or_insert_with(Vec::new);
+                        if rows.len() < cap {
+                            rows.push(row);
+                        } else {
+                            truncated = true;
+                        }
+                    }
+                    tiberius::QueryItem::Metadata(_) => {
+                        results.push(current.take().unwrap_or_default());
+                    }
+                }
+            }
+            if let Some(rows) = current {
+                results.push(rows);
+            }
+            Ok((results, truncated))
         }
         .await;
         self.classify(result)

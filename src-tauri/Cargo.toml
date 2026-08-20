@@ -50,6 +50,15 @@ sqlx = { version = "0.8", features = [
     "rust_decimal",
     "bigdecimal",
 ] }
+# `TryStreamExt::try_next`, for streaming a SELECT's rows one at a time so an
+# ad-hoc query (editor SQL, no `LIMIT`/`TOP` of its own) can be capped at
+# `MAX_ADHOC_QUERY_ROWS` without first buffering the whole result set (the
+# `fetch_all`/`tiberius::into_results` OOM this guards against — see
+# CLAUDE.md gotcha on ad-hoc query row caps). Already resolved at 0.3.32
+# transitively via sqlx/tiberius/mongodb; this only turns it into a direct
+# dependency so `db/mongo/query.rs` and `commands/query.rs` can `use` it — no
+# new crate enters the tree (same rationale as the `bson` pin above).
+futures-util = "0.3"
 mongodb = { version = "3", default-features = false, features = [
     "rustls-tls",
     "dns-resolver",

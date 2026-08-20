@@ -512,6 +512,8 @@
     "removeFilter": "Remove filter",
     "rows": "rows",
     "of": "of",
+    "truncated": "truncated",
+    "truncatedHint": "The result was capped and the rest of the rows were discarded. Add a LIMIT/TOP (or a narrower filter) to your query to see the rest.",
     "insert": "Insert",
     "insertNewRow": "Insert new row",
     "viewModeTable": "Table view",

@@ -250,6 +250,48 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A hand-typed SELECT with no `LIMIT`/`TOP` over a large table could take
+  down the whole app with an out-of-memory crash, and the "Run" button's timer
+  kept spinning the entire time it happened.** Reported against SQL Server (a
+  query pasted straight from SSMS over a multi-million-row table), but the
+  root cause was shared by every SQL driver: `execute_query`/`execute_batch`
+  (`src-tauri/src/commands/query.rs`) handed the editor's SQL straight to
+  `sqlx::query(..).fetch_all(..)` for Postgres/MySQL/SQLite and to
+  `tiberius`'s `simple_query(..).into_results()` for SQL Server, both of which
+  buffer the *entire* result set in memory before returning a single row — and
+  `DataGrid` then rendered every one of those rows into the DOM (see the
+  virtualization fix below). None of this was time-bounded either: the
+  elapsed-time readout next to "Run" is a cosmetic `setInterval`, not a real
+  timeout, so nothing in the chain ever cancelled the driver call — the query
+  ran to completion (or exhausted memory first) regardless of how long the UI
+  had been sitting there. MongoDB's `find`/`aggregate` shell statements had the
+  same unbounded-cursor shape.
+
+  Every ad-hoc read path (`execute_query`, `execute_batch`, and MongoDB's
+  `find`/`aggregate`) now keeps at most `MAX_ADHOC_QUERY_ROWS` (50,000) rows,
+  via a new generic `fetch_capped` helper that streams a SELECT with sqlx's
+  `fetch()` instead of `fetch_all()`, a new `simple_query_sets_capped` on the
+  SQL Server pool that walks `tiberius`'s `QueryStream` item-by-item, and a
+  `collect_capped` for Mongo cursors. Rows past the cap are still drained (SQL:
+  so the pooled connection/session is left at a clean protocol boundary
+  instead of mid-response — dropping the stream early would corrupt the next
+  caller's query on that same connection; Mongo: the cursor is simply dropped,
+  which is a supported operation) — discarded, not merely deferred, so backend
+  memory stays bounded no matter how many rows the query actually matches.
+  `QueryResult.truncated` reports when this happened, and the grid now shows a
+  "truncated" badge in the toolbar (with a hint to add a `LIMIT`/`TOP`) instead
+  of silently handing back a partial result with no indication anything was
+  cut. `fetch_table_data`/`fetch_collection_data` (the paginated table/
+  collection browser) are unaffected — they always apply their own
+  `LIMIT`/`OFFSET` and never truncate.
+
+  `DataGrid.tsx`'s row rendering is now backed by `@tanstack/react-virtual`
+  instead of mounting one real `<tr>` per row unconditionally — the file's own
+  header comment used to (incorrectly) claim rows were "virtualised by the
+  browser via the parent's `overflow-auto`", which is not how `overflow-auto`
+  works and is exactly what let a 50,000-row capped result still bog down the
+  renderer even after the backend stopped running out of memory.
+
 - **Removing a shared origin could leave its connections permanently stuck**
   if the in-app "keep as mine / delete" notice was missed before the app
   closed — the notice lived only in memory (`useOriginSync.vanished`), so an
