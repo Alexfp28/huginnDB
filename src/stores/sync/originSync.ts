@@ -23,7 +23,7 @@ import { create } from "zustand";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
 import { useEnvironments } from "@/stores/session/environments";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isMainWindow } from "@/lib/window";
 import type { Origin } from "@/types";
 
 /**
@@ -126,7 +126,7 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
     // Origins are global, but `tab_state.json` (where they live) is still
     // main-window-owned (gotcha #8), and this sweep writes `profiles.json`
     // too. A secondary window syncing would race the main one's own writes.
-    if (getCurrentWindow().label !== "main") return;
+    if (!isMainWindow()) return;
     if (get().syncing) return;
     set({ syncing: true });
 
@@ -385,7 +385,7 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let watching = false;
 
 export function startPeriodicOriginSync(): void {
-  if (getCurrentWindow().label !== "main") return;
+  if (!isMainWindow()) return;
   watchDeferred();
   if (timer) return;
   void useOriginSync.getState().syncAll();

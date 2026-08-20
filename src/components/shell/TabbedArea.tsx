@@ -41,7 +41,7 @@ import {
   type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isMainWindow } from "@/lib/window";
 import { useTabs } from "@/stores/session/tabs";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import type { AppTab, Driver } from "@/types";
@@ -794,7 +794,7 @@ function EmptyWatermark() {
   // Same guard as `WorkspacePicker` itself — left main-window-only for now,
   // see that component's comment.
   const showEnvironments =
-    getCurrentWindow().label === "main" && environments.length > 1;
+    isMainWindow() && environments.length > 1;
   const showPicker = hasProfiles || showEnvironments;
 
   const [connDialogOpen, setConnDialogOpen] = useState(false);

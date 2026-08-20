@@ -75,7 +75,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isMainWindow } from "@/lib/window";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -118,7 +118,7 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
   // Only the main window may create/rename/delete/reorder — those write
   // `tab_state.json` (gotcha #8). A secondary window still gets the rail
   // itself, in a read-only, non-draggable form (see the render below).
-  const isMain = getCurrentWindow().label === "main";
+  const isMain = isMainWindow();
 
   function handleClick(envId: string) {
     if (envId === activeId) {

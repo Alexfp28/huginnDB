@@ -51,7 +51,7 @@ import { useTabs } from "@/stores/session/tabs";
 import { useSchema } from "@/stores/session/schema";
 import { useUi } from "@/stores/session/ui";
 import { usePreferences } from "@/stores/preferences/preferences";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isMainWindow } from "@/lib/window";
 import {
   getInnerDockviewApi,
   setPendingInternalLayout,
@@ -198,12 +198,6 @@ function scheduleSave(connectionId: string) {
   }, SAVE_DEBOUNCE_MS);
 }
 
-/** True only in the main window — the sole owner of `tab_state.json`
- *  (gotcha #8). Secondary "New window" instances are ephemeral. */
-function isMainWindow(): boolean {
-  return getCurrentWindow().label === "main";
-}
-
 // --- Session-level workspace layout -----------------------------------------
 // The inner dockview's split/float geometry is shared across every open
 // connection (one inner dockview hosts them all), so it is persisted once at
@@ -288,7 +282,7 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
   // save to `tab_state.json` (see `commands::prefs::get_tab_state`). Without
   // this guard a secondary window would silently overwrite the main
   // window's persisted snapshot the moment it opened a connection.
-  if (getCurrentWindow().label !== "main") return;
+  if (!isMainWindow()) return;
 
   const restore = usePreferences.getState().prefs.ui.restoreTabsOnOpen;
   if (!restore) {

@@ -64,6 +64,7 @@ import { flushAllTabState, persistLaunchState } from "@/stores/session/persisted
 import { useEnvironments } from "@/stores/session/environments";
 import { startPeriodicOriginSync } from "@/stores/sync/originSync";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isMainWindow, MAIN_WINDOW_LABEL } from "@/lib/window";
 import { CliConnectChoiceDialog } from "@/components/connection/dialogs/CliConnectChoiceDialog";
 import { FeedbackDialog } from "@/components/shell/dialogs/FeedbackDialog";
 import { api } from "@/lib/tauri";
@@ -216,7 +217,7 @@ export default function App() {
     launchRestoreDone.current = true;
     void (async () => {
       await useEnvironments.getState().load();
-      if (getCurrentWindow().label !== "main") return;
+      if (!isMainWindow()) return;
       await useEnvironments.getState().restoreSession();
       // Shared origins: first sweep now, then every few hours. After the session
       // is up so a slow or unreachable share can never delay the workspace.
@@ -261,7 +262,7 @@ export default function App() {
   // secondary ephemeral window shouldn't also fire it (same rationale as the
   // CLI-routing guard below and CLAUDE.md gotcha #8).
   useEffect(() => {
-    if (getCurrentWindow().label !== "main") return;
+    if (!isMainWindow()) return;
     void (async () => {
       try {
         const version = await getCurrentVersion();
@@ -428,7 +429,7 @@ export default function App() {
       try {
         const label = getCurrentWindow().label;
         args =
-          label === "main"
+          label === MAIN_WINDOW_LABEL
             ? await api.getStartupArgs()
             : await api.takeWindowStartupIntent(label);
       } catch (e) {
@@ -456,7 +457,7 @@ export default function App() {
   // window nobody asked for (issue #23). Same guard rationale as CLAUDE.md
   // gotcha #8 (only the main window touches shared session state).
   useEffect(() => {
-    if (getCurrentWindow().label !== "main") return;
+    if (!isMainWindow()) return;
     let unlisten: (() => void) | null = null;
     let cancelled = false;
     void (async () => {
@@ -487,7 +488,7 @@ export default function App() {
   // Main-window-only: secondary ("New window") instances never touch
   // `tab_state.json` (see CLAUDE.md gotcha #8).
   useEffect(() => {
-    if (getCurrentWindow().label !== "main") return;
+    if (!isMainWindow()) return;
     let unlisten: (() => void) | null = null;
     let cancelled = false;
     let closing = false;

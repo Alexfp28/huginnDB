@@ -17,7 +17,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Download, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isMainWindow } from "@/lib/window";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,7 +58,7 @@ export function EnvironmentSwitcher() {
   );
 
   const defaultName = t("environments.defaultName");
-  const isMain = getCurrentWindow().label === "main";
+  const isMain = isMainWindow();
 
   // Nothing useful to show before the first load resolves.
   if (!active) return null;

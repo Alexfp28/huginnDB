@@ -35,7 +35,7 @@ import {
   resumeSaves,
   suspendSaves,
 } from "@/stores/session/persistedTabs";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isMainWindow } from "@/lib/window";
 import type { Environment } from "@/types";
 
 /**
@@ -116,11 +116,6 @@ interface EnvironmentsState {
    * both cases and the ordering below is too easy to get subtly wrong twice.
    */
   restoreSession: () => Promise<void>;
-}
-
-/** True only in the main window — the sole owner of `tab_state.json`. */
-function isMainWindow(): boolean {
-  return getCurrentWindow().label === "main";
 }
 
 /**
