@@ -264,6 +264,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   text is confirmed to overflow (`scrollHeight` vs `clientHeight`), so a
   short highlight never grows a dead button that expands to identical text.
 
+- **The cell editor dialog's chrome (`CellEditor`) was rebuilt to match the
+  rest of the app instead of a pre-branding leftover.** Its header used to be
+  a second, independently bordered and shadowed card floating inside the
+  dialog's own border — two nested outlines that read as pointless, and which
+  pushed the dialog's built-in close button into the low-contrast gap between
+  them, making the `×` nearly invisible. The header and footer are now
+  edge-to-edge with a single `border-b`/`border-t`, the same convention
+  `SettingsDialog` and the just-restyled `WhatsNewDialog` already use, so the
+  close button sits directly on the header surface with proper contrast
+  instead of floating in a seam.
+
+- **The JSON Schema badge inside the cell editor's toolbar
+  (`SchemaBindingBadge`, new `className` prop) is now a proper outline button
+  pinned to the toolbar's right edge**, sharing `buttonVariants` with the
+  neighbouring "Format" button instead of rendering as a tiny mono/10px pill
+  that read as a stray tag rather than a control. The bound/declared states
+  keep their brand/warning tint, just at button scale. The structure editor's
+  inline `variant="compact"` chip (one per table row) is unchanged.
+
 ### Fixed
 
 - **A hand-typed SELECT with no `LIMIT`/`TOP` over a large table could take

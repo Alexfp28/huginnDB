@@ -166,7 +166,12 @@ export function CellEditorBody({
           {t("cellEditor.format")}
         </Button>
         {language === "json" && <JsonValidationBadge value={value} />}
-        <SchemaBindingBadge binding={binding} value={value} language={language} />
+        <SchemaBindingBadge
+          binding={binding}
+          value={value}
+          language={language}
+          className="ml-auto"
+        />
       </div>
       <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border">
         <Editor
@@ -303,25 +308,29 @@ export function CellEditor({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "flex flex-col gap-3 p-4",
+          "flex flex-col gap-0 overflow-hidden p-0",
           fullscreen
             ? "left-0 top-0 h-screen w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0"
             : "h-[80vh] max-w-5xl",
         )}
       >
-        <DialogHeader>
-          {/* Titled header rail for the flagship editor: column name +
-              content-type badge + char/byte pills, with the panel/fullscreen
-              controls grouped right. `pr-10` reserves space for the dialog's
-              built-in close button (replaces the old per-button `mr-8` hack).
-              The rail is a rounded, slightly elevated bar of its own — the one
-              place in the app where the brand language is allowed a little more
-              volume than the working surfaces below it. */}
-          <DialogTitle className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 pr-10 shadow-elevation-1">
-            <span className="truncate font-mono text-sm font-semibold">
+        {/* Edge-to-edge header rail, same convention as SettingsDialog /
+            WhatsNewDialog: a `border-b` on the surface itself, not a second
+            bordered card floating inside it — that double outline (plus the
+            card's own shadow) is what made the rail read as "meaningless
+            borders" and pushed the dialog's built-in close button into the
+            gap between the two, over low-contrast background. `pr-10`
+            reserves room for that button instead. */}
+        <DialogHeader className="flex-row items-center gap-2 space-y-0 border-b border-border px-4 py-2.5 pr-10">
+          <DialogTitle className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+            <span className="truncate font-mono font-semibold">
               {columnName ?? t("cellEditor.title")}
             </span>
-            <span className="flex shrink-0 items-center gap-1 rounded-md bg-brand/10 px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide text-brand">
+            {/* The one deliberate flourish on this rail: the data type is what
+                decides highlighting, formatting and JSON validation, so it's
+                the one fact worth an icon + brand tint. Everything else here
+                stays plainly functional. */}
+            <span className="flex shrink-0 items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-2xs font-medium uppercase tracking-wide text-brand">
               <TypeIcon className="h-3 w-3" aria-hidden />
               {typeLabel}
             </span>
@@ -333,41 +342,40 @@ export function CellEditor({
                 {bytes.toLocaleString()} B
               </span>
             </span>
-            <div className="ml-auto flex shrink-0 items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={moveToSidePanel}
-                title={t("cellEditor.moveToSide")}
-              >
-                <PanelRight className="h-4 w-4" />
-              </Button>
-              {/* Fullscreen reads as a small sticker chip carrying its own
-                  shortcut rather than an anonymous icon button: F11 is already
-                  bound here (see the keydown handler above), and the key was
-                  discoverable only by trying it. The sticker edge is the one
-                  logo device this editor gets. */}
-              <button
-                type="button"
-                onClick={() => setFullscreen((v) => !v)}
-                title={
-                  fullscreen
-                    ? t("cellEditor.exitFullscreen")
-                    : t("cellEditor.fullscreen")
-                }
-                className="brand-sticker flex h-7 shrink-0 items-center gap-1 rounded-lg bg-background px-2 text-2xs font-semibold text-muted-foreground transition-colors duration-150 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              >
-                {fullscreen ? (
-                  <Minimize2 className="h-3.5 w-3.5" />
-                ) : (
-                  <Maximize2 className="h-3.5 w-3.5" />
-                )}
-                F11
-              </button>
-            </div>
           </DialogTitle>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={moveToSidePanel}
+              title={t("cellEditor.moveToSide")}
+            >
+              <PanelRight className="h-4 w-4" />
+            </Button>
+            {/* Fullscreen reads as a small sticker chip carrying its own
+                shortcut rather than an anonymous icon button: F11 is already
+                bound here (see the keydown handler above), and the key was
+                discoverable only by trying it. */}
+            <button
+              type="button"
+              onClick={() => setFullscreen((v) => !v)}
+              title={
+                fullscreen
+                  ? t("cellEditor.exitFullscreen")
+                  : t("cellEditor.fullscreen")
+              }
+              className="brand-sticker flex h-7 shrink-0 items-center gap-1 rounded-lg bg-background px-2 text-2xs font-semibold text-muted-foreground transition-colors duration-150 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            >
+              {fullscreen ? (
+                <Minimize2 className="h-3.5 w-3.5" />
+              ) : (
+                <Maximize2 className="h-3.5 w-3.5" />
+              )}
+              F11
+            </button>
+          </div>
         </DialogHeader>
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 p-3">
           <CellEditorBody
             value={value}
             onChange={setValue}
@@ -381,9 +389,11 @@ export function CellEditor({
           />
         </div>
         {saveError && (
-          <div className="text-xs text-destructive">{saveError}</div>
+          <div className="mx-4 mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
+            {saveError}
+          </div>
         )}
-        <DialogFooter className="items-center">
+        <DialogFooter className="items-center border-t border-border px-4 py-3 sm:justify-between">
           {canSave && (
             <span className="mr-auto flex items-center gap-1 text-2xs text-muted-foreground">
               <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">

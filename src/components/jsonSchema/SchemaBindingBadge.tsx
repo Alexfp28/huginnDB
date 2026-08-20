@@ -34,6 +34,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
+import { buttonVariants } from "@/components/ui/button";
 import { InferSchemaDialog } from "@/components/jsonSchema/dialogs/InferSchemaDialog";
 import { useJsonSchemas, draftBinding, relationKey } from "@/stores/jsonSchemas";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
@@ -52,6 +53,9 @@ interface Props {
   language: ContentLanguage;
   /** `header` for the editor rails, `compact` for the structure editor row. */
   variant?: "header" | "compact";
+  /** Extra classes on the trigger — e.g. `ml-auto` to pin it to a toolbar's
+   *  far edge. Only takes effect while the badge actually renders. */
+  className?: string;
 }
 
 export function SchemaBindingBadge({
@@ -59,6 +63,7 @@ export function SchemaBindingBadge({
   value,
   language,
   variant = "header",
+  className,
 }: Props) {
   const { t } = useTranslation();
   const schemas = useJsonSchemas((s) => s.schemas);
@@ -168,8 +173,14 @@ export function SchemaBindingBadge({
     }
   }
 
-  const chipBase =
-    "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] leading-none transition-colors";
+  const isHeader = variant === "header";
+  // `header` sits in the editor toolbar next to "Formatear" and must read as
+  // a peer button, not a stray tag — hence riding the same `buttonVariants`
+  // (outline, sm) rather than the compact chip the structure editor's inline
+  // table row still uses (`compact`, unchanged below).
+  const triggerBase = isHeader
+    ? cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")
+    : "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] leading-none transition-colors";
   const bound = Boolean(resolved);
 
   return (
@@ -191,17 +202,23 @@ export function SchemaBindingBadge({
                   : t("jsonSchemas.badge.noneTooltip")
             }
             className={cn(
-              chipBase,
-              bound
-                ? "border-brand/40 bg-brand/10 text-brand hover:bg-brand/20"
-                : "border-border/60 text-muted-foreground/70 hover:text-foreground",
+              triggerBase,
+              bound &&
+                (isHeader
+                  ? "border-brand/40 bg-brand/10 text-brand hover:border-brand/40 hover:bg-brand/20 hover:text-brand"
+                  : "border-brand/40 bg-brand/10 text-brand hover:bg-brand/20"),
+              !bound && !isHeader && "border-border/60 text-muted-foreground/70 hover:text-foreground",
               // A document declaring its own `$schema` wins over any binding, so
               // say so rather than showing a chip that is quietly not in effect.
-              declared && "border-warning/50 bg-warning/10 text-warning",
+              declared &&
+                (isHeader
+                  ? "border-warning/50 bg-warning/10 text-warning hover:border-warning/50 hover:bg-warning/20 hover:text-warning"
+                  : "border-warning/50 bg-warning/10 text-warning"),
               variant === "compact" && "px-1.5",
+              className,
             )}
           >
-            <FileJson className="h-3 w-3 shrink-0" />
+            <FileJson className={cn("shrink-0", isHeader ? "h-3.5 w-3.5" : "h-3 w-3")} />
             {declared ? (
               <span>{t("jsonSchemas.badge.ownSchema")}</span>
             ) : resolved ? (

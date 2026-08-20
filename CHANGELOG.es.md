@@ -259,6 +259,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `clientHeight`), así que una novedad corta nunca genera un botón que no
   hace nada al pulsarlo.
 
+- **Se ha reconstruido el aspecto del diálogo del editor de celda
+  (`CellEditor`) para que encaje con el resto de la app en vez de con un
+  resto anterior al rediseño de marca.** Su cabecera era antes una segunda
+  tarjeta con su propio borde y sombra flotando dentro del borde del propio
+  diálogo — dos contornos anidados que se leían como algo sin sentido, y que
+  empujaban el botón de cerrar del diálogo hacia el hueco de bajo contraste
+  entre ambos, dejando la `×` casi invisible. La cabecera y el pie son ahora
+  a sangre completa con un único `border-b`/`border-t`, el mismo convenio que
+  ya usan `SettingsDialog` y el recién rediseñado `WhatsNewDialog`, de forma
+  que el botón de cerrar queda directamente sobre la superficie de la
+  cabecera con contraste correcto en vez de flotar en una costura.
+
+- **La insignia de esquema JSON en la barra de herramientas del editor de
+  celda (`SchemaBindingBadge`, nueva prop `className`) es ahora un botón
+  outline propiamente dicho, anclado al borde derecho de la barra**,
+  compartiendo `buttonVariants` con el botón «Formatear» vecino en lugar de
+  renderizarse como una diminuta píldora en mono/10px que se leía como una
+  etiqueta suelta y no como un control. Los estados vinculado/declarado
+  mantienen su tinte de marca/aviso, solo que a escala de botón. La píldora
+  en línea de `variant="compact"` del editor de estructura (una por fila de
+  la tabla) no cambia.
+
 ### Corregido
 
 - **Reimportar perfiles de conexión con «sobrescribir» ya no rompe en silencio nada
