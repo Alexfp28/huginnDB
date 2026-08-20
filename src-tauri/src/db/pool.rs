@@ -365,7 +365,7 @@ impl PoolOwnership {
     /// infix is a per-database view. Used by the sweep paths, which work from
     /// ids rather than from how a pool was created.
     pub fn for_id(id: &str) -> Self {
-        if id.contains("::db::") {
+        if crate::state::is_database_view(id) {
             Self::BorrowedView
         } else {
             Self::Owned

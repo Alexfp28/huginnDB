@@ -707,25 +707,11 @@ async fn close_view(
     }
 }
 
-/// Synthetic connection id for a per-database browse session under
-/// `parent_id`. Format is stable so callers can derive the id without a
-/// round-trip when they only need to address an already-open child.
-pub fn database_view_id(parent_id: &str, database: &str) -> String {
-    format!("{parent_id}::db::{database}")
-}
-
-/// The *profile* id behind a connection id: `id` itself for a plain one, the
-/// parent for a synthetic `<parent>::db::<database>` child.
-///
-/// Rust twin of `lib/connectionLabel.ts`'s `parentConnectionId`. Lives here
-/// because [`database_view_id`] already owns the format, so the two spellings of
-/// `::db::` stay in one file (gotcha #36).
-pub fn parent_connection_id(id: &str) -> &str {
-    match id.split_once("::db::") {
-        Some((parent, _)) => parent,
-        None => id,
-    }
-}
+// The synthetic-id vocabulary lives in `crate::state`, next to the connection
+// map it addresses, so the layers *below* `commands` (`db::pool`,
+// `pool_reaper`) can use it without depending upward. Re-exported here because
+// these two paths are what the rest of `commands` already calls.
+pub use crate::state::{database_view_id, parent_connection_id};
 
 /// If `id` names a `<parent>::db::<database>` view the idle reaper
 /// (`pool_reaper.rs`) has since closed, transparently reopen it with the same
@@ -755,7 +741,7 @@ pub async fn ensure_database_view(
     if state.connections.read().get(id).is_some() {
         return;
     }
-    if let Some((parent_id, database)) = id.split_once("::db::") {
+    if let Some((parent_id, database)) = crate::state::split_database_view(id) {
         let _ = open_database_view_inner(app, state, window_label, parent_id, database).await;
     }
 }
