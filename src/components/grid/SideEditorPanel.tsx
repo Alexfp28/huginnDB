@@ -5,13 +5,26 @@
  * item, or the "move to side panel" button in the modal editor.
  *
  * Lives inside `IslandShell` as a manual split (see that file), sized via
- * `panelLayout.sideEditorWidth`/`sideEditorOpen`. It is scoped to the tab
- * that opened the cell: it closes when the user switches to a different tab
- * or that tab is closed (#49), unless the buffer has unsaved edits. When no
- * cell is targeted it shows a hint. Every path here that "closes the panel"
- * routes through `useCellEditor.close()`, which also flips
- * `sideEditorOpen` off (see that store) — there's no separate dismiss
- * affordance on the panel itself now that it isn't a dockview group.
+ * `panelLayout.sideEditorWidth`/`sideEditorOpen`.
+ *
+ * One session PER TAB, not one global slot. Switching tabs used to force-close
+ * this panel outright (even on a clean, already-saved buffer) — you'd have to
+ * double-click + expand all over again just to glance back at a cell you'd
+ * already finished editing. Instead, `parkedRef` (a plain `Map`, not Zustand —
+ * nothing outside this component needs to observe it) keeps one buffer per
+ * owning tab id, snapshotted the instant you navigate away and restored the
+ * instant you come back, so re-visiting a tab lands you exactly where you
+ * left it — saved or not. This scales to many open tabs for free: at most one
+ * Monaco instance is ever mounted (this component itself), the map just holds
+ * plain strings for whichever tabs you've touched, and closing a tab sweeps
+ * its entry so the map can't outlive what it describes.
+ *
+ * The store's `target` is still the single cross-component signal for "open
+ * this cell now" (`DataGrid`'s expand affordance, `CellEditor`'s "move to
+ * side" button) — see the effect below keyed on it. It only ever changes in
+ * response to that signal, so it's a separate concern from tab-switch
+ * restore/park, which is keyed on `useTabs`'s `activeId` instead; the two
+ * effects never fight over the same trigger.
  *
  * NOTE: we never call `window.confirm`/`alert` here — Tauri's webview blocks
  * the native dialogs ("dialog.confirm not allowed"), so the unsaved-changes
@@ -32,79 +45,192 @@ import {
 } from "@/components/ui/dialog";
 import { CellEditorBody } from "@/components/grid/dialogs/CellEditor";
 import { useCellEditor, type CellEditorTarget } from "@/stores/grid/cellEditor";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useTabs } from "@/stores/session/tabs";
 import { detectLanguage, type ContentLanguage } from "@/lib/grid/detectContentType";
 
+/** Key for a target with no owning tab (an ad-hoc grid with no tab identity)
+ *  — at most one such session, matching the pre-existing single-slot
+ *  behaviour for that edge case. */
+const NO_OWNER = "__no_owner__";
+
+/** A parked, off-screen editing session: enough to resume exactly as left,
+ *  without keeping its Monaco instance alive. */
+interface ParkedSession {
+  target: CellEditorTarget;
+  value: string;
+  language: ContentLanguage;
+  /** Baseline to detect unsaved edits, carried over so dirtiness survives
+   *  the round trip through the park. */
+  original: string;
+}
+
 export function SideEditorPanel() {
   const { t } = useTranslation();
-  // Single-object selector — reference-stable until open/close (gotcha #1).
-  const target = useCellEditor((s) => s.target);
-  const close = useCellEditor((s) => s.close);
-  // The open-tabs list, so this out-of-subtree panel can close itself when the
-  // tab that opened the current cell goes away.
+  // The store's "open this cell now" signal — see the file header. Renamed
+  // from the bare `target` of the single-slot design to make clear it's a
+  // request, not necessarily what's currently on screen (a tab switch can
+  // show a restored session without this ever changing).
+  const requested = useCellEditor((s) => s.target);
+  const closeStore = useCellEditor((s) => s.close);
+  // The open-tabs list, so parked sessions can be swept when their owning tab
+  // closes, and the active id, so we know which tab's session to show.
   const tabs = useTabs((s) => s.tabs);
-  // The active tab id, so the panel can clear when the user navigates to a
-  // *different* table than the one this cell belongs to (#49).
   const activeId = useTabs((s) => s.activeId);
 
+  /** The session actually being displayed right now — a fresh `open()` or a
+   *  restored park, never both sources at once. */
+  const [target, setTarget] = useState<CellEditorTarget | null>(null);
   const [value, setValue] = useState("");
   const [language, setLanguage] = useState<ContentLanguage>("plaintext");
-  /** Bumped on every cell load so Monaco remounts with a fresh, empty undo
-   *  stack — otherwise Ctrl+Z would reach back into the previous cell's value
-   *  since this panel reuses one editor across selections. */
+  /** Bumped on every load/restore so Monaco remounts with a fresh, empty undo
+   *  stack — otherwise Ctrl+Z would reach back into a previous session's
+   *  value since this panel reuses one editor across cells and tabs. */
   const [editorKey, setEditorKey] = useState(0);
   const [saving, setSaving] = useState(false);
-  /** When true the panel content escapes the dock and covers the whole window.
-   *  The panel is a dockview pane (it can't grow past its group), so fullscreen
-   *  is a fixed overlay rather than a dock resize — mirrors the modal editor's
-   *  F11 toggle so the affordance is consistent. */
-  const [fullscreen, setFullscreen] = useState(false);
   /** Re-entrancy guard for the Ctrl+S handler — `setSaving` is async so we
    *  can't rely on the `saving` state inside the keydown listener. */
   const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  /** A target the user clicked while the buffer had unsaved edits; drives the
-   *  discard-confirmation dialog. */
+  /** A target the user clicked while the buffer had unsaved edits (same tab,
+   *  a different cell); drives the discard-confirmation dialog. Tab switches
+   *  never go through this path — they park instead of discarding. */
   const [pendingTarget, setPendingTarget] = useState<CellEditorTarget | null>(
     null,
   );
 
-  /** The target whose value is currently loaded into the buffer. Lets us
-   *  detect when the store points at a *different* cell (the user clicked
-   *  another one) versus a re-render of the same target. */
+  /** One buffer per owning tab id, keyed the same way `target.ownerId` is.
+   *  Deliberately a ref, not store state: nothing outside this component
+   *  ever needs to read it, and mirroring it into Zustand on every keystroke
+   *  would make the "is this a fresh open() or just me typing" distinction
+   *  in the effect below ambiguous (a store write either way looks like the
+   *  target object changed). */
+  const parkedRef = useRef<Map<string, ParkedSession>>(new Map());
+  /** Which owner key is currently on screen, so the tab-switch effect knows
+   *  what to snapshot before swapping. */
+  const shownOwnerRef = useRef<string>(NO_OWNER);
+  /** The target currently loaded into the buffer (mirrors `target` for
+   *  synchronous reads inside effects/keydown handlers). */
   const loadedTargetRef = useRef<CellEditorTarget | null>(null);
-  /** Baseline to detect unsaved edits: the value as last loaded. */
+  /** Baseline to detect unsaved edits: the value as last loaded/saved. */
   const baselineRef = useRef<string>("");
   /**
-   * Live mirror of `value`. The follow-the-selection effect below depends only
-   * on `target`, so the `value` it would close over is frozen at the render
-   * the effect was registered (stale). Reading the buffer through this ref
-   * gives the effect the *current* text, so the dirty check actually fires.
+   * Live mirrors of `value`/`language`. Assigned on every render (not in an
+   * effect) so a synchronous reader — the tab-switch park, the Ctrl+S
+   * handler — always sees the latest typed text, not whatever the effect
+   * that registered the reader last closed over.
    */
   const valueRef = useRef("");
   valueRef.current = value;
+  const languageRef = useRef<ContentLanguage>(language);
+  languageRef.current = language;
 
-  /** Load a target's value into the buffer and mark it as the loaded one. */
-  function load(next: CellEditorTarget) {
+  /** Load a freshly *requested* target (via `open()`): seed the buffer from
+   *  its initial value and detect the language, same as opening any new
+   *  cell always has. */
+  function loadFresh(next: CellEditorTarget) {
     loadedTargetRef.current = next;
     baselineRef.current = next.value;
+    setTarget(next);
     setValue(next.value);
-    // A binding is the user asserting this column holds JSON, so honour it over
-    // the heuristic: `detectLanguage` returns "json" only when the text parses,
-    // which would leave a momentarily-broken document with no validation at all
-    // — precisely when it is most useful.
+    // A binding is the user asserting this column holds JSON, so it wins over
+    // the heuristic — see the same call in the modal `CellEditor`.
     setLanguage(next.binding ? "json" : detectLanguage(next.value ?? ""));
-    // New cell/session → force a fresh Monaco model (see `editorKey`).
     setEditorKey((k) => k + 1);
   }
 
+  /** Restore a parked session exactly as it was left — including whatever
+   *  language the user picked and whatever text they'd typed, saved or not. */
+  function restoreParked(parked: ParkedSession) {
+    loadedTargetRef.current = parked.target;
+    baselineRef.current = parked.original;
+    setTarget(parked.target);
+    setValue(parked.value);
+    setLanguage(parked.language);
+    setEditorKey((k) => k + 1);
+  }
+
+  /** Nothing parked for this tab — show the empty hint. */
+  function clearDisplay() {
+    loadedTargetRef.current = null;
+    setTarget(null);
+  }
+
+  // React to a fresh open() request (the grid's expand affordance, or the
+  // modal's "move to side"). Only fires when someone actually calls `open()`
+  // — a tab switch never touches `requested`, so this can't fire spuriously
+  // when the effect below restores a park instead.
+  useEffect(() => {
+    if (!requested) return;
+    if (requested === loadedTargetRef.current) return;
+    const dirty =
+      loadedTargetRef.current !== null &&
+      valueRef.current !== baselineRef.current;
+    if (dirty) {
+      setPendingTarget(requested);
+      return;
+    }
+    loadFresh(requested);
+    // `value`/`language` intentionally excluded — read live via the refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requested]);
+
+  // Follow the active tab: park the outgoing tab's buffer (whatever state
+  // it's in, saved or not) and restore — or, if nothing was ever opened
+  // there, clear — whatever the incoming tab last had open. The split's own
+  // visibility follows suit, so switching tabs never leaves it showing a
+  // different tab's cell.
+  useEffect(() => {
+    const incomingKey = activeId ?? NO_OWNER;
+    const outgoingKey = shownOwnerRef.current;
+    if (incomingKey === outgoingKey) return;
+    shownOwnerRef.current = incomingKey;
+
+    if (loadedTargetRef.current) {
+      parkedRef.current.set(outgoingKey, {
+        target: loadedTargetRef.current,
+        value: valueRef.current,
+        language: languageRef.current,
+        original: baselineRef.current,
+      });
+    }
+
+    const incoming = parkedRef.current.get(incomingKey);
+    if (incoming) {
+      restoreParked(incoming);
+      useSessionPanelLayout.getState().openSideEditor();
+    } else {
+      clearDisplay();
+      useSessionPanelLayout.getState().closeSideEditor();
+    }
+    setPendingTarget(null);
+    setSaveError(null);
+  }, [activeId]);
+
+  // Sweep parked sessions (and the on-screen one) whose owning tab was
+  // closed — the side editor lives outside the tab's own subtree, so without
+  // this a closed tab's session lingers in `parkedRef` forever, holding a
+  // stale `onSave` closure over a table that's no longer open.
+  useEffect(() => {
+    const validIds = new Set(tabs.map((tb) => tb.id));
+    for (const key of parkedRef.current.keys()) {
+      if (key !== NO_OWNER && !validIds.has(key)) parkedRef.current.delete(key);
+    }
+    const owner = loadedTargetRef.current?.ownerId;
+    if (owner && !validIds.has(owner)) {
+      clearDisplay();
+      useSessionPanelLayout.getState().closeSideEditor();
+    }
+  }, [tabs]);
+
   // Ctrl/Cmd+S saves the buffer *in place*: persist the edits, reset the
-  // dirty baseline, and keep the panel open so the user can move to another
-  // cell without the discard guard firing. Registered in the capture phase
-  // with `stopImmediatePropagation` so it wins over the floating CellPreview's
+  // dirty baseline, and keep the panel (and its parked entry) open so the
+  // user can move to another cell — or another tab — without the discard
+  // guard firing. Registered in the capture phase with
+  // `stopImmediatePropagation` so it wins over the floating CellPreview's
   // own window-level Ctrl+S — which otherwise persists its stale, pre-edit
-  // value and leaves this panel dirty. Bails (letting other handlers run) when
-  // no editable cell is loaded here.
+  // value and leaves this panel dirty. Bails (letting other handlers run)
+  // when no editable cell is loaded here.
   useEffect(() => {
     async function onKey(e: KeyboardEvent) {
       if (!((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s")) return;
@@ -131,6 +257,7 @@ export function SideEditorPanel() {
     return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, [t]);
 
+  const [fullscreen, setFullscreen] = useState(false);
   // F11 toggles fullscreen; Esc leaves it. Only active while a cell is loaded
   // (no target → the panel shows the empty hint and there's nothing to expand).
   useEffect(() => {
@@ -148,56 +275,6 @@ export function SideEditorPanel() {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
-  // Follow the selected cell. When the store points at a new target, load it —
-  // but if the current buffer has unsaved edits, stash the new target and open
-  // the discard-confirmation dialog instead of swapping immediately.
-  useEffect(() => {
-    if (!target) {
-      loadedTargetRef.current = null;
-      return;
-    }
-    if (target === loadedTargetRef.current) return;
-
-    const dirty =
-      loadedTargetRef.current !== null &&
-      valueRef.current !== baselineRef.current;
-    if (dirty) {
-      setPendingTarget(target);
-      return;
-    }
-    load(target);
-    // `value` intentionally excluded — read live via valueRef, not as a trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target]);
-
-  // Close the panel when the tab that opened the current cell is closed — the
-  // side editor lives in the outer dockview (outside the tab's subtree), so
-  // without this it lingers with a stale value waiting for the user to discard
-  // it. Force-close regardless of unsaved edits: the source table is gone.
-  useEffect(() => {
-    const owner = loadedTargetRef.current?.ownerId ?? target?.ownerId;
-    if (owner && !tabs.some((t) => t.id === owner)) {
-      setPendingTarget(null);
-      close();
-    }
-  }, [tabs, target, close]);
-
-  // Clear the panel when the user switches to a different tab than the one that
-  // opened the current cell. The side editor is scoped to its owner tab's view;
-  // keeping a value from a table you're no longer looking at is confusing (#49).
-  // Skipped while the buffer is dirty so a mere tab switch never drops unsaved
-  // edits — the user can save or discard first.
-  useEffect(() => {
-    const owner = loadedTargetRef.current?.ownerId ?? target?.ownerId;
-    if (!owner || owner === activeId) return;
-    const dirty =
-      loadedTargetRef.current !== null &&
-      valueRef.current !== baselineRef.current;
-    if (dirty) return;
-    setPendingTarget(null);
-    close();
-  }, [activeId, target, close]);
-
   if (!target) {
     return (
       <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
@@ -207,6 +284,17 @@ export function SideEditorPanel() {
   }
 
   const readonly = target.readonly || !target.onSave;
+  const ownerKey = target.ownerId ?? NO_OWNER;
+
+  /** "Guardar"/"Descartar" both mean "I'm done with this cell for now" —
+   *  unlike Ctrl+S, they forget the parked session, clear the display, and
+   *  close the split. */
+  function forgetSession() {
+    parkedRef.current.delete(ownerKey);
+    clearDisplay();
+    setPendingTarget(null);
+    closeStore();
+  }
 
   async function handleSave() {
     if (!target?.onSave) return;
@@ -214,9 +302,7 @@ export function SideEditorPanel() {
     setSaveError(null);
     try {
       await target.onSave(value);
-      // Saved value is the new baseline; close the editing session.
-      baselineRef.current = value;
-      close();
+      forgetSession();
     } catch (e) {
       setSaveError(t("cellEditor.saveFailed", { message: String(e) }));
     } finally {
@@ -270,7 +356,7 @@ export function SideEditorPanel() {
         <div className="px-1 text-[11px] text-destructive">{saveError}</div>
       )}
       <div className="flex justify-end gap-2 px-1">
-        <Button variant="outline" size="sm" onClick={close}>
+        <Button variant="outline" size="sm" onClick={forgetSession}>
           {readonly ? t("common.close") : t("cellEditor.discard")}
         </Button>
         {!readonly && (
@@ -280,7 +366,8 @@ export function SideEditorPanel() {
         )}
       </div>
 
-      {/* Unsaved-changes guard when switching cells. */}
+      {/* Unsaved-changes guard when opening a different cell in the SAME tab
+          (a tab switch never reaches this — it parks instead of discarding). */}
       <Dialog
         open={!!pendingTarget}
         onOpenChange={(open) => {
@@ -318,7 +405,7 @@ export function SideEditorPanel() {
               variant="destructive"
               size="sm"
               onClick={() => {
-                if (pendingTarget) load(pendingTarget);
+                if (pendingTarget) loadFresh(pendingTarget);
                 setPendingTarget(null);
               }}
             >
