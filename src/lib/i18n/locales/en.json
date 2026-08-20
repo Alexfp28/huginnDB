@@ -63,11 +63,14 @@
       "label": "File",
       "newConnection": "New connection…",
       "manageConnections": "Manage connections…",
+      "sectionProfiles": "Profiles",
       "importProfiles": "Import profiles…",
       "exportProfiles": "Export profiles…",
+      "sectionEnvironments": "Environments",
       "exportEnvironments": "Export environments…",
-      "importEnvironment": "Import environment…",
+      "importEnvironment": "Import environments…",
       "disconnectAll": "Disconnect all",
+      "sectionJsonSchemas": "JSON Schemas",
       "exportJsonSchemas": "Export JSON Schemas…",
       "importJsonSchemas": "Import JSON Schemas…"
     },
@@ -1284,8 +1287,8 @@
       "includeJsonSchemasHint": "Schemas are global rather than owned by an environment, so this packs the whole library alongside — handy for setting up a new machine in one file."
     },
     "importEnvironment": {
-      "title": "Import environment",
-      "pickTitle": "Select environment export file",
+      "title": "Import environments",
+      "pickTitle": "Select environments export file",
       "pickDescription": "Select a HuginnDB environment export file (.json) to import. Every environment it contains is always added as new — nothing already configured is touched.",
       "reviewDescription": "This file contains {{count}} environment(s):",
       "reviewCounts": "{{connections}} connection(s) · {{origins}} origin(s)",

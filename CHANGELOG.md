@@ -222,6 +222,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   keeps its id), and every dangling reference — a profile's `origin_id`, a
   mirrored environment's `origin_id` — is remapped to the surviving id.
 
+- **The File menu's import/export items are now grouped under a section header
+  per type** (Profiles / Environments / JSON Schemas) instead of separated by
+  bare `DropdownMenuSeparator`s. With six lookalike "Import…"/"Export…" rows in
+  a row, an empty separator read as "unrelated item boundary" rather than "new
+  category" — reuses the same inline-header idiom `ViewMenu` already applies
+  to its "Panels"/"Schema tree" groups. Import is now listed before export in
+  every section (Environments and JSON Schemas were Export-then-Import; only
+  Profiles already read that way). "Import environment…" is renamed "Import
+  environments…" (and its dialog title/file-picker title likewise) since one
+  file can bundle more than one environment, matching "Export environments…".
+
 ### Fixed
 
 - **Removing a shared origin could leave its connections permanently stuck**

@@ -227,6 +227,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   origen indica además de antemano cuántas conexiones y entornos publicados
   por él quedarán marcados como huérfanos por la corrección de abajo, para que
   «lo que publicó se queda» no sea una advertencia abstracta.
+
+- **Las opciones de importar/exportar del menú Archivo ahora se agrupan bajo
+  una cabecera de sección por tipo** (Perfiles / Entornos / Esquemas JSON) en
+  lugar de separarse con simples `DropdownMenuSeparator` vacíos. Con seis filas
+  «Importar…»/«Exportar…» parecidas seguidas, un separador vacío se leía como
+  «límite entre elementos sin relación» y no como «nueva categoría» — reutiliza
+  el mismo recurso de cabecera en línea que `ViewMenu` ya aplica a sus grupos
+  «Paneles»/«Árbol de esquema». Ahora Importar aparece antes que Exportar en
+  las tres secciones (Entornos y Esquemas JSON iban Exportar-luego-Importar;
+  solo Perfiles ya seguía ese orden). «Importar entorno…» pasa a llamarse
+  «Importar entornos…» (y lo mismo el título del diálogo y del selector de
+  fichero), ya que un mismo fichero puede contener más de un entorno, a
+  juego con «Exportar entornos…».
+
 ### Corregido
 
 - **Reimportar perfiles de conexión con «sobrescribir» ya no rompe en silencio nada

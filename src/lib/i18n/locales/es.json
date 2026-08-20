@@ -63,11 +63,14 @@
       "label": "Archivo",
       "newConnection": "Nueva conexión…",
       "manageConnections": "Gestionar conexiones…",
+      "sectionProfiles": "Perfiles",
       "importProfiles": "Importar perfiles…",
       "exportProfiles": "Exportar perfiles…",
+      "sectionEnvironments": "Entornos",
       "exportEnvironments": "Exportar entornos…",
-      "importEnvironment": "Importar entorno…",
+      "importEnvironment": "Importar entornos…",
       "disconnectAll": "Desconectar todas",
+      "sectionJsonSchemas": "Esquemas JSON",
       "exportJsonSchemas": "Exportar esquemas JSON…",
       "importJsonSchemas": "Importar esquemas JSON…"
     },
@@ -1284,8 +1287,8 @@
       "includeJsonSchemasHint": "Los esquemas son globales, no propiedad de un entorno, así que esto empaqueta la biblioteca completa junto al entorno: cómodo para preparar una máquina nueva con un solo archivo."
     },
     "importEnvironment": {
-      "title": "Importar entorno",
-      "pickTitle": "Seleccionar fichero de exportación de entorno",
+      "title": "Importar entornos",
+      "pickTitle": "Seleccionar fichero de exportación de entornos",
       "pickDescription": "Selecciona un fichero de exportación de entorno de HuginnDB (.json) para importar. Cada entorno que contiene se añade siempre como nuevo — nada de lo ya configurado se toca.",
       "reviewDescription": "Este fichero contiene {{count}} entorno(s):",
       "reviewCounts": "{{connections}} conexión(es) · {{origins}} origen(es)",

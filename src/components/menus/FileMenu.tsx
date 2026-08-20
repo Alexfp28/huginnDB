@@ -8,10 +8,23 @@
  *   File ▾
  *   ├── New connection…
  *   ├── Manage connections…
- *   ├── Import profiles…
- *   ├── Export profiles…
- *   ├── Export environments…
- *   └── Import environment…
+ *   ├── ── Profiles ──
+ *   │     Import profiles…
+ *   │     Export profiles…
+ *   ├── ── Environments ──
+ *   │     Import environments…
+ *   │     Export environments…
+ *   └── ── JSON Schemas ──
+ *         Import JSON Schemas…
+ *         Export JSON Schemas…
+ *
+ * The three import/export pairs are grouped under a section header each
+ * (same inline-div idiom as `ViewMenu`'s "Panels"/"Schema tree" headers,
+ * itself mirroring `ContextMenuLabel`'s styling) instead of bare separators —
+ * with six lookalike items in a row, an empty separator reads as "unrelated
+ * item boundary", not "new category". Import is listed before export in
+ * every section (the profiles pair already read that way; environments and
+ * JSON Schemas are reordered here to match).
  *
  * `ExportEnvironmentDialog` is also opened from a per-row shortcut in
  * `EnvironmentSwitcher` (pre-checking just that row) — this is still its only
@@ -105,6 +118,11 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
             <Settings className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.manageConnections")}
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+
+          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("menu.file.sectionProfiles")}
+          </div>
           <DropdownMenuItem onSelect={() => setImportOpen(true)}>
             <Upload className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.importProfiles")}
@@ -113,23 +131,33 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
             <Download className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.exportProfiles")}
           </DropdownMenuItem>
+
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => openExportEnv()}>
-            <Download className="mr-2 h-3.5 w-3.5" />
-            {t("menu.file.exportEnvironments")}
-          </DropdownMenuItem>
+
+          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("menu.file.sectionEnvironments")}
+          </div>
           <DropdownMenuItem onSelect={() => setImportEnvOpen(true)}>
             <Upload className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.importEnvironment")}
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => openExportSchemas()}>
+          <DropdownMenuItem onSelect={() => openExportEnv()}>
             <Download className="mr-2 h-3.5 w-3.5" />
-            {t("menu.file.exportJsonSchemas")}
+            {t("menu.file.exportEnvironments")}
           </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("menu.file.sectionJsonSchemas")}
+          </div>
           <DropdownMenuItem onSelect={() => setImportSchemasOpen(true)}>
             <Upload className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.importJsonSchemas")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => openExportSchemas()}>
+            <Download className="mr-2 h-3.5 w-3.5" />
+            {t("menu.file.exportJsonSchemas")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
