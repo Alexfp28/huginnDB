@@ -1593,6 +1593,31 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_17_0": {
+        "tagline": "Una biblioteca de esquemas JSON definidos por el usuario hace que el editor de celda entienda de esquemas — autocompletado, documentación al pasar el ratón y validación orientativa para tus columnas json/jsonb — más un freno definitivo a los cuelgues por falta de memoria en consultas ad-hoc sin límite, orígenes compartidos que ya pueden sincronizar un entorno completo, importaciones masivas más fluidas y reordenación de columnas en MySQL.",
+        "items": {
+          "jsonSchemas": {
+            "title": "Una biblioteca de esquemas JSON, vinculada a tus columnas",
+            "body": "Mantén una biblioteca de esquemas con nombre y vincula cada uno a una columna (por conexión, base de datos, tabla y columna, con globs y una cascada de más-específico-gana). Una columna vinculada obtiene autocompletado real, sugerencias de enum, documentación al pasar el ratón y subrayado de violaciones en el editor de celda — en el modal y en el panel lateral acoplado, en todos los drivers incluyendo MongoDB y SQL Server. «Crear a partir de este valor» redacta uno a partir del documento que ya tienes delante. La validación nunca impide guardar: la base de datos sigue siendo la autoridad."
+          },
+          "querySafety": {
+            "title": "Una consulta SELECT descontrolada ya no puede tirar la app",
+            "body": "Una consulta escrita a mano sin LIMIT/TOP sobre una tabla enorme almacenaba todo el resultado en memoria y podía tirar la app entera por falta de memoria. Ahora toda ruta de lectura ad-hoc se limita a 50 000 filas y muestra una insignia «truncado» en su lugar, y el grid de datos renderiza las filas con un virtualizador real en vez de una fila del DOM por resultado."
+          },
+          "originEnvironments": {
+            "title": "Los orígenes compartidos ya pueden sincronizar un entorno completo",
+            "body": "Apunta un origen a la exportación de un entorno en vez de a un lote de perfiles y mantendrá un entorno espejo de solo lectura sincronizado en cada sincronización — se crea la primera vez, se refresca después, y se reporta como desaparecido (nunca se borra en silencio) si el fichero deja de existir."
+          },
+          "importProgress": {
+            "title": "Las importaciones masivas ganan barra de progreso y resolución de conflictos en un clic",
+            "body": "Los diálogos de importar perfiles/entornos ahora muestran «N de total» mientras una importación grande corre fuera del hilo principal, y «Marcar todo como: Renombrar/Sobreescribir/Omitir» resuelve toda la lista de conflictos de una vez en vez de fila por fila."
+          },
+          "columnReorder": {
+            "title": "Reordena columnas en el editor de estructura de MySQL",
+            "body": "Mueve una columna arriba o abajo sin eliminarla y volverla a añadir — MODIFY COLUMN / ADD COLUMN … FIRST|AFTER de MySQL lo permite; el resto de drivers no tienen un ALTER equivalente."
+          }
+        }
+      },
       "1_16_0": {
         "tagline": "MongoDB gana una superficie de edición de verdad — un editor de agregación al estilo Compass para vistas y un gestor de índices completo — más una corrección de fiabilidad en conexiones multi-base de larga duración, y un repaso visual: nuevo logo y pareja claro/oscuro para todos los temas integrados.",
         "items": {

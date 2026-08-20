@@ -1593,6 +1593,31 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_17_0": {
+        "tagline": "A user-defined JSON Schema library makes the cell editor schema-aware — completion, hover docs and advisory validation for your json/jsonb columns — plus a hard stop on out-of-memory crashes from unbounded ad-hoc queries, shared origins that can now sync a whole environment, smoother bulk imports, and MySQL column reordering.",
+        "items": {
+          "jsonSchemas": {
+            "title": "A JSON Schema library, bound to your columns",
+            "body": "Keep a library of named schemas and bind each one to a column (by connection, database, table and column, with globs and a most-specific-wins cascade). A bound column gets real completion, enum suggestions, hover documentation and underlined violations in the cell editor — in the modal and the docked panel, on every driver including MongoDB and SQL Server. \"Create from this value\" drafts one from the document you're already looking at. Validation never blocks a save: the database stays the authority."
+          },
+          "querySafety": {
+            "title": "A runaway SELECT can no longer crash the app",
+            "body": "A hand-typed query with no LIMIT/TOP over a huge table used to buffer the entire result in memory and could take the whole app down with an out-of-memory crash. Every ad-hoc read path now caps itself at 50,000 rows and shows a \"truncated\" badge instead, and the data grid renders rows through a real virtualizer rather than one DOM row per result."
+          },
+          "originEnvironments": {
+            "title": "Shared origins can now sync a whole environment",
+            "body": "Point an origin at an environment export instead of a plain profile bundle and it keeps a read-only mirror environment in sync on every pull — created on first sync, refreshed after, and reported as vanished (never silently deleted) if the file disappears."
+          },
+          "importProgress": {
+            "title": "Bulk imports get a progress bar and one-click conflict resolution",
+            "body": "The profile/environment import dialogs now show \"N of total\" while a large import runs off the main thread, and \"Mark all as: Rename/Overwrite/Skip\" resolves a whole conflict list at once instead of one row at a time."
+          },
+          "columnReorder": {
+            "title": "Reorder columns in the MySQL structure editor",
+            "body": "Move a column up or down without dropping and re-adding it — MySQL's MODIFY COLUMN / ADD COLUMN … FIRST|AFTER makes this possible; the other drivers don't have an equivalent ALTER."
+          }
+        }
+      },
       "1_16_0": {
         "tagline": "MongoDB gets a real editing surface — a Compass-style aggregation editor for views and a full index manager — plus a connection-reliability fix for long-idle multi-database sessions, and a visual refresh: a new logo and light/dark pairs for every built-in theme.",
         "items": {
