@@ -204,7 +204,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   orphaned by the fix above, so "what it published stays" isn't an abstract
   warning.
 
+- **Shared origins moved from per-environment to a global registry**
+  (`tab_state.json` v5: `Environment.origins` → the top-level
+  `PersistedTabState.origins`). An origin describes a server-side resource, not
+  a Producción/Staging axis, and what it produces — `profiles.json` entries,
+  whole mirrored environments — was already global; scoping the *registration*
+  to one environment reproduced the `visible_databases` bug one level up (the
+  same shared file needed a second, independent registration to be seen from a
+  second environment) and meant deleting whichever environment happened to
+  hold the registration silently orphaned every connection it had ever
+  imported. `add/update/remove/sync/list_origins` all operate on the global
+  list now; `export_environments`/`import_environment` derive an environment's
+  bundled origins from what its connections (or its own mirror) actually
+  depend on rather than copying a per-environment list verbatim. Existing
+  installs migrate automatically: two environments that had each registered
+  the same `path` independently dedupe into one global entry (first one seen
+  keeps its id), and every dangling reference — a profile's `origin_id`, a
+  mirrored environment's `origin_id` — is remapped to the surviving id.
+
 ### Fixed
+
+- **Removing a shared origin could leave its connections permanently stuck**
+  if the in-app "keep as mine / delete" notice was missed before the app
+  closed — the notice lived only in memory (`useOriginSync.vanished`), so an
+  app restart lost it for good, and a connection tagged with a dangling
+  `origin_id` is read-only and un-deletable in the UI with no other way to
+  clear the tag. `syncAll()` now also runs a reconciliation sweep on every
+  pass (launch, the 4-hourly poll, and "Sync now") that catches any profile or
+  mirrored environment whose `origin_id` doesn't match a currently registered
+  origin and raises the same adopt/retire notice for it, without needing the
+  origin's name (it's shown as "a shared origin that no longer exists"). The
+  "Sync now" button in Settings → Origins no longer disables itself when zero
+  origins are registered, since this sweep is useful precisely in that state —
+  right after removing the last one.
 
 - **Re-importing connection profiles with "overwrite" no longer silently breaks
   anything keyed on the profile id.** `apply_profile_imports` mints a fresh uuid

@@ -1861,7 +1861,7 @@
   },
   "origins": {
     "title": "Shared origins",
-    "description": "Pull connections from a file on a shared folder. Scoped to the active environment; HuginnDB only ever reads it.",
+    "description": "Pull connections from a file on a shared folder. Registered globally, across every environment; HuginnDB only ever reads it.",
     "add": "Add origin…",
     "adding": "Adding…",
     "syncNow": "Sync now",
@@ -1887,7 +1887,12 @@
       "retire": "Delete",
       "retireConfirm": "Delete the connection \"{{name}}\"?\n\nIts stored password is removed from your keychain too. This cannot be undone.",
       "mark": "\"{{origin}}\" no longer offers this connection — resolve it from the schema tree or Settings → Shared origins.",
-      "pending": "Disappeared connections"
+      "pending": "Disappeared connections",
+      "unknownOriginName": "a shared origin that no longer exists",
+      "keepAll": "Keep all",
+      "retireAll": "Delete all",
+      "retireAllConfirmTitle": "Delete {{count}} disappeared connections?",
+      "retireAllConfirm": "Their stored passwords are removed from your keychain too. This cannot be undone."
     },
     "vanishedEnvironments": {
       "titleNamed": "\"{{name}}\" is no longer published",

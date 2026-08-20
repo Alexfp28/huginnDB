@@ -1,5 +1,5 @@
 /**
- * Background sync of the active environment's shared origins (#108), and the
+ * Background sync of the (global, #108) registered shared origins, and the
  * per-connection notices it produces.
  *
  * Two halves, deliberately kept apart from the connection stores:
@@ -79,6 +79,16 @@ interface OriginSyncState {
   adopt: (profileId: string) => Promise<void>;
   /** Drop the connection and its stored credentials. */
   retire: (profileId: string) => Promise<void>;
+  /** `adopt` every currently vanished connection. Not destructive — same
+   *  reason the per-row "Keep as mine" button needs no confirmation — so the
+   *  caller doesn't need one either. */
+  adoptAllVanished: () => Promise<void>;
+  /** `retire` every currently vanished connection. Irreversible (each one's
+   *  keychain entry goes with it), so the caller MUST confirm first — this
+   *  does not prompt itself, same contract as `retire`. Best-effort per
+   *  profile: one failure doesn't stop the rest, mirroring
+   *  `ConnectionDialog.performBulkDelete`. */
+  retireAllVanished: () => Promise<void>;
   /** Keep the environment, as the user's own: clears its `originId`/
    *  `originSourceId` via `adopt_environment`. */
   adoptEnvironment: (environmentId: string) => Promise<void>;
@@ -88,18 +98,17 @@ interface OriginSyncState {
    * Raise a vanished-notice for every connection and environment the given
    * origin owns, *before* it's actually removed from the registry.
    *
-   * Without this, removing an origin orphaned its connections (and, once
-   * environment-mirroring shipped, its environments) forever: the only path
-   * that ever populates `vanished`/`vanishedEnvironments` is `syncAll()`,
-   * which iterates `listOrigins()` — and a removed origin is no longer in
-   * that list, so it can never again report anything as vanished. The
-   * profile/environment keeps its `origin_id` (removing an origin
-   * deliberately leaves what it imported in place — see `remove_origin`'s
-   * doc comment), which makes `ConnectionDialog.isFromOrigin` (and the
-   * equivalent environment gating) block editing/deleting it, with no
-   * `adopt`/`retire` ever offered. Synthesizing the notice here — from local
-   * state, while the origin's name is still known — reuses the exact same
-   * decide-later flow a real sync produces, instead of inventing a second one.
+   * This is the immediate, well-named path: it runs synchronously from
+   * `OriginsSection`'s remove flow, while the origin's name is still known, and
+   * reuses the exact same decide-later flow a real sync produces instead of
+   * inventing a second one. `syncAll()`'s reconciliation sweep (`reconcileOrphans`)
+   * is the durable fallback for the one thing this can't cover: the notice is
+   * in-memory only, so it's gone the moment the app closes before the user acts
+   * on it. Without either path, the profile/environment keeps its `origin_id`
+   * (removing an origin deliberately leaves what it imported in place — see
+   * `remove_origin`'s doc comment) forever, which makes
+   * `ConnectionDialog.isFromOrigin` (and the equivalent environment gating)
+   * block editing/deleting it, with no `adopt`/`retire` ever offered again.
    */
   noticeOriginRemoved: (origin: Origin) => void;
 }
@@ -114,9 +123,9 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
   errors: {},
 
   syncAll: async () => {
-    // Origins are scoped to the active environment, which only the main window
-    // owns (gotcha #8). A secondary window syncing would mutate profiles behind
-    // the main one's back.
+    // Origins are global, but `tab_state.json` (where they live) is still
+    // main-window-owned (gotcha #8), and this sweep writes `profiles.json`
+    // too. A secondary window syncing would race the main one's own writes.
     if (getCurrentWindow().label !== "main") return;
     if (get().syncing) return;
     set({ syncing: true });
@@ -178,6 +187,16 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
       }
     }
 
+    // Safety net for anything the loop above could never have found: it only
+    // ever iterates origins that still exist. See `reconcileOrphans`.
+    reconcileOrphans(
+      found,
+      foundEnvironments,
+      get().decided,
+      get().decidedEnvironments,
+      new Set(origins.map((o) => o.id)),
+    );
+
     // Replace rather than merge: an entry that reappeared in the file (the
     // publisher restored it, or the earlier read was simply wrong) must stop
     // being flagged without anyone having to dismiss it. `deferred` is replaced
@@ -221,6 +240,27 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
       decided: [...s.decided, profileId],
       vanished: withoutKey(s.vanished, profileId),
     }));
+  },
+
+  adoptAllVanished: async () => {
+    // Sequential, not `Promise.all`: each call ends in `useConnections.save`,
+    // which writes `profiles.json` whole — parallel writes would race and the
+    // loser's `origin_id: null` could be clobbered by an in-flight save that
+    // started from a stale snapshot.
+    for (const profileId of Object.keys(get().vanished)) {
+      await get().adopt(profileId);
+    }
+  },
+
+  retireAllVanished: async () => {
+    for (const profileId of Object.keys(get().vanished)) {
+      try {
+        await get().retire(profileId);
+      } catch {
+        // Best-effort, same reasoning as `ConnectionDialog.performBulkDelete`:
+        // one keychain/disk failure shouldn't strand the rest of the batch.
+      }
+    }
   },
 
   adoptEnvironment: async (environmentId) => {
@@ -284,6 +324,56 @@ function withoutKey<T>(map: Record<string, T>, key: string): Record<string, T> {
   const next = { ...map };
   delete next[key];
   return next;
+}
+
+/**
+ * Catch a profile or environment whose owning origin is gone without this
+ * store ever having been told: an app restart between removing the origin and
+ * deciding on the notice loses it (in-memory only, see `noticeOriginRemoved`).
+ * Run on every `syncAll()` pass, after the per-origin loop, so it only ever
+ * adds entries the file-based sync couldn't have found (that sync can only
+ * ever report on origins that still exist). `knownIds` is exactly the ids
+ * `syncAll()` just fetched via `listOrigins()` — origins are a global
+ * registry (#108, tab_state.json v5), so that one list is authoritative
+ * regardless of which environment is active.
+ *
+ * The origin's name is unrecoverable by the time this runs — it's why the
+ * proactive `noticeOriginRemoved` path exists and should stay — so these
+ * entries carry an empty `originName`; the notice components fall back to a
+ * generic label when it's blank.
+ */
+function reconcileOrphans(
+  found: Record<string, VanishedConnection>,
+  foundEnvironments: Record<string, VanishedEnvironment>,
+  decided: string[],
+  decidedEnvironments: string[],
+  knownIds: Set<string>,
+): void {
+  const noticedAt = new Date().toISOString();
+
+  for (const profile of useConnections.getState().profiles) {
+    if (!profile.origin_id || found[profile.id]) continue;
+    if (decided.includes(profile.id)) continue;
+    if (knownIds.has(profile.origin_id)) continue;
+    found[profile.id] = {
+      profileId: profile.id,
+      originId: profile.origin_id,
+      originName: "",
+      noticedAt,
+    };
+  }
+
+  for (const env of useEnvironments.getState().environments) {
+    if (!env.originId || foundEnvironments[env.id]) continue;
+    if (decidedEnvironments.includes(env.id)) continue;
+    if (knownIds.has(env.originId)) continue;
+    foundEnvironments[env.id] = {
+      environmentId: env.id,
+      originId: env.originId,
+      originName: "",
+      noticedAt,
+    };
+  }
 }
 
 /**

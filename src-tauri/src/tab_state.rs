@@ -21,14 +21,28 @@
 //!   level. On migration from v2, only the **active** workspace's connections
 //!   survive; every other workspace is discarded (confirmed product decision —
 //!   there is no "merge" semantics to preserve).
-//! - **v4** (current): a list of [`Environment`]s, each owning its own
-//!   `connections` map, dockview geometry and [`LaunchState`]. Any earlier blob
-//!   folds into a single unnamed environment, so an upgrade is lossless and the
-//!   user sees exactly the session they left.
+//! - **v4**: a list of [`Environment`]s, each owning its own `connections`
+//!   map, dockview geometry and [`LaunchState`]. Any earlier blob folds into a
+//!   single unnamed environment, so an upgrade is lossless and the user sees
+//!   exactly the session they left.
 //!
 //!   This is a multi-bucket top-level shape again, which v3 removed on purpose —
 //!   see [`Environment`] for why an environment is a different thing from a v2
 //!   workspace, and CLAUDE.md gotchas #8 and #10.
+//! - **v5** (current): [`Origin`]s move to a top-level, global
+//!   [`PersistedTabState::origins`] — an origin describes a shared file on a
+//!   server, not a Producción/Staging axis, and `profiles.json` (what an origin
+//!   actually populates) is already global. Keeping the registration itself
+//!   scoped to one environment was the same class of bug `visible_databases`
+//!   had before it moved onto `LaunchState` (CLAUDE.md gotcha #27): the same
+//!   physical file needed a second, independent registration — a second id — to
+//!   be seen from a second environment, and deleting the environment that
+//!   happened to hold the registration silently orphaned every connection it had
+//!   ever imported with no notice raised at all. Migration dedupes every v4
+//!   environment's origins by `path` into the one global list (first one seen
+//!   wins the id) and remaps every dangling reference — a profile's
+//!   `origin_id`, a mirrored environment's `origin_id` — from a deduped-away id
+//!   to the surviving one. See [`RawState::into_state_with_remap`].
 //!
 //! Each environment's `connections` map is LRU-pruned to
 //! [`MAX_REMEMBERED_CONNECTIONS`] independently. Query bodies inside tabs are
@@ -67,13 +81,20 @@ pub const DEFAULT_ENVIRONMENT_ID: &str = "default";
 pub struct PersistedTabState {
     pub version: u32,
     /// Every environment the user has defined, in display order. Never empty
-    /// once loaded: [`RawState::into_state`] synthesises one from a legacy blob
-    /// and [`PersistedTabState::active_environment_mut`] recreates one if the
-    /// list is somehow emptied.
+    /// once loaded: [`RawState::into_state_with_remap`] synthesises one from a
+    /// legacy blob and [`PersistedTabState::active_environment_mut`] recreates
+    /// one if the list is somehow emptied.
     pub environments: Vec<Environment>,
     /// Which environment the main window is currently in. Validated on load —
     /// an id pointing at no environment falls back to the first.
     pub active_environment_id: Option<String>,
+    /// Shared connection sources (#108), global rather than scoped to any one
+    /// environment — see the v5 entry in this module's history for why. Same
+    /// precedent as [`crate::json_schemas`]'s library: the thing an origin
+    /// produces (`profiles.json` entries, and whole mirrored environments) is
+    /// global, so the registration that produces it has to be too, or the two
+    /// drift out of sync the moment more than one environment is in play.
+    pub origins: Vec<Origin>,
 }
 
 /// One environment: a named set of connections plus the whole session state
@@ -120,7 +141,13 @@ pub struct Environment {
     /// What to restore when this environment is entered — at launch or on a
     /// switch.
     pub launch: LaunchState,
-    /// Shared connection sources this environment pulls from (#108).
+    /// **Deprecated.** Origins used to be registered per environment; as of
+    /// v5 they live in [`PersistedTabState::origins`] instead (see this
+    /// module's history). Kept declared only so an old v4 blob still
+    /// deserialises losslessly — [`RawState::into_state_with_remap`] drains it
+    /// into the global list on migration and always clears it. New saves
+    /// always leave it empty, same convention as
+    /// [`ConnectionTabState::internal_layout`].
     #[serde(default)]
     pub origins: Vec<Origin>,
     /// Theme id (a [`crate::app_identity`]-agnostic string matching a built-in
@@ -341,6 +368,7 @@ impl Default for PersistedTabState {
             version: CURRENT_VERSION,
             environments: vec![Environment::initial()],
             active_environment_id: Some(DEFAULT_ENVIRONMENT_ID.to_string()),
+            origins: Vec::new(),
         }
     }
 }
@@ -365,21 +393,28 @@ impl Default for PersistedTab {
 }
 
 /// Current on-disk schema version. Bumped on migrations.
-const CURRENT_VERSION: u32 = 4;
+const CURRENT_VERSION: u32 = 5;
 
 /// Raw deserialisation target used only by [`load_tab_state`]. It can
 /// represent v1 (top-level `connections`), v2 (nested `workspaces`), v3
-/// (top-level `connections`, same as v1) and v4 (`environments`) shapes,
-/// letting us pick the right migration path without separate
-/// `serde_json::from_*` attempts.
+/// (top-level `connections`, same as v1), v4 (`environments`, origins per
+/// environment) and v5 (`environments` + global `origins`) shapes, letting us
+/// pick the right migration path without separate `serde_json::from_*`
+/// attempts.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct RawState {
     version: u32,
-    /// v4. Non-empty here short-circuits every legacy path below.
+    /// v4/v5. Non-empty here short-circuits every legacy path below. Each
+    /// environment's own (deprecated as of v5) `origins` field still
+    /// deserialises here, which is what [`RawState::into_state_with_remap`]
+    /// migrates into the top-level list below.
     environments: Vec<Environment>,
-    /// v4.
+    /// v4/v5.
     active_environment_id: Option<String>,
+    /// v5. Empty (not absent — `#[serde(default)]` can't tell the two apart)
+    /// for a v4 blob, since the global list didn't exist yet.
+    origins: Vec<Origin>,
     /// v1 and v3.
     connections: HashMap<String, ConnectionTabState>,
     /// v2 only.
@@ -406,22 +441,46 @@ struct RawWorkspace {
 }
 
 impl RawState {
-    /// Resolve the raw blob into a fully-shaped `PersistedTabState`,
-    /// migrating v1/v2/v3 → v4 in the process.
+    /// Resolve the raw blob into a fully-shaped `PersistedTabState`, migrating
+    /// v1/v2/v3/v4 → v5 in the process. Thin wrapper over
+    /// [`Self::into_state_with_remap`] for tests that don't care about the
+    /// origin-id remap table — `load_tab_state` (the one production caller)
+    /// needs the remap, so it calls that directly instead.
+    #[cfg(test)]
     fn into_state(self) -> PersistedTabState {
-        // v4: already in the new shape. Only the active id needs validating —
-        // an environment could have been deleted by another (older) build, or
-        // the file hand-edited.
+        self.into_state_with_remap().0
+    }
+
+    /// Same as [`Self::into_state`], but also returns the origin-id remap a
+    /// v4→v5 migration produced: `old id → surviving id`, for every origin
+    /// that was deduped away because another environment already registered
+    /// the same `path`. Empty for a blob that was already v5 (nothing to
+    /// dedupe) or pre-v4 (no origins existed yet).
+    ///
+    /// The caller (`state.rs`) is responsible for applying this to
+    /// `profiles.json`'s `origin_id` — a *different* file this module knows
+    /// nothing about — which is why the remap is returned rather than applied
+    /// here.
+    pub fn into_state_with_remap(self) -> (PersistedTabState, HashMap<String, String>) {
+        // v4/v5: already in the new shape. Only the active id needs
+        // validating — an environment could have been deleted by another
+        // (older) build, or the file hand-edited.
         if !self.environments.is_empty() {
             let active = self
                 .active_environment_id
                 .filter(|id| self.environments.iter().any(|e| &e.id == id))
                 .or_else(|| self.environments.first().map(|e| e.id.clone()));
-            return PersistedTabState {
-                version: CURRENT_VERSION,
-                environments: self.environments,
-                active_environment_id: active,
-            };
+            let (environments, origins, remap) =
+                migrate_origins_to_global(self.environments, self.origins);
+            return (
+                PersistedTabState {
+                    version: CURRENT_VERSION,
+                    environments,
+                    active_environment_id: active,
+                    origins,
+                },
+                remap,
+            );
         }
 
         let launch = LaunchState {
@@ -466,18 +525,78 @@ impl RawState {
         let internal_layout = top_level_layout.or_else(|| hoist_legacy_layout(&connections));
 
         // v1/v2/v3 → a single environment holding the whole previous session.
-        // Unnamed, so the frontend labels it in the user's language.
-        PersistedTabState {
-            version: CURRENT_VERSION,
-            environments: vec![Environment {
-                connections,
-                internal_layout,
-                launch,
-                ..Environment::initial()
-            }],
-            active_environment_id: Some(DEFAULT_ENVIRONMENT_ID.to_string()),
+        // Unnamed, so the frontend labels it in the user's language. Predates
+        // origins entirely, so there is nothing to migrate or remap.
+        (
+            PersistedTabState {
+                version: CURRENT_VERSION,
+                environments: vec![Environment {
+                    connections,
+                    internal_layout,
+                    launch,
+                    ..Environment::initial()
+                }],
+                active_environment_id: Some(DEFAULT_ENVIRONMENT_ID.to_string()),
+                origins: Vec::new(),
+            },
+            HashMap::new(),
+        )
+    }
+}
+
+/// Drain every environment's (deprecated as of v5) per-environment `origins`
+/// into one global list, deduplicated by `path` — the same shared file
+/// registered under two environments must collapse into a single entry, not
+/// two independent ones with independent ids. The first occurrence wins the
+/// surviving id (deterministic: environments and their origins keep their
+/// on-disk order), starting from whatever `top_level_origins` already holds
+/// (a genuine v5 blob, or — theoretically — a hand-edited file that already
+/// has some).
+///
+/// Returns the migrated environments (their own `origins` field always
+/// cleared), the deduplicated global list, and the remap (`old id → surviving
+/// id`) every id merged away needs applied wherever it's referenced outside
+/// this module — namely a `ConnectionProfile.origin_id` in the *separate*
+/// `profiles.json`, which is why the remap is returned rather than resolved
+/// in place.
+fn migrate_origins_to_global(
+    mut environments: Vec<Environment>,
+    top_level_origins: Vec<Origin>,
+) -> (Vec<Environment>, Vec<Origin>, HashMap<String, String>) {
+    let mut origins = top_level_origins;
+    let mut by_path: HashMap<String, String> = origins
+        .iter()
+        .map(|o| (o.path.clone(), o.id.clone()))
+        .collect();
+    let mut remap: HashMap<String, String> = HashMap::new();
+
+    for env in &mut environments {
+        for o in std::mem::take(&mut env.origins) {
+            match by_path.get(&o.path) {
+                Some(winner) if winner != &o.id => {
+                    remap.insert(o.id, winner.clone());
+                }
+                Some(_) => {
+                    // Same id already registered under this exact path —
+                    // nothing to merge, nothing to remap.
+                }
+                None => {
+                    by_path.insert(o.path.clone(), o.id.clone());
+                    origins.push(o);
+                }
+            }
         }
     }
+
+    if !remap.is_empty() {
+        for env in &mut environments {
+            if let Some(old) = env.origin_id.take() {
+                env.origin_id = Some(remap.get(&old).cloned().unwrap_or(old));
+            }
+        }
+    }
+
+    (environments, origins, remap)
 }
 
 /// Pick the inner-dockview geometry to promote to the top level from a set of
@@ -589,32 +708,37 @@ fn tab_state_path() -> AppResult<PathBuf> {
     Ok(dir.join(TAB_STATE_FILE))
 }
 
-/// Load persisted tab state, transparently migrating v1/v2 blobs.
+/// Load persisted tab state, transparently migrating v1-v4 blobs.
 ///
 /// Falls back to an empty (but valid) container on missing or corrupt
-/// files so a bad blob never blocks startup.
-pub fn load_tab_state() -> PersistedTabState {
+/// files so a bad blob never blocks startup. The second element is the
+/// origin-id remap a v4→v5 migration produced (see
+/// [`RawState::into_state_with_remap`]) — empty unless this load just
+/// deduped two environments' origins that shared a `path`. The caller
+/// (`state::AppState::new_with_args`) is responsible for applying it to
+/// `profiles.json`, a file this module never touches.
+pub fn load_tab_state() -> (PersistedTabState, HashMap<String, String>) {
     let path = match tab_state_path() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("[tab_state] cannot resolve path: {e}; using empty state");
-            return PersistedTabState::default();
+            return (PersistedTabState::default(), HashMap::new());
         }
     };
     if !path.exists() {
-        return PersistedTabState::default();
+        return (PersistedTabState::default(), HashMap::new());
     }
     match std::fs::read(&path) {
         Ok(bytes) => match serde_json::from_slice::<RawState>(&bytes) {
-            Ok(raw) => raw.into_state(),
+            Ok(raw) => raw.into_state_with_remap(),
             Err(e) => {
                 eprintln!("[tab_state] failed to parse {path:?}: {e}; using empty state");
-                PersistedTabState::default()
+                (PersistedTabState::default(), HashMap::new())
             }
         },
         Err(e) => {
             eprintln!("[tab_state] failed to read {path:?}: {e}; using empty state");
-            PersistedTabState::default()
+            (PersistedTabState::default(), HashMap::new())
         }
     }
 }
@@ -711,6 +835,7 @@ mod tests {
             version: CURRENT_VERSION,
             environments: Vec::new(),
             active_environment_id: None,
+            origins: Vec::new(),
         };
         assert_eq!(state.active_environment_mut().id, DEFAULT_ENVIRONMENT_ID);
         assert_eq!(state.environments.len(), 1);
@@ -867,13 +992,19 @@ mod tests {
     }
 
     #[test]
-    fn origins_round_trip_and_default_to_empty() {
+    fn origins_default_to_empty() {
         // A v4 blob written before origins existed must still load, with the
-        // field defaulting rather than failing the whole parse.
+        // global list defaulting rather than failing the whole parse.
         let without = r#"{ "version": 4, "environments": [ { "id": "a" } ] }"#;
         let raw: RawState = serde_json::from_str(without).unwrap();
-        assert!(sole_env(&raw.into_state()).origins.is_empty());
+        assert!(raw.into_state().origins.is_empty());
+    }
 
+    #[test]
+    fn a_v4_environments_origins_migrate_into_the_global_v5_list() {
+        // A v4 blob's per-environment origins (the pre-v5 shape) must land in
+        // the new top-level, global list on load — not stay nested on the
+        // environment, which is deprecated and always cleared.
         let with = r#"{
             "version": 4,
             "environments": [ { "id": "a", "origins": [
@@ -884,13 +1015,54 @@ mod tests {
         }"#;
         let raw: RawState = serde_json::from_str(with).unwrap();
         let state = raw.into_state();
-        let origins = &sole_env(&state).origins;
-        assert_eq!(origins.len(), 1);
-        assert_eq!(origins[0].path, r"\\server\huginndb\clients.json");
+        assert_eq!(state.origins.len(), 1);
+        assert_eq!(state.origins[0].path, r"\\server\huginndb\clients.json");
         assert_eq!(
-            origins[0].last_synced_at.as_deref(),
+            state.origins[0].last_synced_at.as_deref(),
             Some("2026-07-29T10:00:00Z")
         );
+        assert!(sole_env(&state).origins.is_empty());
+    }
+
+    #[test]
+    fn origins_registered_under_two_environments_for_the_same_path_dedupe_into_one() {
+        // The exact scenario the v5 migration exists for: two environments
+        // each registered "the same" shared file independently (two ids, one
+        // path). They must collapse into a single global entry, and the
+        // second environment's dangling `originId` (it mirrors a bundle from
+        // its own copy) must be remapped to the surviving id.
+        let with = r#"{
+            "version": 4,
+            "environments": [
+                { "id": "a", "origins": [
+                    { "id": "o1", "name": "Clients (from A)",
+                      "path": "\\\\server\\huginndb\\clients.json" }
+                ] },
+                { "id": "b", "originId": "o2", "origins": [
+                    { "id": "o2", "name": "Clients (from B)",
+                      "path": "\\\\server\\huginndb\\clients.json" }
+                ] }
+            ]
+        }"#;
+        let raw: RawState = serde_json::from_str(with).unwrap();
+        let (state, remap) = raw.into_state_with_remap();
+
+        assert_eq!(state.origins.len(), 1, "must dedupe by path");
+        assert_eq!(state.origins[0].id, "o1", "first occurrence wins the id");
+        assert_eq!(remap.get("o2").map(String::as_str), Some("o1"));
+
+        let env_b = state.environments.iter().find(|e| e.id == "b").unwrap();
+        assert_eq!(
+            env_b.origin_id.as_deref(),
+            Some("o1"),
+            "the deduped-away id must be remapped, not left dangling"
+        );
+        for env in &state.environments {
+            assert!(
+                env.origins.is_empty(),
+                "the per-environment field is deprecated"
+            );
+        }
     }
 
     #[test]

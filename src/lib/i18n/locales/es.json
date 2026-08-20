@@ -1861,7 +1861,7 @@
   },
   "origins": {
     "title": "Orígenes compartidos",
-    "description": "Importa conexiones desde un fichero en una carpeta compartida. Es del entorno activo; HuginnDB solo lo lee, nunca escribe en él.",
+    "description": "Importa conexiones desde un fichero en una carpeta compartida. Se registra de forma global, para todos los entornos; HuginnDB solo lo lee, nunca escribe en él.",
     "add": "Añadir origen…",
     "adding": "Añadiendo…",
     "syncNow": "Sincronizar ahora",
@@ -1887,7 +1887,12 @@
       "retire": "Borrar",
       "retireConfirm": "¿Borrar la conexión «{{name}}»?\n\nTambién se elimina su contraseña del almacén de credenciales. Esto no se puede deshacer.",
       "mark": "«{{origin}}» ya no ofrece esta conexión: resuélvelo desde el árbol de esquema o en Ajustes → Orígenes compartidos.",
-      "pending": "Conexiones desaparecidas"
+      "pending": "Conexiones desaparecidas",
+      "unknownOriginName": "un origen compartido que ya no existe",
+      "keepAll": "Conservar todas",
+      "retireAll": "Eliminar todas",
+      "retireAllConfirmTitle": "¿Eliminar {{count}} conexiones desaparecidas?",
+      "retireAllConfirm": "También se elimina su contraseña guardada del almacén de credenciales. Esto no se puede deshacer."
     },
     "vanishedEnvironments": {
       "titleNamed": "«{{name}}» ya no se publica",

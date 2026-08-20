@@ -66,7 +66,12 @@ export function VanishedEnvironmentNotice({
             {t("origins.vanishedEnvironments.titleNamed", { name })}
           </div>
           <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-            {t("origins.vanishedEnvironments.body", { origin: notice.originName })}
+            {t("origins.vanishedEnvironments.body", {
+              // Same fallback as `VanishedOriginNotice`: blank when the
+              // reconciliation sweep raised this after the origin's name was
+              // already unrecoverable. See `reconcileOrphans`.
+              origin: notice.originName || t("origins.vanished.unknownOriginName"),
+            })}
           </p>
         </div>
       </div>

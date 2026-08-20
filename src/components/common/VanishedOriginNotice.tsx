@@ -90,7 +90,13 @@ export function VanishedOriginNotice({
               : t("origins.vanished.title")}
           </div>
           <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-            {t("origins.vanished.body", { origin: notice.originName })}
+            {t("origins.vanished.body", {
+              // Blank when the sweep synthesized this notice after the origin
+              // was already gone (app restart before deciding, or the whole
+              // environment holding it was deleted) — its name is unrecoverable
+              // by then. See `reconcileOrphans` in `stores/sync/originSync.ts`.
+              origin: notice.originName || t("origins.vanished.unknownOriginName"),
+            })}
           </p>
         </div>
       </div>
@@ -151,7 +157,9 @@ export function VanishedOriginMark({ profileId }: { profileId: string }) {
   return (
     <span
       className="flex shrink-0 items-center"
-      title={t("origins.vanished.mark", { origin: notice.originName })}
+      title={t("origins.vanished.mark", {
+        origin: notice.originName || t("origins.vanished.unknownOriginName"),
+      })}
     >
       <Unlink className="h-3 w-3 text-amber-600 dark:text-amber-500" />
     </span>

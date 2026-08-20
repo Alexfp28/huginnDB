@@ -1,15 +1,17 @@
 /**
- * Settings → Origins: register the shared files this environment pulls
- * connections from (#108), and sync them on demand.
+ * Settings → Origins: register the shared files HuginnDB pulls connections
+ * from (#108), and sync them on demand.
  *
- * Scoped to the **active environment**, like everything that touches
- * `tab_state.json`. The heading says so, because otherwise "why did my origins
- * disappear" has a confusing answer (you switched environment).
+ * Global, unlike most of what touches `tab_state.json`: an origin describes a
+ * server-side resource, not a Producción/Staging axis, and what it produces
+ * (profiles, whole mirrored environments) is already global — see
+ * `commands::origins`'s module doc for why. So this section, unlike its
+ * neighbours, is the same regardless of which environment is active.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FolderSync, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Check, FolderSync, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useOriginSync } from "@/stores/sync/originSync";
 import { useConnections } from "@/stores/session/connections";
@@ -30,6 +32,8 @@ export function OriginsSection() {
   const vanished = useOriginSync((s) => s.vanished);
   const vanishedEnvironments = useOriginSync((s) => s.vanishedEnvironments);
   const noticeOriginRemoved = useOriginSync((s) => s.noticeOriginRemoved);
+  const adoptAllVanished = useOriginSync((s) => s.adoptAllVanished);
+  const retireAllVanished = useOriginSync((s) => s.retireAllVanished);
   const profiles = useConnections((s) => s.profiles);
   const environments = useEnvironments((s) => s.environments);
 
@@ -47,6 +51,9 @@ export function OriginsSection() {
   const [busy, setBusy] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<Origin | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [bulkAdopting, setBulkAdopting] = useState(false);
+  const [bulkRetireOpen, setBulkRetireOpen] = useState(false);
+  const [bulkRetiring, setBulkRetiring] = useState(false);
 
   // How many connections/environments will be flagged as orphaned if this
   // origin goes — shown in the confirm dialog so "what it published stays"
@@ -96,6 +103,25 @@ export function OriginsSection() {
     }
   }
 
+  async function performBulkAdopt() {
+    setBulkAdopting(true);
+    try {
+      await adoptAllVanished();
+    } finally {
+      setBulkAdopting(false);
+    }
+  }
+
+  async function performBulkRetire() {
+    setBulkRetiring(true);
+    try {
+      await retireAllVanished();
+      setBulkRetireOpen(false);
+    } finally {
+      setBulkRetiring(false);
+    }
+  }
+
   async function submit() {
     if (!draft.path.trim()) return;
     setBusy(true);
@@ -131,7 +157,11 @@ export function OriginsSection() {
           size="sm"
           variant="outline"
           onClick={() => void syncAll()}
-          disabled={syncing || origins.length === 0}
+          // Not gated on `origins.length`: `syncAll` also runs the orphan
+          // reconciliation sweep (`reconcileOrphans`), which is useful even
+          // with zero origins left — e.g. right after removing the last one,
+          // before its connections' vanished notice has had a chance to run.
+          disabled={syncing}
         >
           {syncing ? (
             <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -195,9 +225,36 @@ export function OriginsSection() {
           it unresolvable. */}
       {vanishedIds.length > 0 && (
         <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {t("origins.vanished.pending")}
-          </h4>
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("origins.vanished.pending")}
+            </h4>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={bulkAdopting || bulkRetiring}
+                onClick={() => void performBulkAdopt()}
+              >
+                {bulkAdopting ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Check className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                {t("origins.vanished.keepAll")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                disabled={bulkAdopting || bulkRetiring}
+                onClick={() => setBulkRetireOpen(true)}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                {t("origins.vanished.retireAll")}
+              </Button>
+            </div>
+          </div>
           {vanishedIds.map((id) => (
             <VanishedOriginNotice
               key={id}
@@ -287,6 +344,18 @@ export function OriginsSection() {
         confirmLabel={t("origins.remove")}
         confirming={removing}
         onConfirm={() => void performRemove()}
+      />
+
+      <ConfirmDialog
+        open={bulkRetireOpen}
+        onOpenChange={(open) => !open && setBulkRetireOpen(false)}
+        title={t("origins.vanished.retireAllConfirmTitle", {
+          count: vanishedIds.length,
+        })}
+        description={<p>{t("origins.vanished.retireAllConfirm")}</p>}
+        confirmLabel={t("origins.vanished.retireAll")}
+        confirming={bulkRetiring}
+        onConfirm={() => void performBulkRetire()}
       />
     </div>
   );

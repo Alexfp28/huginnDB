@@ -731,9 +731,35 @@ impl AppState {
     /// Same as [`Self::new`] but attaches pre-parsed CLI arguments so the
     /// frontend can retrieve them via `get_startup_args`.
     pub fn new_with_args(startup_args: StartupArgs) -> Self {
-        let profiles = crate::store::load_profiles().unwrap_or_default();
+        // Tab state loads first: a v4→v5 migration (origins moving to a
+        // global registry, `tab_state`'s module doc) can dedupe two
+        // environments' origins that shared a `path`, and the returned remap
+        // (old id → surviving id) has to be applied to `profiles.json` — a
+        // separate file `tab_state` knows nothing about — before it's read.
+        // Without this, a profile synced from the deduped-away id would be
+        // left with a dangling `origin_id` pointing at nothing.
+        let (tab_state, origin_id_remap) = crate::tab_state::load_tab_state();
+        let mut profiles = crate::store::load_profiles().unwrap_or_default();
+        if !origin_id_remap.is_empty() {
+            let mut changed = false;
+            for p in &mut profiles {
+                if let Some(old_id) = p.origin_id.clone() {
+                    if let Some(new_id) = origin_id_remap.get(&old_id) {
+                        p.origin_id = Some(new_id.clone());
+                        changed = true;
+                    }
+                }
+            }
+            // Best-effort, same philosophy as the rest of this function: a
+            // failed save here just means the remap recomputes identically
+            // (and re-applies harmlessly) on the next launch, since it's a
+            // pure function of the still-unmigrated tab_state.json blob.
+            if changed {
+                let _ = crate::store::save_profiles(&profiles);
+            }
+            let _ = crate::tab_state::save_tab_state(&tab_state);
+        }
         let prefs = crate::prefs::load_preferences();
-        let tab_state = crate::tab_state::load_tab_state();
         let json_schemas = crate::json_schemas::load_library();
         Self {
             connections: Arc::new(RwLock::new(ActiveConnections::default())),

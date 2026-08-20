@@ -779,7 +779,7 @@ export const api = {
 
   // Shared origins ---------------------------------------------------------
 
-  /** Origins registered in the active environment. */
+  /** Every registered origin, global across all environments. */
   listOrigins: () => invoke<Origin[]>("list_origins"),
 
   /** Register a shared origin. `passphrase` only for an encrypted file; it goes

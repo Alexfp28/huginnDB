@@ -445,9 +445,10 @@ pub async fn export_environments(
         ));
     }
 
-    let envs: Vec<Environment> = {
+    let (envs, origins_snapshot): (Vec<Environment>, Vec<Origin>) = {
         let guard = state.tab_state.read();
-        ids.iter()
+        let envs = ids
+            .iter()
             .map(|id| {
                 guard
                     .environments
@@ -456,7 +457,8 @@ pub async fn export_environments(
                     .cloned()
                     .ok_or_else(|| AppError::InvalidInput(format!("no environment with id {id}")))
             })
-            .collect::<AppResult<Vec<_>>>()?
+            .collect::<AppResult<Vec<_>>>()?;
+        (envs, guard.origins.clone())
     };
 
     // Union of every profile any selected environment references — not one
@@ -484,6 +486,29 @@ pub async fn export_environments(
         .map(|env| {
             let mut connection_ids: Vec<String> = referenced_profile_ids(env).into_iter().collect();
             connection_ids.sort();
+
+            // Origins are a global registry now (`PersistedTabState::origins`,
+            // tab_state.json v5), so there is no `env.origins` to copy
+            // verbatim any more — an environment's "own" origins are whichever
+            // ones its connections actually depend on, plus the one it mirrors
+            // itself, if any.
+            let mut origin_ids: std::collections::HashSet<&str> = connection_ids
+                .iter()
+                .filter_map(|id| profiles_snapshot.iter().find(|p| &p.id == id))
+                .filter_map(|p| p.origin_id.as_deref())
+                .collect();
+            if let Some(oid) = env.origin_id.as_deref() {
+                origin_ids.insert(oid);
+            }
+            let origins: Vec<ExportedOrigin> = origins_snapshot
+                .iter()
+                .filter(|o| origin_ids.contains(o.id.as_str()))
+                .map(|o| ExportedOrigin {
+                    name: o.name.clone(),
+                    path: o.path.clone(),
+                })
+                .collect();
+
             ExportedEnvironmentBundle {
                 environment: ExportedEnvironment {
                     name: env.name.clone(),
@@ -493,14 +518,7 @@ pub async fn export_environments(
                     source_environment_id: env.id.clone(),
                 },
                 connection_ids,
-                origins: env
-                    .origins
-                    .iter()
-                    .map(|o| ExportedOrigin {
-                        name: o.name.clone(),
-                        path: o.path.clone(),
-                    })
-                    .collect(),
+                origins,
             }
         })
         .collect();
@@ -618,10 +636,17 @@ pub fn analyze_environment_import(
 /// stays empty): importing an environment should not silently open N live
 /// database connections.
 ///
-/// Each origin is registered with a fresh id and no stored passphrase. An
-/// encrypted one surfaces the same "no passphrase stored" state a freshly
-/// `add_origin`-ed one would, on the next sync — there's nothing special to
-/// resolve here at import time.
+/// Each origin is registered — globally, in `PersistedTabState::origins`, not
+/// on the new environment (there is no per-environment slot any more, see
+/// `commands::origins`'s module doc) — with a fresh id and no stored
+/// passphrase. An encrypted one surfaces the same "no passphrase stored"
+/// state a freshly `add_origin`-ed one would, on the next sync — there's
+/// nothing special to resolve here at import time. No dedup against origins
+/// already registered from a previous import: unlike the v4→v5 migration
+/// (which merges by necessity, since a v4 blob could genuinely hold the same
+/// path twice), a fresh import minting a second global entry for a path
+/// that's already registered is a much rarer case and easy to spot and clean
+/// up by hand in Settings → Origins.
 ///
 /// `async fn` on purpose, with the actual work run via `spawn_blocking`: a
 /// synchronous Tauri command executes on the main thread, and
@@ -767,6 +792,8 @@ pub async fn import_environment(
                     Some(visible)
                 };
 
+                guard.origins.extend(origins);
+
                 let env_id = uuid::Uuid::new_v4().to_string();
                 let name = environment.name.clone();
                 let env = Environment {
@@ -776,7 +803,6 @@ pub async fn import_environment(
                     icon: environment.icon,
                     order: base_order + i as i32,
                     theme_id: environment.theme_id,
-                    origins,
                     launch: LaunchState {
                         visible_connections,
                         ..LaunchState::default()

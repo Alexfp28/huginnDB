@@ -6,9 +6,24 @@
 //! There is no protocol and no service here: reading one is `std::fs::read`, and
 //! the share's ACL is the actual access control.
 //!
-//! This module owns the origin *registry* (add / rename / remove, scoped to the
-//! active environment), the keychain handling for an encrypted origin's
-//! passphrase, and the pull itself ([`sync_origin`]).
+//! This module owns the origin *registry* (add / rename / remove), the
+//! keychain handling for an encrypted origin's passphrase, and the pull
+//! itself ([`sync_origin`]).
+//!
+//! ## Why the registry is global, not scoped to an environment
+//!
+//! An origin describes a *server-side* resource — a file on a share — not a
+//! Producción/Staging axis, and what it produces (`profiles.json` entries,
+//! and whole mirrored environments) is already global. Scoping the
+//! registration itself to one environment reproduced the `visible_databases`
+//! bug (CLAUDE.md gotcha #27) one level up: the same physical file needed a
+//! second, independent registration to be seen from a second environment, and
+//! deleting whichever environment happened to hold the registration silently
+//! orphaned every connection it had ever imported, with no notice raised at
+//! all — worse than removing the origin on purpose, which at least tells the
+//! frontend (`useOriginSync.noticeOriginRemoved`). `tab_state.json` v5 moved
+//! `origins` to [`crate::tab_state::PersistedTabState`] for exactly this
+//! reason; see that module's history for the migration.
 //!
 //! ## Why the passphrase goes in the keychain
 //!
@@ -45,17 +60,14 @@ fn passphrase_account(origin_id: &str) -> String {
     format!("origin::{origin_id}")
 }
 
-/// Origins registered in the active environment, in insertion order.
+/// Every registered origin, global across all environments, in insertion
+/// order.
 #[tauri::command]
 pub fn list_origins(state: State<'_, AppState>) -> AppResult<Vec<Origin>> {
-    let guard = state.tab_state.read();
-    Ok(guard
-        .active_environment()
-        .map(|env| env.origins.clone())
-        .unwrap_or_default())
+    Ok(state.tab_state.read().origins.clone())
 }
 
-/// Register a shared origin in the active environment.
+/// Register a shared origin.
 ///
 /// The path is **not** validated here beyond being non-empty. A share can be
 /// legitimately unreachable at the moment it is configured — VPN down, laptop
@@ -91,7 +103,7 @@ pub fn add_origin(
 
     let snapshot = {
         let mut guard = state.tab_state.write();
-        guard.active_environment_mut().origins.push(origin.clone());
+        guard.origins.push(origin.clone());
         guard.clone()
     };
     tab_state::save_tab_state(&snapshot)?;
@@ -125,7 +137,6 @@ pub fn update_origin(
     let (snapshot, updated) = {
         let mut guard = state.tab_state.write();
         let origin = guard
-            .active_environment_mut()
             .origins
             .iter_mut()
             .find(|o| o.id == id)
@@ -152,10 +163,9 @@ pub fn update_origin(
 pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
     let snapshot = {
         let mut guard = state.tab_state.write();
-        let env = guard.active_environment_mut();
-        let before = env.origins.len();
-        env.origins.retain(|o| o.id != id);
-        if env.origins.len() == before {
+        let before = guard.origins.len();
+        guard.origins.retain(|o| o.id != id);
+        if guard.origins.len() == before {
             return Err(AppError::InvalidInput(format!("no origin with id {id}")));
         }
         guard.clone()
@@ -191,8 +201,10 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
     let origin = {
         let guard = state.tab_state.read();
         guard
-            .active_environment()
-            .and_then(|env| env.origins.iter().find(|o| o.id == id).cloned())
+            .origins
+            .iter()
+            .find(|o| o.id == id)
+            .cloned()
             .ok_or_else(|| AppError::InvalidInput(format!("no origin with id {id}")))?
     };
 
@@ -271,12 +283,7 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
             report.environments_vanished = vanished;
             report.environments_suspicious = suspicious;
         }
-        if let Some(o) = guard
-            .active_environment_mut()
-            .origins
-            .iter_mut()
-            .find(|o| o.id == id)
-        {
+        if let Some(o) = guard.origins.iter_mut().find(|o| o.id == id) {
             o.last_synced_at = Some(report.synced_at.clone());
         }
         guard.clone()

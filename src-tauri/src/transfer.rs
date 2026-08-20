@@ -177,8 +177,9 @@ pub struct ImportResult {
 // ---------------------------------------------------------------------------
 //
 // An environment's *portable* identity is its name/color/icon/theme, the
-// connection profiles it groups, and the shared origins it pulls from — not
-// its tabs, dockview geometry or launch state. Those are session artifacts
+// connection profiles it groups, and the shared origins those connections (or
+// the environment's own mirror, if it's one) depend on — not its tabs,
+// dockview geometry or launch state. Those are session artifacts
 // tied to the machine that produced them (CLAUDE.md gotcha #10: the inner
 // dockview's geometry is a JSON blob keyed to panel ids from that machine's
 // `useTabs`), so portability stops at "which connections, from where".
@@ -298,13 +299,17 @@ pub struct JsonSchemaImportResult {
 }
 
 /// One environment's slice of an [`EnvironmentExportFile`]: its cosmetic
-/// identity, which of the file's shared `profiles` it groups, and its own
-/// registered origins.
+/// identity, which of the file's shared `profiles` it groups, and the origins
+/// those connections (or the environment's own mirror) depend on.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExportedEnvironmentBundle {
     pub environment: ExportedEnvironment,
     /// Ids into the sibling `EnvironmentExportFile::profiles` list.
     pub connection_ids: Vec<String>,
+    /// Derived at export time from the global origin registry
+    /// (`commands::origins`'s module doc) — not copied verbatim from the
+    /// environment, which doesn't own any of its own any more (tab_state.json
+    /// v5). See `export_environments`.
     pub origins: Vec<ExportedOrigin>,
 }
 
