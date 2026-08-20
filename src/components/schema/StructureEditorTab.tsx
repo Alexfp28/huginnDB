@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { KeyRound, Plus, Trash2, RefreshCw } from "lucide-react";
+import { KeyRound, Plus, Trash2, RefreshCw, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,11 @@ import {
   parseColumnType,
   type ColumnTypeCategory,
 } from "@/lib/db/columnTypes";
-import { supportsDdlEditing, supportsIndexManager } from "@/lib/db/driver";
+import {
+  supportsDdlEditing,
+  supportsIndexManager,
+  supportsColumnReorder,
+} from "@/lib/db/driver";
 import type {
   ColumnDef,
   Driver,
@@ -347,6 +351,16 @@ export function StructureEditorTab({
   function removeColumn(key: string) {
     setColumns((cs) => cs.filter((c) => c._key !== key));
   }
+  function moveColumn(key: string, direction: -1 | 1) {
+    setColumns((cs) => {
+      const i = cs.findIndex((c) => c._key === key);
+      const j = i + direction;
+      if (i < 0 || j < 0 || j >= cs.length) return cs;
+      const next = [...cs];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
 
   if (loading) {
     return (
@@ -429,8 +443,15 @@ export function StructureEditorTab({
               columns={columns}
               driver={driver}
               typeCategories={typeCategories}
+              // Reordering a not-yet-created table is just column array
+              // order feeding one CREATE TABLE statement — every dialect
+              // supports that for free. Editing a *live* table needs an
+              // actual ALTER to reposition a column, which only MySQL's
+              // MODIFY/ADD COLUMN … FIRST|AFTER can express.
+              canReorder={mode === "new" || supportsColumnReorder(driver)}
               onPatch={patchColumn}
               onRemove={removeColumn}
+              onMove={moveColumn}
               onAdd={addColumn}
               bindingContext={
                 mode === "edit"
@@ -575,16 +596,20 @@ function ColumnsEditor({
   columns,
   driver,
   typeCategories,
+  canReorder,
   onPatch,
   onRemove,
+  onMove,
   onAdd,
   bindingContext,
 }: {
   columns: WorkingColumn[];
   driver: Driver | undefined;
   typeCategories: ColumnTypeCategory[];
+  canReorder: boolean;
   onPatch: (key: string, patch: Partial<WorkingColumn>) => void;
   onRemove: (key: string) => void;
+  onMove: (key: string, direction: -1 | 1) => void;
   onAdd: () => void;
   /**
    * Coordinates for the per-column JSON Schema affordance, or `undefined` while
@@ -655,7 +680,12 @@ function ColumnsEditor({
                   {"{}"}
                 </th>
               )}
-              <th className="w-8 border-b border-border" />
+              <th
+                className={cn(
+                  "border-b border-border",
+                  canReorder ? "w-16" : "w-8",
+                )}
+              />
             </tr>
           </thead>
           <tbody>
@@ -778,13 +808,35 @@ function ColumnsEditor({
                   </td>
                 )}
                 <td className="px-1 py-0.5 text-center">
-                  <button
-                    className="text-muted-foreground/40 opacity-0 hover:text-destructive group-hover/col:opacity-100"
-                    onClick={() => onRemove(c._key)}
-                    title={t("structure.col.remove")}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex items-center justify-center gap-0.5 opacity-0 group-hover/col:opacity-100">
+                    {canReorder && (
+                      <>
+                        <button
+                          className="text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                          onClick={() => onMove(c._key, -1)}
+                          disabled={i === 0}
+                          title={t("structure.col.moveUp")}
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className="text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                          onClick={() => onMove(c._key, 1)}
+                          disabled={i === columns.length - 1}
+                          title={t("structure.col.moveDown")}
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                    <button
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => onRemove(c._key)}
+                      title={t("structure.col.remove")}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

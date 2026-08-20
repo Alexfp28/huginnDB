@@ -155,6 +155,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   never be able to make a machine register more origins on its own, that
   stays reserved for the conscious, one-shot `import_environment`.
 
+- **Column reordering in the table structure editor, MySQL only.** Up/down
+  arrows next to each row (revealed on hover, next to the existing delete
+  icon) let you move a column without dropping and re-adding it. Designing a
+  brand-new table allows reordering on every driver — it's just column array
+  order feeding one `CREATE TABLE` — but repositioning a column on a *live*
+  table needs a real `ALTER`, and only MySQL's `MODIFY COLUMN`/`ADD COLUMN …
+  FIRST|AFTER col` can express that; Postgres has no equivalent ALTER at all,
+  and SQLite would mean forcing the 12-step rebuild for what is otherwise a
+  no-op change. `db::ddl::mysql_column_positions` diffs the desired column
+  order against where each surviving/new column would naturally land (an
+  unmoved `MODIFY`/`ADD COLUMN` leaves a column in place / appends it at the
+  end) and only emits a position clause for the columns that actually need to
+  move, so an unrelated edit elsewhere in the table never gets a spurious
+  reorder statement.
+
 ### Changed
 
 - **The cell editor now gives Monaco a stable model `path`.** This was the enabling
@@ -309,6 +324,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   merge/decrypt loop, the JSON-Schema binding remap, and the tab-state write
   moved into a `tauri::async_runtime::spawn_blocking` closure — the same CPU
   cost is paid, but off the thread that pumps window messages.
+
+- **The structure editor could reject its own DDL preview for a column
+  nobody touched, on MySQL `BIT` columns specifically.** MySQL reports a
+  `BIT` column's default from `information_schema` in its native `b'0'`/
+  `b'1'` literal form, and the structure editor round-trips that verbatim
+  into the "Default" field. `validate_structure` validated every column's
+  default against a conservative allowlist (numbers, quoted strings, a
+  handful of keywords) regardless of whether the user had touched it, so
+  simply opening a table with a `BIT` column and editing an unrelated column
+  made the whole preview/apply fail with "unsupported default expression:
+  \"b'0'\"" — a comment already flagged this exact class of problem for
+  Postgres's cast-style defaults (`'foo'::text`) in the `dump`/SQLite-rebuild
+  path, but the structure editor's own `ALTER` path never got the same
+  treatment. A column's default now only goes through the allowlist when it
+  actually differs from what's on the live catalog; an unchanged default —
+  in whatever dialect-native form the server reports it — is trusted as-is.
 
 ## [1.16.2] — 2026-08-19
 

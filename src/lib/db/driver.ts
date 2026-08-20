@@ -86,6 +86,16 @@ export function supportsCreateDatabase(driver: Driver | undefined): boolean {
   return driver === "postgres" || driver === "mysql" || driver === "sqlserver";
 }
 
+/** Reordering columns in the structure editor. MySQL-only: `MODIFY COLUMN …
+ *  FIRST|AFTER col` (and the equivalent `ADD COLUMN … FIRST|AFTER col`) is
+ *  the only way any of our dialects can reposition a column without a full
+ *  rebuild — Postgres has no equivalent ALTER at all, and SQLite's is the
+ *  12-step rebuild the structure editor otherwise avoids for a plain reorder.
+ *  See `db::ddl::mysql_column_positions` on the backend. */
+export function supportsColumnReorder(driver: Driver | undefined): boolean {
+  return driver === "mysql";
+}
+
 /**
  * Split an SSMS-style `HOST\INSTANCE` server name into its two parts.
  *

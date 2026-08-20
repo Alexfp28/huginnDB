@@ -647,6 +647,8 @@
       "default": "Por defecto",
       "add": "Añadir columna",
       "remove": "Eliminar columna",
+      "moveUp": "Subir columna",
+      "moveDown": "Bajar columna",
       "jsonSchema": "Esquema JSON",
       "jsonSchemaLocal": "local",
       "jsonSchemaHint": "Metadatos del editor guardados en esta máquina. Se guardan en el momento de elegirlos y nunca forman parte del DDL de abajo.",

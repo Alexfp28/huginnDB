@@ -647,6 +647,8 @@
       "default": "Default",
       "add": "Add column",
       "remove": "Remove column",
+      "moveUp": "Move column up",
+      "moveDown": "Move column down",
       "jsonSchema": "JSON Schema",
       "jsonSchemaLocal": "local",
       "jsonSchemaHint": "Editor metadata stored on this machine. It is saved the moment you pick it and never forms part of the DDL below.",
