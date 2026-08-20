@@ -205,7 +205,12 @@ pub async fn run_pipeline(
     while cursor.advance().await? {
         docs.push(cursor.deserialize_current()?);
     }
-    Ok(docs_to_result(docs, started.elapsed().as_millis() as u64))
+    let truncated = docs.len() as i64 >= clamp_limit(limit);
+    Ok(docs_to_result(
+        docs,
+        started.elapsed().as_millis() as u64,
+        truncated,
+    ))
 }
 
 /// Run one preview per stage: stage *i*'s output is the pipeline truncated
@@ -328,6 +333,7 @@ pub async fn preview_stages(
                             result: Some(docs_to_result(
                                 docs,
                                 started.elapsed().as_millis() as u64,
+                                truncated,
                             )),
                             error: None,
                             truncated,

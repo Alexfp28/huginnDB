@@ -63,11 +63,16 @@
       "label": "File",
       "newConnection": "New connection…",
       "manageConnections": "Manage connections…",
+      "sectionProfiles": "Profiles",
       "importProfiles": "Import profiles…",
       "exportProfiles": "Export profiles…",
+      "sectionEnvironments": "Environments",
       "exportEnvironments": "Export environments…",
-      "importEnvironment": "Import environment…",
-      "disconnectAll": "Disconnect all"
+      "importEnvironment": "Import environments…",
+      "disconnectAll": "Disconnect all",
+      "sectionJsonSchemas": "JSON Schemas",
+      "exportJsonSchemas": "Export JSON Schemas…",
+      "importJsonSchemas": "Import JSON Schemas…"
     },
     "window": {
       "label": "Window",
@@ -114,6 +119,7 @@
   "connections": {
     "disconnectTooltip": "Disconnect",
     "deleteConfirm": "Delete connection \"{{name}}\"?",
+    "bulkDeleteTitle": "Delete {{count}} connections",
     "bulkDeleteConfirm": "Delete {{count}} connections? This cannot be undone.",
     "selectConnection": "Select {{name}}",
     "selectedCount": "{{count}} selected",
@@ -506,6 +512,8 @@
     "removeFilter": "Remove filter",
     "rows": "rows",
     "of": "of",
+    "truncated": "truncated",
+    "truncatedHint": "The result was capped and the rest of the rows were discarded. Add a LIMIT/TOP (or a narrower filter) to your query to see the rest.",
     "insert": "Insert",
     "insertNewRow": "Insert new row",
     "viewModeTable": "Table view",
@@ -535,7 +543,8 @@
       "newRow": "New row",
       "insertHint": "Enter inserts · Esc discards",
       "changeType": "Change type"
-    }
+    },
+    "expandEditorWithSchema": "Edit in Monaco — schema \"{{name}}\" attached"
   },
   "tableData": {
     "refresh": "Refresh",
@@ -639,7 +648,13 @@
       "auto": "Auto",
       "default": "Default",
       "add": "Add column",
-      "remove": "Remove column"
+      "remove": "Remove column",
+      "moveUp": "Move column up",
+      "moveDown": "Move column down",
+      "jsonSchema": "JSON Schema",
+      "jsonSchemaLocal": "local",
+      "jsonSchemaHint": "Editor metadata stored on this machine. It is saved the moment you pick it and never forms part of the DDL below.",
+      "jsonSchemaNewHint": "Available once the table exists."
     },
     "typeCategory": {
       "integer": "Integers",
@@ -663,7 +678,8 @@
     "readOnlyMongo": "Read-only (MongoDB)",
     "indexManagerHint": "MongoDB indexes are edited in the index manager — this view is read-only.",
     "openIndexManager": "Open index manager",
-    "readOnlySqlServer": "Read-only (SQL Server)"
+    "readOnlySqlServer": "Read-only (SQL Server)",
+    "jsonSchemaRenameFailed": "The table was altered, but a JSON Schema binding could not follow the rename: {{message}}"
   },
   "view": {
     "loading": "Loading view…",
@@ -993,6 +1009,10 @@
       "origins": {
         "label": "Origins",
         "desc": "Shared folder profiles"
+      },
+      "jsonSchemas": {
+        "label": "JSON Schemas",
+        "desc": "Validation per column"
       }
     },
     "general": {
@@ -1247,6 +1267,7 @@
       "passphrase": "Passphrase",
       "passphrasePlaceholder": "Enter the export passphrase",
       "conflictsDescription": "{{count}} profile(s) share an ID with an existing one. Choose how to handle each:",
+      "markAllAs": "Mark all as:",
       "existingAs": "(exists as \"{{name}}\")",
       "action": {
         "overwrite": "Overwrite",
@@ -1258,24 +1279,194 @@
       "summaryImported": "{{count}} profile(s) imported.",
       "summarySkipped": "{{count}} skipped.",
       "summaryRenamed": "{{count}} renamed to avoid duplicates.",
-      "needsPassword": "{{count}} profile(s) were imported without a password. Open each connection to set a password before connecting."
+      "needsPassword": "{{count}} profile(s) were imported without a password. Open each connection to set a password before connecting.",
+      "progress": "Decrypting and importing profiles… {{done}} of {{total}}"
     },
     "exportEnvironment": {
       "title": "Export environments",
       "description": "For each environment selected below: its name, colour and theme, the connection profiles it groups, and its registered shared origins (name and path only — never a passphrase). Tabs and pane layout stay on this machine. Connections shared by more than one selected environment are written once, not duplicated.",
       "environments": "Environments to export",
-      "exportButton": "Export {{count}} environment(s)"
+      "exportButton": "Export {{count}} environment(s)",
+      "includeJsonSchemas": "Include JSON Schemas and their bindings",
+      "includeJsonSchemasHint": "Schemas are global rather than owned by an environment, so this packs the whole library alongside — handy for setting up a new machine in one file."
     },
     "importEnvironment": {
-      "title": "Import environment",
-      "pickTitle": "Select environment export file",
+      "title": "Import environments",
+      "pickTitle": "Select environments export file",
       "pickDescription": "Select a HuginnDB environment export file (.json) to import. Every environment it contains is always added as new — nothing already configured is touched.",
       "reviewDescription": "This file contains {{count}} environment(s):",
       "reviewCounts": "{{connections}} connection(s) · {{origins}} origin(s)",
       "importButton": "Import {{count}} environment(s)",
       "done": "{{count}} environment(s) imported",
       "doneEntry": "\"{{name}}\" — {{origins}} shared origin(s) registered (encrypted ones will ask for their passphrase on the next sync)",
-      "switchNow": "Switch to it now"
+      "switchNow": "Switch to it now",
+      "doneSchemas": "{{schemas}} schema(s) and {{bindings}} binding(s) also imported."
+    },
+    "exportJsonSchemas": {
+      "title": "Export JSON Schemas",
+      "description": "Pick which schemas to write to a file. No passphrase is needed: a schema carries no secrets.",
+      "includeBindings": "Include their column bindings",
+      "includeBindingsHint": "A binding pinned to a connection lands disabled on another machine, because a connection id is local to the machine that created it.",
+      "exportButton": "Export"
+    },
+    "importJsonSchemas": {
+      "title": "Import JSON Schemas",
+      "pickTitle": "Select a JSON Schema export",
+      "pickDescription": "Select a file to import.",
+      "pickNote": "Only accepts a file generated by \"Export JSON Schemas\" in HuginnDB (includes bindings and metadata). To add a plain JSON Schema document to the library, use \"Add from file…\" in Preferences → JSON Schemas.",
+      "reviewDescription": "{{schemas}} schema(s) and {{bindings}} binding(s) in this file.",
+      "unresolvedWarning": "{{count}} binding(s) name a connection that does not exist here, so they will be imported switched off. Their scope is kept, so you can point them at a connection later.",
+      "importButton": "Import",
+      "done": "{{count}} schema(s) imported.",
+      "doneBindings": "{{imported}} binding(s) imported, {{disabled}} of them switched off."
+    }
+  },
+  "jsonSchemas": {
+    "title": "JSON Schemas",
+    "description": "Attach a JSON Schema to a column so the cell editor offers completion, hover documentation and live validation for it. Schemas are global — they are not tied to an environment, and validation never blocks a save.",
+    "fullGuide": "Read the full JSON Schemas guide",
+    "library": {
+      "new": "New schema",
+      "addFromFile": "Add from file…",
+      "addFromFileTitle": "Select a JSON Schema file",
+      "filterPlaceholder": "Filter schemas…",
+      "noMatches": "No schema matches that filter.",
+      "bindingCount": "{{count}} binding(s)",
+      "unbound": "not linked",
+      "invalidBody": "This schema is not valid JSON — it is ignored until fixed.",
+      "defaultName": "New schema",
+      "fileNotJson": "That file is not valid JSON: {{message}}"
+    },
+    "empty": {
+      "title": "No JSON Schemas yet",
+      "body": "Open a JSON cell in the Monaco editor and use the schema badge in its header to create one from the value you are looking at — that is the quickest way. Or start from a template:",
+      "orImport": "You can also import a schema bundle exported from another machine."
+    },
+    "templates": {
+      "object": {
+        "name": "Open object",
+        "desc": "Typed properties, extra keys allowed."
+      },
+      "strict": {
+        "name": "Strict object",
+        "desc": "Required keys only; anything else is an error."
+      },
+      "enumField": {
+        "name": "Enum field",
+        "desc": "One property with a fixed set of values, so the editor suggests them."
+      }
+    },
+    "detail": {
+      "namePlaceholder": "Schema name",
+      "descriptionPlaceholder": "What is this schema for? (optional)",
+      "body": "Schema body",
+      "saveBody": "Save body",
+      "revert": "Discard changes",
+      "bodySaved": "Schema saved",
+      "bodyInvalid": "Not valid JSON: {{message}}",
+      "format": "Format",
+      "fullscreen": "Fullscreen",
+      "exitFullscreen": "Exit fullscreen",
+      "duplicate": "Duplicate",
+      "delete": "Delete schema",
+      "selectPrompt": "Pick a schema on the left, or create one.",
+      "externalRefs": "These references cannot be resolved offline, and one unresolved reference stops the whole document being validated: {{refs}}",
+      "noDraftDeclared": "No \"$schema\" declared. Without it the editor validates with 2020-12 semantics rather than draft-07."
+    },
+    "deleteConfirm": "Delete the schema \"{{name}}\"?\n\nIts body exists nowhere else and cannot be recovered.",
+    "deleteConfirmBound": "Delete the schema \"{{name}}\"?\n\n{{count}} binding(s) point at it and are removed too, so those columns lose completion and validation. Its body exists nowhere else and cannot be recovered.",
+    "bindings": {
+      "title": "Bindings",
+      "cascadeHint": "The first row that matches a column wins. Rows are listed most specific first; `*` means \"any\".",
+      "empty": "No bindings yet. A schema does nothing until it is linked to a column.",
+      "new": "New binding",
+      "col": {
+        "rank": "#",
+        "connection": "Connection",
+        "dbSchema": "Schema / database",
+        "table": "Table",
+        "column": "Column",
+        "schema": "JSON Schema",
+        "enabled": "On"
+      },
+      "remove": "Remove binding",
+      "missingSchema": "Points at a schema that no longer exists.",
+      "unknownConnection": "connection not found",
+      "saveError": "Could not save this binding: {{message}}"
+    },
+    "scope": {
+      "connection": "Connection",
+      "connectionAny": "Any connection",
+      "dbSchema": "Schema / database",
+      "dbSchemaAny": "Any",
+      "table": "Table",
+      "tablePlaceholder": "Name, or a pattern like config_*",
+      "column": "Column",
+      "columnPlaceholder": "Name, or a pattern like *_json",
+      "columnMissing": "(no column)",
+      "globHint": "`*` matches any run of characters, and matching ignores case. On MongoDB a nested field can be bound with the same dotted path form `$set` takes."
+    },
+    "test": {
+      "title": "Test a column",
+      "hint": "Check which schema a column resolves to, without opening it.",
+      "placeholder": "schema.table.column",
+      "run": "Resolve",
+      "match": "→ {{name}} (from row #{{rank}})",
+      "noMatch": "→ no schema matches"
+    },
+    "prefs": {
+      "title": "Behaviour",
+      "validation": {
+        "label": "Validate against the attached schema",
+        "desc": "Underline values that do not match the schema. Off leaves the schema for completion and hover only. Validation never blocks a save."
+      },
+      "completion": {
+        "label": "Suggest keys and values",
+        "desc": "Offer the schema's properties and enum values while typing in a JSON cell."
+      },
+      "hover": {
+        "label": "Show descriptions on hover",
+        "desc": "Read a property's `description` from the schema when hovering its key."
+      }
+    },
+    "badge": {
+      "none": "no schema",
+      "noneTooltip": "No JSON Schema is attached to this column. Click to link one.",
+      "boundTooltip": "Schema \"{{name}}\" — {{scope}}",
+      "inherited": "inherited",
+      "inheritedTooltip": "Applied by a broader rule ({{scope}}). Edit it in Settings to change where it applies.",
+      "ownSchema": "own $schema",
+      "ownSchemaTooltip": "This document declares its own $schema ({{uri}}), which takes precedence, so the binding is ignored. Nothing is fetched from the network.",
+      "menuTitle": "Schema for \"{{column}}\"",
+      "emptyLibrary": "Your library is empty.",
+      "infer": "Create from this value…",
+      "inferNeedsJson": "The value has to be valid JSON to infer a schema from it.",
+      "unlink": "Unlink",
+      "editRule": "Edit this rule in Settings…",
+      "manage": "Manage JSON Schemas…"
+    },
+    "infer": {
+      "title": "Create a schema from this value",
+      "description": "The value in the editor is inspected and a schema is drafted from it. Refine it later in Settings → JSON Schemas.",
+      "name": "Name",
+      "namePlaceholder": "e.g. product-config",
+      "preview": "Inferred schema",
+      "strict": "Strict object",
+      "strictHint": "Reject any property the samples did not contain.",
+      "linkAlso": "Link it to {{scope}} now",
+      "create": "Create",
+      "notJson": "The current value is not valid JSON, so nothing can be inferred.",
+      "truncated": "Large arrays were sampled and very deep nesting was cut off.",
+      "mixed": "These fields held more than one shape, so they became anyOf: {{paths}}"
+    },
+    "toast": {
+      "bound": "\"{{name}}\" linked to {{scope}}",
+      "boundShadowing": "\"{{name}}\" linked to {{scope}}. It overrides the broader rule \"{{previous}}\".",
+      "unbound": "Schema unlinked from {{scope}}",
+      "created": "Schema \"{{name}}\" created",
+      "deleted": "Schema \"{{name}}\" deleted",
+      "deletedWithBindings": "Schema \"{{name}}\" deleted, along with {{count}} binding(s)",
+      "saveFailed": "Could not save: {{message}}"
     }
   },
   "console": {
@@ -1377,6 +1568,10 @@
         "title": "Environments",
         "description": "Keep separate working sets of connections"
       },
+      "jsonSchemas": {
+        "title": "JSON Schemas",
+        "description": "Per-column completion and validation for JSON columns"
+      },
       "mongodb": {
         "title": "MongoDB",
         "description": "Shell queries, documents, pipelines and indexes"
@@ -1398,6 +1593,31 @@
     "viewChangelog": "Full changelog",
     "gotIt": "Got it",
     "releases": {
+      "1_17_0": {
+        "tagline": "A user-defined JSON Schema library makes the cell editor schema-aware — completion, hover docs and advisory validation for your json/jsonb columns — plus a hard stop on out-of-memory crashes from unbounded ad-hoc queries, shared origins that can now sync a whole environment, smoother bulk imports, and MySQL column reordering.",
+        "items": {
+          "jsonSchemas": {
+            "title": "A JSON Schema library, bound to your columns",
+            "body": "Keep a library of named schemas and bind each one to a column (by connection, database, table and column, with globs and a most-specific-wins cascade). A bound column gets real completion, enum suggestions, hover documentation and underlined violations in the cell editor — in the modal and the docked panel, on every driver including MongoDB and SQL Server. \"Create from this value\" drafts one from the document you're already looking at. Validation never blocks a save: the database stays the authority."
+          },
+          "querySafety": {
+            "title": "A runaway SELECT can no longer crash the app",
+            "body": "A hand-typed query with no LIMIT/TOP over a huge table used to buffer the entire result in memory and could take the whole app down with an out-of-memory crash. Every ad-hoc read path now caps itself at 50,000 rows and shows a \"truncated\" badge instead, and the data grid renders rows through a real virtualizer rather than one DOM row per result."
+          },
+          "originEnvironments": {
+            "title": "Shared origins can now sync a whole environment",
+            "body": "Point an origin at an environment export instead of a plain profile bundle and it keeps a read-only mirror environment in sync on every pull — created on first sync, refreshed after, and reported as vanished (never silently deleted) if the file disappears."
+          },
+          "importProgress": {
+            "title": "Bulk imports get a progress bar and one-click conflict resolution",
+            "body": "The profile/environment import dialogs now show \"N of total\" while a large import runs off the main thread, and \"Mark all as: Rename/Overwrite/Skip\" resolves a whole conflict list at once instead of one row at a time."
+          },
+          "columnReorder": {
+            "title": "Reorder columns in the MySQL structure editor",
+            "body": "Move a column up or down without dropping and re-adding it — MySQL's MODIFY COLUMN / ADD COLUMN … FIRST|AFTER makes this possible; the other drivers don't have an equivalent ALTER."
+          }
+        }
+      },
       "1_16_0": {
         "tagline": "MongoDB gets a real editing surface — a Compass-style aggregation editor for views and a full index manager — plus a connection-reliability fix for long-idle multi-database sessions, and a visual refresh: a new logo and light/dark pairs for every built-in theme.",
         "items": {
@@ -1674,13 +1894,17 @@
   },
   "origins": {
     "title": "Shared origins",
-    "description": "Pull connections from a file on a shared folder. Scoped to the active environment; HuginnDB only ever reads it.",
+    "description": "Pull connections from a file on a shared folder. Registered globally, across every environment; HuginnDB only ever reads it.",
     "add": "Add origin…",
     "adding": "Adding…",
     "syncNow": "Sync now",
     "empty": "No shared origins yet. Point one at an exported profiles file on a network share.",
     "remove": "Remove origin",
-    "removeConfirm": "Remove the origin \"{{name}}\"?\n\nIts stored passphrase is forgotten. The connections it imported stay — they are not deleted.",
+    "removeConfirmTitle": "Remove origin \"{{name}}\"",
+    "removeConfirmPassphraseNote": "Its stored passphrase is forgotten.",
+    "removeConfirmConnectionsNote": "{{count}} connections it imported stay locally, flagged so you can decide whether to keep or delete them.",
+    "removeConfirmEnvironmentsNote": "{{count}} environments it published also stay, flagged the same way.",
+    "removeConfirmNothingNote": "This origin hasn't imported any connections or environments.",
     "lastSynced": "Last synced {{when}}",
     "neverSynced": "Never synced",
     "pathPlaceholder": "\\\\server\\huginndb\\clients.json",
@@ -1696,7 +1920,21 @@
       "retire": "Delete",
       "retireConfirm": "Delete the connection \"{{name}}\"?\n\nIts stored password is removed from your keychain too. This cannot be undone.",
       "mark": "\"{{origin}}\" no longer offers this connection — resolve it from the schema tree or Settings → Shared origins.",
-      "pending": "Disappeared connections"
+      "pending": "Disappeared connections",
+      "unknownOriginName": "a shared origin that no longer exists",
+      "keepAll": "Keep all",
+      "retireAll": "Delete all",
+      "retireAllConfirmTitle": "Delete {{count}} disappeared connections?",
+      "retireAllConfirm": "Their stored passwords are removed from your keychain too. This cannot be undone."
+    },
+    "vanishedEnvironments": {
+      "titleNamed": "\"{{name}}\" is no longer published",
+      "body": "\"{{origin}}\" no longer includes this environment in the shared file. Keep it as your own, or delete it together with its tabs and layout.",
+      "keep": "Keep as mine",
+      "keepTooltip": "Stop tracking the origin and keep the environment locally, editable again.",
+      "retire": "Delete",
+      "retireConfirm": "Delete the environment \"{{name}}\"?\n\nIts tabs and layout are lost. The connections it groups are not deleted.",
+      "pending": "Disappeared environments"
     }
   }
 }

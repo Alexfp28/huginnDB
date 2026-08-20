@@ -9,7 +9,7 @@
  * provided, the user's content is passed back to it as a string on save.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Braces,
   Code2,
@@ -39,7 +39,10 @@ import Editor from "@monaco-editor/react";
 import { detectLanguage, tryFormat, type ContentLanguage } from "@/lib/grid/detectContentType";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
-import { useCellEditor } from "@/stores/grid/cellEditor";
+import { useCellEditor, type CellBindingContext } from "@/stores/grid/cellEditor";
+import { SchemaBindingBadge } from "@/components/jsonSchema/SchemaBindingBadge";
+import { cellModelPath, bindSchemaToModel } from "@/lib/monaco/monacoJson";
+import { useJsonSchemas, relationKey, schemaUri } from "@/stores/jsonSchemas";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +56,12 @@ interface Props {
   ownerId?: string;
   readonly?: boolean;
   onSave?: (value: string) => Promise<void> | void;
+  /**
+   * Coordinates for the JSON Schema cascade. Absent for an ad-hoc query result,
+   * which has no column identity — a binding created there would be an
+   * accidental wildcard, so the badge hides itself instead.
+   */
+  binding?: CellBindingContext;
 }
 
 /**
@@ -67,6 +76,8 @@ export function CellEditorBody({
   onLanguageChange,
   readonly,
   onSubmit,
+  surface,
+  binding,
   editorKey,
 }: {
   value: string;
@@ -76,6 +87,14 @@ export function CellEditorBody({
   readonly?: boolean;
   /** Save/commit action bound to Ctrl/Cmd+S and Ctrl/Cmd+Enter inside Monaco. */
   onSubmit?: () => void;
+  /** Which surface is hosting this body. Part of the Monaco model path, because
+   *  the modal and the docked panel can be open at once and two editors sharing a
+   *  path share a model — whichever unmounts first would destroy it under the
+   *  other. */
+  surface: "modal" | "side";
+  /** Coordinates for the schema badge; omitted where there is no column
+   *  identity. */
+  binding?: CellBindingContext;
   /**
    * Identity of the *cell/session* currently loaded. When it changes we remount
    * Monaco (via React `key`) so it builds a fresh model with an empty undo
@@ -87,6 +106,34 @@ export function CellEditorBody({
 }) {
   const { t } = useTranslation();
   const editorPrefs = usePreferences(selectEditorPrefs);
+  const resolvedAll = useJsonSchemas((s) => s.resolved);
+  const revision = useJsonSchemas((s) => s.revision);
+
+  // A stable, suffixed model path is what lets a schema attach at all: Monaco
+  // associates schemas by `fileMatch` against the model URI, and the default
+  // auto-generated `inmemory://model/N` matches nothing we register. Keyed on
+  // `editorKey` so the path and the React `key` change in the same render.
+  const modelPath = useMemo(
+    () => cellModelPath(surface, editorKey ?? 0),
+    [surface, editorKey],
+  );
+
+  // Derive from raw state (gotcha #1); never a selector that indexes.
+  const resolved = useMemo(() => {
+    if (!binding) return undefined;
+    const key = relationKey(binding.connectionId, binding.dbSchema, binding.table);
+    return resolvedAll[key]?.[binding.column];
+    // `revision` is in the deps so a freshly created binding lights up without
+    // reopening the cell.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [binding, resolvedAll, revision]);
+
+  // `useLayoutEffect` so the association is registered before the child effect
+  // that creates the model runs; the cleanup removes it again.
+  useLayoutEffect(() => {
+    if (!resolved || language !== "json") return;
+    return bindSchemaToModel(modelPath, schemaUri(resolved.schemaId));
+  }, [modelPath, resolved, language]);
   // Ctrl+S / Ctrl+Enter must be bound through Monaco's addCommand: Monaco
   // swallows them inside its focus area, so a window keydown listener never
   // sees them (CLAUDE.md gotcha #9). The command reads a ref so the handler
@@ -119,11 +166,13 @@ export function CellEditorBody({
           {t("cellEditor.format")}
         </Button>
         {language === "json" && <JsonValidationBadge value={value} />}
+        <SchemaBindingBadge binding={binding} value={value} language={language} />
       </div>
       <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border">
         <Editor
           key={editorKey}
           height="100%"
+          path={modelPath}
           value={value}
           language={language}
           theme={resolveMonacoTheme(editorPrefs.theme)}
@@ -160,6 +209,7 @@ export function CellEditor({
   ownerId,
   readonly,
   onSave,
+  binding,
 }: Props) {
   const { t } = useTranslation();
   const [value, setValue] = useState(initialValue);
@@ -194,7 +244,9 @@ export function CellEditor({
   useEffect(() => {
     if (open) {
       setValue(initialValue);
-      setLanguage(detectLanguage(initialValue ?? ""));
+      // A binding is the user asserting this column holds JSON, so it wins over
+      // the heuristic — see the same call in `SideEditorPanel.load`.
+      setLanguage(binding ? "json" : detectLanguage(initialValue ?? ""));
       setSaveError(null);
       setEditorKey((k) => k + 1);
     }
@@ -239,6 +291,9 @@ export function CellEditor({
       value,
       readonly,
       onSave,
+      // Easy to forget, and the symptom is subtle: without it "move to side
+      // panel" silently drops the schema.
+      binding,
     });
     useSessionPanelLayout.getState().openSideEditor();
     onOpenChange(false);
@@ -320,6 +375,8 @@ export function CellEditor({
             onLanguageChange={setLanguage}
             readonly={readonly}
             onSubmit={canSave ? handleSave : undefined}
+            surface="modal"
+            binding={binding}
             editorKey={editorKey}
           />
         </div>

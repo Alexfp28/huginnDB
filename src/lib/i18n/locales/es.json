@@ -63,11 +63,16 @@
       "label": "Archivo",
       "newConnection": "Nueva conexión…",
       "manageConnections": "Gestionar conexiones…",
+      "sectionProfiles": "Perfiles",
       "importProfiles": "Importar perfiles…",
       "exportProfiles": "Exportar perfiles…",
+      "sectionEnvironments": "Entornos",
       "exportEnvironments": "Exportar entornos…",
-      "importEnvironment": "Importar entorno…",
-      "disconnectAll": "Desconectar todas"
+      "importEnvironment": "Importar entornos…",
+      "disconnectAll": "Desconectar todas",
+      "sectionJsonSchemas": "Esquemas JSON",
+      "exportJsonSchemas": "Exportar esquemas JSON…",
+      "importJsonSchemas": "Importar esquemas JSON…"
     },
     "window": {
       "label": "Ventana",
@@ -114,6 +119,7 @@
   "connections": {
     "disconnectTooltip": "Desconectar",
     "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",
+    "bulkDeleteTitle": "Eliminar {{count}} conexiones",
     "bulkDeleteConfirm": "¿Eliminar {{count}} conexiones? Esta acción no se puede deshacer.",
     "selectConnection": "Seleccionar {{name}}",
     "selectedCount": "{{count}} seleccionadas",
@@ -497,6 +503,8 @@
     "removeFilter": "Quitar filtro",
     "rows": "filas",
     "of": "de",
+    "truncated": "truncado",
+    "truncatedHint": "El resultado se ha limitado y el resto de filas se ha descartado. Añade un LIMIT/TOP (o un filtro más restrictivo) a tu consulta para ver el resto.",
     "insert": "Insertar",
     "insertNewRow": "Insertar nueva fila",
     "viewModeTable": "Vista de tabla",
@@ -535,7 +543,8 @@
       "newRow": "Nueva fila",
       "insertHint": "Enter inserta · Esc descarta",
       "changeType": "Cambiar el tipo"
-    }
+    },
+    "expandEditorWithSchema": "Editar en Monaco — esquema «{{name}}» vinculado"
   },
   "tableData": {
     "refresh": "Actualizar",
@@ -639,7 +648,13 @@
       "auto": "Auto",
       "default": "Por defecto",
       "add": "Añadir columna",
-      "remove": "Eliminar columna"
+      "remove": "Eliminar columna",
+      "moveUp": "Subir columna",
+      "moveDown": "Bajar columna",
+      "jsonSchema": "Esquema JSON",
+      "jsonSchemaLocal": "local",
+      "jsonSchemaHint": "Metadatos del editor guardados en esta máquina. Se guardan en el momento de elegirlos y nunca forman parte del DDL de abajo.",
+      "jsonSchemaNewHint": "Disponible cuando la tabla exista."
     },
     "typeCategory": {
       "integer": "Enteros",
@@ -663,7 +678,8 @@
     "readOnlyMongo": "Solo lectura (MongoDB)",
     "indexManagerHint": "Los índices de MongoDB se editan en el gestor de índices; esta vista es de solo lectura.",
     "openIndexManager": "Abrir el gestor de índices",
-    "readOnlySqlServer": "Solo lectura (SQL Server)"
+    "readOnlySqlServer": "Solo lectura (SQL Server)",
+    "jsonSchemaRenameFailed": "La tabla se ha modificado, pero un vínculo de esquema JSON no ha podido seguir el renombrado: {{message}}"
   },
   "view": {
     "loading": "Cargando vista…",
@@ -993,6 +1009,10 @@
       "origins": {
         "label": "Orígenes",
         "desc": "Perfiles desde carpeta compartida"
+      },
+      "jsonSchemas": {
+        "label": "Esquemas JSON",
+        "desc": "Validación por columna"
       }
     },
     "general": {
@@ -1247,6 +1267,7 @@
       "passphrase": "Contraseña de exportación",
       "passphrasePlaceholder": "Introduce la contraseña de exportación",
       "conflictsDescription": "{{count}} perfil(es) comparten un ID con uno existente. Elige cómo gestionar cada uno:",
+      "markAllAs": "Marcar todo como:",
       "existingAs": "(existe como \"{{name}}\")",
       "action": {
         "overwrite": "Sobreescribir",
@@ -1258,24 +1279,194 @@
       "summaryImported": "{{count}} perfil(es) importado(s).",
       "summarySkipped": "{{count}} omitido(s).",
       "summaryRenamed": "{{count}} renombrado(s) para evitar duplicados.",
-      "needsPassword": "{{count}} perfil(es) se importaron sin contraseña. Abre cada conexión para configurarla antes de conectar."
+      "needsPassword": "{{count}} perfil(es) se importaron sin contraseña. Abre cada conexión para configurarla antes de conectar.",
+      "progress": "Descifrando e importando perfiles… {{done}} de {{total}}"
     },
     "exportEnvironment": {
       "title": "Exportar entornos",
       "description": "Para cada entorno seleccionado abajo: su nombre, color y tema, los perfiles de conexión que agrupa, y sus orígenes compartidos registrados (solo nombre y ruta — nunca la contraseña de cifrado). Las pestañas y la distribución de paneles se quedan en esta máquina. Las conexiones compartidas por más de un entorno seleccionado se escriben una sola vez, no se duplican.",
       "environments": "Entornos a exportar",
-      "exportButton": "Exportar {{count}} entorno(s)"
+      "exportButton": "Exportar {{count}} entorno(s)",
+      "includeJsonSchemas": "Incluir los esquemas JSON y sus vínculos",
+      "includeJsonSchemasHint": "Los esquemas son globales, no propiedad de un entorno, así que esto empaqueta la biblioteca completa junto al entorno: cómodo para preparar una máquina nueva con un solo archivo."
     },
     "importEnvironment": {
-      "title": "Importar entorno",
-      "pickTitle": "Seleccionar fichero de exportación de entorno",
+      "title": "Importar entornos",
+      "pickTitle": "Seleccionar fichero de exportación de entornos",
       "pickDescription": "Selecciona un fichero de exportación de entorno de HuginnDB (.json) para importar. Cada entorno que contiene se añade siempre como nuevo — nada de lo ya configurado se toca.",
       "reviewDescription": "Este fichero contiene {{count}} entorno(s):",
       "reviewCounts": "{{connections}} conexión(es) · {{origins}} origen(es)",
       "importButton": "Importar {{count}} entorno(s)",
       "done": "{{count}} entorno(s) importado(s)",
       "doneEntry": "«{{name}}» — {{origins}} origen(es) compartido(s) registrado(s) (los cifrados pedirán su contraseña en la próxima sincronización)",
-      "switchNow": "Cambiar a él ahora"
+      "switchNow": "Cambiar a él ahora",
+      "doneSchemas": "También se han importado {{schemas}} esquema(s) y {{bindings}} vínculo(s)."
+    },
+    "exportJsonSchemas": {
+      "title": "Exportar esquemas JSON",
+      "description": "Elige qué esquemas escribir en un archivo. No hace falta contraseña: un esquema no contiene secretos.",
+      "includeBindings": "Incluir sus vínculos de columna",
+      "includeBindingsHint": "Un vínculo fijado a una conexión llega desactivado a otra máquina, porque el identificador de una conexión es local a la máquina que la creó.",
+      "exportButton": "Exportar"
+    },
+    "importJsonSchemas": {
+      "title": "Importar esquemas JSON",
+      "pickTitle": "Selecciona una exportación de esquemas JSON",
+      "pickDescription": "Selecciona un archivo para importar.",
+      "pickNote": "Solo acepta un archivo generado por \"Exportar esquemas JSON\" en HuginnDB (incluye vínculos y metadatos). Para añadir un JSON Schema cualquiera a la librería, usa \"Añadir desde archivo…\" en Preferencias → Esquemas JSON.",
+      "reviewDescription": "{{schemas}} esquema(s) y {{bindings}} vínculo(s) en este archivo.",
+      "unresolvedWarning": "{{count}} vínculo(s) nombran una conexión que no existe aquí, así que se importarán desactivados. Se conserva su ámbito, para que puedas apuntarlos a una conexión después.",
+      "importButton": "Importar",
+      "done": "{{count}} esquema(s) importados.",
+      "doneBindings": "{{imported}} vínculo(s) importados, {{disabled}} de ellos desactivados."
+    }
+  },
+  "jsonSchemas": {
+    "title": "Esquemas JSON",
+    "description": "Vincula un esquema JSON a una columna para que el editor de celda ofrezca autocompletado, documentación al pasar el ratón y validación en vivo. Los esquemas son globales: no dependen del entorno, y la validación nunca impide guardar.",
+    "fullGuide": "Leer la guía completa de esquemas JSON",
+    "library": {
+      "new": "Nuevo esquema",
+      "addFromFile": "Añadir desde archivo…",
+      "addFromFileTitle": "Selecciona un archivo de esquema JSON",
+      "filterPlaceholder": "Filtrar esquemas…",
+      "noMatches": "Ningún esquema coincide con el filtro.",
+      "bindingCount": "{{count}} vínculo(s)",
+      "unbound": "sin vincular",
+      "invalidBody": "Este esquema no es JSON válido: se ignora hasta que se corrija.",
+      "defaultName": "Esquema nuevo",
+      "fileNotJson": "Ese archivo no es JSON válido: {{message}}"
+    },
+    "empty": {
+      "title": "Aún no hay esquemas JSON",
+      "body": "Abre una celda JSON en el editor Monaco y usa la insignia de esquema de su cabecera para crear uno a partir del valor que estás viendo: es la vía más rápida. O empieza desde una plantilla:",
+      "orImport": "También puedes importar un paquete de esquemas exportado desde otra máquina."
+    },
+    "templates": {
+      "object": {
+        "name": "Objeto abierto",
+        "desc": "Propiedades con tipo, se permiten claves extra."
+      },
+      "strict": {
+        "name": "Objeto estricto",
+        "desc": "Solo las claves requeridas; cualquier otra es un error."
+      },
+      "enumField": {
+        "name": "Campo con enum",
+        "desc": "Una propiedad con un conjunto fijo de valores, para que el editor los sugiera."
+      }
+    },
+    "detail": {
+      "namePlaceholder": "Nombre del esquema",
+      "descriptionPlaceholder": "¿Para qué sirve este esquema? (opcional)",
+      "body": "Cuerpo del esquema",
+      "saveBody": "Guardar cuerpo",
+      "revert": "Descartar cambios",
+      "bodySaved": "Esquema guardado",
+      "bodyInvalid": "JSON no válido: {{message}}",
+      "format": "Formatear",
+      "fullscreen": "Pantalla completa",
+      "exitFullscreen": "Salir de pantalla completa",
+      "duplicate": "Duplicar",
+      "delete": "Eliminar esquema",
+      "selectPrompt": "Elige un esquema a la izquierda o crea uno.",
+      "externalRefs": "Estas referencias no se pueden resolver sin conexión, y una sola referencia sin resolver impide que se valide el documento entero: {{refs}}",
+      "noDraftDeclared": "No se ha declarado \"$schema\". Sin él el editor valida con semántica 2020-12 en lugar de draft-07."
+    },
+    "deleteConfirm": "¿Eliminar el esquema «{{name}}»?\n\nSu cuerpo no existe en ningún otro sitio y no se puede recuperar.",
+    "deleteConfirmBound": "¿Eliminar el esquema «{{name}}»?\n\n{{count}} vínculo(s) apuntan a él y también se eliminan, así que esas columnas pierden el autocompletado y la validación. Su cuerpo no existe en ningún otro sitio y no se puede recuperar.",
+    "bindings": {
+      "title": "Vínculos",
+      "cascadeHint": "Gana la primera fila que coincida con una columna. Se listan de más específica a más general; `*` significa «cualquiera».",
+      "empty": "Aún no hay vínculos. Un esquema no hace nada hasta que se vincula a una columna.",
+      "new": "Nuevo vínculo",
+      "col": {
+        "rank": "#",
+        "connection": "Conexión",
+        "dbSchema": "Esquema / base de datos",
+        "table": "Tabla",
+        "column": "Columna",
+        "schema": "Esquema JSON",
+        "enabled": "Activo"
+      },
+      "remove": "Quitar vínculo",
+      "missingSchema": "Apunta a un esquema que ya no existe.",
+      "unknownConnection": "conexión no encontrada",
+      "saveError": "No se pudo guardar este vínculo: {{message}}"
+    },
+    "scope": {
+      "connection": "Conexión",
+      "connectionAny": "Cualquier conexión",
+      "dbSchema": "Esquema / base de datos",
+      "dbSchemaAny": "Cualquiera",
+      "table": "Tabla",
+      "tablePlaceholder": "Nombre o patrón como config_*",
+      "column": "Columna",
+      "columnPlaceholder": "Nombre o patrón como *_json",
+      "columnMissing": "(sin columna)",
+      "globHint": "`*` coincide con cualquier secuencia de caracteres y no distingue mayúsculas. En MongoDB se puede vincular un campo anidado con la misma forma de ruta con puntos que usa `$set`."
+    },
+    "test": {
+      "title": "Probar una columna",
+      "hint": "Comprueba a qué esquema se resuelve una columna, sin abrirla.",
+      "placeholder": "esquema.tabla.columna",
+      "run": "Resolver",
+      "match": "→ {{name}} (de la fila n.º {{rank}})",
+      "noMatch": "→ ningún esquema coincide"
+    },
+    "prefs": {
+      "title": "Comportamiento",
+      "validation": {
+        "label": "Validar contra el esquema vinculado",
+        "desc": "Subraya los valores que no cumplen el esquema. Desactivado, el esquema solo sirve para autocompletar y para la ayuda al pasar el ratón. La validación nunca impide guardar."
+      },
+      "completion": {
+        "label": "Sugerir claves y valores",
+        "desc": "Ofrece las propiedades y los valores de enumeración del esquema mientras escribes en una celda JSON."
+      },
+      "hover": {
+        "label": "Mostrar descripciones al pasar el ratón",
+        "desc": "Lee la `description` de una propiedad del esquema al pasar el ratón por su clave."
+      }
+    },
+    "badge": {
+      "none": "sin esquema",
+      "noneTooltip": "Esta columna no tiene ningún esquema JSON vinculado. Haz clic para vincular uno.",
+      "boundTooltip": "Esquema «{{name}}» — {{scope}}",
+      "inherited": "heredado",
+      "inheritedTooltip": "Lo aplica una regla más amplia ({{scope}}). Edítala en Ajustes para cambiar dónde se aplica.",
+      "ownSchema": "$schema propio",
+      "ownSchemaTooltip": "Este documento declara su propio $schema ({{uri}}), que tiene prioridad, así que el vínculo se ignora. No se descarga nada de la red.",
+      "menuTitle": "Esquema de «{{column}}»",
+      "emptyLibrary": "Tu biblioteca está vacía.",
+      "infer": "Crear a partir de este valor…",
+      "inferNeedsJson": "El valor debe ser JSON válido para inferir un esquema a partir de él.",
+      "unlink": "Desvincular",
+      "editRule": "Editar esta regla en Ajustes…",
+      "manage": "Gestionar esquemas JSON…"
+    },
+    "infer": {
+      "title": "Crear un esquema a partir de este valor",
+      "description": "Se inspecciona el valor del editor y se redacta un esquema a partir de él. Puedes refinarlo después en Ajustes → Esquemas JSON.",
+      "name": "Nombre",
+      "namePlaceholder": "p. ej. product-config",
+      "preview": "Esquema inferido",
+      "strict": "Objeto estricto",
+      "strictHint": "Rechazar cualquier propiedad que no apareciera en las muestras.",
+      "linkAlso": "Vincularlo ya a {{scope}}",
+      "create": "Crear",
+      "notJson": "El valor actual no es JSON válido, así que no se puede inferir nada.",
+      "truncated": "Los arrays grandes se han muestreado y el anidamiento muy profundo se ha recortado.",
+      "mixed": "Estos campos contenían más de una forma, así que se han emitido como anyOf: {{paths}}"
+    },
+    "toast": {
+      "bound": "«{{name}}» vinculado a {{scope}}",
+      "boundShadowing": "«{{name}}» vinculado a {{scope}}. Anula la regla más amplia «{{previous}}».",
+      "unbound": "Esquema desvinculado de {{scope}}",
+      "created": "Esquema «{{name}}» creado",
+      "deleted": "Esquema «{{name}}» eliminado",
+      "deletedWithBindings": "Esquema «{{name}}» eliminado, junto con {{count}} vínculo(s)",
+      "saveFailed": "No se pudo guardar: {{message}}"
     }
   },
   "console": {
@@ -1377,6 +1568,10 @@
         "title": "Entornos",
         "description": "Mantén conjuntos de conexiones separados"
       },
+      "jsonSchemas": {
+        "title": "Esquemas JSON",
+        "description": "Autocompletado y validación por columna para columnas JSON"
+      },
       "mongodb": {
         "title": "MongoDB",
         "description": "Consultas de shell, documentos, pipelines e índices"
@@ -1398,6 +1593,31 @@
     "viewChangelog": "Changelog completo",
     "gotIt": "Entendido",
     "releases": {
+      "1_17_0": {
+        "tagline": "Una biblioteca de esquemas JSON definidos por el usuario hace que el editor de celda entienda de esquemas — autocompletado, documentación al pasar el ratón y validación orientativa para tus columnas json/jsonb — más un freno definitivo a los cuelgues por falta de memoria en consultas ad-hoc sin límite, orígenes compartidos que ya pueden sincronizar un entorno completo, importaciones masivas más fluidas y reordenación de columnas en MySQL.",
+        "items": {
+          "jsonSchemas": {
+            "title": "Una biblioteca de esquemas JSON, vinculada a tus columnas",
+            "body": "Mantén una biblioteca de esquemas con nombre y vincula cada uno a una columna (por conexión, base de datos, tabla y columna, con globs y una cascada de más-específico-gana). Una columna vinculada obtiene autocompletado real, sugerencias de enum, documentación al pasar el ratón y subrayado de violaciones en el editor de celda — en el modal y en el panel lateral acoplado, en todos los drivers incluyendo MongoDB y SQL Server. «Crear a partir de este valor» redacta uno a partir del documento que ya tienes delante. La validación nunca impide guardar: la base de datos sigue siendo la autoridad."
+          },
+          "querySafety": {
+            "title": "Una consulta SELECT descontrolada ya no puede tirar la app",
+            "body": "Una consulta escrita a mano sin LIMIT/TOP sobre una tabla enorme almacenaba todo el resultado en memoria y podía tirar la app entera por falta de memoria. Ahora toda ruta de lectura ad-hoc se limita a 50 000 filas y muestra una insignia «truncado» en su lugar, y el grid de datos renderiza las filas con un virtualizador real en vez de una fila del DOM por resultado."
+          },
+          "originEnvironments": {
+            "title": "Los orígenes compartidos ya pueden sincronizar un entorno completo",
+            "body": "Apunta un origen a la exportación de un entorno en vez de a un lote de perfiles y mantendrá un entorno espejo de solo lectura sincronizado en cada sincronización — se crea la primera vez, se refresca después, y se reporta como desaparecido (nunca se borra en silencio) si el fichero deja de existir."
+          },
+          "importProgress": {
+            "title": "Las importaciones masivas ganan barra de progreso y resolución de conflictos en un clic",
+            "body": "Los diálogos de importar perfiles/entornos ahora muestran «N de total» mientras una importación grande corre fuera del hilo principal, y «Marcar todo como: Renombrar/Sobreescribir/Omitir» resuelve toda la lista de conflictos de una vez en vez de fila por fila."
+          },
+          "columnReorder": {
+            "title": "Reordena columnas en el editor de estructura de MySQL",
+            "body": "Mueve una columna arriba o abajo sin eliminarla y volverla a añadir — MODIFY COLUMN / ADD COLUMN … FIRST|AFTER de MySQL lo permite; el resto de drivers no tienen un ALTER equivalente."
+          }
+        }
+      },
       "1_16_0": {
         "tagline": "MongoDB gana una superficie de edición de verdad — un editor de agregación al estilo Compass para vistas y un gestor de índices completo — más una corrección de fiabilidad en conexiones multi-base de larga duración, y un repaso visual: nuevo logo y pareja claro/oscuro para todos los temas integrados.",
         "items": {
@@ -1674,13 +1894,17 @@
   },
   "origins": {
     "title": "Orígenes compartidos",
-    "description": "Importa conexiones desde un fichero en una carpeta compartida. Es del entorno activo; HuginnDB solo lo lee, nunca escribe en él.",
+    "description": "Importa conexiones desde un fichero en una carpeta compartida. Se registra de forma global, para todos los entornos; HuginnDB solo lo lee, nunca escribe en él.",
     "add": "Añadir origen…",
     "adding": "Añadiendo…",
     "syncNow": "Sincronizar ahora",
     "empty": "Aún no hay orígenes. Apunta uno a un fichero de perfiles exportado en una ruta de red.",
     "remove": "Quitar origen",
-    "removeConfirm": "¿Quitar el origen «{{name}}»?\n\nSe olvida su passphrase guardada. Las conexiones que importó se quedan: no se borran.",
+    "removeConfirmTitle": "Quitar origen «{{name}}»",
+    "removeConfirmPassphraseNote": "Se olvida su passphrase guardada.",
+    "removeConfirmConnectionsNote": "{{count}} conexiones que importó se quedan en local, marcadas para que decidas si las conservas o las eliminas.",
+    "removeConfirmEnvironmentsNote": "{{count}} entornos que publicaba también se quedan, marcados de la misma forma.",
+    "removeConfirmNothingNote": "Este origen no ha importado ninguna conexión ni entorno.",
     "lastSynced": "Última sincronización: {{when}}",
     "neverSynced": "Sin sincronizar",
     "pathPlaceholder": "\\\\servidor\\huginndb\\clientes.json",
@@ -1696,7 +1920,21 @@
       "retire": "Borrar",
       "retireConfirm": "¿Borrar la conexión «{{name}}»?\n\nTambién se elimina su contraseña del almacén de credenciales. Esto no se puede deshacer.",
       "mark": "«{{origin}}» ya no ofrece esta conexión: resuélvelo desde el árbol de esquema o en Ajustes → Orígenes compartidos.",
-      "pending": "Conexiones desaparecidas"
+      "pending": "Conexiones desaparecidas",
+      "unknownOriginName": "un origen compartido que ya no existe",
+      "keepAll": "Conservar todas",
+      "retireAll": "Eliminar todas",
+      "retireAllConfirmTitle": "¿Eliminar {{count}} conexiones desaparecidas?",
+      "retireAllConfirm": "También se elimina su contraseña guardada del almacén de credenciales. Esto no se puede deshacer."
+    },
+    "vanishedEnvironments": {
+      "titleNamed": "«{{name}}» ya no se publica",
+      "body": "«{{origin}}» ya no incluye este entorno en el fichero compartido. Consérvalo como tuyo o bórralo junto con sus pestañas y su disposición.",
+      "keep": "Conservar como mío",
+      "keepTooltip": "Deja de seguir el origen y guarda el entorno en local, editable de nuevo.",
+      "retire": "Borrar",
+      "retireConfirm": "¿Borrar el entorno «{{name}}»?\n\nSe pierden sus pestañas y su disposición. Las conexiones que agrupa no se borran.",
+      "pending": "Entornos desaparecidos"
     }
   }
 }

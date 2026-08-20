@@ -54,6 +54,7 @@ import {
   KeyRound,
   Workflow,
   X,
+  FileJson,
 } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
@@ -68,6 +69,7 @@ import { useQueryHistory } from "@/stores/query/queryHistory";
 import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import { useFeedbackDialog } from "@/stores/dialogs/feedbackDialog";
 import { useWhatsNew } from "@/stores/dialogs/whatsNew";
+import { useJsonSchemaTransfer } from "@/stores/dialogs/jsonSchemaTransfer";
 import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
 import { useUpdateStore } from "@/stores/update";
 import {
@@ -114,6 +116,7 @@ const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
   connections: <Plug className="h-4 w-4" />,
   appearance: <Palette className="h-4 w-4" />,
   shortcuts: <Keyboard className="h-4 w-4" />,
+  jsonSchemas: <FileJson className="h-4 w-4" />,
   origins: <FolderOpen className="h-4 w-4" />,
   mcp: <Cable className="h-4 w-4" />,
   about: <Info className="h-4 w-4" />,
@@ -226,6 +229,32 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         keywords: "export profiles exportar perfiles",
         icon: <FolderOpen className="h-4 w-4" />,
         run: () => useConnectionDialog.getState().setExportOpen(true),
+      },
+      {
+        id: "action:manage-json-schemas",
+        group: "actions",
+        label: t("jsonSchemas.title"),
+        detail: t("settings.sections.jsonSchemas.desc"),
+        keywords:
+          "json schema validation column bind esquema json validacion columna vincular",
+        icon: <FileJson className="h-4 w-4" />,
+        run: () => openSettings("jsonSchemas"),
+      },
+      {
+        id: "action:export-json-schemas",
+        group: "actions",
+        label: t("menu.file.exportJsonSchemas"),
+        keywords: "export json schemas exportar esquemas json",
+        icon: <FileJson className="h-4 w-4" />,
+        run: () => useJsonSchemaTransfer.getState().openExport(),
+      },
+      {
+        id: "action:import-json-schemas",
+        group: "actions",
+        label: t("menu.file.importJsonSchemas"),
+        keywords: "import json schemas importar esquemas json",
+        icon: <FileJson className="h-4 w-4" />,
+        run: () => useJsonSchemaTransfer.getState().setImportOpen(true),
       },
     );
 

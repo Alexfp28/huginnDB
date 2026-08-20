@@ -17,6 +17,7 @@ para cualquier idioma que no tenga traducción.
 | --- | --- |
 | [Conexiones](CONNECTIONS.es.md) · [en](CONNECTIONS.md) | Crear conexiones por driver, SSL, túneles SSH, dónde viven las contraseñas, conexiones a todo un servidor, límites de pools, keepalive, los flags de la CLI, exportar/importar y orígenes compartidos. |
 | [Entornos](ENVIRONMENTS.es.md) · [en](ENVIRONMENTS.md) | Conjuntos de trabajo con nombre: qué conexiones están en juego, qué pestañas y disposición vuelven, y qué *no* posee un entorno. |
+| [Esquemas JSON](JSON_SCHEMAS.es.md) · [en](JSON_SCHEMAS.md) | Vincular un esquema JSON a una columna para autocompletado, documentación al pasar el ratón y validación orientativa: la biblioteca, la cascada de más-específico-gana, redactar uno a partir de un valor y compartir. |
 | [MongoDB](MONGODB.es.md) · [en](MONGODB.md) | El dialecto `mongosh` del editor, el editor de documentos, pipelines de agregación y vistas, el gestor de índices, renombrar/mover una colección y lo que no hay. |
 | [SQL Server](SQL_SERVER.es.md) · [en](SQL_SERVER.md) | `HOST\INSTANCIA` y el SQL Browser, confianza en el certificado, autenticación de Windows, cómo llegan los valores y las superficies aún sin implementar. |
 | [Conector MCP](MCP.es.md) · [en](MCP.md) | Exponer tus bases de datos a un cliente de IA: el binario, la configuración por cliente, el nivel de escritura por conexión, el log de auditoría y qué hacer cuando el bloqueo viene del propio cliente. |

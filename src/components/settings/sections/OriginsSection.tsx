@@ -1,19 +1,24 @@
 /**
- * Settings → Origins: register the shared files this environment pulls
- * connections from (#108), and sync them on demand.
+ * Settings → Origins: register the shared files HuginnDB pulls connections
+ * from (#108), and sync them on demand.
  *
- * Scoped to the **active environment**, like everything that touches
- * `tab_state.json`. The heading says so, because otherwise "why did my origins
- * disappear" has a confusing answer (you switched environment).
+ * Global, unlike most of what touches `tab_state.json`: an origin describes a
+ * server-side resource, not a Producción/Staging axis, and what it produces
+ * (profiles, whole mirrored environments) is already global — see
+ * `commands::origins`'s module doc for why. So this section, unlike its
+ * neighbours, is the same regardless of which environment is active.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FolderSync, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Check, FolderSync, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useOriginSync } from "@/stores/sync/originSync";
+import { useConnections } from "@/stores/session/connections";
+import { useEnvironments } from "@/stores/session/environments";
 import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
-import { confirmIrreversible } from "@/lib/confirmDestructive";
+import { VanishedEnvironmentNotice } from "@/components/common/VanishedEnvironmentNotice";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -25,15 +30,48 @@ export function OriginsSection() {
   const errors = useOriginSync((s) => s.errors);
   const syncAll = useOriginSync((s) => s.syncAll);
   const vanished = useOriginSync((s) => s.vanished);
+  const vanishedEnvironments = useOriginSync((s) => s.vanishedEnvironments);
+  const noticeOriginRemoved = useOriginSync((s) => s.noticeOriginRemoved);
+  const adoptAllVanished = useOriginSync((s) => s.adoptAllVanished);
+  const retireAllVanished = useOriginSync((s) => s.retireAllVanished);
+  const profiles = useConnections((s) => s.profiles);
+  const environments = useEnvironments((s) => s.environments);
 
   // Derive the id list here rather than in the selector: `Object.keys` returns a
   // fresh array on every call and would re-render forever (gotcha #1).
   const vanishedIds = useMemo(() => Object.keys(vanished), [vanished]);
+  const vanishedEnvironmentIds = useMemo(
+    () => Object.keys(vanishedEnvironments),
+    [vanishedEnvironments],
+  );
 
   const [origins, setOrigins] = useState<Origin[]>([]);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ name: "", path: "", passphrase: "" });
   const [busy, setBusy] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<Origin | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [bulkAdopting, setBulkAdopting] = useState(false);
+  const [bulkRetireOpen, setBulkRetireOpen] = useState(false);
+  const [bulkRetiring, setBulkRetiring] = useState(false);
+
+  // How many connections/environments will be flagged as orphaned if this
+  // origin goes — shown in the confirm dialog so "what it published stays"
+  // isn't an abstract warning.
+  const affectedConnectionCount = useMemo(
+    () =>
+      pendingRemove
+        ? profiles.filter((p) => p.origin_id === pendingRemove.id).length
+        : 0,
+    [profiles, pendingRemove],
+  );
+  const affectedEnvironmentCount = useMemo(
+    () =>
+      pendingRemove
+        ? environments.filter((e) => e.originId === pendingRemove.id).length
+        : 0,
+    [environments, pendingRemove],
+  );
 
   async function reload() {
     try {
@@ -47,6 +85,42 @@ export function OriginsSection() {
   useEffect(() => {
     void reload();
   }, []);
+
+  async function performRemove() {
+    if (!pendingRemove) return;
+    setRemoving(true);
+    try {
+      // Raise the vanished-notice *before* the origin is gone: once removed
+      // it drops out of `listOrigins()`, and `syncAll()` — the only other
+      // place that populates `vanished` — has nothing left to iterate to
+      // ever report these as orphaned.
+      noticeOriginRemoved(pendingRemove);
+      await api.removeOrigin(pendingRemove.id);
+      await reload();
+      setPendingRemove(null);
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  async function performBulkAdopt() {
+    setBulkAdopting(true);
+    try {
+      await adoptAllVanished();
+    } finally {
+      setBulkAdopting(false);
+    }
+  }
+
+  async function performBulkRetire() {
+    setBulkRetiring(true);
+    try {
+      await retireAllVanished();
+      setBulkRetireOpen(false);
+    } finally {
+      setBulkRetiring(false);
+    }
+  }
 
   async function submit() {
     if (!draft.path.trim()) return;
@@ -83,7 +157,11 @@ export function OriginsSection() {
           size="sm"
           variant="outline"
           onClick={() => void syncAll()}
-          disabled={syncing || origins.length === 0}
+          // Not gated on `origins.length`: `syncAll` also runs the orphan
+          // reconciliation sweep (`reconcileOrphans`), which is useful even
+          // with zero origins left — e.g. right after removing the last one,
+          // before its connections' vanished notice has had a chance to run.
+          disabled={syncing}
         >
           {syncing ? (
             <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -133,13 +211,7 @@ export function OriginsSection() {
               <button
                 className="shrink-0 text-muted-foreground/60 hover:text-destructive"
                 title={t("origins.remove")}
-                onClick={() => {
-                  // Irreversible: the stored passphrase goes with it. The
-                  // imported connections deliberately stay — see `remove_origin`.
-                  if (confirmIrreversible(t("origins.removeConfirm", { name: o.name }))) {
-                    void api.removeOrigin(o.id).then(reload);
-                  }
-                }}
+                onClick={() => setPendingRemove(o)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -153,14 +225,56 @@ export function OriginsSection() {
           it unresolvable. */}
       {vanishedIds.length > 0 && (
         <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {t("origins.vanished.pending")}
-          </h4>
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("origins.vanished.pending")}
+            </h4>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={bulkAdopting || bulkRetiring}
+                onClick={() => void performBulkAdopt()}
+              >
+                {bulkAdopting ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Check className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                {t("origins.vanished.keepAll")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                disabled={bulkAdopting || bulkRetiring}
+                onClick={() => setBulkRetireOpen(true)}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                {t("origins.vanished.retireAll")}
+              </Button>
+            </div>
+          </div>
           {vanishedIds.map((id) => (
             <VanishedOriginNotice
               key={id}
               profileId={id}
               showConnection
+              className="mx-0 mt-2"
+            />
+          ))}
+        </div>
+      )}
+
+      {vanishedEnvironmentIds.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("origins.vanishedEnvironments.pending")}
+          </h4>
+          {vanishedEnvironmentIds.map((id) => (
+            <VanishedEnvironmentNotice
+              key={id}
+              environmentId={id}
               className="mx-0 mt-2"
             />
           ))}
@@ -200,6 +314,49 @@ export function OriginsSection() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingRemove}
+        onOpenChange={(open) => !open && setPendingRemove(null)}
+        title={t("origins.removeConfirmTitle", { name: pendingRemove?.name ?? "" })}
+        description={
+          <div className="space-y-1">
+            <p>{t("origins.removeConfirmPassphraseNote")}</p>
+            {affectedConnectionCount === 0 && affectedEnvironmentCount === 0 && (
+              <p>{t("origins.removeConfirmNothingNote")}</p>
+            )}
+            {affectedConnectionCount > 0 && (
+              <p>
+                {t("origins.removeConfirmConnectionsNote", {
+                  count: affectedConnectionCount,
+                })}
+              </p>
+            )}
+            {affectedEnvironmentCount > 0 && (
+              <p>
+                {t("origins.removeConfirmEnvironmentsNote", {
+                  count: affectedEnvironmentCount,
+                })}
+              </p>
+            )}
+          </div>
+        }
+        confirmLabel={t("origins.remove")}
+        confirming={removing}
+        onConfirm={() => void performRemove()}
+      />
+
+      <ConfirmDialog
+        open={bulkRetireOpen}
+        onOpenChange={(open) => !open && setBulkRetireOpen(false)}
+        title={t("origins.vanished.retireAllConfirmTitle", {
+          count: vanishedIds.length,
+        })}
+        description={<p>{t("origins.vanished.retireAllConfirm")}</p>}
+        confirmLabel={t("origins.vanished.retireAll")}
+        confirming={bulkRetiring}
+        onConfirm={() => void performBulkRetire()}
+      />
     </div>
   );
 }

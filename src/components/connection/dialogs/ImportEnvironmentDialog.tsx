@@ -18,8 +18,9 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Upload, KeyRound, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Upload, KeyRound, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import { api } from "@/lib/tauri";
 import { useEnvironments } from "@/stores/session/environments";
 import { Button } from "@/components/ui/button";
@@ -32,12 +33,17 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { ImportProgressBar } from "./ImportProgressBar";
+import { ConflictBulkActions } from "./ConflictBulkActions";
 import type {
   ConflictAction,
   ConflictResolution,
   EnvironmentImportAnalysis,
   EnvironmentImportResult,
 } from "@/types";
+
+// Mirrors `IMPORT_PROGRESS_EVENT` in `src-tauri/src/commands/connection.rs`.
+const IMPORT_PROGRESS_EVENT = "huginndb://import-progress";
 
 type Step = "pick" | "review" | "passphrase" | "conflicts" | "done";
 
@@ -58,6 +64,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
   const [result, setResult] = useState<EnvironmentImportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   async function handlePickFile() {
     try {
@@ -122,6 +129,13 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
   async function doImport(path: string, pp: string | undefined, resolved: ConflictResolution[]) {
     setLoading(true);
     setError(null);
+    // Decrypting each secret is deliberately slow (PBKDF2), so a large
+    // bundle can take a while — listen for the backend's per-profile
+    // progress event and show a determinate bar instead of a bare spinner.
+    const unlisten = await listen<{ done: number; total: number }>(
+      IMPORT_PROGRESS_EVENT,
+      (event) => setProgress(event.payload),
+    );
     try {
       const r = await api.importEnvironment(path, pp, resolved);
       setResult(r);
@@ -130,6 +144,8 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
     } catch (e) {
       setError(String(e));
     } finally {
+      unlisten();
+      setProgress(null);
       setLoading(false);
     }
   }
@@ -149,6 +165,13 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
     setResolutions((prev) => ({ ...prev, [id]: action }));
   }
 
+  function setAllResolutions(action: ConflictAction) {
+    if (!analysis) return;
+    const next: Record<string, ConflictAction> = {};
+    for (const c of analysis.conflicts) next[c.id] = action;
+    setResolutions(next);
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
       <DialogContent className="max-w-md">
@@ -158,6 +181,8 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
             {t("transfer.importEnvironment.title")}
           </DialogTitle>
         </DialogHeader>
+
+        {progress && <ImportProgressBar done={progress.done} total={progress.total} />}
 
         {/* Step: pick */}
         {step === "pick" && (
@@ -212,6 +237,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                 {t("common.cancel")}
               </Button>
               <Button size="sm" onClick={handleReviewNext} disabled={loading}>
+                {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {t("common.continue")}
               </Button>
             </DialogFooter>
@@ -251,6 +277,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                 onClick={handlePassphraseNext}
                 disabled={passphrase.length === 0 || loading}
               >
+                {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {t("common.continue")}
               </Button>
             </DialogFooter>
@@ -265,6 +292,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                 count: analysis.conflicts.length,
               })}
             </p>
+            <ConflictBulkActions onSelect={setAllResolutions} />
             <div className="divide-y divide-border rounded-md border border-border max-h-56 overflow-y-auto">
               {analysis.conflicts.map((c) => (
                 <div key={c.id} className="px-3 py-2 space-y-1.5">
@@ -301,6 +329,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                 {t("common.cancel")}
               </Button>
               <Button size="sm" onClick={handleConflictsNext} disabled={loading}>
+                {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {t("transfer.importEnvironment.importButton", {
                   count: analysis.environments.length,
                 })}
@@ -331,6 +360,17 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               )}
               {result.profiles.renamed.length > 0 && (
                 <p>{t("transfer.import.summaryRenamed", { count: result.profiles.renamed.length })}</p>
+              )}
+              {result.json_schemas && (
+                <p className="text-muted-foreground">
+                  {t("transfer.importEnvironment.doneSchemas", {
+                    schemas:
+                      result.json_schemas.imported.length +
+                      result.json_schemas.overwritten.length +
+                      result.json_schemas.renamed.length,
+                    bindings: result.json_schemas.bindings_imported,
+                  })}
+                </p>
               )}
             </div>
             {result.profiles.needs_password.length > 0 && (

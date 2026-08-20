@@ -25,6 +25,31 @@
 import { create } from "zustand";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 
+/**
+ * Where the edited value lives, for the JSON Schema cascade.
+ *
+ * One nested object rather than five sibling fields, so the single-object
+ * selector below stays reference-stable (gotcha #1) and so adding an axis later
+ * touches one type instead of every call site.
+ *
+ * `connectionId` may still be a synthetic `<parent>::db::<db>` id here — the
+ * store that resolves it folds it to the parent profile id, so callers pass
+ * whatever the grid has.
+ */
+export interface CellBindingContext {
+  connectionId?: string;
+  /** Postgres schema, MySQL/MongoDB database, `main` on SQLite. */
+  dbSchema?: string;
+  table?: string;
+  /**
+   * Column name — or, for a MongoDB nested field, its dotted path, which is what
+   * the document view already synthesises as the column name (gotcha #29).
+   */
+  column: string;
+  /** BSON type of the field, MongoDB only. */
+  bsonType?: string;
+}
+
 export interface CellEditorTarget {
   /**
    * Id of the tab that opened this cell. The docked side panel lives outside
@@ -35,6 +60,12 @@ export interface CellEditorTarget {
   ownerId?: string;
   /** Column label shown in the panel header. */
   columnName: string;
+  /**
+   * Coordinates for the JSON Schema binding, when the value came from a real
+   * table. Absent for an ad-hoc query result, which has no column identity to
+   * bind to — a binding created there would be an accidental wildcard.
+   */
+  binding?: CellBindingContext;
   /** Initial text value to edit. */
   value: string;
   /** When true the editor is a read-only viewer (no save button). */

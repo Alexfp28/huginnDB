@@ -3,6 +3,7 @@ import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import { loader } from "@monaco-editor/react";
 import { registerMonacoThemes } from "@/lib/monaco/monaco-themes";
+import { ensureJsonSchemas } from "@/lib/monaco/monacoJson";
 
 // Self-host Monaco so the app works offline and inside Tauri without any
 // CDN dependency. Workers are bundled by Vite via the ?worker imports.
@@ -25,6 +26,7 @@ loader.config({ monaco });
 // already finds the theme ids defined.
 loader.init().then((m) => {
   registerMonacoThemes(m);
+  ensureJsonSchemas(m);
 });
 
 // Register against the directly-imported `monaco` too. `@monaco-editor/react`
@@ -33,3 +35,10 @@ loader.init().then((m) => {
 // code path touches the imported `monaco` namespace before `loader.init()`
 // has resolved.
 registerMonacoThemes(monaco);
+// Same reasoning for the JSON schema configuration — and it is armed here
+// rather than in an editor's `onMount` on purpose: unlike the SQL and Mongo
+// `ensure*` helpers, which register *providers* that may arrive late, this is
+// configuration the diagnostics adapter needs before a model exists (it
+// validates on `onDidCreateModel`). Arming it at setup time avoids a flash of
+// unschema-ed markers on the first cell opened.
+ensureJsonSchemas(monaco);

@@ -304,6 +304,29 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
         guard.clone()
     };
     crate::tab_state::save_tab_state(&tab_state_snapshot)?;
+
+    // Same reasoning as `database_visibility` above, one step further: a
+    // binding pinned to this profile can never match again, because a profile
+    // id is a uuid that is never reused. The schema itself — the expensive
+    // artefact the user wrote — is deliberately untouched; only the rule goes.
+    let swept = {
+        let mut lib = state.json_schemas.write();
+        let n = crate::json_schemas::sweep_connection(&mut lib, &id);
+        if n == 0 {
+            None
+        } else {
+            Some((n, lib.clone()))
+        }
+    };
+    if let Some((n, snapshot)) = swept {
+        crate::json_schemas::save_library(&snapshot)?;
+        eprintln!("[json_schemas] dropped {n} binding(s) pinned to deleted profile {id}");
+        let _ = app.emit(
+            crate::commands::json_schemas::JSON_SCHEMAS_CHANGED_EVENT,
+            (),
+        );
+    }
+
     let _ = app.emit(PROFILES_CHANGED_EVENT, ());
     Ok(())
 }
@@ -689,6 +712,19 @@ async fn close_view(
 /// round-trip when they only need to address an already-open child.
 pub fn database_view_id(parent_id: &str, database: &str) -> String {
     format!("{parent_id}::db::{database}")
+}
+
+/// The *profile* id behind a connection id: `id` itself for a plain one, the
+/// parent for a synthetic `<parent>::db::<database>` child.
+///
+/// Rust twin of `lib/connectionLabel.ts`'s `parentConnectionId`. Lives here
+/// because [`database_view_id`] already owns the format, so the two spellings of
+/// `::db::` stay in one file (gotcha #36).
+pub fn parent_connection_id(id: &str) -> &str {
+    match id.split_once("::db::") {
+        Some((parent, _)) => parent,
+        None => id,
+    }
 }
 
 /// If `id` names a `<parent>::db::<database>` view the idle reaper
@@ -1205,52 +1241,123 @@ pub async fn export_profiles(
 /// Every imported profile receives a **fresh UUID** regardless of whether it
 /// came with one in the file. This prevents keychain-account collisions with
 /// profiles that were already on this machine.
+///
+/// `async fn` on purpose, with the actual work run via `spawn_blocking`: a
+/// synchronous Tauri command executes on the main thread (see the identical
+/// reasoning on `import_environment` in `commands::prefs`), and
+/// `apply_profile_imports` runs one 600 000-iteration PBKDF2 derivation per
+/// encrypted secret (`transfer::decrypt_secret`) — deliberately slow, and with
+/// enough profiles in one file, slow enough to freeze the window (issue: app
+/// reported "not responding" importing a multi-environment bundle with dozens
+/// of encrypted secrets).
 #[tauri::command]
-pub fn import_profiles(
+pub async fn import_profiles(
     app: AppHandle,
     state: State<'_, AppState>,
     file_path: String,
     passphrase: Option<String>,
     conflict_resolutions: Vec<ConflictResolution>,
 ) -> AppResult<ImportResult> {
-    let data = std::fs::read_to_string(&file_path)?;
-    let export: ExportFile = serde_json::from_str(&data)?;
+    let profiles_lock = state.profiles.clone();
+    let json_schemas_lock = state.json_schemas.clone();
+    let app_for_task = app.clone();
 
-    if export.meta.version != 1 {
-        return Err(AppError::Transfer(format!(
-            "unsupported export format version {}",
-            export.meta.version
-        )));
-    }
-    if !export.meta.kind.is_empty() && export.meta.kind != KIND_PROFILES {
-        return Err(AppError::Transfer(
-            "this file is an environment export — use Import Environment instead".into(),
-        ));
-    }
-    if export.meta.encrypted && passphrase.is_none() {
-        return Err(AppError::Transfer(
-            "this export file contains encrypted passwords — provide a passphrase".into(),
-        ));
-    }
+    let (result, schema_changed) = tauri::async_runtime::spawn_blocking(move || -> AppResult<_> {
+        let data = std::fs::read_to_string(&file_path)?;
+        let export: ExportFile = serde_json::from_str(&data)?;
 
-    let resolution_map: std::collections::HashMap<String, ConflictAction> = conflict_resolutions
-        .into_iter()
-        .map(|r| (r.id, r.action))
-        .collect();
+        if export.meta.version != 1 {
+            return Err(AppError::Transfer(format!(
+                "unsupported export format version {}",
+                export.meta.version
+            )));
+        }
+        if !export.meta.kind.is_empty() && export.meta.kind != KIND_PROFILES {
+            return Err(AppError::Transfer(
+                "this file is an environment export — use Import Environment instead".into(),
+            ));
+        }
+        if export.meta.encrypted && passphrase.is_none() {
+            return Err(AppError::Transfer(
+                "this export file contains encrypted passwords — provide a passphrase".into(),
+            ));
+        }
 
-    let result = {
-        let mut profiles = state.profiles.write();
-        let (result, _id_map) = apply_profile_imports(
-            &mut profiles,
-            export.profiles,
-            passphrase.as_deref(),
-            &resolution_map,
-        )?;
-        store::save_profiles(&profiles)?;
-        result
-    };
+        let resolution_map: std::collections::HashMap<String, ConflictAction> =
+            conflict_resolutions
+                .into_iter()
+                .map(|r| (r.id, r.action))
+                .collect();
+
+        let (result, overwritten_ids) = {
+            let mut profiles = profiles_lock.write();
+            let (result, _id_map, overwritten_ids) = apply_profile_imports(
+                &mut profiles,
+                export.profiles,
+                passphrase.as_deref(),
+                &resolution_map,
+                |done, total| {
+                    let _ =
+                        app_for_task.emit(IMPORT_PROGRESS_EVENT, ImportProgress { done, total });
+                },
+            )?;
+            store::save_profiles(&profiles)?;
+            (result, overwritten_ids)
+        };
+
+        // An overwritten profile gets a fresh uuid, so any JSON-Schema binding
+        // pinned to the old one would quietly stop matching. See the third
+        // return value of `apply_profile_imports`.
+        let mut schema_changed = false;
+        if !overwritten_ids.is_empty() {
+            let mut lib = json_schemas_lock.write();
+            let n = crate::json_schemas::remap_connection_ids(&mut lib, &overwritten_ids);
+            if n > 0 {
+                let snapshot = lib.clone();
+                drop(lib);
+                crate::json_schemas::save_library(&snapshot)?;
+                schema_changed = true;
+            }
+        }
+
+        Ok((result, schema_changed))
+    })
+    .await
+    .map_err(|e| AppError::Transfer(format!("profile import task failed: {e}")))??;
+
+    if schema_changed {
+        let _ = app.emit(
+            crate::commands::json_schemas::JSON_SCHEMAS_CHANGED_EVENT,
+            (),
+        );
+    }
     let _ = app.emit(PROFILES_CHANGED_EVENT, ());
     Ok(result)
+}
+
+/// What [`apply_profile_imports`] hands back: the user-facing result, the
+/// original-to-new id map for *every* imported profile, and the subset of that
+/// map for the ones that were overwritten.
+pub(crate) type ProfileImportOutcome = (
+    ImportResult,
+    std::collections::HashMap<String, String>,
+    std::collections::HashMap<String, String>,
+);
+
+/// Emitted by `import_profiles` and `import_environment` while
+/// `apply_profile_imports` works through the exported profile list. Each
+/// encrypted secret costs one 600 000-iteration PBKDF2 derivation
+/// (`transfer::decrypt_secret`) — deliberately slow — so a file bundling many
+/// profiles (an environment export in particular, see CLAUDE.md gotcha #35)
+/// can take long enough that a bare spinner isn't enough feedback. Snake_case
+/// on the wire, matching `ImportResult` and every other DTO in this module
+/// (no `rename_all`).
+pub const IMPORT_PROGRESS_EVENT: &str = "huginndb://import-progress";
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ImportProgress {
+    pub done: usize,
+    pub total: usize,
 }
 
 /// Apply a set of exported profiles onto `profiles`, honoring
@@ -1267,12 +1374,23 @@ pub fn import_profiles(
 /// `import_profiles` has no use for it, but `import_environment` needs it to
 /// translate each environment bundle's `connection_ids` into the ids that
 /// actually landed in `profiles.json`.
+///
+/// The **third** return value is the subset of that map for profiles that were
+/// *overwritten*. Because a fresh UUID is minted even when overwriting, anything
+/// keyed on a profile id that lives outside `profiles.json` would silently stop
+/// resolving after an overwrite — with no error, just a feature quietly gone.
+/// JSON-Schema bindings are exactly that (`crate::json_schemas`), so both
+/// callers feed this map to `json_schemas::remap_connection_ids`. It is
+/// deliberately *only* the overwrite subset: on `Rename` the local profile keeps
+/// its original id and its bindings must stay on it, and a `Skip` has no entry
+/// at all.
 pub(crate) fn apply_profile_imports(
     profiles: &mut Vec<ConnectionProfile>,
     exported: Vec<transfer::ExportedProfile>,
     passphrase: Option<&str>,
     resolution_map: &std::collections::HashMap<String, ConflictAction>,
-) -> AppResult<(ImportResult, std::collections::HashMap<String, String>)> {
+    mut on_progress: impl FnMut(usize, usize),
+) -> AppResult<ProfileImportOutcome> {
     let mut result = ImportResult {
         imported: vec![],
         skipped: vec![],
@@ -1280,14 +1398,28 @@ pub(crate) fn apply_profile_imports(
         needs_password: vec![],
     };
     let mut id_map = std::collections::HashMap::new();
+    let mut overwritten_ids = std::collections::HashMap::new();
 
-    for ep in exported {
+    let total = exported.len();
+    for (processed, ep) in exported.into_iter().enumerate() {
+        // Fired unconditionally at the top of the loop body (rather than once
+        // per exit path) so it can't be missed by the early `continue` below
+        // or by a future one — the item being *started* is a fine proxy for
+        // "N of total processed" on a progress bar.
+        on_progress(processed + 1, total);
+
         // Determine action for profiles that conflict with an existing id.
+        // Conflicts are matched by id (`detect_conflicts`), so a conflict here
+        // is never a coincidence — it is definitionally the same connection
+        // already present. The fallback for one the caller left unresolved is
+        // therefore `Skip`, not `Rename`: renaming would silently create a
+        // second, independent copy of a profile that already exists, which is
+        // almost never what "I didn't touch that row" was meant to request.
         let conflict_action = if profiles.iter().any(|p| p.id == ep.profile.id) {
             resolution_map
                 .get(&ep.profile.id)
                 .cloned()
-                .unwrap_or(ConflictAction::Rename)
+                .unwrap_or(ConflictAction::Skip)
         } else {
             ConflictAction::Rename // effectively: just insert as new
         };
@@ -1314,6 +1446,9 @@ pub(crate) fn apply_profile_imports(
         // Always assign a fresh UUID to avoid keychain collisions.
         let new_id = Uuid::new_v4().to_string();
         id_map.insert(ep.profile.id.clone(), new_id.clone());
+        if matches!(conflict_action, ConflictAction::Overwrite) {
+            overwritten_ids.insert(ep.profile.id.clone(), new_id.clone());
+        }
         let original_name = ep.profile.name.clone();
 
         // Ensure the display name is unique; append " (imported)" or " (2)" etc.
@@ -1374,7 +1509,7 @@ pub(crate) fn apply_profile_imports(
         result.imported.push(new_id);
     }
 
-    Ok((result, id_map))
+    Ok((result, id_map, overwritten_ids))
 }
 
 // ---------------------------------------------------------------------------
@@ -1602,11 +1737,12 @@ mod tests {
         // actually landed in `profiles.json` — every imported profile gets a
         // fresh UUID, never its original id (to avoid keychain collisions).
         let mut profiles = Vec::new();
-        let (result, id_map) = apply_profile_imports(
+        let (result, id_map, _overwritten) = apply_profile_imports(
             &mut profiles,
             vec![exported("orig-a", "A"), exported("orig-b", "B")],
             None,
             &std::collections::HashMap::new(),
+            |_, _| {},
         )
         .unwrap();
 
@@ -1628,11 +1764,12 @@ mod tests {
         // Pre-seed a profile with the same id so it registers as a conflict.
         profiles.push(profile("orig-a", "Existing"));
 
-        let (result, id_map) = apply_profile_imports(
+        let (result, id_map, _overwritten) = apply_profile_imports(
             &mut profiles,
             vec![exported("orig-a", "A")],
             None,
             &resolutions,
+            |_, _| {},
         )
         .unwrap();
 
@@ -1641,5 +1778,33 @@ mod tests {
             !id_map.contains_key("orig-a"),
             "a skipped profile must not appear in the id map"
         );
+    }
+
+    #[test]
+    fn an_unresolved_conflict_defaults_to_skip_not_rename() {
+        // A conflict is matched by id, so it is never a coincidence — it is
+        // definitionally the same connection already present (the exact case
+        // hit by exporting one's own profiles and reimporting them
+        // unchanged). Leaving it unresolved must not silently duplicate it
+        // under a fresh id with a " (imported)" suffix.
+        let mut profiles = vec![profile("orig-a", "A")];
+
+        let (result, id_map, overwritten) = apply_profile_imports(
+            &mut profiles,
+            vec![exported("orig-a", "A")],
+            None,
+            &std::collections::HashMap::new(),
+            |_, _| {},
+        )
+        .unwrap();
+
+        assert_eq!(result.skipped, vec!["orig-a".to_string()]);
+        assert!(result.imported.is_empty());
+        assert!(result.renamed.is_empty());
+        assert!(!id_map.contains_key("orig-a"));
+        assert_eq!(profiles.len(), 1, "no duplicate profile must be created");
+        // Nothing was overwritten, so no JSON-Schema binding should be
+        // repointed either (see the third return value).
+        assert!(overwritten.is_empty());
     }
 }

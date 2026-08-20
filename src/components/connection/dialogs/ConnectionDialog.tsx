@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ExportProfilesDialog } from "@/components/connection/dialogs/ExportProfilesDialog";
 import { ImportProfilesDialog } from "@/components/connection/dialogs/ImportProfilesDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   Select,
   SelectContent,
@@ -128,6 +129,8 @@ export function ConnectionDialog({
   // Left-rail: search filter + multi-selection for bulk delete (#39/#43).
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   /** Anchor for Shift-range selection over the visible (non-collapsed) rows. */
   const lastClickedRef = useRef<string | null>(null);
   const groupCollapse = useConnectionGroupCollapse();
@@ -420,24 +423,32 @@ export function ConnectionDialog({
     lastClickedRef.current = id;
   }
 
-  /** Bulk-delete the multi-selection. Confirmation is ALWAYS shown here (plain
-   *  `window.confirm`, not `confirmDestructive`) — deleting connections is
-   *  destructive regardless of the "confirm destructive actions" preference. */
-  async function onBulkDelete() {
+  /** Bulk-delete the multi-selection. Always confirmed via `bulkDeleteOpen`'s
+   *  dialog, ignoring the "confirm destructive actions" preference — deleting
+   *  connections is destructive regardless. */
+  function onBulkDelete() {
+    if (selectedIds.size === 0) return;
+    setBulkDeleteOpen(true);
+  }
+
+  async function performBulkDelete() {
     const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
-    if (!confirmIrreversible(t("connections.bulkDeleteConfirm", { count: ids.length })))
-      return;
-    for (const id of ids) {
-      try {
-        await remove(id);
-      } catch {
-        // Best-effort: one keychain/disk failure shouldn't abort the rest.
+    setBulkDeleting(true);
+    try {
+      for (const id of ids) {
+        try {
+          await remove(id);
+        } catch {
+          // Best-effort: one keychain/disk failure shouldn't abort the rest.
+        }
       }
+      if (editingId && selectedIds.has(editingId)) setEditingId(null);
+      setSelectedIds(new Set());
+      lastClickedRef.current = null;
+    } finally {
+      setBulkDeleting(false);
+      setBulkDeleteOpen(false);
     }
-    if (editingId && selectedIds.has(editingId)) setEditingId(null);
-    setSelectedIds(new Set());
-    lastClickedRef.current = null;
   }
 
   /** One connection row in the rail. A `<div role="button">` rather than a
@@ -1624,6 +1635,15 @@ export function ConnectionDialog({
 
       <ExportProfilesDialog open={exportOpen} onOpenChange={setExportOpen} />
       <ImportProfilesDialog open={importOpen} onOpenChange={setImportOpen} />
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={t("connections.bulkDeleteTitle", { count: selectedIds.size })}
+        description={t("connections.bulkDeleteConfirm", { count: selectedIds.size })}
+        confirmLabel={t("connectionDialog.delete")}
+        confirming={bulkDeleting}
+        onConfirm={() => void performBulkDelete()}
+      />
     </>
   );
 }

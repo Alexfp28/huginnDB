@@ -43,6 +43,9 @@ const DEFAULT_PREFS: Preferences = {
     lineNumbers: true,
     formatOnPaste: false,
     theme: "huginn-dark",
+    jsonSchemaValidation: true,
+    jsonSchemaCompletion: true,
+    jsonSchemaHover: true,
   },
   grid: {
     rowHeight: 26,

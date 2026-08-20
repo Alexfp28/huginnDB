@@ -214,7 +214,7 @@ pub fn build_ddl(
     desired: &TableStructure,
 ) -> AppResult<Vec<String>> {
     reject_unsupported(dialect)?;
-    validate_structure(desired)?;
+    validate_structure(desired, original)?;
     match original {
         None => build_create(dialect, desired),
         Some(orig) => build_alter(dialect, orig, desired),
@@ -239,7 +239,16 @@ fn reject_unsupported(dialect: Dialect) -> AppResult<()> {
     Ok(())
 }
 
-fn validate_structure(s: &TableStructure) -> AppResult<()> {
+/// `original` lets a column's default skip re-validation when it hasn't
+/// changed from what's already on the live catalog. A live default can be in
+/// a dialect-native form the allowlist doesn't (and shouldn't have to) know —
+/// MySQL reports a `BIT` default as `b'0'`/`b'1'`, Postgres reports a
+/// cast-style default like `'foo'::text` — and the user never typed it, so
+/// there's nothing to gate. Only a default the user actually entered or
+/// changed goes through [`validate_default`]. See gotcha-style note on
+/// [`build_create`] for the sibling case (CREATE / SQLite rebuild), which
+/// skips the allowlist entirely for the same reason.
+fn validate_structure(s: &TableStructure, original: Option<&TableStructure>) -> AppResult<()> {
     validate_ident("table", &s.name)?;
     if let Some(schema) = &s.schema {
         if !schema.is_empty() {
@@ -251,11 +260,21 @@ fn validate_structure(s: &TableStructure) -> AppResult<()> {
             "a table must have at least one column".into(),
         ));
     }
+    let orig_by_name: std::collections::HashMap<&str, &ColumnDef> = original
+        .map(|o| o.columns.iter().map(|c| (c.name.as_str(), c)).collect())
+        .unwrap_or_default();
     for c in &s.columns {
         validate_ident("column", &c.name)?;
         validate_type(&c.data_type)?;
         if let Some(d) = &c.default {
-            validate_default(d)?;
+            let unchanged = c
+                .original_name
+                .as_deref()
+                .and_then(|n| orig_by_name.get(n))
+                .is_some_and(|prev| prev.default.as_deref().map(str::trim) == Some(d.trim()));
+            if !unchanged {
+                validate_default(d)?;
+            }
         }
     }
     for idx in &s.indexes {
@@ -525,21 +544,32 @@ fn build_alter_pg_mysql(
         }
     }
 
-    // 3. Added + modified columns.
+    // 3. Added + modified + reordered columns. Column reordering is MySQL-
+    // only: `MODIFY COLUMN … FIRST|AFTER col` and `ADD COLUMN … FIRST|AFTER
+    // col` are the only way any of our dialects can reposition a column
+    // without a full rebuild, and Postgres has no equivalent at all.
+    let positions: std::collections::HashMap<String, String> = if dialect == Dialect::Mysql {
+        mysql_column_positions(dialect, orig, desired)
+    } else {
+        std::collections::HashMap::new()
+    };
     for c in &desired.columns {
         match &c.original_name {
             None => {
                 // New column.
-                out.push(format!(
-                    "ALTER TABLE {qt} ADD COLUMN {}",
-                    column_clause(dialect, c, false)
-                ));
+                let mut clause = column_clause(dialect, c, false);
+                if let Some(pos) = positions.get(&c.name) {
+                    clause.push(' ');
+                    clause.push_str(pos);
+                }
+                out.push(format!("ALTER TABLE {qt} ADD COLUMN {clause}"));
             }
             Some(orig_name) => {
                 let prev = orig_by_name.get(orig_name.as_str());
                 if let Some(prev) = prev {
-                    if column_changed(prev, c) {
-                        out.extend(alter_column_stmts(dialect, &qt, c));
+                    let position = positions.get(&c.name).map(String::as_str);
+                    if column_changed(prev, c) || position.is_some() {
+                        out.extend(alter_column_stmts(dialect, &qt, c, position));
                     }
                 }
             }
@@ -555,6 +585,63 @@ fn build_alter_pg_mysql(
     Ok(out)
 }
 
+/// Compute which columns need an explicit `FIRST`/`AFTER <col>` clause to
+/// land in their `desired` slot — MySQL only (see the call site).
+///
+/// A plain `MODIFY COLUMN` with no position clause leaves a surviving column
+/// where it already sits, and a plain `ADD COLUMN` appends a new one at the
+/// end; those are the two "natural" outcomes with no move required. This
+/// walks `desired.columns` left to right against that natural order and,
+/// wherever they diverge, records the move needed to fix that slot before
+/// continuing — the same technique as a minimal selection-sort diff: once
+/// position `i` is corrected it is never touched again, so the moves found
+/// this way, applied in order, reproduce the desired order exactly. Only
+/// columns that actually need to move get an entry — a column already in the
+/// right slot must not be forced through a needless `MODIFY`.
+fn mysql_column_positions(
+    dialect: Dialect,
+    orig: &TableStructure,
+    desired: &TableStructure,
+) -> std::collections::HashMap<String, String> {
+    let renamed: std::collections::HashMap<&str, &str> = desired
+        .columns
+        .iter()
+        .filter_map(|c| c.original_name.as_deref().map(|o| (o, c.name.as_str())))
+        .collect();
+    // Columns as they naturally sit today: original order, survivors only
+    // (dropped columns are absent from `renamed`), renamed in place.
+    let mut natural: Vec<String> = orig
+        .columns
+        .iter()
+        .filter_map(|oc| renamed.get(oc.name.as_str()).map(|n| n.to_string()))
+        .collect();
+    // New columns land at the tail, in the order they appear in `desired`.
+    for c in &desired.columns {
+        if c.original_name.is_none() {
+            natural.push(c.name.clone());
+        }
+    }
+    let target: Vec<&str> = desired.columns.iter().map(|c| c.name.as_str()).collect();
+    let mut moves = std::collections::HashMap::new();
+    for (i, name) in target.iter().enumerate() {
+        if natural.get(i).map(String::as_str) != Some(*name) {
+            let pos = natural
+                .iter()
+                .position(|n| n == name)
+                .expect("every desired column name is present in `natural` by construction");
+            natural.remove(pos);
+            natural.insert(i, name.to_string());
+            let clause = if i == 0 {
+                "FIRST".to_string()
+            } else {
+                format!("AFTER {}", dialect.quote_ident(target[i - 1]))
+            };
+            moves.insert(name.to_string(), clause);
+        }
+    }
+    moves
+}
+
 fn column_changed(a: &ColumnDef, b: &ColumnDef) -> bool {
     a.data_type.trim() != b.data_type.trim()
         || a.nullable != b.nullable
@@ -563,14 +650,24 @@ fn column_changed(a: &ColumnDef, b: &ColumnDef) -> bool {
         || a.auto_increment != b.auto_increment
 }
 
-fn alter_column_stmts(dialect: Dialect, qt: &str, c: &ColumnDef) -> Vec<String> {
+/// `position`, when given, is a MySQL `FIRST` / `AFTER <col>` clause to
+/// append after the column definition — always `None` on the Postgres arm,
+/// which has no equivalent.
+fn alter_column_stmts(
+    dialect: Dialect,
+    qt: &str,
+    c: &ColumnDef,
+    position: Option<&str>,
+) -> Vec<String> {
     match dialect {
         Dialect::Mysql => {
             // MySQL carries the whole new definition in one MODIFY.
-            vec![format!(
-                "ALTER TABLE {qt} MODIFY COLUMN {}",
-                column_clause(dialect, c, false)
-            )]
+            let mut clause = column_clause(dialect, c, false);
+            if let Some(pos) = position {
+                clause.push(' ');
+                clause.push_str(pos);
+            }
+            vec![format!("ALTER TABLE {qt} MODIFY COLUMN {clause}")]
         }
         Dialect::Postgres => {
             let col = dialect.quote_ident(&c.name);
@@ -1081,5 +1178,86 @@ mod tests {
     #[test]
     fn empty_table_rejected() {
         assert!(build_ddl(Dialect::Postgres, None, &table("t", vec![])).is_err());
+    }
+
+    #[test]
+    fn unchanged_catalog_default_skips_validation() {
+        // A MySQL BIT column round-trips its default as `b'0'`/`b'1'` from
+        // the catalog — not something `validate_default`'s allowlist knows
+        // about, and not something the user typed. Editing an unrelated
+        // column in the same table must not choke on it.
+        let mut bit_col = existing("enabled", "bit(1)");
+        bit_col.default = Some("b'0'".into());
+        let orig = table("t", vec![existing("id", "int"), bit_col.clone()]);
+
+        let mut renamed_id = existing("id", "bigint"); // the actual edit
+        renamed_id.name = "id".into();
+        let desired = table("t", vec![renamed_id, bit_col]);
+
+        let stmts = build_ddl(Dialect::Mysql, Some(&orig), &desired).unwrap();
+        assert!(stmts
+            .iter()
+            .any(|s| s.contains("MODIFY COLUMN `id` bigint")));
+        assert!(!stmts.iter().any(|s| s.contains("enabled")));
+    }
+
+    #[test]
+    fn unchanged_catalog_default_still_rejected_if_user_edits_it() {
+        let mut bit_col = existing("enabled", "bit(1)");
+        bit_col.default = Some("b'0'".into());
+        let orig = table("t", vec![bit_col.clone()]);
+
+        let mut edited = bit_col;
+        edited.default = Some("b'0'; DROP TABLE t; --".into());
+        let desired = table("t", vec![edited]);
+
+        assert!(build_ddl(Dialect::Mysql, Some(&orig), &desired).is_err());
+    }
+
+    #[test]
+    fn mysql_reorders_existing_column() {
+        // Move `b` in front of `a` without changing anything else.
+        let orig = table("t", vec![existing("a", "int"), existing("b", "int")]);
+        let desired = table("t", vec![existing("b", "int"), existing("a", "int")]);
+        let stmts = build_ddl(Dialect::Mysql, Some(&orig), &desired).unwrap();
+        assert!(stmts
+            .iter()
+            .any(|s| s.contains("MODIFY COLUMN `b` int FIRST")));
+        // `a` is already correctly placed once `b` moves in front of it.
+        assert!(!stmts.iter().any(|s| s.contains("MODIFY COLUMN `a`")));
+    }
+
+    #[test]
+    fn mysql_new_column_inserted_in_the_middle() {
+        let orig = table("t", vec![existing("a", "int"), existing("b", "int")]);
+        let desired = table(
+            "t",
+            vec![
+                existing("a", "int"),
+                col("mid", "int"),
+                existing("b", "int"),
+            ],
+        );
+        let stmts = build_ddl(Dialect::Mysql, Some(&orig), &desired).unwrap();
+        assert!(stmts
+            .iter()
+            .any(|s| s.contains("ADD COLUMN `mid` int AFTER `a`")));
+    }
+
+    #[test]
+    fn mysql_unmoved_columns_produce_no_reorder_statement() {
+        let orig = table("t", vec![existing("a", "int"), existing("b", "int")]);
+        let desired = table("t", vec![existing("a", "int"), existing("b", "int")]);
+        let stmts = build_ddl(Dialect::Mysql, Some(&orig), &desired).unwrap();
+        assert!(stmts.is_empty());
+    }
+
+    #[test]
+    fn postgres_has_no_reorder_support() {
+        // Postgres can't express a reorder at all; the diff must not try.
+        let orig = table("t", vec![existing("a", "int"), existing("b", "int")]);
+        let desired = table("t", vec![existing("b", "int"), existing("a", "int")]);
+        let stmts = build_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
+        assert!(stmts.is_empty());
     }
 }

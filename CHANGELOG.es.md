@@ -6,6 +6,313 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
+## [Sin publicar]
+
+## [1.17.0] — 2026-08-20
+
+### Añadido
+
+- **Una barra de progreso determinista para los diálogos de importar
+  perfiles/entornos**, alimentada por un nuevo evento
+  `huginndb://import-progress` emitido desde `apply_profile_imports`
+  (`src-tauri/src/commands/connection.rs`) una vez por cada perfil a medida
+  que recorre la lista exportada. Ahora que la importación corre fuera del
+  hilo principal (ver el arreglo del «No responde» más abajo), la ventana se
+  mantiene receptiva durante una importación grande, pero el botón
+  deshabilitado no daba ninguna pista de si estaba a punto de terminar o
+  atascado — una preocupación real ahora que la operación puede tardar
+  legítimamente decenas de segundos. `ImportProgressBar`
+  (`src/components/connection/dialogs/`) muestra «N de total» y la comparten
+  tanto `ImportProfilesDialog` como `ImportEnvironmentDialog`, cada uno
+  suscribiendo su propio `listen()` durante la duración de su llamada a
+  `doImport`.
+
+- **Acciones masivas «Marcar todo como: …» sobre la lista de conflictos** en
+  ambos diálogos de importación (`ConflictBulkActions`,
+  `src/components/connection/dialogs/`), para que resolver un lote con
+  decenas de perfiles en conflicto — justo lo que produce una importación de
+  varios entornos — ya no signifique pulsar Mantener ambos/Sobreescribir/
+  Omitir fila por fila. Fija la resolución de todos los conflictos de una vez
+  a través del mismo mapa `resolutions` que ya escriben los botones por fila,
+  así que no hizo falta tocar nada aguas abajo.
+
+- **Una biblioteca de esquemas JSON definidos por el usuario, y vínculos por
+  columna que hacen que el editor de celda entienda de esquemas.** Un HuginnDB
+  usado como almacén de configuración acaba con columnas `json`/`jsonb`/`TEXT` que
+  contienen documentos de cientos de líneas con un contrato real, aunque no escrito
+  en ninguna parte, y el editor de celda trataba todos ellos como JSON anónimo:
+  resaltado de sintaxis, una insignia de válido/no válido y nada más. Ahora
+  mantienes una biblioteca de esquemas (un nombre, una descripción opcional y el
+  documento tal y como lo escribiste, en un `json_schemas.json` propio) más una
+  lista aparte de vínculos que dicen a qué columnas se aplica cada uno. Vincula uno
+  y Monaco empieza a completar nombres de propiedad, a sugerir valores de
+  enumeración, a mostrar la `description` de cada propiedad al pasar el ratón y a
+  subrayar los valores que no encajan. El autocompletado y la documentación al
+  pasar el ratón son lo que cambia una jornada de trabajo; la validación es la
+  mitad más pequeña.
+
+  La biblioteca es **global, no está adscrita a un entorno**, y eso es una lectura
+  deliberada de lo que significa un vínculo. Un vínculo dice «la columna de esta
+  tabla tiene esta forma», que es un hecho sobre el *servidor*, no sobre si estás
+  mirando Producción o Staging. Adscribirla a un entorno daría a la misma tabla un
+  esquema en un entorno y no en otro, que es el bug de `visible_databases` (gotcha
+  #27) por tercera vez. También vive en un fichero propio y no en `prefs.json`,
+  porque el cuerpo de un esquema real son 50–200 KB y `prefs.json` se reescribe en
+  cada `Ctrl`+rueda del grid.
+
+- **La validación nunca impide guardar, por construcción.** Nada en la ruta de
+  guardado lee los marcadores, y los diagnósticos están configurados con severidad
+  de aviso para que una violación ni siquiera *parezca* que bloquea. La base de
+  datos es la autoridad; un esquema es una ayuda. El día que el esquema de alguien
+  esté ligeramente mal, seguirá pudiendo editar sus propios datos.
+
+- **Una cascada de más-específico-gana, implementada una sola vez, en Rust.** Un
+  vínculo nombra una conexión, un esquema/base de datos, una tabla y una columna;
+  todos los ejes menos la columna admiten «cualquiera», y tabla y columna aceptan
+  un glob simple con `*`, así que una regla puede cubrir `*_json` en todo un
+  servidor o exactamente una columna de una tabla. La especificidad va
+  `columna > tabla > esquema/base de datos > conexión`, y que la conexión sea el eje
+  *más ligero* es la parte contraintuitiva que hace funcionar el caso que motivó
+  todo: una regla general sobre una conexión entera debe perder frente a una que
+  nombra la tabla y la columna exactas, mientras que entre dos reglas por lo demás
+  idénticas debe ganar la fijada — que es justamente para lo que sirve un eje de
+  desempate. Así, un esquema por defecto para `configuration` en todas partes más
+  una excepción en la tabla cuya forma difiere son dos reglas, no doce. El frontend
+  no reimplementa nada de esto: sería una segunda implementación de una sola
+  gramática (gotchas #30/#33), y la deriva sería silenciosa, porque un fallo de
+  resolución no es un error, es «no ha aparecido el autocompletado», que nadie
+  reporta. La resolución es una llamada por pestaña de datos, cacheada por
+  relación, así que es la granularidad y no el lenguaje lo que responde a la
+  objeción de rendimiento.
+
+- **«Crear a partir de este valor», porque pedirle a alguien que escriba un esquema
+  JSON a mano tiene una tasa de adopción cercana a cero.** La insignia redacta uno
+  a partir del documento que tienes delante: le pones nombre, revisas el borrador y
+  queda creado y vinculado sin salir del editor. Sus reglas están documentadas en
+  vez de ser magia, y dos de ellas existen para que no produzca un esquema que
+  rechace las filas de las que se redactó: `required` es la *intersección* de las
+  claves presentes en todas las muestras, nunca la unión, y un `enum` solo se
+  escribe cuando un valor se ha repetido de verdad — tres valores distintos en tres
+  filas son un tamaño de muestra, no un dominio cerrado. Siempre declara `$schema`,
+  que es funcional y no decorativo: sin él el servicio de lenguaje valida con
+  semántica 2020-12 en lugar de draft-07. La salida es estable byte a byte para la
+  misma entrada, así que regenerar un esquema produce un diff legible.
+
+- **Tres superficies vinculan una columna, en orden decreciente de uso.** La que
+  importa es una **insignia en la cabecera del editor de celda** (tanto en el modal
+  como en el panel lateral acoplado), junto a la insignia de JSON válido: nombra el
+  esquema resuelto, dice «sin esquema» en bajo contraste cuando no hay ninguno, y su
+  desplegable vincula cualquier entrada de la biblioteca, redacta una nueva o
+  desvincula. Es la superficie universal: es la única que tienen MongoDB y SQL
+  Server. Segunda, una **sección nueva de Ajustes → Esquemas JSON**: la biblioteca a
+  la izquierda, el documento de la entrada seleccionada a la derecha en un panel
+  Monaco que edita en el sitio y se expande a pantalla completa con F11 en vez de
+  apilar un segundo modal, y debajo la tabla completa de vínculos en orden de
+  resolución. Tercera, un **campo por columna en el editor de estructura de tabla**,
+  deliberadamente acotado — ver *Cambiado*.
+
+- **La tabla de vínculos muestra la cascada en vez de listarla.** Un eje comodín
+  dibuja el glifo `*` y nunca una celda vacía, porque una celda vacía se lee como
+  «aún sin rellenar», el error de lectura más común en cualquier tabla de
+  precedencia. El orden de las filas *es* la precedencia, ya que el backend las
+  devuelve ordenadas. Y una caja **«Probar una columna»** responde a la pregunta que
+  esta feature va a generar más — *¿por qué no se aplica mi regla?* — a través del
+  mismo resolutor que usa el editor, así que la respuesta no puede discrepar de lo
+  que ocurre al editar. Un contador de coincidencias en vivo era la alternativa y es
+  peor: tendría que recorrer los catálogos de todas las conexiones vivas y aun así
+  solo cubriría lo que esté conectado.
+
+- **Export/import de fichero independiente (`meta.kind = "json-schemas"`), más
+  inclusión opcional en la exportación de un entorno.** Sin contraseña en ninguno de
+  los dos casos: un esquema no contiene secretos ni material del llavero. La regla
+  interesante es qué pasa con un vínculo fijado a una *conexión*, dado que el
+  identificador de una conexión es un uuid local a la máquina que lo acuñó: al
+  importarlo en otra, ese vínculo llega **desactivado**, conservando su ámbito
+  original. No se ensancha a «cualquier conexión» (eso cambiaría el significado de la
+  regla) ni se descarta en silencio (eso perdería la intención sin que nadie se
+  entere), y el asistente de importación dice el número antes de escribir nada. Una
+  importación de entorno, en cambio, lo traduce, a través del mismo mapa de
+  identificadores original→nuevo que ya usa `launch.visible_connections`.
+
+- **Una guía nueva, `docs/JSON_SCHEMAS.md`** (con su gemela en español), en el
+  repositorio y en Ayuda → Documentación. Cubre la vía de 30 segundos, la cascada
+  con un ejemplo resuelto de dos reglas, los límites exactos del esquema inferido,
+  la advertencia sobre compartir y una sección de «lo que esto no es», que incluye
+  los tres comportamientos del servicio de lenguaje lo bastante sorprendentes como
+  para convertirse en preguntas de soporte: el `$schema` propio de un documento
+  tiene prioridad sobre su vínculo, un solo `$ref` sin resolver impide que se valide
+  el documento entero, y nunca se descarga nada de la red.
+
+- **Tres preferencias: validación, autocompletado y ayuda al pasar el ratón.**
+  Separadas porque el servicio de lenguaje las separa: un esquema aproximado ya sirve
+  para autocompletar mucho antes de que alguien quiera subrayados rojos. Viven en la
+  sección de Esquemas JSON y no bajo Editor, la misma decisión que ya toma
+  `AppearanceSection` con el grupo de vista de datos. Además, cuatro acciones nuevas
+  en la paleta de comandos y tres entradas de salto a preferencia.
+
+
+- **Los orígenes compartidos pueden ahora publicar y sincronizar de forma
+  continua un entorno completo (#108), no solo conexiones sueltas.** Hasta
+  ahora `sync_origin` daba por supuesto que el fichero era un paquete de
+  perfiles (`meta.kind = "profiles"`); apuntar un origen a una exportación de
+  entorno (`meta.kind = "environment"`, el mismo fichero que ya escribe
+  `export_environments`) sincronizaba en silencio solo sus `profiles` y
+  descartaba todas las entradas de `environments`, ya que `serde_json` ignora
+  los campos desconocidos en lugar de fallar. Ahora `sync_origin` lee el tipo
+  declarado del propio fichero y, para una exportación de entorno, reconcilia
+  un entorno espejo local en cada tirón: lo crea la primera vez y refresca su
+  nombre/color/icono/tema y su pertenencia de conexiones
+  (`launch.visible_connections`) en cada sincronización posterior. La
+  correspondencia entre sincronizaciones se hace por
+  `(origin_id, origin_source_id)` — el `Environment.id` del publicador en el
+  momento de exportar, un campo nuevo en `ExportedEnvironment` — y no por
+  nombre ni por posición en el fichero, que pueden cambiar entre
+  sincronizaciones. Un entorno espejo es de solo lectura en el raíl y en el
+  selector (solo se renombra, recolorea o borra vía adoptar/retirar,
+  exactamente como ya ocurría con un perfil de conexión propiedad de un
+  origen) y, si su paquete desaparece en una sincronización posterior, se
+  reporta como desaparecido en lugar de borrarse: la misma regla de «reportar,
+  nunca destruir por iniciativa propia» que ya seguía el lado de las
+  conexiones. Deliberadamente **no** registra automáticamente los orígenes
+  anidados dentro del paquete: un fichero compartido nunca debe poder hacer
+  que una máquina registre más orígenes por su cuenta, eso queda reservado al
+  `import_environment` consciente y puntual.
+### Cambiado
+
+- **El editor de celda pasa ahora a Monaco un `path` de modelo estable.** Este era
+  el cambio habilitante de todo lo anterior: los esquemas se asocian por `fileMatch`
+  contra la URI del modelo, y el `inmemory://model/N` autogenerado que recibe un
+  editor pelado no coincide con nada registrable, así que ningún esquema podía
+  aplicarse. La ruta lleva qué superficie la posee, porque el modal y el panel
+  acoplado pueden estar abiertos a la vez y dos editores que comparten ruta comparten
+  modelo: el primero en desmontarse lo destruiría bajo el otro.
+
+- **Los botones de expandir en línea dicen cuándo hay un esquema vinculado**,
+  mostrando `{}` en lugar del glifo de expandir y nombrando el esquema en su tooltip.
+  El doble clic sigue abriendo el mismo editor en línea de una sola línea (el gotcha
+  #12 se mantiene); solo cambian el icono y el tooltip. Un `<input>` de una línea no
+  puede ofrecer autocompletado ni validación, así que la única pista útil es que
+  merece la pena escalar.
+
+- **Una columna vinculada fuerza el modo JSON del editor**, por encima de la
+  heurística de tipo de contenido. Esa heurística solo responde «json» cuando el
+  texto parsea, lo que dejaría un documento momentáneamente roto sin ninguna
+  validación, precisamente cuando es más útil. Un vínculo es el usuario afirmando que
+  la columna contiene JSON.
+
+- **El editor de estructura de tabla gana una afordancia `{}` por columna, acotada
+  fuera del DDL.** Un vínculo es metadato local del editor, no un cambio de esquema:
+  vive en su propio estado y no en la columna de trabajo, así que no puede colarse en
+  el payload de `preview_structure_change` ni volver a disparar la previsualización de
+  DDL (gotcha #16). Se guarda en el momento de elegirlo, va detrás de un separador
+  discontinuo con la etiqueta `local`, y está desactivado mientras se diseña una tabla
+  que aún no existe. Los renombrados de columna se siguen tras un apply correcto, en
+  modo best-effort: el DDL ya ha corrido, así que un fallo ahí es un aviso y nunca un
+  rollback.
+
+- **`ExportEnvironmentDialog` gana un interruptor opcional «Incluir los esquemas JSON
+  y sus vínculos».** Los esquemas son globales, así que esto empaqueta la biblioteca
+  completa junto al entorno en lugar de hacerla parte de él: un solo fichero para
+  preparar una máquina nueva.
+
+- **Borrar una conexión elimina también los vínculos fijados a ella**, indicando
+  cuántos. El identificador de un perfil es un uuid que no se reutiliza jamás, así que
+  ese vínculo no puede volver a coincidir: es una regla provablemente muerta y no algo
+  inerte pero posiblemente significativo, lo que la convierte en un payload con clave
+  que merece ser segado (gotcha #27). La asimetría es lo que lo hace seguro: el
+  esquema, el artefacto caro, no se toca nunca.
+
+
+- **El borrado masivo de conexiones, el borrado de un entorno y la
+  eliminación de un origen compartido usan ahora un diálogo de confirmación
+  real en lugar del `window.confirm` nativo.** El diálogo para eliminar un
+  origen indica además de antemano cuántas conexiones y entornos publicados
+  por él quedarán marcados como huérfanos por la corrección de abajo, para que
+  «lo que publicó se queda» no sea una advertencia abstracta.
+
+- **Las opciones de importar/exportar del menú Archivo ahora se agrupan bajo
+  una cabecera de sección por tipo** (Perfiles / Entornos / Esquemas JSON) en
+  lugar de separarse con simples `DropdownMenuSeparator` vacíos. Con seis filas
+  «Importar…»/«Exportar…» parecidas seguidas, un separador vacío se leía como
+  «límite entre elementos sin relación» y no como «nueva categoría» — reutiliza
+  el mismo recurso de cabecera en línea que `ViewMenu` ya aplica a sus grupos
+  «Paneles»/«Árbol de esquema». Ahora Importar aparece antes que Exportar en
+  las tres secciones (Entornos y Esquemas JSON iban Exportar-luego-Importar;
+  solo Perfiles ya seguía ese orden). «Importar entorno…» pasa a llamarse
+  «Importar entornos…» (y lo mismo el título del diálogo y del selector de
+  fichero), ya que un mismo fichero puede contener más de un entorno, a
+  juego con «Exportar entornos…».
+
+### Corregido
+
+- **Reimportar perfiles de conexión con «sobrescribir» ya no rompe en silencio nada
+  indexado por el identificador del perfil.** `apply_profile_imports` acuña un uuid
+  nuevo incluso al sobrescribir un perfil existente, algo de lo que antes no dependía
+  nada y que por tanto era invisible. Con los vínculos en juego significa que una
+  sobrescritura deja de hacer coincidir en silencio todas las reglas fijadas a ese
+  perfil: sin error, el autocompletado simplemente desaparece, y el barrido del
+  borrado nunca salta porque no se ha borrado nada. La función devuelve ahora el
+  subconjunto de sobrescrituras de su mapa de identificadores, y ambos llamantes lo
+  usan para reapuntar los vínculos afectados.
+
+- `EnvironmentImportAnalysis` declaraba un campo `totalProfiles` en `src/types.ts`
+  mientras que `transfer.rs` envía `total_profiles`. Nadie lo leía, así que nada
+  estaba roto, pero la siguiente persona que lo leyera habría obtenido `undefined`.
+
+- **El asistente de importación de entornos reventaba a ventana en blanco en su
+  último paso, con «Cannot read properties of undefined (reading 'length')» en la
+  consola.** Es el mismo desajuste snake_case/camelCase de un nivel más arriba,
+  solo que esta vez algo sí leía el campo: `EnvironmentImportAnalysisEntry.
+  connection_count` e `ImportedEnvironment.environment_id`/`origin_ids` no llevaban
+  `#[serde(rename_all = "camelCase")]`, así que cruzaban el cable tal cual mientras
+  `src/types.ts` e `ImportEnvironmentDialog.tsx` estaban escritos esperando
+  `connectionCount`/`environmentId`/`originIds`. El paso de revisión mostraba en
+  silencio «undefined conexión(es)»; el paso final, `env.originIds.length`, lanzaba
+  directamente, tumbando todo el árbol de diálogos (React no tiene un límite de
+  error por encima de `FileMenu`). Reproducido importando un lote de varios
+  entornos y eligiendo «Omitir» para cada perfil en conflicto. Ambos structs llevan
+  ahora `rename_all = "camelCase"` — los campos `EnvironmentImportResult.
+  json_schemas` / `EnvironmentImportAnalysis.total_profiles` un nivel por encima se
+  quedan deliberadamente en snake_case (ver los comentarios del código), así que
+  esto no es un cambio de nomenclatura general.
+
+- **Eliminar un origen compartido ya no deja huérfano para siempre lo que
+  publicó.** `remove_origin` siempre dejaba en su sitio las conexiones (y ahora
+  los entornos) que había importado, etiquetadas con un `origin_id` ya
+  colgante — deliberadamente, para que un cambio de configuración nunca borre
+  en silencio un lote de servidores contra los que alguien tiene trabajo
+  abierto. Pero el único mecanismo que llega a ofrecer liberar una de esas
+  entradas (el aviso de desaparición de `useOriginSync` → adoptar/retirar) se
+  alimentaba exclusivamente de `syncAll()`, que itera los orígenes
+  *actualmente registrados*, y un origen eliminado ya no está en esa lista
+  antes de poder volver a reportar nada como desaparecido. La conexión (o el
+  entorno) se quedaba permanentemente en solo lectura y permanentemente
+  imposible de borrar desde la interfaz, sin salida. Eliminar un origen levanta
+  ahora ese mismo aviso de inmediato, a partir del estado local y mientras
+  todavía se conoce el nombre del origen, reutilizando el flujo existente de
+  decidir-después en lugar de inventar un segundo.
+
+- **Importar un lote con muchos perfiles de conexión cifrados ya no bloquea la
+  ventana (Windows la marca «No responde») durante toda la importación.**
+  `import_environment` e `import_profiles` estaban declarados como comandos
+  Tauri síncronos normales, y Tauri los ejecuta directamente en el hilo
+  principal de la app en lugar de en el pool de hilos del runtime asíncrono.
+  Ambos llaman a `apply_profile_imports`, que ejecuta `transfer::decrypt_secret`
+  una vez por cada secreto cifrado: una derivación de clave PBKDF2-HMAC-SHA256
+  de 600.000 iteraciones, deliberadamente lenta, con una sal aleatoria propia
+  por secreto, así que no hay ninguna derivación compartida que se pueda
+  cachear entre ellos. Importar un único perfil nunca sacó esto a la luz;
+  importar 13 entornos que compartían un mismo grupo de perfiles de conexión
+  (22 de ellos en conflicto con perfiles ya existentes) suponía docenas de
+  derivaciones corriendo en serie, cada una costando del orden de cien
+  milisegundos o más, bloqueando el hilo principal el tiempo suficiente para
+  que Windows reportara la app como colgada. Ambos comandos son ahora
+  `async fn`, con la lectura del fichero, el bucle de fusión/descifrado de
+  perfiles, el reapuntado de vínculos de JSON Schema y la escritura del
+  tab-state movidos a un cierre de `tauri::async_runtime::spawn_blocking`: se
+  paga el mismo coste de CPU, pero fuera del hilo que bombea los mensajes de
+  la ventana.
+
 ## [1.16.2] — 2026-08-19
 
 ### Añadido

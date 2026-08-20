@@ -4,6 +4,387 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+## [1.17.0] — 2026-08-20
+
+### Added
+
+- **A determinate progress bar for the profile/environment import dialogs**, fed
+  by a new `huginndb://import-progress` event emitted from
+  `apply_profile_imports` (`src-tauri/src/commands/connection.rs`) once per
+  profile as it works through the exported list. Now that the import runs off
+  the main thread (see the "not responding" fix below), the window stays
+  responsive during a large import, but the disabled button gave no sense of
+  whether it was almost done or stuck — a real concern once the operation can
+  legitimately take tens of seconds. `ImportProgressBar`
+  (`src/components/connection/dialogs/`) renders "N of total" and is shared by
+  both `ImportProfilesDialog` and `ImportEnvironmentDialog`, each attaching a
+  scoped `listen()` for the duration of its own `doImport` call.
+
+- **"Mark all as: …" bulk actions above the conflict list** in both import
+  dialogs (`ConflictBulkActions`, `src/components/connection/dialogs/`), so
+  resolving a bundle with dozens of conflicting profiles — the exact case a
+  multi-environment import produces — no longer means clicking
+  Rename/Overwrite/Skip on every row individually. Sets every conflict's
+  resolution at once via the same `resolutions` map the per-row buttons write
+  to, so nothing downstream needed to change.
+
+- **A library of user-defined JSON Schemas, and per-column bindings that make the
+  cell editor schema-aware.** A HuginnDB used as a configuration store ends up
+  with `json`/`jsonb`/`TEXT` columns holding documents hundreds of lines long that
+  have a real, if unwritten, contract — and the cell editor treated every one of
+  them as anonymous JSON: syntax highlighting, a valid/invalid badge, and nothing
+  else. You now keep a library of schemas (a name, an optional description, and
+  the document exactly as you typed it, in a `json_schemas.json` of its own) plus
+  a separate list of bindings saying which columns each one applies to. Attach one
+  and Monaco starts completing property names, suggesting enum values, showing each
+  property's `description` on hover, and underlining values that do not fit. The
+  completion and the hover documentation are the part that changes a working day;
+  the validation is the smaller half.
+
+  The library is **global — not scoped to an environment**, and that is a
+  deliberate reading of what a binding means. A binding says "this table's column
+  looks like this", which is a fact about the *server*, not about whether you are
+  looking at Production or Staging. Scoping it to an environment would give the
+  same table a schema in one environment and not in another, which is the
+  `visible_databases` bug (gotcha #27) a third time. It also lives in a file of its
+  own rather than in `prefs.json`, because a real schema body is 50–200 KB and
+  `prefs.json` is rewritten on every `Ctrl`+wheel of the grid.
+
+- **Validation never blocks a save, by construction.** Nothing in the commit path
+  reads markers, and the diagnostics are configured at warning severity so a
+  violation does not even *look* like it blocks. The database is the authority; a
+  schema is an aid. The day someone's schema is slightly wrong they can still edit
+  their own data.
+
+- **A most-specific-wins cascade, implemented once, in Rust.** A binding names a
+  connection, a schema/database, a table and a column; every axis but the column
+  may be "any", and the table and column accept a simple `*` glob, so one rule can
+  cover `*_json` across a whole server or exactly one column of one table.
+  Specificity runs `column > table > schema/database > connection`, and connection
+  being the *lightest* axis is the counter-intuitive part that makes the motivating
+  case work: a blanket rule over a whole connection must lose to a rule naming the
+  exact table and column, while between two otherwise identical rules the pinned
+  one should win — which is precisely what a tie-break axis is for. So a default
+  schema for `configuration` everywhere plus one override on the table whose shape
+  differs is two rules, not twelve. The frontend never re-derives any of this: it
+  would be a second implementation of one grammar (gotchas #30/#33), and the drift
+  would be silent, because a resolution bug is not an error — it is "the completion
+  did not appear", which nobody reports. Resolution is one call per data tab,
+  cached per relation, so the granularity rather than the language answers the
+  performance question.
+
+- **"Create from this value", because asking anyone to write a JSON Schema by hand
+  has an adoption rate near zero.** The badge drafts one from the document in front
+  of you: name it, review the draft, and it is created and linked without leaving
+  the editor. Its rules are documented rather than magic, and two of them exist to
+  stop it producing a schema that rejects the rows it was drafted from: `required`
+  is the *intersection* of keys present in every sample, never the union, and an
+  `enum` is only written when a value actually repeated — three distinct values
+  across three rows is a sample size, not a closed domain. It always states
+  `$schema`, which is load-bearing rather than decorative: without it the language
+  service validates with 2020-12 semantics instead of draft-07. Output is
+  byte-stable for the same input, so regenerating a schema produces a readable diff.
+
+- **Three surfaces bind a column, in decreasing order of how often you will use
+  them.** The one that matters is a **badge in the cell editor's header rail** (in
+  both the modal and the docked side panel), beside the JSON-valid chip: it names
+  the resolved schema, reads "no schema" in low contrast when there is none, and its
+  dropdown links any library entry, drafts a new one, or unlinks. This is the
+  universal surface — it is the only one MongoDB and SQL Server have. Second, a
+  **new Settings → JSON Schemas section**: the library on the left, the selected
+  entry's document on the right in a Monaco pane that edits in place and expands to
+  fullscreen with F11 rather than stacking a second modal, and the full bindings
+  table underneath in resolution order. Third, a **per-column field in the table
+  structure editor**, deliberately fenced off — see *Changed* below.
+
+- **The bindings table shows the cascade rather than listing it.** A wildcard axis
+  draws the glyph `*` and never an empty cell, because an empty cell reads as "not
+  filled in yet" — the most common misreading of any precedence table. Row order
+  *is* precedence, since the backend returns bindings ranked. And a **"Test a
+  column"** box answers the question this feature will generate most — *why is my
+  rule not applying?* — through the same resolver the editor uses, so the answer
+  cannot disagree with what happens while editing. A live match counter was the
+  alternative and is worse: it would have to walk the catalogues of every live
+  connection and would still only cover whatever happens to be connected.
+
+- **Standalone export/import (`meta.kind = "json-schemas"`), plus opt-in inclusion
+  in an environment export.** No passphrase in either case: a schema carries no
+  secret and no keychain material. The interesting rule is what happens to a
+  binding pinned to a *connection*, since a connection id is a uuid local to the
+  machine that minted it: on import elsewhere such a binding arrives **switched
+  off**, with its original scope preserved. It is not widened to "any connection"
+  (that would change what the rule means) and not dropped silently (that would lose
+  the intent with no way to notice) — and the import wizard states the count before
+  writing anything. An environment import translates instead, through the same
+  original-to-new id map `launch.visible_connections` already uses.
+
+- **A new user guide, `docs/JSON_SCHEMAS.md`** (with its Spanish twin), in the repo
+  and under Help → Documentation. It covers the 30-second route, the cascade with a
+  worked two-rule example, the exact limits of the drafted schema, the sharing
+  caveat, and a "what this is not" section — including the three language-service
+  behaviours that are surprising enough to be support questions: a document's own
+  `$schema` takes precedence over its binding, one unresolvable `$ref` stops the
+  whole document being validated, and nothing is ever fetched from the network.
+
+- **Three preferences — validation, completion and hover.** Split because the
+  language service splits them: a rough schema is useful for completion long before
+  anyone wants red underlines. They live in the JSON Schemas section rather than
+  under Editor, the same call `AppearanceSection` already makes for the data-view
+  group. Also four new command-palette actions and three jump-to-setting entries.
+
+- **Shared origins can now publish and continuously sync a whole environment
+  (#108), not just loose connections.** Until now `sync_origin` always
+  assumed the file was a plain profile bundle (`meta.kind = "profiles"`);
+  pointing an origin at an environment export (`meta.kind = "environment"`,
+  the same file `export_environments` already writes) silently synced only
+  its `profiles` and dropped every `environments` entry, since `serde_json`
+  ignores unknown fields rather than erroring. `sync_origin` now reads the
+  file's own declared kind and, for an environment export, reconciles a local
+  mirror environment on every pull: creating it the first time, refreshing
+  its name/color/icon/theme and connection membership (`launch.visible_connections`)
+  on every sync after. The match across repeated syncs is by
+  `(origin_id, origin_source_id)` — the publisher's own `Environment.id` at
+  export time, a new field on `ExportedEnvironment` — not by name or position
+  in the file, both of which can change between syncs. A mirrored environment
+  is read-only in the rail/switcher (renamed/recolored/deleted only via
+  adopt/retire, exactly like an origin-owned connection profile already was)
+  and, if its bundle disappears from a later sync, is reported as vanished
+  rather than deleted — same "report, never destroy on our own initiative"
+  rule the connection side already followed. Deliberately does **not**
+  auto-register the origins nested inside the bundle: a shared file must
+  never be able to make a machine register more origins on its own, that
+  stays reserved for the conscious, one-shot `import_environment`.
+
+- **Column reordering in the table structure editor, MySQL only.** Up/down
+  arrows next to each row (revealed on hover, next to the existing delete
+  icon) let you move a column without dropping and re-adding it. Designing a
+  brand-new table allows reordering on every driver — it's just column array
+  order feeding one `CREATE TABLE` — but repositioning a column on a *live*
+  table needs a real `ALTER`, and only MySQL's `MODIFY COLUMN`/`ADD COLUMN …
+  FIRST|AFTER col` can express that; Postgres has no equivalent ALTER at all,
+  and SQLite would mean forcing the 12-step rebuild for what is otherwise a
+  no-op change. `db::ddl::mysql_column_positions` diffs the desired column
+  order against where each surviving/new column would naturally land (an
+  unmoved `MODIFY`/`ADD COLUMN` leaves a column in place / appends it at the
+  end) and only emits a position clause for the columns that actually need to
+  move, so an unrelated edit elsewhere in the table never gets a spurious
+  reorder statement.
+
+### Changed
+
+- **The cell editor now gives Monaco a stable model `path`.** This was the enabling
+  change for everything above: schemas attach by `fileMatch` against the model URI,
+  and the auto-generated `inmemory://model/N` a bare editor gets matches nothing
+  that can be registered, so no schema could apply at all. The path carries which
+  surface owns it, because the modal and the docked panel can be open at once and
+  two editors sharing a path share a model — whichever unmounted first would destroy
+  it under the other.
+
+- **The inline expand buttons say when a schema is attached**, rendering `{}`
+  instead of the expand glyph and naming the schema in their tooltip. Double-click
+  still opens the same one-line inline editor (gotcha #12 stands); only the icon and
+  the tooltip changed. A one-line `<input>` cannot offer completion or validation,
+  so the only useful hint is that escalating is worth it.
+
+- **A bound column forces the editor into JSON mode**, overriding the content-type
+  heuristic. That heuristic only answers "json" when the text parses, which would
+  leave a momentarily-broken document with no validation at all — precisely when it
+  is most useful. A binding is the user asserting the column holds JSON.
+
+- **The table structure editor gained a per-column `{}` affordance, fenced off from
+  the DDL.** A binding is local editor metadata, not a schema change: it lives in
+  its own state rather than on the working column, so it cannot ride into the
+  `preview_structure_change` payload or re-trigger the debounced DDL preview
+  (gotcha #16). It saves the instant it is picked, sits behind a dashed divider
+  under a `local` tag, and is disabled while designing a table that does not exist
+  yet. Column renames are followed after a successful apply, best-effort — the DDL
+  has already run, so a failure there is a toast and never a rollback.
+
+- **`ExportEnvironmentDialog` grew an opt-in "Include JSON Schemas and their
+  bindings" switch.** Schemas are global, so this packs the whole library alongside
+  the environment rather than making them part of it — one file to set up a new
+  machine.
+
+- **Deleting a connection now also drops the bindings pinned to it**, reporting how
+  many. A profile id is a uuid that is never reused, so such a binding can never
+  match again: it is a provably dead rule rather than something inert but possibly
+  meaningful, which makes it a keyed payload worth reaping (gotcha #27). The
+  asymmetry is what makes that safe — the schema, the expensive artefact, is never
+  touched.
+
+- **Bulk-deleting connections, deleting an environment, and removing a
+  shared origin now use a real confirm dialog instead of the native
+  `window.confirm`.** The dialog for removing an origin also states up front
+  how many connections and environments it published will be flagged as
+  orphaned by the fix above, so "what it published stays" isn't an abstract
+  warning.
+
+- **Shared origins moved from per-environment to a global registry**
+  (`tab_state.json` v5: `Environment.origins` → the top-level
+  `PersistedTabState.origins`). An origin describes a server-side resource, not
+  a Producción/Staging axis, and what it produces — `profiles.json` entries,
+  whole mirrored environments — was already global; scoping the *registration*
+  to one environment reproduced the `visible_databases` bug one level up (the
+  same shared file needed a second, independent registration to be seen from a
+  second environment) and meant deleting whichever environment happened to
+  hold the registration silently orphaned every connection it had ever
+  imported. `add/update/remove/sync/list_origins` all operate on the global
+  list now; `export_environments`/`import_environment` derive an environment's
+  bundled origins from what its connections (or its own mirror) actually
+  depend on rather than copying a per-environment list verbatim. Existing
+  installs migrate automatically: two environments that had each registered
+  the same `path` independently dedupe into one global entry (first one seen
+  keeps its id), and every dangling reference — a profile's `origin_id`, a
+  mirrored environment's `origin_id` — is remapped to the surviving id.
+
+- **The File menu's import/export items are now grouped under a section header
+  per type** (Profiles / Environments / JSON Schemas) instead of separated by
+  bare `DropdownMenuSeparator`s. With six lookalike "Import…"/"Export…" rows in
+  a row, an empty separator read as "unrelated item boundary" rather than "new
+  category" — reuses the same inline-header idiom `ViewMenu` already applies
+  to its "Panels"/"Schema tree" groups. Import is now listed before export in
+  every section (Environments and JSON Schemas were Export-then-Import; only
+  Profiles already read that way). "Import environment…" is renamed "Import
+  environments…" (and its dialog title/file-picker title likewise) since one
+  file can bundle more than one environment, matching "Export environments…".
+
+### Fixed
+
+- **A hand-typed SELECT with no `LIMIT`/`TOP` over a large table could take
+  down the whole app with an out-of-memory crash, and the "Run" button's timer
+  kept spinning the entire time it happened.** Reported against SQL Server (a
+  query pasted straight from SSMS over a multi-million-row table), but the
+  root cause was shared by every SQL driver: `execute_query`/`execute_batch`
+  (`src-tauri/src/commands/query.rs`) handed the editor's SQL straight to
+  `sqlx::query(..).fetch_all(..)` for Postgres/MySQL/SQLite and to
+  `tiberius`'s `simple_query(..).into_results()` for SQL Server, both of which
+  buffer the *entire* result set in memory before returning a single row — and
+  `DataGrid` then rendered every one of those rows into the DOM (see the
+  virtualization fix below). None of this was time-bounded either: the
+  elapsed-time readout next to "Run" is a cosmetic `setInterval`, not a real
+  timeout, so nothing in the chain ever cancelled the driver call — the query
+  ran to completion (or exhausted memory first) regardless of how long the UI
+  had been sitting there. MongoDB's `find`/`aggregate` shell statements had the
+  same unbounded-cursor shape.
+
+  Every ad-hoc read path (`execute_query`, `execute_batch`, and MongoDB's
+  `find`/`aggregate`) now keeps at most `MAX_ADHOC_QUERY_ROWS` (50,000) rows,
+  via a new generic `fetch_capped` helper that streams a SELECT with sqlx's
+  `fetch()` instead of `fetch_all()`, a new `simple_query_sets_capped` on the
+  SQL Server pool that walks `tiberius`'s `QueryStream` item-by-item, and a
+  `collect_capped` for Mongo cursors. Rows past the cap are still drained (SQL:
+  so the pooled connection/session is left at a clean protocol boundary
+  instead of mid-response — dropping the stream early would corrupt the next
+  caller's query on that same connection; Mongo: the cursor is simply dropped,
+  which is a supported operation) — discarded, not merely deferred, so backend
+  memory stays bounded no matter how many rows the query actually matches.
+  `QueryResult.truncated` reports when this happened, and the grid now shows a
+  "truncated" badge in the toolbar (with a hint to add a `LIMIT`/`TOP`) instead
+  of silently handing back a partial result with no indication anything was
+  cut. `fetch_table_data`/`fetch_collection_data` (the paginated table/
+  collection browser) are unaffected — they always apply their own
+  `LIMIT`/`OFFSET` and never truncate.
+
+  `DataGrid.tsx`'s row rendering is now backed by `@tanstack/react-virtual`
+  instead of mounting one real `<tr>` per row unconditionally — the file's own
+  header comment used to (incorrectly) claim rows were "virtualised by the
+  browser via the parent's `overflow-auto`", which is not how `overflow-auto`
+  works and is exactly what let a 50,000-row capped result still bog down the
+  renderer even after the backend stopped running out of memory.
+
+- **Removing a shared origin could leave its connections permanently stuck**
+  if the in-app "keep as mine / delete" notice was missed before the app
+  closed — the notice lived only in memory (`useOriginSync.vanished`), so an
+  app restart lost it for good, and a connection tagged with a dangling
+  `origin_id` is read-only and un-deletable in the UI with no other way to
+  clear the tag. `syncAll()` now also runs a reconciliation sweep on every
+  pass (launch, the 4-hourly poll, and "Sync now") that catches any profile or
+  mirrored environment whose `origin_id` doesn't match a currently registered
+  origin and raises the same adopt/retire notice for it, without needing the
+  origin's name (it's shown as "a shared origin that no longer exists"). The
+  "Sync now" button in Settings → Origins no longer disables itself when zero
+  origins are registered, since this sweep is useful precisely in that state —
+  right after removing the last one.
+
+- **Re-importing connection profiles with "overwrite" no longer silently breaks
+  anything keyed on the profile id.** `apply_profile_imports` mints a fresh uuid
+  even when overwriting an existing profile, which nothing depended on before and so
+  was invisible. With bindings in the picture it means an overwrite quietly stops
+  every rule pinned to that profile from matching — no error, the completion simply
+  disappears, and the delete-time sweep never fires because nothing was deleted. The
+  function now returns the overwrite subset of its id map, and both callers use it to
+  repoint the affected bindings.
+
+- `EnvironmentImportAnalysis` declared a `totalProfiles` field in `src/types.ts`
+  while `transfer.rs` sends `total_profiles`. Nothing read it, so nothing was broken,
+  but the next person to read it would have got `undefined`.
+
+- **The environment-import wizard crashed to a blank window on its last step, with
+  "Cannot read properties of undefined (reading 'length')" in the console.** This is
+  that same snake_case/camelCase mismatch one level over, except this time something
+  *did* read the field: `EnvironmentImportAnalysisEntry.connection_count` and
+  `ImportedEnvironment.environment_id`/`origin_ids` had no `#[serde(rename_all =
+  "camelCase")]`, so they crossed the wire as-is while `src/types.ts` and
+  `ImportEnvironmentDialog.tsx` were written expecting `connectionCount`/
+  `environmentId`/`originIds`. The review step silently showed "undefined
+  conexión(es)"; the done step's `env.originIds.length` threw outright, taking the
+  whole dialog tree down with it (React has no error boundary above `FileMenu`).
+  Reproduced by importing a multi-environment bundle and choosing "Omitir" for every
+  conflicting profile. Both structs now carry `rename_all = "camelCase"` — the
+  `EnvironmentImportResult.json_schemas` / `EnvironmentImportAnalysis.total_profiles`
+  fields one level up deliberately keep snake_case (see the code comments), so this
+  is not a blanket rename.
+
+- **Removing a shared origin no longer orphans what it published forever.**
+  `remove_origin` always left the connections (and now environments) it
+  imported in place, tagged with a now-dangling `origin_id` — deliberately,
+  so a config change never silently deletes a batch of servers someone has
+  work open against. But the only mechanism that ever offers to release such
+  an entry (`useOriginSync`'s vanished-notice → adopt/retire) was fed
+  exclusively by `syncAll()`, which iterates the *currently registered*
+  origins — and a removed origin is gone from that list before it can ever
+  report anything as vanished again. The connection (or environment) stayed
+  permanently read-only and permanently undeletable from the UI, with no way
+  out. Removing an origin now raises the same vanished-notice immediately,
+  from local state, while the origin's name is still known — reusing the
+  existing decide-later flow instead of inventing a second one.
+
+- **Importing a bundle with many encrypted connection profiles no longer
+  freezes the window ("not responding" in Windows) for the whole import.**
+  `import_environment` and `import_profiles` were declared as plain, non-async
+  Tauri commands, which Tauri dispatches directly on the app's main thread
+  rather than the async runtime's thread pool. Both call
+  `apply_profile_imports`, which runs `transfer::decrypt_secret` once per
+  encrypted secret — a 600 000-iteration PBKDF2-HMAC-SHA256 key derivation,
+  deliberately slow, with a fresh random salt per secret so there is no shared
+  derivation to cache across them. A single-profile import never surfaced
+  this; importing 13 environments sharing a pool of connection profiles (22 of
+  them conflicting with existing ones) meant dozens of derivations running
+  serially, each costing on the order of a hundred milliseconds or more,
+  blocking the main thread for long enough that Windows reported the app as
+  hung. Both commands are now `async fn`, with the file read, the profile
+  merge/decrypt loop, the JSON-Schema binding remap, and the tab-state write
+  moved into a `tauri::async_runtime::spawn_blocking` closure — the same CPU
+  cost is paid, but off the thread that pumps window messages.
+
+- **The structure editor could reject its own DDL preview for a column
+  nobody touched, on MySQL `BIT` columns specifically.** MySQL reports a
+  `BIT` column's default from `information_schema` in its native `b'0'`/
+  `b'1'` literal form, and the structure editor round-trips that verbatim
+  into the "Default" field. `validate_structure` validated every column's
+  default against a conservative allowlist (numbers, quoted strings, a
+  handful of keywords) regardless of whether the user had touched it, so
+  simply opening a table with a `BIT` column and editing an unrelated column
+  made the whole preview/apply fail with "unsupported default expression:
+  \"b'0'\"" — a comment already flagged this exact class of problem for
+  Postgres's cast-style defaults (`'foo'::text`) in the `dump`/SQLite-rebuild
+  path, but the structure editor's own `ALTER` path never got the same
+  treatment. A column's default now only goes through the allowlist when it
+  actually differs from what's on the live catalog; an unchanged default —
+  in whatever dialect-native form the server reports it — is trusted as-is.
+
 ## [1.16.2] — 2026-08-19
 
 ### Added

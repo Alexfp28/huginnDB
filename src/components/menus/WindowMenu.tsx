@@ -41,7 +41,6 @@ export function WindowMenu() {
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => useSessionPanelLayout.getState().resetLayout()}
-          className="text-xs"
         >
           <LayoutGrid className="mr-2 h-3.5 w-3.5" />
           {t("menu.window.resetLayout")}

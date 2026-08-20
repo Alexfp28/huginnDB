@@ -23,6 +23,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,
+  Braces,
   Copy,
   Database,
   Download,
@@ -81,6 +82,38 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.17.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_17_0.tagline",
+    highlights: [
+      {
+        icon: Braces,
+        titleKey: "whatsNew.releases.1_17_0.items.jsonSchemas.title",
+        bodyKey: "whatsNew.releases.1_17_0.items.jsonSchemas.body",
+      },
+      {
+        icon: Gauge,
+        titleKey: "whatsNew.releases.1_17_0.items.querySafety.title",
+        bodyKey: "whatsNew.releases.1_17_0.items.querySafety.body",
+      },
+      {
+        icon: Share2,
+        titleKey: "whatsNew.releases.1_17_0.items.originEnvironments.title",
+        bodyKey: "whatsNew.releases.1_17_0.items.originEnvironments.body",
+      },
+      {
+        icon: Download,
+        titleKey: "whatsNew.releases.1_17_0.items.importProgress.title",
+        bodyKey: "whatsNew.releases.1_17_0.items.importProgress.body",
+      },
+      {
+        icon: Table2,
+        titleKey: "whatsNew.releases.1_17_0.items.columnReorder.title",
+        bodyKey: "whatsNew.releases.1_17_0.items.columnReorder.body",
+      },
+    ],
+  },
   {
     version: "1.16.0",
     major: true,

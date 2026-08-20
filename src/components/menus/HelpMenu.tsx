@@ -39,28 +39,19 @@ export function HelpMenu() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuItem
-          onSelect={() => useWhatsNew.getState().openLatest()}
-          className="text-xs"
-        >
+        <DropdownMenuItem onSelect={() => useWhatsNew.getState().openLatest()}>
           <Sparkles className="mr-2 h-3.5 w-3.5" />
           {t("whatsNew.menuEntry")}
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => useDocsDialog.getState().openTo()}
-          className="text-xs"
-        >
+        <DropdownMenuItem onSelect={() => useDocsDialog.getState().openTo()}>
           <BookOpen className="mr-2 h-3.5 w-3.5" />
           {t("docs.menuEntry")}
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => useFeedbackDialog.getState().openWith()}
-          className="text-xs"
-        >
+        <DropdownMenuItem onSelect={() => useFeedbackDialog.getState().openWith()}>
           <MessageSquarePlus className="mr-2 h-3.5 w-3.5" />
           {t("feedback.menuEntry")}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => openSettings("about")} className="text-xs">
+        <DropdownMenuItem onSelect={() => openSettings("about")}>
           <Info className="mr-2 h-3.5 w-3.5" />
           {t("menu.help.about")}
         </DropdownMenuItem>

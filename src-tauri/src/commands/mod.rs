@@ -12,6 +12,7 @@ pub mod connection;
 pub mod credentials;
 pub mod dump;
 pub mod feedback;
+pub mod json_schemas;
 pub mod mcp;
 pub mod mongo;
 pub mod mongo_indexes;

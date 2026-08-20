@@ -6,9 +6,24 @@
 //! There is no protocol and no service here: reading one is `std::fs::read`, and
 //! the share's ACL is the actual access control.
 //!
-//! This module owns the origin *registry* (add / rename / remove, scoped to the
-//! active environment), the keychain handling for an encrypted origin's
-//! passphrase, and the pull itself ([`sync_origin`]).
+//! This module owns the origin *registry* (add / rename / remove), the
+//! keychain handling for an encrypted origin's passphrase, and the pull
+//! itself ([`sync_origin`]).
+//!
+//! ## Why the registry is global, not scoped to an environment
+//!
+//! An origin describes a *server-side* resource — a file on a share — not a
+//! Producción/Staging axis, and what it produces (`profiles.json` entries,
+//! and whole mirrored environments) is already global. Scoping the
+//! registration itself to one environment reproduced the `visible_databases`
+//! bug (CLAUDE.md gotcha #27) one level up: the same physical file needed a
+//! second, independent registration to be seen from a second environment, and
+//! deleting whichever environment happened to hold the registration silently
+//! orphaned every connection it had ever imported, with no notice raised at
+//! all — worse than removing the origin on purpose, which at least tells the
+//! frontend (`useOriginSync.noticeOriginRemoved`). `tab_state.json` v5 moved
+//! `origins` to [`crate::tab_state::PersistedTabState`] for exactly this
+//! reason; see that module's history for the migration.
 //!
 //! ## Why the passphrase goes in the keychain
 //!
@@ -28,7 +43,11 @@
 use crate::error::{AppError, AppResult};
 use crate::keychain;
 use crate::state::AppState;
-use crate::tab_state::{self, Origin};
+use crate::tab_state::{self, Environment, LaunchState, Origin};
+use crate::transfer::{
+    EnvironmentExportFile, ExportMetadata, ExportedEnvironmentBundle, ExportedProfile,
+    KIND_ENVIRONMENT,
+};
 use tauri::State;
 
 /// Keychain account for an origin's passphrase.
@@ -41,17 +60,14 @@ fn passphrase_account(origin_id: &str) -> String {
     format!("origin::{origin_id}")
 }
 
-/// Origins registered in the active environment, in insertion order.
+/// Every registered origin, global across all environments, in insertion
+/// order.
 #[tauri::command]
 pub fn list_origins(state: State<'_, AppState>) -> AppResult<Vec<Origin>> {
-    let guard = state.tab_state.read();
-    Ok(guard
-        .active_environment()
-        .map(|env| env.origins.clone())
-        .unwrap_or_default())
+    Ok(state.tab_state.read().origins.clone())
 }
 
-/// Register a shared origin in the active environment.
+/// Register a shared origin.
 ///
 /// The path is **not** validated here beyond being non-empty. A share can be
 /// legitimately unreachable at the moment it is configured — VPN down, laptop
@@ -87,7 +103,7 @@ pub fn add_origin(
 
     let snapshot = {
         let mut guard = state.tab_state.write();
-        guard.active_environment_mut().origins.push(origin.clone());
+        guard.origins.push(origin.clone());
         guard.clone()
     };
     tab_state::save_tab_state(&snapshot)?;
@@ -121,7 +137,6 @@ pub fn update_origin(
     let (snapshot, updated) = {
         let mut guard = state.tab_state.write();
         let origin = guard
-            .active_environment_mut()
             .origins
             .iter_mut()
             .find(|o| o.id == id)
@@ -148,10 +163,9 @@ pub fn update_origin(
 pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
     let snapshot = {
         let mut guard = state.tab_state.write();
-        let env = guard.active_environment_mut();
-        let before = env.origins.len();
-        env.origins.retain(|o| o.id != id);
-        if env.origins.len() == before {
+        let before = guard.origins.len();
+        guard.origins.retain(|o| o.id != id);
+        if guard.origins.len() == before {
             return Err(AppError::InvalidInput(format!("no origin with id {id}")));
         }
         guard.clone()
@@ -187,8 +201,10 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
     let origin = {
         let guard = state.tab_state.read();
         guard
-            .active_environment()
-            .and_then(|env| env.origins.iter().find(|o| o.id == id).cloned())
+            .origins
+            .iter()
+            .find(|o| o.id == id)
+            .cloned()
             .ok_or_else(|| AppError::InvalidInput(format!("no origin with id {id}")))?
     };
 
@@ -197,7 +213,17 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
     let data = std::fs::read_to_string(&origin.path).map_err(|e| {
         AppError::InvalidInput(format!("cannot read origin {:?}: {e}", origin.path))
     })?;
-    let export: crate::transfer::ExportFile = serde_json::from_str(&data).map_err(|e| {
+
+    // Peek `meta.kind` before committing to a shape. This used to always
+    // assume a plain `ExportFile`, which — since `serde_json` silently drops
+    // unknown fields — parsed a `kind = "environment"` file just fine while
+    // quietly ignoring its whole `environments` array. Now the file's own
+    // declared kind decides which shape it's read as.
+    #[derive(serde::Deserialize)]
+    struct MetaPeek {
+        meta: ExportMetadata,
+    }
+    let meta_peek: MetaPeek = serde_json::from_str(&data).map_err(|e| {
         AppError::InvalidInput(format!(
             "origin {:?} is not a HuginnDB export: {e}",
             origin.path
@@ -205,17 +231,82 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
     })?;
 
     let passphrase = keychain::get_password(&passphrase_account(&id))?;
-    if export.meta.encrypted && passphrase.is_none() {
+    if meta_peek.meta.encrypted && passphrase.is_none() {
         return Err(AppError::InvalidInput(
             "this origin is encrypted but no passphrase is stored for it".into(),
         ));
     }
 
-    let incoming_ids: std::collections::HashSet<&str> = export
-        .profiles
-        .iter()
-        .map(|p| p.profile.id.as_str())
-        .collect();
+    let is_environment_kind = meta_peek.meta.kind == KIND_ENVIRONMENT;
+    let (incoming_profiles, environment_bundles): (
+        Vec<ExportedProfile>,
+        Vec<ExportedEnvironmentBundle>,
+    ) = if is_environment_kind {
+        let export: EnvironmentExportFile = serde_json::from_str(&data).map_err(|e| {
+            AppError::InvalidInput(format!(
+                "origin {:?} is not a valid environment export: {e}",
+                origin.path
+            ))
+        })?;
+        (export.profiles, export.environments)
+    } else {
+        let export: crate::transfer::ExportFile = serde_json::from_str(&data).map_err(|e| {
+            AppError::InvalidInput(format!(
+                "origin {:?} is not a HuginnDB export: {e}",
+                origin.path
+            ))
+        })?;
+        (export.profiles, Vec::new())
+    };
+
+    let mut report = merge_profiles_bundle(
+        state.inner(),
+        &id,
+        passphrase.as_deref(),
+        &incoming_profiles,
+    )?;
+    report.synced_at = chrono::Utc::now().to_rfc3339();
+
+    let snapshot = {
+        let mut guard = state.tab_state.write();
+        // Run this whenever the file is environment-kind, even with zero
+        // bundles: an origin that used to publish environments and now
+        // publishes none must still get its previously-mirrored environments
+        // reported vanished, not silently skipped. Gating on the file's kind
+        // rather than on `environment_bundles` being non-empty is what makes
+        // that degenerate case behave the same as an ordinary disappearance.
+        if is_environment_kind {
+            let (added, updated, vanished, suspicious) =
+                sync_environment_bundles(&mut guard, &id, &environment_bundles);
+            report.environments_added = added;
+            report.environments_updated = updated;
+            report.environments_vanished = vanished;
+            report.environments_suspicious = suspicious;
+        }
+        if let Some(o) = guard.origins.iter_mut().find(|o| o.id == id) {
+            o.last_synced_at = Some(report.synced_at.clone());
+        }
+        guard.clone()
+    };
+    tab_state::save_tab_state(&snapshot)?;
+    Ok(report)
+}
+
+/// Merge one origin's published profile list into the global pool, and land
+/// any secrets it carries into this user's keychain. Shared by a plain
+/// `ExportFile` (`kind = "profiles"`, or the pre-`kind` legacy shape) and the
+/// `profiles` section of an `EnvironmentExportFile` (`kind = "environment"`)
+/// — the connection-sync rules (ownership by `origin_id`, deferral while a
+/// pool is live, vanished detection) don't care which envelope they arrived
+/// in, only `sync_origin`'s caller does.
+fn merge_profiles_bundle(
+    state: &AppState,
+    origin_id: &str,
+    passphrase: Option<&str>,
+    incoming: &[ExportedProfile],
+) -> AppResult<OriginSyncReport> {
+    let incoming_ids: std::collections::HashSet<&str> =
+        incoming.iter().map(|p| p.profile.id.as_str()).collect();
 
     let mut report = OriginSyncReport::default();
     let live: Vec<String> = state.connections.read().ids();
@@ -227,7 +318,7 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
         // the suspicion check.
         let owned: Vec<String> = profiles
             .iter()
-            .filter(|p| p.origin_id.as_deref() == Some(id.as_str()))
+            .filter(|p| p.origin_id.as_deref() == Some(origin_id))
             .map(|p| p.id.clone())
             .collect();
         report.vanished = owned
@@ -241,30 +332,30 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
             report.vanished.clear();
         }
 
-        for entry in &export.profiles {
-            let mut incoming = entry.profile.clone();
-            incoming.origin_id = Some(id.clone());
+        for entry in incoming {
+            let mut profile = entry.profile.clone();
+            profile.origin_id = Some(origin_id.to_string());
             // An origin never publishes session-only profiles.
-            incoming.ephemeral = false;
+            profile.ephemeral = false;
 
-            match profiles.iter_mut().find(|p| p.id == incoming.id) {
+            match profiles.iter_mut().find(|p| p.id == profile.id) {
                 Some(existing) => {
                     // Only ever refresh a profile this origin already owns. A
                     // local profile that happens to share an id (an earlier
                     // import, later detached) is the user's, not the file's.
-                    if existing.origin_id.as_deref() != Some(id.as_str()) {
+                    if existing.origin_id.as_deref() != Some(origin_id) {
                         continue;
                     }
-                    if live.iter().any(|c| c == &incoming.id) {
-                        report.deferred.push(incoming.id.clone());
+                    if live.iter().any(|c| c == &profile.id) {
+                        report.deferred.push(profile.id.clone());
                         continue;
                     }
-                    *existing = incoming.clone();
-                    report.updated.push(incoming.id);
+                    *existing = profile.clone();
+                    report.updated.push(profile.id);
                 }
                 None => {
-                    report.added.push(incoming.id.clone());
-                    profiles.push(incoming);
+                    report.added.push(profile.id.clone());
+                    profiles.push(profile);
                 }
             }
         }
@@ -275,12 +366,12 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
     // Secrets land in this user's own keychain, decrypted with their own stored
     // passphrase. Best-effort per profile: a secret that fails to decrypt leaves
     // that connection needing a password rather than failing the whole sync.
-    for entry in &export.profiles {
+    for entry in incoming {
         let Some(secrets) = &entry.secrets else {
             continue;
         };
         if let Some(blob) = &secrets.db_password {
-            let plain = match &passphrase {
+            let plain = match passphrase {
                 Some(pass) => crate::transfer::decrypt_secret(blob, pass).ok(),
                 None => Some(blob.clone()),
             };
@@ -291,7 +382,7 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
         if let (Some(blob), Some(account)) =
             (&secrets.ssh_secret, entry.profile.ssh_keyring_account())
         {
-            let plain = match &passphrase {
+            let plain = match passphrase {
                 Some(pass) => crate::transfer::decrypt_secret(blob, pass).ok(),
                 None => Some(blob.clone()),
             };
@@ -301,21 +392,107 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
         }
     }
 
-    report.synced_at = chrono::Utc::now().to_rfc3339();
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        if let Some(o) = guard
-            .active_environment_mut()
-            .origins
-            .iter_mut()
-            .find(|o| o.id == id)
-        {
-            o.last_synced_at = Some(report.synced_at.clone());
-        }
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
     Ok(report)
+}
+
+/// Reconcile the environments an origin's `EnvironmentExportFile` describes
+/// against this machine's local mirrors of them, matched by
+/// `(origin_id, origin_source_id)` — not by position in the file or by name,
+/// which can both change between syncs. See `Environment::origin_source_id`
+/// for why that pair is the identity that survives repeated syncs, given
+/// `ExportedEnvironment` itself carries no portable id.
+///
+/// Deliberately does **not** register a bundle's own nested `origins`: a file
+/// an origin points at must not be able to make this machine register more
+/// origins on its own — that stays reserved for the conscious, one-shot
+/// `import_environment`.
+///
+/// Returns (added env ids, updated env ids, vanished env ids, suspicious).
+fn sync_environment_bundles(
+    guard: &mut tab_state::PersistedTabState,
+    origin_id: &str,
+    bundles: &[ExportedEnvironmentBundle],
+) -> (Vec<String>, Vec<String>, Vec<String>, bool) {
+    let owned_count = guard
+        .environments
+        .iter()
+        .filter(|e| e.origin_id.as_deref() == Some(origin_id))
+        .count();
+    let incoming_source_ids: std::collections::HashSet<&str> = bundles
+        .iter()
+        .map(|b| b.environment.source_environment_id.as_str())
+        .collect();
+
+    let mut vanished: Vec<String> = guard
+        .environments
+        .iter()
+        .filter(|e| e.origin_id.as_deref() == Some(origin_id))
+        .filter(|e| {
+            e.origin_source_id
+                .as_deref()
+                .map(|src| !incoming_source_ids.contains(src))
+                .unwrap_or(false)
+        })
+        .map(|e| e.id.clone())
+        .collect();
+    let suspicious = !disappearance_is_trustworthy(owned_count, vanished.len());
+    if suspicious {
+        vanished.clear();
+    }
+
+    let mut added = Vec::new();
+    let mut updated = Vec::new();
+    let base_order = guard
+        .environments
+        .iter()
+        .map(|e| e.order)
+        .max()
+        .unwrap_or(0)
+        + 1;
+    for (i, bundle) in bundles.iter().enumerate() {
+        let src_id = bundle.environment.source_environment_id.as_str();
+        let visible_connections = if bundle.connection_ids.is_empty() {
+            None
+        } else {
+            Some(bundle.connection_ids.clone())
+        };
+
+        match guard.environments.iter_mut().find(|e| {
+            e.origin_id.as_deref() == Some(origin_id)
+                && e.origin_source_id.as_deref() == Some(src_id)
+        }) {
+            Some(existing) => {
+                existing.name = bundle.environment.name.clone();
+                existing.color = bundle.environment.color.clone();
+                existing.icon = bundle.environment.icon.clone();
+                existing.theme_id = bundle.environment.theme_id.clone();
+                existing.launch.visible_connections = visible_connections;
+                updated.push(existing.id.clone());
+            }
+            None => {
+                let env_id = uuid::Uuid::new_v4().to_string();
+                let env = Environment {
+                    id: env_id.clone(),
+                    name: bundle.environment.name.clone(),
+                    color: bundle.environment.color.clone(),
+                    icon: bundle.environment.icon.clone(),
+                    order: base_order + i as i32,
+                    theme_id: bundle.environment.theme_id.clone(),
+                    origin_id: Some(origin_id.to_string()),
+                    origin_source_id: Some(src_id.to_string()),
+                    launch: LaunchState {
+                        visible_connections,
+                        ..LaunchState::default()
+                    },
+                    ..Environment::default()
+                };
+                guard.environments.push(env);
+                added.push(env_id);
+            }
+        }
+    }
+
+    (added, updated, vanished, suspicious)
 }
 
 /// Below this many origin-tagged profiles, the "too many vanished at once" check
@@ -372,6 +549,22 @@ pub struct OriginSyncReport {
     pub suspicious: bool,
     /// RFC 3339 stamp written back onto the origin on success.
     pub synced_at: String,
+    /// Environment ids created by this sync, when the origin publishes whole
+    /// environments (`kind = "environment"`). Empty for a plain profile origin.
+    #[serde(default)]
+    pub environments_added: Vec<String>,
+    /// Environment ids whose cosmetics/membership were refreshed from the file.
+    #[serde(default)]
+    pub environments_updated: Vec<String>,
+    /// Environment ids this origin owns locally whose bundle disappeared from
+    /// the file. Reported only, same as `vanished` one level up: nothing here
+    /// deletes on its own.
+    #[serde(default)]
+    pub environments_vanished: Vec<String>,
+    /// Same purpose as `suspicious`, scoped to the environment count instead
+    /// of the profile count.
+    #[serde(default)]
+    pub environments_suspicious: bool,
 }
 
 #[cfg(test)]
@@ -409,5 +602,151 @@ mod tests {
         let account = passphrase_account("2f1c8a0e-0000-4000-8000-000000000000");
         assert!(account.starts_with("origin::"));
         assert!(!account.contains("::origin"));
+    }
+
+    fn bundle(
+        source_id: &str,
+        name: &str,
+        connection_ids: Vec<String>,
+    ) -> ExportedEnvironmentBundle {
+        ExportedEnvironmentBundle {
+            environment: crate::transfer::ExportedEnvironment {
+                name: name.into(),
+                color: None,
+                icon: None,
+                theme_id: None,
+                source_environment_id: source_id.into(),
+            },
+            connection_ids,
+            // A sync must never auto-register origins from the file — see
+            // `sync_environment_bundles`'s doc — so tests deliberately leave
+            // this non-empty to prove it's ignored, not just untested.
+            origins: vec![crate::transfer::ExportedOrigin {
+                name: "should be ignored".into(),
+                path: "/should/be/ignored".into(),
+            }],
+        }
+    }
+
+    #[test]
+    fn first_sync_creates_a_mirrored_environment() {
+        let mut state = tab_state::PersistedTabState::default();
+        let (added, updated, vanished, suspicious) = sync_environment_bundles(
+            &mut state,
+            "origin-1",
+            &[bundle("src-a", "Producción", vec!["conn-1".into()])],
+        );
+
+        assert_eq!(added.len(), 1);
+        assert!(updated.is_empty());
+        assert!(vanished.is_empty());
+        assert!(!suspicious);
+
+        let env = state
+            .environments
+            .iter()
+            .find(|e| e.id == added[0])
+            .unwrap();
+        assert_eq!(env.name, "Producción");
+        assert_eq!(env.origin_id.as_deref(), Some("origin-1"));
+        assert_eq!(env.origin_source_id.as_deref(), Some("src-a"));
+        assert_eq!(
+            env.launch.visible_connections,
+            Some(vec!["conn-1".to_string()])
+        );
+        // The bundle's own nested origin must never be auto-registered.
+        assert!(env.origins.is_empty());
+    }
+
+    #[test]
+    fn a_later_sync_updates_the_same_mirrored_environment_instead_of_duplicating() {
+        let mut state = tab_state::PersistedTabState::default();
+        let (added, ..) = sync_environment_bundles(
+            &mut state,
+            "origin-1",
+            &[bundle("src-a", "Producción", vec!["conn-1".into()])],
+        );
+        let env_id = added[0].clone();
+
+        // The publisher renamed it and added a second connection — same
+        // `source_environment_id`, so it must be recognised as the same
+        // environment, not create a sibling.
+        let (added2, updated2, vanished2, _) = sync_environment_bundles(
+            &mut state,
+            "origin-1",
+            &[bundle(
+                "src-a",
+                "Producción (EU)",
+                vec!["conn-1".into(), "conn-2".into()],
+            )],
+        );
+
+        assert!(added2.is_empty());
+        assert_eq!(updated2, vec![env_id.clone()]);
+        assert!(vanished2.is_empty());
+        assert_eq!(
+            state
+                .environments
+                .iter()
+                .filter(|e| e.origin_id.as_deref() == Some("origin-1"))
+                .count(),
+            1
+        );
+        let env = state.environments.iter().find(|e| e.id == env_id).unwrap();
+        assert_eq!(env.name, "Producción (EU)");
+        assert_eq!(
+            env.launch.visible_connections,
+            Some(vec!["conn-1".to_string(), "conn-2".to_string()])
+        );
+    }
+
+    #[test]
+    fn an_environment_dropped_from_the_file_is_reported_vanished_not_deleted() {
+        let mut state = tab_state::PersistedTabState::default();
+        sync_environment_bundles(
+            &mut state,
+            "origin-1",
+            &[bundle("src-a", "Producción", vec![])],
+        );
+
+        // The publisher stopped including it in the file.
+        let (added, updated, vanished, suspicious) =
+            sync_environment_bundles(&mut state, "origin-1", &[]);
+
+        assert!(added.is_empty());
+        assert!(updated.is_empty());
+        assert_eq!(vanished.len(), 1);
+        assert!(!suspicious);
+        // Never deleted on our own initiative — same rule as a vanished profile.
+        assert_eq!(
+            state
+                .environments
+                .iter()
+                .filter(|e| e.origin_id.as_deref() == Some("origin-1"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn an_unrelated_origins_environments_are_never_touched() {
+        let mut state = tab_state::PersistedTabState::default();
+        sync_environment_bundles(
+            &mut state,
+            "origin-1",
+            &[bundle("src-a", "Producción", vec![])],
+        );
+
+        let (added, updated, vanished, _) = sync_environment_bundles(
+            &mut state,
+            "origin-2",
+            &[bundle("src-b", "Staging", vec![])],
+        );
+
+        assert_eq!(added.len(), 1);
+        assert!(updated.is_empty());
+        // origin-2's own first sync must not flag origin-1's environment as
+        // vanished — vanished detection is scoped per origin.
+        assert!(vanished.is_empty());
     }
 }
