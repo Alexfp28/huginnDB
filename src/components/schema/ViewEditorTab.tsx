@@ -29,7 +29,7 @@ import { DataGrid } from "@/components/grid/DataGrid";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
-import { useConnections } from "@/stores/session/connections";
+import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
@@ -66,16 +66,7 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
   const closeTab = useTabs((s) => s.close);
   const schemaState = useSchema((s) => s.byConnection[connectionId]);
 
-  // Same synthetic-id-aware driver resolution as StructureEditorTab.
-  const driver = useConnections((s) => {
-    const direct = s.profiles.find((p) => p.id === connectionId);
-    if (direct) return direct.driver;
-    const sep = connectionId.indexOf("::db::");
-    if (sep > 0) {
-      return s.profiles.find((p) => p.id === connectionId.slice(0, sep))?.driver;
-    }
-    return undefined;
-  });
+  const driver = useConnectionDriver(connectionId);
 
   const completionSuggestions = useMemo(
     () =>

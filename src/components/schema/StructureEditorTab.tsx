@@ -33,6 +33,7 @@ import { useJsonSchemas } from "@/stores/jsonSchemas";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs, retitleTabsForTableRename } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
+import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import {
@@ -112,17 +113,9 @@ export function StructureEditorTab({
   const editorPrefs = usePreferences(selectEditorPrefs);
   const refreshSchema = useSchema((s) => s.refresh);
   const closeTab = useTabs((s) => s.close);
-  // Resolve the connection's driver for the type suggestions. Synthetic
-  // multi-DB ids (`<parent>::db::<db>`) inherit the parent profile's driver.
-  const driver = useConnections((s) => {
-    const direct = s.profiles.find((p) => p.id === connectionId);
-    if (direct) return direct.driver;
-    const sep = connectionId.indexOf("::db::");
-    if (sep > 0) {
-      return s.profiles.find((p) => p.id === connectionId.slice(0, sep))?.driver;
-    }
-    return undefined;
-  });
+  // Drives the type suggestions. Synthetic multi-DB ids inherit the parent
+  // profile's driver — the hook handles that fold.
+  const driver = useConnectionDriver(connectionId);
   const typeCategories = useMemo(() => columnCategoriesFor(driver), [driver]);
 
   // Read-only on the drivers whose DDL the backend can't build yet: MongoDB

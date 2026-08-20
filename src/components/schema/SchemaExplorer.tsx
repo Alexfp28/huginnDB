@@ -62,6 +62,7 @@ import {
   retitleTabsForTableRename,
 } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
+import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { useUi } from "@/stores/session/ui";
 import { tableTabTitle } from "@/lib/connectionLabel";
 import { usePreferences } from "@/stores/preferences/preferences";
@@ -531,19 +532,9 @@ function SingleDbExplorer({
   const loadColumns = useSchema((s) => s.loadColumns);
   const openTab = useTabs((s) => s.open);
 
-  // Driver lookup: needed by the context menu to compose a driver-correct
-  // "Copy SELECT" snippet. For synthetic multi-DB connection ids the
-  // profile lives under the parent half of the id.
-  const driver = useConnections((s) => {
-    const direct = s.profiles.find((p) => p.id === connectionId);
-    if (direct) return direct.driver;
-    const sep = connectionId.indexOf("::db::");
-    if (sep > 0) {
-      const parent = s.profiles.find((p) => p.id === connectionId.slice(0, sep));
-      if (parent) return parent.driver;
-    }
-    return undefined;
-  });
+  // Needed by the context menu to compose a driver-correct "Copy SELECT"
+  // snippet.
+  const driver = useConnectionDriver(connectionId);
 
   // Which schema header (if any) currently has its right-click menu open —
   // there's one `ContextMenu` per schema rendered by the `schemas.map(...)`

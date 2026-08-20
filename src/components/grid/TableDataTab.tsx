@@ -45,6 +45,7 @@ import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { useFilterHistory } from "@/stores/grid/filterHistory";
 import { useConnections } from "@/stores/session/connections";
+import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { tableTabTitle } from "@/lib/connectionLabel";
 import { useGridSelection } from "@/stores/grid/gridSelection";
 import {
@@ -185,23 +186,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // disconnect) so the status bar never reads a stale count.
   useEffect(() => () => clearSelection(tabId), [tabId, clearSelection]);
   const loadColumns = useSchema((s) => s.loadColumns);
-  // Resolve the driver for this connection — needed by the DataGrid so
-  // its "Copy as SQL …" snippets use the right identifier quoting
-  // (backticks for MySQL, double quotes for PG/SQLite). Multi-DB
-  // synthetic child IDs (`<parent>::db::<name>`) inherit the parent's
-  // driver, matching the lookup already done by SchemaExplorer.
-  const driver = useConnections((s) => {
-    const direct = s.profiles.find((p) => p.id === connectionId);
-    if (direct) return direct.driver;
-    const sep = connectionId.indexOf("::db::");
-    if (sep > 0) {
-      const parent = s.profiles.find(
-        (p) => p.id === connectionId.slice(0, sep),
-      );
-      if (parent) return parent.driver;
-    }
-    return undefined;
-  });
+  // Needed by the DataGrid so its "Copy as SQL …" snippets use the right
+  // identifier quoting (backticks for MySQL, brackets for SQL Server, double
+  // quotes for PG/SQLite).
+  const driver = useConnectionDriver(connectionId);
   const tableKey = `${schema ?? ""}.${table}`;
   // Subscribe to THIS tab's own column entry, not the whole per-connection
   // `columns` map. `loadColumns` (schema.ts) writes a new map reference on
