@@ -95,7 +95,8 @@ import { ACTIONS, formatComboForDisplay, getBinding } from "@/lib/keybindings";
 import { api } from "@/lib/tauri";
 import { SETTINGS_INDEX } from "@/lib/commandPalette/settingsRegistry";
 import type { PaletteCommand } from "@/lib/commandPalette/types";
-import type { AppLanguage, TabKind } from "@/types";
+import type { TabKind } from "@/types";
+import { SUPPORTED_LANGUAGES } from "@/lib/i18n";
 
 /** Icon per tab kind, mirroring `TabSwitcher`'s map. */
 const TAB_ICON: Record<TabKind, React.ReactNode> = {
@@ -462,7 +463,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         run: () => setThemeId(th.id),
       });
     }
-    for (const lng of ["en", "es"] as AppLanguage[]) {
+    for (const lng of SUPPORTED_LANGUAGES) {
       if (lng === prefs.ui.language) continue;
       list.push({
         id: `lang:${lng}`,

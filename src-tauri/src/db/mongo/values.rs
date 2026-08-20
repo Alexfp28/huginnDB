@@ -24,7 +24,7 @@
 //! (gotcha #15). An `_id` that is a genuine 24-hex-char *string* is the one
 //! ambiguous case on write — see [`id_to_bson`].
 
-use mongodb::bson::{spec::BinarySubtype, Binary, Bson, Decimal128, Document};
+use mongodb::bson::{Bson, Decimal128, Document};
 use serde_json::{Map, Number, Value};
 use std::str::FromStr;
 
@@ -537,9 +537,14 @@ fn quote_shell_string(s: &str) -> String {
     out
 }
 
-/// Construct a BSON binary value (used only in round-trip tests for now).
-#[allow(dead_code)]
+/// Construct a BSON binary value.
+///
+/// `cfg(test)` rather than `allow(dead_code)`: it has only ever had a test
+/// caller, and the allowance would keep it compiling silently if that caller
+/// went away too.
+#[cfg(test)]
 pub(crate) fn binary(bytes: Vec<u8>) -> Bson {
+    use mongodb::bson::{spec::BinarySubtype, Binary};
     Bson::Binary(Binary {
         subtype: BinarySubtype::Generic,
         bytes,

@@ -131,6 +131,3 @@ export function snippetFor(operator: string): string {
   const known = STAGE_CATALOG.find((s) => s.operator === operator);
   return known ? known.snippet : `{\n  ${operator}: {\n    \n  }\n}`;
 }
-
-/** Every operator the catalogue knows, in picker order. */
-export const STAGE_OPERATORS = STAGE_CATALOG.map((s) => s.operator);

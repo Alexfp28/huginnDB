@@ -36,8 +36,6 @@ interface SavedQueriesState {
     patch: Partial<Omit<SavedQuery, "id" | "createdAt">>,
   ) => void;
   remove: (id: string) => void;
-  /** Return entries that include `tag`. */
-  byTag: (tag: string) => SavedQuery[];
 }
 
 function genId() {
@@ -46,7 +44,7 @@ function genId() {
 
 export const useSavedQueries = create<SavedQueriesState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       items: [],
       add: (input) => {
         const now = Date.now();
@@ -69,7 +67,6 @@ export const useSavedQueries = create<SavedQueriesState>()(
       },
       remove: (id) =>
         set((s) => ({ items: s.items.filter((q) => q.id !== id) })),
-      byTag: (tag) => get().items.filter((q) => q.tags.includes(tag)),
     }),
     { name: STORAGE_KEYS.savedQueries },
   ),

@@ -110,7 +110,6 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
 url = "2"
-async-trait = "0.1"
 parking_lot = "0.12"
 russh = { version = "0.60", default-features = false, features = [
     "ring",

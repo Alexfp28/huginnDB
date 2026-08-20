@@ -226,13 +226,6 @@
     "noMatches": "No connections match your search.",
     "fromOrigin": "This connection comes from a shared origin, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours."
   },
-  "connectPassword": {
-    "title": "Password required",
-    "description": "The stored password for \"{{name}}\" could not be found. Enter it to connect.",
-    "password": "Password",
-    "connect": "Connect",
-    "connecting": "Connecting…"
-  },
   "adhocDriver": {
     "title": "Which database driver?",
     "description": "\"{{name}}\" was launched without --driver and no default driver is set. Pick the backend to connect with.",

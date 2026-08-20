@@ -226,13 +226,6 @@
     "noMatches": "Ninguna conexión coincide con la búsqueda.",
     "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya."
   },
-  "connectPassword": {
-    "title": "Contraseña requerida",
-    "description": "No se encontró la contraseña guardada para \"{{name}}\". Introdúcela para conectar.",
-    "password": "Contraseña",
-    "connect": "Conectar",
-    "connecting": "Conectando…"
-  },
   "adhocDriver": {
     "title": "¿Qué driver de base de datos?",
     "description": "\"{{name}}\" se lanzó sin --driver y no hay un driver por defecto configurado. Elige el motor con el que conectar.",
