@@ -82,6 +82,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     `commands/{prefs,origins,connection}.rs`. The clone-and-release is not
     incidental: the save does file I/O, so holding the lock across it would
     block every other window's reader for the length of a disk write.
+  - `commands::ensure_view` / `commands::entry_sink` replace the seven-line
+    `ensure_database_view` prologue that opened forty-five connection-scoped
+    commands across nine modules, eight of which also built the Console log
+    sink by hand. Omitting it is invisible until a database view has been idle
+    long enough for the reaper to close it, so making it one line is worth more
+    than the 240 lines it removes.
   - Frontend: `useImportWizard` (three dialogs), `useAsyncSubmit` (ten),
     `OverlayPalette` + `useListNavigation` (the command palette and the tab
     switcher), `lib/schedule.ts` (three debounces, two polls), `RefreshButton`

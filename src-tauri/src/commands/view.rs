@@ -73,13 +73,7 @@ pub async fn get_view_definition(
     schema: Option<String>,
     view: String,
 ) -> AppResult<ViewDefinition> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::MsSql(_)) {
         return Err(AppError::UnsupportedDriver(
@@ -174,13 +168,7 @@ pub async fn preview_view_change(
     state: State<'_, AppState>,
     args: ViewChangeArgs,
 ) -> AppResult<ViewPreview> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
     let pool = state.pool_for(&args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let (statements, drop_and_recreate) =
@@ -198,13 +186,7 @@ pub async fn apply_view_change(
     state: State<'_, AppState>,
     args: ViewChangeArgs,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
     let pool = state.pool_for(&args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let (statements, _) = build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
@@ -237,13 +219,7 @@ pub async fn rename_view(
             "rename_view: new_name must not be empty".into(),
         ));
     }
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let new_ident = dialect.quote_ident(new_name.trim());
@@ -295,13 +271,7 @@ pub async fn drop_view(
     schema: Option<String>,
     view: String,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     // MongoDB is the one driver whose views this module can otherwise not
     // touch — but *dropping* one needs no DDL at all (a view lives in the same

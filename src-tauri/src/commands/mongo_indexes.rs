@@ -42,13 +42,7 @@ pub async fn list_mongo_indexes(
     connection_id: String,
     collection: String,
 ) -> AppResult<Vec<MongoIndexInfo>> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     indexes::list_indexes(&conn, &collection).await
 }
@@ -68,13 +62,7 @@ pub async fn create_mongo_index(
     state: State<'_, AppState>,
     args: CreateIndexArgs,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
     let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     indexes::create_index(&conn, &args.collection, &args.spec).await
 }
@@ -98,13 +86,7 @@ pub async fn recreate_mongo_index(
     state: State<'_, AppState>,
     args: RecreateIndexArgs,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
     let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     indexes::recreate_index(&conn, &args.collection, &args.original_name, &args.spec).await
 }
@@ -118,13 +100,7 @@ pub async fn drop_mongo_index(
     collection: String,
     name: String,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     indexes::drop_index(&conn, &collection, &name).await
 }
@@ -140,13 +116,7 @@ pub async fn set_mongo_index_hidden(
     name: String,
     hidden: bool,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     indexes::set_index_hidden(&conn, &collection, &name, hidden).await
 }

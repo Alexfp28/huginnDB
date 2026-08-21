@@ -51,13 +51,7 @@ pub async fn export_collection(
     collection: String,
     filters: Option<Vec<ColumnFilter>>,
 ) -> AppResult<String> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;
@@ -113,13 +107,7 @@ pub async fn import_collection(
     collection: String,
     file_path: String,
 ) -> AppResult<u64> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;

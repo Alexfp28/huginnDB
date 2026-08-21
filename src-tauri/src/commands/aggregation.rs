@@ -145,13 +145,7 @@ pub async fn run_mongo_pipeline(
     state: State<'_, AppState>,
     args: RunPipelineArgs,
 ) -> AppResult<QueryResult> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
     let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     let stages = args.parsed()?;
     aggregation::run_pipeline(
@@ -183,13 +177,7 @@ pub async fn preview_mongo_stages(
     state: State<'_, AppState>,
     args: PreviewStagesArgs,
 ) -> AppResult<Vec<StagePreview>> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
     let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     aggregation::preview_stages(
         &conn,
@@ -213,13 +201,7 @@ pub async fn get_mongo_view(
     connection_id: String,
     view: String,
 ) -> AppResult<MongoViewDefinition> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     aggregation::read_view(&conn, &view).await
 }
@@ -250,13 +232,7 @@ pub async fn save_mongo_view(
     state: State<'_, AppState>,
     args: SaveViewArgs,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
     let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     let stages = RunPipelineArgs {
         connection_id: args.connection_id.clone(),

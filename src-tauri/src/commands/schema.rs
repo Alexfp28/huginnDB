@@ -123,13 +123,7 @@ pub async fn list_databases(
     state: State<'_, AppState>,
     connection_id: String,
 ) -> AppResult<Vec<DatabaseInfo>> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::error::with_timeout(
         "list_databases",
         list_databases_inner(state.inner(), &connection_id),
@@ -175,13 +169,7 @@ pub async fn create_database(
     name: String,
 ) -> AppResult<()> {
     crate::db::ddl::validate_ident("database", &name)?;
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
@@ -246,13 +234,7 @@ pub async fn drop_database(
             _ => {}
         }
     }
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
@@ -318,13 +300,7 @@ pub async fn create_collection(
             "collection names starting with 'system.' are reserved by MongoDB".into(),
         ));
     }
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     match &pool {
         DbPool::Mongo(conn) => {
@@ -350,13 +326,7 @@ pub async fn list_tables(
     connection_id: String,
     _database: Option<String>,
 ) -> AppResult<Vec<TableInfo>> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::error::with_timeout(
         "list_tables",
         list_tables_inner(state.inner(), &connection_id),
@@ -396,13 +366,7 @@ pub async fn list_columns(
     schema: Option<String>,
     table: String,
 ) -> AppResult<Vec<ColumnInfo>> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::error::with_timeout(
         "list_columns",
         list_columns_inner(state.inner(), &connection_id, schema, table),
@@ -439,13 +403,7 @@ pub async fn list_indexes(
     schema: Option<String>,
     table: String,
 ) -> AppResult<Vec<IndexInfo>> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::error::with_timeout(
         "list_indexes",
         list_indexes_inner(state.inner(), &connection_id, schema, table),
@@ -488,13 +446,7 @@ pub async fn drop_table(
     schema: Option<String>,
     table: String,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let db = crate::db::mongo::schema::resolve_db(conn)?;
@@ -527,13 +479,7 @@ pub async fn empty_table(
     schema: Option<String>,
     table: String,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let db = crate::db::mongo::schema::resolve_db(conn)?;
@@ -582,13 +528,7 @@ pub async fn rename_table(
             "rename_table: new_name must not be empty".into(),
         ));
     }
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     // MongoDB has no DDL to build: `renameCollection` is a run-command on
     // `admin` that takes both sides fully qualified, so it also covers the
@@ -660,13 +600,7 @@ pub async fn server_version(
     state: State<'_, AppState>,
     connection_id: String,
 ) -> AppResult<String> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::error::with_timeout(
         "server_version",
         server_version_inner(state.inner(), &connection_id),
@@ -699,13 +633,7 @@ pub async fn list_users(
     state: State<'_, AppState>,
     connection_id: String,
 ) -> AppResult<Vec<UserInfo>> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::error::with_timeout(
         "list_users",
         list_users_inner(state.inner(), &connection_id),
@@ -737,13 +665,7 @@ pub async fn list_privileges(
     connection_id: String,
     user: String,
 ) -> AppResult<Vec<PrivilegeInfo>> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::error::with_timeout(
         "list_privileges",
         list_privileges_inner(state.inner(), &connection_id, user),

@@ -90,6 +90,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     clonar-y-soltar no es incidental: el guardado hace E/S de disco, y mantener
     el bloqueo durante ella dejaría bloqueado a cualquier otro lector mientras
     dura la escritura.
+  - `commands::ensure_view` / `commands::entry_sink` sustituyen el prólogo de
+    siete líneas con `ensure_database_view` que abría cuarenta y cinco comandos
+    de nueve módulos, ocho de los cuales además construían a mano el sumidero de
+    log de la Consola. Olvidarlo no se nota hasta que una vista de base de datos
+    lleva inactiva lo bastante como para que el segador la cierre, así que
+    reducirlo a una línea vale más que las 240 líneas que quita.
   - Frontend: `useImportWizard` (tres diálogos), `useAsyncSubmit` (diez),
     `OverlayPalette` + `useListNavigation` (paleta de comandos y conmutador de
     pestañas), `lib/schedule.ts` (tres debounces, dos sondeos), `RefreshButton`

@@ -107,13 +107,7 @@ pub async fn export_databases(
     )?;
 
     for target in &targets {
-        crate::commands::connection::ensure_database_view(
-            &app,
-            state.inner(),
-            Some(window.label()),
-            &target.connection_id,
-        )
-        .await;
+        crate::commands::ensure_view(&app, &window, state.inner(), &target.connection_id).await;
         let pool = state.pool_for(&target.connection_id)?;
         if matches!(&pool, DbPool::Mongo(_)) {
             return Err(AppError::InvalidInput(format!(
@@ -249,13 +243,7 @@ pub async fn export_table(
     schema: Option<String>,
     table: String,
 ) -> AppResult<String> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
@@ -336,13 +324,7 @@ pub async fn export_table_rows(
     search: Option<String>,
     search_columns: Option<Vec<String>>,
 ) -> AppResult<String> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(

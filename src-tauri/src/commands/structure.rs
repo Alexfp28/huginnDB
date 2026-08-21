@@ -31,13 +31,7 @@ pub async fn get_table_structure(
     schema: Option<String>,
     table: String,
 ) -> AppResult<TableStructure> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::error::with_timeout(
         "get_table_structure",
         get_table_structure_inner(state.inner(), &connection_id, schema, table),
@@ -466,13 +460,7 @@ pub async fn preview_structure_change(
     state: State<'_, AppState>,
     args: StructureChangeArgs,
 ) -> AppResult<StructurePreview> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
     let pool = state.pool_for(&args.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
@@ -496,13 +484,7 @@ pub async fn apply_structure_change(
     state: State<'_, AppState>,
     args: StructureChangeArgs,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
     apply_structure_change_inner(state.inner(), args).await
 }
 

@@ -19,7 +19,7 @@ use crate::db::values::{
     mysql_columns, mysql_value, pg_columns, pg_value, sqlite_columns, sqlite_value,
 };
 use crate::error::{AppError, AppResult};
-use crate::log_bus::{self, LogEntry, LogKind, LogSink};
+use crate::log_bus::{LogEntry, LogKind, LogSink};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -389,14 +389,7 @@ pub async fn execute_query(
     connection_id: String,
     sql: String,
 ) -> AppResult<QueryResult> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     execute_with_state(&sink, state.inner(), &connection_id, &sql).await
 }
 
@@ -617,14 +610,7 @@ pub async fn execute_batch(
     connection_id: String,
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     execute_batch_inner(&sink, state.inner(), connection_id, statements).await
 }
 
@@ -1241,14 +1227,7 @@ pub async fn fetch_table_data(
     // interaction. Defaults to `true` (count) when omitted.
     with_count: Option<bool>,
 ) -> AppResult<QueryResult> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     fetch_table_data_inner(
         &sink,
         state.inner(),
@@ -1470,14 +1449,7 @@ pub async fn count_table_rows(
     search: Option<String>,
     search_columns: Option<Vec<String>>,
 ) -> AppResult<CountResult> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     count_table_rows_inner(
         &sink,
         state.inner(),
@@ -1733,14 +1705,7 @@ pub async fn update_cell(
     value: Option<String>,
     column_type: Option<String>,
 ) -> AppResult<u64> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     update_cell_inner(
         &sink,
         state.inner(),
@@ -1946,14 +1911,7 @@ pub async fn unset_field(
     id_value: Value,
     field: String,
 ) -> AppResult<u64> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
     let DbPool::Mongo(conn) = &pool else {
@@ -2044,14 +2002,7 @@ pub async fn delete_rows(
     pk_columns: Vec<String>,
     pk_value_rows: Vec<Vec<Value>>,
 ) -> AppResult<u64> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     delete_rows_inner(
         &sink,
         state.inner(),
@@ -2204,14 +2155,7 @@ pub async fn insert_row(
     pk_column: Option<String>,
     values: Vec<RowValue>,
 ) -> AppResult<Value> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     insert_row_inner(
         &sink,
         state.inner(),
@@ -2540,13 +2484,7 @@ pub async fn fetch_fk_options(
     // through `list_columns_inner`, which resolves the pool itself and would
     // otherwise fail with `NotConnected` before this function ever reaches
     // its own `pool_for` call further down.
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
 
     // Catalog validation. Failing here means the target was dropped or
     // moved out from under us; the frontend treats this as "fall back to
