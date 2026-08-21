@@ -162,9 +162,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   responsibility.** No behaviour change beyond the fixes above.
   `SchemaExplorer.tsx` 2842 → 73 (its eight dialogs to `schema/dialogs/`, each
   tree level to its own file, `ConnectionActionsMenu` to `components/connection/`
-  where the tree that renders it lives); `DataGrid.tsx` 3592 → 2235 (`GridRow`,
-  the filter chips, the search box and the draft row out; row selection, column
-  sizing and the Ctrl+wheel zoom into hooks); `ConnectionDialog.tsx` 1761 → 1267
+  where the tree that renders it lives); `DataGrid.tsx` 3592 → 1301 (`GridRow`,
+  the filter chips, the search box, the draft row and `GridToolbar` out; row
+  selection, column sizing, the Ctrl+wheel zoom, the preference reads, cell
+  editing, keyboard navigation and the column definitions into hooks under
+  `lib/grid/`); `ConnectionDialog.tsx` 1761 → 1267
   and its 41 `useState`s to 11 (the rail and the form model out); `TabbedArea.tsx`
   1082 → 390 (the tab header and the empty state out); `App.tsx` 820 → 530 (the
   command-line intent handling out). Two orderings were preserved deliberately

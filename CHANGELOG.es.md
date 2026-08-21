@@ -175,9 +175,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   correcciones de arriba. `SchemaExplorer.tsx` 2842 → 73 (sus ocho diálogos a
   `schema/dialogs/`, cada nivel del árbol a su propio fichero,
   `ConnectionActionsMenu` a `components/connection/`, junto al árbol que lo
-  renderiza); `DataGrid.tsx` 3592 → 2235 (fuera `GridRow`, los chips de filtro,
-  la caja de búsqueda y la fila borrador; la selección de filas, el
-  dimensionado de columnas y el zoom con Ctrl+rueda a hooks);
+  renderiza); `DataGrid.tsx` 3592 → 1301 (fuera `GridRow`, los chips de filtro,
+  la caja de búsqueda, la fila borrador y `GridToolbar`; la selección de filas,
+  el dimensionado de columnas, el zoom con Ctrl+rueda, la lectura de
+  preferencias, la edición de celdas, la navegación por teclado y las
+  definiciones de columna a hooks bajo `lib/grid/`);
   `ConnectionDialog.tsx` 1761 → 1267 y sus 41 `useState` a 11 (fuera el raíl y
   el modelo del formulario); `TabbedArea.tsx` 1082 → 390 (fuera la cabecera de
   pestaña y la pantalla vacía); `App.tsx` 820 → 530 (fuera el manejo de intents
