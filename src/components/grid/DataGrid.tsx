@@ -28,7 +28,6 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import {
   flexRender,
   getCoreRowModel,
@@ -43,17 +42,13 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  ChevronDown,
-  Filter,
   Inbox,
   KeyRound,
   Loader2,
   Maximize2,
   MoreHorizontal,
   Plus,
-  Search,
   UnfoldHorizontal,
-  X,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -96,15 +91,17 @@ import { BitInput } from "@/components/grid/BitInput";
 import { CellEditor } from "@/components/grid/dialogs/CellEditor";
 import { CellInput } from "@/components/grid/CellInput";
 import { CellPreview } from "@/components/grid/CellPreview";
-import {
-  DraftCellControl,
-  firstEditableColumn,
-} from "@/components/grid/DraftCellControl";
 import { FkCombobox } from "@/components/ui/fk-combobox";
+import { DraftRowView } from "@/components/grid/DraftRowView";
+import { GridSearchInput } from "@/components/grid/GridSearchInput";
 import {
   GridRow,
   type GridRowCallbacks,
 } from "@/components/grid/GridRow";
+import {
+  ServerFilterChip,
+  ServerFilterSummary,
+} from "@/components/grid/ServerFilterChips";
 import {
   toSqlInsert as rowToSqlInsert,
   toSqlUpdate as rowToSqlUpdate,
@@ -375,24 +372,6 @@ export interface SelectedCell {
   column: ColumnMeta;
   value: CellValue;
 }
-
-const FILTER_LABEL: Record<ColumnFilter["op"], string> = {
-  eq: "=",
-  ne: "<>",
-  contains: "⊇",
-  not_contains: "⊉",
-  starts_with: "^…",
-  ends_with: "…$",
-  gt: ">",
-  gte: "≥",
-  lt: "<",
-  lte: "≤",
-  between: "↔",
-  in: "IN",
-  not_in: "NOT IN",
-  is_null: "IS NULL",
-  is_not_null: "IS NOT NULL",
-};
 
 export function DataGrid({
   result,
@@ -2026,7 +2005,7 @@ export function DataGrid({
         {!collapseChrome && toolbarLeading && toolbarLeading.length > 0 && (
           <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
         )}
-        <SearchInput
+        <GridSearchInput
           value={filterInput ?? globalFilter ?? ""}
           onChange={onGlobalFilterChange}
           onSubmit={onGlobalFilterSubmit}
@@ -2564,341 +2543,3 @@ export function DataGrid({
   );
 }
 
-/**
- * Toolbar search input with an optional history dropdown.
- *
- * Submitting is explicit: typing only updates the input value, and the
- * search is applied to the backend on Enter, on picking a history
- * entry, or on clicking the clear (×) button. This stops every
- * keystroke from creating a history entry and avoids spurious refetches
- * while the user is still composing the query.
- */
-/**
- * The value half of a filter chip's label — the part after `column op`. An
- * `IN` list is summarised by count (it can hold hundreds of values, with the
- * values themselves deferred to a tooltip); `IS NULL` and friends have no
- * value at all.
- */
-function filterValueLabel(f: ColumnFilter, t: TFunction): string | null {
-  if (f.op === "in" || f.op === "not_in") {
-    return t("dataGrid.filterValueCount", { count: f.values?.length ?? 0 });
-  }
-  if (f.op === "eq" || f.op === "ne") {
-    return f.value === null || f.value === undefined
-      ? "NULL"
-      : formatValue(f.value);
-  }
-  return null;
-}
-
-/** Values behind an `IN` / `NOT IN` chip, for its tooltip. */
-function filterValuesTooltip(f: ColumnFilter): string | undefined {
-  if (f.op !== "in" && f.op !== "not_in") return undefined;
-  return (f.values ?? [])
-    .map((v) => (v === null || v === undefined ? "NULL" : formatValue(v)))
-    .join(", ");
-}
-
-/** One active server-side filter, as a removable chip in the toolbar. */
-function ServerFilterChip({
-  filter: f,
-  onRemove,
-}: {
-  filter: ColumnFilter;
-  onRemove?: () => void;
-}) {
-  const { t } = useTranslation();
-  const value = filterValueLabel(f, t);
-  return (
-    <span
-      className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 font-mono text-[11px]"
-      title={t("dataGrid.serverSideFilter")}
-    >
-      <span className="text-muted-foreground">{f.column}</span>
-      <span className="text-muted-foreground/70">{FILTER_LABEL[f.op]}</span>
-      {value !== null && (
-        <span className="max-w-[10rem] truncate" title={filterValuesTooltip(f)}>
-          {value}
-        </span>
-      )}
-      {onRemove && (
-        <button
-          className="ml-1 text-muted-foreground/60 hover:text-foreground"
-          onClick={onRemove}
-          title={t("dataGrid.removeFilter")}
-        >
-          <X className="h-3 w-3" />
-        </button>
-      )}
-    </span>
-  );
-}
-
-/**
- * The narrow-pane form of the chip row: one chip carrying the filter count,
- * whose dropdown still removes filters one by one. Selecting an entry removes
- * that filter and deliberately keeps the menu open (`preventDefault` on the
- * select), since clearing several filters in a row is the common case and
- * re-opening the menu each time would be busywork.
- */
-function ServerFilterSummary({
-  filters,
-  onRemove,
-}: {
-  filters: ColumnFilter[];
-  onRemove?: (index: number) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-          title={t("dataGrid.serverSideFilter")}
-        >
-          <Filter className="h-3 w-3 text-brand" />
-          {t("dataGrid.activeFilterCount", { count: filters.length })}
-          <ChevronDown className="h-3 w-3 opacity-60" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {filters.map((f, i) => {
-          const value = filterValueLabel(f, t);
-          return (
-            <DropdownMenuItem
-              key={`${f.column}-${f.op}-${i}`}
-              className="gap-2 font-mono text-xs"
-              title={filterValuesTooltip(f) ?? t("dataGrid.removeFilter")}
-              disabled={!onRemove}
-              onSelect={(e) => {
-                e.preventDefault();
-                onRemove?.(i);
-              }}
-            >
-              <span className="text-muted-foreground">{f.column}</span>
-              <span className="text-muted-foreground/70">
-                {FILTER_LABEL[f.op]}
-              </span>
-              {value !== null && (
-                <span className="max-w-[14rem] truncate">{value}</span>
-              )}
-              <X className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/60" />
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function SearchInput({
-  value,
-  onChange,
-  onSubmit,
-  history,
-}: {
-  value: string;
-  onChange?: (v: string) => void;
-  onSubmit?: (v: string) => void;
-  history: string[];
-}) {
-  const { t } = useTranslation();
-  const hasHistory = history.length > 0;
-  const hasValue = value.length > 0;
-  return (
-    <div className="flex h-7 min-w-[12rem] max-w-xl flex-1 items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
-      <span
-        className="flex shrink-0 items-center pl-2 text-muted-foreground/70"
-        aria-hidden
-      >
-        <Search className="h-3.5 w-3.5" />
-      </span>
-      <input
-        className="w-full min-w-0 flex-1 bg-transparent px-2 text-xs focus:outline-none"
-        placeholder={t("dataGrid.filterRows")}
-        value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            onSubmit?.(value);
-          }
-        }}
-      />
-      {hasValue && (
-        <button
-          type="button"
-          className="flex items-center justify-center px-1.5 text-muted-foreground/70 hover:bg-accent/30 hover:text-foreground"
-          title="Clear filter"
-          onClick={() => {
-            // Clear immediately + apply, so the grid actually refetches
-            // and the user sees the unfiltered rows.
-            onChange?.("");
-            onSubmit?.("");
-          }}
-        >
-          <X className="h-3 w-3" />
-        </button>
-      )}
-      {hasHistory && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="flex items-center justify-center border-l border-input px-1.5 text-muted-foreground/70 hover:bg-accent/30 hover:text-foreground"
-              title="Recent searches on this connection"
-            >
-              <ChevronDown className="h-3 w-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-            {history.map((q) => (
-              <DropdownMenuItem
-                key={q}
-                onSelect={() => {
-                  onChange?.(q);
-                  onSubmit?.(q);
-                }}
-                className="font-mono text-xs"
-              >
-                <span className="truncate max-w-[20rem]">{q}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  );
-}
-
-/**
- * Editable row pinned at the top of the grid for inline INSERT.
- *
- * Each cell is a plain text input. The empty initial state ("NULL"
- * placeholder) means the column is omitted from the INSERT so the
- * database picks the default; clicking "∅" explicitly forces NULL.
- *
- * Commit fires when focus leaves the row entirely (the user clicks
- * outside). We detect this with a `setTimeout(0)` after `onBlur` and
- * check whether `document.activeElement` is still inside the row.
- * `Esc` cancels; `Enter` commits explicitly.
- */
-interface DraftRowViewProps {
-  rowRef: React.MutableRefObject<HTMLTableRowElement | null>;
-  firstInputRef: React.MutableRefObject<HTMLElement | null>;
-  columns: ColumnMeta[];
-  draftColumns: ColumnInfo[];
-  draft: DraftRow;
-  /** Connection + target table — required for FK comboboxes to query options. */
-  connectionId?: string;
-  tableSchema?: string;
-  tableName?: string;
-  /** Grid preference for BIT option labels in the dedicated control. */
-  bitDisplay: "true_false" | "zero_one";
-  onChange?: (column: string, cell: DraftCell) => void;
-  onCommit?: () => void;
-  onCancel?: () => void;
-}
-
-function DraftRowView({
-  rowRef,
-  firstInputRef,
-  columns,
-  draftColumns,
-  draft,
-  connectionId,
-  tableSchema,
-  tableName: _tableName,
-  bitDisplay,
-  onChange,
-  onCommit,
-  onCancel,
-}: DraftRowViewProps) {
-  const infoByName = useMemo(() => {
-    const m = new Map<string, ColumnInfo>();
-    for (const c of draftColumns) m.set(c.name, c);
-    return m;
-  }, [draftColumns]);
-
-  /** First non-auto-PK column index — used to bind the focus-on-mount ref. */
-  const firstEditableIdx = useMemo(
-    () => firstEditableColumn(columns, infoByName),
-    [columns, infoByName],
-  );
-
-  function handleRowBlur() {
-    // Wait one tick for focus to settle on the new target.
-    setTimeout(() => {
-      if (draft.saving) return;
-      const active = document.activeElement;
-      if (rowRef.current && active && rowRef.current.contains(active)) return;
-      onCommit?.();
-    }, 0);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onCancel?.();
-    } else if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      onCommit?.();
-    }
-  }
-
-  return (
-    <>
-      <tr
-        ref={rowRef}
-        className="border-l-2 border-l-primary bg-primary/5"
-        onBlur={handleRowBlur}
-        onKeyDown={handleKeyDown}
-      >
-        <td className="border-b border-border/50 border-r border-r-border/70 px-2 py-1 text-[10px] font-medium text-primary">
-          {draft.saving ? "…" : "+"}
-        </td>
-        {columns.map((col, idx) => {
-          const cell: DraftCell =
-            draft.cells[col.name] ?? { value: null, touched: false };
-          return (
-            <td
-              key={col.name}
-              className="border-b border-border/50 border-r border-r-border/70 px-1 py-0.5"
-            >
-              {/* Row-level onBlur / onKeyDown drive commit & cancel, so the
-                  control itself is mounted unwired. */}
-              <DraftCellControl
-                info={infoByName.get(col.name)}
-                cell={cell}
-                saving={draft.saving}
-                autoFocus={idx === firstEditableIdx}
-                focusRef={idx === firstEditableIdx ? firstInputRef : undefined}
-                connectionId={connectionId}
-                tableSchema={tableSchema}
-                bitDisplay={bitDisplay}
-                onChange={(next) => onChange?.(col.name, next)}
-              />
-            </td>
-          );
-        })}
-        <td className="border-b border-border/50" />
-      </tr>
-      {draft.error && (
-        <tr>
-          <td
-            colSpan={columns.length + 2}
-            className="border-b border-border/50 bg-destructive/10 px-3 py-1 text-[11px] text-destructive"
-          >
-            {draft.error}
-            <button
-              className="ml-3 underline-offset-2 hover:underline"
-              onClick={() => onCancel?.()}
-            >
-              discard
-            </button>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}

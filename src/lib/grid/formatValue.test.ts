@@ -7,7 +7,9 @@ describe("formatValue", () => {
     // The grid draws its own NULL affordance, and a client-side search for
     // "null" must not match every empty cell.
     expect(formatValue(null)).toBe("");
-    expect(formatValue(undefined)).toBe("");
+    // `undefined` is not in `CellValue`, but a sparse row from a driver that
+    // omitted a column reaches this as one, so the guard covers it too.
+    expect(formatValue(undefined as unknown as null)).toBe("");
   });
 
   it("passes primitives through as text", () => {
