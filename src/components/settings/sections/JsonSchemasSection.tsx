@@ -58,9 +58,9 @@ import { SCHEMA_TEMPLATES } from "@/lib/jsonSchema/templates";
 import { tryFormat } from "@/lib/grid/detectContentType";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { api } from "@/lib/tauri";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { cn } from "@/lib/utils";
 import type { JsonSchemaBinding, JsonSchemaMatch } from "@/types";
+import { pickJsonFile } from "@/lib/dialogs";
 
 export function JsonSchemasSection() {
   const { t } = useTranslation();
@@ -211,12 +211,11 @@ export function JsonSchemasSection() {
   }
 
   async function importFromFile() {
-    const picked = await openFileDialog({
-      title: t("jsonSchemas.library.addFromFileTitle"),
-      multiple: false,
-      filters: [{ name: "JSON", extensions: ["json", "schema.json"] }],
-    });
-    if (typeof picked !== "string") return;
+    const picked = await pickJsonFile(
+      t("jsonSchemas.library.addFromFileTitle"),
+      ["json", "schema.json"],
+    );
+    if (!picked) return;
     try {
       const text = await api.readTextFile(picked);
       // Validate here rather than at save time so a wrong file is rejected with a

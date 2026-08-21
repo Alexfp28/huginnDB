@@ -1210,7 +1210,7 @@ pub async fn export_profiles(
         .set_file_name(&suggested)
         .add_filter("JSON", &["json"])
         .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
 
     let dest = path.to_string();
     std::fs::write(&dest, json)?;

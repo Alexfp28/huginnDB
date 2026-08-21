@@ -19,6 +19,7 @@ import { api } from "@/lib/tauri";
 import { useJsonSchemas } from "@/stores/jsonSchemas";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { isExportCancelled } from "@/lib/db/driver";
 import {
   Dialog,
   DialogContent,
@@ -68,7 +69,7 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
     } catch (e) {
       // "export cancelled" is the user closing the native dialog, not a failure.
       const message = String(e);
-      if (!message.includes("export cancelled")) toast.error(message);
+      if (!isExportCancelled(message)) toast.error(message);
     } finally {
       setBusy(false);
     }

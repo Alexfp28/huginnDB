@@ -9,6 +9,7 @@ import { persist } from "zustand/middleware";
 import { QUERY_HISTORY_LIMIT, STORAGE_KEYS } from "@/lib/constants";
 import { usePreferences } from "@/stores/preferences/preferences";
 import type { QueryHistoryEntry } from "@/types";
+import { shortId } from "@/lib/utils";
 
 interface HistoryState {
   entries: QueryHistoryEntry[];
@@ -29,7 +30,7 @@ export const useQueryHistory = create<HistoryState>()(
       add: (entry) =>
         set((s) => {
           const e: QueryHistoryEntry = {
-            id: entry.id ?? Math.random().toString(36).slice(2, 10),
+            id: entry.id ?? shortId(),
             ranAt: entry.ranAt ?? Date.now(),
             sql: entry.sql,
             connectionId: entry.connectionId,

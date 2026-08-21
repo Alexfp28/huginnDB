@@ -9,6 +9,7 @@
 import { create } from "zustand";
 import { isDatabaseViewOf, tableTabTitle } from "@/lib/connectionLabel";
 import type { AppTab, ConnectionProfile, TabViewState } from "@/types";
+import { shortId } from "@/lib/utils";
 
 interface TabsState {
   tabs: AppTab[];
@@ -72,7 +73,7 @@ interface TabsState {
 }
 
 function genId() {
-  return Math.random().toString(36).slice(2, 10);
+  return shortId();
 }
 
 export const useTabs = create<TabsState>((set, get) => ({

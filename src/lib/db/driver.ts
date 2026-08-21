@@ -250,3 +250,24 @@ const TOO_MANY_CONNECTIONS_TAG = "too many connections";
 export function isTooManyConnections(error: unknown): boolean {
   return String(error).toLowerCase().includes(TOO_MANY_CONNECTIONS_TAG);
 }
+
+/**
+ * Marker the backend uses when the user closes the native save dialog.
+ *
+ * Must stay in sync with `EXPORT_CANCELLED` in `src-tauri/src/error.rs`.
+ */
+const EXPORT_CANCELLED_TAG = "export cancelled";
+
+/**
+ * Whether `error` is the user cancelling a save dialog rather than an export
+ * failing.
+ *
+ * Six export commands surface this, and every caller has to tell it apart so it
+ * can stay silent — a toast saying "export cancelled" after the user cancelled
+ * the export is noise. Three call sites matched the substring by hand; this puts
+ * the string beside `isTooManyConnections`, the other backend-error marker the
+ * frontend has to recognise.
+ */
+export function isExportCancelled(error: unknown): boolean {
+  return String(error).toLowerCase().includes(EXPORT_CANCELLED_TAG);
+}

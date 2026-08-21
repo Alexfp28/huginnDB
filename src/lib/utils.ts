@@ -60,6 +60,32 @@ export function formatDuration(ms: number): string {
 }
 
 /**
+ * A short random id for a client-side entity: a tab, a saved query, a
+ * query-history entry, a custom theme.
+ *
+ * Not a UUID on purpose. These ids only have to be unique within one user's own
+ * `localStorage`, and they show up in `localStorage` keys and in the command
+ * palette's MRU list, where a 36-character uuid is pure noise. Anything that
+ * crosses to the backend or into `profiles.json` uses a real uuid instead —
+ * `ConnectionDialog` calls `crypto.randomUUID()`, and the Rust side mints its
+ * own.
+ *
+ * Six sites rolled this by hand with two different lengths (8 and 6), which is
+ * the sort of split that makes "how long are our ids?" unanswerable.
+ */
+export function shortId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+/**
+ * Id for a user-created custom theme. Prefixed so it can never collide with a
+ * built-in theme's stable id, which is what `useThemeStore` keys off.
+ */
+export function customThemeId(): string {
+  return `custom-${shortId()}`;
+}
+
+/**
  * The locale to format numbers and dates in.
  *
  * Read from `ui.language` rather than left to the platform. A bare

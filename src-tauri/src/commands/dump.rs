@@ -285,7 +285,7 @@ pub async fn export_table(
         .set_file_name(&suggested)
         .add_filter("SQL", &["sql"])
         .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
     let dest = path.to_string();
 
     let mut w = std::io::BufWriter::new(std::fs::File::create(&dest)?);
@@ -372,7 +372,7 @@ pub async fn export_table_rows(
         .set_file_name(&suggested)
         .add_filter("SQL", &["sql"])
         .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
     let dest = path.to_string();
 
     let mut w = std::io::BufWriter::new(std::fs::File::create(&dest)?);

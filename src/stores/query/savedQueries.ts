@@ -7,6 +7,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { STORAGE_KEYS } from "@/lib/constants";
+import { shortId } from "@/lib/utils";
 
 export interface SavedQuery {
   id: string;
@@ -38,10 +39,6 @@ interface SavedQueriesState {
   remove: (id: string) => void;
 }
 
-function genId() {
-  return `q-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 export const useSavedQueries = create<SavedQueriesState>()(
   persist(
     (set) => ({
@@ -49,7 +46,7 @@ export const useSavedQueries = create<SavedQueriesState>()(
       add: (input) => {
         const now = Date.now();
         const q: SavedQuery = {
-          id: genId(),
+          id: `q-${shortId()}`,
           createdAt: now,
           updatedAt: now,
           connectionId: input.connectionId ?? null,

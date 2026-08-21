@@ -19,7 +19,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Upload, KeyRound, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "@/lib/tauri";
 import { useEnvironments } from "@/stores/session/environments";
@@ -35,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { ImportProgressBar } from "./ImportProgressBar";
 import { ConflictBulkActions } from "./ConflictBulkActions";
+import { pickJsonFile } from "@/lib/dialogs";
 import type {
   ConflictAction,
   ConflictResolution,
@@ -68,13 +68,10 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
 
   async function handlePickFile() {
     try {
-      const picked = await openFileDialog({
-        multiple: false,
-        directory: false,
-        title: t("transfer.importEnvironment.pickTitle"),
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
-      if (typeof picked !== "string" || !picked) return;
+      const picked = await pickJsonFile(
+        t("transfer.importEnvironment.pickTitle"),
+      );
+      if (!picked) return;
       setFilePath(picked);
       setError(null);
       setLoading(true);

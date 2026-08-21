@@ -11,7 +11,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Upload, KeyRound, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
@@ -28,6 +27,7 @@ import {
 import { ImportProgressBar } from "./ImportProgressBar";
 import { ConflictBulkActions } from "./ConflictBulkActions";
 import type { ConflictAction, ConflictResolution, ImportAnalysis, ImportResult } from "@/types";
+import { pickJsonFile } from "@/lib/dialogs";
 
 // Mirrors `IMPORT_PROGRESS_EVENT` in `src-tauri/src/commands/connection.rs`.
 const IMPORT_PROGRESS_EVENT = "huginndb://import-progress";
@@ -55,13 +55,8 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
 
   async function handlePickFile() {
     try {
-      const picked = await openFileDialog({
-        multiple: false,
-        directory: false,
-        title: t("transfer.import.pickTitle"),
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
-      if (typeof picked !== "string" || !picked) return;
+      const picked = await pickJsonFile(t("transfer.import.pickTitle"));
+      if (!picked) return;
       setFilePath(picked);
       setError(null);
       setLoading(true);

@@ -38,7 +38,6 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
@@ -85,6 +84,8 @@ import {
 } from "@/components/ui/dropdown";
 import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
 import { formatNumber } from "@/lib/utils";
+import { isExportCancelled } from "@/lib/db/driver";
+import { pickJsonFile } from "@/lib/dialogs";
 import {
   registerTableRefresh,
   unregisterTableRefresh,
@@ -769,7 +770,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       );
     } catch (e) {
       const message = String(e);
-      if (!message.includes("export cancelled")) toast.error(message);
+      if (!isExportCancelled(message)) toast.error(message);
     }
   }
 
@@ -797,7 +798,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       );
     } catch (e) {
       const message = String(e);
-      if (!message.includes("export cancelled")) toast.error(message);
+      if (!isExportCancelled(message)) toast.error(message);
     }
   }
 
@@ -809,13 +810,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * destructive-write confirmation like the tree version did.
    */
   async function importCollectionJsonForTab() {
-    const picked = await openFileDialog({
-      multiple: false,
-      directory: false,
-      title: t("schema.importCollection.pickTitle"),
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
-    if (typeof picked !== "string" || !picked) return;
+    const picked = await pickJsonFile(
+      t("schema.importCollection.pickTitle"),
+    );
+    if (!picked) return;
     if (
       !confirmDestructive(
         t("schema.importCollection.confirm", { collection: table }),

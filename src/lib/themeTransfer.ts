@@ -8,6 +8,7 @@
 // addition can still tell an old export apart without guessing.
 
 import { BUILT_IN_THEMES, type Theme, type ThemeColors } from "@/lib/themes";
+import { customThemeId } from "@/lib/utils";
 
 const KIND = "huginndb-theme";
 const CURRENT_VERSION = 1;
@@ -94,7 +95,7 @@ export function parseThemeFile(raw: string): Theme {
   );
 
   return {
-    id: `custom-${Math.random().toString(36).slice(2, 8)}`,
+    id: customThemeId(),
     name: typeof theme.name === "string" && theme.name.trim() ? theme.name.trim() : "Imported theme",
     mode: theme.mode === "light" ? "light" : "dark",
     builtin: false,
