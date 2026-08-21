@@ -63,6 +63,57 @@ pub async fn get_table_structure_inner(
     }
 }
 
+/// A relation's structure, plus its view body when it turns out to be a view.
+///
+/// `#[serde(flatten)]` keeps every key `get_table_structure_inner` already
+/// emitted exactly where it was and only adds `view`, so this is a superset of
+/// the old shape rather than a new one. Safe here because the struct is
+/// serialise-only: gotcha #14's "serde silently drops what the Rust struct does
+/// not declare" is about *deserialisation*, which never happens to this type.
+///
+/// `TableStructure` itself is deliberately not widened. It is the structure
+/// editor's round-trip DTO — mirrored in `src/types.ts` and fed straight back
+/// into `apply_structure_change` as `desired` — so a field added for a different
+/// feature's benefit would ride into that payload, which is the failure
+/// gotcha #39 records for `WorkingColumn`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationDescription {
+    #[serde(flatten)]
+    pub structure: TableStructure,
+    /// Present only when the relation is a view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub view: Option<crate::commands::view::ViewBody>,
+}
+
+/// Describe a relation: its structure, and — when it is a view — what the view
+/// actually *is*.
+///
+/// One call rather than two so a caller pays a single round trip over the MCP
+/// bridge. It exists because `describe_table` was already view-aware for the
+/// wrong half: a view has columns, and it reported them, but it had no notion of
+/// a body, so the only way to read a view's definition over MCP was to
+/// hand-write a catalog query per engine — and on MongoDB, whose `mongosh`
+/// parser has no DDL vocabulary at all, there was no way whatsoever.
+///
+/// The extra work for a plain table is one indexed catalog lookup that returns
+/// no row. That is the price of not having to know a relation's kind before
+/// asking about it, and it is why the view read returns `Option` rather than
+/// `NotFound`.
+pub async fn describe_relation_inner(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<RelationDescription> {
+    let structure =
+        get_table_structure_inner(state, connection_id, schema.clone(), table.clone()).await?;
+    let view =
+        crate::commands::view::get_any_view_definition_inner(state, connection_id, schema, &table)
+            .await?;
+    Ok(RelationDescription { structure, view })
+}
+
 pub(crate) async fn pg_structure(
     p: &sqlx::PgPool,
     schema: Option<String>,

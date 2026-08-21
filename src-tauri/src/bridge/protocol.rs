@@ -120,6 +120,13 @@ pub enum BridgeRequest {
         connection_id: String,
         user: String,
     },
+    /// Read a view's definition. SQL drivers answer with the body; MongoDB with
+    /// `viewOn` plus the stored pipeline as source text.
+    GetViewDefinition {
+        connection_id: String,
+        schema: Option<String>,
+        view: String,
+    },
     /// Execute one statement. `class` is the tier the sidecar classified it as;
     /// the server re-derives it rather than trusting it (see
     /// [`crate::bridge`]'s security notes) and uses the caller's value only to
@@ -167,6 +174,47 @@ pub enum BridgeRequest {
         pk_columns: Vec<String>,
         pk_value_rows: Vec<Vec<Value>>,
     },
+    /// Build the statements a view change would run, without running them.
+    ///
+    /// Split from [`BridgeRequest::ApplyViewChange`] rather than sharing one
+    /// variant with a `preview: bool`, even though the two carry identical
+    /// fields and the MCP tool exposing them is single. A shared variant would
+    /// force [`BridgeRequest::is_mutating`] and the server's policy check to
+    /// read a *field* to decide whether this is a read or DDL, and a later
+    /// refactor that drops that binding would grant DDL at `read-only` with
+    /// nothing failing to compile. Two variants put the decision in the
+    /// exhaustive matches, which is the reason this enum mirrors its `_inner`
+    /// functions one-for-one in the first place.
+    PreviewViewChange {
+        connection_id: String,
+        /// The *profile* id the policy applies to, which for a Mongo
+        /// per-database view differs from `connection_id`.
+        policy_id: String,
+        schema: Option<String>,
+        name: String,
+        /// SQL: the view body. MongoDB: the pipeline as source text.
+        query: String,
+        rename_from: Option<String>,
+        view_on: Option<String>,
+    },
+    /// Create, redefine or rename a view. Fields identical to
+    /// [`BridgeRequest::PreviewViewChange`]; see there for why they are two
+    /// variants.
+    ApplyViewChange {
+        connection_id: String,
+        policy_id: String,
+        schema: Option<String>,
+        name: String,
+        query: String,
+        rename_from: Option<String>,
+        view_on: Option<String>,
+    },
+    DropView {
+        connection_id: String,
+        policy_id: String,
+        schema: Option<String>,
+        view: String,
+    },
 }
 
 impl BridgeRequest {
@@ -185,7 +233,9 @@ impl BridgeRequest {
             BridgeRequest::RunStatement { .. }
             | BridgeRequest::InsertRow { .. }
             | BridgeRequest::UpdateCell { .. }
-            | BridgeRequest::DeleteRows { .. } => true,
+            | BridgeRequest::DeleteRows { .. }
+            | BridgeRequest::ApplyViewChange { .. }
+            | BridgeRequest::DropView { .. } => true,
             BridgeRequest::EnsureConnected { .. }
             | BridgeRequest::ResolveMongoTarget { .. }
             | BridgeRequest::IsMongo { .. }
@@ -196,7 +246,11 @@ impl BridgeRequest {
             | BridgeRequest::ServerVersion { .. }
             | BridgeRequest::ListUsers { .. }
             | BridgeRequest::ListPrivileges { .. }
-            | BridgeRequest::FetchTableData { .. } => false,
+            | BridgeRequest::FetchTableData { .. }
+            | BridgeRequest::GetViewDefinition { .. }
+            // A dry run executes nothing, so a lost reply costs at most a
+            // repeated build.
+            | BridgeRequest::PreviewViewChange { .. } => false,
         }
     }
 
@@ -218,6 +272,13 @@ impl BridgeRequest {
             BridgeRequest::InsertRow { .. } => "insert_row",
             BridgeRequest::UpdateCell { .. } => "update_cell",
             BridgeRequest::DeleteRows { .. } => "delete_rows",
+            BridgeRequest::GetViewDefinition { .. } => "get_view_definition",
+            // Preview and apply deliberately do not share a label: this string
+            // is what the desktop Console shows, and a Console that cannot tell
+            // a dry run from a real `DROP VIEW` is worse than none.
+            BridgeRequest::PreviewViewChange { .. } => "save_view (preview)",
+            BridgeRequest::ApplyViewChange { .. } => "save_view",
+            BridgeRequest::DropView { .. } => "drop_view",
         }
     }
 }
@@ -269,6 +330,37 @@ impl BridgeResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_multiline_view_body_survives_the_newline_framing() {
+        // `ApplyViewChange` is the first request whose payload routinely
+        // contains newlines, and the framing is newline-delimited JSON. serde
+        // escapes them as `\n`, so this works — but nothing pinned it, and a
+        // desync would present as the bridge hanging or misparsing an unrelated
+        // later call rather than as a failure here.
+        let req = BridgeRequest::ApplyViewChange {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            schema: Some("public".into()),
+            name: "active_orders".into(),
+            query: "SELECT id,\n       name\n  FROM t\n WHERE ok".into(),
+            rename_from: None,
+            view_on: None,
+        };
+        let line = serde_json::to_string(&req).unwrap();
+        assert!(
+            !line.contains('\n'),
+            "framing would desynchronise: {line:?}"
+        );
+
+        let back: BridgeRequest = serde_json::from_str(&line).unwrap();
+        match back {
+            BridgeRequest::ApplyViewChange { query, .. } => {
+                assert_eq!(query, "SELECT id,\n       name\n  FROM t\n WHERE ok")
+            }
+            other => panic!("wrong variant: {}", other.label()),
+        }
+    }
 
     #[test]
     fn requests_round_trip_through_the_wire_format() {
@@ -342,6 +434,21 @@ mod tests {
                 pk_columns: vec![],
                 pk_value_rows: vec![],
             },
+            BridgeRequest::ApplyViewChange {
+                connection_id: "c".into(),
+                policy_id: "c".into(),
+                schema: None,
+                name: "v".into(),
+                query: "SELECT 1".into(),
+                rename_from: None,
+                view_on: None,
+            },
+            BridgeRequest::DropView {
+                connection_id: "c".into(),
+                policy_id: "c".into(),
+                schema: None,
+                view: "v".into(),
+            },
         ] {
             assert!(req.is_mutating(), "{} must be mutating", req.label());
         }
@@ -349,5 +456,48 @@ mod tests {
             connection_id: "c".into()
         }
         .is_mutating());
+        // A dry run executes nothing, so losing its reply is safe to retry.
+        assert!(!BridgeRequest::PreviewViewChange {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            schema: None,
+            name: "v".into(),
+            query: "SELECT 1".into(),
+            rename_from: None,
+            view_on: None,
+        }
+        .is_mutating());
+        assert!(!BridgeRequest::GetViewDefinition {
+            connection_id: "c".into(),
+            schema: None,
+            view: "v".into(),
+        }
+        .is_mutating());
+    }
+
+    #[test]
+    fn preview_and_apply_do_not_share_a_console_label() {
+        // The label is what the desktop Console shows for a bridged call. A
+        // Console that cannot tell a dry run from a real `DROP VIEW` is worse
+        // than none, so these two must stay distinguishable.
+        let preview = BridgeRequest::PreviewViewChange {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            schema: None,
+            name: "v".into(),
+            query: "SELECT 1".into(),
+            rename_from: None,
+            view_on: None,
+        };
+        let apply = BridgeRequest::ApplyViewChange {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            schema: None,
+            name: "v".into(),
+            query: "SELECT 1".into(),
+            rename_from: None,
+            view_on: None,
+        };
+        assert_ne!(preview.label(), apply.label());
     }
 }
