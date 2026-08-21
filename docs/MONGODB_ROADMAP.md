@@ -317,7 +317,7 @@ The editor reuses Monaco's `sql` language for syntax highlighting; mongosh would
 read better with a JavaScript/JSON grammar.
 - **Why deferred:** keeping `sql` preserved the existing CodeLens "▶ Run",
   `Ctrl+Enter`, and completion wiring with minimal churn for the MVP.
-- **Hook:** `src/lib/monacoSql.ts` providers are language-scoped; register a
+- **Hook:** `src/lib/monaco/monacoSql.ts` providers are language-scoped; register a
   parallel set for `javascript` and switch the model language per driver in
   `QueryEditorTab.tsx`.
 

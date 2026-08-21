@@ -8,6 +8,97 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Un origen compartido con secretos cifrados guardaba lo que no debía en el
+  llavero del sistema.** `sync_origin` escribía el *sobre* AES-256-GCM en base64
+  como si fuera la contraseña, así que todo perfil importado desde ese origen
+  fallaba al conectar con un error de autenticación del driver — y la contraseña
+  real no era recuperable a partir de ahí. La ruta de descifrado ahora es la
+  misma que usa el importador de perfiles (`transfer::land_secrets`), que nunca
+  guarda un secreto que no ha podido descifrar; un origen cuya passphrase no
+  está disponible deja simplemente el perfil pidiendo contraseña, que es el
+  comportamiento documentado (la passphrase viaja por otro canal). Tres tests de
+  regresión lo cubren sin tocar el llavero.
+
+- **Eliminado un comando IPC inalcanzable que podía leer cualquier entrada del
+  llavero.** `load_password(account)` estaba registrado pero no se llamaba desde
+  ningún sitio de la app; aceptaba un nombre de cuenta arbitrario y devolvía el
+  secreto guardado. Nada en HuginnDB necesita esa forma — la ruta de conexión
+  resuelve su propia clave —, así que el comando y su módulo se han borrado en
+  lugar de restringirse.
+
+- **El editor de colores del tema salía entero en inglés**, con cualquier idioma
+  seleccionado: los 26 nombres de color y los 4 títulos de grupo eran cadenas
+  fijas en `lib/themes.ts`. Ahora son claves i18n, en ambos idiomas.
+
+- **Los números y las fechas seguían el idioma del sistema operativo en vez del
+  elegido en Ajustes.** Doce llamadas a `toLocaleString()` no pasaban locale, así
+  que una interfaz en español sobre un sistema en inglés mostraba `1,234` y
+  `8/21/2026`. Ahora pasan por `formatNumber` / `formatDateTime` / `formatTime`,
+  que leen `ui.language`.
+
+- **Importar un entorno ocultaba sus propias conexiones cuando un perfil en
+  conflicto se resolvía como «Omitir».** El perfil omitido no aparecía en el mapa
+  id-original → id-nuevo, así que el filtro `visible_connections` del entorno
+  nuevo lo descartaba, y cualquier binding de JSON Schema que lo apuntara quedaba
+  desactivado aunque la conexión estuviera ahí desde el principio. Un perfil
+  omitido ahora se mapea a sí mismo.
+
+- **Los conflictos al importar entornos vienen por defecto en «Omitir» y no en
+  «Renombrar»**, igual que en el importador de perfiles. Reimportar tu propio
+  export acumulaba `nombre (imported)`, `nombre (2)`, … en cada vuelta; el paso
+  de conflictos se sigue mostrando, así que un entorno realmente distinto está a
+  un clic de Renombrar u Sobrescribir.
+
+- **«Copiar como ▸ SELECT» no escapaba los delimitadores dentro de un nombre de
+  tabla o columna**, generando un fragmento que no parseaba. Ahora usa el mismo
+  quoting que los demás formatos de portapapeles.
+
+- **`profiles.json` era el único fichero de estado que se escribía sin
+  temporal + rename**, así que un fallo a medias podía dejar truncadas todas las
+  conexiones guardadas — y con ellas las entradas del llavero, los bindings de
+  JSON Schema y los enlaces a orígenes que se apoyan en esos ids. Ahora todos los
+  ficheros de estado JSON pasan por un único escritor atómico
+  (`src-tauri/src/state_file.rs`).
+
+- **Tres brazos de `match` que habrían tratado mal en silencio un driver o un
+  operador de filtro nuevo.** `empty_table` caía en el `TRUNCATE` de Postgres
+  para cualquier caso no listado (SQL Server habría ejecutado una sentencia que
+  acepta con otra semántica, y MongoDB una que no tiene), y los brazos de
+  comparación y `LIKE` del constructor de filtros caían en `<=` y `EndsWith`. Los
+  tres deletrean ahora todas las variantes, así que añadir una es un error de
+  compilación.
+
+### Cambiado
+
+- **Interno: una pasada por todo el proyecto sobre lógica duplicada y
+  responsabilidades mal colocadas.** Sin cambios de comportamiento más allá de
+  las correcciones de arriba. Lo que merece la pena saber:
+  - `db/exec.rs` — la contraparte de ejecución de `db::sql::Dialect`. Doce sitios
+    repetían el mismo `match pool { … }`, dos de ellos byte a byte, y uno era una
+    reinserción de un decodificador que ya existía 200 líneas más arriba.
+  - La introspección de catálogo de Postgres/MySQL/SQLite sale de
+    `commands/schema.rs` (1559 → 769 líneas) hacia
+    `db/{postgres,mysql,sqlite}/`, replicando `db/mssql` y `db/mongo`. Los 17
+    `unreachable!()` han desaparecido.
+  - `state_file.rs`, `AppState::pool_for`/`mongo_for`, `Dialect::quote_ident` y
+    `Dialect::truncate_stmt` sustituyen entre 9 y 10 copias a mano cada uno.
+  - Frontend: `useImportWizard` (tres diálogos), `useAsyncSubmit` (diez),
+    `OverlayPalette` + `useListNavigation` (paleta de comandos y conmutador de
+    pestañas), `lib/schedule.ts` (tres debounces, dos sondeos), `RefreshButton`
+    (cinco), más `lib/grid/pagination.ts` y `lib/grid/exportTable.ts`.
+  - `PrefId` se deriva ahora de `Preferences`, así que un id de «ir a este
+    ajuste» que no nombre una preferencia real es un error de compilación en vez
+    de un salto muerto en silencio.
+  - Borrado código muerto: `ConnectPasswordDialog` (92 líneas, ningún
+    importador) y sus claves i18n, `useSavedQueries.byTag`, tres constantes sin
+    usar y la dependencia `async-trait`.
+
+- **Vitest está montado para el frontend** (`pnpm test`) con tests de
+  caracterización de los módulos puros de `lib/` y de cada hook extraído, y el CI
+  lo ejecuta junto a los trabajos existentes de typecheck y Cargo.
+
 ## [1.17.0] — 2026-08-20
 
 ### Añadido

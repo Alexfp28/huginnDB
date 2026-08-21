@@ -945,7 +945,7 @@ export type WorkspaceLayout = unknown | null;
 
 /**
  * A named set of connections plus the session state that belongs to them.
- * Mirrors `Environment` in `src-tauri/src/tab_state.rs` (`tab_state.json` v4).
+ * Mirrors `Environment` in `src-tauri/src/tab_state.rs` (`tab_state.json` v5).
  *
  * Only the presentation fields (plus `launch`, see below) are exposed here.
  * `connections` and `internalLayout` live in the same on-disk struct but are

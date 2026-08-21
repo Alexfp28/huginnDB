@@ -32,6 +32,14 @@ function plain(v: CellValue): string {
  * Doubles any embedded quote character, which is the standard escape in
  * SQL identifier syntax for every supported driver. We don't try to
  * detect "already-quoted" inputs — callers pass raw catalog names.
+ *
+ * The twin of `Dialect::quote_ident` in `src-tauri/src/db/sql.rs`, which is the
+ * authoritative one: it quotes identifiers for SQL the app actually *executes*,
+ * so its rules are load-bearing (and it enforces SECURITY.md's "only
+ * catalog-sourced names reach `quote_ident`"). This copy exists only to build
+ * snippets the user copies to their clipboard, and duplicating it beats routing
+ * a clipboard format through an IPC round-trip. Keep the two in sync — the Rust
+ * side carries the per-dialect rationale.
  */
 export function quoteIdent(driver: Driver | undefined, name: string): string {
   if (driver === "mysql") {
