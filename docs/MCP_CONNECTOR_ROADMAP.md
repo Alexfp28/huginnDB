@@ -161,18 +161,71 @@ needs no client-config edits to change.
 | `list_connections` | `store::load_profiles` + `connections.ids()` | which DBs are available |
 | `list_databases` | `schema::list_databases_inner` | |
 | `list_tables` | `schema::list_tables_inner` | |
-| `describe_table` | `structure::get_table_structure_inner` | columns, types, PK, FK, indexes |
+| `describe_table` | `structure::describe_relation_inner` | columns, types, PK, FK, indexes; plus a `view` object when the relation is a view |
 | `list_indexes` | `schema::list_indexes_inner` | |
 | `run_query` | `execute_query_inner` | rejects non-read-only SQL unless write-mode |
 | `browse_table` | `fetch_table_data_inner` | paginated/filtered browse without writing SQL |
 | `server_version` | `schema::server_version_inner` | |
 | `list_users` / `list_privileges` | `schema::*_inner` | permission context |
 | `insert_row` / `update_cell` / `delete_rows` | respective `_inner` | require the connection's write policy ≥ `data` (see Phase 4) |
+| `save_view` / `drop_view` | `view::save_any_view_inner` / `view::drop_view_inner` | require the connection's write policy = `full`; a view is schema (see Views, below) |
 
 > As shipped (1.9.0), writes are gated by the per-connection `mcp_write` policy,
 > **not** a global `--allow-writes`; DDL goes through `run_query` at the `full`
 > tier rather than a dedicated `execute_write` tool. See the Phase 4 section
 > above and `docs/MCP.md`.
+
+## Views (shipped after 1.17.0)
+
+Views reached the surface as two write tools — `save_view`, `drop_view` — plus a
+`view` object added to `describe_table`'s reply. Three judgements are worth
+recording, because each of them is a place where the obvious choice was the
+wrong one.
+
+**Reading was unified into `describe_table` rather than given a `get_view`
+tool.** `describe_table` already answered for a view — a view has columns, and
+it returned them — so what it lacked was the body, not view-awareness. Adding a
+sibling tool would have meant two tools whose answers overlap, and an assistant
+choosing between them from a `list_tables` row that says only `kind: "view"`.
+The cost is one extra indexed catalog lookup per `describe_table` of a plain
+table, which is why the view read returns `Option` rather than `NotFound`:
+"that is a table" is an answer.
+
+**Dedicated write tools were justified here even though a structure-editor tool
+was deferred in Phase 4, and the reason is not "views are more important".** The
+Phase 4 argument was about the DTO: making a model synthesise a whole
+`TableStructure` — per-column types, nullability, defaults, keys, identity flags,
+dozens of fields that must all be right or data is silently destroyed — is worse
+than having it emit `ALTER TABLE`. That argument does not transfer, because a
+`ViewDefinition` is `{schema, name, query}` and `query` is a `SELECT` the model
+is writing anyway. `save_view` is closer in shape to `update_cell` (a value and
+an address) than to `apply_structure_change`. Table DDL still reaches the
+database only through `run_query`, and that remains the right call.
+
+What the tools buy over `run_query` at `full`, concretely:
+
+| Capability | Reachable through `run_query`? |
+| --- | --- |
+| MongoDB views, read or write | **No.** `db::mongo::shell` has no DDL vocabulary, so a stored pipeline was unreachable in both directions. This is the largest single gap the tools close. |
+| Postgres rename + body change atomically | **No.** One statement per call, no transaction. `execute_all` wraps both. |
+| Editing a SQLite view | **Badly.** Two calls, with a window where the view does not exist and no rollback if the `CREATE` fails. |
+| Reading the current body to build the diff | **No** portable way — `pg_get_viewdef` vs `information_schema.views` vs `sqlite_master` vs `sys.sql_modules`. |
+| Seeing the DDL before running it | **No.** |
+
+**The tier is `full`, and that was forced rather than chosen.** `db::sql::classify`
+already sends `CREATE OR REPLACE VIEW` and `DROP VIEW` to `StmtClass::Ddl`, so a
+`data` connection is refused them through `run_query`. Had the tools been
+`DataWrite`, that same connection would have obtained through a tool precisely
+what the policy denies — a privilege escalation introduced by a new tool, not a
+finer-grained permission. Two tests assert it so the tempting "a view is just a
+stored query" simplification fails a build rather than a review.
+
+One shape decision worth keeping if this is ever extended: preview and apply are
+**two bridge variants** even though they carry identical fields and are exposed
+as a single tool with a `preview` flag. A shared variant would make
+`is_mutating()` and the server's policy check read a *field* to decide
+read-vs-DDL, and a later refactor dropping that binding would grant DDL at
+`read-only` with nothing failing to compile.
 
 ## Client configuration (target UX)
 

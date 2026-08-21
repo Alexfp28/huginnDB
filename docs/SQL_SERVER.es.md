@@ -102,7 +102,11 @@ herramientas MCP de lectura y de escritura de datos.
 ## Por MCP
 
 No hay nada específico de SQL Server que configurar: se expone exactamente como
-los otros drivers SQL, con el mismo nivel de escritura por conexión. El único
-hueco sigue a la tabla de arriba — `apply_structure_change` devuelve un error de
-«driver no soportado», así que un asistente puede leer el esquema y escribir
-filas pero no alterar el esquema. Ver [`MCP.es.md`](MCP.es.md).
+los otros drivers SQL, con el mismo nivel de escritura por conexión. Los huecos
+siguen a la tabla de arriba: un asistente puede leer el esquema — incluida la
+definición de una vista, con `describe_table` — y escribir filas, y puede
+eliminar una vista, pero no puede crearla ni redefinirla (`save_view` devuelve
+aquí un error de «driver no soportado») ni alterar la estructura de una tabla
+con una herramienta. El DDL de tablas no es una herramienta en ningún driver: va
+por `run_query` con el nivel `full`, donde el T-SQL que escribas tú funciona con
+normalidad. Ver [`MCP.es.md`](MCP.es.md).

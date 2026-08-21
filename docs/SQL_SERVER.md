@@ -94,7 +94,10 @@ privileges), multi-database browsing, and every MCP read and data-write tool.
 ## Over MCP
 
 Nothing SQL Server-specific to configure: it is exposed exactly like the other
-SQL drivers, with the same per-connection write policy. The one gap follows the
-table above — `apply_structure_change` returns an "unsupported driver" error
-there, so an assistant can read the schema and write rows but cannot alter the
-schema. See [`MCP.md`](MCP.md).
+SQL drivers, with the same per-connection write policy. The gaps follow the
+table above: an assistant can read the schema — including a view's definition,
+through `describe_table` — and write rows, and it can drop a view, but it cannot
+create or redefine one (`save_view` returns an "unsupported driver" error here)
+and it cannot alter a table's structure through a tool. Table DDL is not a tool
+on any driver; it goes through `run_query` at the `full` policy, where T-SQL you
+write yourself works normally. See [`MCP.md`](MCP.md).

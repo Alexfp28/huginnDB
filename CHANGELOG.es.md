@@ -8,6 +8,53 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Vistas por el conector MCP: leer, editar y eliminar.** Las vistas eran casi
+  invisibles para un cliente de IA. `list_tables` informaba de `kind: "view"` y
+  `describe_table` devolvía las columnas de una vista, pero nada podía leer su
+  *cuerpo*, ni crear, redefinir o eliminar una — el único recurso era escribir a
+  mano una consulta de catálogo por motor con `run_query`, y en MongoDB ni eso,
+  porque su parser de `mongosh` no tiene vocabulario DDL y un pipeline
+  almacenado era inalcanzable en las dos direcciones.
+
+  Dos herramientas nuevas, y una existente ampliada, en los cinco drivers:
+  - `describe_table` añade ahora un objeto `view` cuando la relación es una
+    vista — `query` (el cuerpo del SELECT) en SQL, `viewOn` más el `pipeline`
+    como texto fuente en MongoDB. Sin herramienta nueva para leer:
+    `describe_table` ya conocía las vistas por la mitad de las columnas, así que
+    el cuerpo va ahí.
+  - `save_view` *(escritura)* crea, redefine o renombra una vista. Recibe solo
+    `name` y `query`, y lee ella misma la definición actual para decidir cuál de
+    las tres es y cómo expresarla en este motor — `CREATE OR REPLACE` en
+    Postgres, `RENAME TABLE` en MySQL, borrar y recrear en SQLite,
+    `createView`/`collMod` en MongoDB. Con `preview: true` devuelve las
+    sentencias exactas sin ejecutarlas.
+  - `drop_view` *(escritura)* elimina una, y rechaza cualquier cosa que no sea
+    una vista.
+
+  **El modelo de permisos no cambia** — sin eje nuevo, sin ajuste nuevo. Las dos
+  herramientas de escritura son DDL, así que las dos exigen el nivel `full` que
+  la conexión ya tenía. Y es la única respuesta coherente, no una preferencia:
+  el `CREATE OR REPLACE VIEW` que podrías escribir a mano por `run_query` ya
+  está clasificado como DDL, así que una conexión en `data` lo tiene rechazado,
+  y una herramienta que permitiera el mismo cambio devolvería justo lo que el
+  nivel acaba de negar. Queda una asimetría que conviene conocer: eliminar una
+  *vista* pide `full` mientras que borrar *filas* solo pide `data` — la misma
+  asimetría que ya existe entre `DROP TABLE` y `DELETE FROM`. El `preview` de
+  `save_view` es una excepción de verdad, no un agujero: no ejecuta nada, así
+  que está clasificado como lectura y funciona en cualquier nivel.
+
+  MongoDB va por esas mismas dos herramientas en vez de tener su propio par. Un
+  cliente de IA no puede ver la diferencia desde la salida de `list_tables`, y lo
+  que quiere es una herramienta por verbo; el pipeline viaja como texto fuente y
+  lo parsea únicamente el único parser que tiene el producto, así que un
+  `ObjectId(...)` dentro de un `$match` sigue dando la vuelta como constructor y
+  no degradado a cadena.
+
+  De paso, SQL Server ganó la capacidad de leer la definición de una vista; solo
+  *crearla* sigue sin estar soportado ahí. Ver [`docs/MCP.md`](docs/MCP.md).
+
 ### Corregido
 
 - **Eliminar una «vista» de MongoDB cuyo nombre era en realidad una colección

@@ -6,6 +6,50 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Views over the MCP connector: read, edit and delete.** Views were nearly
+  invisible to an AI client. `list_tables` reported `kind: "view"` and
+  `describe_table` returned a view's columns, but nothing could read a view's
+  *body*, and nothing could create, redefine or drop one — the only recourse was
+  hand-writing a catalog query per engine through `run_query`, and on MongoDB
+  not even that, since its `mongosh` parser has no DDL vocabulary at all and a
+  stored pipeline was unreachable in both directions.
+
+  Two new tools, and one existing tool widened, on all five drivers:
+  - `describe_table` now adds a `view` object when the relation is a view —
+    `query` (the bare SELECT body) on SQL, `viewOn` plus the `pipeline` as
+    source text on MongoDB. No new tool for reading: `describe_table` was
+    already view-aware for the columns half, so the body belongs there.
+  - `save_view` *(write)* creates, redefines or renames a view. It takes only
+    `name` and `query` and reads the current definition itself to decide which
+    of the three it is, and how to express it on this engine — Postgres `CREATE
+    OR REPLACE`, MySQL `RENAME TABLE`, SQLite drop-and-recreate, MongoDB
+    `createView`/`collMod`. `preview: true` returns the exact statements without
+    running them.
+  - `drop_view` *(write)* drops one, and refuses anything that is not a view.
+
+  **The permission model is unchanged** — no new axis, no new setting. Both
+  write tools are DDL, so both need the connection's existing write policy at
+  `full`. That is the only consistent answer rather than a preference: the
+  `CREATE OR REPLACE VIEW` you could write by hand through `run_query` is
+  already classified as DDL, so a `data` connection is refused it, and a tool
+  that allowed the same change anyway would hand back exactly what the policy
+  just denied. It does leave one asymmetry worth knowing: dropping a *view*
+  needs `full` while deleting *rows* needs only `data` — the same asymmetry
+  `DROP TABLE` and `DELETE FROM` already have. `save_view`'s `preview` is a real
+  exception rather than a loophole: it executes nothing, so it is classified as a
+  read and works at any level.
+
+  MongoDB rides the same two tools rather than getting its own pair. An AI
+  client cannot see the difference from `list_tables` output, and one tool per
+  verb is what it wants; the pipeline crosses as source text and is parsed only
+  by the one parser the product has, so an `ObjectId(...)` in a `$match` still
+  round-trips as a constructor rather than degrading to a string.
+
+  SQL Server gained the ability to read a view's definition along the way; only
+  *creating* one there is still unsupported. See [`docs/MCP.md`](docs/MCP.md).
+
 ### Fixed
 
 - **Dropping a MongoDB "view" whose name is actually a collection deleted all

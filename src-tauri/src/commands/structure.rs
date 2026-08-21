@@ -539,10 +539,18 @@ pub async fn apply_structure_change(
     apply_structure_change_inner(state.inner(), args).await
 }
 
-/// Tauri-independent core of [`apply_structure_change`], shared with the
-/// headless MCP `apply_structure_change` write tool (gated to the `full`
-/// per-connection write policy). Takes a borrowed [`AppState`] instead of a
-/// Tauri `State`; emits no Console log (the GUI command never did either).
+/// Tauri-independent core of [`apply_structure_change`]. Takes a borrowed
+/// [`AppState`] instead of a Tauri `State`; emits no Console log (the GUI
+/// command never did either).
+///
+/// It has no second caller today. It used to claim to be shared with a headless
+/// MCP `apply_structure_change` write tool, which has never existed: a
+/// structure-editor tool was deliberately deferred (see
+/// `docs/MCP_CONNECTOR_ROADMAP.md`) because making a model synthesise a whole
+/// `TableStructure` is worse than having it emit `ALTER TABLE` through
+/// `run_query`, and table DDL still reaches the database only that way. Kept in
+/// this shape because it is the right shape for the bridge if that judgement is
+/// ever revisited.
 pub(crate) async fn apply_structure_change_inner(
     state: &AppState,
     args: StructureChangeArgs,
