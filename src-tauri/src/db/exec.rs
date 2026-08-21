@@ -109,6 +109,43 @@ pub async fn execute_params(pool: &DbPool, sql: &str, binds: &[Option<String>]) 
     }
 }
 
+/// Run a parameterised read, returning `(columns, rows)`.
+///
+/// Columns come back as untyped `(name, type_name)` pairs rather than a
+/// `ColumnMeta`: that DTO lives in `commands::query`, and `db/` must not depend
+/// upward on `commands/`. `db::mssql::schema::decode_rows` already returned this
+/// shape for the same reason, so one signature covers all four drivers and the
+/// caller maps into whatever it serialises.
+pub async fn query_rows(
+    pool: &DbPool,
+    sql: &str,
+    binds: &[Option<String>],
+) -> AppResult<(Vec<(String, String)>, Vec<Vec<serde_json::Value>>)> {
+    use crate::db::values;
+    match pool {
+        DbPool::Postgres(p) => bind_all!(sql, binds, p)
+            .fetch_all(p)
+            .await
+            .map(|rows| values::pg_result(&rows))
+            .map_err(AppError::from),
+        DbPool::Mysql(p) => bind_all!(sql, binds, p)
+            .fetch_all(p)
+            .await
+            .map(|rows| values::mysql_result(&rows))
+            .map_err(AppError::from),
+        DbPool::Sqlite(p) => bind_all!(sql, binds, p)
+            .fetch_all(p)
+            .await
+            .map(|rows| values::sqlite_result(&rows))
+            .map_err(AppError::from),
+        DbPool::MsSql(p) => p
+            .query_all(sql, binds)
+            .await
+            .map(|rows| crate::db::mssql::schema::decode_rows(&rows)),
+        DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),
+    }
+}
+
 /// Run a parameterised query expected to yield a single `i64` — a `COUNT(*)`,
 /// a `last_insert_id`, an estimated row count.
 ///
