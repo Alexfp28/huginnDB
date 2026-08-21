@@ -60,6 +60,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   tunnelled), a second launch went from a pegged core and a frozen window to
   0% and a responsive one.
 
+- **A failing `accept()` on the MCP bridge could spin a core indefinitely.**
+  The listener's loop retried unconditionally on the stated grounds that "a
+  failed accept is transient", and dropped the error without logging it. That
+  holds for a client that vanished mid-handshake, but not for descriptor
+  exhaustion (`EMFILE`/`ENFILE`) — the textbook reason `accept()` fails
+  repeatedly, and one that cannot clear until something unrelated closes a
+  handle. The retries now ramp to a one-second cap after a few immediate ones,
+  so the transient case is unchanged and a persistent one costs nothing, and
+  the failure is reported to the Console instead of vanishing. Latent, not
+  observed in the wild — found while diagnosing the launch freeze above.
+
 - **A SQL document was split into statements incorrectly from its first string
   literal onward.** The splitter behind the editor's per-statement "▶ Run"
   CodeLens closed a quoted string and then, in the same pass, re-opened it on

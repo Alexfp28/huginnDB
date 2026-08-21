@@ -65,6 +65,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   ellas con túnel), el segundo arranque pasó de un núcleo saturado y la ventana
   congelada a 0 % y ventana viva.
 
+- **Un `accept()` fallando en el puente MCP podía dejar un núcleo girando
+  indefinidamente.** El bucle del listener reintentaba sin condiciones, con el
+  argumento de que «un accept fallido es transitorio», y descartaba el error sin
+  registrarlo. Eso vale para un cliente que desaparece a mitad del saludo, pero
+  no para el agotamiento de descriptores (`EMFILE`/`ENFILE`), que es la razón de
+  manual por la que `accept()` falla repetidamente y que no se resuelve hasta
+  que algo ajeno libera un handle. Ahora los reintentos escalan hasta un tope de
+  un segundo tras unos pocos inmediatos —así el caso transitorio no cambia y el
+  persistente no cuesta nada— y el fallo se informa en la Consola en vez de
+  desaparecer. Latente, no observado en uso real: apareció al diagnosticar la
+  congelación de arranque de arriba.
+
 - **Un documento SQL se dividía mal en sentencias a partir de su primer literal
   de texto.** El divisor que alimenta el CodeLens «▶ Ejecutar» por sentencia
   cerraba una cadena entrecomillada y, en la misma pasada, la reabría con ese

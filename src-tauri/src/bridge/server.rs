@@ -15,7 +15,7 @@ use crate::state::{AppState, McpWritePolicy};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -64,15 +64,43 @@ pub async fn start(app: AppHandle) -> AppResult<BridgeHandle> {
     let cancel_loop = cancel.clone();
     let token = Arc::new(token);
     tauri::async_runtime::spawn(async move {
+        // Consecutive `accept()` failures, reset by every success. Drives the
+        // backoff below; see [`accept_backoff`] for why the loop cannot simply
+        // retry.
+        let mut failures: u32 = 0;
         loop {
             let accepted = tokio::select! {
                 _ = cancel_loop.cancelled() => return,
                 accepted = listener.accept() => accepted,
             };
-            let Ok((stream, _peer)) = accepted else {
-                // A failed accept is transient (fd pressure, a client that
-                // vanished mid-handshake); keep the listener alive.
-                continue;
+            let (stream, _peer) = match accepted {
+                Ok(pair) => {
+                    failures = 0;
+                    pair
+                }
+                Err(e) => {
+                    failures = failures.saturating_add(1);
+                    // Say something the first time, and once more if it is
+                    // clearly not clearing up. Not every time: a listener stuck
+                    // in this state would otherwise flood the Console with the
+                    // same line forever, which is its own denial of service.
+                    if failures == 1 || failures == PERSISTENT_ACCEPT_FAILURES {
+                        log_bus::broadcast(
+                            &app,
+                            LogEntry::new(LogKind::Connection).error(format!(
+                                "mcp bridge: accept failed ({failures}\u{d7}): {e}"
+                            )),
+                        );
+                    }
+                    let delay = accept_backoff(failures);
+                    if !delay.is_zero() {
+                        tokio::select! {
+                            _ = cancel_loop.cancelled() => return,
+                            _ = tokio::time::sleep(delay) => {}
+                        }
+                    }
+                    continue;
+                }
             };
             let app = app.clone();
             let token = Arc::clone(&token);
@@ -87,6 +115,46 @@ pub async fn start(app: AppHandle) -> AppResult<BridgeHandle> {
     });
 
     Ok(BridgeHandle { cancel, port })
+}
+
+/// Longest the accept loop waits between retries once failures persist.
+///
+/// A second is short enough that the bridge recovers promptly when whatever
+/// was wrong clears, and long enough that a permanently broken listener costs
+/// nothing measurable.
+const ACCEPT_BACKOFF_MAX: Duration = Duration::from_secs(1);
+
+/// Consecutive failures after which the loop says so a second time. Reached in
+/// well under a second at the delays below, so the message lands while the
+/// user is still looking at whatever they just did.
+const PERSISTENT_ACCEPT_FAILURES: u32 = 10;
+
+/// How long to wait before calling `accept()` again after `consecutive`
+/// failures in a row.
+///
+/// The loop used to `continue` unconditionally, on the stated grounds that "a
+/// failed accept is transient". That is true of the common case — a client
+/// that vanished mid-handshake — and for it this function still returns zero,
+/// so nothing about that path changes. It is emphatically *not* true of
+/// descriptor exhaustion (`EMFILE`/`ENFILE`), which is the textbook reason
+/// `accept()` fails repeatedly and which cannot clear until something
+/// unrelated closes a handle. Retrying that instantly is an unbounded hot loop
+/// on a runtime worker: one core at 100%, indefinitely, with the error value
+/// dropped on the floor so nothing anywhere says why.
+///
+/// The ramp is deliberately blind to the error kind. Classifying `io::Error`
+/// portably is fiddly (the resource-exhaustion errnos have no stable
+/// `ErrorKind`), and guessing wrong in the direction of "this one is transient"
+/// reinstates exactly the bug. Instead the first few retries are immediate, so
+/// the genuinely transient case is untouched, and anything that keeps failing
+/// ramps to [`ACCEPT_BACKOFF_MAX`] within a handful of iterations.
+fn accept_backoff(consecutive: u32) -> Duration {
+    match consecutive {
+        0..=3 => Duration::ZERO,
+        4..=6 => Duration::from_millis(10),
+        7..=9 => Duration::from_millis(100),
+        _ => ACCEPT_BACKOFF_MAX,
+    }
 }
 
 /// Decide whether to accept a client's opening frame.
@@ -374,6 +442,63 @@ async fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- accept-loop backoff -------------------------------------------------
+    //
+    // The loop used to `continue` on any failed `accept()`, on the stated
+    // grounds that such a failure is transient. Descriptor exhaustion is not,
+    // and the result was an unbounded hot loop on a runtime worker with the
+    // error dropped on the floor. These pin both halves of the trade: the
+    // transient case stays instant, and the persistent one cannot burn a core.
+
+    #[test]
+    fn a_lone_transient_failure_still_retries_immediately() {
+        // A client that vanished mid-handshake is the common case and must not
+        // pay a delay — the next connection is probably already queued.
+        assert_eq!(accept_backoff(1), Duration::ZERO);
+        assert_eq!(accept_backoff(2), Duration::ZERO);
+        assert_eq!(accept_backoff(3), Duration::ZERO);
+    }
+
+    #[test]
+    fn a_persistent_failure_reaches_the_cap_and_stays_there() {
+        assert_eq!(
+            accept_backoff(PERSISTENT_ACCEPT_FAILURES),
+            ACCEPT_BACKOFF_MAX
+        );
+        assert_eq!(accept_backoff(1_000), ACCEPT_BACKOFF_MAX);
+        assert_eq!(accept_backoff(u32::MAX), ACCEPT_BACKOFF_MAX);
+    }
+
+    #[test]
+    fn the_backoff_never_decreases() {
+        let mut prev = Duration::ZERO;
+        for n in 0..40 {
+            let d = accept_backoff(n);
+            assert!(d >= prev, "backoff went backwards at {n}: {d:?} < {prev:?}");
+            prev = d;
+        }
+    }
+
+    #[test]
+    fn the_hot_window_is_bounded_to_a_few_spins() {
+        // The whole point: however long the failure lasts, only a bounded
+        // number of iterations run back-to-back before the loop starts
+        // sleeping. Anything else is a core at 100% for as long as it lasts.
+        let spins = (0..).take_while(|n| accept_backoff(*n).is_zero()).count();
+        assert!(
+            spins <= 8,
+            "too many instant retries before backing off: {spins}"
+        );
+    }
+
+    #[test]
+    fn the_total_wait_before_the_cap_stays_under_a_second() {
+        // A listener that recovers on its own should not be left idle for
+        // noticeably longer than the cap itself.
+        let ramp: Duration = (1..PERSISTENT_ACCEPT_FAILURES).map(accept_backoff).sum();
+        assert!(ramp < ACCEPT_BACKOFF_MAX, "ramp too slow: {ramp:?}");
+    }
 
     fn hello(version: u32, token: &str) -> Hello {
         Hello {
