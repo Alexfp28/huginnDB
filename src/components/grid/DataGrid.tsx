@@ -61,21 +61,17 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/EmptyState";
 import {
   defaultColumnWidth,
-  formatBitValue,
   isBitType,
   isNumericType,
 } from "@/lib/grid/columnKinds";
-import {
-  computeColumnFitWidth,
-  resolveCanvasFont,
-} from "@/lib/grid/autoFitColumn";
+import { computeAutoFitWidths } from "@/lib/grid/autoFitColumn";
 import { useToolbarDensity } from "@/lib/grid/toolbarDensity";
-import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
+import { useGridPrefs } from "@/lib/grid/useGridPrefs";
 import {
   DocumentListView,
   type FieldSave,
 } from "@/components/grid/DocumentListView";
-import { formatComboForDisplay, getBinding, matchesBinding } from "@/lib/keybindings";
+import { formatComboForDisplay, matchesBinding } from "@/lib/keybindings";
 import type {
   CellValue,
   ColumnFilter,
@@ -101,8 +97,13 @@ import {
   ServerFilterChip,
   ServerFilterSummary,
 } from "@/components/grid/ServerFilterChips";
+import { copyToClipboard } from "@/lib/grid/clipboard";
 import { toBulk } from "@/lib/grid/copyFormats";
-import { formatValue } from "@/lib/grid/formatValue";
+import {
+  formatValue,
+  rawCellText,
+  truncateForDisplay,
+} from "@/lib/grid/formatValue";
 import {
   MAX_AUTOFIT_WIDTH,
   MIN_COLUMN_WIDTH,
@@ -629,43 +630,28 @@ export function DataGrid({
       ),
     [result.columns],
   );
-  const bitDisplay = usePreferences((s) => selectGridPrefs(s).bitDisplay);
-  /** Default surface for the heavyweight editor (modal vs docked side panel).
-   *  Subscribed as a primitive so the selector stays reference-stable. */
-  const cellEditorMode = usePreferences((s) => s.prefs.ui.cellEditorMode);
-  // Grid display prefs, each subscribed as a primitive (gotcha #1).
-  const nullDisplay = usePreferences((s) => selectGridPrefs(s).nullDisplay);
-  const truncateLongTextAt = usePreferences(
-    (s) => selectGridPrefs(s).truncateLongTextAt,
-  );
-  const zebraStripes = usePreferences((s) => selectGridPrefs(s).zebraStripes);
-  const stickyHeader = usePreferences((s) => selectGridPrefs(s).stickyHeader);
-  const cellPreview = usePreferences((s) => selectGridPrefs(s).cellPreview);
-  // List-view layout prefs (Settings → Appearance → data view). Subscribed as
-  // primitives so the selectors stay reference-stable (gotcha #1).
-  const listExpandNested = usePreferences(
-    (s) => selectGridPrefs(s).listExpandNested,
-  );
-  const listShowTypes = usePreferences((s) => selectGridPrefs(s).listShowTypes);
-  const listLineNumbers = usePreferences(
-    (s) => selectGridPrefs(s).listLineNumbers,
-  );
-
   /**
-   * Persisted grid "zoom" (HeidiSQL-style). A single px row-height drives
-   * cell height, padding and font-size together. Subscribed as a primitive
-   * so the selector stays reference-stable (see the theme-store banner /
-   * CONTRIBUTING "Zustand selectors" rule).
+   * Every preference the grid reads. **Destructured, never spread into a
+   * dependency array** — `columns` below depends on four of these, and
+   * rebuilding it remounts the table body (see `interactiveRef`), so it must
+   * keep tracking the individual values rather than the bundle. See the hook
+   * for why the subscriptions inside it stay one-per-primitive (gotcha #1).
    */
-  const rowHeight = usePreferences((s) => selectGridPrefs(s).rowHeight);
-  const updateGrid = usePreferences((s) => s.updateGrid);
-
-  /** User-rebindable combo for the "expand selected cell" hotkey (issue
-   *  #78/#75). Subscribed as a primitive — `getBinding` returns a string,
-   *  which Zustand compares by value, so this stays reference-stable. */
-  const expandCellCombo = usePreferences((s) =>
-    getBinding(s.prefs.keybindings, "expandSelectedCell"),
-  );
+  const {
+    bitDisplay,
+    cellEditorMode,
+    nullDisplay,
+    truncateLongTextAt,
+    zebraStripes,
+    stickyHeader,
+    cellPreview,
+    listExpandNested,
+    listShowTypes,
+    listLineNumbers,
+    rowHeight,
+    expandCellCombo,
+    updateGrid,
+  } = useGridPrefs();
 
   /**
    * Column widths (persisted per table) and the live resize drag — see
@@ -745,68 +731,42 @@ export function DataGrid({
    * user can't see would need a full-table scan per double-click.
    */
   function autoFitColumns(colIds: readonly string[]) {
-    const host = scrollRef.current;
-    const cellFontSize = (cellStyle.fontSize as number) ?? 12;
-    const headerFontSize = (headerStyle.fontSize as number) ?? 10;
-    // Resolved once per gesture, not once per column: each call appends a
-    // probe element and reads its computed style, which forces a style
-    // recalc. The "fit every column" path would otherwise pay for 3× the
-    // column count.
-    const cellFont = resolveCanvasFont(host, "font-mono", cellFontSize);
-    const headerFont = resolveCanvasFont(host, "", headerFontSize);
-    const typeFont = resolveCanvasFont(host, "", TYPE_HINT_FONT_SIZE);
-
-    const widths: Record<string, number> = {};
-    for (const colId of colIds) {
-      const idx = columnIndexByName.get(colId);
-      if (idx === undefined) continue;
-      const col = result.columns[idx];
-      const isBit = bitColNames.has(col.name);
-      const cells = visibleRows.map((row) => {
-        const v = row[idx];
-        if (v === null) return nullDisplay;
-        const raw =
-          isBit && typeof v === "number"
-            ? formatBitValue(v, bitDisplay)
-            : formatValue(v);
-        return truncateLongTextAt > 0 && raw.length > truncateLongTextAt
-          ? `${raw.slice(0, truncateLongTextAt)}…`
-          : raw;
-      });
-      widths[colId] = computeColumnFitWidth({
-        // The header renders `uppercase tracking-wider`; both change its
-        // width, and neither is visible to `measureText` unless applied here.
-        header: {
-          text: col.name.toUpperCase(),
-          font: headerFont,
-          letterSpacing: headerFontSize * 0.05,
-        },
-        // The dimmed type hint is `text-3xs` (a fixed token), not derived
-        // from the zoom like the rest of the header.
-        type: {
-          text: col.data_type.toUpperCase(),
-          font: typeFont,
-          letterSpacing: TYPE_HINT_FONT_SIZE * 0.05,
-        },
-        // gap before the type (4) + the sort glyph and its gap (16) + one key
-        // icon and its gap per PK/FK badge (16 each).
-        headerChrome:
-          20 +
-          (pkNameSet.has(col.name) ? 16 : 0) +
-          (fkNameSet.has(col.name) ? 16 : 0) +
-          // Multi-sort rank badge ("1", "2", …) next to the arrow.
-          ((sort?.length ?? 0) > 1 && sort!.some((s) => s.column === col.name)
-            ? 12
-            : 0),
-        cells,
-        cellFont,
-        // `px-2` on both the `<th>` and every `<td>`, plus the 1px right
-        // border.
-        padding: 17,
-        min: MIN_COLUMN_WIDTH,
-        max: MAX_AUTOFIT_WIDTH,
-      });
-    }
+    const widths = computeAutoFitWidths({
+      host: scrollRef.current,
+      colIds,
+      columns: result.columns,
+      columnIndexByName,
+      rows: visibleRows,
+      // The fit has to reproduce what the cell paints, NULL placeholder and
+      // length cap included — hence the same two helpers the `cell` renderer
+      // below calls, rather than a second copy of the rule.
+      cellText: (v, idx) =>
+        v === null
+          ? nullDisplay
+          : truncateForDisplay(
+              rawCellText(
+                v as CellValue,
+                bitColNames.has(result.columns[idx].name),
+                bitDisplay,
+              ),
+              truncateLongTextAt,
+            ),
+      // gap before the type (4) + the sort glyph and its gap (16) + one key
+      // icon and its gap per PK/FK badge (16 each) + the multi-sort rank
+      // badge ("1", "2", …) next to the arrow.
+      headerChrome: (name) =>
+        20 +
+        (pkNameSet.has(name) ? 16 : 0) +
+        (fkNameSet.has(name) ? 16 : 0) +
+        ((sort?.length ?? 0) > 1 && sort!.some((s) => s.column === name)
+          ? 12
+          : 0),
+      cellFontSize: (cellStyle.fontSize as number) ?? 12,
+      headerFontSize: (headerStyle.fontSize as number) ?? 10,
+      typeFontSize: TYPE_HINT_FONT_SIZE,
+      min: MIN_COLUMN_WIDTH,
+      max: MAX_AUTOFIT_WIDTH,
+    });
     // One state update (and therefore one `prefs.json` write) for the whole
     // gesture, however many columns it covered.
     if (Object.keys(widths).length > 0) {
@@ -1116,18 +1076,8 @@ export function DataGrid({
               />
             );
           }
-          const isBit = bitColNames.has(col.name);
-          const rawDisplay =
-            isBit && typeof v === "number"
-              ? formatBitValue(v, bitDisplay)
-              : formatValue(v);
-          // Cap the rendered string so a multi-MB cell can't bloat the DOM;
-          // the full value is still reachable via the cell preview / editor.
-          // `truncateLongTextAt <= 0` disables the cap.
-          const display =
-            truncateLongTextAt > 0 && rawDisplay.length > truncateLongTextAt
-              ? `${rawDisplay.slice(0, truncateLongTextAt)}…`
-              : rawDisplay;
+          const rawDisplay = rawCellText(v, bitColNames.has(col.name), bitDisplay);
+          const display = truncateForDisplay(rawDisplay, truncateLongTextAt);
           const isNumeric = numericColNames.has(col.name);
           // Selected-but-not-editing: offer a direct "expand" affordance so
           // the full value can be viewed (modal / side panel per
@@ -1391,7 +1341,7 @@ export function DataGrid({
       })
       .catch(() => {
         // Clipboard read denied/unsupported in this webview — silent no-op,
-        // matching copyToClipboard's own silent-failure convention below.
+        // matching `copyToClipboard`'s own convention.
       });
   }
 
@@ -1432,12 +1382,11 @@ export function DataGrid({
       e.preventDefault();
       const cell = resolveTargetCell();
       if (cell) {
-        const isBit = bitColNames.has(cell.column.name);
-        const rawDisplay =
-          isBit && typeof cell.value === "number"
-            ? formatBitValue(cell.value, bitDisplay)
-            : formatValue(cell.value);
-        openHeavyEditor(cell.rowValues, cell.column, rawDisplay);
+        openHeavyEditor(
+          cell.rowValues,
+          cell.column,
+          rawCellText(cell.value, bitColNames.has(cell.column.name), bitDisplay),
+        );
       }
       return;
     }
@@ -1528,14 +1477,6 @@ export function DataGrid({
     }
     e.preventDefault();
     focusCell(r, c);
-  }
-
-  async function copyToClipboard(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // No surfacing — clipboard failures are visually obvious to the user.
-    }
   }
 
   /** Serialise several rows for the bulk "Copy N rows as ▸" menu. */
