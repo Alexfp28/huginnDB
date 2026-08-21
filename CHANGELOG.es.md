@@ -95,6 +95,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     importador) y sus claves i18n, `useSavedQueries.byTag`, tres constantes sin
     usar y la dependencia `async-trait`.
 
+- **Interno: los cinco ficheros que habían pasado de mil líneas quedan divididos
+  por responsabilidad.** Sin cambios de comportamiento más allá de las
+  correcciones de arriba. `SchemaExplorer.tsx` 2842 → 73 (sus ocho diálogos a
+  `schema/dialogs/`, cada nivel del árbol a su propio fichero,
+  `ConnectionActionsMenu` a `components/connection/`, junto al árbol que lo
+  renderiza); `DataGrid.tsx` 3592 → 2235 (fuera `GridRow`, los chips de filtro,
+  la caja de búsqueda y la fila borrador; la selección de filas, el
+  dimensionado de columnas y el zoom con Ctrl+rueda a hooks);
+  `ConnectionDialog.tsx` 1761 → 1267 y sus 41 `useState` a 11 (fuera el raíl y
+  el modelo del formulario); `TabbedArea.tsx` 1082 → 390 (fuera la cabecera de
+  pestaña y la pantalla vacía); `App.tsx` 820 → 530 (fuera el manejo de intents
+  de línea de comandos). Dos órdenes se han preservado a propósito y quedan
+  documentados donde se aplican: la secuencia del efecto de arranque y los
+  contratos de memoización de `GridRow` y de la cabecera de pestaña.
+
 - **Vitest está montado para el frontend** (`pnpm test`) con tests de
   caracterización de los módulos puros de `lib/` y de cada hook extraído, y el CI
   lo ejecuta junto a los trabajos existentes de typecheck y Cargo.
