@@ -14,10 +14,11 @@
  * `CommandPalette`) with a plain substring filter — no new dependency.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useTranslation } from "react-i18next";
+import { OverlayPalette } from "@/components/shell/OverlayPalette";
+import { useListNavigation } from "@/lib/useListNavigation";
 import {
   Eye,
   Hammer,
@@ -87,7 +88,6 @@ export function TabSwitcher() {
   const setSelected = useUi((s) => s.setSelectedConnectionId);
 
   const [query, setQuery] = useState("");
-  const [highlight, setHighlight] = useState(0);
 
   useEffect(() => {
     if (open) {
@@ -154,16 +154,12 @@ export function TabSwitcher() {
     );
   }, [entries, query]);
 
-  useEffect(() => {
-    setHighlight((h) => Math.min(h, Math.max(0, filtered.length - 1)));
-  }, [filtered.length]);
-
-  const listRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    listRef.current
-      ?.querySelector<HTMLElement>(`[data-index="${highlight}"]`)
-      ?.scrollIntoView({ block: "nearest" });
-  }, [highlight]);
+  // Arrow keys, bounds and scroll-into-view. No `wrap`: this list is short
+  // enough to see whole, so wrapping past the end would read as a jump (the
+  // command palette, whose list can be long, wraps).
+  const { highlight, setHighlight, listRef, handleArrows } = useListNavigation(
+    filtered.length,
+  );
 
   function jump(tab: AppTab) {
     useTabs.getState().setActive(tab.id);
@@ -190,44 +186,27 @@ export function TabSwitcher() {
   let lastGroup: string | null = null;
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-[15%] z-50 w-full max-w-xl -translate-x-1/2 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-2xl duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setHighlight((h) => Math.min(h + 1, filtered.length - 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setHighlight((h) => Math.max(h - 1, 0));
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              const e0 = filtered[highlight];
-              if (e0) jump(e0.tab);
-            } else if (e.key === "Delete") {
-              e.preventDefault();
-              const e0 = filtered[highlight];
-              if (e0) closeTab(e0.tab.id);
-            }
-          }}
-        >
-          <DialogPrimitive.Title className="sr-only">
-            {t("tabSwitcher.title")}
-          </DialogPrimitive.Title>
-
-          <div className="flex items-center gap-2 border-b border-border px-3">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("tabSwitcher.placeholder")}
-              className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            />
-          </div>
+    <OverlayPalette
+      open={open}
+      onOpenChange={setOpen}
+      title={t("tabSwitcher.title")}
+      className="max-w-xl top-[15%]"
+      query={query}
+      onQueryChange={setQuery}
+      placeholder={t("tabSwitcher.placeholder")}
+      onKeyDown={(e) => {
+        if (handleArrows(e)) return;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const e0 = filtered[highlight];
+          if (e0) jump(e0.tab);
+        } else if (e.key === "Delete") {
+          e.preventDefault();
+          const e0 = filtered[highlight];
+          if (e0) closeTab(e0.tab.id);
+        }
+      }}
+    >
 
           <div ref={listRef} className="max-h-80 overflow-y-auto p-1">
             {filtered.length === 0 ? (
@@ -355,8 +334,6 @@ export function TabSwitcher() {
               {t("tabSwitcher.hintClose")}
             </span>
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+    </OverlayPalette>
   );
 }
