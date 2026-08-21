@@ -24,7 +24,7 @@
  * existing single-connection-id signatures.
  */
 
-import { cloneElement, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -32,7 +32,6 @@ import {
   Code2,
   Copy,
   Database,
-  DatabaseZap,
   Download,
   Eraser,
   ExternalLink,
@@ -41,20 +40,16 @@ import {
   FolderPlus,
   KeyRound,
   LayoutList,
-  ListFilter,
   PencilLine,
-  Plug,
   RefreshCw,
   ShieldCheck,
   SquarePen,
   SquareTerminal,
   Table2,
   Trash2,
-  Unplug,
   Upload,
   Workflow,
 } from "lucide-react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   tableKey,
   useEnsureSchemaLoaded,
@@ -73,7 +68,6 @@ import {
 import { usePreferences } from "@/stores/preferences/preferences";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
-import { splitSql } from "@/lib/sql/sqlSplit";
 import { selectSnippet } from "@/lib/grid/copyFormats";
 import type { SchemaTableMetric } from "@/types";
 import {
@@ -86,27 +80,20 @@ import {
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
 import { confirmDestructive } from "@/lib/confirmDestructive";
-import {
-  ExportDatabaseDialog,
-  type ExportScope,
-} from "@/components/schema/dialogs/ExportDatabaseDialog";
-import {
-  ImportSqlDialog,
-  type ImportScope,
-} from "@/components/schema/dialogs/ImportSqlDialog";
 import { CreateCollectionDialog } from "@/components/schema/dialogs/CreateCollectionDialog";
-import { CreateDatabaseDialog } from "@/components/schema/dialogs/CreateDatabaseDialog";
-import { DatabaseVisibilityDialog } from "@/components/schema/dialogs/DatabaseVisibilityDialog";
 import { DropObjectDialog } from "@/components/schema/dialogs/DropObjectDialog";
 import { EmptyTableDialog } from "@/components/schema/dialogs/EmptyTableDialog";
 import { RenameObjectDialog } from "@/components/schema/dialogs/RenameObjectDialog";
 import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
 import {
   isTooManyConnections,
-  supportsCreateCollection,
 } from "@/lib/db/driver";
 import type { Driver, TableInfo } from "@/types";
+import { ExportDatabaseDialog } from "@/components/schema/dialogs/ExportDatabaseDialog";
+import { ImportSqlDialog } from "@/components/schema/dialogs/ImportSqlDialog";
+import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
+import { openSecurityTab } from "@/lib/tabs/openSecurityTab";
 import { DB_VIEW_WARM_CONCURRENCY } from "@/lib/schema/warmDatabases";
 import {
   supportsCreateDatabase,
@@ -114,37 +101,6 @@ import {
   supportsRenameTable,
   supportsSqlDump,
 } from "@/lib/db/driver";
-
-/** Open (or focus, if already open) the "Security" tab for `connectionId`. */
-function openSecurityTab(connectionId: string, title: string) {
-  useTabs.getState().open({
-    kind: "security",
-    title,
-    connectionId,
-  });
-}
-
-type Translate = (key: string, opts?: Record<string, unknown>) => string;
-
-/**
- * Pick a `.sql` file and split it into statement texts — the frontend half
- * of the import flow. Execution (and the target-database choice for
- * multi-DB connections) happens in `ImportSqlDialog`, which the caller opens
- * with the returned list. `null` when the user cancels the picker or the
- * file holds no statements.
- */
-async function pickAndSplitSqlFile(t: Translate): Promise<string[] | null> {
-  const picked = await openFileDialog({
-    multiple: false,
-    directory: false,
-    title: t("schema.importSql.pickTitle"),
-    filters: [{ name: "SQL", extensions: ["sql"] }],
-  });
-  if (typeof picked !== "string" || !picked) return null;
-  const text = await api.readTextFile(picked);
-  const statements = splitSql(text).map((s) => s.text);
-  return statements.length > 0 ? statements : null;
-}
 
 /**
  * Match a table/database name against the filter box. HeidiSQL-style: the
@@ -250,224 +206,6 @@ export function SchemaExplorer({
         <SingleDbExplorer connectionId={connectionId} filter={filter} />
       )}
     </div>
-  );
-}
-
-/**
- * Right-click menu for a connection, wrapping whatever row represents it.
- *
- * These actions used to be an icon strip in the explorer's header. Once the
- * explorer became a subtree of the connections tree (#107) that strip repeated
- * under every expanded connection — five icons and a filter box each — so it
- * moved here, where a connection's actions belong: on the connection.
- *
- * Lives in this file rather than next to the tree because everything it drives is
- * already here: the three dialogs and the export/import/security helpers. Moving
- * the menu out would mean exporting six internals to keep one component tidy.
- *
- * What's offered is driver- and mode-aware, and the distinctions are the same
- * ones the two explorers already encoded: `CREATE DATABASE` is Postgres/MySQL
- * only, create-collection is MongoDB's stand-in for it, whole-database `.sql`
- * export/import needs exactly one target database (so never in multi-DB mode),
- * and the visible-databases subset only means anything when there are several.
- *
- * Connect/disconnect are delegated: the tree owns what those do to focus and to
- * its expansion overrides, and duplicating that here would let the two drift.
- */
-export function ConnectionActionsMenu({
-  connectionId,
-  onConnect,
-  onDisconnect,
-  children,
-}: {
-  connectionId: string;
-  onConnect?: () => void;
-  onDisconnect?: () => void;
-  /** A single element (Radix `asChild` requirement) — cloned below to carry
-   *  the "menu is open on me" ring while right-clicked. */
-  children: React.ReactElement;
-}) {
-  const { t } = useTranslation();
-  const profile = useConnections((s) =>
-    s.profiles.find((p) => p.id === connectionId),
-  );
-  const isActive = useConnections((s) => s.active.has(connectionId));
-  const cs = useSchema((s) => s.byConnection[connectionId]);
-  const refresh = useSchema((s) => s.refresh);
-  const refreshTree = useSchema((s) => s.refreshTree);
-  const [createDbOpen, setCreateDbOpen] = useState(false);
-  const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
-  const [dbPickerOpen, setDbPickerOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [importStatements, setImportStatements] = useState<string[] | null>(
-    null,
-  );
-  // Right-clicking to open the menu doesn't keep the row hovered (the
-  // pointer moves onto the menu itself), so without this the row you
-  // targeted looks indistinguishable from any other once the menu is open.
-  // Mirrors the row's own `focus-visible:ring-ring` treatment, just driven
-  // by the menu's open state instead of keyboard focus.
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  const driver = profile?.driver;
-  const isMultiDb = isServerWide(profile);
-  const canCreateDatabase = supportsCreateDatabase(driver);
-  const canCreateCollection = supportsCreateCollection(driver) && !isMultiDb;
-  // Whole-database `.sql` export/import used to require single-DB mode
-  // (nothing to pick a database *from* otherwise); the export/import
-  // dialogs now handle multi-DB themselves — a database picker for export,
-  // a target-database dropdown for import — so this is SQL-only, not also
-  // single-DB-only.
-  const canDumpSql = supportsSqlDump(driver);
-  const databases = cs?.databases ?? [];
-  const exportScope: ExportScope = isMultiDb
-    ? { kind: "multi", parentId: connectionId, databases: databases.map((d) => d.name) }
-    : { kind: "single", connectionId, databaseName: profile?.database || connectionId };
-  const importScope: ImportScope = isMultiDb
-    ? { kind: "multi", parentId: connectionId, databases: databases.map((d) => d.name) }
-    : { kind: "single", connectionId };
-
-  return (
-    <>
-      <ContextMenu onOpenChange={setMenuOpen}>
-        <ContextMenuTrigger asChild>
-          {cloneElement(children, {
-            className: cn(
-              children.props.className,
-              menuOpen && "ring-1 ring-inset ring-ring",
-            ),
-          })}
-        </ContextMenuTrigger>
-        <ContextMenuContent className="w-56">
-          {isActive ? (
-            <>
-              <ContextMenuAction
-                icon={RefreshCw}
-                label={t("schema.refresh")}
-                // `refreshTree`, not `refresh`: on a multi-DB connection the
-                // tables under this row live in the per-database child slices,
-                // and refreshing only the profile id left every one of them
-                // stale (see the store's note on `refreshTree`).
-                onSelect={() => void refreshTree(connectionId)}
-              />
-              {canCreateDatabase && (
-                <ContextMenuAction
-                  icon={DatabaseZap}
-                  label={t("schema.createDatabase.title")}
-                  onSelect={() => setCreateDbOpen(true)}
-                />
-              )}
-              {canCreateCollection && (
-                <ContextMenuAction
-                  icon={FolderPlus}
-                  label={t("schema.createCollection.title")}
-                  onSelect={() => setCreateCollectionOpen(true)}
-                />
-              )}
-              {isMultiDb && (
-                <ContextMenuAction
-                  icon={ListFilter}
-                  // Nothing to choose from until the database list has loaded.
-                  disabled={databases.length === 0}
-                  label={t("schema.selectDatabases.title")}
-                  onSelect={() => setDbPickerOpen(true)}
-                />
-              )}
-              {canDumpSql && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuAction
-                    icon={Download}
-                    label={t("schema.exportDatabase.title")}
-                    onSelect={() => setExportOpen(true)}
-                  />
-                  <ContextMenuAction
-                    icon={Upload}
-                    label={t("schema.importSql.title")}
-                    onSelect={() =>
-                      void pickAndSplitSqlFile(t).then((statements) => {
-                        if (statements) setImportStatements(statements);
-                      })
-                    }
-                  />
-                </>
-              )}
-              <ContextMenuSeparator />
-              <ContextMenuAction
-                icon={ShieldCheck}
-                label={t("security.title")}
-                onSelect={() => openSecurityTab(connectionId, t("security.title"))}
-              />
-              {onDisconnect && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuAction
-                    icon={Unplug}
-                    label={t("statusBar.disconnect")}
-                    onSelect={onDisconnect}
-                  />
-                </>
-              )}
-            </>
-          ) : (
-            onConnect && (
-              <ContextMenuAction
-                icon={Plug}
-                label={t("connectionsTree.connect")}
-                onSelect={onConnect}
-              />
-            )
-          )}
-        </ContextMenuContent>
-      </ContextMenu>
-
-      {createDbOpen && (
-        <CreateDatabaseDialog
-          connectionId={connectionId}
-          onClose={() => setCreateDbOpen(false)}
-          onDone={(name) => {
-            setCreateDbOpen(false);
-            refresh(connectionId);
-            // Always toast, unlike the old multi-DB toolbar button, which relied
-            // on the new node appearing in the tree as its own confirmation.
-            // Driven from a connection row, the subtree may well be collapsed.
-            toast.success(t("schema.createDatabase.createdSingleDb", { name }));
-          }}
-        />
-      )}
-      {createCollectionOpen && (
-        <CreateCollectionDialog
-          connectionId={connectionId}
-          onClose={() => setCreateCollectionOpen(false)}
-          onDone={(name) => {
-            setCreateCollectionOpen(false);
-            refresh(connectionId);
-            toast.success(t("schema.createCollection.created", { name }));
-          }}
-        />
-      )}
-      {dbPickerOpen && (
-        <DatabaseVisibilityDialog
-          profileId={connectionId}
-          databases={databases.map((db) => db.name)}
-          onClose={() => setDbPickerOpen(false)}
-        />
-      )}
-      {exportOpen && (
-        <ExportDatabaseDialog scope={exportScope} onClose={() => setExportOpen(false)} />
-      )}
-      {importStatements && (
-        <ImportSqlDialog
-          scope={importScope}
-          statements={importStatements}
-          onClose={() => setImportStatements(null)}
-          onImported={(id) => {
-            setImportStatements(null);
-            refresh(id);
-          }}
-        />
-      )}
-    </>
   );
 }
 

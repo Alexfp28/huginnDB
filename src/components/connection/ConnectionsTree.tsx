@@ -16,8 +16,7 @@
  * open no longer folds it here too. The subtree is the same
  * `SchemaExplorer` the panel rendered before — it lost its panel-level title,
  * icon strip and scroll container, since the row above it now owns all three
- * (its right-click menu is [[ConnectionActionsMenu]], defined next to the
- * dialogs it drives).
+ * (its right-click menu is [[ConnectionActionsMenu]], its neighbour here).
  *
  * Expansion defaults to "expanded when connected" and only the user's folds are
  * stored (`LaunchState.collapsedConnections`, per environment). Keeping the
@@ -63,10 +62,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  ConnectionActionsMenu,
-  SchemaExplorer,
-} from "@/components/schema/SchemaExplorer";
+import { ConnectionActionsMenu } from "@/components/connection/ConnectionActionsMenu";
+import { SchemaExplorer } from "@/components/schema/SchemaExplorer";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import type { ConnectionProfile } from "@/types";
 
