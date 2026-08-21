@@ -35,6 +35,7 @@ mod pool_reaper;
 mod prefs;
 mod ssh_known_hosts;
 mod state;
+mod state_file;
 mod store;
 mod tab_state;
 mod transfer;
@@ -332,9 +333,6 @@ pub fn run() {
             commands::query::delete_rows,
             commands::query::insert_row,
             commands::query::fetch_fk_options,
-            commands::credentials::store_password,
-            commands::credentials::load_password,
-            commands::credentials::delete_password,
             commands::prefs::get_preferences,
             commands::prefs::update_preferences,
             commands::prefs::get_tab_state,

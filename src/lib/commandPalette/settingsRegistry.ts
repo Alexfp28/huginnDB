@@ -24,6 +24,7 @@
  */
 
 import type { SettingsSection } from "@/components/settings/useSettingsDialog";
+import type { PrefId } from "@/lib/prefId";
 import type { Preferences } from "@/types";
 
 /** Preference-store writers the registry needs to flip a boolean. */
@@ -36,7 +37,7 @@ export interface PrefsWriters {
 
 export interface SettingEntry {
   /** Anchor id — mirrors the `prefId` on the setting's `PrefRow`. */
-  prefId: string;
+  prefId: PrefId;
   section: SettingsSection;
   /** i18n key of the row's label. */
   labelKey: string;

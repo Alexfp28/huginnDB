@@ -16,14 +16,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use tauri::State;
 
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 // ---------------------------------------------------------------------------
 // Introspection
 // ---------------------------------------------------------------------------
@@ -88,7 +80,7 @@ pub async fn get_view_definition(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::MsSql(_)) {
         return Err(AppError::UnsupportedDriver(
             "the view editor does not support SQL Server yet".into(),
@@ -189,7 +181,7 @@ pub async fn preview_view_change(
         &args.connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let (statements, drop_and_recreate) =
         build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
@@ -213,35 +205,13 @@ pub async fn apply_view_change(
         &args.connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let (statements, _) = build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
 
-    match &pool {
-        DbPool::Postgres(p) => {
-            // View DDL is transactional on Postgres — wrap the (at most two)
-            // statements so a mid-sequence failure can't leave a renamed view
-            // with its old body, or vice versa.
-            let mut tx = p.begin().await?;
-            for stmt in &statements {
-                sqlx::query(stmt).execute(&mut *tx).await?;
-            }
-            tx.commit().await?;
-        }
-        DbPool::Mysql(p) => {
-            for stmt in &statements {
-                sqlx::query(stmt).execute(p).await?;
-            }
-        }
-        DbPool::Sqlite(p) => {
-            for stmt in &statements {
-                sqlx::query(stmt).execute(p).await?;
-            }
-        }
-        // Rejected earlier by `build_view_ddl`, so no statements exist here.
-        DbPool::MsSql(_) => unreachable!("sql server rejected by build_view_ddl"),
-        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
-    }
+    // Wrapped on Postgres so a rename plus a body change cannot half-apply; see
+    // `db::exec::execute_all` for the per-engine policy.
+    crate::db::exec::execute_all(&pool, &statements).await?;
     Ok(())
 }
 
@@ -274,7 +244,7 @@ pub async fn rename_view(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let new_ident = dialect.quote_ident(new_name.trim());
     let sql = match dialect {
@@ -310,19 +280,9 @@ pub async fn rename_view(
             ))
         }
     };
-    match &pool {
-        DbPool::Postgres(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::Mysql(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::Sqlite(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::MsSql(_) => unreachable!("sql server rejected above"),
-        DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
-    }
+    // SQL Server was refused above (no `sp_rename` support yet) and MongoDB by
+    // `Dialect::try_of`, so this only ever reaches the three sqlx dialects.
+    crate::db::exec::execute(&pool, &sql).await?;
     Ok(())
 }
 
@@ -342,7 +302,7 @@ pub async fn drop_view(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     // MongoDB is the one driver whose views this module can otherwise not
     // touch — but *dropping* one needs no DDL at all (a view lives in the same
     // namespace as a collection), so it is handled here rather than forcing
@@ -355,22 +315,9 @@ pub async fn drop_view(
     let dialect = Dialect::try_of(&pool)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), &view);
     let sql = format!("DROP VIEW {qt}");
-    match &pool {
-        // Dropping a view is plain, portable DDL — supported even though
-        // *editing* one isn't yet (see `build_view_ddl`).
-        DbPool::MsSql(p) => {
-            p.execute_simple(&sql).await?;
-        }
-        DbPool::Postgres(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::Mysql(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::Sqlite(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
-    }
+    // Dropping a view is plain, portable DDL — supported on every SQL driver
+    // even though *editing* one isn't yet (see `build_view_ddl`). MongoDB took
+    // the branch above.
+    crate::db::exec::execute(&pool, &sql).await?;
     Ok(())
 }

@@ -44,17 +44,32 @@ src/                   React + TypeScript frontend
     menus/             Top bar menus (File/Window/View/Help)
     shell/             App shell: tabs host, status bar, command palette, banners
     settings/          Settings dialog + its sections/
-  stores/              Zustand stores
-  lib/                 Tauri command wrappers, helpers, themes, constants
+    aggregation/       MongoDB pipeline editor
+    indexes/           MongoDB index manager
+    jsonSchema/        JSON Schema library + binding pickers
+  stores/              Zustand stores, grouped:
+    session/           connections, tabs, schema, environments, ui, persistedTabs
+    preferences/       preferences, theme, appFlavor
+    dialogs/           open-state for modals reachable from several surfaces
+    grid/, query/, sync/
+  lib/                 Tauri command wrappers, helpers, themes, constants; grouped:
+    monaco/            editor setup, themes, language providers
+    bridges/           one module per `huginndb://` event
+    db/, grid/, sql/, schema/, tabs/, transfer/, mongo/, commandPalette/,
+    connection/, jsonSchema/, appInfo/, i18n/
   types.ts             Shared TS types mirroring the Rust DTOs
 
 src-tauri/             Rust backend
   src/
     commands/          Tauri command handlers (the public API surface)
-    db/                Database abstraction layer (pool, sql, values)
+    db/                Database abstraction layer:
+      sql.rs           Dialect — the per-engine SQL *text*
+      exec.rs          the per-engine *execution* (see CLAUDE.md gotcha #42)
+      postgres/ mysql/ sqlite/ mssql/ mongo/   catalog SQL, per driver
     keychain.rs        OS keychain integration
     state.rs           Active pools + saved profiles
-    store.rs           On-disk persistence
+    store.rs           On-disk persistence (profiles.json)
+    state_file.rs      The one path/load/atomic-save for every JSON state file
     error.rs           Common error type
 ```
 
@@ -72,10 +87,14 @@ When in doubt, read `src-tauri/src/lib.rs` and `src/App.tsx` first — they're t
 
 ### TypeScript / React
 
-- Run `pnpm tsc --noEmit` before pushing.
+- Run `pnpm typecheck` and `pnpm test` before pushing — CI runs both.
+- Tests are Vitest, colocated as `*.test.ts(x)`. There is no blanket suite: the
+  convention is a characterization test for anything pure or hook-shaped you
+  extract, written before the extraction so it pins the current behaviour.
+  `pnpm test:watch` while you work.
 - Stores live in `src/stores/`, command wrappers in `src/lib/tauri.ts`. Components never call `invoke` directly.
-- Zustand selectors must return reference-stable values. If you need a derived array/object, subscribe to the raw state and memoise in the component. See the warning at the bottom of `src/stores/theme.ts` for the historical reason.
-- Avoid CDN-loaded assets. Anything needed at runtime must be bundled (Monaco is the canonical example — see `src/lib/monaco-setup.ts`).
+- Zustand selectors must return reference-stable values. If you need a derived array/object, subscribe to the raw state and memoise in the component. See the warning at the bottom of `src/stores/preferences/theme.ts` for the historical reason.
+- Avoid CDN-loaded assets. Anything needed at runtime must be bundled (Monaco is the canonical example — see `src/lib/monaco/monaco-setup.ts`).
 
 ### Commits
 

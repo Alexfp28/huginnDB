@@ -3,6 +3,8 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+import { usePreferences } from "@/stores/preferences/preferences";
+
 /**
  * Tailwind-aware `classnames`. Use anywhere two or more class strings
  * are conditionally combined so conflicting utilities (`p-2` vs `p-4`)
@@ -55,6 +57,70 @@ export function formatDuration(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = Math.round(totalSeconds % 60);
   return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+}
+
+/**
+ * A short random id for a client-side entity: a tab, a saved query, a
+ * query-history entry, a custom theme.
+ *
+ * Not a UUID on purpose. These ids only have to be unique within one user's own
+ * `localStorage`, and they show up in `localStorage` keys and in the command
+ * palette's MRU list, where a 36-character uuid is pure noise. Anything that
+ * crosses to the backend or into `profiles.json` uses a real uuid instead —
+ * `ConnectionDialog` calls `crypto.randomUUID()`, and the Rust side mints its
+ * own.
+ *
+ * Six sites rolled this by hand with two different lengths (8 and 6), which is
+ * the sort of split that makes "how long are our ids?" unanswerable.
+ */
+export function shortId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+/**
+ * Id for a user-created custom theme. Prefixed so it can never collide with a
+ * built-in theme's stable id, which is what `useThemeStore` keys off.
+ */
+export function customThemeId(): string {
+  return `custom-${shortId()}`;
+}
+
+/**
+ * The locale to format numbers and dates in.
+ *
+ * Read from `ui.language` rather than left to the platform. A bare
+ * `toLocaleString()` uses the *operating system's* locale, which is a different
+ * setting from the one the user picked in Settings → General — so an app running
+ * in Spanish on an English-locale machine was rendering
+ * `1,234` and `8/21/2026, 6:09 PM` inside otherwise-Spanish UI. Twelve call
+ * sites did that; one (`DocsDialog`) passed the language and was right.
+ *
+ * Read imperatively so this is callable from render bodies and plain functions
+ * alike. `ui.language` is already a reactive dependency of every component that
+ * shows formatted output (it re-renders on a language switch through i18next),
+ * so nothing needs to subscribe to it twice.
+ */
+function uiLocale(): string {
+  return usePreferences.getState().prefs.ui.language;
+}
+
+/**
+ * Format an integer with the user's thousands separators — `1.234` in Spanish,
+ * `1,234` in English. For row counts, byte counts and operation tallies.
+ */
+export function formatNumber(n: number): string {
+  if (!Number.isFinite(n)) return "";
+  return n.toLocaleString(uiLocale());
+}
+
+/** Format an ISO timestamp (or epoch millis) as a full local date and time. */
+export function formatDateTime(value: string | number | Date): string {
+  return new Date(value).toLocaleString(uiLocale());
+}
+
+/** Format an ISO timestamp (or epoch millis) as a local time of day. */
+export function formatTime(value: string | number | Date): string {
+  return new Date(value).toLocaleTimeString(uiLocale());
 }
 
 /**

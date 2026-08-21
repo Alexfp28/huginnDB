@@ -28,9 +28,10 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useTranslation } from "react-i18next";
 import { Command as CommandIcon, Search } from "lucide-react";
+import { OverlayPalette } from "@/components/shell/OverlayPalette";
+import { useListNavigation } from "@/lib/useListNavigation";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useCommands } from "@/lib/commandPalette/useCommands";
 import {
@@ -49,6 +50,7 @@ import {
   type PaletteGroup,
 } from "@/lib/commandPalette/types";
 import { cn } from "@/lib/utils";
+import { Kbd } from "@/components/ui/kbd";
 
 /** Entries shown per group when nothing has been typed, in the catch-all mode.
  *  A mode is already a narrow slice, so it shows everything instead. */
@@ -81,7 +83,6 @@ export function CommandPalette() {
   const remember = useCommandPalette((s) => s.remember);
 
   const [raw, setRaw] = useState("");
-  const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const commands = useCommands(open);
@@ -185,18 +186,12 @@ export function CommandPalette() {
   /** Flat row order for keyboard navigation. */
   const rows = useMemo(() => sections.flatMap((s) => s.items), [sections]);
 
-  // Keep the highlight within bounds as the result set shrinks.
-  useEffect(() => {
-    setHighlight((h) => Math.min(h, Math.max(0, rows.length - 1)));
-  }, [rows.length]);
-
-  // Keep the highlighted row in view during arrow-key navigation.
-  const listRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    listRef.current
-      ?.querySelector<HTMLElement>(`[data-index="${highlight}"]`)
-      ?.scrollIntoView({ block: "nearest" });
-  }, [highlight, rows.length]);
+  // Arrow keys, bounds and scroll-into-view. `wrap: true` — a long result list
+  // is a ring you spin through (the tab switcher clamps instead).
+  const { highlight, setHighlight, listRef, handleArrows } = useListNavigation(
+    rows.length,
+    { wrap: true },
+  );
 
   const current = rows[highlight]?.cmd ?? null;
 
@@ -228,65 +223,50 @@ export function CommandPalette() {
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-[12%] z-50 w-full max-w-2xl -translate-x-1/2 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-2xl duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setHighlight((h) => (rows.length ? (h + 1) % rows.length : 0));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setHighlight((h) =>
-                rows.length ? (h - 1 + rows.length) % rows.length : 0,
-              );
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              if (e.altKey) runAltAt(highlight);
-              else runAt(highlight);
-            } else if (e.key === "Tab") {
-              // Cycle through the modes: a discoverable way in for anyone who
-              // never reads the sigils under the input.
-              e.preventDefault();
-              const order = [ALL_MODE, ...MODES];
-              const at = order.findIndex((m) => m.prefix === mode.prefix);
-              const next = order[(at + (e.shiftKey ? -1 + order.length : 1)) % order.length]!;
-              applyMode(next.prefix);
-            }
-          }}
-        >
-          <DialogPrimitive.Title className="sr-only">
-            {t("commandPalette.title")}
-          </DialogPrimitive.Title>
-
-          <div className="flex items-center gap-2 border-b border-border px-3">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-            {mode !== ALL_MODE && (
-              <span className="flex shrink-0 items-center gap-1 rounded bg-brand/15 px-1.5 py-0.5 text-2xs font-medium text-brand">
-                <span className="font-mono">{mode.prefix}</span>
-                {t(mode.labelKey)}
-              </span>
-            )}
-            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
-            <input
-              ref={inputRef}
-              autoFocus
-              value={raw}
-              onChange={(e) => {
-                setRaw(e.target.value);
-                setHighlight(0);
-              }}
-              placeholder={t("commandPalette.placeholder")}
-              className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            />
-            {rows.length > 0 && (
-              <span className="shrink-0 tabular-nums text-2xs text-muted-foreground/70">
-                {rows.length}
-              </span>
-            )}
-          </div>
+    <OverlayPalette
+      open={open}
+      onOpenChange={setOpen}
+      title={t("commandPalette.title")}
+      className="max-w-2xl top-[12%]"
+      query={raw}
+      onQueryChange={(value) => {
+        setRaw(value);
+        setHighlight(0);
+      }}
+      placeholder={t("commandPalette.placeholder")}
+      inputRef={inputRef}
+      inputLeading={
+        mode !== ALL_MODE && (
+          <span className="flex shrink-0 items-center gap-1 rounded bg-brand/15 px-1.5 py-0.5 text-2xs font-medium text-brand">
+            <span className="font-mono">{mode.prefix}</span>
+            {t(mode.labelKey)}
+          </span>
+        )
+      }
+      inputTrailing={
+        rows.length > 0 && (
+          <span className="shrink-0 tabular-nums text-2xs text-muted-foreground/70">
+            {rows.length}
+          </span>
+        )
+      }
+      onKeyDown={(e) => {
+        if (handleArrows(e)) return;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (e.altKey) runAltAt(highlight);
+          else runAt(highlight);
+        } else if (e.key === "Tab") {
+          // Cycle through the modes: a discoverable way in for anyone who
+          // never reads the sigils under the input.
+          e.preventDefault();
+          const order = [ALL_MODE, ...MODES];
+          const at = order.findIndex((m) => m.prefix === mode.prefix);
+          const next = order[(at + (e.shiftKey ? -1 + order.length : 1)) % order.length]!;
+          applyMode(next.prefix);
+        }
+      }}
+    >
 
           {/* Mode discovery: the sigils, clickable, only while the field is
               empty so they never compete with results. */}
@@ -391,14 +371,14 @@ export function CommandPalette() {
                             </span>
                           )}
                           {cmd.combo && (
-                            <kbd className="shrink-0 rounded border border-border bg-muted px-1 font-mono text-[10px] leading-none text-muted-foreground">
+                            <Kbd className="shrink-0 text-[10px] text-muted-foreground">
                               {cmd.combo}
-                            </kbd>
+                            </Kbd>
                           )}
                           {activeRow && (
-                            <kbd className="shrink-0 rounded border border-border bg-muted px-1 font-mono text-[10px] leading-none text-muted-foreground">
+                            <Kbd className="shrink-0 text-[10px] text-muted-foreground">
                               ↵
-                            </kbd>
+                            </Kbd>
                           )}
                         </button>
                       );
@@ -413,40 +393,38 @@ export function CommandPalette() {
               hint is per-row, so it only appears when there is one. */}
           <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-3xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 ↑↓
-              </kbd>
+              </Kbd>
               {t("commandPalette.hintNavigate")}
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 ↵
-              </kbd>
+              </Kbd>
               {t("commandPalette.hintRun")}
             </span>
             {current?.alt && (
               <span className="flex items-center gap-1 text-brand">
-                <kbd className="rounded border border-brand/40 bg-brand/10 px-1 font-mono leading-none">
+                <Kbd className="border-brand/40 bg-brand/10">
                   alt+↵
-                </kbd>
+                </Kbd>
                 {t(current.alt.hintKey)}
               </span>
             )}
             <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 tab
-              </kbd>
+              </Kbd>
               {t("commandPalette.hintMode")}
             </span>
             <span className="ml-auto flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 esc
-              </kbd>
+              </Kbd>
               {t("commandPalette.hintClose")}
             </span>
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+    </OverlayPalette>
   );
 }

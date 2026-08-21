@@ -13,9 +13,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { KeyRound, Plus, Trash2, RefreshCw, ChevronUp, ChevronDown } from "lucide-react";
+import { KeyRound, Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
-import Editor from "@monaco-editor/react";
+import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
+import { RefreshButton } from "@/components/common/RefreshButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
@@ -33,8 +34,11 @@ import { useJsonSchemas } from "@/stores/jsonSchemas";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs, retitleTabsForTableRename } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
+import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useReloadable } from "@/lib/useReloadable";
+import { DdlPreviewPane } from "@/components/schema/DdlPreviewPane";
+import { joinStatements } from "@/lib/sql/formatStatements";
 import {
   columnCategoriesFor,
   composeColumnType,
@@ -42,9 +46,11 @@ import {
   type ColumnTypeCategory,
 } from "@/lib/db/columnTypes";
 import {
+  ddlReadOnlyReason,
+  supportsColumnReorder,
   supportsDdlEditing,
   supportsIndexManager,
-  supportsColumnReorder,
+  supportsUnsignedIntegers,
 } from "@/lib/db/driver";
 import type {
   ColumnDef,
@@ -112,17 +118,9 @@ export function StructureEditorTab({
   const editorPrefs = usePreferences(selectEditorPrefs);
   const refreshSchema = useSchema((s) => s.refresh);
   const closeTab = useTabs((s) => s.close);
-  // Resolve the connection's driver for the type suggestions. Synthetic
-  // multi-DB ids (`<parent>::db::<db>`) inherit the parent profile's driver.
-  const driver = useConnections((s) => {
-    const direct = s.profiles.find((p) => p.id === connectionId);
-    if (direct) return direct.driver;
-    const sep = connectionId.indexOf("::db::");
-    if (sep > 0) {
-      return s.profiles.find((p) => p.id === connectionId.slice(0, sep))?.driver;
-    }
-    return undefined;
-  });
+  // Drives the type suggestions. Synthetic multi-DB ids inherit the parent
+  // profile's driver — the hook handles that fold.
+  const driver = useConnectionDriver(connectionId);
   const typeCategories = useMemo(() => columnCategoriesFor(driver), [driver]);
 
   // Read-only on the drivers whose DDL the backend can't build yet: MongoDB
@@ -142,8 +140,6 @@ export function StructureEditorTab({
   const [section, setSection] = useState<"columns" | "indexes" | "fks">(
     "columns",
   );
-  const [loading, setLoading] = useState(mode === "edit");
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [ddl, setDdl] = useState<string>("");
   const [rebuild, setRebuild] = useState(false);
@@ -163,29 +159,22 @@ export function StructureEditorTab({
   // the manual refresh button (issue #25) so external changes made while the
   // tab is open can be pulled in; a refresh resets the working state to the
   // server's current definition.
-  const reload = useCallback(async () => {
+  const load = useCallback(async () => {
     const currentName = currentTableNameRef.current;
-    if (mode !== "edit" || !currentName) return;
-    setLoading(true);
-    try {
-      const s = await api.getTableStructure(connectionId, schema, currentName);
-      currentTableNameRef.current = s.name;
-      setOriginal(s);
-      setName(s.name);
-      setColumns(s.columns.map((c) => ({ ...c, _key: nextKey() })));
-      setIndexes(s.indexes);
-      setForeignKeys(s.foreignKeys);
-      setLoadError(null);
-    } catch (e) {
-      setLoadError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [mode, connectionId, schema]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+    if (!currentName) return;
+    const s = await api.getTableStructure(connectionId, schema, currentName);
+    currentTableNameRef.current = s.name;
+    setOriginal(s);
+    setName(s.name);
+    setColumns(s.columns.map((c) => ({ ...c, _key: nextKey() })));
+    setIndexes(s.indexes);
+    setForeignKeys(s.foreignKeys);
+  }, [connectionId, schema]);
+  const {
+    loading,
+    error: loadError,
+    reload,
+  } = useReloadable(mode === "edit" ? load : null);
 
   // JSON Schema bindings for this table.
   //
@@ -250,7 +239,7 @@ export function StructureEditorTab({
         desired: desiredRef.current,
       })
       .then((p) => {
-        setDdl(p.statements.join(";\n") + (p.statements.length ? ";" : ""));
+        setDdl(joinStatements(p.statements));
         setRebuild(p.rebuild);
         setPreviewError(null);
       })
@@ -260,10 +249,7 @@ export function StructureEditorTab({
       });
   }, [connectionId, original, isReadOnly]);
 
-  useEffect(() => {
-    const id = setTimeout(runPreview, 400);
-    return () => clearTimeout(id);
-  }, [desired, runPreview]);
+  useDebouncedPreview(desired, runPreview);
 
   async function doApply() {
     setApplying(true);
@@ -389,24 +375,17 @@ export function StructureEditorTab({
         />
         <div className="ml-auto flex items-center gap-2">
           {mode === "edit" && (
-            <Button
-              variant="ghost"
-              size="icon"
+            <RefreshButton
               className="h-7 w-7"
               onClick={() => void reload()}
-              disabled={loading || applying}
+              loading={loading}
+              disabled={applying}
               title={t("structure.refresh")}
-            >
-              <RefreshCw
-                className={
-                  loading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"
-                }
-              />
-            </Button>
+            />
           )}
           {isReadOnly ? (
             <span className="rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground">
-              {driver === "sqlserver"
+              {ddlReadOnlyReason(driver) === "mssql"
                 ? t("structure.readOnlySqlServer")
                 : t("structure.readOnlyMongo")}
             </span>
@@ -506,39 +485,13 @@ export function StructureEditorTab({
           )}
         </div>
 
-        {/* DDL preview */}
-        <div className="flex h-48 flex-col border-t border-border">
-          <div className="flex items-center gap-2 px-3 py-1 text-[11px] text-muted-foreground">
-            <RefreshCw className="h-3 w-3" />
-            {t("structure.ddlPreview")}
-            {rebuild && (
-              <span className="rounded bg-warning/20 px-1.5 py-0.5 text-warning">
-                {t("structure.rebuildWarning")}
-              </span>
-            )}
-          </div>
-          {previewError ? (
-            <div className="px-3 py-2 text-xs text-destructive">
-              {previewError}
-            </div>
-          ) : (
-            <Editor
-              height="100%"
-              value={ddl}
-              language="sql"
-              theme={resolveMonacoTheme(editorPrefs.theme)}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                lineNumbers: "off",
-                fontFamily: editorPrefs.fontFamily,
-                fontSize: editorPrefs.fontSize,
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-              }}
-            />
-          )}
-        </div>
+        <DdlPreviewPane
+          title={t("structure.ddlPreview")}
+          ddl={ddl}
+          error={previewError}
+          warning={rebuild ? t("structure.rebuildWarning") : null}
+          prefs={editorPrefs}
+        />
       </div>
 
       {/* SQLite rebuild confirmation */}
@@ -630,7 +583,7 @@ function ColumnsEditor({
   // MySQL is the only driver where UNSIGNED/ZEROFILL are meaningful — the
   // columns are omitted entirely for the others instead of rendering
   // permanently-disabled checkboxes.
-  const showUnsignedCols = driver === "mysql";
+  const showUnsignedCols = supportsUnsignedIntegers(driver);
 
   return (
     <div className="space-y-2">

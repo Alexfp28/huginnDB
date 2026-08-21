@@ -7,13 +7,15 @@
  * itself into view and flashes a ring so the setting is findable in a long
  * section. The id must match the `prefId` the palette's settings registry uses
  * for that preference (`src/lib/commandPalette/settingsRegistry.ts`) — the two
- * halves are joined by that string alone, and a mismatch degrades to "the
- * section opens, nothing is highlighted".
+ * halves are joined by that string alone. `PrefId` narrows it to a real
+ * preference path so a mismatch is a compile error instead of "the section
+ * opens, nothing is highlighted".
  */
 
 import { useEffect, useRef, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
+import type { PrefId } from "@/lib/prefId";
 import { cn } from "@/lib/utils";
 
 /** How long the ring stays on after a jump. */
@@ -24,7 +26,7 @@ interface Props {
   description?: string;
   htmlFor?: string;
   /** Stable id making this row a jump target for the command palette. */
-  prefId?: string;
+  prefId?: PrefId;
   children: React.ReactNode;
 }
 

@@ -6,6 +6,104 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **A shared origin carrying encrypted secrets stored the wrong thing in the OS
+  keychain.** `sync_origin` wrote the base64 AES-256-GCM *envelope* as if it were
+  the password, so every profile imported from such an origin failed to connect
+  with an authentication error from the driver — and the real password was never
+  recoverable from it. The decrypt path is now shared with the profile importer
+  (`transfer::land_secrets`), which never stores a secret it could not decrypt;
+  an origin whose passphrase is not available simply leaves the profile asking
+  for a password, which is the documented behaviour (the passphrase travels
+  out-of-band). Three regression tests cover it without touching a keychain.
+
+- **Removed an unreachable IPC command that could read any keychain entry.**
+  `load_password(account)` was registered but called from nowhere in the app; it
+  took an arbitrary account name and returned the stored secret. Nothing in
+  HuginnDB needs that shape — the connect path resolves its own key — so the
+  command and its module are gone rather than narrowed.
+
+- **The theme colour editor was rendered entirely in English**, whatever the
+  selected language: the 26 colour names and 4 group titles were hardcoded
+  strings in `lib/themes.ts`. They are i18n keys now, in both locales.
+
+- **Numbers and dates followed the operating system's locale instead of the
+  language chosen in Settings.** Twelve `toLocaleString()` calls had no locale
+  argument, so a Spanish UI on an English system showed `1,234` and
+  `8/21/2026`. They now go through `formatNumber` / `formatDateTime` /
+  `formatTime`, which read `ui.language`.
+
+- **Importing an environment hid its own connections when a conflicting profile
+  was resolved as "Skip".** The skipped profile was absent from the
+  original-id → new-id map, so the new environment's `visible_connections`
+  filter dropped it, and any JSON Schema binding pointing at it was disabled
+  even though the connection existed locally all along. A skipped profile now
+  maps to itself.
+
+- **Environment-import conflicts default to "Skip" rather than "Rename"**,
+  matching the profile importer. Re-importing your own export accumulated
+  `name (imported)`, `name (2)`, … on every round trip; the conflicts step is
+  still shown, so a genuinely different environment is one click from Rename or
+  Overwrite.
+
+- **"Copy as ▸ SELECT" did not escape delimiters embedded in a table or column
+  name**, producing a snippet that would not parse. It now goes through the same
+  quoting the other clipboard formats use.
+
+- **`profiles.json` was the only state file written without a temp-file +
+  rename**, so a crash mid-write could leave every saved connection truncated —
+  along with the keychain entries, JSON Schema bindings and origin links keyed
+  on those profile ids. Every JSON state file now goes through one atomic writer
+  (`src-tauri/src/state_file.rs`).
+
+- **Three `match` arms that would silently mis-handle a future driver or filter
+  operator.** `empty_table` fell through to Postgres's `TRUNCATE` for anything
+  unlisted (so SQL Server would have run a statement it accepts with different
+  semantics, and MongoDB a statement it does not have), and the SQL filter
+  builder's comparison and `LIKE` arms fell through to `<=` and `EndsWith`. All
+  three now spell out every variant, so adding one is a build error.
+
+### Changed
+
+- **Internal: a project-wide pass over duplicated logic and misplaced
+  responsibilities.** No behaviour change beyond the fixes above. The parts worth
+  knowing about:
+  - `db/exec.rs` — the execution counterpart to `db::sql::Dialect`. Twelve sites
+    repeated the same `match pool { … }`, two of them byte-identical, one a
+    re-inlining of a decoder that already existed 200 lines above it.
+  - Postgres/MySQL/SQLite catalog introspection moved out of
+    `commands/schema.rs` (1559 → 769 lines) into `db/{postgres,mysql,sqlite}/`,
+    mirroring `db/mssql` and `db/mongo`. All 17 `unreachable!()` are gone.
+  - `state_file.rs`, `AppState::pool_for`/`mongo_for`, `Dialect::quote_ident` and
+    `Dialect::truncate_stmt` replace between 9 and 10 hand-rolled copies each.
+  - Frontend: `useImportWizard` (three dialogs), `useAsyncSubmit` (ten),
+    `OverlayPalette` + `useListNavigation` (the command palette and the tab
+    switcher), `lib/schedule.ts` (three debounces, two polls), `RefreshButton`
+    (five), plus `lib/grid/pagination.ts` and `lib/grid/exportTable.ts`.
+  - `PrefId` is now derived from `Preferences`, so a "go to this setting" id that
+    names no real preference is a compile error instead of a silently dead jump.
+  - Deleted dead code: `ConnectPasswordDialog` (92 lines, no importers) and its
+    i18n keys, `useSavedQueries.byTag`, three unused constants, and the
+    `async-trait` dependency.
+
+- **Internal: the five files that had grown past a thousand lines are split by
+  responsibility.** No behaviour change beyond the fixes above.
+  `SchemaExplorer.tsx` 2842 → 73 (its eight dialogs to `schema/dialogs/`, each
+  tree level to its own file, `ConnectionActionsMenu` to `components/connection/`
+  where the tree that renders it lives); `DataGrid.tsx` 3592 → 2235 (`GridRow`,
+  the filter chips, the search box and the draft row out; row selection, column
+  sizing and the Ctrl+wheel zoom into hooks); `ConnectionDialog.tsx` 1761 → 1267
+  and its 41 `useState`s to 11 (the rail and the form model out); `TabbedArea.tsx`
+  1082 → 390 (the tab header and the empty state out); `App.tsx` 820 → 530 (the
+  command-line intent handling out). Two orderings were preserved deliberately
+  and are now documented where they are enforced: the launch-restore effect
+  sequence, and the memoisation contracts of `GridRow` and the tab header.
+
+- **Vitest is set up for the frontend** (`pnpm test`) with characterization tests
+  for the pure `lib/` modules and each extracted hook, and CI runs it alongside
+  the existing typecheck and Cargo jobs.
+
 ## [1.17.0] — 2026-08-20
 
 ### Added

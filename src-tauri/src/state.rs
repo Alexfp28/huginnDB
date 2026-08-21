@@ -18,6 +18,8 @@ use sqlx::{MySqlPool, PgPool, SqlitePool};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::error::{AppError, AppResult};
+
 /// Database backend selected for a [`ConnectionProfile`].
 ///
 /// `PartialEq`/`Eq`/`Hash` so it can take part in
@@ -395,6 +397,63 @@ pub struct MongoConn {
     pub database: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// Synthetic per-database connection ids
+// ---------------------------------------------------------------------------
+
+/// Separator between a profile id and a database name in the synthetic
+/// connection id `commands::connection::open_database_view` registers for a
+/// per-database browse session on a server-wide connection.
+///
+/// One spelling, here. The helpers below are the *only* things that should know
+/// this string: it used to be written out at eight sites across four layers
+/// (`state`, `db::pool`, `pool_reaper`, `bridge::server`), each re-deriving
+/// "is this a view?" or "what is the parent?" by hand. This lives in `state`
+/// rather than beside `open_database_view` because `db::pool` and `pool_reaper`
+/// are *below* `commands` and must not depend upward; `commands::connection`
+/// re-exports the two it had so its public paths keep working.
+pub const DB_VIEW_SEP: &str = "::db::";
+
+/// Synthetic connection id for a per-database browse session under `parent_id`.
+///
+/// Format is stable so callers can derive the id without a round-trip when they
+/// only need to address an already-open child.
+pub fn database_view_id(parent_id: &str, database: &str) -> String {
+    format!("{parent_id}{DB_VIEW_SEP}{database}")
+}
+
+/// The id prefix shared by every per-database view under `parent_id`, for
+/// `starts_with` scans over the live connection map.
+pub fn database_view_prefix(parent_id: &str) -> String {
+    format!("{parent_id}{DB_VIEW_SEP}")
+}
+
+/// Split a synthetic id into `(parent profile id, database name)`, or `None`
+/// for a plain top-level id.
+///
+/// Splits at the *first* separator: a database whose own name contains the
+/// separator would otherwise re-parent the id (see `PoolOwnership::for_id`'s
+/// test, which pins this).
+pub fn split_database_view(id: &str) -> Option<(&str, &str)> {
+    id.split_once(DB_VIEW_SEP)
+}
+
+/// Whether `id` names a synthetic per-database view rather than a profile.
+pub fn is_database_view(id: &str) -> bool {
+    id.contains(DB_VIEW_SEP)
+}
+
+/// The *profile* id behind a connection id: `id` itself for a plain one, the
+/// parent for a synthetic `<parent>::db::<database>` child.
+///
+/// Rust twin of `lib/connectionLabel.ts`'s `parentConnectionId` (gotcha #36).
+pub fn parent_connection_id(id: &str) -> &str {
+    match split_database_view(id) {
+        Some((parent, _)) => parent,
+        None => id,
+    }
+}
+
 /// Monotonic milliseconds since the first call, used to timestamp pool usage.
 ///
 /// Deliberately not wall-clock: the reaper compares ages, and a system clock
@@ -527,7 +586,7 @@ impl ActiveConnections {
     /// The ordering is what makes the per-parent cap an LRU rather than an
     /// arbitrary eviction: callers take from the front.
     pub fn children_by_lru(&self, parent_id: &str) -> Vec<String> {
-        let prefix = format!("{parent_id}::db::");
+        let prefix = database_view_prefix(parent_id);
         let mut children: Vec<(&String, u64)> = self
             .inner
             .iter()
@@ -549,9 +608,7 @@ impl ActiveConnections {
     pub fn idle_children(&self, now: u64, ttl_millis: u64) -> Vec<String> {
         self.inner
             .iter()
-            .filter(|(id, active)| {
-                id.contains("::db::") && active.idle_millis_at(now) >= ttl_millis
-            })
+            .filter(|(id, active)| is_database_view(id) && active.idle_millis_at(now) >= ttl_millis)
             .map(|(id, _)| id.clone())
             .collect()
     }
@@ -567,7 +624,7 @@ impl ActiveConnections {
         let mut views: Vec<(&String, u64)> = self
             .inner
             .iter()
-            .filter(|(id, active)| id.contains("::db::") && active.endpoint_key() == Some(key))
+            .filter(|(id, active)| is_database_view(id) && active.endpoint_key() == Some(key))
             .map(|(id, active)| (id, active.last_used_millis()))
             .collect();
         views.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(b.0)));
@@ -594,7 +651,7 @@ impl ActiveConnections {
     /// per-database children. Feeds the connection-limit error message, which
     /// is only actionable if it can tell the user what HuginnDB itself holds.
     pub fn counts(&self) -> (usize, usize) {
-        let children = self.inner.keys().filter(|id| id.contains("::db::")).count();
+        let children = self.inner.keys().filter(|id| is_database_view(id)).count();
         (self.inner.len() - children, children)
     }
 
@@ -717,6 +774,33 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// The live pool for `id`, or [`AppError::NotConnected`].
+    ///
+    /// Every command module had a byte-identical private `pool_for` (seven of
+    /// them) before this existed. Cloning the `DbPool` out under the read lock
+    /// rather than handing back a guard is what keeps the lock off the `await`
+    /// points that follow in the caller — the pools are `Arc`-backed, so the
+    /// clone is cheap.
+    pub fn pool_for(&self, id: &str) -> AppResult<DbPool> {
+        self.connections
+            .read()
+            .get(id)
+            .ok_or_else(|| AppError::NotConnected(id.to_string()))
+    }
+
+    /// The live MongoDB handle for `id`, for a surface that only exists on
+    /// MongoDB (the aggregation editor, the index manager).
+    ///
+    /// `unsupported` is the whole message for the non-Mongo case, not a
+    /// fragment: each caller points the user at the SQL equivalent of its own
+    /// feature, and a templated "X is MongoDB-only" would lose that half.
+    pub fn mongo_for(&self, id: &str, unsupported: &str) -> AppResult<MongoConn> {
+        match self.pool_for(id)? {
+            DbPool::Mongo(conn) => Ok(conn),
+            _ => Err(AppError::UnsupportedDriver(unsupported.into())),
+        }
+    }
+
     /// Load any existing profiles, preferences, and tab state from disk;
     /// failures degrade silently to defaults so a corrupted file doesn't
     /// prevent the app from launching.

@@ -7,6 +7,14 @@
  * `grid/TableDataTab.tsx` — this is that pattern extracted so bulk-deleting
  * connections, deleting an environment, and removing a shared origin don't
  * each reimplement it.
+ *
+ * Three additions let the schema explorer's own confirmations use it rather than
+ * keep their hand-rolled copies, since what they had over this were only ever
+ * details: an `error` slot (a failed DROP has to say why, in the dialog — the
+ * modal stays open, so a toast would be the wrong surface), `children` for the
+ * odd extra control (`EmptyTableDialog`'s "don't ask again"), and
+ * `confirmingLabel` for a dialog that says "Dropping…" instead of showing a
+ * spinner. Pair it with `useAsyncSubmit`, which owns `confirming`/`error`.
  */
 
 import { useTranslation } from "react-i18next";
@@ -30,6 +38,10 @@ export function ConfirmDialog({
   cancelLabel,
   onConfirm,
   confirming = false,
+  confirmingLabel,
+  confirmAutoFocus = false,
+  error,
+  children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -41,6 +53,16 @@ export function ConfirmDialog({
   /** Disables both buttons and swaps the confirm icon for a spinner while an
    *  async action triggered by this dialog is in flight. */
   confirming?: boolean;
+  /** Shown in place of the spinner + `confirmLabel` while `confirming`. */
+  confirmingLabel?: string;
+  /** Focus the destructive button on open. Off by default: for a confirmation
+   *  reached by a keyboard shortcut, a focused destructive button turns the next
+   *  Enter into the action itself. */
+  confirmAutoFocus?: boolean;
+  /** Failure message, rendered above the footer while the dialog stays open. */
+  error?: string | null;
+  /** Extra controls between the description and the footer. */
+  children?: ReactNode;
 }) {
   const { t } = useTranslation();
 
@@ -51,6 +73,8 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="text-xs text-muted-foreground">{description}</div>
+        {error && <div className="text-xs text-destructive">{error}</div>}
+        {children}
         <DialogFooter>
           <Button
             variant="ghost"
@@ -59,9 +83,16 @@ export function ConfirmDialog({
           >
             {cancelLabel ?? t("common.cancel")}
           </Button>
-          <Button variant="destructive" disabled={confirming} onClick={onConfirm}>
-            {confirming && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-            {confirmLabel}
+          <Button
+            variant="destructive"
+            autoFocus={confirmAutoFocus}
+            disabled={confirming}
+            onClick={onConfirm}
+          >
+            {confirming && !confirmingLabel && (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            )}
+            {confirming ? (confirmingLabel ?? confirmLabel) : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

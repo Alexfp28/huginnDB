@@ -137,15 +137,6 @@ export const api = {
     invoke<string>("open_database_view", { parentId, database }),
 
   /**
-   * Stable synthetic id for a per-database browse session. Kept in sync
-   * with `connection.rs::database_view_id` so the frontend can compute it
-   * without a round-trip when it only needs to address an already-open
-   * child (e.g. dispatching tab actions).
-   */
-  databaseViewId: (parentId: string, database: string) =>
-    `${parentId}::db::${database}`,
-
-  /**
    * How many pools the backend is holding right now, split into top-level
    * connections and synthetic per-database views.
    *

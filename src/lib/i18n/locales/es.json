@@ -226,13 +226,6 @@
     "noMatches": "Ninguna conexión coincide con la búsqueda.",
     "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya."
   },
-  "connectPassword": {
-    "title": "Contraseña requerida",
-    "description": "No se encontró la contraseña guardada para \"{{name}}\". Introdúcela para conectar.",
-    "password": "Contraseña",
-    "connect": "Conectar",
-    "connecting": "Conectando…"
-  },
   "adhocDriver": {
     "title": "¿Qué driver de base de datos?",
     "description": "\"{{name}}\" se lanzó sin --driver y no hay un driver por defecto configurado. Elige el motor con el que conectar.",
@@ -1151,6 +1144,40 @@
           "label": "Numerar los campos",
           "desc": "Numera los campos de cada fila en el margen izquierdo."
         }
+      },
+      "color": {
+        "background": "Fondo",
+        "foreground": "Texto",
+        "card": "Tarjeta",
+        "cardForeground": "Texto de tarjeta",
+        "primary": "Primario",
+        "primaryForeground": "Texto primario",
+        "secondary": "Secundario",
+        "secondaryForeground": "Texto secundario",
+        "muted": "Atenuado",
+        "mutedForeground": "Texto atenuado",
+        "accent": "Acento",
+        "accentForeground": "Texto de acento",
+        "brand": "Marca",
+        "brandForeground": "Texto de marca",
+        "brandHover": "Marca al pasar",
+        "popover": "Popover",
+        "popoverForeground": "Texto de popover",
+        "success": "Éxito",
+        "successForeground": "Texto de éxito",
+        "warning": "Advertencia",
+        "warningForeground": "Texto de advertencia",
+        "destructive": "Destructivo",
+        "destructiveForeground": "Texto destructivo",
+        "border": "Borde",
+        "input": "Borde de campo",
+        "ring": "Anillo de foco"
+      },
+      "colorGroup": {
+        "surfaces": "Superficies",
+        "actions": "Acciones y marca",
+        "status": "Colores de estado",
+        "borders": "Bordes y foco"
       }
     },
     "shortcuts": {
@@ -1503,7 +1530,8 @@
     "elapsedTitle": "Duración de la consulta",
     "batchOk": "{{count}} sentencias · {{rows}} filas afectadas",
     "batchFailed": "Detenido en la sentencia {{index}} de {{total}}",
-    "rowsAffected": "{{rows}} filas afectadas · {{ms}} ms"
+    "rowsAffected": "{{rows}} filas afectadas · {{ms}} ms",
+    "newTabPlaceholder": "-- escribe una consulta SQL y pulsa Ctrl+Intro\n"
   },
   "saved": {
     "connectFirst": "Conéctate primero a una base de datos.",

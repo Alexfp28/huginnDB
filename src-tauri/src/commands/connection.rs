@@ -707,25 +707,11 @@ async fn close_view(
     }
 }
 
-/// Synthetic connection id for a per-database browse session under
-/// `parent_id`. Format is stable so callers can derive the id without a
-/// round-trip when they only need to address an already-open child.
-pub fn database_view_id(parent_id: &str, database: &str) -> String {
-    format!("{parent_id}::db::{database}")
-}
-
-/// The *profile* id behind a connection id: `id` itself for a plain one, the
-/// parent for a synthetic `<parent>::db::<database>` child.
-///
-/// Rust twin of `lib/connectionLabel.ts`'s `parentConnectionId`. Lives here
-/// because [`database_view_id`] already owns the format, so the two spellings of
-/// `::db::` stay in one file (gotcha #36).
-pub fn parent_connection_id(id: &str) -> &str {
-    match id.split_once("::db::") {
-        Some((parent, _)) => parent,
-        None => id,
-    }
-}
+// The synthetic-id vocabulary lives in `crate::state`, next to the connection
+// map it addresses, so the layers *below* `commands` (`db::pool`,
+// `pool_reaper`) can use it without depending upward. Re-exported here because
+// these two paths are what the rest of `commands` already calls.
+pub use crate::state::{database_view_id, parent_connection_id};
 
 /// If `id` names a `<parent>::db::<database>` view the idle reaper
 /// (`pool_reaper.rs`) has since closed, transparently reopen it with the same
@@ -755,7 +741,7 @@ pub async fn ensure_database_view(
     if state.connections.read().get(id).is_some() {
         return;
     }
-    if let Some((parent_id, database)) = id.split_once("::db::") {
+    if let Some((parent_id, database)) = crate::state::split_database_view(id) {
         let _ = open_database_view_inner(app, state, window_label, parent_id, database).await;
     }
 }
@@ -1224,7 +1210,7 @@ pub async fn export_profiles(
         .set_file_name(&suggested)
         .add_filter("JSON", &["json"])
         .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
 
     let dest = path.to_string();
     std::fs::write(&dest, json)?;
@@ -1370,10 +1356,13 @@ pub struct ImportProgress {
 /// Every imported profile receives a **fresh UUID** regardless of whether it
 /// came with one in the file, to avoid keychain-account collisions with
 /// profiles already on this machine. The second return value maps each
-/// *original* profile id to that fresh one (skipped profiles are absent) —
+/// *original* profile id to the local id it should now resolve to —
 /// `import_profiles` has no use for it, but `import_environment` needs it to
 /// translate each environment bundle's `connection_ids` into the ids that
-/// actually landed in `profiles.json`.
+/// actually landed in `profiles.json`. A **skipped** profile maps to *itself*:
+/// the conflict was matched by id, so the local profile already answers to it.
+/// Every incoming profile therefore has an entry, and an id missing from this
+/// map genuinely means "did not land".
 ///
 /// The **third** return value is the subset of that map for profiles that were
 /// *overwritten*. Because a fresh UUID is minted even when overwriting, anything
@@ -1382,8 +1371,9 @@ pub struct ImportProgress {
 /// JSON-Schema bindings are exactly that (`crate::json_schemas`), so both
 /// callers feed this map to `json_schemas::remap_connection_ids`. It is
 /// deliberately *only* the overwrite subset: on `Rename` the local profile keeps
-/// its original id and its bindings must stay on it, and a `Skip` has no entry
-/// at all.
+/// its original id and its bindings must stay on it, and on `Skip` nothing was
+/// replaced, so there is nothing to repoint (it appears in the *second* map, as
+/// an identity entry, but never in this one).
 pub(crate) fn apply_profile_imports(
     profiles: &mut Vec<ConnectionProfile>,
     exported: Vec<transfer::ExportedProfile>,
@@ -1425,7 +1415,28 @@ pub(crate) fn apply_profile_imports(
         };
 
         if matches!(conflict_action, ConflictAction::Skip) {
+            // Map the skipped id to *itself*. A conflict is matched by id, so
+            // "skip" means "a profile with this exact id is already here" — the
+            // incoming reference resolves perfectly well, it just resolves to
+            // the local profile instead of a freshly minted one. Leaving the
+            // entry out made `id_map` say "this connection did not land",
+            // which is false, and both consumers acted on it:
+            //
+            //   * `import_environment` builds the new environment's
+            //     `launch.visible_connections` by translating the bundle's
+            //     `connection_ids` through this map, so a skipped connection
+            //     was dropped from the filter — the environment came up hiding
+            //     the very connections it was exported to describe.
+            //   * JSON-Schema bindings are repointed through the same map, and
+            //     an id absent from it is taken to name a connection unknown
+            //     locally, so the binding is *disabled* (gotcha #39). It was
+            //     disabling bindings for profiles that were sitting right
+            //     there under the same id.
+            //
+            // `overwritten_ids` (the third return value) deliberately gets no
+            // entry: nothing was overwritten, so there is nothing to repoint.
             result.skipped.push(ep.profile.id.clone());
+            id_map.insert(ep.profile.id.clone(), ep.profile.id.clone());
             continue;
         }
 
@@ -1478,27 +1489,17 @@ pub(crate) fn apply_profile_imports(
         new_profile.id = new_id.clone();
         new_profile.name = final_name;
 
-        // Decrypt and store secrets if present.
-        let has_secrets = if let Some(secrets) = &ep.secrets {
-            let pp = passphrase.unwrap_or("");
-            let mut any = false;
-            if let Some(enc_pw) = &secrets.db_password {
-                if !matches!(new_profile.driver, Driver::Sqlite) {
-                    let pw = crate::transfer::decrypt_secret(enc_pw, pp)?;
-                    keychain::set_password(&new_profile.keyring_account(), &pw)?;
-                    any = true;
-                }
-            }
-            if let Some(enc_ssh) = &secrets.ssh_secret {
-                if let Some(ssh_acct) = new_profile.ssh_keyring_account() {
-                    let secret = crate::transfer::decrypt_secret(enc_ssh, pp)?;
-                    keychain::set_password(&ssh_acct, &secret)?;
-                    any = true;
-                }
-            }
-            any
-        } else {
-            false
+        // Decrypt and store secrets if present. `Strict` because the user is
+        // sitting in the import dialog: a wrong passphrase has to surface here
+        // rather than yielding a pile of connections that cannot authenticate.
+        let has_secrets = match &ep.secrets {
+            Some(secrets) => crate::transfer::land_secrets(
+                &new_profile,
+                secrets,
+                passphrase,
+                crate::transfer::LandMode::Strict,
+            )?,
+            None => false,
         };
 
         if !has_secrets && !matches!(new_profile.driver, Driver::Sqlite) {
@@ -1757,14 +1758,14 @@ mod tests {
     }
 
     #[test]
-    fn apply_profile_imports_skipped_profiles_are_absent_from_the_id_map() {
+    fn apply_profile_imports_maps_a_skipped_profile_to_itself() {
         let mut profiles = Vec::new();
         let mut resolutions = std::collections::HashMap::new();
         resolutions.insert("orig-a".to_string(), ConflictAction::Skip);
         // Pre-seed a profile with the same id so it registers as a conflict.
         profiles.push(profile("orig-a", "Existing"));
 
-        let (result, id_map, _overwritten) = apply_profile_imports(
+        let (result, id_map, overwritten) = apply_profile_imports(
             &mut profiles,
             vec![exported("orig-a", "A")],
             None,
@@ -1774,10 +1775,18 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.skipped, vec!["orig-a".to_string()]);
-        assert!(
-            !id_map.contains_key("orig-a"),
-            "a skipped profile must not appear in the id map"
+        // The conflict was matched by id, so the local profile already answers
+        // to it: the reference resolves, it just resolves to what is already
+        // here. Callers translate ids through this map to decide what an
+        // imported environment can see and where a JSON-Schema binding points,
+        // and both read a missing entry as "this connection did not land".
+        assert_eq!(
+            id_map.get("orig-a").map(String::as_str),
+            Some("orig-a"),
+            "a skipped profile must map to the local profile it collided with"
         );
+        // Nothing was replaced, so nothing needs repointing.
+        assert!(overwritten.is_empty());
     }
 
     #[test]
@@ -1801,7 +1810,7 @@ mod tests {
         assert_eq!(result.skipped, vec!["orig-a".to_string()]);
         assert!(result.imported.is_empty());
         assert!(result.renamed.is_empty());
-        assert!(!id_map.contains_key("orig-a"));
+        assert_eq!(id_map.get("orig-a").map(String::as_str), Some("orig-a"));
         assert_eq!(profiles.len(), 1, "no duplicate profile must be created");
         // Nothing was overwritten, so no JSON-Schema binding should be
         // repointed either (see the third return value).

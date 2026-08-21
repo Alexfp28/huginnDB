@@ -11,18 +11,12 @@
 //! garbage. Writes go through an atomic temp-file rename so a crash mid-save
 //! cannot leave a half-written file on Windows.
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 /// File name used for the persisted preferences blob.
 const PREFS_FILE: &str = "prefs.json";
-
-/// Application directory within the platform's config base. Matches the
-/// directory used by [`crate::store`]; aliased from [`crate::app_identity`]
-/// so a `canary` build isolates its state.
-const APP_DIR: &str = crate::app_identity::APP_DIR;
 
 /// Top-level preferences blob. Bumped on incompatible schema changes; the
 /// `#[serde(default)]` everywhere means older files keep loading.
@@ -317,52 +311,18 @@ impl Default for UiPrefs {
     }
 }
 
-/// Resolve (and create on demand) the path where preferences live.
-fn prefs_path() -> AppResult<PathBuf> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| AppError::InvalidInput("no config dir available".into()))?;
-    let dir = base.join(APP_DIR);
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join(PREFS_FILE))
-}
-
 /// Read the preferences blob from disk.
 ///
 /// Returns [`Preferences::default`] when the file is missing or unparseable —
-/// the caller logs the underlying error but never blocks app startup on a
-/// corrupted prefs file.
+/// the underlying error is logged but never blocks app startup on a corrupted
+/// prefs file.
 pub fn load_preferences() -> Preferences {
-    let path = match prefs_path() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[prefs] cannot resolve path: {e}; using defaults");
-            return Preferences::default();
-        }
-    };
-    if !path.exists() {
-        return Preferences::default();
-    }
-    match std::fs::read(&path).and_then(|bytes| {
-        serde_json::from_slice(&bytes)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-    }) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[prefs] failed to read {path:?}: {e}; using defaults");
-            Preferences::default()
-        }
-    }
+    crate::state_file::load_or_default(PREFS_FILE, "prefs")
 }
 
-/// Persist `prefs` to disk using a temp-file + rename to keep the on-disk
-/// file readable even if the process is killed mid-write.
+/// Persist `prefs` to disk atomically (see [`crate::state_file::save_atomic`]).
 pub fn save_preferences(prefs: &Preferences) -> AppResult<()> {
-    let path = prefs_path()?;
-    let tmp = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(prefs)?;
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, &path)?;
-    Ok(())
+    crate::state_file::save_atomic(PREFS_FILE, prefs)
 }
 
 #[cfg(test)]

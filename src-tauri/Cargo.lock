@@ -2581,7 +2581,6 @@ version = "1.17.0"
 dependencies = [
  "aes-gcm 0.10.3",
  "anyhow",
- "async-trait",
  "base64 0.22.1",
  "bson",
  "chrono",

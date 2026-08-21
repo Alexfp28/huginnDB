@@ -484,6 +484,92 @@ pub fn build_exported_profiles(
     Ok(exported)
 }
 
+/// How a caller wants a per-profile secret-landing failure handled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LandMode {
+    /// Propagate the first failure. The interactive importer uses this: the
+    /// user picked the file and typed the passphrase in this very dialog, so a
+    /// wrong passphrase has to be reported rather than silently producing a
+    /// pile of connections that cannot authenticate.
+    Strict,
+    /// Swallow per-profile failures and keep going. The shared-origin sync uses
+    /// this: it runs unattended (launch, the 4-hourly poll), and one
+    /// undecryptable profile must not abort a whole pass over the origin.
+    BestEffort,
+}
+
+/// Decrypt `secrets` and land them in *this* machine's keychain for `profile`.
+///
+/// Returns `true` when at least one secret was actually stored, which is what
+/// both callers use to decide whether the profile still needs a password from
+/// the user.
+///
+/// Two rules are load-bearing, and used to be spelled differently in the two
+/// call sites — which is how the second one grew a bug:
+///
+/// * **Every value in an [`ExportedSecret`] is ciphertext, always.**
+///   [`build_exported_profiles`] refuses to export secrets without a
+///   passphrase and runs each one through [`encrypt_secret`], and
+///   `ExportMetadata::encrypted` is set to the same `include_passwords` flag —
+///   so "secrets present" and "secrets encrypted" are the same condition and
+///   there is no plaintext path to fall back to. A missing passphrase
+///   therefore means *"this secret cannot be recovered here"*, never *"the
+///   blob is the password"*. Storing the base64 envelope is precisely the
+///   failure this function exists to make unrepresentable: the connection then
+///   fails to authenticate with an opaque driver error, and because the
+///   keychain entry looks perfectly valid the bad secret survives every
+///   restart with nothing pointing at the cause.
+/// * **SQLite has no DB password.** A file path needs no credential, so that
+///   slot is skipped for it — matching the export side, which never writes one.
+///   An SSH secret is still landed, since a SQLite file can sit behind a
+///   tunnel.
+pub fn land_secrets(
+    profile: &ConnectionProfile,
+    secrets: &ExportedSecret,
+    passphrase: Option<&str>,
+    mode: LandMode,
+) -> AppResult<bool> {
+    let mut stored = false;
+
+    // `None` is deliberately *not* folded into `Some("")`: an empty passphrase
+    // is a passphrase the user could have typed, whereas absent means we were
+    // never given one. Both fail to decrypt, but keeping them distinct is what
+    // stops a future edit from reintroducing a "no passphrase → use the blob"
+    // shortcut.
+    let mut land = |account: String, blob: &str| -> AppResult<()> {
+        let plain = match passphrase {
+            Some(pass) => decrypt_secret(blob, pass),
+            None => Err(AppError::Transfer(
+                "the export carries encrypted secrets but no passphrase was supplied".into(),
+            )),
+        };
+        match (plain, mode) {
+            (Ok(pw), _) => {
+                keychain::set_password(&account, &pw)?;
+                stored = true;
+                Ok(())
+            }
+            (Err(e), LandMode::Strict) => Err(e),
+            // Leave the slot empty. The caller reports the profile as needing a
+            // password, which is a state the UI already knows how to surface.
+            (Err(_), LandMode::BestEffort) => Ok(()),
+        }
+    };
+
+    if let Some(blob) = &secrets.db_password {
+        if !matches!(profile.driver, Driver::Sqlite) {
+            land(profile.keyring_account(), blob)?;
+        }
+    }
+    if let Some(blob) = &secrets.ssh_secret {
+        if let Some(account) = profile.ssh_keyring_account() {
+            land(account, blob)?;
+        }
+    }
+
+    Ok(stored)
+}
+
 // ---------------------------------------------------------------------------
 // Encryption helpers
 // ---------------------------------------------------------------------------
@@ -558,6 +644,63 @@ fn derive_key(passphrase: &str, salt: &[u8]) -> [u8; KEY_LEN] {
 mod tests {
     use super::*;
     use crate::state::Driver;
+
+    /// An encrypted secret with no passphrase must never reach the keychain.
+    ///
+    /// This is the regression guard for the bug this function was extracted to
+    /// kill: the origin-sync path used to treat "no passphrase" as "the blob is
+    /// already plaintext" and stored the base64 AES-GCM envelope as the
+    /// password. Both assertions below stay keychain-free on purpose —
+    /// decryption fails before `set_password` is ever reached, which is exactly
+    /// the property under test.
+    #[test]
+    fn encrypted_secret_without_passphrase_is_never_stored() {
+        let p = profile("p1", "one");
+        let secrets = ExportedSecret {
+            db_password: Some(encrypt_secret("hunter2", "right-passphrase").unwrap()),
+            ssh_secret: None,
+        };
+
+        // Best-effort (origin sync): the profile is simply left without a
+        // secret, so the UI reports it as needing a password.
+        let stored = land_secrets(&p, &secrets, None, LandMode::BestEffort).unwrap();
+        assert!(!stored, "nothing may be stored without a passphrase");
+
+        // Strict (interactive import): the caller must hear about it.
+        assert!(
+            land_secrets(&p, &secrets, None, LandMode::Strict).is_err(),
+            "a missing passphrase must surface to the importer"
+        );
+    }
+
+    /// A wrong passphrase is the same situation as a missing one: the ciphertext
+    /// must not be written anywhere.
+    #[test]
+    fn wrong_passphrase_is_never_stored() {
+        let p = profile("p1", "one");
+        let secrets = ExportedSecret {
+            db_password: Some(encrypt_secret("hunter2", "right-passphrase").unwrap()),
+            ssh_secret: None,
+        };
+        assert!(!land_secrets(&p, &secrets, Some("wrong"), LandMode::BestEffort).unwrap());
+        assert!(land_secrets(&p, &secrets, Some("wrong"), LandMode::Strict).is_err());
+    }
+
+    /// SQLite has no DB password, so that slot is skipped rather than landed —
+    /// mirroring the export side, which never writes one. Verified with a
+    /// *correct* passphrase so the skip is what stops the store, not a failed
+    /// decrypt (which is why this test needs no keychain either).
+    #[test]
+    fn sqlite_db_password_slot_is_skipped() {
+        let mut p = profile("p1", "one");
+        p.driver = Driver::Sqlite;
+        let secrets = ExportedSecret {
+            db_password: Some(encrypt_secret("hunter2", "pass").unwrap()),
+            ssh_secret: None,
+        };
+        let stored = land_secrets(&p, &secrets, Some("pass"), LandMode::Strict).unwrap();
+        assert!(!stored, "SQLite has no DB password to land");
+    }
 
     fn profile(id: &str, name: &str) -> ConnectionProfile {
         ConnectionProfile {

@@ -125,3 +125,74 @@ export const useUi = create<UiState>((set) => ({
       return { databaseVisibility: next };
     }),
 }));
+
+/**
+ * The three view filters, as one value.
+ *
+ * `collapsedConnections`, `visibleConnections` and `databaseVisibility` are
+ * always read, written and cleared together: they are what an environment's
+ * `LaunchState` means by "how does the tree look", as opposed to what it
+ * reopens. They were spelled out one `useUi.getState()` call at a time in five
+ * places (`applyLocalView`, `restoreSession`, `switchTo`'s capture and its
+ * teardown, `replicate`'s capture, plus `persistLaunchState`), which is five
+ * chances for a fourth filter to be added to four of them.
+ *
+ * `LaunchState` is structurally a superset of this, so a snapshot straight off
+ * the backend is a valid argument.
+ */
+export interface LaunchView {
+  collapsedConnections: string[];
+  visibleConnections: string[] | null;
+  databaseVisibility: Record<string, string[] | null>;
+}
+
+/**
+ * "Nothing folded, everything shown, no overrides" — the defaults every consumer
+ * of a `LaunchView` shares, in one place so the neutral value and the value
+ * `applyLaunchView` falls back to can never drift apart.
+ */
+export function emptyLaunchView(): LaunchView {
+  return { collapsedConnections: [], visibleConnections: null, databaseVisibility: {} };
+}
+
+/** This window's current filters, for writing into a `LaunchState`. */
+export function currentLaunchView(): LaunchView {
+  const s = useUi.getState();
+  return {
+    collapsedConnections: s.collapsedConnections,
+    visibleConnections: s.visibleConnections,
+    databaseVisibility: s.databaseVisibility,
+  };
+}
+
+/**
+ * Point this window's filters at a launch snapshot.
+ *
+ * Every write is **unconditional**, and the defaults are meaningful values
+ * rather than "leave it alone": `null` visible-connections is "show all" and an
+ * empty `databaseVisibility` is "every connection follows its profile", so
+ * skipping either as falsy is exactly how a filter tuned for the environment
+ * being left used to stay active in the one being entered.
+ *
+ * Folds go first: set after the connections render, a row the user had folded
+ * would show open for as long as the reconnect takes and then snap shut.
+ */
+export function applyLaunchView(view: Partial<LaunchView> | null | undefined): void {
+  const empty = emptyLaunchView();
+  const s = useUi.getState();
+  s.setCollapsedConnections(view?.collapsedConnections ?? empty.collapsedConnections);
+  s.setVisibleConnections(view?.visibleConnections ?? empty.visibleConnections);
+  s.setDatabaseVisibility(view?.databaseVisibility ?? empty.databaseVisibility);
+}
+
+/**
+ * Reset the filters to "nothing folded, everything shown, no overrides".
+ *
+ * Called on the way *out* of an environment rather than on the way in, because
+ * `restoreSession` returns early when `reconnectOnLaunch` is off — leaving the
+ * clear to the incoming side would carry the outgoing environment's filters
+ * across the switch.
+ */
+export function clearLaunchView(): void {
+  applyLaunchView(null);
+}

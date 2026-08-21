@@ -21,7 +21,6 @@
 
 import {
   Fragment,
-  memo,
   useEffect,
   useMemo,
   useRef,
@@ -29,41 +28,26 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import {
   flexRender,
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
-  type Row,
-  type Updater,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { tableKey } from "@/stores/session/schema";
 import {
   AlertTriangle,
   ArrowDown,
-  ArrowRightCircle,
   ArrowUp,
   ArrowUpDown,
-  ChevronDown,
-  ClipboardCopy,
-  Copy,
-  CopyPlus,
-  Eraser,
-  Filter,
-  FilterX,
   Inbox,
   KeyRound,
   Loader2,
   Maximize2,
   MoreHorizontal,
-  PanelRight,
   Plus,
-  Search,
-  Trash2,
   UnfoldHorizontal,
-  X,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -72,7 +56,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/EmptyState";
 import {
@@ -106,34 +90,32 @@ import { BitInput } from "@/components/grid/BitInput";
 import { CellEditor } from "@/components/grid/dialogs/CellEditor";
 import { CellInput } from "@/components/grid/CellInput";
 import { CellPreview } from "@/components/grid/CellPreview";
-import {
-  DraftCellControl,
-  firstEditableColumn,
-} from "@/components/grid/DraftCellControl";
 import { FkCombobox } from "@/components/ui/fk-combobox";
+import { DraftRowView } from "@/components/grid/DraftRowView";
+import { GridSearchInput } from "@/components/grid/GridSearchInput";
 import {
-  ContextMenu,
-  ContextMenuAction,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+  GridRow,
+  type GridRowCallbacks,
+} from "@/components/grid/GridRow";
 import {
-  toJson as rowToJson,
-  toSqlInsert as rowToSqlInsert,
-  toSqlUpdate as rowToSqlUpdate,
-} from "@/lib/grid/copyFormats";
+  ServerFilterChip,
+  ServerFilterSummary,
+} from "@/components/grid/ServerFilterChips";
+import { toBulk } from "@/lib/grid/copyFormats";
+import { formatValue } from "@/lib/grid/formatValue";
+import {
+  MAX_AUTOFIT_WIDTH,
+  MIN_COLUMN_WIDTH,
+  useColumnSizing,
+} from "@/lib/grid/useColumnSizing";
+import { useCtrlWheelZoom } from "@/lib/grid/useCtrlWheelZoom";
+import { useGridSelection } from "@/lib/grid/useGridSelection";
 import {
   useCellEditor,
   type CellBindingContext,
 } from "@/stores/grid/cellEditor";
 import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
-import { useSessionPanelLayout, isSideEditorOpen } from "@/stores/session/panelLayout";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import type { Driver } from "@/types";
 
 /**
@@ -381,27 +363,7 @@ interface Props {
   viewMode?: "table" | "list";
 }
 
-/** Render a cell value as a plain string for display and search. */
-function formatValue(v: CellValue): string {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
-/**
- * Quote a value into a SQL literal for "copy with column name". Strings
- * use single quotes with doubling for escapes; numbers and booleans are
- * inlined as-is; null becomes `NULL`. Best-effort — purely for clipboard
- * convenience, never executed.
- */
-function sqlLiteral(v: CellValue): string {
-  if (v === null || v === undefined) return "NULL";
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  const s = typeof v === "object" ? JSON.stringify(v) : String(v);
-  return `'${s.replace(/'/g, "''")}'`;
-}
-
-interface SelectedCell {
+export interface SelectedCell {
   /**
    * Full row values array. We carry the row payload (not its display
    * index) so saves stay correct when the visible order diverges from
@@ -413,674 +375,6 @@ interface SelectedCell {
   column: ColumnMeta;
   value: CellValue;
 }
-
-const FILTER_LABEL: Record<ColumnFilter["op"], string> = {
-  eq: "=",
-  ne: "<>",
-  contains: "⊇",
-  not_contains: "⊉",
-  starts_with: "^…",
-  ends_with: "…$",
-  gt: ">",
-  gte: "≥",
-  lt: "<",
-  lte: "≤",
-  between: "↔",
-  in: "IN",
-  not_in: "NOT IN",
-  is_null: "IS NULL",
-  is_not_null: "IS NOT NULL",
-};
-
-/** Stable, ref-delivered slice of `DataGrid`'s own local helper functions —
- *  see the long comment on `GridRow` below for why these can't just be
- *  passed as ordinary props. */
-interface GridRowCallbacks {
-  openCellEdit: (rowValues: CellValue[], column: ColumnMeta) => void;
-  openSidePanelEditor: (
-    rowValues: CellValue[],
-    column: ColumnMeta,
-    value: string,
-  ) => void;
-  copyToClipboard: (text: string) => void;
-  bulkCopy: (rows: CellValue[][], fmt: "json" | "insert" | "update") => string;
-  selectedColumnValues: (colIndex: number) => {
-    values: CellValue[];
-    distinct: number;
-  };
-  applyRowSelectionClick: (rowKey: string | null, e: React.MouseEvent) => void;
-  toggleRowKey: (key: string) => void;
-}
-
-/** Shape of the inline single-cell editor state, narrowed to "does this
- *  belong to THIS row" before it reaches `GridRow` — see below. */
-interface InlineEditState {
-  rowValues: CellValue[];
-  column: ColumnMeta;
-  value: string | null;
-  original: string | null;
-}
-
-interface GridRowProps {
-  row: Row<CellValue[]>;
-  rowIndex: number;
-  isSelected: boolean;
-  isMultiSelected: boolean;
-  rowKey: string | null;
-  /** This row's column index for the keyboard-active cell, or `null` when
-   *  the active cell belongs to a different row entirely. */
-  activeColIdx: number | null;
-  /** The inline-edit state, but only when it belongs to this row's
-   *  `rowValues` — `null` otherwise. Narrowing this in the parent (rather
-   *  than passing the raw `inlineEdit` state) is what lets every row EXCEPT
-   *  the one being edited see an unchanged (`null`) prop. */
-  inlineEditHere: InlineEditState | null;
-  selectionEnabled: boolean;
-  hasSelection: boolean;
-  selectedRows: CellValue[][];
-  zebraStripes: boolean;
-  cellStyle: React.CSSProperties;
-  resultColumns: ColumnMeta[];
-  columnIndexByName: Map<string, number>;
-  columnInfoByName: Map<string, ColumnInfo>;
-  driver?: Driver;
-  tableName?: string;
-  tableSchema?: string;
-  pkColumnNames?: string[];
-  editable?: boolean;
-  onCellSave?: (
-    rowValues: CellValue[],
-    columnName: string,
-    value: string | null,
-  ) => Promise<void>;
-  onNavigateFk?: (columnName: string, value: CellValue) => void;
-  onAddFilter?: (f: ColumnFilter) => void;
-  onInsertRow?: () => void;
-  onDuplicateRow?: (rowValues: CellValue[]) => void;
-  onDeleteRow?: (rowValues: CellValue[]) => void;
-  onBulkDelete?: (rows: CellValue[][]) => void;
-  scrollRef: React.RefObject<HTMLDivElement | null>;
-  setSelectedRowIndex: (i: number) => void;
-  setActiveCell: (c: { r: number; c: number }) => void;
-  setSelectedCell: (c: SelectedCell | null) => void;
-  callbacksRef: React.MutableRefObject<GridRowCallbacks>;
-}
-
-/**
- * One `<tr>` of the data grid, including its per-cell context menus.
- *
- * Split out of `DataGrid`'s render body and wrapped in `React.memo` because
- * every interactive grid state (`selectedRowIndex`, `activeCell`,
- * `selectedCell`, `inlineEdit`, `fkEditCell`) used to live inline in
- * `DataGrid`, so a single click re-ran the render function for the WHOLE
- * table — every visible row × every column, each cell wrapping its own
- * `<ContextMenu>` — regardless of how many rows the click actually affected.
- * The cost scales with total visible cells, which is why clicking through a
- * 15-column table felt noticeably slower than a 5-column one at the same row
- * count, even though the click only ever changes one or two rows' worth of
- * state. `GridRow` receives only state that's already been narrowed to
- * "does this concern THIS row" by the caller (below), so React's shallow
- * prop comparison lets it bail out for every row except the (at most two)
- * whose selection / active-cell / inline-edit status actually changed.
- *
- * `callbacksRef` mirrors the `interactiveRef` pattern the `columns` cell
- * definitions already use above: `openCellEdit`, `copyToClipboard`, and the
- * other locally-declared helpers are plain function declarations recreated
- * on every `DataGrid` render — including the very clicks this component
- * exists to make cheap — so passing them as ordinary props would hand every
- * row a "changed" prop every time and defeat the memoization outright.
- * Reading them through a ref that's refreshed each render (not compared by
- * `memo`) keeps `GridRow` seeing the latest closures without their identity
- * forcing a re-render. Everything else below (column metadata, `onCellSave`
- * and friends) comes from the parent tab and — verified against `columns`'s
- * own `useMemo` deps above — stays referentially stable across a plain grid
- * click, so it's passed straight through as ordinary props.
- */
-const GridRow = memo(function GridRow({
-  row,
-  rowIndex: i,
-  isSelected,
-  isMultiSelected,
-  rowKey,
-  activeColIdx,
-  inlineEditHere,
-  selectionEnabled,
-  hasSelection,
-  selectedRows,
-  zebraStripes,
-  cellStyle,
-  resultColumns,
-  columnIndexByName,
-  columnInfoByName,
-  driver,
-  tableName,
-  tableSchema,
-  pkColumnNames,
-  editable,
-  onCellSave,
-  onNavigateFk,
-  onAddFilter,
-  onInsertRow,
-  onDuplicateRow,
-  onDeleteRow,
-  onBulkDelete,
-  scrollRef,
-  setSelectedRowIndex,
-  setActiveCell,
-  setSelectedCell,
-  callbacksRef,
-}: GridRowProps) {
-  const { t } = useTranslation();
-  const rowValues = row.original as CellValue[];
-  return (
-    <tr
-      className={cn(
-        "group/row",
-        // A multi-selected row has to be unmistakable next to the
-        // single-row cursor highlight. These used to be `bg-brand/20`
-        // against `bg-brand/10` — a delta most panels render as
-        // effectively identical, so Ctrl-click toggling a single row
-        // looked like it had done nothing (part of #113: the
-        // selection was correct, only invisible). The stronger tint
-        // pairs with the inset accent bar on the gutter cell below.
-        isMultiSelected
-          ? "bg-brand/30"
-          : isSelected
-            ? "bg-brand/10"
-            : zebraStripes && i % 2 === 1
-              ? "bg-muted/30 hover:bg-accent/40"
-              : "hover:bg-accent/40",
-      )}
-      onClick={(e) => {
-        e.stopPropagation();
-        setSelectedRowIndex(i);
-        callbacksRef.current.applyRowSelectionClick(rowKey, e);
-      }}
-    >
-      <td
-        className={cn(
-          "border-b border-border/50 border-r border-r-border/70 px-2 tabular-nums text-muted-foreground",
-          // Inset accent bar marking a selected row's left edge. It
-          // lives on the gutter cell rather than the `<tr>` because
-          // box-shadow on a table-row box is unreliable across
-          // engines, while a `<td>` is an ordinary box.
-          isMultiSelected &&
-            "shadow-[inset_3px_0_0_0_hsl(var(--brand))]",
-        )}
-        style={{ ...cellStyle, width: 40 }}
-      >
-        {selectionEnabled && rowKey !== null ? (
-          <>
-            <input
-              type="checkbox"
-              checked={isMultiSelected}
-              onChange={() => callbacksRef.current.toggleRowKey(rowKey)}
-              // Stop the row's onClick (a plain click there clears
-              // the multi-selection) from firing on checkbox click.
-              onClick={(e) => e.stopPropagation()}
-              aria-label={t("dataGrid.selectRow")}
-              className={cn(
-                "accent-brand cursor-pointer align-middle",
-                // Every checkbox stays visible while *any* row is
-                // selected, not just the selected ones: once the
-                // user is in a selecting mood the affordance for
-                // extending the set shouldn't require hunting for it
-                // on hover (#113 — the gesture was undiscoverable).
-                isMultiSelected || hasSelection
-                  ? "inline-block"
-                  : "hidden group-hover/row:inline-block",
-              )}
-            />
-            <span
-              className={
-                isMultiSelected || hasSelection
-                  ? "hidden"
-                  : "group-hover/row:hidden"
-              }
-            >
-              {i + 1}
-            </span>
-          </>
-        ) : (
-          i + 1
-        )}
-      </td>
-      {row.getVisibleCells().map((cell, cIdx) => {
-        // Resolve column meta + value by *name*, not by the
-        // position of the cell in `getVisibleCells()`. The
-        // grid currently keeps both orders in sync, but a
-        // single column hide / reorder would otherwise
-        // misalign `resultColumns[colIdx]` with the actual
-        // cell — see `columnIndexByName` above.
-        const colName = cell.column.id;
-        const backendIdx = columnIndexByName.get(colName) ?? -1;
-        if (backendIdx < 0) return null;
-        const meta = resultColumns[backendIdx];
-        const value = rowValues[backendIdx];
-        const colIdx = backendIdx;
-        // FK-navigable iff the parent wired `onNavigateFk` and this
-        // column carries a single-column FK reference. Drives the
-        // Ctrl/Cmd+click accelerator, the context-menu entry, and a
-        // subtle hover affordance.
-        const isFkCell =
-          !!onNavigateFk &&
-          !!columnInfoByName.get(meta.name)?.referenced_table;
-        const isActiveCell = activeColIdx === cIdx;
-        return (
-          <ContextMenu key={cell.id}>
-            <ContextMenuTrigger asChild>
-              <td
-                data-cell={`${i}-${cIdx}`}
-                className={cn(
-                  "cursor-pointer border-b border-border/50 border-r border-r-border/70 px-2",
-                  isFkCell &&
-                    "hover:underline hover:decoration-dotted hover:decoration-fk/70 hover:underline-offset-2",
-                  // Inset ring marks the keyboard-active cell.
-                  // `relative z-10` lifts it above neighbours so the
-                  // ring isn't clipped by adjacent cell borders. No
-                  // transition — the ring must track keys instantly.
-                  isActiveCell &&
-                    "relative z-10 ring-2 ring-inset ring-brand",
-                )}
-                title={isFkCell ? t("dataGrid.fkNavHint") : undefined}
-                style={{ ...cellStyle, width: cell.column.getSize() }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // While this cell hosts its own inline editor
-                  // (notably the BIT `<select>`), don't steal focus
-                  // back to the scroll container or recompute the
-                  // active/selected cell — focusing the container
-                  // collapses a just-opened native dropdown, which
-                  // made the boolean BIT picker unusable (issue #44).
-                  // Let the inline editor own clicks inside itself.
-                  if (inlineEditHere?.column.name === meta.name) {
-                    return;
-                  }
-                  // Second click of a double-click, detected via the
-                  // native OS click count rather than the `dblclick`
-                  // event. Some Linux WebKitGTK builds never fire
-                  // `dblclick` when the target text has
-                  // `user-select: none` (this table sets it
-                  // globally — see the `select-none` note above),
-                  // which made double-clicking directly on a cell's
-                  // text silently fail to enter edit mode while
-                  // double-clicking the cell's padding (no text
-                  // under the pointer) worked fine. `click`'s
-                  // `detail` isn't affected by that quirk, so route
-                  // through the same path as `onDoubleClick` below
-                  // instead of falling into the single-click
-                  // selection logic.
-                  if (e.detail >= 2) {
-                    callbacksRef.current.openCellEdit(rowValues, meta);
-                    return;
-                  }
-                  // Focus the container so keyboard nav continues
-                  // from here, and mark this cell active.
-                  scrollRef.current?.focus({ preventScroll: true });
-                  setActiveCell({ r: i, c: cIdx });
-                  // Alt+click on a single-column FK cell is the "go
-                  // to referenced row" accelerator. It used to be
-                  // Ctrl/Cmd+click, which collided head-on with the
-                  // OS-style multi-selection toggle on the very same
-                  // chord: this branch returned early, so on a table
-                  // whose visible columns are mostly FKs Ctrl+click
-                  // could never select a row — the reported "Shift
-                  // works, Ctrl doesn't" of #113. Selection is the
-                  // more fundamental gesture and it has to behave
-                  // identically on every column, so FK nav moved to
-                  // a chord of its own. The context-menu entry ("go
-                  // to referenced row") is unchanged.
-                  if (
-                    e.altKey &&
-                    !e.shiftKey &&
-                    onNavigateFk &&
-                    columnInfoByName.get(meta.name)
-                      ?.referenced_table &&
-                    value !== null &&
-                    value !== undefined
-                  ) {
-                    onNavigateFk(meta.name, value);
-                    return;
-                  }
-                  setSelectedRowIndex(i);
-                  // Ctrl/Cmd/Shift-click on a cell drives the
-                  // OS-style multi-selection; a plain click also
-                  // opens the cell preview below.
-                  callbacksRef.current.applyRowSelectionClick(rowKey, e);
-                  if (
-                    !e.ctrlKey &&
-                    !e.metaKey &&
-                    !e.shiftKey &&
-                    !e.altKey
-                  ) {
-                    setSelectedCell({
-                      rowValues,
-                      colIndex: colIdx,
-                      column: meta,
-                      value,
-                    });
-                    // If the docked side editor is open, follow
-                    // the clicked cell (JetBrains value-viewer
-                    // behaviour). The panel guards unsaved edits
-                    // before swapping its buffer.
-                    if (isSideEditorOpen()) {
-                      callbacksRef.current.openSidePanelEditor(
-                        rowValues,
-                        meta,
-                        formatValue(value),
-                      );
-                    }
-                  }
-                }}
-                onContextMenu={() => {
-                  setSelectedRowIndex(i);
-                  setSelectedCell({
-                    rowValues,
-                    colIndex: colIdx,
-                    column: meta,
-                    value,
-                  });
-                }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  callbacksRef.current.openCellEdit(rowValues, meta);
-                }}
-              >
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </td>
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-              {/* Bulk variant: shown when more than one row is
-                  selected and the right-clicked row is part of
-                  that selection. Replaces the per-cell/row entries
-                  with selection-wide copy + delete; otherwise the
-                  regular single-row menu below renders. */}
-              {selectionEnabled &&
-              selectedRows.length > 1 &&
-              isMultiSelected ? (
-                <>
-                  <ContextMenuLabel>
-                    {t("dataGrid.ctxRowsSelected", {
-                      count: selectedRows.length,
-                    })}
-                  </ContextMenuLabel>
-                  <ContextMenuSub>
-                    <ContextMenuSubTrigger>
-                      <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
-                      {t("dataGrid.ctxCopyRowsAs", {
-                        count: selectedRows.length,
-                      })}
-                    </ContextMenuSubTrigger>
-                    <ContextMenuSubContent>
-                      <ContextMenuItem
-                        onSelect={() =>
-                          callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(selectedRows, "json"),
-                          )
-                        }
-                      >
-                        JSON
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        onSelect={() =>
-                          callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(selectedRows, "insert"),
-                          )
-                        }
-                      >
-                        SQL INSERT
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        onSelect={() =>
-                          callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(selectedRows, "update"),
-                          )
-                        }
-                      >
-                        SQL UPDATE
-                      </ContextMenuItem>
-                    </ContextMenuSubContent>
-                  </ContextMenuSub>
-                  {onAddFilter && (
-                    <>
-                      <ContextMenuSeparator />
-                      <ContextMenuAction
-                        icon={Filter}
-                        label={t("dataGrid.ctxFilterInSelected", {
-                          column: meta.name,
-                          count:
-                            callbacksRef.current.selectedColumnValues(colIdx)
-                              .distinct,
-                        })}
-                        onSelect={() =>
-                          onAddFilter({
-                            column: meta.name,
-                            op: "in",
-                            values: callbacksRef.current.selectedColumnValues(
-                              colIdx,
-                            ).values,
-                          })
-                        }
-                      />
-                      <ContextMenuAction
-                        icon={FilterX}
-                        label={t("dataGrid.ctxFilterNotInSelected", {
-                          column: meta.name,
-                          count:
-                            callbacksRef.current.selectedColumnValues(colIdx)
-                              .distinct,
-                        })}
-                        onSelect={() =>
-                          onAddFilter({
-                            column: meta.name,
-                            op: "not_in",
-                            values: callbacksRef.current.selectedColumnValues(
-                              colIdx,
-                            ).values,
-                          })
-                        }
-                      />
-                    </>
-                  )}
-                  {onBulkDelete && (
-                    <>
-                      <ContextMenuSeparator />
-                      <ContextMenuAction
-                        icon={Trash2}
-                        destructive
-                        label={t("dataGrid.ctxDeleteRows", {
-                          count: selectedRows.length,
-                        })}
-                        onSelect={() => onBulkDelete(selectedRows)}
-                      />
-                    </>
-                  )}
-                </>
-              ) : (
-              <>
-              <ContextMenuLabel>
-                {meta.name}
-                {value === null ? " · NULL" : ""}
-              </ContextMenuLabel>
-              {isFkCell &&
-                value !== null &&
-                value !== undefined && (
-                  <>
-                    <ContextMenuAction
-                      icon={ArrowRightCircle}
-                      label={t("dataGrid.ctxGoToReference")}
-                      onSelect={() => onNavigateFk?.(meta.name, value)}
-                    />
-                    <ContextMenuSeparator />
-                  </>
-                )}
-              <ContextMenuAction
-                icon={Copy}
-                label={t("dataGrid.ctxCopy")}
-                onSelect={() =>
-                  callbacksRef.current.copyToClipboard(formatValue(value))
-                }
-              />
-              <ContextMenuAction
-                icon={ClipboardCopy}
-                label={t("dataGrid.ctxCopyWithColumn")}
-                onSelect={() =>
-                  callbacksRef.current.copyToClipboard(
-                    `${meta.name} = ${sqlLiteral(value)}`,
-                  )
-                }
-              />
-              {/* Row-level formatters. We keep the per-cell
-                  entries above (single value, single value
-                  with column name) because they're the most
-                  common path; this submenu covers the
-                  less-frequent "I want the whole row" use
-                  cases without bloating the top level. */}
-              <ContextMenuSub>
-                <ContextMenuSubTrigger>
-                  <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
-                  {t("dataGrid.ctxCopyRowAs")}
-                </ContextMenuSubTrigger>
-                <ContextMenuSubContent>
-                  <ContextMenuItem
-                    onSelect={() =>
-                      callbacksRef.current.copyToClipboard(
-                        rowToJson(rowValues, resultColumns),
-                      )
-                    }
-                  >
-                    JSON
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onSelect={() =>
-                      callbacksRef.current.copyToClipboard(
-                        rowToSqlInsert(
-                          rowValues,
-                          resultColumns,
-                          driver,
-                          tableName,
-                          tableSchema,
-                        ),
-                      )
-                    }
-                  >
-                    SQL INSERT
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onSelect={() =>
-                      callbacksRef.current.copyToClipboard(
-                        rowToSqlUpdate(
-                          rowValues,
-                          resultColumns,
-                          driver,
-                          tableName,
-                          tableSchema,
-                          pkColumnNames,
-                        ),
-                      )
-                    }
-                  >
-                    SQL UPDATE
-                  </ContextMenuItem>
-                </ContextMenuSubContent>
-              </ContextMenuSub>
-              <ContextMenuAction
-                icon={PanelRight}
-                label={t("dataGrid.openInSideEditor")}
-                onSelect={() =>
-                  callbacksRef.current.openSidePanelEditor(
-                    rowValues,
-                    meta,
-                    formatValue(value),
-                  )
-                }
-              />
-              {editable && onCellSave && (
-                <ContextMenuAction
-                  icon={Eraser}
-                  disabled={value === null}
-                  label={t("cellEditor.setNull")}
-                  onSelect={() =>
-                    onCellSave(rowValues, meta.name, null).catch(() => {})
-                  }
-                />
-              )}
-              {onAddFilter && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuAction
-                    icon={Filter}
-                    label={t("dataGrid.ctxFilterBy")}
-                    onSelect={() =>
-                      onAddFilter(
-                        value === null
-                          ? { column: meta.name, op: "is_null" }
-                          : {
-                              column: meta.name,
-                              op: "eq",
-                              value,
-                            },
-                      )
-                    }
-                  />
-                  <ContextMenuAction
-                    icon={FilterX}
-                    label={t("dataGrid.ctxFilterExcluding")}
-                    onSelect={() =>
-                      onAddFilter(
-                        value === null
-                          ? { column: meta.name, op: "is_not_null" }
-                          : {
-                              column: meta.name,
-                              op: "ne",
-                              value,
-                            },
-                      )
-                    }
-                  />
-                </>
-              )}
-              {(onInsertRow || onDuplicateRow) && (
-                <>
-                  <ContextMenuSeparator />
-                  {onInsertRow && (
-                    <ContextMenuAction
-                      icon={Plus}
-                      label={t("dataGrid.ctxInsertRow")}
-                      onSelect={() => onInsertRow()}
-                    />
-                  )}
-                  {onDuplicateRow && (
-                    <ContextMenuAction
-                      icon={CopyPlus}
-                      label={t("dataGrid.ctxDuplicateRow")}
-                      onSelect={() => onDuplicateRow(rowValues)}
-                    />
-                  )}
-                </>
-              )}
-              {onDeleteRow && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuAction
-                    icon={Trash2}
-                    destructive
-                    label={t("dataGrid.ctxDeleteRow")}
-                    onSelect={() => onDeleteRow(rowValues)}
-                  />
-                </>
-              )}
-              </>
-              )}
-            </ContextMenuContent>
-          </ContextMenu>
-        );
-      })}
-      {/* Matches the header's filler `<th>` — see the comment there. */}
-      <td className="border-b border-border/50" />
-    </tr>
-  );
-});
 
 export function DataGrid({
   result,
@@ -1251,10 +545,6 @@ export function DataGrid({
    * (`onBulkDelete`), which the parent withholds without one.
    */
   const selectionEnabled = !!getRowKey;
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  /** Anchor for Shift-click range selection (the last row toggled). */
-  const lastClickedKeyRef = useRef<string | null>(null);
-
   /**
    * Optional client-side text filter over the rows already in memory.
    * Used by query results (where there is no underlying table to
@@ -1268,6 +558,21 @@ export function DataGrid({
       r.some((c) => formatValue(c).toLowerCase().includes(q)),
     );
   }, [result.rows, globalFilter]);
+
+  // Row selection — keys, clicks, select-all and the derived answers the
+  // toolbar and context menus need. See the hook for the invariants (identity
+  // by key not index, pruning to the visible set, distinct value counts).
+  const {
+    selectedKeys,
+    selectedRows,
+    hasSelection,
+    allSelected,
+    someSelected,
+    toggleRowKey,
+    applyRowSelectionClick,
+    toggleSelectAll,
+    selectedColumnValues,
+  } = useGridSelection({ visibleRows, getRowKey, onSelectionChange });
 
   /**
    * Re-resolve `selectedCell` after a refetch replaces every row's array
@@ -1298,173 +603,6 @@ export function DataGrid({
     // `selectedCell` is what this effect writes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleRows]);
-
-  /**
-   * Visible rows paired with their stable key (or null when unresolvable),
-   * memoised so the per-row render and the range-selection math read a stable
-   * list. `null`-keyed rows simply can't be selected.
-   */
-  const keyedVisibleRows = useMemo(() => {
-    if (!getRowKey) return [] as { key: string | null; row: CellValue[] }[];
-    return visibleRows.map((row) => ({ key: getRowKey(row), row }));
-  }, [visibleRows, getRowKey]);
-
-  /**
-   * The currently-selected rows, as values arrays, in visible order. Drives
-   * the bulk context-menu actions and the selection count. Memoised on the
-   * selection set + the visible rows so its identity is stable across
-   * unrelated renders.
-   */
-  const selectedRows = useMemo(() => {
-    if (selectedKeys.size === 0) return [] as CellValue[][];
-    return keyedVisibleRows
-      .filter((r) => r.key !== null && selectedKeys.has(r.key))
-      .map((r) => r.row);
-  }, [keyedVisibleRows, selectedKeys]);
-
-  /**
-   * Mirror the selection count + visible-row total up to the parent (which
-   * forwards it to the status bar keyed by tab id). Effect, not a render-time
-   * call, so we never set external state during render.
-   */
-  useEffect(() => {
-    onSelectionChange?.(selectedRows.length, keyedVisibleRows.length);
-  }, [onSelectionChange, selectedRows.length, keyedVisibleRows.length]);
-
-  /**
-   * Prune selected keys that no longer correspond to a visible row (e.g.
-   * after a refetch that dropped rows, or a filter narrowing). Keeps the
-   * checkbox header's "all selected" state honest and avoids deleting rows
-   * the user can no longer see. Runs only when the visible key set changes.
-   */
-  useEffect(() => {
-    if (selectedKeys.size === 0) return;
-    const live = new Set(
-      keyedVisibleRows.map((r) => r.key).filter((k): k is string => k !== null),
-    );
-    let changed = false;
-    const next = new Set<string>();
-    for (const k of selectedKeys) {
-      if (live.has(k)) next.add(k);
-      else changed = true;
-    }
-    if (changed) setSelectedKeys(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyedVisibleRows]);
-
-  /** Toggle a single row key (Ctrl/Cmd-click, or plain checkbox click). */
-  function toggleRowKey(key: string) {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-    lastClickedKeyRef.current = key;
-  }
-
-  /** Select the contiguous range (in visible order) between the anchor and
-   *  `key`, additively. Falls back to a single toggle when there's no anchor. */
-  function selectRangeTo(key: string) {
-    const anchor = lastClickedKeyRef.current;
-    if (!anchor) {
-      toggleRowKey(key);
-      return;
-    }
-    const keys = keyedVisibleRows
-      .map((r) => r.key)
-      .filter((k): k is string => k !== null);
-    const a = keys.indexOf(anchor);
-    const b = keys.indexOf(key);
-    if (a < 0 || b < 0) {
-      toggleRowKey(key);
-      return;
-    }
-    const [lo, hi] = a <= b ? [a, b] : [b, a];
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      for (let i = lo; i <= hi; i++) next.add(keys[i]);
-      return next;
-    });
-  }
-
-  /**
-   * OS-explorer-style selection from a row/cell click. Ctrl/Cmd-click toggles
-   * a single row; Shift-click extends a contiguous range from the anchor; a
-   * plain click clears any multi-selection (keeping the single-row blue
-   * highlight, handled separately by `setSelectedRowIndex`). No-op for rows
-   * without a resolvable key.
-   */
-  function applyRowSelectionClick(
-    rowKey: string | null,
-    e: React.MouseEvent,
-  ) {
-    if (rowKey === null) return;
-    if (e.ctrlKey || e.metaKey) {
-      toggleRowKey(rowKey);
-    } else if (e.shiftKey) {
-      selectRangeTo(rowKey);
-    } else if (selectedKeys.size > 0) {
-      setSelectedKeys(new Set());
-      lastClickedKeyRef.current = rowKey;
-    } else {
-      lastClickedKeyRef.current = rowKey;
-    }
-  }
-
-  /**
-   * The selection's values for one column, plus how many of them are actually
-   * distinct — the pair behind the "filter by the selected rows" action (#114).
-   *
-   * The distinct count is what the menu label advertises: selecting 40 rows that
-   * share 3 values builds a 3-element `IN` list (the backend dedupes), so
-   * promising "40 values" would misdescribe the filter about to be applied.
-   * NULL is counted apart from the formatted values instead of being folded in
-   * with them: `formatValue(null)` is `""`, indistinguishable from an empty
-   * string, so a column holding both would be undercounted.
-   */
-  function selectedColumnValues(colIndex: number): {
-    values: CellValue[];
-    distinct: number;
-  } {
-    const values = selectedRows.map((r) => r[colIndex] ?? null);
-    const nonNull = values.filter((v) => v !== null);
-    const distinct =
-      new Set(nonNull.map((v) => formatValue(v))).size +
-      (nonNull.length === values.length ? 0 : 1);
-    return { values, distinct };
-  }
-
-  /**
-   * Header tri-state select-all state, computed over the *visible* rows that
-   * have a resolvable key. `allSelected` when every selectable visible row is
-   * in the set; `someSelected` drives the checkbox's indeterminate dash.
-   * Toggling only ever touches the visible set — never rows filtered out of
-   * view (mirrors the prune effect above that keeps the set honest).
-   */
-  const selectableVisibleKeys = useMemo(
-    () =>
-      keyedVisibleRows
-        .map((r) => r.key)
-        .filter((k): k is string => k !== null),
-    [keyedVisibleRows],
-  );
-  const allSelected =
-    selectableVisibleKeys.length > 0 &&
-    selectableVisibleKeys.every((k) => selectedKeys.has(k));
-  const someSelected = selectedKeys.size > 0 && !allSelected;
-  /** Any row selected at all — drives the always-visible checkbox affordance. */
-  const hasSelection = selectedKeys.size > 0;
-
-  /** Select-all / clear from the header checkbox. */
-  function toggleSelectAll() {
-    setSelectedKeys((prev) => {
-      const everyVisibleSelected =
-        prev.size > 0 && selectableVisibleKeys.every((k) => prev.has(k));
-      return everyVisibleSelected ? new Set() : new Set(selectableVisibleKeys);
-    });
-    lastClickedKeyRef.current = null;
-  }
 
   /**
    * Pre-computed set of column names that carry numeric data.
@@ -1530,128 +668,14 @@ export function DataGrid({
   );
 
   /**
-   * Persisted column widths are keyed by table (`tableKey`), since widths
-   * are inherently per-schema. Ad-hoc query result grids (no `tableName` —
-   * see `QueryEditorTab`) never persist: they resize in-session only. The
-   * persisted map is a sparse `{ columnName: px }` — TanStack's own
-   * `columnSizing` state has the same shape (only explicitly-resized
-   * columns appear; everything else falls back to the column's default
-   * size), so it can be used directly as the initial state with no
-   * reshaping.
+   * Column widths (persisted per table) and the live resize drag — see
+   * `useColumnSizing` for why the drag writes the DOM directly.
    */
   const persistKey = tableName ? tableKey(tableSchema, tableName) : null;
-  const persistedColumnWidths = usePreferences(
-    (s) => selectGridPrefs(s).columnWidths,
-  );
-  const [columnSizing, setColumnSizing] = useState<Record<string, number>>(
-    () => (persistKey ? persistedColumnWidths[persistKey] ?? {} : {}),
-  );
-
-  function handleColumnSizingChange(
-    updater: Updater<Record<string, number>>,
-  ) {
-    setColumnSizing((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      if (persistKey) {
-        const grid = usePreferences.getState().prefs.grid;
-        updateGrid({
-          columnWidths: { ...grid.columnWidths, [persistKey]: next },
-        });
-      }
-      return next;
-    });
-  }
-  /**
-   * Column currently being dragged to resize, if any — drives the header's
-   * highlight + handle tint. Set on mousedown and cleared on mouseup, so it
-   * changes exactly twice per drag (never per pixel), unlike the width
-   * itself (see `startColumnResize` below).
-   */
-  const [resizingColId, setResizingColId] = useState<string | null>(null);
-  const MIN_COLUMN_WIDTH = 40;
-  /**
-   * Ceiling for the auto-fit gesture below. A column holding a long free-text
-   * value (a serialised config, a description paragraph) would otherwise
-   * expand to several thousand px and push every column after it off-screen,
-   * turning "let me read this one value" into "I lost the rest of the row".
-   * Past this the value belongs in the cell editor / preview panel, and the
-   * user can still drag wider by hand.
-   */
-  const MAX_AUTOFIT_WIDTH = 900;
+  const { columnSizing, commitWidths, resizingColId, startColumnResize } =
+    useColumnSizing({ persistKey, updateGrid });
   /** The header's dimmed type hint renders at the `text-3xs` token (10px). */
   const TYPE_HINT_FONT_SIZE = 10;
-
-  /**
-   * Drag a column's header edge to resize it — deliberately NOT TanStack's
-   * own `getResizeHandler()`. That tracks the drag through
-   * `columnSizingInfo.deltaOffset`, which changes (and forces a re-render of
-   * this whole, unvirtualised table) on every single `mousemove`; with
-   * hundreds/thousands of rows that's what made the drag feel slow, and it's
-   * also why a resize used to need a separate full-height guideline line —
-   * the actual column couldn't cheaply track the pointer that way, so there
-   * was nothing to visually resize in real time.
-   *
-   * Instead this mutates the dragged `<th>`'s `style.width` directly. The
-   * table is `table-fixed`, so per the CSS spec its column widths come from
-   * the header row's cells alone (`<thead>` precedes `<tbody>`, making it the
-   * table's first row) — one DOM write here reflows every row's matching
-   * cell natively, with zero React re-renders, for a genuinely live preview.
-   * `columnSizing` state (and its persistence to `prefs.json`) is only
-   * touched once, on release, matching the perf goal the old `onEnd` mode
-   * was reaching for — but without giving up live feedback to get there.
-   */
-  function startColumnResize(
-    e: React.MouseEvent<HTMLDivElement>,
-    colId: string,
-    currentSize: number,
-  ) {
-    e.preventDefault();
-    e.stopPropagation();
-    const thEl = (e.currentTarget as HTMLElement).closest("th");
-    if (!thEl) return;
-    const th: HTMLTableCellElement = thEl;
-    // Anchor to the column's logical size, not `getBoundingClientRect()`.
-    // The table is `table-fixed` + `w-full`; when the declared column
-    // widths don't fill the available width, the browser stretches them
-    // to fit (CSS2.1 fixed-table-layout, extra-width distribution). That
-    // makes the rendered `<th>` wider than its logical size, so measuring
-    // the DOM here would bake the cosmetic stretch in as the new
-    // committed width the instant the drag starts — the column visibly
-    // jumps before the pointer even moves.
-    const startWidth = currentSize;
-    const startX = e.clientX;
-    setResizingColId(colId);
-    const prevCursor = document.body.style.cursor;
-    const prevUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    function onMove(ev: MouseEvent) {
-      const next = Math.max(
-        MIN_COLUMN_WIDTH,
-        Math.round(startWidth + (ev.clientX - startX)),
-      );
-      th.style.width = `${next}px`;
-    }
-    function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = prevCursor;
-      document.body.style.userSelect = prevUserSelect;
-      setResizingColId(null);
-      const finalWidth = parseInt(th.style.width, 10);
-      // A bare click (no `mousemove` at all) lands here with the width
-      // untouched — notably the first click of the double-click that triggers
-      // the auto-fit below. Committing then would write an identical width
-      // into `columnSizing` (and through to `prefs.json`) for nothing, and
-      // would make the auto-fit's own commit the *second* state update of one
-      // gesture.
-      if (!Number.isFinite(finalWidth) || finalWidth === startWidth) return;
-      handleColumnSizingChange((prev) => ({ ...prev, [colId]: finalWidth }));
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
 
   /**
    * Inline styles derived from `rowHeight`. Memoised so the object identity
@@ -1673,27 +697,9 @@ export function DataGrid({
     };
   }, [rowHeight]);
 
-  /**
-   * Ctrl + mouse-wheel over the grid zooms the rows in/out, like a code
-   * editor. Bound via a non-passive native listener so `preventDefault`
-   * actually suppresses the browser's page-zoom; a JSX `onWheel` handler is
-   * passive by default and cannot. Persistence is handled by the prefs store
-   * (debounced write), so we only push the clamped row height.
-   */
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    function onWheel(e: WheelEvent) {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      const step = e.deltaY < 0 ? 2 : -2;
-      const next = Math.min(40, Math.max(14, rowHeight + step));
-      if (next !== rowHeight) updateGrid({ rowHeight: next });
-    }
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [rowHeight, updateGrid]);
+  // Ctrl+wheel row zoom (non-passive listener — gotcha #13). Also the ref the
+  // grid attaches to its scroll container.
+  const scrollRef = useCtrlWheelZoom(rowHeight, updateGrid);
 
   /**
    * Backend column index keyed by name. The cell render loop walks
@@ -1804,7 +810,7 @@ export function DataGrid({
     // One state update (and therefore one `prefs.json` write) for the whole
     // gesture, however many columns it covered.
     if (Object.keys(widths).length > 0) {
-      handleColumnSizingChange((prev) => ({ ...prev, ...widths }));
+      commitWidths((prev) => ({ ...prev, ...widths }));
     }
   }
 
@@ -2192,12 +1198,11 @@ export function DataGrid({
     data: visibleRows,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // Column resizing itself is handled by our own `startColumnResize` below,
-    // not TanStack's built-in `getResizeHandler()` — see the comment there for
-    // why. `columnSizing` stays the single source of truth for committed
-    // widths (persisted per table, gotcha-style — see `persistKey` above).
+    // Column resizing is handled by our own `startColumnResize`, not
+    // TanStack's built-in `getResizeHandler()` — see `useColumnSizing` for why.
+    // `columnSizing` stays the single source of truth for committed widths.
     state: { columnSizing },
-    onColumnSizingChange: handleColumnSizingChange,
+    onColumnSizingChange: commitWidths,
   });
 
   /**
@@ -2533,39 +1538,15 @@ export function DataGrid({
     }
   }
 
-  /** Serialise several rows for the bulk "Copy N rows as ▸" menu, reusing the
-   *  same per-row formatters as the single-row submenu. JSON yields one array;
-   *  INSERT/UPDATE yield newline-joined statements. */
+  /** Serialise several rows for the bulk "Copy N rows as ▸" menu. */
   function bulkCopy(rows: CellValue[][], fmt: "json" | "insert" | "update") {
-    if (fmt === "json") {
-      const arr = rows.map((r) => {
-        const obj: Record<string, unknown> = {};
-        result.columns.forEach((c, i) => {
-          obj[c.name] = r[i] as unknown;
-        });
-        return obj;
-      });
-      return JSON.stringify(arr, null, 2);
-    }
-    if (fmt === "insert") {
-      return rows
-        .map((r) =>
-          rowToSqlInsert(r, result.columns, driver, tableName, tableSchema),
-        )
-        .join("\n");
-    }
-    return rows
-      .map((r) =>
-        rowToSqlUpdate(
-          r,
-          result.columns,
-          driver,
-          tableName,
-          tableSchema,
-          pkColumnNames,
-        ),
-      )
-      .join("\n");
+    return toBulk(rows, fmt, {
+      columns: result.columns,
+      driver,
+      tableName,
+      tableSchema,
+      pkColumnNames,
+    });
   }
 
   /**
@@ -2714,7 +1695,7 @@ export function DataGrid({
         {!collapseChrome && toolbarLeading && toolbarLeading.length > 0 && (
           <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
         )}
-        <SearchInput
+        <GridSearchInput
           value={filterInput ?? globalFilter ?? ""}
           onChange={onGlobalFilterChange}
           onSubmit={onGlobalFilterSubmit}
@@ -2759,7 +1740,7 @@ export function DataGrid({
           {showRowCount && rowCountInBar && (
             <span className="tabular-nums text-muted-foreground">
               <span className="font-medium text-foreground">
-                {visibleRows.length.toLocaleString()}
+                {formatNumber(visibleRows.length)}
               </span>{" "}
               {t("dataGrid.rows")}
               {result.total !== null && result.total !== undefined && (
@@ -2767,7 +1748,7 @@ export function DataGrid({
                   {" "}
                   {t("dataGrid.of")}{" "}
                   <span className="font-medium text-foreground">
-                    {result.total.toLocaleString()}
+                    {formatNumber(result.total)}
                   </span>
                 </>
               )}
@@ -2841,11 +1822,11 @@ export function DataGrid({
                     <div className="px-2 py-1 text-xs tabular-nums text-muted-foreground">
                       {showRowCount && !rowCountInBar && (
                         <>
-                          {visibleRows.length.toLocaleString()}{" "}
+                          {formatNumber(visibleRows.length)}{" "}
                           {t("dataGrid.rows")}
                           {result.total !== null &&
                             result.total !== undefined &&
-                            ` ${t("dataGrid.of")} ${result.total.toLocaleString()}`}
+                            ` ${t("dataGrid.of")} ${formatNumber(result.total)}`}
                           {!elapsedInBar && " · "}
                         </>
                       )}
@@ -3252,341 +2233,3 @@ export function DataGrid({
   );
 }
 
-/**
- * Toolbar search input with an optional history dropdown.
- *
- * Submitting is explicit: typing only updates the input value, and the
- * search is applied to the backend on Enter, on picking a history
- * entry, or on clicking the clear (×) button. This stops every
- * keystroke from creating a history entry and avoids spurious refetches
- * while the user is still composing the query.
- */
-/**
- * The value half of a filter chip's label — the part after `column op`. An
- * `IN` list is summarised by count (it can hold hundreds of values, with the
- * values themselves deferred to a tooltip); `IS NULL` and friends have no
- * value at all.
- */
-function filterValueLabel(f: ColumnFilter, t: TFunction): string | null {
-  if (f.op === "in" || f.op === "not_in") {
-    return t("dataGrid.filterValueCount", { count: f.values?.length ?? 0 });
-  }
-  if (f.op === "eq" || f.op === "ne") {
-    return f.value === null || f.value === undefined
-      ? "NULL"
-      : formatValue(f.value);
-  }
-  return null;
-}
-
-/** Values behind an `IN` / `NOT IN` chip, for its tooltip. */
-function filterValuesTooltip(f: ColumnFilter): string | undefined {
-  if (f.op !== "in" && f.op !== "not_in") return undefined;
-  return (f.values ?? [])
-    .map((v) => (v === null || v === undefined ? "NULL" : formatValue(v)))
-    .join(", ");
-}
-
-/** One active server-side filter, as a removable chip in the toolbar. */
-function ServerFilterChip({
-  filter: f,
-  onRemove,
-}: {
-  filter: ColumnFilter;
-  onRemove?: () => void;
-}) {
-  const { t } = useTranslation();
-  const value = filterValueLabel(f, t);
-  return (
-    <span
-      className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 font-mono text-[11px]"
-      title={t("dataGrid.serverSideFilter")}
-    >
-      <span className="text-muted-foreground">{f.column}</span>
-      <span className="text-muted-foreground/70">{FILTER_LABEL[f.op]}</span>
-      {value !== null && (
-        <span className="max-w-[10rem] truncate" title={filterValuesTooltip(f)}>
-          {value}
-        </span>
-      )}
-      {onRemove && (
-        <button
-          className="ml-1 text-muted-foreground/60 hover:text-foreground"
-          onClick={onRemove}
-          title={t("dataGrid.removeFilter")}
-        >
-          <X className="h-3 w-3" />
-        </button>
-      )}
-    </span>
-  );
-}
-
-/**
- * The narrow-pane form of the chip row: one chip carrying the filter count,
- * whose dropdown still removes filters one by one. Selecting an entry removes
- * that filter and deliberately keeps the menu open (`preventDefault` on the
- * select), since clearing several filters in a row is the common case and
- * re-opening the menu each time would be busywork.
- */
-function ServerFilterSummary({
-  filters,
-  onRemove,
-}: {
-  filters: ColumnFilter[];
-  onRemove?: (index: number) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-          title={t("dataGrid.serverSideFilter")}
-        >
-          <Filter className="h-3 w-3 text-brand" />
-          {t("dataGrid.activeFilterCount", { count: filters.length })}
-          <ChevronDown className="h-3 w-3 opacity-60" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {filters.map((f, i) => {
-          const value = filterValueLabel(f, t);
-          return (
-            <DropdownMenuItem
-              key={`${f.column}-${f.op}-${i}`}
-              className="gap-2 font-mono text-xs"
-              title={filterValuesTooltip(f) ?? t("dataGrid.removeFilter")}
-              disabled={!onRemove}
-              onSelect={(e) => {
-                e.preventDefault();
-                onRemove?.(i);
-              }}
-            >
-              <span className="text-muted-foreground">{f.column}</span>
-              <span className="text-muted-foreground/70">
-                {FILTER_LABEL[f.op]}
-              </span>
-              {value !== null && (
-                <span className="max-w-[14rem] truncate">{value}</span>
-              )}
-              <X className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/60" />
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function SearchInput({
-  value,
-  onChange,
-  onSubmit,
-  history,
-}: {
-  value: string;
-  onChange?: (v: string) => void;
-  onSubmit?: (v: string) => void;
-  history: string[];
-}) {
-  const { t } = useTranslation();
-  const hasHistory = history.length > 0;
-  const hasValue = value.length > 0;
-  return (
-    <div className="flex h-7 min-w-[12rem] max-w-xl flex-1 items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
-      <span
-        className="flex shrink-0 items-center pl-2 text-muted-foreground/70"
-        aria-hidden
-      >
-        <Search className="h-3.5 w-3.5" />
-      </span>
-      <input
-        className="w-full min-w-0 flex-1 bg-transparent px-2 text-xs focus:outline-none"
-        placeholder={t("dataGrid.filterRows")}
-        value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            onSubmit?.(value);
-          }
-        }}
-      />
-      {hasValue && (
-        <button
-          type="button"
-          className="flex items-center justify-center px-1.5 text-muted-foreground/70 hover:bg-accent/30 hover:text-foreground"
-          title="Clear filter"
-          onClick={() => {
-            // Clear immediately + apply, so the grid actually refetches
-            // and the user sees the unfiltered rows.
-            onChange?.("");
-            onSubmit?.("");
-          }}
-        >
-          <X className="h-3 w-3" />
-        </button>
-      )}
-      {hasHistory && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="flex items-center justify-center border-l border-input px-1.5 text-muted-foreground/70 hover:bg-accent/30 hover:text-foreground"
-              title="Recent searches on this connection"
-            >
-              <ChevronDown className="h-3 w-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-            {history.map((q) => (
-              <DropdownMenuItem
-                key={q}
-                onSelect={() => {
-                  onChange?.(q);
-                  onSubmit?.(q);
-                }}
-                className="font-mono text-xs"
-              >
-                <span className="truncate max-w-[20rem]">{q}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  );
-}
-
-/**
- * Editable row pinned at the top of the grid for inline INSERT.
- *
- * Each cell is a plain text input. The empty initial state ("NULL"
- * placeholder) means the column is omitted from the INSERT so the
- * database picks the default; clicking "∅" explicitly forces NULL.
- *
- * Commit fires when focus leaves the row entirely (the user clicks
- * outside). We detect this with a `setTimeout(0)` after `onBlur` and
- * check whether `document.activeElement` is still inside the row.
- * `Esc` cancels; `Enter` commits explicitly.
- */
-interface DraftRowViewProps {
-  rowRef: React.MutableRefObject<HTMLTableRowElement | null>;
-  firstInputRef: React.MutableRefObject<HTMLElement | null>;
-  columns: ColumnMeta[];
-  draftColumns: ColumnInfo[];
-  draft: DraftRow;
-  /** Connection + target table — required for FK comboboxes to query options. */
-  connectionId?: string;
-  tableSchema?: string;
-  tableName?: string;
-  /** Grid preference for BIT option labels in the dedicated control. */
-  bitDisplay: "true_false" | "zero_one";
-  onChange?: (column: string, cell: DraftCell) => void;
-  onCommit?: () => void;
-  onCancel?: () => void;
-}
-
-function DraftRowView({
-  rowRef,
-  firstInputRef,
-  columns,
-  draftColumns,
-  draft,
-  connectionId,
-  tableSchema,
-  tableName: _tableName,
-  bitDisplay,
-  onChange,
-  onCommit,
-  onCancel,
-}: DraftRowViewProps) {
-  const infoByName = useMemo(() => {
-    const m = new Map<string, ColumnInfo>();
-    for (const c of draftColumns) m.set(c.name, c);
-    return m;
-  }, [draftColumns]);
-
-  /** First non-auto-PK column index — used to bind the focus-on-mount ref. */
-  const firstEditableIdx = useMemo(
-    () => firstEditableColumn(columns, infoByName),
-    [columns, infoByName],
-  );
-
-  function handleRowBlur() {
-    // Wait one tick for focus to settle on the new target.
-    setTimeout(() => {
-      if (draft.saving) return;
-      const active = document.activeElement;
-      if (rowRef.current && active && rowRef.current.contains(active)) return;
-      onCommit?.();
-    }, 0);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onCancel?.();
-    } else if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      onCommit?.();
-    }
-  }
-
-  return (
-    <>
-      <tr
-        ref={rowRef}
-        className="border-l-2 border-l-primary bg-primary/5"
-        onBlur={handleRowBlur}
-        onKeyDown={handleKeyDown}
-      >
-        <td className="border-b border-border/50 border-r border-r-border/70 px-2 py-1 text-[10px] font-medium text-primary">
-          {draft.saving ? "…" : "+"}
-        </td>
-        {columns.map((col, idx) => {
-          const cell: DraftCell =
-            draft.cells[col.name] ?? { value: null, touched: false };
-          return (
-            <td
-              key={col.name}
-              className="border-b border-border/50 border-r border-r-border/70 px-1 py-0.5"
-            >
-              {/* Row-level onBlur / onKeyDown drive commit & cancel, so the
-                  control itself is mounted unwired. */}
-              <DraftCellControl
-                info={infoByName.get(col.name)}
-                cell={cell}
-                saving={draft.saving}
-                autoFocus={idx === firstEditableIdx}
-                focusRef={idx === firstEditableIdx ? firstInputRef : undefined}
-                connectionId={connectionId}
-                tableSchema={tableSchema}
-                bitDisplay={bitDisplay}
-                onChange={(next) => onChange?.(col.name, next)}
-              />
-            </td>
-          );
-        })}
-        <td className="border-b border-border/50" />
-      </tr>
-      {draft.error && (
-        <tr>
-          <td
-            colSpan={columns.length + 2}
-            className="border-b border-border/50 bg-destructive/10 px-3 py-1 text-[11px] text-destructive"
-          >
-            {draft.error}
-            <button
-              className="ml-3 underline-offset-2 hover:underline"
-              onClick={() => onCancel?.()}
-            >
-              discard
-            </button>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}

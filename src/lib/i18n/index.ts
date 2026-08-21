@@ -18,6 +18,11 @@ import en from "./locales/en.json";
 import es from "./locales/es.json";
 import type { AppLanguage } from "@/types";
 
+/**
+ * The languages the app ships. The single list — the command palette's
+ * language switcher iterates it rather than writing `["en", "es"]` out again,
+ * so adding a locale is this file plus its JSON, not a hunt for literals.
+ */
 export const SUPPORTED_LANGUAGES: AppLanguage[] = ["en", "es"];
 
 void i18n.use(initReactI18next).init({

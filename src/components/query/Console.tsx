@@ -38,6 +38,7 @@ import { useFeedbackDialog } from "@/stores/dialogs/feedbackDialog";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import type { LogEntry } from "@/types";
+import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
 
 /** `HH:MM:SS.mmm` — fixed-width clock used by every console row so the
  *  column stays vertically aligned. */
@@ -319,15 +320,9 @@ export function Console() {
               theme={resolveMonacoTheme(editorPrefs.theme)}
               value={selectedDetailValue}
               options={{
-                readOnly: true,
-                domReadOnly: true,
-                minimap: { enabled: false },
-                wordWrap: editorPrefs.wordWrap ? "on" : "off",
-                fontFamily: editorPrefs.fontFamily,
-                fontSize: editorPrefs.fontSize,
-                lineNumbers: "off",
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
+                ...readOnlyEditorOptions(editorPrefs),
+                // A log entry is a single value, not a document: nothing to
+                // fold, and a highlighted "current line" implies a caret.
                 renderLineHighlight: "none",
                 folding: false,
               }}

@@ -17,14 +17,6 @@ use sqlx::Row;
 use std::collections::BTreeMap;
 use tauri::State;
 
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 // ---------------------------------------------------------------------------
 // Introspection
 // ---------------------------------------------------------------------------
@@ -61,7 +53,7 @@ pub async fn get_table_structure_inner(
     schema: Option<String>,
     table: String,
 ) -> AppResult<TableStructure> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     match pool {
         DbPool::Postgres(p) => pg_structure(&p, schema, table).await,
         DbPool::Mysql(p) => mysql_structure(&p, schema, table).await,
@@ -347,7 +339,7 @@ fn rule_to_action(rule: Option<String>) -> Option<String> {
 }
 
 async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<TableStructure> {
-    let q = format!("PRAGMA table_info(\"{}\")", table.replace('"', "\"\""));
+    let q = format!("PRAGMA table_info({})", Dialect::Sqlite.quote_ident(&table));
     let rows = sqlx::query(&q).fetch_all(p).await?;
     // Detect AUTOINCREMENT from the stored CREATE statement (PRAGMA doesn't
     // expose it).
@@ -386,7 +378,7 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
         .collect();
 
     // Indexes (skip auto-created PK/unique-from-constraint where origin != 'c').
-    let il = format!("PRAGMA index_list(\"{}\")", table.replace('"', "\"\""));
+    let il = format!("PRAGMA index_list({})", Dialect::Sqlite.quote_ident(&table));
     let idx_rows = sqlx::query(&il).fetch_all(p).await?;
     let mut indexes = Vec::new();
     for r in idx_rows {
@@ -396,7 +388,7 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
         }
         let name: String = r.get("name");
         let unique: i64 = r.get("unique");
-        let ii = format!("PRAGMA index_info(\"{}\")", name.replace('"', "\"\""));
+        let ii = format!("PRAGMA index_info({})", Dialect::Sqlite.quote_ident(&name));
         let cols_rows = sqlx::query(&ii).fetch_all(p).await?;
         let cols: Vec<String> = cols_rows.into_iter().map(|c| c.get("name")).collect();
         indexes.push(IndexDef {
@@ -408,8 +400,8 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
 
     // FKs (composite-capable), grouped by id.
     let fl = format!(
-        "PRAGMA foreign_key_list(\"{}\")",
-        table.replace('"', "\"\"")
+        "PRAGMA foreign_key_list({})",
+        Dialect::Sqlite.quote_ident(&table)
     );
     let fk_rows = sqlx::query(&fl).fetch_all(p).await?;
     let mut fk_groups: BTreeMap<i64, ForeignKeyDef> = BTreeMap::new();
@@ -481,7 +473,7 @@ pub async fn preview_structure_change(
         &args.connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "structure editing is not supported on MongoDB in this version".into(),
@@ -522,7 +514,7 @@ pub(crate) async fn apply_structure_change_inner(
     state: &AppState,
     args: StructureChangeArgs,
 ) -> AppResult<()> {
-    let pool = pool_for(state, &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "structure editing is not supported on MongoDB in this version".into(),
@@ -531,36 +523,8 @@ pub(crate) async fn apply_structure_change_inner(
     let dialect = Dialect::try_of(&pool)?;
     let statements = build_ddl(dialect, args.original.as_ref(), &args.desired)?;
 
-    match &pool {
-        DbPool::Postgres(p) => {
-            // PG DDL is transactional — wrap the lot.
-            let mut tx = p.begin().await?;
-            for stmt in &statements {
-                sqlx::query(stmt).execute(&mut *tx).await?;
-            }
-            tx.commit().await?;
-        }
-        DbPool::Mysql(p) => {
-            // MySQL DDL is non-transactional (implicit commits). Run in order;
-            // a mid-sequence failure may leave partial changes — surfaced to
-            // the user by the error and the editor re-reading the structure.
-            for stmt in &statements {
-                sqlx::query(stmt).execute(p).await?;
-            }
-        }
-        DbPool::Sqlite(p) => {
-            // The SQLite rebuild emits its own BEGIN/COMMIT semantics via the
-            // statement list, and PRAGMA foreign_keys must run outside a
-            // transaction — so we execute each statement directly rather than
-            // wrapping in our own tx.
-            for stmt in &statements {
-                sqlx::query(stmt).execute(p).await?;
-            }
-        }
-        // Rejected earlier by `build_ddl` (see `db::ddl::reject_unsupported`),
-        // so the statement list above was never produced for SQL Server.
-        DbPool::MsSql(_) => unreachable!("sql server rejected by build_ddl"),
-        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
-    }
+    // Per-engine transaction policy lives in `db::exec::execute_all` — see its
+    // doc for why Postgres wraps, MySQL cannot, and SQLite must not.
+    crate::db::exec::execute_all(&pool, &statements).await?;
     Ok(())
 }

@@ -51,14 +51,6 @@ pub enum DataMode {
     TruncateInsert,
 }
 
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 /// Rows per multi-row `INSERT ... VALUES (...), (...);` statement
 /// (mysqldump-style batching).
 const BATCH_SIZE: usize = 500;
@@ -122,7 +114,7 @@ pub async fn export_databases(
             &target.connection_id,
         )
         .await;
-        let pool = pool_for(state.inner(), &target.connection_id)?;
+        let pool = state.pool_for(&target.connection_id)?;
         if matches!(&pool, DbPool::Mongo(_)) {
             return Err(AppError::InvalidInput(format!(
                 "database export is not supported for MongoDB (database: {})",
@@ -264,7 +256,7 @@ pub async fn export_table(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "table export is not supported for MongoDB; use \"Export collection\" instead".into(),
@@ -293,7 +285,7 @@ pub async fn export_table(
         .set_file_name(&suggested)
         .add_filter("SQL", &["sql"])
         .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
     let dest = path.to_string();
 
     let mut w = std::io::BufWriter::new(std::fs::File::create(&dest)?);
@@ -351,7 +343,7 @@ pub async fn export_table_rows(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "row export is not supported for MongoDB here; use \"Export collection\" instead"
@@ -380,7 +372,7 @@ pub async fn export_table_rows(
         .set_file_name(&suggested)
         .add_filter("SQL", &["sql"])
         .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
     let dest = path.to_string();
 
     let mut w = std::io::BufWriter::new(std::fs::File::create(&dest)?);

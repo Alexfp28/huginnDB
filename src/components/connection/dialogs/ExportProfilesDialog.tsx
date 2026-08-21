@@ -6,16 +6,20 @@
  * confirmation) is required.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, ShieldAlert } from "lucide-react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
 import { Button } from "@/components/ui/button";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useMultiSelect } from "@/lib/useMultiSelect";
+import {
+  PassphraseFields,
+  passphraseAccepted,
+} from "@/components/common/PassphraseFields";
 import {
   Dialog,
   DialogContent,
@@ -33,45 +37,25 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
   const { t } = useTranslation();
   const profiles = useConnections((s) => s.profiles);
 
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(profiles.map((p) => p.id)),
-  );
+  const allIds = useMemo(() => profiles.map((p) => p.id), [profiles]);
+  const { selected, allSelected, toggle, toggleAll, reseed } =
+    useMultiSelect(allIds);
   const [includePasswords, setIncludePasswords] = useState(false);
   const [passphrase, setPassphrase] = useState("");
   const [passphraseConfirm, setPassphraseConfirm] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function toggleAll() {
-    if (selected.size === profiles.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(profiles.map((p) => p.id)));
-    }
-  }
-
-  function toggle(id: string) {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
-  }
-
-  const passphraseError =
-    includePasswords && passphrase.length > 0 && passphrase !== passphraseConfirm
-      ? t("transfer.export.passphraseMismatch")
-      : null;
-
   const canExport =
     selected.size > 0 &&
-    (!includePasswords || (passphrase.length >= 8 && passphrase === passphraseConfirm));
+    (!includePasswords || passphraseAccepted(passphrase, passphraseConfirm));
 
   async function handleExport() {
     if (!canExport) return;
     setLoading(true);
     try {
-      const ids = Array.from(selected);
+      const ids: string[] = Array.from(selected);
       const path = await api.exportProfiles(
-        ids.length === profiles.length ? null : ids,
+        allSelected ? null : ids,
         includePasswords,
         includePasswords ? passphrase : undefined,
       );
@@ -86,7 +70,7 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
 
   function handleOpenChange(v: boolean) {
     if (!v) {
-      setSelected(new Set(profiles.map((p) => p.id)));
+      reseed();
       setIncludePasswords(false);
       setPassphrase("");
       setPassphraseConfirm("");
@@ -115,7 +99,7 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
                 onClick={toggleAll}
                 className="text-xs text-primary underline-offset-2 hover:underline"
               >
-                {selected.size === profiles.length
+                {allSelected
                   ? t("transfer.export.deselectAll")
                   : t("transfer.export.selectAll")}
               </button>
@@ -153,41 +137,14 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
             </Label>
           </div>
 
-          {/* Security warning + passphrase fields */}
           {includePasswords && (
-            <div className="space-y-3">
-              <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/40 px-3 py-2 text-2xs text-warning">
-                <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {t("transfer.export.securityWarning")}
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="passphrase" className="text-xs">
-                  {t("transfer.export.passphrase")}
-                </Label>
-                <PasswordInput
-                  id="passphrase"
-                  value={passphrase}
-                  onChange={(e) => setPassphrase(e.target.value)}
-                  placeholder={t("transfer.export.passphrasePlaceholder")}
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="passphrase-confirm" className="text-xs">
-                  {t("transfer.export.passphraseConfirm")}
-                </Label>
-                <PasswordInput
-                  id="passphrase-confirm"
-                  value={passphraseConfirm}
-                  onChange={(e) => setPassphraseConfirm(e.target.value)}
-                  placeholder={t("transfer.export.passphraseConfirmPlaceholder")}
-                  className="h-8 text-xs"
-                />
-                {passphraseError && (
-                  <p className="text-[11px] text-destructive">{passphraseError}</p>
-                )}
-              </div>
-            </div>
+            <PassphraseFields
+              passphrase={passphrase}
+              confirm={passphraseConfirm}
+              onPassphraseChange={setPassphrase}
+              onConfirmChange={setPassphraseConfirm}
+              idPrefix="export-profiles"
+            />
           )}
         </div>
 

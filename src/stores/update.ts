@@ -44,11 +44,13 @@
  */
 
 import { create } from "zustand";
+import { repeating, type Repeating } from "@/lib/schedule";
 import { persist } from "zustand/middleware";
 import type { Update } from "@tauri-apps/plugin-updater";
 import { STORAGE_KEYS } from "@/lib/constants";
 import i18n from "@/lib/i18n";
 import { api } from "@/lib/tauri";
+import { confirmIrreversible } from "@/lib/confirmDestructive";
 import {
   checkForUpdate,
   downloadUpdate,
@@ -70,9 +72,10 @@ export type UpdateStatus =
 /** How often to re-check while the app stays open without a fresh launch. */
 const BACKGROUND_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
-/** Module-level (not store state): guards `startPeriodicChecks` so a
- * remount / React StrictMode double-effect doesn't stack a second timer. */
-let periodicTimer: ReturnType<typeof setInterval> | null = null;
+/** Module-level (not store state) so `startPeriodicChecks` stays idempotent
+ * across a remount or React StrictMode's double-effect. Built on first start
+ * rather than here, because its body needs the store's `get`/`set`. */
+let periodicChecks: Repeating | null = null;
 
 interface UpdateState {
   status: UpdateStatus;
@@ -212,10 +215,10 @@ export const useUpdateStore = create<UpdateState>()(
         // version and would nag against the latest release on every timer tick.
         // The manual check (`checkManually`) still works in dev.
         if (import.meta.env.DEV) return;
-        if (periodicTimer) return;
-        periodicTimer = setInterval(() => {
+        periodicChecks ??= repeating(BACKGROUND_CHECK_INTERVAL_MS, () => {
           void runCheck(get, set);
-        }, BACKGROUND_CHECK_INTERVAL_MS);
+        });
+        periodicChecks.start();
       },
 
       startBackgroundDownload: () => {
@@ -265,9 +268,12 @@ export const useUpdateStore = create<UpdateState>()(
           const sidecarRunning = await api
             .isMcpSidecarRunning()
             .catch(() => false);
+          // `confirmIrreversible`, not `confirmDestructive`: interrupting
+          // someone else's live AI session is not the kind of thing the
+          // "don't nag me about deletes" preference was meant to switch off.
           if (
             sidecarRunning &&
-            !window.confirm(i18n.t("update.mcpSidecarWarning"))
+            !confirmIrreversible(i18n.t("update.mcpSidecarWarning"))
           ) {
             set({ status: "readyToRestart" });
             return; // the user can retry later

@@ -52,10 +52,10 @@ import { api } from "@/lib/tauri";
 import type { GridPrefs } from "@/types";
 import { PrefRow } from "./PrefRow";
 
-// Label lookup for COLOR_GROUPS' keys — COLOR_KEYS stays the single source
-// of truth for labels, this just indexes it by key for the grouped editor.
-const COLOR_LABELS = Object.fromEntries(
-  COLOR_KEYS.map(({ key, label }) => [key, label]),
+// i18n-key lookup for COLOR_GROUPS' keys — COLOR_KEYS stays the single source
+// of truth for label keys, this just indexes it by key for the grouped editor.
+const COLOR_LABEL_KEYS = Object.fromEntries(
+  COLOR_KEYS.map(({ key, labelKey }) => [key, labelKey]),
 ) as Record<keyof ThemeColors, string>;
 
 export function AppearanceSection() {
@@ -225,15 +225,15 @@ export function AppearanceSection() {
             <ThemePreview colors={active.colors} />
             <div className="mt-5 flex flex-col gap-5">
               {COLOR_GROUPS.map((group) => (
-                <section key={group.title}>
+                <section key={group.id}>
                   <div className="mb-2 border-b border-border/60 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {group.title}
+                    {t(group.titleKey)}
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                     {group.keys.map((key) => (
                       <ColorRow
                         key={key}
-                        label={COLOR_LABELS[key]}
+                        label={t(COLOR_LABEL_KEYS[key])}
                         value={active.colors[key]}
                         onChange={(v) => updateColor(key, v)}
                       />

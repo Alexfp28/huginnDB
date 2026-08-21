@@ -299,15 +299,6 @@ pub struct BatchResult {
     pub total_affected: u64,
 }
 
-/// Resolve the active pool for `id`, or fail with [`AppError::NotConnected`].
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 /// One-line, length-capped echo of a statement for the batch summary.
 fn stmt_preview(sql: &str) -> String {
     let one_line = sql.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -322,6 +313,16 @@ fn stmt_preview(sql: &str) -> String {
 /// Decode a Postgres result set into `(columns, rows)`. Shared by
 /// [`execute_with_state`] and [`execute_batch`] so the two paths can never
 /// drift in how they map driver rows to JSON values.
+/// Map `db::exec::query_rows`'s untyped `(name, type_name)` pairs into the
+/// serialisable DTO. The pairs stop at the `db/` boundary (see `query_rows`);
+/// this is the one place that crosses them over.
+fn column_meta(pairs: Vec<(String, String)>) -> Vec<ColumnMeta> {
+    pairs
+        .into_iter()
+        .map(|(name, data_type)| ColumnMeta { name, data_type })
+        .collect()
+}
+
 fn pg_result(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
     use sqlx::Row;
     let columns = rows
@@ -412,7 +413,7 @@ pub(crate) async fn execute_with_state(
     connection_id: &str,
     sql: &str,
 ) -> AppResult<QueryResult> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     let driver = pool.driver_name();
     let start = Instant::now();
 
@@ -636,7 +637,7 @@ pub(crate) async fn execute_batch_inner(
     connection_id: String,
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     if let DbPool::Mongo(conn) = &pool {
@@ -1044,7 +1045,21 @@ pub(crate) fn build_filter_clause_at(
                     FilterOp::Gt => ">",
                     FilterOp::Gte => ">=",
                     FilterOp::Lt => "<",
-                    _ => "<=",
+                    FilterOp::Lte => "<=",
+                    // Unreachable: the arm above admits only those six. Listed
+                    // by name rather than `_` so that adding a `FilterOp` is a
+                    // compile error here instead of silently inheriting `<=`.
+                    FilterOp::Contains
+                    | FilterOp::NotContains
+                    | FilterOp::StartsWith
+                    | FilterOp::EndsWith
+                    | FilterOp::Between
+                    | FilterOp::In
+                    | FilterOp::NotIn
+                    | FilterOp::IsNull
+                    | FilterOp::IsNotNull => {
+                        unreachable!("non-comparison op in the comparison arm")
+                    }
                 };
                 let ph = placeholder(&mut next_placeholder);
                 parts.push(format!("{col} {sym} {ph}"));
@@ -1137,7 +1152,23 @@ pub(crate) fn build_filter_clause_at(
                     FilterOp::Contains => (format!("%{escaped}%"), like_kw),
                     FilterOp::NotContains => (format!("%{escaped}%"), "NOT LIKE"),
                     FilterOp::StartsWith => (format!("{escaped}%"), like_kw),
-                    _ => (format!("%{escaped}"), like_kw),
+                    FilterOp::EndsWith => (format!("%{escaped}"), like_kw),
+                    // Unreachable, and spelled out for the same reason as the
+                    // comparison arm above: a new `FilterOp` must not quietly
+                    // become a suffix match.
+                    FilterOp::Eq
+                    | FilterOp::Ne
+                    | FilterOp::Gt
+                    | FilterOp::Gte
+                    | FilterOp::Lt
+                    | FilterOp::Lte
+                    | FilterOp::Between
+                    | FilterOp::In
+                    | FilterOp::NotIn
+                    | FilterOp::IsNull
+                    | FilterOp::IsNotNull => {
+                        unreachable!("non-pattern op in the pattern arm")
+                    }
                 };
                 // `NOT LIKE` has no case-insensitive keyword form; on Postgres
                 // fold both sides to lower() so "not contains" stays
@@ -1257,7 +1288,7 @@ pub(crate) async fn fetch_table_data_inner(
     if let Some(f) = filters.as_deref() {
         validate_filters(f)?;
     }
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
 
     // MongoDB browse: delegate to the mongo module (find + count). Clone the
     // option args so the SQL path below — though unreachable for mongo — still
@@ -1336,119 +1367,17 @@ pub(crate) async fn fetch_table_data_inner(
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
     let start = Instant::now();
-    let (columns, data) = match &pool {
-        DbPool::Postgres(p) => {
-            let mut q = sqlx::query(&data_sql);
-            for b in &where_binds {
-                q = q.bind(b);
-            }
-            let rows = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                &data_sql,
-                start,
-                q.fetch_all(p).await
-            );
-            let columns = rows
-                .first()
-                .map(|r| {
-                    pg_columns(r)
-                        .into_iter()
-                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let data: Vec<Vec<Value>> = rows
-                .iter()
-                .map(|r| {
-                    use sqlx::Row;
-                    (0..r.columns().len()).map(|i| pg_value(r, i)).collect()
-                })
-                .collect();
-            (columns, data)
-        }
-        DbPool::Mysql(p) => {
-            let mut q = sqlx::query(&data_sql);
-            for b in &where_binds {
-                q = q.bind(b);
-            }
-            let rows = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                &data_sql,
-                start,
-                q.fetch_all(p).await
-            );
-            let columns = rows
-                .first()
-                .map(|r| {
-                    mysql_columns(r)
-                        .into_iter()
-                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let data: Vec<Vec<Value>> = rows
-                .iter()
-                .map(|r| {
-                    use sqlx::Row;
-                    (0..r.columns().len()).map(|i| mysql_value(r, i)).collect()
-                })
-                .collect();
-            (columns, data)
-        }
-        DbPool::Sqlite(p) => {
-            let mut q = sqlx::query(&data_sql);
-            for b in &where_binds {
-                q = q.bind(b);
-            }
-            let rows = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                &data_sql,
-                start,
-                q.fetch_all(p).await
-            );
-            let columns = rows
-                .first()
-                .map(|r| {
-                    sqlite_columns(r)
-                        .into_iter()
-                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let data: Vec<Vec<Value>> = rows
-                .iter()
-                .map(|r| {
-                    use sqlx::Row;
-                    (0..r.columns().len()).map(|i| sqlite_value(r, i)).collect()
-                })
-                .collect();
-            (columns, data)
-        }
-        DbPool::MsSql(p) => {
-            let rows = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                &data_sql,
-                start,
-                p.query_all(&data_sql, &where_binds).await
-            );
-            let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
-            (
-                cols.into_iter()
-                    .map(|(name, data_type)| ColumnMeta { name, data_type })
-                    .collect::<Vec<_>>(),
-                data,
-            )
-        }
-        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-    };
+    // One dispatch, in `db::exec`. The PG arm here used to be a verbatim
+    // re-inlining of `pg_result`, which already existed 200 lines above.
+    let (raw_columns, data) = try_sql_sink!(
+        sink,
+        &connection_id,
+        driver,
+        &data_sql,
+        start,
+        crate::db::exec::query_rows(&pool, &data_sql, &where_binds).await
+    );
+    let columns = column_meta(raw_columns);
     let elapsed_ms = start.elapsed().as_millis() as u64;
     log_sql_sink(
         sink,
@@ -1471,31 +1400,7 @@ pub(crate) async fn fetch_table_data_inner(
             driver,
             &count_sql,
             count_start,
-            match &pool {
-                DbPool::Postgres(p) => {
-                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                    for b in &where_binds {
-                        q = q.bind(b);
-                    }
-                    q.fetch_optional(p).await.map_err(AppError::from)
-                }
-                DbPool::Mysql(p) => {
-                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                    for b in &where_binds {
-                        q = q.bind(b);
-                    }
-                    q.fetch_optional(p).await.map_err(AppError::from)
-                }
-                DbPool::Sqlite(p) => {
-                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                    for b in &where_binds {
-                        q = q.bind(b);
-                    }
-                    q.fetch_optional(p).await.map_err(AppError::from)
-                }
-                DbPool::MsSql(p) => p.scalar(&count_sql, &where_binds).await,
-                DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-            }
+            crate::db::exec::scalar_i64(&pool, &count_sql, &where_binds).await
         );
         let total = raw_count.map(|n| n as u64);
         log_sql_sink(
@@ -1598,7 +1503,7 @@ pub(crate) async fn count_table_rows_inner(
     search: Option<String>,
     search_columns: Option<Vec<String>>,
 ) -> AppResult<CountResult> {
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     let filters = filters.unwrap_or_default();
@@ -1687,31 +1592,7 @@ pub(crate) async fn count_table_rows_inner(
         driver,
         &count_sql,
         start,
-        match &pool {
-            DbPool::Postgres(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
-                }
-                q.fetch_optional(p).await.map_err(AppError::from)
-            }
-            DbPool::Mysql(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
-                }
-                q.fetch_optional(p).await.map_err(AppError::from)
-            }
-            DbPool::Sqlite(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
-                }
-                q.fetch_optional(p).await.map_err(AppError::from)
-            }
-            DbPool::MsSql(p) => p.scalar(&count_sql, &where_binds).await,
-            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-        }
+        crate::db::exec::scalar_i64(&pool, &count_sql, &where_binds).await
     );
     let total = raw_count.unwrap_or(0).max(0) as u64;
     log_sql_sink(
@@ -1904,7 +1785,7 @@ pub(crate) async fn update_cell_inner(
         )));
     }
 
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     // MongoDB: update one field of the document addressed by `_id` ($set). The
@@ -2024,92 +1905,13 @@ pub(crate) async fn update_cell_inner(
     // was sent on composite-PK tables — this is the belt-and-braces
     // assertion that catches any future regression of that family.
     let start = Instant::now();
-    let res: AppResult<u64> = async {
-        match &pool {
-            DbPool::Postgres(p) => {
-                let mut tx = p.begin().await?;
-                let mut q = sqlx::query(&sql).bind(&effective_value);
-                for s in &pk_strs {
-                    q = q.bind(s);
-                }
-                let affected = q.execute(&mut *tx).await?.rows_affected();
-                if affected > 1 {
-                    tx.rollback().await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                tx.commit().await?;
-                Ok(affected)
-            }
-            DbPool::Mysql(p) => {
-                let mut tx = p.begin().await?;
-                let mut q = sqlx::query(&sql).bind(&effective_value);
-                for s in &pk_strs {
-                    q = q.bind(s);
-                }
-                let affected = q.execute(&mut *tx).await?.rows_affected();
-                if affected > 1 {
-                    tx.rollback().await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                tx.commit().await?;
-                Ok(affected)
-            }
-            DbPool::Sqlite(p) => {
-                let mut tx = p.begin().await?;
-                let mut q = sqlx::query(&sql).bind(&effective_value);
-                for s in &pk_strs {
-                    q = q.bind(s);
-                }
-                let affected = q.execute(&mut *tx).await?.rows_affected();
-                if affected > 1 {
-                    tx.rollback().await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                tx.commit().await?;
-                Ok(affected)
-            }
-            DbPool::MsSql(p) => {
-                // `tiberius` has no transaction handle: `BEGIN`/`COMMIT`/
-                // `ROLLBACK` are statements on the session, which is why this
-                // arm holds one `PooledClient` for the whole sequence instead
-                // of using the pool's one-shot helpers.
-                let mut binds = Vec::with_capacity(pk_strs.len() + 1);
-                binds.push(effective_value.clone());
-                binds.extend(pk_strs.iter().cloned());
-                let mut c = p.acquire().await?;
-                c.simple_execute("BEGIN TRANSACTION").await?;
-                let affected = match c.execute(&sql, &binds).await {
-                    Ok(n) => n,
-                    Err(e) => {
-                        // Best-effort unwind: if the rollback also fails the
-                        // session is already poisoned and never reused.
-                        let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
-                        return Err(e);
-                    }
-                };
-                if affected > 1 {
-                    c.simple_execute("ROLLBACK TRANSACTION").await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                c.simple_execute("COMMIT TRANSACTION").await?;
-                Ok(affected)
-            }
-            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-        }
-    }
-    .await;
+    // The guard, the rollback and SQL Server's statement-based transaction all
+    // live in `db::exec::in_tx_expect_at_most_one` — see its doc for the bug it
+    // exists to catch.
+    let mut binds = Vec::with_capacity(pk_strs.len() + 1);
+    binds.push(effective_value);
+    binds.extend(pk_strs);
+    let res = crate::db::exec::in_tx_expect_at_most_one(&pool, &sql, &binds, "update_cell").await;
     let affected = try_sql_sink!(sink, &connection_id, driver, &sql, start, res);
     log_sql_sink(
         sink,
@@ -2152,7 +1954,7 @@ pub async fn unset_field(
         &connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
     let DbPool::Mongo(conn) = &pool else {
         return Err(AppError::InvalidInput(
@@ -2291,7 +2093,7 @@ pub(crate) async fn delete_rows_inner(
         }
     }
 
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     // MongoDB: delete by `_id` ({_id: {$in: [...]}}). Each pk tuple is a single
@@ -2365,40 +2167,7 @@ pub(crate) async fn delete_rows_inner(
         driver,
         &sql,
         start,
-        match pool {
-            DbPool::Postgres(p) => {
-                let mut q = sqlx::query(&sql);
-                for b in &binds {
-                    q = q.bind(b);
-                }
-                q.execute(&p)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(AppError::from)
-            }
-            DbPool::Mysql(p) => {
-                let mut q = sqlx::query(&sql);
-                for b in &binds {
-                    q = q.bind(b);
-                }
-                q.execute(&p)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(AppError::from)
-            }
-            DbPool::Sqlite(p) => {
-                let mut q = sqlx::query(&sql);
-                for b in &binds {
-                    q = q.bind(b);
-                }
-                q.execute(&p)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(AppError::from)
-            }
-            DbPool::MsSql(p) => p.execute_params(&sql, &binds).await,
-            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-        }
+        crate::db::exec::execute_params(&pool, &sql, &binds).await
     );
     log_sql_sink(
         sink,
@@ -2472,7 +2241,7 @@ pub(crate) async fn insert_row_inner(
             "insert_row: no columns supplied".into(),
         ));
     }
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     // MongoDB: insert one document built from the column/value pairs; returns
@@ -2801,7 +2570,7 @@ pub async fn fetch_fk_options(
         None => pick_label_column(&cols),
     };
 
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     // MongoDB has no foreign keys; the FK combobox is not offered for it.
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
@@ -2848,101 +2617,26 @@ pub async fn fetch_fk_options(
     let page = dialect.paginate(fetch_limit, 0, true);
     let sql = format!("SELECT {projection} FROM {qt}{where_clause} ORDER BY {key_id}{page}");
 
-    let mut options: Vec<FkOption> = match pool {
-        DbPool::Postgres(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            let rows = q.fetch_all(&p).await?;
-            rows.iter()
-                .map(|r| {
-                    let v = value_to_dropdown_string(&pg_value(r, 0));
-                    let lbl = if label_id.is_some() {
-                        match pg_value(r, 1) {
-                            Value::Null => None,
-                            other => Some(value_to_dropdown_string(&other)),
-                        }
-                    } else {
-                        None
-                    };
-                    FkOption {
-                        value: v,
-                        label: lbl,
-                    }
-                })
-                .collect()
-        }
-        DbPool::Mysql(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            let rows = q.fetch_all(&p).await?;
-            rows.iter()
-                .map(|r| {
-                    let v = value_to_dropdown_string(&mysql_value(r, 0));
-                    let lbl = if label_id.is_some() {
-                        match mysql_value(r, 1) {
-                            Value::Null => None,
-                            other => Some(value_to_dropdown_string(&other)),
-                        }
-                    } else {
-                        None
-                    };
-                    FkOption {
-                        value: v,
-                        label: lbl,
-                    }
-                })
-                .collect()
-        }
-        DbPool::Sqlite(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            let rows = q.fetch_all(&p).await?;
-            rows.iter()
-                .map(|r| {
-                    let v = value_to_dropdown_string(&sqlite_value(r, 0));
-                    let lbl = if label_id.is_some() {
-                        match sqlite_value(r, 1) {
-                            Value::Null => None,
-                            other => Some(value_to_dropdown_string(&other)),
-                        }
-                    } else {
-                        None
-                    };
-                    FkOption {
-                        value: v,
-                        label: lbl,
-                    }
-                })
-                .collect()
-        }
-        DbPool::MsSql(p) => {
-            let rows = p.query_all(&sql, &binds).await?;
-            rows.iter()
-                .map(|r| {
-                    let v = value_to_dropdown_string(&crate::db::mssql::values::mssql_value(r, 0));
-                    let lbl = if label_id.is_some() {
-                        match crate::db::mssql::values::mssql_value(r, 1) {
-                            Value::Null => None,
-                            other => Some(value_to_dropdown_string(&other)),
-                        }
-                    } else {
-                        None
-                    };
-                    FkOption {
-                        value: v,
-                        label: lbl,
-                    }
-                })
-                .collect()
-        }
-        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
-    };
+    // The four arms differed only in which `*_value` decoder they called, so
+    // this now goes through `db::exec::query_rows` and reads the two decoded
+    // columns positionally. `projection` puts the key first and the optional
+    // label second, which is what makes the indices safe.
+    let (_cols, rows) = crate::db::exec::query_rows(&pool, &sql, &binds).await?;
+    let mut options: Vec<FkOption> = rows
+        .into_iter()
+        .map(|row| {
+            let value = value_to_dropdown_string(row.first().unwrap_or(&Value::Null));
+            let label = if label_id.is_some() {
+                match row.get(1) {
+                    Some(Value::Null) | None => None,
+                    Some(other) => Some(value_to_dropdown_string(other)),
+                }
+            } else {
+                None
+            };
+            FkOption { value, label }
+        })
+        .collect();
 
     let has_more = options.len() as i64 > limit;
     if has_more {

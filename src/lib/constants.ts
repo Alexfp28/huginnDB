@@ -9,9 +9,6 @@
 
 import type { Driver } from "@/types";
 
-/** Default rows-per-page selected when opening a table tab. */
-export const DEFAULT_PAGE_SIZE = 100;
-
 /** Page-size options offered in the table data browser. */
 export const PAGE_SIZE_OPTIONS = [50, 100, 250, 500] as const;
 
@@ -26,9 +23,6 @@ export const DEFAULT_PORTS = {
   mongodb: 27017,
   sqlserver: 1433,
 } as const satisfies Record<Driver, number>;
-
-/** Width of the sidebar (in % of the main area) on first launch. */
-export const SIDEBAR_DEFAULT_PERCENT = 20;
 
 /** localStorage keys used by zustand persist middleware. */
 export const STORAGE_KEYS = {

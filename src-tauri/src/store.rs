@@ -10,33 +10,23 @@
 //!
 //! **Passwords are never written here** — see [`crate::keychain`].
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::state::ConnectionProfile;
-use std::path::PathBuf;
 
 /// File name used for the persisted profile list.
 const PROFILES_FILE: &str = "profiles.json";
 
-/// Application directory within the platform's config base.
-///
-/// Aliased from [`crate::app_identity`] so a `canary` build isolates its
-/// state into a separate directory (see that module).
-const APP_DIR: &str = crate::app_identity::APP_DIR;
-
-/// Resolve (and create on demand) the path where profiles live.
-fn profiles_path() -> AppResult<PathBuf> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| AppError::InvalidInput("no config dir available".into()))?;
-    let dir = base.join(APP_DIR);
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join(PROFILES_FILE))
-}
-
 /// Read the profile list from disk. Returns an empty list if the file
 /// does not yet exist; surfaces I/O or JSON errors if it does but is
 /// unreadable.
+///
+/// Deliberately *not* `state_file::load_or_default`: unlike preferences, a
+/// profiles file that exists but will not parse must be loud. Silently
+/// substituting an empty list would present the user with an app that has lost
+/// every connection they ever saved — and the first save after that would make
+/// it true on disk.
 pub fn load_profiles() -> AppResult<Vec<ConnectionProfile>> {
-    let path = profiles_path()?;
+    let path = crate::state_file::path(PROFILES_FILE)?;
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -57,10 +47,7 @@ fn persistable(profiles: &[ConnectionProfile]) -> Vec<&ConnectionProfile> {
 /// [`ConnectionProfile::ephemeral`]) are filtered out: they exist only in
 /// memory for the lifetime of the session and must never reach disk.
 pub fn save_profiles(profiles: &[ConnectionProfile]) -> AppResult<()> {
-    let path = profiles_path()?;
-    let bytes = serde_json::to_vec_pretty(&persistable(profiles))?;
-    std::fs::write(&path, bytes)?;
-    Ok(())
+    crate::state_file::save_atomic(PROFILES_FILE, &persistable(profiles))
 }
 
 #[cfg(test)]

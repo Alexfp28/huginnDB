@@ -180,6 +180,27 @@ impl Dialect {
             _ => self.qualify(self.default_schema(), table),
         }
     }
+
+    /// The statement that empties `qualified` of every row.
+    ///
+    /// `TRUNCATE TABLE` everywhere it exists; SQLite has no `TRUNCATE`, so it
+    /// gets an unfiltered `DELETE FROM` (which SQLite itself optimises into the
+    /// truncate fast path when there are no triggers).
+    ///
+    /// Spelled out per dialect rather than "SQLite, else TRUNCATE". The
+    /// difference is not "SQLite is the odd one out" — it is a per-engine fact
+    /// about which statement exists, and the next engine added has to state its
+    /// own answer instead of silently inheriting Postgres's. That is the whole
+    /// reason this enum owns the generated SQL, and this call site was the one
+    /// place still guessing.
+    pub fn truncate_stmt(self, qualified: &str) -> String {
+        match self {
+            Dialect::Postgres | Dialect::Mysql | Dialect::MsSql => {
+                format!("TRUNCATE TABLE {qualified}")
+            }
+            Dialect::Sqlite => format!("DELETE FROM {qualified}"),
+        }
+    }
 }
 
 /// Skip leading whitespace and SQL comments (`-- …` line comments and
@@ -358,6 +379,24 @@ fn contains_word(haystack_lower: &str, word: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{classify, is_ddl, is_read_only, is_unfiltered_write, Dialect, StmtClass};
+
+    #[test]
+    fn truncate_stmt_is_delete_only_on_sqlite() {
+        assert_eq!(
+            Dialect::Postgres.truncate_stmt("\"public\".\"t\""),
+            "TRUNCATE TABLE \"public\".\"t\""
+        );
+        assert_eq!(
+            Dialect::Mysql.truncate_stmt("`db`.`t`"),
+            "TRUNCATE TABLE `db`.`t`"
+        );
+        assert_eq!(
+            Dialect::MsSql.truncate_stmt("[dbo].[t]"),
+            "TRUNCATE TABLE [dbo].[t]"
+        );
+        // SQLite has no TRUNCATE at all.
+        assert_eq!(Dialect::Sqlite.truncate_stmt("\"t\""), "DELETE FROM \"t\"");
+    }
 
     #[test]
     fn quotes_identifiers_per_dialect() {

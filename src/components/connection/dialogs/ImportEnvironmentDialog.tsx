@@ -14,13 +14,19 @@
  *  3. "passphrase" — only if the file has encrypted secrets
  *  4. "conflicts"  — resolve conflicts with existing connection profiles
  *  5. "done"       — result summary
+ *
+ * The machine is `lib/transfer/useImportWizard`, shared with
+ * `ImportProfilesDialog`; `reviewStep` is what inserts step 2.
  */
 
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Upload, KeyRound, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { listen } from "@tauri-apps/api/event";
+import {
+  Upload,
+  KeyRound,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useEnvironments } from "@/stores/session/environments";
 import { Button } from "@/components/ui/button";
@@ -34,18 +40,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ImportProgressBar } from "./ImportProgressBar";
-import { ConflictBulkActions } from "./ConflictBulkActions";
+import { ConflictResolutionStep } from "./ConflictResolutionStep";
+import { useImportWizard } from "@/lib/transfer/useImportWizard";
 import type {
-  ConflictAction,
-  ConflictResolution,
   EnvironmentImportAnalysis,
   EnvironmentImportResult,
 } from "@/types";
-
-// Mirrors `IMPORT_PROGRESS_EVENT` in `src-tauri/src/commands/connection.rs`.
-const IMPORT_PROGRESS_EVENT = "huginndb://import-progress";
-
-type Step = "pick" | "review" | "passphrase" | "conflicts" | "done";
 
 interface Props {
   open: boolean;
@@ -56,120 +56,31 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
   const { t } = useTranslation();
   const switchTo = useEnvironments((s) => s.switchTo);
 
-  const [step, setStep] = useState<Step>("pick");
-  const [filePath, setFilePath] = useState("");
-  const [analysis, setAnalysis] = useState<EnvironmentImportAnalysis | null>(null);
-  const [passphrase, setPassphrase] = useState("");
-  const [resolutions, setResolutions] = useState<Record<string, ConflictAction>>({});
-  const [result, setResult] = useState<EnvironmentImportResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-
-  async function handlePickFile() {
-    try {
-      const picked = await openFileDialog({
-        multiple: false,
-        directory: false,
-        title: t("transfer.importEnvironment.pickTitle"),
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
-      if (typeof picked !== "string" || !picked) return;
-      setFilePath(picked);
-      setError(null);
-      setLoading(true);
-      try {
-        const info = await api.analyzeEnvironmentImport(picked);
-        setAnalysis(info);
-        const defaults: Record<string, ConflictAction> = {};
-        for (const c of info.conflicts) {
-          defaults[c.id] = "rename";
-        }
-        setResolutions(defaults);
-        setStep("review");
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setLoading(false);
-      }
-    } catch {
-      // Dialog cancelled.
-    }
-  }
-
-  function handleReviewNext() {
-    if (!analysis) return;
-    if (analysis.encrypted) {
-      setStep("passphrase");
-    } else if (analysis.conflicts.length > 0) {
-      setStep("conflicts");
-    } else {
-      void doImport(filePath, undefined, []);
-    }
-  }
-
-  async function handlePassphraseNext() {
-    if (!analysis || !filePath) return;
-    if (analysis.conflicts.length > 0) {
-      setStep("conflicts");
-    } else {
-      await doImport(filePath, passphrase, []);
-    }
-  }
-
-  async function handleConflictsNext() {
-    if (!analysis || !filePath) return;
-    const resolved: ConflictResolution[] = analysis.conflicts.map((c) => ({
-      id: c.id,
-      action: resolutions[c.id] ?? "rename",
-    }));
-    await doImport(filePath, analysis.encrypted ? passphrase : undefined, resolved);
-  }
-
-  async function doImport(path: string, pp: string | undefined, resolved: ConflictResolution[]) {
-    setLoading(true);
-    setError(null);
-    // Decrypting each secret is deliberately slow (PBKDF2), so a large
-    // bundle can take a while — listen for the backend's per-profile
-    // progress event and show a determinate bar instead of a bare spinner.
-    const unlisten = await listen<{ done: number; total: number }>(
-      IMPORT_PROGRESS_EVENT,
-      (event) => setProgress(event.payload),
-    );
-    try {
-      const r = await api.importEnvironment(path, pp, resolved);
-      setResult(r);
-      setStep("done");
-      await useEnvironments.getState().load();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      unlisten();
-      setProgress(null);
-      setLoading(false);
-    }
-  }
+  const w = useImportWizard<
+    EnvironmentImportAnalysis,
+    EnvironmentImportResult
+  >({
+    pickTitle: t("transfer.importEnvironment.pickTitle"),
+    analyze: api.analyzeEnvironmentImport,
+    run: api.importEnvironment,
+    reviewStep: true,
+    afterImport: () => useEnvironments.getState().load(),
+  });
+  const {
+    step,
+    analysis,
+    passphrase,
+    setPassphrase,
+    resolutions,
+    result,
+    loading,
+    error,
+    progress,
+  } = w;
 
   function handleClose() {
-    setStep("pick");
-    setFilePath("");
-    setAnalysis(null);
-    setPassphrase("");
-    setResolutions({});
-    setResult(null);
-    setError(null);
+    w.reset();
     onOpenChange(false);
-  }
-
-  function setResolution(id: string, action: ConflictAction) {
-    setResolutions((prev) => ({ ...prev, [id]: action }));
-  }
-
-  function setAllResolutions(action: ConflictAction) {
-    if (!analysis) return;
-    const next: Record<string, ConflictAction> = {};
-    for (const c of analysis.conflicts) next[c.id] = action;
-    setResolutions(next);
   }
 
   return (
@@ -200,7 +111,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               <Button variant="ghost" size="sm" onClick={handleClose}>
                 {t("common.cancel")}
               </Button>
-              <Button size="sm" onClick={handlePickFile} disabled={loading}>
+              <Button size="sm" onClick={w.pickFile} disabled={loading}>
                 <Upload className="mr-1.5 h-3.5 w-3.5" />
                 {t("transfer.import.browse")}
               </Button>
@@ -236,7 +147,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               <Button variant="ghost" size="sm" onClick={handleClose}>
                 {t("common.cancel")}
               </Button>
-              <Button size="sm" onClick={handleReviewNext} disabled={loading}>
+              <Button size="sm" onClick={w.reviewNext} disabled={loading}>
                 {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {t("common.continue")}
               </Button>
@@ -260,7 +171,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && passphrase.length > 0) void handlePassphraseNext();
+                  if (e.key === "Enter" && passphrase.length > 0) void w.passphraseNext();
                 }}
                 placeholder={t("transfer.import.passphrasePlaceholder")}
                 className="h-8 text-xs"
@@ -274,7 +185,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               </Button>
               <Button
                 size="sm"
-                onClick={handlePassphraseNext}
+                onClick={w.passphraseNext}
                 disabled={passphrase.length === 0 || loading}
               >
                 {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
@@ -287,48 +198,18 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
         {/* Step: conflicts */}
         {step === "conflicts" && analysis && (
           <div className="space-y-4 py-2">
-            <p className="text-xs text-muted-foreground">
-              {t("transfer.import.conflictsDescription", {
-                count: analysis.conflicts.length,
-              })}
-            </p>
-            <ConflictBulkActions onSelect={setAllResolutions} />
-            <div className="divide-y divide-border rounded-md border border-border max-h-56 overflow-y-auto">
-              {analysis.conflicts.map((c) => (
-                <div key={c.id} className="px-3 py-2 space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-xs font-medium">{c.incoming_name}</span>
-                    {c.incoming_name !== c.existing_name && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {t("transfer.import.existingAs", { name: c.existing_name })}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex gap-1.5">
-                    {(["rename", "overwrite", "skip"] as ConflictAction[]).map((action) => (
-                      <button
-                        key={action}
-                        onClick={() => setResolution(c.id, action)}
-                        className={
-                          "rounded px-2 py-0.5 text-[10px] uppercase font-medium transition-colors " +
-                          (resolutions[c.id] === action
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-muted-foreground hover:bg-muted/80")
-                        }
-                      >
-                        {t(`transfer.import.action.${action}`)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {error && <p className="text-[11px] text-destructive">{error}</p>}
+            <ConflictResolutionStep
+              conflicts={analysis.conflicts}
+              resolutions={resolutions}
+              onResolve={w.setResolution}
+              onResolveAll={w.setAllResolutions}
+              error={error}
+            />
             <DialogFooter>
               <Button variant="ghost" size="sm" onClick={handleClose}>
                 {t("common.cancel")}
               </Button>
-              <Button size="sm" onClick={handleConflictsNext} disabled={loading}>
+              <Button size="sm" onClick={w.conflictsNext} disabled={loading}>
                 {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {t("transfer.importEnvironment.importButton", {
                   count: analysis.environments.length,

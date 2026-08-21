@@ -30,14 +30,6 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use tauri::{AppHandle, State};
 
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BulkUpdateArgs {
@@ -134,7 +126,7 @@ pub async fn preview_bulk_update(
         &args.connection_id,
     )
     .await;
-    let pool = pool_for(state.inner(), &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
 
     let statement = if matches!(&pool, DbPool::Mongo(_)) {
         crate::db::mongo::query::describe_bulk_update(&args.table, &args.filters, &args.set_values)
@@ -192,7 +184,7 @@ pub(crate) async fn apply_bulk_update_inner(
     args: BulkUpdateArgs,
 ) -> AppResult<u64> {
     validate_args(&args)?;
-    let pool = pool_for(state, &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
     let driver = pool.driver_name();
 
     // MongoDB: update_many over the same filter shape fetch_collection_data
@@ -232,40 +224,7 @@ pub(crate) async fn apply_bulk_update_inner(
     let (sql, binds) = build_update_statement(dialect, &qt, &args.filters, &args.set_values);
 
     let start = Instant::now();
-    let outcome: AppResult<u64> = match &pool {
-        DbPool::Postgres(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            q.execute(p)
-                .await
-                .map(|r| r.rows_affected())
-                .map_err(AppError::from)
-        }
-        DbPool::Mysql(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            q.execute(p)
-                .await
-                .map(|r| r.rows_affected())
-                .map_err(AppError::from)
-        }
-        DbPool::Sqlite(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            q.execute(p)
-                .await
-                .map(|r| r.rows_affected())
-                .map_err(AppError::from)
-        }
-        DbPool::MsSql(p) => p.execute_params(&sql, &binds).await,
-        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-    };
+    let outcome = crate::db::exec::execute_params(&pool, &sql, &binds).await;
 
     match &outcome {
         Ok(n) => sink.log(

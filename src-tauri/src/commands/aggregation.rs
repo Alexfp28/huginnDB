@@ -22,7 +22,7 @@ use crate::commands::query::QueryResult;
 use crate::db::mongo::aggregation::{self, MongoViewDefinition, PipelineStageInput, StagePreview};
 use crate::db::mongo::values::pipeline_to_shell_text;
 use crate::error::{AppError, AppResult};
-use crate::state::{AppState, DbPool, MongoConn};
+use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -30,20 +30,11 @@ use tauri::State;
 /// so a debounced keystroke costs one bounded round trip per stage.
 const DEFAULT_PREVIEW_LIMIT: u32 = 10;
 
-fn mongo_for(state: &AppState, id: &str) -> AppResult<MongoConn> {
-    let pool = state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))?;
-    match pool {
-        DbPool::Mongo(conn) => Ok(conn),
-        _ => Err(AppError::UnsupportedDriver(
-            "the aggregation editor is MongoDB-only; SQL views are edited in the view editor"
-                .into(),
-        )),
-    }
-}
+/// Message for the non-MongoDB case of [`AppState::mongo_for`]. Named here
+/// rather than templated in the helper because the useful half is the
+/// pointer to this feature's SQL equivalent.
+const MONGO_ONLY: &str =
+    "the aggregation editor is MongoDB-only; SQL views are edited in the view editor";
 
 // ---------------------------------------------------------------------------
 // Formatting / mode switching
@@ -161,7 +152,7 @@ pub async fn run_mongo_pipeline(
         &args.connection_id,
     )
     .await;
-    let conn = mongo_for(state.inner(), &args.connection_id)?;
+    let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     let stages = args.parsed()?;
     aggregation::run_pipeline(
         &conn,
@@ -199,7 +190,7 @@ pub async fn preview_mongo_stages(
         &args.connection_id,
     )
     .await;
-    let conn = mongo_for(state.inner(), &args.connection_id)?;
+    let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     aggregation::preview_stages(
         &conn,
         &args.source,
@@ -229,7 +220,7 @@ pub async fn get_mongo_view(
         &connection_id,
     )
     .await;
-    let conn = mongo_for(state.inner(), &connection_id)?;
+    let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     aggregation::read_view(&conn, &view).await
 }
 
@@ -266,7 +257,7 @@ pub async fn save_mongo_view(
         &args.connection_id,
     )
     .await;
-    let conn = mongo_for(state.inner(), &args.connection_id)?;
+    let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     let stages = RunPipelineArgs {
         connection_id: args.connection_id.clone(),
         source: args.view_on.clone(),

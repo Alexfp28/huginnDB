@@ -21,25 +21,16 @@
 //! the UI.
 
 use crate::db::mongo::indexes::{self, MongoIndexInfo, NewMongoIndexSpec};
-use crate::error::{AppError, AppResult};
-use crate::state::{AppState, DbPool, MongoConn};
+use crate::error::AppResult;
+use crate::state::AppState;
 use serde::Deserialize;
 use tauri::State;
 
-fn mongo_for(state: &AppState, id: &str) -> AppResult<MongoConn> {
-    let pool = state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))?;
-    match pool {
-        DbPool::Mongo(conn) => Ok(conn),
-        _ => Err(AppError::UnsupportedDriver(
-            "the index manager is MongoDB-only; SQL indexes are edited in the structure editor"
-                .into(),
-        )),
-    }
-}
+/// Message for the non-MongoDB case of [`AppState::mongo_for`]. Named here
+/// rather than templated in the helper because the useful half is the
+/// pointer to this feature's SQL equivalent.
+const MONGO_ONLY: &str =
+    "the index manager is MongoDB-only; SQL indexes are edited in the structure editor";
 
 /// A collection's indexes, with their sizes and usage counters when the
 /// connection's role can read them.
@@ -58,7 +49,7 @@ pub async fn list_mongo_indexes(
         &connection_id,
     )
     .await;
-    let conn = mongo_for(state.inner(), &connection_id)?;
+    let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     indexes::list_indexes(&conn, &collection).await
 }
 
@@ -84,7 +75,7 @@ pub async fn create_mongo_index(
         &args.connection_id,
     )
     .await;
-    let conn = mongo_for(state.inner(), &args.connection_id)?;
+    let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     indexes::create_index(&conn, &args.collection, &args.spec).await
 }
 
@@ -114,7 +105,7 @@ pub async fn recreate_mongo_index(
         &args.connection_id,
     )
     .await;
-    let conn = mongo_for(state.inner(), &args.connection_id)?;
+    let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     indexes::recreate_index(&conn, &args.collection, &args.original_name, &args.spec).await
 }
 
@@ -134,7 +125,7 @@ pub async fn drop_mongo_index(
         &connection_id,
     )
     .await;
-    let conn = mongo_for(state.inner(), &connection_id)?;
+    let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     indexes::drop_index(&conn, &collection, &name).await
 }
 
@@ -156,6 +147,6 @@ pub async fn set_mongo_index_hidden(
         &connection_id,
     )
     .await;
-    let conn = mongo_for(state.inner(), &connection_id)?;
+    let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     indexes::set_index_hidden(&conn, &collection, &name, hidden).await
 }

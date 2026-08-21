@@ -15,6 +15,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { STORAGE_KEYS } from "@/lib/constants";
+import { customThemeId } from "@/lib/utils";
 import {
   BUILT_IN_THEMES,
   applyTheme,
@@ -104,7 +105,7 @@ export const useThemeStore = create<ThemeState>()(
       duplicateAsCustom: (sourceId, name) => {
         const source =
           allThemes(get()).find((t) => t.id === sourceId) ?? BUILT_IN_THEMES[0];
-        const id = `custom-${Math.random().toString(36).slice(2, 8)}`;
+        const id = customThemeId();
         const cloned: Theme = {
           ...source,
           id,
@@ -123,7 +124,7 @@ export const useThemeStore = create<ThemeState>()(
         const active = resolveActive(get());
         if (active.builtin) {
           // Auto-fork into a custom theme so built-ins stay pristine.
-          const id = `custom-${Math.random().toString(36).slice(2, 8)}`;
+          const id = customThemeId();
           const cloned: Theme = {
             ...active,
             id,

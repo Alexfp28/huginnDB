@@ -121,7 +121,7 @@ fn select_victims(state: &AppState, now: u64, ttl_secs: u32, max_children: u32) 
         // both surprising and useless — the servers may be different, so the
         // budget being defended isn't shared.
         for parent in conns.ids() {
-            if parent.contains("::db::") {
+            if crate::state::is_database_view(&parent) {
                 continue;
             }
             let children = conns.children_by_lru(&parent);
@@ -143,7 +143,7 @@ fn select_victims(state: &AppState, now: u64, ttl_secs: u32, max_children: u32) 
 /// the awaited close described on [`close_pool`] instead of a bare `Drop`.
 /// Returns the ids that were actually closed.
 pub async fn close_children(state: &AppState, parent_id: &str) -> Vec<String> {
-    let prefix = format!("{parent_id}::db::");
+    let prefix = crate::state::database_view_prefix(parent_id);
     let removed: Vec<_> = {
         let mut conns = state.connections.write();
         let ids: Vec<String> = conns

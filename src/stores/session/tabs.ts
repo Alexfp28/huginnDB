@@ -7,8 +7,9 @@
  */
 
 import { create } from "zustand";
-import { tableTabTitle } from "@/lib/connectionLabel";
+import { isDatabaseViewOf, tableTabTitle } from "@/lib/connectionLabel";
 import type { AppTab, ConnectionProfile, TabViewState } from "@/types";
+import { shortId } from "@/lib/utils";
 
 interface TabsState {
   tabs: AppTab[];
@@ -72,7 +73,7 @@ interface TabsState {
 }
 
 function genId() {
-  return Math.random().toString(36).slice(2, 10);
+  return shortId();
 }
 
 export const useTabs = create<TabsState>((set, get) => ({
@@ -207,8 +208,9 @@ export const useTabs = create<TabsState>((set, get) => ({
   queryTargetFor: (parentId) => {
     const { tabs, activeId } = get();
     const active = tabs.find((t) => t.id === activeId);
-    const prefix = `${parentId}::db::`;
-    return active?.connectionId.startsWith(prefix) ? active.connectionId : parentId;
+    return active && isDatabaseViewOf(active.connectionId, parentId)
+      ? active.connectionId
+      : parentId;
   },
   setViewState: (id, viewState) =>
     set((s) => {

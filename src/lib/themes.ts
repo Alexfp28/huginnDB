@@ -87,33 +87,40 @@ export interface ThemeColors {
   ring: string;
 }
 
-export const COLOR_KEYS: { key: keyof ThemeColors; label: string }[] = [
-  { key: "background", label: "Background" },
-  { key: "foreground", label: "Foreground" },
-  { key: "card", label: "Card" },
-  { key: "cardForeground", label: "Card text" },
-  { key: "primary", label: "Primary" },
-  { key: "primaryForeground", label: "Primary text" },
-  { key: "secondary", label: "Secondary" },
-  { key: "secondaryForeground", label: "Secondary text" },
-  { key: "muted", label: "Muted" },
-  { key: "mutedForeground", label: "Muted text" },
-  { key: "accent", label: "Accent" },
-  { key: "accentForeground", label: "Accent text" },
-  { key: "brand", label: "Brand" },
-  { key: "brandForeground", label: "Brand text" },
-  { key: "brandHover", label: "Brand hover" },
-  { key: "popover", label: "Popover" },
-  { key: "popoverForeground", label: "Popover text" },
-  { key: "success", label: "Success" },
-  { key: "successForeground", label: "Success text" },
-  { key: "warning", label: "Warning" },
-  { key: "warningForeground", label: "Warning text" },
-  { key: "destructive", label: "Destructive" },
-  { key: "destructiveForeground", label: "Destructive text" },
-  { key: "border", label: "Border" },
-  { key: "input", label: "Input border" },
-  { key: "ring", label: "Focus ring" },
+/**
+ * The editable colour tokens, in declaration order, each with the i18n key
+ * for its display name. The names are user-facing copy, so they live in the
+ * locale files rather than here — a literal English string here would render
+ * untranslated in the Appearance editor no matter what language the app is
+ * set to, which is exactly what it used to do.
+ */
+export const COLOR_KEYS: { key: keyof ThemeColors; labelKey: string }[] = [
+  { key: "background", labelKey: "settings.appearance.color.background" },
+  { key: "foreground", labelKey: "settings.appearance.color.foreground" },
+  { key: "card", labelKey: "settings.appearance.color.card" },
+  { key: "cardForeground", labelKey: "settings.appearance.color.cardForeground" },
+  { key: "primary", labelKey: "settings.appearance.color.primary" },
+  { key: "primaryForeground", labelKey: "settings.appearance.color.primaryForeground" },
+  { key: "secondary", labelKey: "settings.appearance.color.secondary" },
+  { key: "secondaryForeground", labelKey: "settings.appearance.color.secondaryForeground" },
+  { key: "muted", labelKey: "settings.appearance.color.muted" },
+  { key: "mutedForeground", labelKey: "settings.appearance.color.mutedForeground" },
+  { key: "accent", labelKey: "settings.appearance.color.accent" },
+  { key: "accentForeground", labelKey: "settings.appearance.color.accentForeground" },
+  { key: "brand", labelKey: "settings.appearance.color.brand" },
+  { key: "brandForeground", labelKey: "settings.appearance.color.brandForeground" },
+  { key: "brandHover", labelKey: "settings.appearance.color.brandHover" },
+  { key: "popover", labelKey: "settings.appearance.color.popover" },
+  { key: "popoverForeground", labelKey: "settings.appearance.color.popoverForeground" },
+  { key: "success", labelKey: "settings.appearance.color.success" },
+  { key: "successForeground", labelKey: "settings.appearance.color.successForeground" },
+  { key: "warning", labelKey: "settings.appearance.color.warning" },
+  { key: "warningForeground", labelKey: "settings.appearance.color.warningForeground" },
+  { key: "destructive", labelKey: "settings.appearance.color.destructive" },
+  { key: "destructiveForeground", labelKey: "settings.appearance.color.destructiveForeground" },
+  { key: "border", labelKey: "settings.appearance.color.border" },
+  { key: "input", labelKey: "settings.appearance.color.input" },
+  { key: "ring", labelKey: "settings.appearance.color.ring" },
 ];
 
 /**
@@ -122,12 +129,13 @@ export const COLOR_KEYS: { key: keyof ThemeColors; label: string }[] = [
  * side) with sections a user can actually scan: surfaces paired with their
  * own text colour, then actions/brand, semantic status colours, and finally
  * borders/focus. Order here is display order; COLOR_KEYS stays the single
- * source of truth for labels and for themeTransfer.ts's key enumeration
+ * source of truth for label keys and for themeTransfer.ts's key enumeration
  * (which doesn't care about grouping).
  */
-export const COLOR_GROUPS: { title: string; keys: (keyof ThemeColors)[] }[] = [
+export const COLOR_GROUPS: { id: string; titleKey: string; keys: (keyof ThemeColors)[] }[] = [
   {
-    title: "Surfaces",
+    id: "surfaces",
+    titleKey: "settings.appearance.colorGroup.surfaces",
     keys: [
       "background",
       "foreground",
@@ -144,11 +152,13 @@ export const COLOR_GROUPS: { title: string; keys: (keyof ThemeColors)[] }[] = [
     ],
   },
   {
-    title: "Actions & brand",
+    id: "actions",
+    titleKey: "settings.appearance.colorGroup.actions",
     keys: ["primary", "primaryForeground", "brand", "brandForeground", "brandHover"],
   },
   {
-    title: "Status colours",
+    id: "status",
+    titleKey: "settings.appearance.colorGroup.status",
     keys: [
       "success",
       "successForeground",
@@ -159,7 +169,8 @@ export const COLOR_GROUPS: { title: string; keys: (keyof ThemeColors)[] }[] = [
     ],
   },
   {
-    title: "Borders & focus",
+    id: "borders",
+    titleKey: "settings.appearance.colorGroup.borders",
     keys: ["border", "input", "ring"],
   },
 ];

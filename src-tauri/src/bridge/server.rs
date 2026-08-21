@@ -346,7 +346,10 @@ async fn dispatch(
     // policy governs it; for a Mongo view those differ, and only checking one
     // would leave a gap.
     let target = connection_id_of(request);
-    let root = target.split("::db::").next().unwrap_or(&target).to_string();
+    // Same fold the rest of the app uses, rather than a local `split` — this is
+    // the connector's access check, so the two must not be able to disagree
+    // about what "the profile behind this id" means.
+    let root = crate::state::parent_connection_id(&target).to_string();
     if !allowed.contains(&root) {
         return Err(AppError::InvalidInput(format!(
             "connection {root:?} was not declared by this client"

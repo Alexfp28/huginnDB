@@ -7,6 +7,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { STORAGE_KEYS } from "@/lib/constants";
+import { shortId } from "@/lib/utils";
 
 export interface SavedQuery {
   id: string;
@@ -36,22 +37,16 @@ interface SavedQueriesState {
     patch: Partial<Omit<SavedQuery, "id" | "createdAt">>,
   ) => void;
   remove: (id: string) => void;
-  /** Return entries that include `tag`. */
-  byTag: (tag: string) => SavedQuery[];
-}
-
-function genId() {
-  return `q-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export const useSavedQueries = create<SavedQueriesState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       items: [],
       add: (input) => {
         const now = Date.now();
         const q: SavedQuery = {
-          id: genId(),
+          id: `q-${shortId()}`,
           createdAt: now,
           updatedAt: now,
           connectionId: input.connectionId ?? null,
@@ -69,7 +64,6 @@ export const useSavedQueries = create<SavedQueriesState>()(
       },
       remove: (id) =>
         set((s) => ({ items: s.items.filter((q) => q.id !== id) })),
-      byTag: (tag) => get().items.filter((q) => q.tags.includes(tag)),
     }),
     { name: STORAGE_KEYS.savedQueries },
   ),

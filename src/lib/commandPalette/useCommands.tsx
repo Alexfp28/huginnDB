@@ -79,6 +79,7 @@ import {
 import { BUILT_IN_THEMES } from "@/lib/themes";
 import { DOCS } from "@/lib/appInfo/docs";
 import {
+  isServerWide,
   parentConnectionId,
   resolveConnectionLabel,
   tabLeafTitle,
@@ -88,14 +89,16 @@ import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
 import {
   unwarmedDatabases,
   warmDatabases,
-} from "@/lib/commandPalette/warmSchema";
+} from "@/lib/schema/warmDatabases";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { refreshTable } from "@/lib/grid/tableRefresh";
 import { ACTIONS, formatComboForDisplay, getBinding } from "@/lib/keybindings";
 import { api } from "@/lib/tauri";
 import { SETTINGS_INDEX } from "@/lib/commandPalette/settingsRegistry";
 import type { PaletteCommand } from "@/lib/commandPalette/types";
-import type { AppLanguage, TabKind } from "@/types";
+import type { TabKind } from "@/types";
+import { SUPPORTED_LANGUAGES } from "@/lib/i18n";
+import { openQueryTab } from "@/lib/tabs/openQueryTab";
 
 /** Icon per tab kind, mirroring `TabSwitcher`'s map. */
 const TAB_ICON: Record<TabKind, React.ReactNode> = {
@@ -188,12 +191,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         keywords: "sql editor new query nueva consulta",
         icon: <Plus className="h-4 w-4" />,
         run: () =>
-          useTabs.getState().open({
-            kind: "query",
-            title: t("tabs.queryFileName"),
-            connectionId: queryTarget,
-            query: "-- write a SQL query and press Ctrl+Enter\n",
-          }),
+          openQueryTab(queryTarget),
       });
     }
 
@@ -462,7 +460,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         run: () => setThemeId(th.id),
       });
     }
-    for (const lng of ["en", "es"] as AppLanguage[]) {
+    for (const lng of SUPPORTED_LANGUAGES) {
       if (lng === prefs.ui.language) continue;
       list.push({
         id: `lang:${lng}`,
@@ -571,7 +569,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     // palette (gotcha #27 — resolved through the shared two-layer helper).
     for (const p of profiles) {
       if (!active.has(p.id)) continue;
-      if (p.driver === "sqlite" || p.database !== "") continue;
+      if (!isServerWide(p)) continue;
       const visible = resolveVisibleDatabases(
         databaseVisibility[p.id],
         p.visible_databases,
@@ -609,8 +607,8 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       // freshly connected server has databases to offer but no tables to search.
       // This is the opt-in way to fill that in — deliberately an action the user
       // asks for, since every view is another connection pool (see
-      // `warmSchema.ts`). Keeps the palette open so the tables it just indexed
-      // are one keystroke away.
+      // `lib/schema/warmDatabases.ts`). Keeps the palette open so the tables it just
+      // indexed are one keystroke away.
       const cold = unwarmedDatabases(p.id, names, byConnection);
       if (cold.length > 0) {
         list.push({

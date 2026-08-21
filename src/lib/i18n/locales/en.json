@@ -226,13 +226,6 @@
     "noMatches": "No connections match your search.",
     "fromOrigin": "This connection comes from a shared origin, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours."
   },
-  "connectPassword": {
-    "title": "Password required",
-    "description": "The stored password for \"{{name}}\" could not be found. Enter it to connect.",
-    "password": "Password",
-    "connect": "Connect",
-    "connecting": "Connecting…"
-  },
   "adhocDriver": {
     "title": "Which database driver?",
     "description": "\"{{name}}\" was launched without --driver and no default driver is set. Pick the backend to connect with.",
@@ -1151,6 +1144,40 @@
           "label": "Number fields",
           "desc": "Number the fields of each row in the left-hand gutter."
         }
+      },
+      "color": {
+        "background": "Background",
+        "foreground": "Foreground",
+        "card": "Card",
+        "cardForeground": "Card text",
+        "primary": "Primary",
+        "primaryForeground": "Primary text",
+        "secondary": "Secondary",
+        "secondaryForeground": "Secondary text",
+        "muted": "Muted",
+        "mutedForeground": "Muted text",
+        "accent": "Accent",
+        "accentForeground": "Accent text",
+        "brand": "Brand",
+        "brandForeground": "Brand text",
+        "brandHover": "Brand hover",
+        "popover": "Popover",
+        "popoverForeground": "Popover text",
+        "success": "Success",
+        "successForeground": "Success text",
+        "warning": "Warning",
+        "warningForeground": "Warning text",
+        "destructive": "Destructive",
+        "destructiveForeground": "Destructive text",
+        "border": "Border",
+        "input": "Input border",
+        "ring": "Focus ring"
+      },
+      "colorGroup": {
+        "surfaces": "Surfaces",
+        "actions": "Actions & brand",
+        "status": "Status colours",
+        "borders": "Borders & focus"
       }
     },
     "shortcuts": {
@@ -1503,7 +1530,8 @@
     "elapsedTitle": "Query duration",
     "batchOk": "{{count}} statements · {{rows}} rows affected",
     "batchFailed": "Stopped at statement {{index}} of {{total}}",
-    "rowsAffected": "{{rows}} rows affected · {{ms}} ms"
+    "rowsAffected": "{{rows}} rows affected · {{ms}} ms",
+    "newTabPlaceholder": "-- write a SQL query and press Ctrl+Enter\n"
   },
   "saved": {
     "connectFirst": "Connect to a database first.",

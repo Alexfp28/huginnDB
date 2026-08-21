@@ -44,7 +44,11 @@ import { SchemaBindingBadge } from "@/components/jsonSchema/SchemaBindingBadge";
 import { cellModelPath, bindSchemaToModel } from "@/lib/monaco/monacoJson";
 import { useJsonSchemas, relationKey, schemaUri } from "@/stores/jsonSchemas";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { formatComboForDisplay } from "@/lib/keybindings";
+import { useFullscreenToggle } from "@/lib/useFullscreenToggle";
+import { Kbd } from "@/components/ui/kbd";
+import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 
 interface Props {
   open: boolean;
@@ -188,17 +192,10 @@ export function CellEditorBody({
             editor.addCommand(monacoNs.KeyMod.CtrlCmd | monacoNs.KeyCode.Enter, save);
           }}
           options={{
+            ...editorOptionsFromPrefs(editorPrefs),
             readOnly: !!readonly,
-            minimap: { enabled: editorPrefs.minimap },
-            wordWrap: editorPrefs.wordWrap ? "on" : "off",
-            fontFamily: editorPrefs.fontFamily,
-            fontSize: editorPrefs.fontSize,
-            tabSize: editorPrefs.tabSize,
-            lineNumbers: editorPrefs.lineNumbers ? "on" : "off",
             formatOnPaste: editorPrefs.formatOnPaste,
-            scrollBeyondLastLine: false,
             folding: true,
-            automaticLayout: true,
           }}
         />
       </div>
@@ -222,7 +219,7 @@ export function CellEditor({
   const [language, setLanguage] = useState<ContentLanguage>(detected);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreen, setFullscreen] = useFullscreenToggle(() => open);
   /** Bumped whenever a new value is loaded so Monaco remounts with an empty
    *  undo stack (mirrors the side panel; defensive even though the dialog
    *  usually unmounts between opens). */
@@ -230,7 +227,9 @@ export function CellEditor({
   const openInSide = useCellEditor((s) => s.open);
   const canSave = !readonly && !!onSave;
   // Modifier label for the save-shortcut chip (⌘ on macOS, Ctrl elsewhere).
-  const saveHint = /Mac/i.test(navigator.userAgent) ? "⌘S" : "Ctrl+S";
+  // Through `formatComboForDisplay`, which is the one place that decides how a
+  // combo is spelled for the user.
+  const saveHint = formatComboForDisplay("Ctrl+S");
   // Content-type badge label: the auto-detected / selected language.
   const typeLabel = language === "plaintext" ? "TEXT" : language.toUpperCase();
   // …and its glyph. The brief allows a little more branding in this editor
@@ -257,21 +256,6 @@ export function CellEditor({
     }
   }, [open, initialValue]);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (!open) return;
-      if (e.key === "F11") {
-        e.preventDefault();
-        setFullscreen((v) => !v);
-      }
-      if (e.key === "Escape" && fullscreen) {
-        e.preventDefault();
-        setFullscreen(false);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, fullscreen]);
 
   async function handleSave() {
     if (!onSave) return;
@@ -339,7 +323,7 @@ export function CellEditor({
                 {t("cellEditor.chars", { count: value.length })}
               </span>
               <span className="rounded bg-muted px-1.5 py-0.5">
-                {bytes.toLocaleString()} B
+                {formatNumber(bytes)} B
               </span>
             </span>
           </DialogTitle>
@@ -396,9 +380,9 @@ export function CellEditor({
         <DialogFooter className="items-center border-t border-border px-4 py-3 sm:justify-between">
           {canSave && (
             <span className="mr-auto flex items-center gap-1 text-2xs text-muted-foreground">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 {saveHint}
-              </kbd>
+              </Kbd>
               {t("common.save")}
             </span>
           )}

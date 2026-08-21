@@ -21,16 +21,13 @@
 //! presented key on first use again. Writes go through an atomic
 //! temp-file rename so a crash mid-save cannot leave a partial file.
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 const FILE: &str = "known_hosts.json";
-/// Aliased from [`crate::app_identity`] so a `canary` build isolates its state.
-const APP_DIR: &str = crate::app_identity::APP_DIR;
 
 /// On-disk shape of the host-key store.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -59,45 +56,15 @@ impl KnownHosts {
     }
 }
 
-/// Resolve (and create on demand) the path where the store lives.
-fn path() -> AppResult<PathBuf> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| AppError::InvalidInput("no config dir available".into()))?;
-    let dir = base.join(APP_DIR);
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join(FILE))
-}
-
 /// Read the store from disk, returning an empty one when missing or
 /// unparseable. Mirrors the silent-degradation policy used by `prefs.rs`.
 pub fn load() -> KnownHosts {
-    let Ok(path) = path() else {
-        return KnownHosts::default();
-    };
-    if !path.exists() {
-        return KnownHosts::default();
-    }
-    match std::fs::read(&path).and_then(|bytes| {
-        serde_json::from_slice(&bytes)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-    }) {
-        Ok(k) => k,
-        Err(e) => {
-            eprintln!("[ssh-known-hosts] failed to read {path:?}: {e}; using empty store");
-            KnownHosts::default()
-        }
-    }
+    crate::state_file::load_or_default(FILE, "ssh-known-hosts")
 }
 
-/// Persist `store` to disk using a temp-file + rename so a crash mid-save
-/// cannot leave a half-written file readable.
+/// Persist `store` to disk atomically (see [`crate::state_file::save_atomic`]).
 pub fn save(store: &KnownHosts) -> AppResult<()> {
-    let path = path()?;
-    let tmp = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(store)?;
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, &path)?;
-    Ok(())
+    crate::state_file::save_atomic(FILE, store)
 }
 
 /// Shared, thread-safe handle to the in-memory store. Loaded once at app
