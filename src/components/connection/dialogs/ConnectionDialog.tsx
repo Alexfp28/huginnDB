@@ -22,15 +22,11 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   AlertCircle,
   Check,
-  ChevronDown,
-  ChevronRight,
   Copy,
   Database,
   Download,
   Folder,
   Plug,
-  Plus,
-  Search,
   Trash2,
   Upload,
   X,
@@ -54,7 +50,6 @@ import {
 } from "@/components/ui/tooltip";
 import { ExportProfilesDialog } from "@/components/connection/dialogs/ExportProfilesDialog";
 import { ImportProfilesDialog } from "@/components/connection/dialogs/ImportProfilesDialog";
-import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   Select,
   SelectContent,
@@ -64,28 +59,24 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DriverBadge, driverLabel } from "@/components/common/DriverBadge";
+import { ConnectionRail } from "@/components/connection/ConnectionRail";
+import {
+  useConnectionForm,
+  type SshAuthMethod,
+} from "@/lib/connection/useConnectionForm";
 import { api } from "@/lib/tauri";
-import { buildMongoUri, parseMongoUri } from "@/lib/db/mongoUri";
-import { DEFAULT_PORTS } from "@/lib/constants";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
-import { bucketByGroup, cn } from "@/lib/utils";
-import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups";
 import type {
   ConnectionProfile,
   Driver,
   HostKeyPolicy,
   MsSqlAuth,
-  SshAuth,
-  SshTunnel,
 } from "@/types";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
-import { usePreferences } from "@/stores/preferences/preferences";
-import { sqliteFileLabel } from "@/lib/connectionLabel";
 import { isWindows } from "@/lib/platform";
 import {
   driverMismatchHint,
-  splitSqlServerName,
   supportsSshTunnel,
 } from "@/lib/db/driver";
 
@@ -97,8 +88,6 @@ interface Props {
   /** Called after a successful Connect so the caller can focus the pool. */
   onConnected?: (id: string) => void;
 }
-
-type SshAuthMethod = "password" | "key";
 
 /**
  * Structured status for the action footer. Keeping the kind discrete avoids
@@ -127,78 +116,56 @@ export function ConnectionDialog({
   const active = useConnections((s) => s.active);
   const refreshSchema = useSchema((s) => s.refresh);
 
+  /** Windows-only auth modes are hidden elsewhere — the backend refuses them
+   *  on other platforms because the driver's NTLM support is `cfg(windows)`. */
+  const onWindows = isWindows();
+
+  // Every editable field, plus the rules that relate them — see the hook for
+  // why the form model is separate from this dialog's flow.
+  const {
+    name, setName,
+    group, setGroup,
+    driver, onDriverChange,
+    host, setHost,
+    port, setPort,
+    database, setDatabase,
+    username, setUsername,
+    password, setPassword,
+    ssl, setSsl,
+    maxConnections, setMaxConnections,
+    setConnectionString,
+    authSource, setAuthSource,
+    mongoUriManual, onToggleMongoUriManual,
+    effectiveMongoUri,
+    isMongoSrv,
+    mssqlInstance, setMssqlInstance,
+    mssqlTrustCert, setMssqlTrustCert,
+    mssqlAuth, setMssqlAuth,
+    normalizeServerName,
+    sshEnabled, setSshEnabled,
+    sshHost, setSshHost,
+    sshPort, setSshPort,
+    sshUsername, setSshUsername,
+    sshAuthMethod, setSshAuthMethod,
+    sshKeyPath, setSshKeyPath,
+    sshSecret, setSshSecret,
+    sshLocalPort, setSshLocalPort,
+    sshHostKeyPolicy, setSshHostKeyPolicy,
+    trustedFingerprint, setTrustedFingerprint,
+    buildSshTunnel,
+    loadFields,
+  } = useConnectionForm(open);
+
   /** Which profile is open in the editor; `null` means a new draft. */
   const [editingId, setEditingId] = useState<string | null>(
     initial?.id ?? null,
   );
-
-  // Left-rail: search filter + multi-selection for bulk delete (#39/#43).
-  const [search, setSearch] = useState("");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-  /** Anchor for Shift-range selection over the visible (non-collapsed) rows. */
-  const lastClickedRef = useRef<string | null>(null);
-  const groupCollapse = useConnectionGroupCollapse();
 
   /** A profile queued by "Duplicate" to load as a fresh draft on the next
    *  editingId change (see the load effect). */
   const pendingCloneRef = useRef<ConnectionProfile | null>(null);
   /** Shows the "password isn't copied" banner after a duplicate (#38). */
   const [duplicateHint, setDuplicateHint] = useState(false);
-
-  // General fields ---------------------------------------------------------
-  const [name, setName] = useState("");
-  const [group, setGroup] = useState("");
-  const [driver, setDriver] = useState<Driver>("postgres");
-  const [host, setHost] = useState("localhost");
-  const [port, setPort] = useState(5432);
-  const [database, setDatabase] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [ssl, setSsl] = useState(false);
-  /** Per-server pool ceiling, as typed. Kept as a string so the field can be
-   *  *empty*, which is the meaningful "no override — use the global
-   *  preference" state and is not expressible with a number input bound to a
-   *  number. Parsed on save; anything unparseable saves as `null`. */
-  const [maxConnections, setMaxConnections] = useState("");
-  /** MongoDB connection URI. In form mode this is the *raw-edit buffer* used
-   *  only when `mongoUriManual` is on; otherwise the URI is derived from the
-   *  discrete fields via `buildMongoUri`. */
-  const [connectionString, setConnectionString] = useState("");
-  /** MongoDB `authSource` form field (e.g. `admin`). */
-  const [authSource, setAuthSource] = useState("");
-  /** When true, the MongoDB connection string is edited by hand (Compass-style
-   *  escape hatch for SRV / replica sets / extra URI options) and the discrete
-   *  fields are disabled. */
-  const [mongoUriManual, setMongoUriManual] = useState(false);
-
-  // SQL Server fields ------------------------------------------------------
-  /** Named instance (`SQLEXPRESS`). Non-empty makes the port irrelevant: the
-   *  SQL Browser resolves the instance's own dynamic port. */
-  const [mssqlInstance, setMssqlInstance] = useState("");
-  /** Accept a self-signed server certificate — required by most on-prem
-   *  instances for an encrypted connection to come up at all. */
-  const [mssqlTrustCert, setMssqlTrustCert] = useState(true);
-  const [mssqlAuth, setMssqlAuth] = useState<MsSqlAuth>("sql");
-  /** Windows-only auth modes are hidden elsewhere — the backend refuses them
-   *  on other platforms because the driver's NTLM support is `cfg(windows)`. */
-  const onWindows = isWindows();
-
-  // SSH tunnel fields ------------------------------------------------------
-  const [sshEnabled, setSshEnabled] = useState(false);
-  const [sshHost, setSshHost] = useState("");
-  const [sshPort, setSshPort] = useState(22);
-  const [sshUsername, setSshUsername] = useState("");
-  const [sshAuthMethod, setSshAuthMethod] = useState<SshAuthMethod>("password");
-  const [sshKeyPath, setSshKeyPath] = useState("");
-  const [sshSecret, setSshSecret] = useState("");
-  const [sshLocalPort, setSshLocalPort] = useState(0);
-  const [sshHostKeyPolicy, setSshHostKeyPolicy] =
-    useState<HostKeyPolicy>("accept-new");
-  const [trustedFingerprint, setTrustedFingerprint] = useState<string | null>(
-    null,
-  );
 
   const [testStatus, setTestStatus] = useState<TestStatus>({ kind: "idle" });
   /** Transient "copied" feedback on the error-box copy button. */
@@ -216,117 +183,14 @@ export function ConnectionDialog({
    */
   const [draftId, setDraftId] = useState<string>("");
 
-  /** Load the form fields from `p`, or reset to defaults for a new draft. */
-  function loadFields(p: ConnectionProfile | null) {
-    if (p) {
-      setName(p.name);
-      setGroup(p.group ?? "");
-      setDriver(p.driver);
-      setHost(p.host);
-      setPort(p.port);
-      setDatabase(p.database);
-      setUsername(p.username);
-      setSsl(p.ssl);
-      setMaxConnections(
-        p.max_connections == null ? "" : String(p.max_connections),
-      );
-      setConnectionString(p.connection_string ?? "");
-      setAuthSource(p.auth_source ?? "");
-      setPassword("");
-      setMssqlInstance(p.mssql?.instance ?? "");
-      setMssqlTrustCert(p.mssql?.trust_server_certificate ?? true);
-      setMssqlAuth(p.mssql?.auth ?? "sql");
 
-      // MongoDB: decide form vs raw-edit mode. A stored URI we can parse back
-      // into the discrete fields opens in form mode (re-populating host / port
-      // / db / user / authSource from the URI); anything we can't represent
-      // losslessly (SRV, multi-host, embedded password, extra options) opens
-      // in raw-edit mode showing the URI verbatim.
-      if (p.driver === "mongodb") {
-        const cs = (p.connection_string ?? "").trim();
-        const parsed = cs ? parseMongoUri(cs) : null;
-        if (cs && !parsed) {
-          setMongoUriManual(true);
-        } else {
-          setMongoUriManual(false);
-          if (parsed) {
-            setHost(parsed.host);
-            setPort(parsed.port);
-            setDatabase(parsed.database);
-            // The legacy 1.1.0 form kept user / authSource as separate fields
-            // outside the URI — fall back to those when the URI omits them.
-            if (parsed.username) setUsername(parsed.username);
-            if (parsed.authSource) setAuthSource(parsed.authSource);
-          }
-        }
-      } else {
-        setMongoUriManual(false);
-      }
-
-      const tunnel = p.ssh_tunnel;
-      if (tunnel) {
-        setSshEnabled(true);
-        setSshHost(tunnel.host);
-        setSshPort(tunnel.port);
-        setSshUsername(tunnel.username);
-        setSshAuthMethod(tunnel.auth.kind === "key" ? "key" : "password");
-        setSshKeyPath(tunnel.auth.kind === "key" ? tunnel.auth.path : "");
-        setSshLocalPort(tunnel.local_port);
-        setSshHostKeyPolicy(tunnel.host_key_policy);
-      } else {
-        setSshEnabled(false);
-        setSshHost("");
-        setSshPort(22);
-        setSshUsername("");
-        setSshAuthMethod("password");
-        setSshKeyPath("");
-        setSshLocalPort(0);
-        setSshHostKeyPolicy("accept-new");
-      }
-      setSshSecret("");
-      setTrustedFingerprint(null);
-    } else {
-      // New draft: start from the configured default driver (if any) so a
-      // shop that's MySQL-first doesn't have to switch the dropdown every time.
-      const def = usePreferences.getState().prefs.ui.defaultDriver ?? "postgres";
-      setName("");
-      setGroup("");
-      setDriver(def);
-      setHost("localhost");
-      setPort(DEFAULT_PORTS[def]);
-      setDatabase("");
-      setUsername("");
-      setPassword("");
-      setSsl(false);
-      setMaxConnections("");
-      setConnectionString("");
-      setAuthSource("");
-      setMongoUriManual(false);
-      setMssqlInstance("");
-      setMssqlTrustCert(true);
-      setMssqlAuth("sql");
-
-      setSshEnabled(false);
-      setSshHost("");
-      setSshPort(22);
-      setSshUsername("");
-      setSshAuthMethod("password");
-      setSshKeyPath("");
-      setSshSecret("");
-      setSshLocalPort(0);
-      setSshHostKeyPolicy("accept-new");
-      setTrustedFingerprint(null);
-    }
-  }
-
-  // When the dialog opens, select whatever the caller asked for and reset the
-  // transient rail state (search term + multi-selection).
+  // When the dialog opens, select whatever the caller asked for. The rail's own
+  // transient state (search term, multi-selection, range anchor) needs no reset
+  // here: Radix unmounts `DialogContent` on close, so the rail remounts with
+  // its initial state every time the manager is opened.
   useEffect(() => {
     if (!open) return;
     setEditingId(initial?.id ?? null);
-    setSearch("");
-    setSelectedIds(new Set());
-    lastClickedRef.current = null;
   }, [open, initial]);
 
   // Load the editor whenever the selection changes. We read the profile list
@@ -356,209 +220,6 @@ export function ConnectionDialog({
     for (const p of profiles) if (p.group) names.add(p.group);
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [profiles]);
-
-  const searching = search.trim().length > 0;
-
-  /** Profiles matching the rail search box (name / host / database / group). */
-  const filteredProfiles = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return profiles;
-    return profiles.filter((p) =>
-      [p.name, p.host, p.database, p.group, p.connection_string]
-        .filter((x): x is string => !!x)
-        .some((x) => x.toLowerCase().includes(term)),
-    );
-  }, [profiles, search]);
-
-  const buckets = useMemo(
-    () => bucketByGroup(filteredProfiles),
-    [filteredProfiles],
-  );
-
-  /** Ids in render order, skipping collapsed groups — the domain over which
-   *  Shift-range selection operates. An active search force-expands groups. */
-  const visibleIds = useMemo(() => {
-    const ids = buckets.ungrouped.map((p) => p.id);
-    for (const g of buckets.groups) {
-      const collapsed = !searching && groupCollapse.isCollapsed(g.name);
-      if (!collapsed) ids.push(...g.items.map((p) => p.id));
-    }
-    return ids;
-  }, [buckets, searching, groupCollapse]);
-
-  /** Rail row click: plain = single-select + edit; Ctrl/Cmd = toggle into the
-   *  multi-selection; Shift = range from the last anchor (OS-style, mirrors
-   *  the data grid). */
-  function onRowClick(id: string, e: React.MouseEvent) {
-    if (e.shiftKey && lastClickedRef.current) {
-      const a = visibleIds.indexOf(lastClickedRef.current);
-      const b = visibleIds.indexOf(id);
-      if (a !== -1 && b !== -1) {
-        const [lo, hi] = a < b ? [a, b] : [b, a];
-        const range = visibleIds.slice(lo, hi + 1);
-        setSelectedIds((prev) => new Set([...prev, ...range]));
-      }
-      setEditingId(id);
-      return;
-    }
-    if (e.ctrlKey || e.metaKey) {
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
-      lastClickedRef.current = id;
-      setEditingId(id);
-      return;
-    }
-    setSelectedIds(new Set([id]));
-    lastClickedRef.current = id;
-    setEditingId(id);
-  }
-
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    lastClickedRef.current = id;
-  }
-
-  /** Bulk-delete the multi-selection. Always confirmed via `bulkDeleteOpen`'s
-   *  dialog, ignoring the "confirm destructive actions" preference — deleting
-   *  connections is destructive regardless. */
-  function onBulkDelete() {
-    if (selectedIds.size === 0) return;
-    setBulkDeleteOpen(true);
-  }
-
-  async function performBulkDelete() {
-    const ids = Array.from(selectedIds);
-    setBulkDeleting(true);
-    try {
-      for (const id of ids) {
-        try {
-          await remove(id);
-        } catch {
-          // Best-effort: one keychain/disk failure shouldn't abort the rest.
-        }
-      }
-      if (editingId && selectedIds.has(editingId)) setEditingId(null);
-      setSelectedIds(new Set());
-      lastClickedRef.current = null;
-    } finally {
-      setBulkDeleting(false);
-      setBulkDeleteOpen(false);
-    }
-  }
-
-  /** One connection row in the rail. A `<div role="button">` rather than a
-   *  `<button>` so the selection `<input type="checkbox">` can nest legally. */
-  function renderRow(p: ConnectionProfile) {
-    const isActive = active.has(p.id);
-    const selected = editingId === p.id;
-    const checked = selectedIds.has(p.id);
-    const multi = selectedIds.size > 1;
-    const subline =
-      p.driver === "sqlite"
-        ? sqliteFileLabel(p.database)
-        : p.driver === "mongodb"
-          ? p.connection_string || `${p.host}:${p.port}`
-          : `${p.host}:${p.port}/${p.database}`;
-    return (
-      <div
-        key={p.id}
-        role="button"
-        tabIndex={0}
-        onClick={(e) => onRowClick(p.id, e)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setEditingId(p.id);
-            setSelectedIds(new Set([p.id]));
-            lastClickedRef.current = p.id;
-          }
-        }}
-        className={cn(
-          "group/row flex w-full cursor-pointer items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors",
-          selected
-            ? "border-primary bg-accent/40"
-            : "border-transparent hover:bg-accent/30",
-          checked && multi && "bg-accent/60",
-        )}
-      >
-        {/* Checkbox reveals on hover / when selected; otherwise the live
-            "connected" status dot occupies the same slot (grid convention). */}
-        <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={() => toggleSelect(p.id)}
-            onClick={(e) => e.stopPropagation()}
-            aria-label={t("connections.selectConnection", { name: p.name })}
-            className={cn(
-              "accent-brand cursor-pointer",
-              checked ? "inline-block" : "hidden group-hover/row:inline-block",
-            )}
-          />
-          <span
-            className={cn(
-              "absolute h-1.5 w-1.5 rounded-full",
-              isActive ? "bg-brand" : "bg-muted-foreground/40",
-              checked ? "hidden" : "group-hover/row:hidden",
-            )}
-            title={isActive ? t("connections.disconnectTooltip") : undefined}
-          />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-sm font-medium">{p.name}</span>
-            <DriverBadge driver={p.driver} />
-          </div>
-          <div className="truncate text-[11px] text-muted-foreground">
-            {subline}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /** URI derived live from the discrete MongoDB fields (form mode). The
-   *  password is intentionally excluded — it travels via the keychain. */
-  const builtMongoUri = useMemo(
-    () => buildMongoUri({ host, port, database, username, authSource }),
-    [host, port, database, username, authSource],
-  );
-
-  /** The URI this profile will actually connect with: the hand-edited buffer
-   *  in raw-edit mode, otherwise the field-derived one. */
-  const effectiveMongoUri = mongoUriManual ? connectionString : builtMongoUri;
-
-  /** A MongoDB SRV URI resolves to multiple hosts — incompatible with the
-   *  single-port SSH tunnel, so tunnelling is disabled for it. (Only reachable
-   *  in raw-edit mode; the field-built URI is always single-host.) */
-  const isMongoSrv =
-    driver === "mongodb" &&
-    effectiveMongoUri.trim().startsWith("mongodb+srv://");
-
-  function buildSshTunnel(): SshTunnel | null {
-    if (!sshEnabled || !supportsSshTunnel(driver) || isMongoSrv) return null;
-    const auth: SshAuth =
-      sshAuthMethod === "key"
-        ? { kind: "key", path: sshKeyPath }
-        : { kind: "password" };
-    return {
-      host: sshHost,
-      port: sshPort,
-      username: sshUsername,
-      auth,
-      local_port: sshLocalPort,
-      host_key_policy: sshHostKeyPolicy,
-    };
-  }
 
   /**
    * Whether the profile under edit came from a shared origin (#108). Read from
@@ -717,9 +378,9 @@ export function ConnectionDialog({
       candidate = `${base.name} (${copy} ${n})`;
     }
     pendingCloneRef.current = { ...base, id: "", name: candidate };
-    // Flip to a new draft; the load effect picks up the pending clone.
+    // Flip to a new draft; the load effect picks up the pending clone. The rail
+    // drops its selection off the same signal (see its `editingId` effect).
     setEditingId(null);
-    setSelectedIds(new Set());
   }
 
   /**
@@ -734,64 +395,6 @@ export function ConnectionDialog({
    * doing it here as well is so the user *sees* the split before saving rather
    * than having it happen silently.
    */
-  function normalizeServerName() {
-    if (driver !== "sqlserver") return;
-    const next = splitSqlServerName(host, mssqlInstance);
-    if (next.host !== host) setHost(next.host);
-    if (next.instance !== mssqlInstance) setMssqlInstance(next.instance);
-  }
-
-  function onDriverChange(d: Driver) {
-    setDriver(d);
-    if (port === DEFAULT_PORTS[driver] || port === 0) {
-      setPort(DEFAULT_PORTS[d]);
-    }
-  }
-
-  /** Toggle the MongoDB raw-edit mode. Entering seeds the buffer from the
-   *  field-built URI; leaving folds the (possibly edited) URI back into the
-   *  fields when it's representable, otherwise stays in raw-edit so SRV /
-   *  multi-host / option-rich URIs aren't silently lost. */
-  function onToggleMongoUriManual(next: boolean) {
-    if (next) {
-      setConnectionString(builtMongoUri);
-      setMongoUriManual(true);
-      return;
-    }
-    const parsed = parseMongoUri(connectionString);
-    if (parsed) {
-      setHost(parsed.host);
-      setPort(parsed.port);
-      setDatabase(parsed.database);
-      setUsername(parsed.username);
-      setAuthSource(parsed.authSource);
-      setMongoUriManual(false);
-    }
-    // else: parse failed — keep raw-edit on (the Switch reflects mongoUriManual,
-    // so it visibly stays enabled). The amber banner already explains why.
-  }
-
-  // Refresh the trusted fingerprint display whenever the SSH host:port
-  // identity changes. Failures (no entry, transport error) just clear it.
-  useEffect(() => {
-    if (!open || !sshEnabled || !sshHost) {
-      setTrustedFingerprint(null);
-      return;
-    }
-    let cancelled = false;
-    api
-      .getHostKey(`${sshHost}:${sshPort}`)
-      .then((fp) => {
-        if (!cancelled) setTrustedFingerprint(fp);
-      })
-      .catch(() => {
-        if (!cancelled) setTrustedFingerprint(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, sshEnabled, sshHost, sshPort]);
-
   async function onForgetHostKey() {
     if (!sshHost) return;
     const hostPort = `${sshHost}:${sshPort}`;
@@ -920,102 +523,13 @@ export function ConnectionDialog({
         </DialogHeader>
 
         <div className="grid flex-1 grid-cols-[240px_1fr] overflow-hidden">
-          {/* Left rail — saved connections (searchable, grouped tree) + new */}
-          <aside className="flex min-h-0 flex-col border-r border-border bg-card/40">
-            <div className="px-2 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-start gap-2"
-                onClick={() => setEditingId(null)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {t("connectionDialog.newConnection")}
-              </Button>
-            </div>
-            {profiles.length > 0 && (
-              <div className="px-2 pt-2">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder={t("connectionDialog.searchPlaceholder")}
-                    className="h-8 pl-7 pr-7 text-xs"
-                  />
-                  {search && (
-                    <button
-                      type="button"
-                      onClick={() => setSearch("")}
-                      aria-label={t("common.clear")}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-            <div className="mt-1 px-3 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-              {t("connectionDialog.listTitle")}
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-              {profiles.length === 0 ? (
-                <div className="px-3 py-3 text-[11px] text-muted-foreground">
-                  {t("connectionDialog.emptyList")}
-                </div>
-              ) : filteredProfiles.length === 0 ? (
-                <div className="px-3 py-3 text-[11px] text-muted-foreground">
-                  {t("connectionDialog.noMatches")}
-                </div>
-              ) : (
-                <>
-                  {buckets.ungrouped.map(renderRow)}
-                  {buckets.groups.map(({ name, items }) => {
-                    const collapsed =
-                      !searching && groupCollapse.isCollapsed(name);
-                    return (
-                      <div key={name}>
-                        <button
-                          type="button"
-                          onClick={() => groupCollapse.toggle(name)}
-                          className="flex w-full items-center gap-1 px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
-                        >
-                          {collapsed ? (
-                            <ChevronRight className="h-3 w-3 shrink-0" />
-                          ) : (
-                            <ChevronDown className="h-3 w-3 shrink-0" />
-                          )}
-                          <Folder className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{name}</span>
-                          <span className="text-muted-foreground/60">
-                            ({items.length})
-                          </span>
-                        </button>
-                        {!collapsed && items.map(renderRow)}
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-            {selectedIds.size > 1 && (
-              <div className="flex items-center gap-2 border-t border-border px-3 py-2">
-                <span className="text-[11px] text-muted-foreground">
-                  {t("connections.selectedCount", { count: selectedIds.size })}
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="ml-auto h-7 gap-1 px-2 text-destructive hover:text-destructive"
-                  onClick={onBulkDelete}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {t("connectionDialog.delete")}
-                </Button>
-              </div>
-            )}
-          </aside>
+          <ConnectionRail
+            profiles={profiles}
+            active={active}
+            editingId={editingId}
+            onEdit={setEditingId}
+            removeProfile={remove}
+          />
 
           {/* Right pane — editor */}
           <main className="flex min-h-0 flex-col">
@@ -1639,15 +1153,6 @@ export function ConnectionDialog({
 
       <ExportProfilesDialog open={exportOpen} onOpenChange={setExportOpen} />
       <ImportProfilesDialog open={importOpen} onOpenChange={setImportOpen} />
-      <ConfirmDialog
-        open={bulkDeleteOpen}
-        onOpenChange={setBulkDeleteOpen}
-        title={t("connections.bulkDeleteTitle", { count: selectedIds.size })}
-        description={t("connections.bulkDeleteConfirm", { count: selectedIds.size })}
-        confirmLabel={t("connectionDialog.delete")}
-        confirming={bulkDeleting}
-        onConfirm={() => void performBulkDelete()}
-      />
     </>
   );
 }
