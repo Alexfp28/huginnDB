@@ -280,7 +280,9 @@ export interface MongoIndexInfo {
  *  Rust — the frontend never parses BSON (gotcha #33). */
 export interface NewMongoIndexSpec {
   keys: string;
-  /** Omitted lets the server derive `field_1_other_-1`. */
+  /** Blank/omitted falls back to the `field_1_other_-1` convention, computed
+   *  on the Rust side (`default_index_name` in `db/mongo/indexes.rs`) — the
+   *  raw `createIndexes` command this app uses does not derive it itself. */
   name?: string | null;
   unique: boolean;
   sparse: boolean;

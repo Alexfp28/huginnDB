@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Creating a MongoDB index with a blank "Name" field always failed.** The
+  dialog's "leave blank to let the server derive it" behaviour never worked:
+  `NewMongoIndexSpec::to_document` simply omitted the `name` key when blank,
+  but the raw `createIndexes` run-command this app uses (deliberately, over
+  the typed `Collection::create_index()` helper) does not auto-derive a name
+  the way that typed helper does, so the server rejected the spec with
+  `FailedToParse: The 'name' field is a required property`. The write path
+  now shares the same `field_1_other_-1` naming convention the read path
+  (`spec_to_info`) already used for display, via a new `default_index_name`
+  helper, so a blank name always resolves to a real one before the spec is
+  sent.
+
 - **A shared origin carrying encrypted secrets stored the wrong thing in the OS
   keychain.** `sync_origin` wrote the base64 AES-256-GCM *envelope* as if it were
   the password, so every profile imported from such an origin failed to connect
