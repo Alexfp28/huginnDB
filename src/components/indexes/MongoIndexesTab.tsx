@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { RefreshButton } from "@/components/common/RefreshButton";
 import { IndexEditorDialog } from "@/components/indexes/dialogs/IndexEditorDialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,7 +47,6 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  RefreshCw,
   Trash2,
 } from "lucide-react";
 
@@ -189,15 +189,11 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            size="icon"
-            variant="ghost"
+          <RefreshButton
             onClick={refresh}
-            disabled={loading}
+            loading={loading}
             title={t("indexes.refresh")}
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-          </Button>
+          />
           <Button
             size="sm"
             onClick={() => {

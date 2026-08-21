@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { RefreshButton } from "@/components/common/RefreshButton";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
@@ -963,17 +964,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     {
       id: "refresh",
       bar: (
-        <Button
-          variant="ghost"
-          size="icon"
+        <RefreshButton
           onClick={fetchData}
-          disabled={loading}
+          loading={loading}
           title={t("tableData.refresh")}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-          />
-        </Button>
+        />
       ),
       menu: (
         <DropdownMenuItem

@@ -28,10 +28,9 @@ import {
   ArrowUpDown,
   ChevronDown,
   ChevronRight,
-  RefreshCw,
   ShieldCheck,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { RefreshButton } from "@/components/common/RefreshButton";
 import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { PrivilegeInfo, UserInfo } from "@/types";
@@ -168,15 +167,11 @@ export function SecurityTab({
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t("security.title")}
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
+        <RefreshButton
           onClick={refresh}
-          disabled={loading}
+          loading={loading}
           title={t("security.refresh")}
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-        </Button>
+        />
       </div>
 
       {error && (

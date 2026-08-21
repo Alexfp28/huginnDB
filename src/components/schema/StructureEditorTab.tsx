@@ -13,8 +13,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { KeyRound, Plus, Trash2, RefreshCw, ChevronUp, ChevronDown } from "lucide-react";
+import { KeyRound, Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
+import { RefreshButton } from "@/components/common/RefreshButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
@@ -247,10 +249,7 @@ export function StructureEditorTab({
       });
   }, [connectionId, original, isReadOnly]);
 
-  useEffect(() => {
-    const id = setTimeout(runPreview, 400);
-    return () => clearTimeout(id);
-  }, [desired, runPreview]);
+  useDebouncedPreview(desired, runPreview);
 
   async function doApply() {
     setApplying(true);
@@ -376,20 +375,13 @@ export function StructureEditorTab({
         />
         <div className="ml-auto flex items-center gap-2">
           {mode === "edit" && (
-            <Button
-              variant="ghost"
-              size="icon"
+            <RefreshButton
               className="h-7 w-7"
               onClick={() => void reload()}
-              disabled={loading || applying}
+              loading={loading}
+              disabled={applying}
               title={t("structure.refresh")}
-            >
-              <RefreshCw
-                className={
-                  loading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"
-                }
-              />
-            </Button>
+            />
           )}
           {isReadOnly ? (
             <span className="rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground">

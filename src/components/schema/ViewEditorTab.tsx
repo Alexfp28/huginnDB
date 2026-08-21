@@ -23,6 +23,8 @@ import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
+import { RefreshButton } from "@/components/common/RefreshButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataGrid } from "@/components/grid/DataGrid";
@@ -189,10 +191,7 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
     runDataPreview();
   }, [runDdlPreview, runDataPreview]);
 
-  useEffect(() => {
-    const id = setTimeout(runBothPreviews, 400);
-    return () => clearTimeout(id);
-  }, [desired, runBothPreviews]);
+  useDebouncedPreview(desired, runBothPreviews);
 
   // Ref for the same reason as QueryEditorTab's `runQueryRef`: Monaco's
   // `addCommand` (Ctrl+Enter) and the shared SQL provider registry both keep
@@ -303,18 +302,13 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
         />
         <div className="ml-auto flex items-center gap-2">
           {mode === "edit" && (
-            <Button
-              variant="ghost"
-              size="icon"
+            <RefreshButton
               className="h-7 w-7"
               onClick={() => void reload()}
-              disabled={loading || applying}
+              loading={loading}
+              disabled={applying}
               title={t("view.refresh")}
-            >
-              <RefreshCw
-                className={loading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"}
-              />
-            </Button>
+            />
           )}
           <Button
             size="sm"
