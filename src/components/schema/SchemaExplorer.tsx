@@ -60,12 +60,9 @@ import {
   useEnsureSchemaLoaded,
   useSchema,
 } from "@/stores/session/schema";
-import {
-  useTabs,
-  closeTabsForTable,
-  retitleTabsForTableRename,
-} from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
+import { useTabs } from "@/stores/session/tabs";
+import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { useUi } from "@/stores/session/ui";
 import {
@@ -75,25 +72,10 @@ import {
 } from "@/lib/connectionLabel";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { api } from "@/lib/tauri";
-import {
-  openTrackedDatabaseView,
-  persistLaunchState,
-} from "@/stores/session/persistedTabs";
 import { toast } from "sonner";
 import { splitSql } from "@/lib/sql/sqlSplit";
 import { selectSnippet } from "@/lib/grid/copyFormats";
 import type { SchemaTableMetric } from "@/types";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Segmented } from "@/components/ui/segmented";
 import {
   ContextMenu,
   ContextMenuAction,
@@ -101,16 +83,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
 import { confirmDestructive } from "@/lib/confirmDestructive";
@@ -122,6 +94,12 @@ import {
   ImportSqlDialog,
   type ImportScope,
 } from "@/components/schema/dialogs/ImportSqlDialog";
+import { CreateCollectionDialog } from "@/components/schema/dialogs/CreateCollectionDialog";
+import { CreateDatabaseDialog } from "@/components/schema/dialogs/CreateDatabaseDialog";
+import { DatabaseVisibilityDialog } from "@/components/schema/dialogs/DatabaseVisibilityDialog";
+import { DropObjectDialog } from "@/components/schema/dialogs/DropObjectDialog";
+import { EmptyTableDialog } from "@/components/schema/dialogs/EmptyTableDialog";
+import { RenameObjectDialog } from "@/components/schema/dialogs/RenameObjectDialog";
 import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
 import {
   isTooManyConnections,
@@ -137,13 +115,6 @@ import {
   supportsSqlDump,
 } from "@/lib/db/driver";
 
-
-/**
- * Match a table/database name against the filter box. HeidiSQL-style: the
- * filter may hold several `;`-separated patterns and a name matches when it
- * contains ANY of them (OR), so `users; orders` surfaces both tables at once.
- * An empty filter (or one that's only separators/whitespace) matches all.
- */
 /** Open (or focus, if already open) the "Security" tab for `connectionId`. */
 function openSecurityTab(connectionId: string, title: string) {
   useTabs.getState().open({
@@ -175,6 +146,12 @@ async function pickAndSplitSqlFile(t: Translate): Promise<string[] | null> {
   return statements.length > 0 ? statements : null;
 }
 
+/**
+ * Match a table/database name against the filter box. HeidiSQL-style: the
+ * filter may hold several `;`-separated patterns and a name matches when it
+ * contains ANY of them (OR), so `users; orders` surfaces both tables at once.
+ * An empty filter (or one that's only separators/whitespace) matches all.
+ */
 function matchesFilter(name: string, filter: string): boolean {
   const patterns = filter
     .split(";")
@@ -800,7 +777,8 @@ function SingleDbExplorer({
       </div>
 
       {renameTarget && (
-        <RenameTableDialog
+        <RenameObjectDialog
+          kind="table"
           connectionId={connectionId}
           target={renameTarget}
           driver={driver}
@@ -815,7 +793,8 @@ function SingleDbExplorer({
         />
       )}
       {dropTarget && (
-        <DropTableDialog
+        <DropObjectDialog
+          kind="table"
           connectionId={connectionId}
           target={dropTarget}
           onClose={() => setDropTarget(null)}
@@ -837,7 +816,8 @@ function SingleDbExplorer({
         />
       )}
       {renameViewTarget && (
-        <RenameViewDialog
+        <RenameObjectDialog
+          kind="view"
           connectionId={connectionId}
           target={renameViewTarget}
           onClose={() => setRenameViewTarget(null)}
@@ -848,7 +828,8 @@ function SingleDbExplorer({
         />
       )}
       {dropViewTarget && (
-        <DropViewDialog
+        <DropObjectDialog
+          kind="view"
           connectionId={connectionId}
           target={dropViewTarget}
           onClose={() => setDropViewTarget(null)}
@@ -2134,682 +2115,6 @@ function TableRow({
 
 /** Modal for renaming a table. Validates against empty input and
  *  surfaces the backend error in-place. */
-function RenameTableDialog({
-  connectionId,
-  target,
-  driver,
-  databases,
-  onClose,
-  onDone,
-}: {
-  connectionId: string;
-  target: TableInfo;
-  /** Drives the MongoDB-only "move to another database" affordance. */
-  driver: Driver | undefined;
-  /** Databases offered as a move destination. MongoDB-only, and already the
-   *  whole cluster's list — `list_databases` is not scoped to the handle's
-   *  own database there. */
-  databases: string[];
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const { t } = useTranslation();
-  const [newName, setNewName] = useState(target.name);
-  // MongoDB's `renameCollection` qualifies both sides with a database, so
-  // moving between them is the same operation as renaming — no other driver
-  // gets this, since a cross-schema move is a separate statement there (and
-  // doesn't exist at all on SQLite).
-  const canMove = driver === "mongodb" && databases.length > 0;
-  const [newDb, setNewDb] = useState(target.schema ?? "");
-  const { submitting, error, run } = useAsyncSubmit();
-  const moving = canMove && newDb !== (target.schema ?? "");
-
-  const submit = () => {
-    const trimmed = newName.trim();
-    if (!trimmed || (trimmed === target.name && !moving)) return;
-    run(async () => {
-      await api.renameTable(
-        connectionId,
-        target.schema,
-        target.name,
-        trimmed,
-        moving ? newDb : undefined,
-      );
-      if (moving) {
-        // The collection now lives behind a different connection id (the
-        // destination database's own child pool), so a retitled tab would
-        // keep querying the database it just left.
-        closeTabsForTable(connectionId, target.schema, target.name);
-      } else {
-        retitleTabsForTableRename(
-          useConnections.getState().profiles,
-          connectionId,
-          target.schema,
-          target.name,
-          trimmed,
-          t("tabs.structureSuffix"),
-        );
-      }
-      onDone();
-    });
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("schema.rename.title")}</DialogTitle>
-          <DialogDescription>
-            {t("schema.rename.description", { name: target.name })}
-          </DialogDescription>
-        </DialogHeader>
-        <Input
-          autoFocus
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder={t("schema.rename.newName")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-        />
-        {canMove && (
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">
-              {t("schema.rename.targetDatabase")}
-            </Label>
-            <Select value={newDb} onValueChange={setNewDb}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {databases.map((db) => (
-                  <SelectItem key={db} value={db}>
-                    {db}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {moving && (
-              <p className="text-xs text-muted-foreground">
-                {t("schema.rename.moveHint")}
-              </p>
-            )}
-          </div>
-        )}
-        {error && (
-          <div className="text-xs text-destructive">
-            {t("schema.rename.failed", { message: error })}
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            onClick={submit}
-            disabled={
-              submitting ||
-              !newName.trim() ||
-              (newName.trim() === target.name && !moving)
-            }
-          >
-            {submitting ? t("schema.rename.renaming") : t("schema.rename.submit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** Same shape as {@link RenameTableDialog} but for a view — calls
- *  `renameView` instead of `renameTable`. Kept as a separate component
- *  rather than parametrizing the table one, since the latter is tightly
- *  coupled to the table API call. */
-function RenameViewDialog({
-  connectionId,
-  target,
-  onClose,
-  onDone,
-}: {
-  connectionId: string;
-  target: TableInfo;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const { t } = useTranslation();
-  const [newName, setNewName] = useState(target.name);
-  const { submitting, error, run } = useAsyncSubmit();
-
-  const submit = () => {
-    const trimmed = newName.trim();
-    if (!trimmed || trimmed === target.name) return;
-    run(async () => {
-      await api.renameView(connectionId, target.schema, target.name, trimmed);
-      onDone();
-    });
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("schema.renameView.title")}</DialogTitle>
-          <DialogDescription>
-            {t("schema.renameView.description", { name: target.name })}
-          </DialogDescription>
-        </DialogHeader>
-        <Input
-          autoFocus
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder={t("schema.rename.newName")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-        />
-        {error && (
-          <div className="text-xs text-destructive">
-            {t("schema.renameView.failed", { message: error })}
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            onClick={submit}
-            disabled={
-              submitting ||
-              !newName.trim() ||
-              newName.trim() === target.name
-            }
-          >
-            {submitting ? t("schema.rename.renaming") : t("schema.rename.submit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** Same shape as {@link DropTableDialog} but for a view — calls `dropView`
- *  instead of `dropTable`. A view holds no data of its own, so unlike
- *  `EmptyTableDialog`'s preference-gated confirmation, this always confirms
- *  (dropping a view definition is not something to skip confirming). */
-function DropViewDialog({
-  connectionId,
-  target,
-  onClose,
-  onDone,
-}: {
-  connectionId: string;
-  target: TableInfo;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const { t } = useTranslation();
-  const { submitting, error, run } = useAsyncSubmit();
-
-  return (
-    <ConfirmDialog
-      open
-      onOpenChange={(open) => !open && onClose()}
-      title={t("schema.dropView.title", { name: target.name })}
-      description={t("schema.dropView.description")}
-      confirmLabel={t("schema.drop.submit")}
-      confirmingLabel={t("schema.drop.dropping")}
-      confirmAutoFocus
-      confirming={submitting}
-      error={error && t("schema.dropView.failed", { message: error })}
-      onConfirm={() =>
-        run(async () => {
-          await api.dropView(connectionId, target.schema, target.name);
-          onDone();
-        })
-      }
-    />
-  );
-}
-
-/** Modal for `CREATE DATABASE` — the "+" button in both the multi-DB
- *  explorer toolbar and the single-DB root header. Postgres/MySQL only;
- *  see `create_database`'s doc comment for why. */
-function CreateDatabaseDialog({
-  connectionId,
-  onClose,
-  onDone,
-}: {
-  connectionId: string;
-  onClose: () => void;
-  /** Fired with the created database's name — a single-DB caller has no
-   *  visible list to refresh, so it uses this to confirm success instead. */
-  onDone: (name: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [name, setName] = useState("");
-  const { submitting, error, run } = useAsyncSubmit();
-
-  const submit = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    run(async () => {
-      await api.createDatabase(connectionId, trimmed);
-      onDone(trimmed);
-    });
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("schema.createDatabase.title")}</DialogTitle>
-          <DialogDescription>
-            {t("schema.createDatabase.description")}
-          </DialogDescription>
-        </DialogHeader>
-        <Input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t("schema.createDatabase.namePlaceholder")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-        />
-        {error && (
-          <div className="text-xs text-destructive">
-            {t("schema.createDatabase.failed", { message: error })}
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            {t("common.cancel")}
-          </Button>
-          <Button onClick={submit} disabled={submitting || !name.trim()}>
-            {submitting
-              ? t("schema.createDatabase.creating")
-              : t("schema.createDatabase.submit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** Modal for creating a MongoDB collection (#61) — the collection analogue of
- *  `CreateDatabaseDialog`. Reached from the Mongo database context menu and the
- *  single-DB Mongo toolbar. `connectionId` must already be scoped to the target
- *  database (a `<parent>::db::<db>` view for a cluster), so the caller resolves
- *  it before opening this. */
-function CreateCollectionDialog({
-  connectionId,
-  onClose,
-  onDone,
-}: {
-  connectionId: string;
-  onClose: () => void;
-  /** Fired with the created collection's name so the caller can refresh the
-   *  tree and/or toast success. */
-  onDone: (name: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [name, setName] = useState("");
-  const { submitting, error, run } = useAsyncSubmit();
-
-  const submit = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    run(async () => {
-      await api.createCollection(connectionId, trimmed);
-      onDone(trimmed);
-    });
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("schema.createCollection.title")}</DialogTitle>
-          <DialogDescription>
-            {t("schema.createCollection.description")}
-          </DialogDescription>
-        </DialogHeader>
-        <Input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t("schema.createCollection.namePlaceholder")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-        />
-        {error && (
-          <div className="text-xs text-destructive">
-            {t("schema.createCollection.failed", { message: error })}
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            {t("common.cancel")}
-          </Button>
-          <Button onClick={submit} disabled={submitting || !name.trim()}>
-            {submitting
-              ? t("schema.createCollection.creating")
-              : t("schema.createCollection.submit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** DataGrip-style "choose which databases to show" picker (#64). "All selected"
- *  stores `null` so newly-created databases keep appearing automatically, and
- *  save is disabled with nothing selected — an empty subset would hide the whole
- *  tree, which is never what the user wants.
- *
- *  Where the subset lands is the user's choice, because the two scopes answer
- *  different questions. **This environment** (the default) writes an override
- *  onto `LaunchState.databaseVisibility`, so the same test server can show every
- *  replica in one environment and a single client's database in another — the
- *  thing that was impossible while the subset lived only on the (global)
- *  profile. **All environments** writes `visible_databases` on the profile,
- *  which is also what travels through export/import and shared origins, and
- *  clears any local override so the choice is visibly in effect here too.
- *
- *  A profile published by a shared origin (`origin_id`) is read-only, so only
- *  the environment scope is offered for it: a profile-scoped save would be
- *  silently undone by the next sync. */
-function DatabaseVisibilityDialog({
-  profileId,
-  databases,
-  onClose,
-}: {
-  profileId: string;
-  /** Every database name currently known for the connection. */
-  databases: string[];
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const profile = useConnections((s) =>
-    s.profiles.find((p) => p.id === profileId),
-  );
-  const override = useUi((s) => s.databaseVisibility[profileId]);
-  const hasOverride = override !== undefined;
-  const fromProfile = profile?.visible_databases ?? null;
-  const selected = hasOverride ? override : fromProfile;
-  const fromOrigin = !!profile?.origin_id;
-  const [scope, setScope] = useState<"environment" | "profile">(() => {
-    // Editing happens where the value the user is looking at actually lives, so
-    // tweaking an existing filter doesn't silently fork it into two layers. The
-    // exception is a value that doesn't exist yet: a brand-new subset defaults
-    // to this environment — the narrower, reversible choice, and the one people
-    // expect (assuming otherwise is what made the original bug a surprise).
-    if (hasOverride || fromOrigin) return "environment";
-    return fromProfile ? "profile" : "environment";
-  });
-  const [sel, setSel] = useState<Set<string>>(
-    () => new Set(selected ?? databases),
-  );
-  const { submitting, error, run } = useAsyncSubmit();
-
-  const allSelected = sel.size === databases.length;
-
-  const toggle = (name: string) => {
-    setSel((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  };
-  const toggleAll = () =>
-    setSel(allSelected ? new Set() : new Set(databases));
-
-  /** Write the launch state so the override survives a restart / switch. */
-  const persist = () =>
-    persistLaunchState(Array.from(useConnections.getState().active));
-
-  const submit = () => {
-    if (sel.size === 0) return;
-    run(async () => {
-      const chosen = databases.filter((n) => sel.has(n));
-      // "All" → null so future databases stay visible; a proper subset is
-      // stored verbatim. At environment scope the `null` is still recorded as an
-      // override (the key stays present), which is how this environment shows
-      // everything while the profile keeps a narrower default for the others.
-      const value = chosen.length === databases.length ? null : chosen;
-      if (scope === "profile") {
-        const stored = useConnections
-          .getState()
-          .profiles.find((p) => p.id === profileId);
-        if (stored) {
-          await useConnections.getState().save({
-            ...stored,
-            visible_databases: value,
-          });
-        }
-        // Drop the local override, or the user picks "all environments" and
-        // sees nothing change here — the override would keep winning.
-        if (hasOverride) {
-          useUi.getState().setDatabaseVisibilityFor(profileId, undefined);
-          await persist();
-        }
-      } else {
-        // "Show everything here" on top of a connection that already shows
-        // everything is an override that overrides nothing — drop the key
-        // instead of persisting a no-op that outlives the profile's default.
-        const local = value === null && fromProfile === null ? undefined : value;
-        useUi.getState().setDatabaseVisibilityFor(profileId, local);
-        await persist();
-      }
-      onClose();
-    });
-  };
-
-  /** Discard this environment's override and fall back to the profile's subset. */
-  const clearOverride = () => {
-    run(async () => {
-      useUi.getState().setDatabaseVisibilityFor(profileId, undefined);
-      await persist();
-      onClose();
-    });
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("schema.selectDatabases.title")}</DialogTitle>
-          <DialogDescription>
-            {t("schema.selectDatabases.description")}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-muted-foreground">
-              {t("schema.selectDatabases.scopeLabel")}
-            </span>
-            {/* No control at all for an origin-published connection — a
-                one-option segmented strip reads as a dead toggle. The hint
-                below says why the choice isn't there. */}
-            {fromOrigin ? (
-              <span className="text-xs font-medium">
-                {t("schema.selectDatabases.scopeEnvironment")}
-              </span>
-            ) : (
-              <Segmented
-                size="sm"
-                aria-label={t("schema.selectDatabases.scopeLabel")}
-                value={scope}
-                onValueChange={setScope}
-                options={[
-                  {
-                    value: "environment" as const,
-                    label: t("schema.selectDatabases.scopeEnvironment"),
-                  },
-                  {
-                    value: "profile" as const,
-                    label: t("schema.selectDatabases.scopeProfile"),
-                  },
-                ]}
-              />
-            )}
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            {fromOrigin
-              ? t("schema.selectDatabases.scopeOriginHint")
-              : scope === "environment"
-                ? t("schema.selectDatabases.scopeEnvironmentHint")
-                : t("schema.selectDatabases.scopeProfileHint")}
-          </p>
-          {hasOverride && (
-            <button
-              onClick={clearOverride}
-              disabled={submitting}
-              className="text-[11px] text-primary underline-offset-2 hover:underline disabled:opacity-50"
-            >
-              {t("schema.selectDatabases.useProfileDefault")}
-            </button>
-          )}
-        </div>
-        <div className="flex items-center justify-between pb-1">
-          <span className="text-xs text-muted-foreground">
-            {t("schema.selectDatabases.count", {
-              selected: sel.size,
-              total: databases.length,
-            })}
-          </span>
-          <button
-            onClick={toggleAll}
-            className="text-xs text-primary underline-offset-2 hover:underline"
-          >
-            {allSelected
-              ? t("schema.selectDatabases.deselectAll")
-              : t("schema.selectDatabases.selectAll")}
-          </button>
-        </div>
-        <div className="max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border">
-          {databases.map((name) => (
-            <label
-              key={name}
-              className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/50"
-            >
-              <input
-                type="checkbox"
-                checked={sel.has(name)}
-                onChange={() => toggle(name)}
-                className="h-3.5 w-3.5 rounded accent-primary"
-              />
-              <span className="flex-1 truncate text-xs">{name}</span>
-            </label>
-          ))}
-        </div>
-        {error && <div className="text-xs text-destructive">{error}</div>}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            {t("common.cancel")}
-          </Button>
-          <Button onClick={submit} disabled={submitting || sel.size === 0}>
-            {t("common.save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** Modal for dropping a table. Requires the user to retype the table
- *  name verbatim before the destructive button enables — same pattern
- *  GitHub uses for repository deletion. */
-function DropTableDialog({
-  connectionId,
-  target,
-  onClose,
-  onDone,
-}: {
-  connectionId: string;
-  target: TableInfo;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const { t } = useTranslation();
-  const { submitting, error, run } = useAsyncSubmit();
-
-  return (
-    <ConfirmDialog
-      open
-      onOpenChange={(open) => !open && onClose()}
-      title={t("schema.drop.title", { name: target.name })}
-      description={t("schema.drop.description")}
-      confirmLabel={t("schema.drop.submit")}
-      confirmingLabel={t("schema.drop.dropping")}
-      confirmAutoFocus
-      confirming={submitting}
-      error={error && t("schema.drop.failed", { message: error })}
-      onConfirm={() =>
-        run(async () => {
-          await api.dropTable(connectionId, target.schema, target.name);
-          onDone();
-        })
-      }
-    />
-  );
-}
-
-/** Confirmation for emptying a table (#69). Unlike the always-on DROP dialog,
- *  this carries a "don't ask again" checkbox that flips the dedicated
- *  `ui.confirmEmptyTable` preference off, so a power user who empties log
- *  tables often can silence just this prompt. */
-function EmptyTableDialog({
-  connectionId,
-  target,
-  onClose,
-  onDone,
-}: {
-  connectionId: string;
-  target: TableInfo;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const { t } = useTranslation();
-  const updateUi = usePreferences((s) => s.updateUi);
-  const { submitting, error, run } = useAsyncSubmit();
-  const [dontAsk, setDontAsk] = useState(false);
-
-  return (
-    <ConfirmDialog
-      open
-      onOpenChange={(open) => !open && onClose()}
-      title={t("schema.empty.title", { name: target.name })}
-      description={t("schema.empty.description")}
-      confirmLabel={t("schema.empty.submit")}
-      confirmingLabel={t("schema.empty.emptying")}
-      confirmAutoFocus
-      confirming={submitting}
-      error={error && t("schema.empty.failed", { message: error })}
-      onConfirm={() =>
-        run(async () => {
-          await api.emptyTable(connectionId, target.schema, target.name);
-          if (dontAsk) updateUi({ confirmEmptyTable: false });
-          toast.success(t("schema.empty.emptied", { name: target.name }));
-          onDone();
-        })
-      }
-    >
-      <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          className="accent-brand"
-          checked={dontAsk}
-          onChange={(e) => setDontAsk(e.target.checked)}
-        />
-        {t("schema.empty.dontAskAgain")}
-      </label>
-    </ConfirmDialog>
-  );
-}
-
 /** Collapsible "indexes" section header within a schema node. */
 function IndexesSectionHeader({
   label,
