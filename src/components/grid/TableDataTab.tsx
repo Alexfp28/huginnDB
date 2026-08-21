@@ -84,6 +84,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
+import { formatNumber } from "@/lib/utils";
 import {
   registerTableRefresh,
   unregisterTableRefresh,
@@ -1253,18 +1254,15 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           className="tabular-nums text-muted-foreground"
           title={totalEstimated ? t("tableData.approxTotal") : undefined}
         >
-          {(offset + 1).toLocaleString()}–
-          {Math.min(
-            offset + pageSize,
-            total ?? offset + pageSize,
-          ).toLocaleString()}
+          {formatNumber(offset + 1)}–
+          {formatNumber(Math.min(offset + pageSize, total ?? offset + pageSize))}
           {total !== null && (
             <>
               {" "}
               {t("dataGrid.of")}{" "}
               <span className="font-medium text-foreground">
                 {totalEstimated ? "~" : ""}
-                {total.toLocaleString()}
+                {formatNumber(total)}
               </span>
             </>
           )}

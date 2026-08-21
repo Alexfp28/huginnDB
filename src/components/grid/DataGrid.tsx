@@ -72,7 +72,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/EmptyState";
 import {
@@ -2759,7 +2759,7 @@ export function DataGrid({
           {showRowCount && rowCountInBar && (
             <span className="tabular-nums text-muted-foreground">
               <span className="font-medium text-foreground">
-                {visibleRows.length.toLocaleString()}
+                {formatNumber(visibleRows.length)}
               </span>{" "}
               {t("dataGrid.rows")}
               {result.total !== null && result.total !== undefined && (
@@ -2767,7 +2767,7 @@ export function DataGrid({
                   {" "}
                   {t("dataGrid.of")}{" "}
                   <span className="font-medium text-foreground">
-                    {result.total.toLocaleString()}
+                    {formatNumber(result.total)}
                   </span>
                 </>
               )}
@@ -2841,11 +2841,11 @@ export function DataGrid({
                     <div className="px-2 py-1 text-xs tabular-nums text-muted-foreground">
                       {showRowCount && !rowCountInBar && (
                         <>
-                          {visibleRows.length.toLocaleString()}{" "}
+                          {formatNumber(visibleRows.length)}{" "}
                           {t("dataGrid.rows")}
                           {result.total !== null &&
                             result.total !== undefined &&
-                            ` ${t("dataGrid.of")} ${result.total.toLocaleString()}`}
+                            ` ${t("dataGrid.of")} ${formatNumber(result.total)}`}
                           {!elapsedInBar && " · "}
                         </>
                       )}

@@ -63,7 +63,7 @@ import { splitSql } from "@/lib/sql/sqlSplit";
 import { databaseOfViewId, parentConnectionId, sqliteFileLabel } from "@/lib/connectionLabel";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
-import { cn, formatDuration } from "@/lib/utils";
+import { cn, formatDuration, formatTime } from "@/lib/utils";
 import { supportsMultipleDatabases } from "@/lib/db/driver";
 import {
   ensureSqlProviders,
@@ -657,7 +657,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                           {h.sql}
                         </div>
                         <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <span>{new Date(h.ranAt).toLocaleTimeString()}</span>
+                          <span>{formatTime(h.ranAt)}</span>
                           {h.error ? (
                             <span className="truncate text-destructive">
                               {h.error}

@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import type { Origin } from "@/types";
+import { formatDateTime } from "@/lib/utils";
 
 export function OriginsSection() {
   const { t } = useTranslation();
@@ -198,7 +199,7 @@ export function OriginsSection() {
                 <div className="mt-0.5 text-[11px] text-muted-foreground">
                   {o.lastSyncedAt
                     ? t("origins.lastSynced", {
-                        when: new Date(o.lastSyncedAt).toLocaleString(),
+                        when: formatDateTime(o.lastSyncedAt),
                       })
                     : t("origins.neverSynced")}
                 </div>

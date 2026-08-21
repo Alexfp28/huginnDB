@@ -44,7 +44,7 @@ import { SchemaBindingBadge } from "@/components/jsonSchema/SchemaBindingBadge";
 import { cellModelPath, bindSchemaToModel } from "@/lib/monaco/monacoJson";
 import { useJsonSchemas, relationKey, schemaUri } from "@/stores/jsonSchemas";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { formatComboForDisplay } from "@/lib/keybindings";
 
 interface Props {
@@ -342,7 +342,7 @@ export function CellEditor({
                 {t("cellEditor.chars", { count: value.length })}
               </span>
               <span className="rounded bg-muted px-1.5 py-0.5">
-                {bytes.toLocaleString()} B
+                {formatNumber(bytes)} B
               </span>
             </span>
           </DialogTitle>

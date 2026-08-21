@@ -36,7 +36,7 @@ import {
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { confirmDestructive } from "@/lib/confirmDestructive";
 import { api } from "@/lib/tauri";
-import { cn, formatBytes } from "@/lib/utils";
+import { cn, formatBytes, formatDateTime, formatNumber } from "@/lib/utils";
 import type { MongoIndexInfo, NewMongoIndexSpec } from "@/types";
 import {
   ArrowDown,
@@ -430,7 +430,7 @@ function UsageCell({
     <SimpleTooltip
       label={
         since
-          ? t("indexes.usageSince", { date: new Date(since).toLocaleString() })
+          ? t("indexes.usageSince", { date: formatDateTime(since) })
           : t("indexes.usageUnknownSince")
       }
     >
@@ -440,7 +440,7 @@ function UsageCell({
           ops === 0 ? "text-warning" : "text-muted-foreground",
         )}
       >
-        {ops.toLocaleString()}
+        {formatNumber(ops)}
       </span>
     </SimpleTooltip>
   );
