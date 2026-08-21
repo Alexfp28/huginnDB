@@ -490,6 +490,22 @@ pub async fn list_privileges(conn: &MongoConn, user: &str) -> AppResult<Vec<Priv
     Ok(out)
 }
 
+/// Engine and version, as `mongodb <version>`.
+///
+/// `buildInfo` is an `admin`-database run-command, so this works regardless of
+/// which database the connection is bound to. Reports `?` rather than failing if
+/// the reply lacks a `version` field — a status-bar string is not worth turning
+/// into an error.
+pub async fn server_version(conn: &MongoConn) -> AppResult<String> {
+    let info = conn
+        .client
+        .database("admin")
+        .run_command(mongodb::bson::doc! {"buildInfo": 1})
+        .await?;
+    let ver = info.get_str("version").unwrap_or("?");
+    Ok(format!("mongodb {ver}"))
+}
+
 /// Best-effort liveness check used by `test_connection`: ping the admin db.
 pub async fn ping(conn: &MongoConn) -> AppResult<()> {
     conn.client
