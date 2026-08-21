@@ -137,46 +137,28 @@ pub(super) fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64, truncated: bo
         })
         .collect();
 
-    QueryResult {
-        rows_affected: rows.len() as u64,
-        rows,
-        columns,
-        elapsed_ms,
-        total: None,
-        truncated,
-        row_types: Some(row_types),
-    }
+    QueryResult::rows(columns, rows, elapsed_ms)
+        .with_truncated(truncated)
+        .with_row_types(row_types)
 }
 
 /// Single scalar result (used by `count`): one column, one row. `data_type` is
 /// passed in by the caller rather than inferred — `count` always returns a
 /// concrete, known type (a 64-bit count), so there's nothing to sample.
 fn scalar_result(name: &str, data_type: &str, value: Value, elapsed_ms: u64) -> QueryResult {
-    QueryResult {
-        columns: vec![ColumnMeta {
+    QueryResult::rows(
+        vec![ColumnMeta {
             name: name.to_string(),
             data_type: data_type.to_string(),
         }],
-        rows: vec![vec![value]],
-        rows_affected: 1,
+        vec![vec![value]],
         elapsed_ms,
-        total: None,
-        truncated: false,
-        row_types: None,
-    }
+    )
 }
 
 /// Result carrying only an affected-document count (writes).
 fn affected_result(count: u64, elapsed_ms: u64) -> QueryResult {
-    QueryResult {
-        columns: vec![],
-        rows: vec![],
-        rows_affected: count,
-        elapsed_ms,
-        total: None,
-        truncated: false,
-        row_types: None,
-    }
+    QueryResult::affected(count, elapsed_ms)
 }
 
 /// Execute one parsed `mongosh` statement and shape it into a [`QueryResult`].
@@ -237,18 +219,15 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
             values.truncate(MAX_ADHOC_QUERY_ROWS);
             let data_type = infer_column_type(values.iter().map(Some));
             let rows: Vec<Vec<Value>> = values.iter().map(|b| vec![bson_to_json(b)]).collect();
-            Ok(QueryResult {
-                columns: vec![ColumnMeta {
+            Ok(QueryResult::rows(
+                vec![ColumnMeta {
                     name: field,
                     data_type,
                 }],
-                rows_affected: rows.len() as u64,
                 rows,
-                elapsed_ms: ms(),
-                total: None,
-                truncated,
-                row_types: None,
-            })
+                ms(),
+            )
+            .with_truncated(truncated))
         }
         MongoOp::InsertOne { doc } => {
             coll.insert_one(doc).await?;

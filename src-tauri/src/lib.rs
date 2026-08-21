@@ -38,6 +38,8 @@ mod state;
 mod state_file;
 mod store;
 mod tab_state;
+#[cfg(test)]
+mod testkit;
 mod transfer;
 
 use state::{AppState, StartupArgs};

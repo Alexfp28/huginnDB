@@ -810,24 +810,8 @@ mod tests {
 
     fn profile(id: &str, name: &str) -> ConnectionProfile {
         ConnectionProfile {
-            id: id.into(),
             name: name.into(),
-            driver: Driver::Postgres,
-            host: "localhost".into(),
-            port: 5432,
-            database: String::new(),
-            username: "u".into(),
-            ssl: false,
-            ssh_tunnel: None,
-            connection_string: None,
-            auth_source: None,
-            mssql: None,
-            ephemeral: false,
-            group: None,
-            visible_databases: None,
-            mcp_write: Default::default(),
-            max_connections: None,
-            origin_id: None,
+            ..crate::testkit::profile(id)
         }
     }
 

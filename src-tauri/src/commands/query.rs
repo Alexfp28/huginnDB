@@ -295,6 +295,65 @@ pub struct QueryResult {
     pub row_types: Option<Vec<Vec<Value>>>,
 }
 
+impl QueryResult {
+    /// A result set. `rows_affected` is the row *count* — every read-shaped
+    /// caller set it that way, and the nine struct literals this replaces
+    /// each restated the relationship (usually as `data.len() as u64` on the
+    /// line above `rows: data`, which only works because the field order puts
+    /// it first).
+    ///
+    /// `total`, `truncated` and `row_types` start at their neutral values and
+    /// are added by the three builder methods below, so a caller only mentions
+    /// the ones it actually has. That is the point of these: a new field on
+    /// [`QueryResult`] is one edit here instead of nine, and — the part a
+    /// compiler would not have caught — a field a caller *forgets* to set now
+    /// gets the same neutral value as everywhere else rather than whatever the
+    /// author assumed.
+    pub fn rows(columns: Vec<ColumnMeta>, rows: Vec<Vec<Value>>, elapsed_ms: u64) -> Self {
+        Self {
+            rows_affected: rows.len() as u64,
+            columns,
+            rows,
+            elapsed_ms,
+            total: None,
+            truncated: false,
+            row_types: None,
+        }
+    }
+
+    /// A write's affected-row count, with no result set.
+    pub fn affected(rows_affected: u64, elapsed_ms: u64) -> Self {
+        Self {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            rows_affected,
+            elapsed_ms,
+            total: None,
+            truncated: false,
+            row_types: None,
+        }
+    }
+
+    /// The relation's total row count, for the browse footer's "1–100 of N".
+    pub fn with_total(mut self, total: Option<u64>) -> Self {
+        self.total = total;
+        self
+    }
+
+    /// Mark the rows as having been cut at [`MAX_ADHOC_QUERY_ROWS`].
+    pub fn with_truncated(mut self, truncated: bool) -> Self {
+        self.truncated = truncated;
+        self
+    }
+
+    /// MongoDB's per-cell BSON type trees (gotcha #29). Must stay cell-aligned
+    /// with `rows`.
+    pub fn with_row_types(mut self, row_types: Vec<Vec<Value>>) -> Self {
+        self.row_types = Some(row_types);
+        self
+    }
+}
+
 /// Column descriptor in a [`QueryResult`]. `Deserialize` for the same reason
 /// as its parent — it crosses the MCP bridge.
 #[derive(Debug, Serialize, Deserialize)]
@@ -543,15 +602,10 @@ pub(crate) async fn execute_with_state(
             Some(rows_affected),
             None,
         );
-        return Ok(QueryResult {
-            columns: vec![],
-            rows: vec![],
+        return Ok(QueryResult::affected(
             rows_affected,
-            elapsed_ms: start.elapsed().as_millis() as u64,
-            total: None,
-            truncated: false,
-            row_types: None,
-        });
+            start.elapsed().as_millis() as u64,
+        ));
     }
 
     let ((columns, data), truncated) = match pool {
@@ -614,15 +668,8 @@ pub(crate) async fn execute_with_state(
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
-    let result = QueryResult {
-        rows_affected: data.len() as u64,
-        rows: data,
-        columns,
-        elapsed_ms: start.elapsed().as_millis() as u64,
-        total: None,
-        truncated,
-        row_types: None,
-    };
+    let result = QueryResult::rows(columns, data, start.elapsed().as_millis() as u64)
+        .with_truncated(truncated);
     log_sql_sink(
         sink,
         connection_id,
@@ -707,15 +754,14 @@ pub(crate) async fn execute_batch_inner(
                             let ra = data.len() as u64;
                             total_affected += ra;
                             log_sql_sink(sink, &connection_id, driver, sql, start, Some(ra), None);
-                            last_result = Some(QueryResult {
-                                columns,
-                                rows: data,
-                                rows_affected: ra,
-                                elapsed_ms: start.elapsed().as_millis() as u64,
-                                total: None,
-                                truncated,
-                                row_types: None,
-                            });
+                            last_result = Some(
+                                QueryResult::rows(
+                                    columns,
+                                    data,
+                                    start.elapsed().as_millis() as u64,
+                                )
+                                .with_truncated(truncated),
+                            );
                             outcomes.push(StmtOutcome {
                                 index,
                                 preview: stmt_preview(sql),
@@ -814,23 +860,21 @@ pub(crate) async fn execute_batch_inner(
                             let rows = sets.into_iter().find(|s| !s.is_empty()).unwrap_or_default();
                             let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
                             let ra = data.len() as u64;
+                            // No `row_types`: SQL, so the catalog column type is
+                            // the hint the editor needs, and per-cell BSON type
+                            // trees are MongoDB's alone (gotcha #29).
                             (
                                 ra,
-                                Some(QueryResult {
-                                    columns: cols
-                                        .into_iter()
-                                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                                        .collect(),
-                                    rows: data,
-                                    rows_affected: ra,
-                                    elapsed_ms: start.elapsed().as_millis() as u64,
-                                    total: None,
-                                    truncated,
-                                    // SQL, so the catalog column type is the hint
-                                    // the editor needs; per-cell BSON type trees
-                                    // are MongoDB's alone (gotcha #29).
-                                    row_types: None,
-                                }),
+                                Some(
+                                    QueryResult::rows(
+                                        cols.into_iter()
+                                            .map(|(name, data_type)| ColumnMeta { name, data_type })
+                                            .collect(),
+                                        data,
+                                        start.elapsed().as_millis() as u64,
+                                    )
+                                    .with_truncated(truncated),
+                                ),
                             )
                         })
                 } else {
@@ -1428,15 +1472,7 @@ pub(crate) async fn fetch_table_data_inner(
         columns
     };
 
-    Ok(QueryResult {
-        rows_affected: data.len() as u64,
-        rows: data,
-        columns,
-        elapsed_ms,
-        total,
-        truncated: false,
-        row_types: None,
-    })
+    Ok(QueryResult::rows(columns, data, elapsed_ms).with_total(total))
 }
 
 /// Count the rows of `schema.table` for the current predicate.

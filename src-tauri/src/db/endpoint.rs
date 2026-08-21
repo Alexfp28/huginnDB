@@ -245,24 +245,10 @@ mod tests {
 
     fn profile(driver: Driver, host: &str, port: u16) -> ConnectionProfile {
         ConnectionProfile {
-            id: "p".into(),
-            name: "p".into(),
             driver,
             host: host.into(),
             port,
-            database: String::new(),
-            username: "u".into(),
-            ssl: false,
-            ssh_tunnel: None,
-            connection_string: None,
-            auth_source: None,
-            ephemeral: false,
-            group: None,
-            visible_databases: None,
-            mcp_write: Default::default(),
-            max_connections: None,
-            mssql: None,
-            origin_id: None,
+            ..crate::testkit::profile("p")
         }
     }
 

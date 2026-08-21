@@ -127,6 +127,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     is deliberate. `resolve_mongo_target` also stops making a bridge round trip
     to answer "is this MongoDB?" for the four tools that pass no schema and
     ignore the answer.
+  - `QueryResult::{rows, affected, with_total, with_truncated, with_row_types}`
+    replace nine struct literals that each restated the same seven fields, and
+    `src-tauri/src/testkit.rs` holds the `ConnectionProfile` fixture six test
+    modules had a private copy of — so a new field on either is one edit rather
+    than nine or six.
   - Frontend: `useImportWizard` (three dialogs), `useAsyncSubmit` (ten),
     `OverlayPalette` + `useListNavigation` (the command palette and the tab
     switcher), `lib/schedule.ts` (three debounces, two polls), `RefreshButton`

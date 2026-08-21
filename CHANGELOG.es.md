@@ -137,6 +137,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     comprobación entre las dos capas es deliberada. `resolve_mongo_target` deja
     además de hacer un viaje de ida y vuelta por el puente para preguntar «¿esto
     es MongoDB?» en las cuatro tools que no pasan schema e ignoran la respuesta.
+  - `QueryResult::{rows, affected, with_total, with_truncated, with_row_types}`
+    sustituyen nueve literales de struct que repetían los mismos siete campos, y
+    `src-tauri/src/testkit.rs` alberga el fixture de `ConnectionProfile` del que
+    seis módulos de test tenían copia privada: así, un campo nuevo en cualquiera
+    de los dos es una edición y no nueve o seis.
   - Frontend: `useImportWizard` (tres diálogos), `useAsyncSubmit` (diez),
     `OverlayPalette` + `useListNavigation` (paleta de comandos y conmutador de
     pestañas), `lib/schedule.ts` (tres debounces, dos sondeos), `RefreshButton`

@@ -53,28 +53,11 @@ pub fn save_profiles(profiles: &[ConnectionProfile]) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::Driver;
 
     fn profile(id: &str, ephemeral: bool) -> ConnectionProfile {
         ConnectionProfile {
-            id: id.into(),
-            name: id.into(),
-            driver: Driver::Postgres,
-            host: "localhost".into(),
-            port: 5432,
-            database: String::new(),
-            username: "u".into(),
-            ssl: false,
-            ssh_tunnel: None,
-            connection_string: None,
-            auth_source: None,
-            mssql: None,
             ephemeral,
-            group: None,
-            visible_databases: None,
-            mcp_write: Default::default(),
-            max_connections: None,
-            origin_id: None,
+            ..crate::testkit::profile(id)
         }
     }
 

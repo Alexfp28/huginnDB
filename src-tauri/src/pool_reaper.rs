@@ -246,29 +246,13 @@ mod tests {
         // is spent. Scoping matters as much as ordering: closing a view on an
         // unrelated server frees capacity nobody is waiting for.
         use crate::db::endpoint::{EndpointKey, EndpointRegistry};
-        use crate::state::{ConnectionProfile, Driver};
+        use crate::state::ConnectionProfile;
         use std::sync::Arc;
 
         fn profile(host: &str) -> ConnectionProfile {
             ConnectionProfile {
-                id: "p".into(),
-                name: "p".into(),
-                driver: Driver::Postgres,
                 host: host.into(),
-                port: 5432,
-                database: String::new(),
-                username: "u".into(),
-                ssl: false,
-                ssh_tunnel: None,
-                connection_string: None,
-                auth_source: None,
-                ephemeral: false,
-                group: None,
-                visible_databases: None,
-                mcp_write: Default::default(),
-                max_connections: None,
-                mssql: None,
-                origin_id: None,
+                ..crate::testkit::profile("p")
             }
         }
 
