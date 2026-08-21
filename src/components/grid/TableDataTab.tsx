@@ -86,6 +86,7 @@ import {
 import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
 import { formatNumber } from "@/lib/utils";
 import { runExport } from "@/lib/grid/exportTable";
+import { clampRowHeight } from "@/lib/grid/rowHeight";
 import {
   nextOffset,
   pageWindow,
@@ -330,7 +331,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const isMongo = driver === "mongodb";
   const zoomRows = useCallback(
     (delta: number) =>
-      updateGrid({ rowHeight: Math.min(40, Math.max(14, rowHeight + delta)) }),
+      updateGrid({ rowHeight: clampRowHeight(rowHeight + delta) }),
     [rowHeight, updateGrid],
   );
 

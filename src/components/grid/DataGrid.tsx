@@ -33,7 +33,6 @@ import {
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
-  type Updater,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { tableKey } from "@/stores/session/schema";
@@ -107,6 +106,12 @@ import {
   toSqlUpdate as rowToSqlUpdate,
 } from "@/lib/grid/copyFormats";
 import { formatValue } from "@/lib/grid/formatValue";
+import {
+  MAX_AUTOFIT_WIDTH,
+  MIN_COLUMN_WIDTH,
+  useColumnSizing,
+} from "@/lib/grid/useColumnSizing";
+import { useCtrlWheelZoom } from "@/lib/grid/useCtrlWheelZoom";
 import { useGridSelection } from "@/lib/grid/useGridSelection";
 import {
   useCellEditor,
@@ -666,128 +671,14 @@ export function DataGrid({
   );
 
   /**
-   * Persisted column widths are keyed by table (`tableKey`), since widths
-   * are inherently per-schema. Ad-hoc query result grids (no `tableName` —
-   * see `QueryEditorTab`) never persist: they resize in-session only. The
-   * persisted map is a sparse `{ columnName: px }` — TanStack's own
-   * `columnSizing` state has the same shape (only explicitly-resized
-   * columns appear; everything else falls back to the column's default
-   * size), so it can be used directly as the initial state with no
-   * reshaping.
+   * Column widths (persisted per table) and the live resize drag — see
+   * `useColumnSizing` for why the drag writes the DOM directly.
    */
   const persistKey = tableName ? tableKey(tableSchema, tableName) : null;
-  const persistedColumnWidths = usePreferences(
-    (s) => selectGridPrefs(s).columnWidths,
-  );
-  const [columnSizing, setColumnSizing] = useState<Record<string, number>>(
-    () => (persistKey ? persistedColumnWidths[persistKey] ?? {} : {}),
-  );
-
-  function handleColumnSizingChange(
-    updater: Updater<Record<string, number>>,
-  ) {
-    setColumnSizing((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      if (persistKey) {
-        const grid = usePreferences.getState().prefs.grid;
-        updateGrid({
-          columnWidths: { ...grid.columnWidths, [persistKey]: next },
-        });
-      }
-      return next;
-    });
-  }
-  /**
-   * Column currently being dragged to resize, if any — drives the header's
-   * highlight + handle tint. Set on mousedown and cleared on mouseup, so it
-   * changes exactly twice per drag (never per pixel), unlike the width
-   * itself (see `startColumnResize` below).
-   */
-  const [resizingColId, setResizingColId] = useState<string | null>(null);
-  const MIN_COLUMN_WIDTH = 40;
-  /**
-   * Ceiling for the auto-fit gesture below. A column holding a long free-text
-   * value (a serialised config, a description paragraph) would otherwise
-   * expand to several thousand px and push every column after it off-screen,
-   * turning "let me read this one value" into "I lost the rest of the row".
-   * Past this the value belongs in the cell editor / preview panel, and the
-   * user can still drag wider by hand.
-   */
-  const MAX_AUTOFIT_WIDTH = 900;
+  const { columnSizing, commitWidths, resizingColId, startColumnResize } =
+    useColumnSizing({ persistKey, updateGrid });
   /** The header's dimmed type hint renders at the `text-3xs` token (10px). */
   const TYPE_HINT_FONT_SIZE = 10;
-
-  /**
-   * Drag a column's header edge to resize it — deliberately NOT TanStack's
-   * own `getResizeHandler()`. That tracks the drag through
-   * `columnSizingInfo.deltaOffset`, which changes (and forces a re-render of
-   * this whole, unvirtualised table) on every single `mousemove`; with
-   * hundreds/thousands of rows that's what made the drag feel slow, and it's
-   * also why a resize used to need a separate full-height guideline line —
-   * the actual column couldn't cheaply track the pointer that way, so there
-   * was nothing to visually resize in real time.
-   *
-   * Instead this mutates the dragged `<th>`'s `style.width` directly. The
-   * table is `table-fixed`, so per the CSS spec its column widths come from
-   * the header row's cells alone (`<thead>` precedes `<tbody>`, making it the
-   * table's first row) — one DOM write here reflows every row's matching
-   * cell natively, with zero React re-renders, for a genuinely live preview.
-   * `columnSizing` state (and its persistence to `prefs.json`) is only
-   * touched once, on release, matching the perf goal the old `onEnd` mode
-   * was reaching for — but without giving up live feedback to get there.
-   */
-  function startColumnResize(
-    e: React.MouseEvent<HTMLDivElement>,
-    colId: string,
-    currentSize: number,
-  ) {
-    e.preventDefault();
-    e.stopPropagation();
-    const thEl = (e.currentTarget as HTMLElement).closest("th");
-    if (!thEl) return;
-    const th: HTMLTableCellElement = thEl;
-    // Anchor to the column's logical size, not `getBoundingClientRect()`.
-    // The table is `table-fixed` + `w-full`; when the declared column
-    // widths don't fill the available width, the browser stretches them
-    // to fit (CSS2.1 fixed-table-layout, extra-width distribution). That
-    // makes the rendered `<th>` wider than its logical size, so measuring
-    // the DOM here would bake the cosmetic stretch in as the new
-    // committed width the instant the drag starts — the column visibly
-    // jumps before the pointer even moves.
-    const startWidth = currentSize;
-    const startX = e.clientX;
-    setResizingColId(colId);
-    const prevCursor = document.body.style.cursor;
-    const prevUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    function onMove(ev: MouseEvent) {
-      const next = Math.max(
-        MIN_COLUMN_WIDTH,
-        Math.round(startWidth + (ev.clientX - startX)),
-      );
-      th.style.width = `${next}px`;
-    }
-    function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = prevCursor;
-      document.body.style.userSelect = prevUserSelect;
-      setResizingColId(null);
-      const finalWidth = parseInt(th.style.width, 10);
-      // A bare click (no `mousemove` at all) lands here with the width
-      // untouched — notably the first click of the double-click that triggers
-      // the auto-fit below. Committing then would write an identical width
-      // into `columnSizing` (and through to `prefs.json`) for nothing, and
-      // would make the auto-fit's own commit the *second* state update of one
-      // gesture.
-      if (!Number.isFinite(finalWidth) || finalWidth === startWidth) return;
-      handleColumnSizingChange((prev) => ({ ...prev, [colId]: finalWidth }));
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
 
   /**
    * Inline styles derived from `rowHeight`. Memoised so the object identity
@@ -809,27 +700,9 @@ export function DataGrid({
     };
   }, [rowHeight]);
 
-  /**
-   * Ctrl + mouse-wheel over the grid zooms the rows in/out, like a code
-   * editor. Bound via a non-passive native listener so `preventDefault`
-   * actually suppresses the browser's page-zoom; a JSX `onWheel` handler is
-   * passive by default and cannot. Persistence is handled by the prefs store
-   * (debounced write), so we only push the clamped row height.
-   */
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    function onWheel(e: WheelEvent) {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      const step = e.deltaY < 0 ? 2 : -2;
-      const next = Math.min(40, Math.max(14, rowHeight + step));
-      if (next !== rowHeight) updateGrid({ rowHeight: next });
-    }
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [rowHeight, updateGrid]);
+  // Ctrl+wheel row zoom (non-passive listener — gotcha #13). Also the ref the
+  // grid attaches to its scroll container.
+  const scrollRef = useCtrlWheelZoom(rowHeight, updateGrid);
 
   /**
    * Backend column index keyed by name. The cell render loop walks
@@ -940,7 +813,7 @@ export function DataGrid({
     // One state update (and therefore one `prefs.json` write) for the whole
     // gesture, however many columns it covered.
     if (Object.keys(widths).length > 0) {
-      handleColumnSizingChange((prev) => ({ ...prev, ...widths }));
+      commitWidths((prev) => ({ ...prev, ...widths }));
     }
   }
 
@@ -1328,12 +1201,11 @@ export function DataGrid({
     data: visibleRows,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // Column resizing itself is handled by our own `startColumnResize` below,
-    // not TanStack's built-in `getResizeHandler()` — see the comment there for
-    // why. `columnSizing` stays the single source of truth for committed
-    // widths (persisted per table, gotcha-style — see `persistKey` above).
+    // Column resizing is handled by our own `startColumnResize`, not
+    // TanStack's built-in `getResizeHandler()` — see `useColumnSizing` for why.
+    // `columnSizing` stays the single source of truth for committed widths.
     state: { columnSizing },
-    onColumnSizingChange: handleColumnSizingChange,
+    onColumnSizingChange: commitWidths,
   });
 
   /**
