@@ -101,10 +101,7 @@ import {
   ServerFilterChip,
   ServerFilterSummary,
 } from "@/components/grid/ServerFilterChips";
-import {
-  toSqlInsert as rowToSqlInsert,
-  toSqlUpdate as rowToSqlUpdate,
-} from "@/lib/grid/copyFormats";
+import { toBulk } from "@/lib/grid/copyFormats";
 import { formatValue } from "@/lib/grid/formatValue";
 import {
   MAX_AUTOFIT_WIDTH,
@@ -1541,39 +1538,15 @@ export function DataGrid({
     }
   }
 
-  /** Serialise several rows for the bulk "Copy N rows as ▸" menu, reusing the
-   *  same per-row formatters as the single-row submenu. JSON yields one array;
-   *  INSERT/UPDATE yield newline-joined statements. */
+  /** Serialise several rows for the bulk "Copy N rows as ▸" menu. */
   function bulkCopy(rows: CellValue[][], fmt: "json" | "insert" | "update") {
-    if (fmt === "json") {
-      const arr = rows.map((r) => {
-        const obj: Record<string, unknown> = {};
-        result.columns.forEach((c, i) => {
-          obj[c.name] = r[i] as unknown;
-        });
-        return obj;
-      });
-      return JSON.stringify(arr, null, 2);
-    }
-    if (fmt === "insert") {
-      return rows
-        .map((r) =>
-          rowToSqlInsert(r, result.columns, driver, tableName, tableSchema),
-        )
-        .join("\n");
-    }
-    return rows
-      .map((r) =>
-        rowToSqlUpdate(
-          r,
-          result.columns,
-          driver,
-          tableName,
-          tableSchema,
-          pkColumnNames,
-        ),
-      )
-      .join("\n");
+    return toBulk(rows, fmt, {
+      columns: result.columns,
+      driver,
+      tableName,
+      tableSchema,
+      pkColumnNames,
+    });
   }
 
   /**

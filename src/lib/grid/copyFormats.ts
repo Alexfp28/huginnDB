@@ -199,3 +199,47 @@ export function selectSnippet(
   }
   return `SELECT * FROM ${qualifiedTable(driver, schema, table)};`;
 }
+
+/**
+ * Serialise several rows for the bulk "Copy N rows as ▸" menu, reusing the same
+ * per-row formatters as the single-row submenu. JSON yields one array;
+ * INSERT/UPDATE yield newline-joined statements.
+ *
+ * The JSON branch goes through `jsonSafe`, exactly as `toJson` does. `DataGrid`
+ * had its own copy of this that cast values straight into the object instead, so
+ * a `BigInt` cell that copied fine as a single row threw
+ * "Do not know how to serialize a BigInt" the moment two rows were selected.
+ */
+export function toBulk(
+  rows: CellValue[][],
+  fmt: "json" | "insert" | "update",
+  ctx: {
+    columns: ColumnMeta[];
+    driver: Driver | undefined;
+    tableName?: string;
+    tableSchema?: string;
+    pkColumnNames?: string[];
+  },
+): string {
+  const { columns, driver, tableName, tableSchema, pkColumnNames } = ctx;
+  if (fmt === "json") {
+    const arr = rows.map((r) => {
+      const obj: Record<string, unknown> = {};
+      columns.forEach((c, i) => {
+        obj[c.name] = jsonSafe(r[i]);
+      });
+      return obj;
+    });
+    return JSON.stringify(arr, null, 2);
+  }
+  if (fmt === "insert") {
+    return rows
+      .map((r) => toSqlInsert(r, columns, driver, tableName, tableSchema))
+      .join("\n");
+  }
+  return rows
+    .map((r) =>
+      toSqlUpdate(r, columns, driver, tableName, tableSchema, pkColumnNames),
+    )
+    .join("\n");
+}

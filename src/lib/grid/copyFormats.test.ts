@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { quoteIdent, selectSnippet, sqlLiteral } from "./copyFormats";
+import { quoteIdent, selectSnippet, sqlLiteral, toBulk } from "./copyFormats";
 
 describe("quoteIdent", () => {
   it("uses each driver's conventional delimiters", () => {
@@ -82,5 +82,40 @@ describe("sqlLiteral", () => {
 
   it("stringifies an object before quoting", () => {
     expect(sqlLiteral({ a: 1 })).toBe("'{\"a\":1}'");
+  });
+});
+
+describe("toBulk", () => {
+  const columns = [
+    { name: "id", data_type: "int" },
+    { name: "note", data_type: "text" },
+  ];
+  const rows = [
+    [1, "first"],
+    [2, null],
+  ];
+
+  it("yields one JSON array for the whole selection", () => {
+    expect(JSON.parse(toBulk(rows, "json", { columns, driver: "postgres" }))).toEqual([
+      { id: 1, note: "first" },
+      { id: 2, note: null },
+    ]);
+  });
+
+  it("normalises a BigInt instead of throwing", () => {
+    // The old inline copy in `DataGrid` cast values straight in, so a BigInt
+    // copied fine as one row and threw the moment two rows were selected.
+    const withBig = [[1n as unknown as number, "x"]];
+    expect(toBulk(withBig, "json", { columns, driver: "postgres" })).toContain('"1"');
+  });
+
+  it("newline-joins one statement per row", () => {
+    const sql = toBulk(rows, "insert", {
+      columns,
+      driver: "postgres",
+      tableName: "notes",
+    });
+    expect(sql.split("\n")).toHaveLength(2);
+    expect(sql).toContain('INSERT INTO "notes"');
   });
 });
