@@ -195,3 +195,30 @@ pub async fn list_indexes(
         out
     })
 }
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+
+/// The body of a view — just the `SELECT`. See
+/// [`crate::db::postgres::schema::view_definition`] for why a missing view is
+/// `Ok(None)` rather than an error.
+///
+/// `sqlite_master.sql` holds the *whole* `CREATE VIEW ... AS ...` statement, so
+/// the header is stripped by [`crate::db::view_ddl::strip_view_header`] to keep
+/// the returned body meaning the same thing it does on the other drivers.
+/// `_schema` is accepted and ignored: SQLite has exactly one schema (`main`).
+pub async fn view_definition(
+    p: &sqlx::SqlitePool,
+    _schema: Option<&str>,
+    view: &str,
+) -> AppResult<Option<String>> {
+    let create_sql: Option<Option<String>> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_master WHERE type = 'view' AND name = ?")
+            .bind(view)
+            .fetch_optional(p)
+            .await?;
+    Ok(create_sql
+        .flatten()
+        .map(|sql| crate::db::view_ddl::strip_view_header(&sql)))
+}

@@ -413,3 +413,31 @@ fn split_mysql_privilege_list(s: &str) -> Vec<String> {
     }
     out
 }
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+
+/// The body of a view — just the `SELECT`. See
+/// [`crate::db::postgres::schema::view_definition`] for why a missing view is
+/// `Ok(None)` rather than an error.
+///
+/// An empty `schema` falls back to the session's current database, the same
+/// `COALESCE(NULLIF(?, ''), DATABASE())` shape the rest of this module uses —
+/// so a connection with no database bound gets NULL and matches nothing, rather
+/// than searching every schema on the server.
+pub async fn view_definition(
+    p: &sqlx::MySqlPool,
+    schema: Option<&str>,
+    view: &str,
+) -> AppResult<Option<String>> {
+    let def: Option<String> = sqlx::query_scalar(
+        "SELECT VIEW_DEFINITION FROM information_schema.views \
+         WHERE TABLE_SCHEMA = COALESCE(NULLIF(?, ''), DATABASE()) AND TABLE_NAME = ?",
+    )
+    .bind(schema.unwrap_or_default())
+    .bind(view)
+    .fetch_optional(p)
+    .await?;
+    Ok(def.map(|q| q.trim().to_string()))
+}

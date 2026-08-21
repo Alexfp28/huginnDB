@@ -3,6 +3,10 @@
 //! [`crate::db::view_ddl`]. Mirrors [`crate::commands::structure`]'s
 //! introspect → preview → apply shape, but for views instead of tables.
 //!
+//! The per-driver catalog SQL that reads a stored definition lives with its
+//! driver (`db::<driver>::schema::view_definition`), per CLAUDE.md gotcha #43;
+//! this module only dispatches to it.
+//!
 //! MongoDB has no `CREATE VIEW` equivalent (its "views" are read-only
 //! aggregation-pipeline collections, edited via `collMod`/`createView` — a
 //! fundamentally different model), so every command here rejects it up
@@ -13,56 +17,11 @@ use crate::db::view_ddl::{build_view_ddl, ViewDefinition};
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 use tauri::State;
 
 // ---------------------------------------------------------------------------
 // Introspection
 // ---------------------------------------------------------------------------
-
-/// SQLite's `sqlite_master.sql` for a view is the *whole* `CREATE VIEW name
-/// AS SELECT ...` statement (unlike Postgres/MySQL, which expose just the
-/// body). Strip the header so `ViewDefinition.query` is always "just the
-/// SELECT" across drivers.
-///
-/// No SQL parser here (and no new `regex` dependency — CLAUDE.md asks that
-/// new crates be discussed first, and this doesn't warrant one): SQLite's own
-/// grammar for this statement is `CREATE [TEMP[ORARY]] VIEW [IF NOT EXISTS]
-/// name [(col, ...)] AS select-stmt`, so the column list is the only thing
-/// that can contain a nested "AS"-like substring, and column lists are bare
-/// names with no expressions. Tracking paren depth and taking the first
-/// whole-word "AS" at depth 0 is therefore exact for any statement SQLite
-/// itself would have produced. Falls back to the raw text if no such "AS" is
-/// found — better to hand back something editable than to block outright.
-fn strip_sqlite_view_header(create_sql: &str) -> String {
-    let upper = create_sql.to_ascii_uppercase();
-    let chars: Vec<(usize, char)> = upper.char_indices().collect();
-    let n = chars.len();
-    let mut depth = 0i32;
-    let mut idx = 0usize;
-    let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
-    while idx < n {
-        let c = chars[idx].1;
-        if c == '(' {
-            depth += 1;
-        } else if c == ')' {
-            depth -= 1;
-        } else if depth == 0 && c == 'A' && idx + 1 < n && chars[idx + 1].1 == 'S' {
-            let prev_ok = idx == 0 || !is_word(chars[idx - 1].1);
-            let next_ok = idx + 2 >= n || !is_word(chars[idx + 2].1);
-            if prev_ok && next_ok {
-                let body_start = if idx + 2 < n {
-                    chars[idx + 2].0
-                } else {
-                    upper.len()
-                };
-                return create_sql[body_start..].trim().to_string();
-            }
-        }
-        idx += 1;
-    }
-    create_sql.trim().to_string()
-}
 
 #[tauri::command]
 pub async fn get_view_definition(
@@ -82,61 +41,40 @@ pub async fn get_view_definition(
     }
     Dialect::try_of(&pool)?;
     crate::error::with_timeout("get_view_definition", async move {
-        match pool {
+        // The `schema` each driver reports back is the one it actually queried,
+        // not the argument: Postgres resolves an omitted schema to `public`,
+        // MySQL echoes what it was given (an empty one means "the session's
+        // current database", which has no name to report), and SQLite has only
+        // `main`. `ViewEditorTab` builds its `desired` from the tab's own schema
+        // prop rather than from this field, so the two agree.
+        let (schema, query) = match &pool {
             DbPool::Postgres(p) => {
                 let schema = schema.unwrap_or_else(|| "public".into());
-                let row = sqlx::query(
-                    "SELECT pg_get_viewdef(c.oid, true) AS def \
-                 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
-                 WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'v'",
-                )
-                .bind(&schema)
-                .bind(&view)
-                .fetch_optional(&p)
-                .await?
-                .ok_or_else(|| AppError::NotFound(format!("view {schema}.{view}")))?;
-                let query: String = row.get("def");
-                Ok(ViewDefinition {
-                    schema: Some(schema),
-                    name: view,
-                    query: query.trim().trim_end_matches(';').trim().to_string(),
-                })
+                let query =
+                    crate::db::postgres::schema::view_definition(p, Some(&schema), &view).await?;
+                (Some(schema), query)
             }
             DbPool::Mysql(p) => {
-                let schema_arg = schema.clone().unwrap_or_default();
-                let row = sqlx::query(
-                    "SELECT VIEW_DEFINITION FROM information_schema.views \
-                 WHERE TABLE_SCHEMA = COALESCE(NULLIF(?, ''), DATABASE()) AND TABLE_NAME = ?",
-                )
-                .bind(&schema_arg)
-                .bind(&view)
-                .fetch_optional(&p)
-                .await?
-                .ok_or_else(|| AppError::NotFound(format!("view {view}")))?;
-                let query: String = row.get("VIEW_DEFINITION");
-                Ok(ViewDefinition {
-                    schema,
-                    name: view,
-                    query: query.trim().to_string(),
-                })
+                let query =
+                    crate::db::mysql::schema::view_definition(p, schema.as_deref(), &view).await?;
+                (schema, query)
             }
             DbPool::Sqlite(p) => {
-                let row =
-                    sqlx::query("SELECT sql FROM sqlite_master WHERE type = 'view' AND name = ?")
-                        .bind(&view)
-                        .fetch_optional(&p)
-                        .await?
-                        .ok_or_else(|| AppError::NotFound(format!("view {view}")))?;
-                let create_sql: String = row.get("sql");
-                Ok(ViewDefinition {
-                    schema: None,
-                    name: view,
-                    query: strip_sqlite_view_header(&create_sql),
-                })
+                let query = crate::db::sqlite::schema::view_definition(p, None, &view).await?;
+                (None, query)
             }
             DbPool::MsSql(_) => unreachable!("sql server rejected above"),
             DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
-        }
+        };
+        let query = query.ok_or_else(|| match &schema {
+            Some(s) => AppError::NotFound(format!("view {s}.{view}")),
+            None => AppError::NotFound(format!("view {view}")),
+        })?;
+        Ok(ViewDefinition {
+            schema,
+            name: view,
+            query,
+        })
     })
     .await
 }
