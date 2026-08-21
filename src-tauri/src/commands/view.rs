@@ -209,31 +209,9 @@ pub async fn apply_view_change(
     let dialect = Dialect::try_of(&pool)?;
     let (statements, _) = build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
 
-    match &pool {
-        DbPool::Postgres(p) => {
-            // View DDL is transactional on Postgres — wrap the (at most two)
-            // statements so a mid-sequence failure can't leave a renamed view
-            // with its old body, or vice versa.
-            let mut tx = p.begin().await?;
-            for stmt in &statements {
-                sqlx::query(stmt).execute(&mut *tx).await?;
-            }
-            tx.commit().await?;
-        }
-        DbPool::Mysql(p) => {
-            for stmt in &statements {
-                sqlx::query(stmt).execute(p).await?;
-            }
-        }
-        DbPool::Sqlite(p) => {
-            for stmt in &statements {
-                sqlx::query(stmt).execute(p).await?;
-            }
-        }
-        // Rejected earlier by `build_view_ddl`, so no statements exist here.
-        DbPool::MsSql(_) => unreachable!("sql server rejected by build_view_ddl"),
-        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
-    }
+    // Wrapped on Postgres so a rename plus a body change cannot half-apply; see
+    // `db::exec::execute_all` for the per-engine policy.
+    crate::db::exec::execute_all(&pool, &statements).await?;
     Ok(())
 }
 

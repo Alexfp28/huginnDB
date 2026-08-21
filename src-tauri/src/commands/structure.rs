@@ -523,36 +523,8 @@ pub(crate) async fn apply_structure_change_inner(
     let dialect = Dialect::try_of(&pool)?;
     let statements = build_ddl(dialect, args.original.as_ref(), &args.desired)?;
 
-    match &pool {
-        DbPool::Postgres(p) => {
-            // PG DDL is transactional — wrap the lot.
-            let mut tx = p.begin().await?;
-            for stmt in &statements {
-                sqlx::query(stmt).execute(&mut *tx).await?;
-            }
-            tx.commit().await?;
-        }
-        DbPool::Mysql(p) => {
-            // MySQL DDL is non-transactional (implicit commits). Run in order;
-            // a mid-sequence failure may leave partial changes — surfaced to
-            // the user by the error and the editor re-reading the structure.
-            for stmt in &statements {
-                sqlx::query(stmt).execute(p).await?;
-            }
-        }
-        DbPool::Sqlite(p) => {
-            // The SQLite rebuild emits its own BEGIN/COMMIT semantics via the
-            // statement list, and PRAGMA foreign_keys must run outside a
-            // transaction — so we execute each statement directly rather than
-            // wrapping in our own tx.
-            for stmt in &statements {
-                sqlx::query(stmt).execute(p).await?;
-            }
-        }
-        // Rejected earlier by `build_ddl` (see `db::ddl::reject_unsupported`),
-        // so the statement list above was never produced for SQL Server.
-        DbPool::MsSql(_) => unreachable!("sql server rejected by build_ddl"),
-        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
-    }
+    // Per-engine transaction policy lives in `db::exec::execute_all` — see its
+    // doc for why Postgres wraps, MySQL cannot, and SQLite must not.
+    crate::db::exec::execute_all(&pool, &statements).await?;
     Ok(())
 }

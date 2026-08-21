@@ -1905,92 +1905,13 @@ pub(crate) async fn update_cell_inner(
     // was sent on composite-PK tables — this is the belt-and-braces
     // assertion that catches any future regression of that family.
     let start = Instant::now();
-    let res: AppResult<u64> = async {
-        match &pool {
-            DbPool::Postgres(p) => {
-                let mut tx = p.begin().await?;
-                let mut q = sqlx::query(&sql).bind(&effective_value);
-                for s in &pk_strs {
-                    q = q.bind(s);
-                }
-                let affected = q.execute(&mut *tx).await?.rows_affected();
-                if affected > 1 {
-                    tx.rollback().await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                tx.commit().await?;
-                Ok(affected)
-            }
-            DbPool::Mysql(p) => {
-                let mut tx = p.begin().await?;
-                let mut q = sqlx::query(&sql).bind(&effective_value);
-                for s in &pk_strs {
-                    q = q.bind(s);
-                }
-                let affected = q.execute(&mut *tx).await?.rows_affected();
-                if affected > 1 {
-                    tx.rollback().await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                tx.commit().await?;
-                Ok(affected)
-            }
-            DbPool::Sqlite(p) => {
-                let mut tx = p.begin().await?;
-                let mut q = sqlx::query(&sql).bind(&effective_value);
-                for s in &pk_strs {
-                    q = q.bind(s);
-                }
-                let affected = q.execute(&mut *tx).await?.rows_affected();
-                if affected > 1 {
-                    tx.rollback().await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                tx.commit().await?;
-                Ok(affected)
-            }
-            DbPool::MsSql(p) => {
-                // `tiberius` has no transaction handle: `BEGIN`/`COMMIT`/
-                // `ROLLBACK` are statements on the session, which is why this
-                // arm holds one `PooledClient` for the whole sequence instead
-                // of using the pool's one-shot helpers.
-                let mut binds = Vec::with_capacity(pk_strs.len() + 1);
-                binds.push(effective_value.clone());
-                binds.extend(pk_strs.iter().cloned());
-                let mut c = p.acquire().await?;
-                c.simple_execute("BEGIN TRANSACTION").await?;
-                let affected = match c.execute(&sql, &binds).await {
-                    Ok(n) => n,
-                    Err(e) => {
-                        // Best-effort unwind: if the rollback also fails the
-                        // session is already poisoned and never reused.
-                        let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
-                        return Err(e);
-                    }
-                };
-                if affected > 1 {
-                    c.simple_execute("ROLLBACK TRANSACTION").await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                c.simple_execute("COMMIT TRANSACTION").await?;
-                Ok(affected)
-            }
-            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-        }
-    }
-    .await;
+    // The guard, the rollback and SQL Server's statement-based transaction all
+    // live in `db::exec::in_tx_expect_at_most_one` — see its doc for the bug it
+    // exists to catch.
+    let mut binds = Vec::with_capacity(pk_strs.len() + 1);
+    binds.push(effective_value);
+    binds.extend(pk_strs);
+    let res = crate::db::exec::in_tx_expect_at_most_one(&pool, &sql, &binds, "update_cell").await;
     let affected = try_sql_sink!(sink, &connection_id, driver, &sql, start, res);
     log_sql_sink(
         sink,

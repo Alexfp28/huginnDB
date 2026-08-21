@@ -109,6 +109,125 @@ pub async fn execute_params(pool: &DbPool, sql: &str, binds: &[Option<String>]) 
     }
 }
 
+/// Run one parameterised write inside a transaction, refusing to commit if it
+/// touched more than one row.
+///
+/// `what` names the caller in the refusal message (`"update_cell"`).
+///
+/// This is a belt-and-braces assertion, not a routine check: with a correctly
+/// introspected `PRIMARY KEY` in the `WHERE` clause, more than one match is
+/// impossible. It exists because the cell-save path once *did* corrupt data
+/// silently — on a composite-PK table it sent only the first PK column, so the
+/// UPDATE matched every row sharing that value and the user saw one cell change.
+/// A rollback plus a loud error is what turns that family of bug from silent
+/// corruption into a visible refusal.
+///
+/// SQL Server takes a visibly different arm on purpose (gotcha #31): `tiberius`
+/// has no transaction handle, so `BEGIN`/`COMMIT`/`ROLLBACK` are statements
+/// issued on one held session rather than calls on a transaction object. That is
+/// also why it cannot use the pool's one-shot helpers here.
+pub async fn in_tx_expect_at_most_one(
+    pool: &DbPool,
+    sql: &str,
+    binds: &[Option<String>],
+    what: &str,
+) -> AppResult<u64> {
+    let too_many = |affected: u64| {
+        AppError::InvalidInput(format!(
+            "{what} refused: {affected} rows matched the supplied \
+             primary key (composite PK incomplete?) — transaction rolled back"
+        ))
+    };
+
+    macro_rules! sqlx_tx {
+        ($p:expr) => {{
+            let mut tx = $p.begin().await?;
+            let affected = bind_all!(sql, binds, $p)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+            if affected > 1 {
+                tx.rollback().await?;
+                return Err(too_many(affected));
+            }
+            tx.commit().await?;
+            Ok(affected)
+        }};
+    }
+
+    match pool {
+        DbPool::Postgres(p) => sqlx_tx!(p),
+        DbPool::Mysql(p) => sqlx_tx!(p),
+        DbPool::Sqlite(p) => sqlx_tx!(p),
+        DbPool::MsSql(p) => {
+            let mut c = p.acquire().await?;
+            c.simple_execute("BEGIN TRANSACTION").await?;
+            let affected = match c.execute(sql, binds).await {
+                Ok(n) => n,
+                Err(e) => {
+                    // Best-effort unwind: if the rollback also fails the session
+                    // is already poisoned and `classify` will not return it.
+                    let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
+                    return Err(e);
+                }
+            };
+            if affected > 1 {
+                c.simple_execute("ROLLBACK TRANSACTION").await?;
+                return Err(too_many(affected));
+            }
+            c.simple_execute("COMMIT TRANSACTION").await?;
+            Ok(affected)
+        }
+        DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),
+    }
+}
+
+/// Run an ordered list of DDL statements under this engine's transaction policy.
+///
+/// The policy is the whole reason this is not a loop over [`execute`], and it
+/// differs per engine in a way that is a fact about the engine, not a choice:
+///
+/// * **Postgres** has transactional DDL, so the batch is wrapped. A failure
+///   halfway through rolls back, and the table is never left half-altered.
+/// * **MySQL** does not: every DDL statement carries an implicit commit, so
+///   wrapping would be a lie. Statements run in order and a mid-sequence
+///   failure can leave partial changes — surfaced by the error, after which the
+///   editor re-reads the structure.
+/// * **SQLite** *has* transactional DDL, but the 12-step table rebuild
+///   `db::ddl::build_sqlite_rebuild` emits toggles `PRAGMA foreign_keys` around
+///   the work, and that pragma is a no-op inside a transaction. So the list
+///   manages its own boundaries and must be run verbatim.
+///
+/// SQL Server never reaches here: `db::ddl::reject_unsupported` and
+/// `build_view_ddl` refuse it before a statement list is ever produced, which is
+/// what makes the arm below genuinely unreachable rather than merely unhandled.
+pub async fn execute_all(pool: &DbPool, statements: &[String]) -> AppResult<()> {
+    match pool {
+        DbPool::Postgres(p) => {
+            let mut tx = p.begin().await?;
+            for stmt in statements {
+                sqlx::query(stmt).execute(&mut *tx).await?;
+            }
+            tx.commit().await?;
+        }
+        DbPool::Mysql(p) => {
+            for stmt in statements {
+                sqlx::query(stmt).execute(p).await?;
+            }
+        }
+        DbPool::Sqlite(p) => {
+            for stmt in statements {
+                sqlx::query(stmt).execute(p).await?;
+            }
+        }
+        DbPool::MsSql(_) => {
+            unreachable!("SQL Server is refused before a statement list is built")
+        }
+        DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),
+    }
+    Ok(())
+}
+
 /// Run a parameterised read, returning `(columns, rows)`.
 ///
 /// Columns come back as untyped `(name, type_name)` pairs rather than a
