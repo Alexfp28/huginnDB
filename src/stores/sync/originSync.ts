@@ -20,6 +20,7 @@
  */
 
 import { create } from "zustand";
+import { repeating } from "@/lib/schedule";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
 import { useEnvironments } from "@/stores/session/environments";
@@ -376,22 +377,24 @@ function reconcileOrphans(
   }
 }
 
+const sweep = repeating(SYNC_INTERVAL_MS, () => {
+  void useOriginSync.getState().syncAll();
+});
+let watching = false;
+
 /**
  * Start the periodic sweep. Idempotent: the timer is module-level and guarded,
  * so a StrictMode double-effect can't stack two of them (the same trap
- * `useUpdateStore.startPeriodicChecks` documents).
+ * `useUpdateStore.startPeriodicChecks` documents) — and the immediate first
+ * sweep rides on `running` for the same reason, so it fires once per app run
+ * rather than once per effect.
  */
-let timer: ReturnType<typeof setInterval> | null = null;
-let watching = false;
-
 export function startPeriodicOriginSync(): void {
   if (!isMainWindow()) return;
   watchDeferred();
-  if (timer) return;
+  if (sweep.running) return;
   void useOriginSync.getState().syncAll();
-  timer = setInterval(() => {
-    void useOriginSync.getState().syncAll();
-  }, SYNC_INTERVAL_MS);
+  sweep.start();
 }
 
 /**

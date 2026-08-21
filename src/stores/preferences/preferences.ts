@@ -22,6 +22,7 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
+import { debounce } from "@/lib/schedule";
 import { STORAGE_KEYS } from "@/lib/constants";
 import type {
   ConnectionPrefs,
@@ -113,20 +114,16 @@ interface PreferencesState {
   applyExternal: (prefs: Preferences) => void;
 }
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_DEBOUNCE_MS = 400;
 
-function scheduleSave(prefs: Preferences) {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    api.updatePreferences(prefs).catch((err) => {
-      // Disk writes shouldn't fail in normal operation; if they do the user
-      // can keep working with the in-memory copy and we surface to console.
-      console.error("[preferences] failed to persist:", err);
-    });
-  }, SAVE_DEBOUNCE_MS);
-}
+const save = debounce(SAVE_DEBOUNCE_MS, (prefs: Preferences) => {
+  api.updatePreferences(prefs).catch((err) => {
+    // Disk writes shouldn't fail in normal operation; if they do the user
+    // can keep working with the in-memory copy and we surface to console.
+    console.error("[preferences] failed to persist:", err);
+  });
+});
+
 
 /**
  * Read the legacy `localStorage["huginndb.viewPrefs.v1"]` blob and return
@@ -188,7 +185,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     }
 
     set({ prefs: loaded, hydrated: true });
-    if (seeded) scheduleSave(loaded);
+    if (seeded) save.schedule(loaded);
   },
 
   updateEditor(patch) {
@@ -197,7 +194,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         ...s.prefs,
         editor: { ...s.prefs.editor, ...patch },
       };
-      scheduleSave(next);
+      save.schedule(next);
       return { prefs: next };
     });
   },
@@ -208,7 +205,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         ...s.prefs,
         grid: { ...s.prefs.grid, ...patch },
       };
-      scheduleSave(next);
+      save.schedule(next);
       return { prefs: next };
     });
   },
@@ -219,7 +216,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         ...s.prefs,
         ui: { ...s.prefs.ui, ...patch },
       };
-      scheduleSave(next);
+      save.schedule(next);
       return { prefs: next };
     });
   },
@@ -230,7 +227,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         ...s.prefs,
         connections: { ...s.prefs.connections, ...patch },
       };
-      scheduleSave(next);
+      save.schedule(next);
       return { prefs: next };
     });
   },
@@ -241,14 +238,14 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         ...s.prefs,
         keybindings: { ...s.prefs.keybindings, ...patch },
       };
-      scheduleSave(next);
+      save.schedule(next);
       return { prefs: next };
     });
   },
 
   resetAll() {
     set({ prefs: DEFAULT_PREFS });
-    scheduleSave(DEFAULT_PREFS);
+    save.schedule(DEFAULT_PREFS);
   },
 
   applyExternal(prefs) {
