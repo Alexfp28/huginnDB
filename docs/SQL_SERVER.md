@@ -84,7 +84,7 @@ T-SQL:
 | --- | --- |
 | Structure editor (visual `ALTER TABLE`) | Structure is read-only. The T-SQL DDL builder isn't written. |
 | Rename a table or view | T-SQL renames through `EXEC sp_rename`, whose arguments are strings rather than identifiers; it is wired up with the rest of the DDL work. |
-| View editor | Create/edit/drop a view. Views themselves are browsable. |
+| View editor | Creating or redefining a view: the T-SQL DDL builder isn't written. Reading a view's *definition* does work, and so does dropping one — the tree offers neither yet, because it gates views on the same flag as table structure. Views are browsable, and their definition is readable over MCP. |
 | `.sql` export and import | Needs a per-driver literal encoder. Grid data still exports to CSV/JSON. |
 
 Working today, for contrast: `CREATE DATABASE` / `DROP DATABASE`, `TRUNCATE`

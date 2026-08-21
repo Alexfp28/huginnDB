@@ -34,11 +34,11 @@ pub async fn get_view_definition(
 ) -> AppResult<ViewDefinition> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
-    if matches!(&pool, DbPool::MsSql(_)) {
-        return Err(AppError::UnsupportedDriver(
-            "the view editor does not support SQL Server yet".into(),
-        ));
-    }
+    // No SQL Server refusal here, unlike `preview`/`apply` below: reading a
+    // definition is a plain catalog query, and the T-SQL DDL *builder* is the
+    // only thing that isn't written yet (`db::view_ddl::build_view_ddl` still
+    // refuses it). `Dialect::try_of` is what rejects MongoDB, whose views are
+    // stored pipelines and belong to the aggregation editor.
     Dialect::try_of(&pool)?;
     crate::error::with_timeout("get_view_definition", async move {
         // The `schema` each driver reports back is the one it actually queried,
@@ -63,7 +63,11 @@ pub async fn get_view_definition(
                 let query = crate::db::sqlite::schema::view_definition(p, None, &view).await?;
                 (None, query)
             }
-            DbPool::MsSql(_) => unreachable!("sql server rejected above"),
+            DbPool::MsSql(p) => {
+                let query =
+                    crate::db::mssql::schema::view_definition(p, schema.as_deref(), &view).await?;
+                (schema, query)
+            }
             DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
         };
         let query = query.ok_or_else(|| match &schema {
