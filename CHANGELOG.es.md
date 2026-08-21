@@ -45,6 +45,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   desactivado aunque la conexión estuviera ahí desde el principio. Un perfil
   omitido ahora se mapea a sí mismo.
 
+- **Al importar un tercer perfil con el mismo nombre se numeraba `(3)`, saltándose
+  el `(2)`.** La escalera de renombrado del importador de perfiles reutilizaba un
+  único contador para los dos peldaños, así que la secuencia era `nombre`,
+  `nombre (imported)`, `nombre (3)`, `nombre (4)`, … Ahora coincide con la del
+  importador de JSON Schemas —`nombre (2)` tras `nombre (imported)`— porque ambos
+  llaman a la misma función.
+
 - **Los conflictos al importar entornos vienen por defecto en «Omitir» y no en
   «Renombrar»**, igual que en el importador de perfiles. Reimportar tu propio
   export acumulaba `nombre (imported)`, `nombre (2)`, … en cada vuelta; el paso
@@ -118,6 +125,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     de escritura de `BIT` del gotcha #15, deletreado en seis sitios) y
     `Dialect::rename_stmt` (`rename_table` y `rename_view` solo se diferenciaban
     en la palabra clave de Postgres y en una palabra de un mensaje de error).
+  - La fontanería de importación/exportación: `transfer::{check_meta, metadata,
+    save_export, disambiguate_name}` sustituyen los mismos cuatro pasos escritos
+    una vez por cada tipo de transferencia (perfiles, entornos, JSON Schemas), y
+    `resolve_ssh_secret` se comparte con el conector MCP en lugar de repetirse
+    allí.
   - Frontend: `useImportWizard` (tres diálogos), `useAsyncSubmit` (diez),
     `OverlayPalette` + `useListNavigation` (paleta de comandos y conmutador de
     pestañas), `lib/schedule.ts` (tres debounces, dos sondeos), `RefreshButton`

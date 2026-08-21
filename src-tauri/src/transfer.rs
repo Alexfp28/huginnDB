@@ -417,6 +417,112 @@ pub struct ImportedEnvironment {
     pub origin_ids: Vec<String>,
 }
 
+/// Human name for a `meta.kind`, for the one error message that has to name
+/// both the file the user picked and the importer they picked it in.
+fn kind_label(kind: &str) -> &'static str {
+    match kind {
+        KIND_ENVIRONMENT => "environment",
+        KIND_JSON_SCHEMAS => "JSON Schema",
+        // `""` is a pre-`kind` profile bundle; see [`KIND_PROFILES`].
+        _ => "profile",
+    }
+}
+
+/// Reject an export file whose `meta` this importer cannot read.
+///
+/// Both checks were spelled out at four call sites across three modules, and
+/// the `kind` half is the one that matters: `serde_json` silently ignores
+/// unknown fields, so an environment export fed to the profile importer used
+/// to parse *fine* and quietly contribute nothing but its `profiles` array.
+/// `""` counts as [`KIND_PROFILES`] — files written before the discriminant
+/// existed have no `kind` at all.
+pub fn check_meta(meta: &ExportMetadata, expected: &str) -> AppResult<()> {
+    if meta.version != 1 {
+        return Err(AppError::Transfer(format!(
+            "unsupported export format version {}",
+            meta.version
+        )));
+    }
+    let actual = if meta.kind.is_empty() {
+        KIND_PROFILES
+    } else {
+        meta.kind.as_str()
+    };
+    if actual != expected {
+        return Err(AppError::Transfer(format!(
+            "this file is a {} export, not a {} one",
+            kind_label(actual),
+            kind_label(expected)
+        )));
+    }
+    Ok(())
+}
+
+/// The `meta` block every export file carries. `app` and `version` are fixed;
+/// the three writers differed only in `kind` and `encrypted`.
+pub fn metadata(kind: &str, encrypted: bool, exported_at: &str) -> ExportMetadata {
+    ExportMetadata {
+        version: 1,
+        app: "huginndb".into(),
+        exported_at: exported_at.to_string(),
+        encrypted,
+        kind: kind.into(),
+    }
+}
+
+/// Ask the user where to put an export, write it there, return the path.
+///
+/// The tail of all three export commands: a native save dialog filtered to
+/// `.json`, a cancel mapped to [`crate::error::EXPORT_CANCELLED`] (which the
+/// frontend special-cases into "nothing happened" rather than an error toast),
+/// and the write.
+pub fn save_export(
+    app: &tauri::AppHandle,
+    title: &str,
+    suggested_name: &str,
+    json: &str,
+) -> AppResult<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let path = app
+        .dialog()
+        .file()
+        .set_title(title)
+        .set_file_name(suggested_name)
+        .add_filter("JSON", &["json"])
+        .blocking_save_file()
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
+    let dest = path.to_string();
+    std::fs::write(&dest, json)?;
+    Ok(dest)
+}
+
+/// Disambiguate `base` against `taken`: `name`, `name (imported)`,
+/// `name (2)`, `name (3)`, …
+///
+/// Every importer needs this and two had grown their own. The profile
+/// importer's inline copy jumped straight from `(imported)` to `(3)` — it
+/// reused one suffix counter for both rungs — so a third collision was named
+/// `(3)` with no `(2)` anywhere. This is the JSON Schema importer's ladder,
+/// which was the tested one and the one its doc comment claimed both used.
+pub fn disambiguate_name<'a>(base: &str, taken: impl Iterator<Item = &'a str>) -> String {
+    let used: std::collections::HashSet<&str> = taken.collect();
+    if !used.contains(base) {
+        return base.to_string();
+    }
+    let first = format!("{base} (imported)");
+    if !used.contains(first.as_str()) {
+        return first;
+    }
+    let mut n = 2;
+    loop {
+        let candidate = format!("{base} ({n})");
+        if !used.contains(candidate.as_str()) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 /// Profiles in `incoming` whose `id` already exists in `existing`. Shared by
 /// `analyze_import_file` and `analyze_environment_import` — the conflict rule
 /// (same id, different bundle) doesn't care which command found it.
@@ -776,6 +882,73 @@ mod tests {
         assert_ne!(KIND_PROFILES, KIND_ENVIRONMENT);
         assert_ne!(KIND_PROFILES, KIND_JSON_SCHEMAS);
         assert_ne!(KIND_ENVIRONMENT, KIND_JSON_SCHEMAS);
+    }
+
+    fn meta_of(kind: &str) -> ExportMetadata {
+        metadata(kind, false, "2026-08-21T00:00:00Z")
+    }
+
+    #[test]
+    fn check_meta_accepts_only_the_kind_the_importer_asked_for() {
+        assert!(check_meta(&meta_of(KIND_PROFILES), KIND_PROFILES).is_ok());
+        assert!(check_meta(&meta_of(KIND_ENVIRONMENT), KIND_ENVIRONMENT).is_ok());
+        assert!(check_meta(&meta_of(KIND_JSON_SCHEMAS), KIND_JSON_SCHEMAS).is_ok());
+    }
+
+    #[test]
+    fn a_missing_kind_is_a_pre_1_9_profile_bundle() {
+        // Files written before the discriminant existed carry no `kind` at all,
+        // and must keep importing as what they are.
+        let mut meta = meta_of(KIND_PROFILES);
+        meta.kind = String::new();
+        assert!(check_meta(&meta, KIND_PROFILES).is_ok());
+        assert!(check_meta(&meta, KIND_ENVIRONMENT).is_err());
+    }
+
+    #[test]
+    fn check_meta_names_both_the_file_and_the_importer() {
+        // serde ignores unknown fields, so without this an environment export
+        // fed to the profile importer parses fine and silently contributes
+        // only its `profiles` array.
+        let err = check_meta(&meta_of(KIND_ENVIRONMENT), KIND_PROFILES)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("environment"), "{err}");
+        assert!(err.contains("profile"), "{err}");
+
+        let err = check_meta(&meta_of(KIND_PROFILES), KIND_JSON_SCHEMAS)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("JSON Schema"), "{err}");
+    }
+
+    #[test]
+    fn check_meta_rejects_a_future_format_version() {
+        let mut meta = meta_of(KIND_PROFILES);
+        meta.version = 2;
+        assert!(check_meta(&meta, KIND_PROFILES)
+            .unwrap_err()
+            .to_string()
+            .contains("version 2"));
+    }
+
+    #[test]
+    fn disambiguate_name_numbers_from_two_after_the_imported_rung() {
+        // The profile importer's inline copy reused one counter for both rungs
+        // and so jumped from `(imported)` straight to `(3)`.
+        assert_eq!(disambiguate_name("prod", ["other"].into_iter()), "prod");
+        assert_eq!(
+            disambiguate_name("prod", ["prod"].into_iter()),
+            "prod (imported)"
+        );
+        assert_eq!(
+            disambiguate_name("prod", ["prod", "prod (imported)"].into_iter()),
+            "prod (2)"
+        );
+        assert_eq!(
+            disambiguate_name("prod", ["prod", "prod (imported)", "prod (2)"].into_iter()),
+            "prod (3)"
+        );
     }
 
     #[test]

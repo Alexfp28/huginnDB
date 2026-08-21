@@ -630,10 +630,7 @@ impl Huginn {
             .ok_or_else(|| crate::error::AppError::NotFound(format!("profile {id}")))?;
 
         let password = crate::commands::connection::resolve_password(&profile)?;
-        let ssh_secret = match profile.ssh_keyring_account() {
-            Some(account) => crate::keychain::get_password(&account)?,
-            None => None,
-        };
+        let ssh_secret = crate::commands::connection::resolve_ssh_secret(&profile)?;
         let known_hosts = self.state.known_hosts.clone();
         // Two limits apply and the stricter wins. `--max-connections` is what
         // *this process* is willing to take; the profile's own

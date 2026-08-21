@@ -14,7 +14,7 @@ use crate::store;
 use crate::tab_state::{self, ConnectionTabState, Environment, LaunchState, Origin};
 use crate::transfer::{
     self, ConflictAction, ConflictResolution, EnvironmentExportFile, EnvironmentImportAnalysis,
-    EnvironmentImportAnalysisEntry, EnvironmentImportResult, ExportMetadata, ExportedEnvironment,
+    EnvironmentImportAnalysisEntry, EnvironmentImportResult, ExportedEnvironment,
     ExportedEnvironmentBundle, ExportedOrigin, ImportedEnvironment, KIND_ENVIRONMENT,
 };
 use tauri::{AppHandle, Emitter, State};
@@ -495,19 +495,11 @@ pub async fn export_environments(
 
     let now = chrono::Utc::now().to_rfc3339();
     let file = EnvironmentExportFile {
-        meta: ExportMetadata {
-            version: 1,
-            app: "huginndb".into(),
-            exported_at: now.clone(),
-            encrypted: include_passwords,
-            kind: KIND_ENVIRONMENT.into(),
-        },
+        meta: transfer::metadata(KIND_ENVIRONMENT, include_passwords, &now),
         environments: bundles,
         profiles: exported_profiles,
         json_schemas,
     };
-
-    let json = serde_json::to_string_pretty(&file)?;
 
     let date_part = now.get(..10).unwrap_or("export");
     let suggested = if envs.len() == 1 {
@@ -515,19 +507,12 @@ pub async fn export_environments(
     } else {
         format!("huginndb-environments-{date_part}.json")
     };
-
-    use tauri_plugin_dialog::DialogExt;
-    let path = app
-        .dialog()
-        .file()
-        .set_title("Export environments")
-        .set_file_name(&suggested)
-        .add_filter("JSON", &["json"])
-        .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
-
-    let dest = path.to_string();
-    std::fs::write(&dest, json)?;
+    let dest = transfer::save_export(
+        &app,
+        "Export environments",
+        &suggested,
+        &serde_json::to_string_pretty(&file)?,
+    )?;
     Ok(dest)
 }
 
@@ -543,17 +528,7 @@ pub fn analyze_environment_import(
     let data = std::fs::read_to_string(&file_path)?;
     let export: EnvironmentExportFile = serde_json::from_str(&data)?;
 
-    if export.meta.version != 1 {
-        return Err(AppError::Transfer(format!(
-            "unsupported export format version {}",
-            export.meta.version
-        )));
-    }
-    if export.meta.kind != KIND_ENVIRONMENT {
-        return Err(AppError::Transfer(
-            "this file is not an environment export".into(),
-        ));
-    }
+    transfer::check_meta(&export.meta, KIND_ENVIRONMENT)?;
 
     let profiles = state.profiles.read();
     let conflicts = transfer::detect_conflicts(&profiles, &export.profiles);
@@ -631,17 +606,7 @@ pub async fn import_environment(
         let data = std::fs::read_to_string(&file_path)?;
         let export: EnvironmentExportFile = serde_json::from_str(&data)?;
 
-        if export.meta.version != 1 {
-            return Err(AppError::Transfer(format!(
-                "unsupported export format version {}",
-                export.meta.version
-            )));
-        }
-        if export.meta.kind != KIND_ENVIRONMENT {
-            return Err(AppError::Transfer(
-                "this file is not an environment export".into(),
-            ));
-        }
+        transfer::check_meta(&export.meta, KIND_ENVIRONMENT)?;
         if export.meta.encrypted && passphrase.is_none() {
             return Err(AppError::Transfer(
                 "this export file contains encrypted passwords — provide a passphrase".into(),

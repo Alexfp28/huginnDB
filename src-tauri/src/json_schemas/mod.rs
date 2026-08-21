@@ -60,7 +60,7 @@ mod tests;
 
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// File name used for the persisted library.
 const JSON_SCHEMAS_FILE: &str = "json_schemas.json";
@@ -660,26 +660,9 @@ pub fn save_library(lib: &JsonSchemaLibrary) -> AppResult<()> {
 // Helpers shared with the import path (file types live in `transfer`).
 // ---------------------------------------------------------------------------
 
-/// Disambiguate `base` against `taken`, mirroring the profile importer's
-/// ladder: `name`, `name (imported)`, `name (2)`, …
-pub fn disambiguate_name<'a>(base: &str, taken: impl Iterator<Item = &'a str>) -> String {
-    let used: HashSet<&str> = taken.collect();
-    if !used.contains(base) {
-        return base.to_string();
-    }
-    let first = format!("{base} (imported)");
-    if !used.contains(first.as_str()) {
-        return first;
-    }
-    let mut n = 2;
-    loop {
-        let candidate = format!("{base} ({n})");
-        if !used.contains(candidate.as_str()) {
-            return candidate;
-        }
-        n += 1;
-    }
-}
+/// Disambiguate `base` against `taken`. Shared with the profile and
+/// environment importers — see [`crate::transfer::disambiguate_name`].
+pub use crate::transfer::disambiguate_name;
 
 /// Next free `order` value, so imported bindings land after existing ones.
 pub fn next_order(lib: &JsonSchemaLibrary) -> i32 {

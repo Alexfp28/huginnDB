@@ -12,8 +12,8 @@ use crate::ssh_known_hosts;
 use crate::state::{ActivePool, AppState, ConnectionProfile, Driver, StartupArgs};
 use crate::store;
 use crate::transfer::{
-    self, ConflictAction, ConflictResolution, ExportFile, ExportMetadata, ImportAnalysis,
-    ImportResult, KIND_PROFILES,
+    self, ConflictAction, ConflictResolution, ExportFile, ImportAnalysis, ImportResult,
+    KIND_PROFILES,
 };
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -188,7 +188,7 @@ pub(crate) fn resolve_password(profile: &ConnectionProfile) -> AppResult<String>
 /// the OS keychain. Returns `Ok(None)` if the profile has no tunnel, or if
 /// no secret has been stored yet (some tunnels — e.g. a passphrase-less
 /// key — legitimately have no stored secret).
-fn resolve_ssh_secret(profile: &ConnectionProfile) -> AppResult<Option<String>> {
+pub(crate) fn resolve_ssh_secret(profile: &ConnectionProfile) -> AppResult<Option<String>> {
     let Some(account) = profile.ssh_keyring_account() else {
         return Ok(None);
     };
@@ -1122,17 +1122,7 @@ pub fn analyze_import_file(
     let data = std::fs::read_to_string(&file_path)?;
     let export: ExportFile = serde_json::from_str(&data)?;
 
-    if export.meta.version != 1 {
-        return Err(AppError::Transfer(format!(
-            "unsupported export format version {}",
-            export.meta.version
-        )));
-    }
-    if !export.meta.kind.is_empty() && export.meta.kind != KIND_PROFILES {
-        return Err(AppError::Transfer(
-            "this file is an environment export — use Import Environment instead".into(),
-        ));
-    }
+    transfer::check_meta(&export.meta, KIND_PROFILES)?;
 
     let profiles = state.profiles.read();
     let conflicts = transfer::detect_conflicts(&profiles, &export.profiles);
@@ -1184,35 +1174,18 @@ pub async fn export_profiles(
 
     let now = chrono::Utc::now().to_rfc3339();
     let file = ExportFile {
-        meta: ExportMetadata {
-            version: 1,
-            app: "huginndb".into(),
-            exported_at: now.clone(),
-            encrypted: include_passwords,
-            kind: KIND_PROFILES.into(),
-        },
+        meta: transfer::metadata(KIND_PROFILES, include_passwords, &now),
         profiles: exported_profiles,
     };
 
-    let json = serde_json::to_string_pretty(&file)?;
-
-    // Build a suggested filename like `huginndb-profiles-2025-06-02.json`.
+    // A suggested filename like `huginndb-profiles-2025-06-02.json`.
     let date_part = now.get(..10).unwrap_or("export");
-    let suggested = format!("huginndb-profiles-{date_part}.json");
-
-    use tauri_plugin_dialog::DialogExt;
-    let path = app
-        .dialog()
-        .file()
-        .set_title("Export profiles")
-        .set_file_name(&suggested)
-        .add_filter("JSON", &["json"])
-        .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
-
-    let dest = path.to_string();
-    std::fs::write(&dest, json)?;
-    Ok(dest)
+    transfer::save_export(
+        &app,
+        "Export profiles",
+        &format!("huginndb-profiles-{date_part}.json"),
+        &serde_json::to_string_pretty(&file)?,
+    )
 }
 
 /// Import profiles from a previously exported JSON file.
@@ -1250,17 +1223,7 @@ pub async fn import_profiles(
         let data = std::fs::read_to_string(&file_path)?;
         let export: ExportFile = serde_json::from_str(&data)?;
 
-        if export.meta.version != 1 {
-            return Err(AppError::Transfer(format!(
-                "unsupported export format version {}",
-                export.meta.version
-            )));
-        }
-        if !export.meta.kind.is_empty() && export.meta.kind != KIND_PROFILES {
-            return Err(AppError::Transfer(
-                "this file is an environment export — use Import Environment instead".into(),
-            ));
-        }
+        transfer::check_meta(&export.meta, KIND_PROFILES)?;
         if export.meta.encrypted && passphrase.is_none() {
             return Err(AppError::Transfer(
                 "this export file contains encrypted passwords — provide a passphrase".into(),
@@ -1460,21 +1423,10 @@ pub(crate) fn apply_profile_imports(
         }
         let original_name = ep.profile.name.clone();
 
-        // Ensure the display name is unique; append " (imported)" or " (2)" etc.
-        let final_name = {
-            let base = ep.profile.name.clone();
-            let mut candidate = base.clone();
-            let mut suffix = 2u32;
-            while profiles.iter().any(|p| p.name == candidate) {
-                candidate = if suffix == 2 {
-                    format!("{base} (imported)")
-                } else {
-                    format!("{base} ({suffix})")
-                };
-                suffix += 1;
-            }
-            candidate
-        };
+        let final_name = crate::transfer::disambiguate_name(
+            &ep.profile.name,
+            profiles.iter().map(|p| p.name.as_str()),
+        );
 
         let renamed = final_name != original_name;
         if renamed {

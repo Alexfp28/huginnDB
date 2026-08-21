@@ -41,6 +41,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   even though the connection existed locally all along. A skipped profile now
   maps to itself.
 
+- **Importing a third profile with the same name numbered it `(3)`, skipping
+  `(2)`.** The profile importer's rename ladder reused one counter for both
+  rungs, so the sequence ran `name`, `name (imported)`, `name (3)`, `name (4)`,
+  … It now matches the JSON Schema importer's — `name (2)` after
+  `name (imported)` — because both call the same function.
+
 - **Environment-import conflicts default to "Skip" rather than "Rename"**,
   matching the profile importer. Re-importing your own export accumulated
   `name (imported)`, `name (2)`, … on every round trip; the conflicts step is
@@ -109,6 +115,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     normalize_bit_value}` (the `BIT`-write reasoning of gotcha #15, spelled out
     at six sites), and `Dialect::rename_stmt` (`rename_table` and `rename_view`
     differed only in Postgres's keyword and one word of an error message).
+  - The import/export plumbing: `transfer::{check_meta, metadata, save_export,
+    disambiguate_name}` replace the same four steps written out once per
+    transfer kind (profiles, environments, JSON Schemas), and
+    `resolve_ssh_secret` is shared with the MCP connector instead of repeated
+    there.
   - Frontend: `useImportWizard` (three dialogs), `useAsyncSubmit` (ten),
     `OverlayPalette` + `useListNavigation` (the command palette and the tab
     switcher), `lib/schedule.ts` (three debounces, two polls), `RefreshButton`
