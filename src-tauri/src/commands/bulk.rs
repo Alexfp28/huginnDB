@@ -93,6 +93,12 @@ fn validate_args(args: &BulkUpdateArgs) -> AppResult<()> {
 /// be a bare placeholder for every column regardless of type, which is why a
 /// bulk update setting a MySQL `BIT` column failed with "Data too long for
 /// column" (issue mirrored from the single-cell-edit fix).
+// Eight arguments because the catalog fallback needs `state`/`connection_id`
+// on top of the statement's own inputs, and both callers must pass the exact
+// same set or the previewed SQL and the executed SQL could diverge — which is
+// the whole point of sharing this function. Same call the write paths in
+// `commands::query` make, and allowed for the same reason.
+#[allow(clippy::too_many_arguments)]
 async fn build_update_statement(
     state: &AppState,
     connection_id: &str,

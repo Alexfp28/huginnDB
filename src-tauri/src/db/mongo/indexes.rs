@@ -665,10 +665,7 @@ mod tests {
         let doc = spec_of("{ atnId: 1, productionOrderId: 1 }")
             .to_document()
             .unwrap();
-        assert_eq!(
-            doc.get_str("name").unwrap(),
-            "atnId_1_productionOrderId_1"
-        );
+        assert_eq!(doc.get_str("name").unwrap(), "atnId_1_productionOrderId_1");
     }
 
     #[test]
