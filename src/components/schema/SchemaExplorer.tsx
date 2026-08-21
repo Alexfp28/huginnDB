@@ -109,6 +109,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
 import { confirmDestructive } from "@/lib/confirmDestructive";
@@ -2166,16 +2168,13 @@ function RenameTableDialog({
   // doesn't exist at all on SQLite).
   const canMove = driver === "mongodb" && databases.length > 0;
   const [newDb, setNewDb] = useState(target.schema ?? "");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { submitting, error, run } = useAsyncSubmit();
   const moving = canMove && newDb !== (target.schema ?? "");
 
-  const submit = async () => {
+  const submit = () => {
     const trimmed = newName.trim();
     if (!trimmed || (trimmed === target.name && !moving)) return;
-    setSubmitting(true);
-    setError(null);
-    try {
+    run(async () => {
       await api.renameTable(
         connectionId,
         target.schema,
@@ -2199,10 +2198,7 @@ function RenameTableDialog({
         );
       }
       onDone();
-    } catch (e) {
-      setError(String(e));
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -2289,21 +2285,15 @@ function RenameViewDialog({
 }) {
   const { t } = useTranslation();
   const [newName, setNewName] = useState(target.name);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { submitting, error, run } = useAsyncSubmit();
 
-  const submit = async () => {
+  const submit = () => {
     const trimmed = newName.trim();
     if (!trimmed || trimmed === target.name) return;
-    setSubmitting(true);
-    setError(null);
-    try {
+    run(async () => {
       await api.renameView(connectionId, target.schema, target.name, trimmed);
       onDone();
-    } catch (e) {
-      setError(String(e));
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -2365,48 +2355,26 @@ function DropViewDialog({
   onDone: () => void;
 }) {
   const { t } = useTranslation();
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      await api.dropView(connectionId, target.schema, target.name);
-      onDone();
-    } catch (e) {
-      setError(String(e));
-      setSubmitting(false);
-    }
-  };
+  const { submitting, error, run } = useAsyncSubmit();
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("schema.dropView.title", { name: target.name })}</DialogTitle>
-          <DialogDescription>{t("schema.dropView.description")}</DialogDescription>
-        </DialogHeader>
-        {error && (
-          <div className="text-xs text-destructive">
-            {t("schema.dropView.failed", { message: error })}
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            variant="destructive"
-            autoFocus
-            onClick={submit}
-            disabled={submitting}
-          >
-            {submitting ? t("schema.drop.dropping") : t("schema.drop.submit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t("schema.dropView.title", { name: target.name })}
+      description={t("schema.dropView.description")}
+      confirmLabel={t("schema.drop.submit")}
+      confirmingLabel={t("schema.drop.dropping")}
+      confirmAutoFocus
+      confirming={submitting}
+      error={error && t("schema.dropView.failed", { message: error })}
+      onConfirm={() =>
+        run(async () => {
+          await api.dropView(connectionId, target.schema, target.name);
+          onDone();
+        })
+      }
+    />
   );
 }
 
@@ -2426,21 +2394,15 @@ function CreateDatabaseDialog({
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { submitting, error, run } = useAsyncSubmit();
 
-  const submit = async () => {
+  const submit = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    setSubmitting(true);
-    setError(null);
-    try {
+    run(async () => {
       await api.createDatabase(connectionId, trimmed);
       onDone(trimmed);
-    } catch (e) {
-      setError(String(e));
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -2499,21 +2461,15 @@ function CreateCollectionDialog({
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { submitting, error, run } = useAsyncSubmit();
 
-  const submit = async () => {
+  const submit = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    setSubmitting(true);
-    setError(null);
-    try {
+    run(async () => {
       await api.createCollection(connectionId, trimmed);
       onDone(trimmed);
-    } catch (e) {
-      setError(String(e));
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -2602,8 +2558,7 @@ function DatabaseVisibilityDialog({
   const [sel, setSel] = useState<Set<string>>(
     () => new Set(selected ?? databases),
   );
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { submitting, error, run } = useAsyncSubmit();
 
   const allSelected = sel.size === databases.length;
 
@@ -2622,11 +2577,9 @@ function DatabaseVisibilityDialog({
   const persist = () =>
     persistLaunchState(Array.from(useConnections.getState().active));
 
-  const submit = async () => {
+  const submit = () => {
     if (sel.size === 0) return;
-    setSubmitting(true);
-    setError(null);
-    try {
+    run(async () => {
       const chosen = databases.filter((n) => sel.has(n));
       // "All" → null so future databases stay visible; a proper subset is
       // stored verbatim. At environment scope the `null` is still recorded as an
@@ -2658,24 +2611,16 @@ function DatabaseVisibilityDialog({
         await persist();
       }
       onClose();
-    } catch (e) {
-      setError(String(e));
-      setSubmitting(false);
-    }
+    });
   };
 
   /** Discard this environment's override and fall back to the profile's subset. */
-  const clearOverride = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
+  const clearOverride = () => {
+    run(async () => {
       useUi.getState().setDatabaseVisibilityFor(profileId, undefined);
       await persist();
       onClose();
-    } catch (e) {
-      setError(String(e));
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -2727,7 +2672,7 @@ function DatabaseVisibilityDialog({
           </p>
           {hasOverride && (
             <button
-              onClick={() => void clearOverride()}
+              onClick={clearOverride}
               disabled={submitting}
               className="text-[11px] text-primary underline-offset-2 hover:underline disabled:opacity-50"
             >
@@ -2796,48 +2741,26 @@ function DropTableDialog({
   onDone: () => void;
 }) {
   const { t } = useTranslation();
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      await api.dropTable(connectionId, target.schema, target.name);
-      onDone();
-    } catch (e) {
-      setError(String(e));
-      setSubmitting(false);
-    }
-  };
+  const { submitting, error, run } = useAsyncSubmit();
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("schema.drop.title", { name: target.name })}</DialogTitle>
-          <DialogDescription>{t("schema.drop.description")}</DialogDescription>
-        </DialogHeader>
-        {error && (
-          <div className="text-xs text-destructive">
-            {t("schema.drop.failed", { message: error })}
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            variant="destructive"
-            autoFocus
-            onClick={submit}
-            disabled={submitting}
-          >
-            {submitting ? t("schema.drop.dropping") : t("schema.drop.submit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t("schema.drop.title", { name: target.name })}
+      description={t("schema.drop.description")}
+      confirmLabel={t("schema.drop.submit")}
+      confirmingLabel={t("schema.drop.dropping")}
+      confirmAutoFocus
+      confirming={submitting}
+      error={error && t("schema.drop.failed", { message: error })}
+      onConfirm={() =>
+        run(async () => {
+          await api.dropTable(connectionId, target.schema, target.name);
+          onDone();
+        })
+      }
+    />
   );
 }
 
@@ -2858,60 +2781,39 @@ function EmptyTableDialog({
 }) {
   const { t } = useTranslation();
   const updateUi = usePreferences((s) => s.updateUi);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { submitting, error, run } = useAsyncSubmit();
   const [dontAsk, setDontAsk] = useState(false);
 
-  const submit = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      await api.emptyTable(connectionId, target.schema, target.name);
-      if (dontAsk) updateUi({ confirmEmptyTable: false });
-      toast.success(t("schema.empty.emptied", { name: target.name }));
-      onDone();
-    } catch (e) {
-      setError(String(e));
-      setSubmitting(false);
-    }
-  };
-
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("schema.empty.title", { name: target.name })}</DialogTitle>
-          <DialogDescription>{t("schema.empty.description")}</DialogDescription>
-        </DialogHeader>
-        {error && (
-          <div className="text-xs text-destructive">
-            {t("schema.empty.failed", { message: error })}
-          </div>
-        )}
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            className="accent-brand"
-            checked={dontAsk}
-            onChange={(e) => setDontAsk(e.target.checked)}
-          />
-          {t("schema.empty.dontAskAgain")}
-        </label>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            variant="destructive"
-            autoFocus
-            onClick={submit}
-            disabled={submitting}
-          >
-            {submitting ? t("schema.empty.emptying") : t("schema.empty.submit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t("schema.empty.title", { name: target.name })}
+      description={t("schema.empty.description")}
+      confirmLabel={t("schema.empty.submit")}
+      confirmingLabel={t("schema.empty.emptying")}
+      confirmAutoFocus
+      confirming={submitting}
+      error={error && t("schema.empty.failed", { message: error })}
+      onConfirm={() =>
+        run(async () => {
+          await api.emptyTable(connectionId, target.schema, target.name);
+          if (dontAsk) updateUi({ confirmEmptyTable: false });
+          toast.success(t("schema.empty.emptied", { name: target.name }));
+          onDone();
+        })
+      }
+    >
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+        <input
+          type="checkbox"
+          className="accent-brand"
+          checked={dontAsk}
+          onChange={(e) => setDontAsk(e.target.checked)}
+        />
+        {t("schema.empty.dontAskAgain")}
+      </label>
+    </ConfirmDialog>
   );
 }
 

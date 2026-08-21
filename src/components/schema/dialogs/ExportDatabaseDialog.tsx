@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/tauri";
+import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
 import type { DataMode, ExportTarget, TableInfo } from "@/types";
 
@@ -107,8 +108,7 @@ export function ExportDatabaseDialog({
   );
   const [dataMode, setDataMode] = useState<DataMode>("insert");
   const [destPath, setDestPath] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { submitting, error, run } = useAsyncSubmit();
 
   const dbNames = Object.keys(rows);
   const checkedCount = dbNames.filter((n) => rows[n].checked).length;
@@ -177,11 +177,9 @@ export function ExportDatabaseDialog({
     if (typeof picked === "string" && picked) setDestPath(picked);
   }
 
-  async function submit() {
+  function submit() {
     if (checkedCount === 0 || !destPath || submitting) return;
-    setSubmitting(true);
-    setError(null);
-    try {
+    run(async () => {
       const targets: ExportTarget[] = [];
       for (const name of dbNames) {
         const row = rows[name];
@@ -200,11 +198,7 @@ export function ExportDatabaseDialog({
       const path = await api.exportDatabases({ targets, dataMode, destPath });
       toast.success(t("schema.exportDatabaseDialog.success", { path }));
       onClose();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   }
 
   return (
@@ -338,7 +332,7 @@ export function ExportDatabaseDialog({
                 <Button
                   type="button"
                   disabled={checkedCount === 0 || !destPath || submitting}
-                  onClick={() => void submit()}
+                  onClick={submit}
                 >
                   {submitting
                     ? t("schema.exportDatabaseDialog.exporting")
