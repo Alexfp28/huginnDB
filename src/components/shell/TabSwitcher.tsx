@@ -42,6 +42,7 @@ import {
 } from "@/lib/connectionLabel";
 import { cn } from "@/lib/utils";
 import type { AppTab, TabKind } from "@/types";
+import { Kbd } from "@/components/ui/kbd";
 
 interface TabSwitcherState {
   open: boolean;
@@ -336,21 +337,21 @@ export function TabSwitcher() {
 
           <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-3xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 ↑↓
-              </kbd>
+              </Kbd>
               {t("tabSwitcher.hintNavigate")}
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 ↵
-              </kbd>
+              </Kbd>
               {t("tabSwitcher.hintJump")}
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 del
-              </kbd>
+              </Kbd>
               {t("tabSwitcher.hintClose")}
             </span>
           </div>

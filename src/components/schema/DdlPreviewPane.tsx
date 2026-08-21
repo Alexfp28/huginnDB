@@ -17,6 +17,7 @@ import { RefreshCw } from "lucide-react";
 
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import type { EditorPrefs } from "@/types";
+import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
 
 interface Props {
   /** Section label, e.g. "DDL preview". */
@@ -53,15 +54,7 @@ export function DdlPreviewPane({ title, ddl, error, warning, prefs }: Props) {
           value={ddl}
           language="sql"
           theme={resolveMonacoTheme(prefs.theme)}
-          options={{
-            readOnly: true,
-            minimap: { enabled: false },
-            lineNumbers: "off",
-            fontFamily: prefs.fontFamily,
-            fontSize: prefs.fontSize,
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-          }}
+          options={readOnlyEditorOptions(prefs)}
         />
       )}
     </div>

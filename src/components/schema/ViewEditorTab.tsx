@@ -45,6 +45,7 @@ import type { QueryResult, StructureMode, ViewDefinition } from "@/types";
 import { useReloadable } from "@/lib/useReloadable";
 import { DdlPreviewPane } from "@/components/schema/DdlPreviewPane";
 import { joinStatements } from "@/lib/sql/formatStatements";
+import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 
 interface Props {
   tabId: string;
@@ -338,15 +339,8 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
               onChange={(v) => setQuery(v ?? "")}
               onMount={handleMount}
               options={{
-                minimap: { enabled: editorPrefs.minimap },
-                wordWrap: editorPrefs.wordWrap ? "on" : "off",
-                fontFamily: editorPrefs.fontFamily,
-                fontSize: editorPrefs.fontSize,
-                tabSize: editorPrefs.tabSize,
-                lineNumbers: editorPrefs.lineNumbers ? "on" : "off",
+                ...editorOptionsFromPrefs(editorPrefs),
                 formatOnPaste: editorPrefs.formatOnPaste,
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
               }}
             />
           </Panel>

@@ -48,6 +48,7 @@ import { useCellEditor, type CellEditorTarget } from "@/stores/grid/cellEditor";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useTabs } from "@/stores/session/tabs";
 import { detectLanguage, type ContentLanguage } from "@/lib/grid/detectContentType";
+import { useFullscreenToggle } from "@/lib/useFullscreenToggle";
 
 /** Key for a target with no owning tab (an ad-hoc grid with no tab identity)
  *  — at most one such session, matching the pre-existing single-slot
@@ -257,23 +258,12 @@ export function SideEditorPanel() {
     return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, [t]);
 
-  const [fullscreen, setFullscreen] = useState(false);
-  // F11 toggles fullscreen; Esc leaves it. Only active while a cell is loaded
-  // (no target → the panel shows the empty hint and there's nothing to expand).
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (!loadedTargetRef.current) return;
-      if (e.key === "F11") {
-        e.preventDefault();
-        setFullscreen((v) => !v);
-      } else if (e.key === "Escape" && fullscreen) {
-        e.preventDefault();
-        setFullscreen(false);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fullscreen]);
+  // Only active while a cell is loaded — with no target the panel shows the
+  // empty hint and there is nothing to expand. Gated on the *ref* so a keypress
+  // consults the current target, not one captured at subscribe time.
+  const [fullscreen, setFullscreen] = useFullscreenToggle(
+    () => !!loadedTargetRef.current,
+  );
 
   if (!target) {
     return (

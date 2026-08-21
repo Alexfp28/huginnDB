@@ -61,6 +61,7 @@ import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { JsonSchemaBinding, JsonSchemaMatch } from "@/types";
 import { pickJsonFile } from "@/lib/dialogs";
+import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 
 export function JsonSchemasSection() {
   const { t } = useTranslation();
@@ -463,15 +464,11 @@ export function JsonSchemasSection() {
                         setBodyDirty(true);
                       }}
                       options={{
+                        ...editorOptionsFromPrefs(editorPrefs),
+                        // A schema body is a document the user navigates, so
+                        // folding is on; the pane is too narrow for a minimap.
                         minimap: { enabled: false },
-                        fontFamily: editorPrefs.fontFamily,
-                        fontSize: editorPrefs.fontSize,
-                        tabSize: editorPrefs.tabSize,
-                        lineNumbers: editorPrefs.lineNumbers ? "on" : "off",
-                        wordWrap: editorPrefs.wordWrap ? "on" : "off",
-                        scrollBeyondLastLine: false,
                         folding: true,
-                        automaticLayout: true,
                       }}
                     />
                   </div>

@@ -65,6 +65,7 @@ import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
 import { cn, formatDuration, formatTime } from "@/lib/utils";
 import { supportsMultipleDatabases } from "@/lib/db/driver";
+import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 import {
   ensureSqlProviders,
   registerSqlEditor,
@@ -584,15 +585,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 onChange={(v) => updateQuery(tabId, v ?? "")}
                 onMount={handleMount}
                 options={{
-                  minimap: { enabled: editorPrefs.minimap },
-                  wordWrap: editorPrefs.wordWrap ? "on" : "off",
-                  fontFamily: editorPrefs.fontFamily,
-                  fontSize: editorPrefs.fontSize,
-                  tabSize: editorPrefs.tabSize,
-                  lineNumbers: editorPrefs.lineNumbers ? "on" : "off",
+                  ...editorOptionsFromPrefs(editorPrefs),
                   formatOnPaste: editorPrefs.formatOnPaste,
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
                 }}
               />
             </div>

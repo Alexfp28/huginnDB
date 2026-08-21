@@ -49,6 +49,7 @@ import {
   type PaletteGroup,
 } from "@/lib/commandPalette/types";
 import { cn } from "@/lib/utils";
+import { Kbd } from "@/components/ui/kbd";
 
 /** Entries shown per group when nothing has been typed, in the catch-all mode.
  *  A mode is already a narrow slice, so it shows everything instead. */
@@ -391,14 +392,14 @@ export function CommandPalette() {
                             </span>
                           )}
                           {cmd.combo && (
-                            <kbd className="shrink-0 rounded border border-border bg-muted px-1 font-mono text-[10px] leading-none text-muted-foreground">
+                            <Kbd className="shrink-0 text-[10px] text-muted-foreground">
                               {cmd.combo}
-                            </kbd>
+                            </Kbd>
                           )}
                           {activeRow && (
-                            <kbd className="shrink-0 rounded border border-border bg-muted px-1 font-mono text-[10px] leading-none text-muted-foreground">
+                            <Kbd className="shrink-0 text-[10px] text-muted-foreground">
                               ↵
-                            </kbd>
+                            </Kbd>
                           )}
                         </button>
                       );
@@ -413,35 +414,35 @@ export function CommandPalette() {
               hint is per-row, so it only appears when there is one. */}
           <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-3xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 ↑↓
-              </kbd>
+              </Kbd>
               {t("commandPalette.hintNavigate")}
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 ↵
-              </kbd>
+              </Kbd>
               {t("commandPalette.hintRun")}
             </span>
             {current?.alt && (
               <span className="flex items-center gap-1 text-brand">
-                <kbd className="rounded border border-brand/40 bg-brand/10 px-1 font-mono leading-none">
+                <Kbd className="border-brand/40 bg-brand/10">
                   alt+↵
-                </kbd>
+                </Kbd>
                 {t(current.alt.hintKey)}
               </span>
             )}
             <span className="flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 tab
-              </kbd>
+              </Kbd>
               {t("commandPalette.hintMode")}
             </span>
             <span className="ml-auto flex items-center gap-1">
-              <kbd className="rounded border border-border bg-muted px-1 font-mono leading-none">
+              <Kbd>
                 esc
-              </kbd>
+              </Kbd>
               {t("commandPalette.hintClose")}
             </span>
           </div>
