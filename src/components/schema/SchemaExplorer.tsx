@@ -129,6 +129,7 @@ import {
 } from "@/lib/db/driver";
 import type { Driver, TableInfo } from "@/types";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
+import { DB_VIEW_WARM_CONCURRENCY } from "@/lib/schema/warmDatabases";
 import {
   supportsCreateDatabase,
   supportsDdlEditing,
@@ -136,17 +137,6 @@ import {
   supportsSqlDump,
 } from "@/lib/db/driver";
 
-/**
- * How many databases the cross-database search may open at once.
- *
- * Every `openDatabaseView` is a separate connection pool against the same
- * server, so an unbounded fan-out here is indistinguishable from a
- * denial-of-service against a database the user shares with their IDE, their
- * application backend and any MCP sidecars. Three keeps the search feeling
- * responsive on a server with a handful of databases while making the
- * nineteen-database case a queue rather than a burst.
- */
-const PREFETCH_CONCURRENCY = 3;
 
 /**
  * Match a table/database name against the filter box. HeidiSQL-style: the
@@ -973,7 +963,10 @@ function MultiDbExplorer({
   // connection attempts — a burst large enough on its own to exhaust a shared
   // server's connection limit, and the single most likely trigger behind the
   // "too many connections" reports. It now runs at most
-  // `PREFETCH_CONCURRENCY` at a time; `pumpTick` re-runs this effect as each
+  // `DB_VIEW_WARM_CONCURRENCY` at a time (shared with the palette's own warm —
+  // see `lib/schema/warmDatabases.ts`, which also records why that one stays a
+  // separate scheduler rather than being merged into this effect);
+  // `pumpTick` re-runs this effect as each
   // one settles so the queue keeps draining. (The effect's `byConnection`
   // dependency covers the success path on its own, but not a failure, which
   // touches no store — hence an explicit tick rather than relying on it.)
@@ -996,7 +989,7 @@ function MultiDbExplorer({
         : cs.databases
     ).filter((db) => !visibleSet || visibleSet.has(db.name));
     for (const db of dbsToWarm) {
-      if (inFlightPrefetch.current.size >= PREFETCH_CONCURRENCY) break;
+      if (inFlightPrefetch.current.size >= DB_VIEW_WARM_CONCURRENCY) break;
       const childId = databaseViewId(parentId, db.name);
       const childCs = byConnection[childId];
       if (childCs?.initialized || childCs?.loading) continue;

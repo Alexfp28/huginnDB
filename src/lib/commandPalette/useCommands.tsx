@@ -89,7 +89,7 @@ import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
 import {
   unwarmedDatabases,
   warmDatabases,
-} from "@/lib/commandPalette/warmSchema";
+} from "@/lib/schema/warmDatabases";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { refreshTable } from "@/lib/grid/tableRefresh";
 import { ACTIONS, formatComboForDisplay, getBinding } from "@/lib/keybindings";
@@ -607,8 +607,8 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       // freshly connected server has databases to offer but no tables to search.
       // This is the opt-in way to fill that in — deliberately an action the user
       // asks for, since every view is another connection pool (see
-      // `warmSchema.ts`). Keeps the palette open so the tables it just indexed
-      // are one keystroke away.
+      // `lib/schema/warmDatabases.ts`). Keeps the palette open so the tables it just
+      // indexed are one keystroke away.
       const cold = unwarmedDatabases(p.id, names, byConnection);
       if (cold.length > 0) {
         list.push({
