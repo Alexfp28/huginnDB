@@ -57,6 +57,7 @@ import { useEnvironmentDeleteConfirm } from "@/stores/dialogs/environmentDeleteC
 import {
   environmentLabel,
   useEnvironments,
+  useOrderedEnvironments,
 } from "@/stores/session/environments";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import type { Environment } from "@/types";
@@ -88,7 +89,6 @@ interface EnvironmentRailProps {
 
 export function EnvironmentRail({ footer }: EnvironmentRailProps) {
   const { t } = useTranslation();
-  const environments = useEnvironments((s) => s.environments);
   const activeId = useEnvironments((s) => s.activeId);
   const switching = useEnvironments((s) => s.switching);
   const switchTo = useEnvironments((s) => s.switchTo);
@@ -102,10 +102,7 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
   const toggleSchema = useSessionPanelLayout((s) => s.toggleSchema);
   const openSchema = useSessionPanelLayout((s) => s.openSchema);
 
-  const ordered = useMemo(
-    () => [...environments].sort((a, b) => a.order - b.order),
-    [environments],
-  );
+  const ordered = useOrderedEnvironments();
   const orderedIds = useMemo(() => ordered.map((e) => e.id), [ordered]);
 
   const defaultName = t("environments.defaultName");

@@ -55,7 +55,11 @@ import {
   Workflow,
 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { useSchema, tableKey } from "@/stores/session/schema";
+import {
+  tableKey,
+  useEnsureSchemaLoaded,
+  useSchema,
+} from "@/stores/session/schema";
 import {
   useTabs,
   closeTabsForTable,
@@ -562,14 +566,7 @@ function SingleDbExplorer({
   // ([[ConnectionActionsMenu]]) — which is also where their driver conditions
   // and their dialogs moved.
 
-  useEffect(() => {
-    // Fire refresh only when no successful fetch has happened yet AND no
-    // fetch is currently in flight. Without the `!cs.loading` guard, every
-    // `set({ loading: true })` call inside `refresh` would create a new `cs`
-    // reference, re-trigger this effect, and launch a second concurrent fetch
-    // before the first one finishes — a tight loop on slow drivers (MySQL).
-    if (!cs || (!cs.initialized && !cs.loading)) refresh(connectionId);
-  }, [connectionId, cs, refresh]);
+  useEnsureSchemaLoaded(connectionId);
 
   // Group tables by schema, then by kind within each schema. Apply the
   // filter at this stage so empty schemas drop out of the rendered list
@@ -950,9 +947,7 @@ function MultiDbExplorer({
     return () => clearTimeout(id);
   }, [filter]);
 
-  useEffect(() => {
-    if (!cs || (!cs.initialized && !cs.loading)) refresh(parentId);
-  }, [parentId, cs, refresh]);
+  useEnsureSchemaLoaded(parentId);
 
   // No eager warm on connect: with many databases (a server with 19+ is
   // common) precaching every child's table list made the initial load

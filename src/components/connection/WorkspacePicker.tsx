@@ -28,7 +28,11 @@ import { Loader2, Search } from "lucide-react";
 import { isMainWindow } from "@/lib/window";
 import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
-import { useEnvironments, environmentLabel } from "@/stores/session/environments";
+import {
+  environmentLabel,
+  useEnvironments,
+  useOrderedEnvironments,
+} from "@/stores/session/environments";
 import { connectAndWarm } from "@/lib/connection/connectFlow";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -207,7 +211,6 @@ function ConnectionsPane() {
 
 function EnvironmentsPane() {
   const { t } = useTranslation();
-  const environments = useEnvironments((s) => s.environments);
   const activeId = useEnvironments((s) => s.activeId);
   const switching = useEnvironments((s) => s.switching);
   const switchTo = useEnvironments((s) => s.switchTo);
@@ -216,10 +219,7 @@ function EnvironmentsPane() {
 
   const defaultName = t("environments.defaultName");
   const needle = query.trim().toLowerCase();
-  const ordered = useMemo(
-    () => [...environments].sort((a, b) => a.order - b.order),
-    [environments],
-  );
+  const ordered = useOrderedEnvironments();
   const matches = useMemo(
     () =>
       needle

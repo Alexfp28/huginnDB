@@ -49,7 +49,7 @@ import { api } from "@/lib/tauri";
 import i18n from "@/lib/i18n";
 import { useTabs } from "@/stores/session/tabs";
 import { useSchema } from "@/stores/session/schema";
-import { useUi } from "@/stores/session/ui";
+import { currentLaunchView, useUi } from "@/stores/session/ui";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { isMainWindow } from "@/lib/window";
 import {
@@ -262,9 +262,7 @@ export function persistLaunchState(
       activeConnections: activeConnectionIds,
       selectedConnectionId: useUi.getState().selectedConnectionId,
       activeTabId: useTabs.getState().activeId,
-      collapsedConnections: useUi.getState().collapsedConnections,
-      visibleConnections: useUi.getState().visibleConnections,
-      databaseVisibility: useUi.getState().databaseVisibility,
+      ...currentLaunchView(),
     })
     .catch((err) => {
       console.error("[persistedTabs] launch-state save failed:", err);
