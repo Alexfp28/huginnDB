@@ -41,6 +41,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   even though the connection existed locally all along. A skipped profile now
   maps to itself.
 
+- **A SQL document was split into statements incorrectly from its first string
+  literal onward.** The splitter behind the editor's per-statement "▶ Run"
+  CodeLens closed a quoted string and then, in the same pass, re-opened it on
+  the same closing character — so everything after `'…'`, `"…"` or `` `…` ``
+  was treated as one unterminated string and no later `;` was a boundary. A
+  two-statement script showed one lens covering both, and importing a `.sql`
+  dump (which goes through the same splitter before `execute_batch`) sent the
+  whole file as a single statement, which the prepared protocol rejects.
+  Dollar-quoted bodies and comments were never affected — only the three quote
+  characters were missing the `continue` the other contexts already had.
+
+- **A stray `;` counted as a statement.** `;;SELECT 1;` produced three, two of
+  which the CodeLens offered to run, despite the splitter documenting that
+  empty statements are skipped — a lone semicolon is not whitespace, so
+  trimming did not catch it.
+
 - **Importing a third profile with the same name numbered it `(3)`, skipping
   `(2)`.** The profile importer's rename ladder reused one counter for both
   rungs, so the sequence ran `name`, `name (imported)`, `name (3)`, `name (4)`,
@@ -157,7 +173,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **Vitest is set up for the frontend** (`pnpm test`) with characterization tests
   for the pure `lib/` modules and each extracted hook, and CI runs it alongside
-  the existing typecheck and Cargo jobs.
+  the existing typecheck and Cargo jobs. 160 tests over 18 files, including the
+  SQL statement splitter (which the tests found two bugs in, above), the
+  command palette's scoring matcher, and the SQL Server `HOST\INSTANCE` split —
+  whose authoritative Rust twin had tests all along.
 
 ## [1.17.0] — 2026-08-20
 

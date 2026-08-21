@@ -45,6 +45,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   desactivado aunque la conexión estuviera ahí desde el principio. Un perfil
   omitido ahora se mapea a sí mismo.
 
+- **Un documento SQL se dividía mal en sentencias a partir de su primer literal
+  de texto.** El divisor que alimenta el CodeLens «▶ Ejecutar» por sentencia
+  cerraba una cadena entrecomillada y, en la misma pasada, la reabría con ese
+  mismo carácter de cierre: todo lo que iba después de `'…'`, `"…"` o `` `…` ``
+  quedaba como una cadena sin cerrar y ningún `;` posterior era un límite. Un
+  script de dos sentencias mostraba un solo lens abarcando ambas, e importar un
+  volcado `.sql` (que pasa por el mismo divisor antes de `execute_batch`)
+  enviaba el fichero entero como una única sentencia, que el protocolo
+  preparado rechaza. Los cuerpos con comillas de dólar y los comentarios nunca
+  se vieron afectados: solo a los tres caracteres de comilla les faltaba el
+  `continue` que los demás contextos ya tenían.
+
+- **Un `;` suelto contaba como sentencia.** `;;SELECT 1;` producía tres, dos de
+  ellas ofrecidas para ejecutar por el CodeLens, pese a que el divisor documenta
+  que las sentencias vacías se descartan: un punto y coma solo no es espacio en
+  blanco, así que recortar no lo detectaba.
+
 - **Al importar un tercer perfil con el mismo nombre se numeraba `(3)`, saltándose
   el `(2)`.** La escalera de renombrado del importador de perfiles reutilizaba un
   único contador para los dos peldaños, así que la secuencia era `nombre`,
@@ -170,7 +187,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 - **Vitest está montado para el frontend** (`pnpm test`) con tests de
   caracterización de los módulos puros de `lib/` y de cada hook extraído, y el CI
-  lo ejecuta junto a los trabajos existentes de typecheck y Cargo.
+  lo ejecuta junto a los trabajos existentes de typecheck y Cargo. 160 tests en
+  18 ficheros, incluidos el divisor de sentencias SQL (en el que los tests
+  encontraron los dos bugs de arriba), el matcher de puntuación de la paleta de
+  comandos y la división `HOST\INSTANCE` de SQL Server, cuyo gemelo autoritativo
+  en Rust sí tenía tests desde el principio.
 
 ## [1.17.0] — 2026-08-20
 
