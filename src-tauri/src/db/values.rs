@@ -325,8 +325,16 @@ result_fn!(
     sqlite_value
 );
 
-/// Lowercase hex encoding of a byte slice.
-fn hex(bytes: &[u8]) -> String {
+/// Lowercase hex encoding of a byte slice — how every driver renders a value
+/// it could not decode as text.
+///
+/// Three modules had a byte-identical private copy of this (`db::dump` and
+/// `db::mssql::values` were the other two), each carrying a comment explaining
+/// that it was a deliberate duplicate. It lives here because this is the module
+/// that decides *when* a value becomes hex: `mysql_value` reads a
+/// `BINARY`-flagged column as raw bytes and falls back to hex only when
+/// `String::from_utf8` fails (gotcha #17), and the other two follow that call.
+pub fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {

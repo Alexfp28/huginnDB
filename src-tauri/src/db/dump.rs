@@ -9,6 +9,7 @@
 //! per type and forcing them through one representation would obscure both.
 
 use crate::db::sql::Dialect;
+use crate::db::values::hex;
 use sqlx::{Row, TypeInfo, ValueRef};
 
 /// Escape + quote a text literal for the dialect.
@@ -25,18 +26,6 @@ pub fn quote_text_literal(dialect: Dialect, s: &str) -> String {
         s.replace('\'', "''")
     };
     format!("'{escaped}'")
-}
-
-/// Lowercase hex encoding of a byte slice (mirrors the private helper of the
-/// same shape in `db/values.rs` — small enough to duplicate rather than widen
-/// that module's visibility for one shared five-line function).
-fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        let _ = write!(&mut s, "{b:02x}");
-    }
-    s
 }
 
 fn fmt_f64(v: f64) -> String {

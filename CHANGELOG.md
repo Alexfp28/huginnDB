@@ -102,6 +102,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     predicate is `#[serde(flatten)]`ed), and four deserialisation tests now pin
     the exact JSON the grid sends — a field that exists on one side of that
     boundary and not the other is dropped in silence.
+  - Four more driver-level primitives that had been copied instead of shared:
+    `db::values::hex` (three byte-identical private copies, each with a comment
+    saying so), `db::exec::ping` (the keepalive heartbeat and the connect probe
+    each enumerated all five drivers), `db::mysql::{is_bit_type, bit_cast,
+    normalize_bit_value}` (the `BIT`-write reasoning of gotcha #15, spelled out
+    at six sites), and `Dialect::rename_stmt` (`rename_table` and `rename_view`
+    differed only in Postgres's keyword and one word of an error message).
   - Frontend: `useImportWizard` (three dialogs), `useAsyncSubmit` (ten),
     `OverlayPalette` + `useListNavigation` (the command palette and the tab
     switcher), `lib/schedule.ts` (three debounces, two polls), `RefreshButton`

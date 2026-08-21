@@ -448,31 +448,11 @@ pub async fn smoke_test(
         PoolLimits::probe(),
     )
     .await?;
-    let result = match &pool {
-        DbPool::Postgres(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
-        DbPool::Mysql(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
-        DbPool::Sqlite(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
-        // Mongo and SQL Server report their probe through `AppError` rather
-        // than `sqlx::Error`, so they close and return here instead of joining
-        // the shared `result?` below.
-        DbPool::Mongo(conn) => {
-            return {
-                let ping = crate::db::mongo::schema::ping(conn).await;
-                close_pool(&pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
-                ping
-            }
-        }
-        DbPool::MsSql(p) => {
-            return {
-                let ping = p.ping().await;
-                close_pool(&pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
-                ping
-            }
-        }
-    };
+    // The probe pool is ours alone, so it is closed whether or not the ping
+    // succeeded — hence the result is held rather than `?`-ed.
+    let result = crate::db::exec::ping(&pool).await;
     close_pool(&pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
-    result?;
-    Ok(())
+    result
 }
 
 #[cfg(test)]

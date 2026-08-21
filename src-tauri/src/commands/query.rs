@@ -14,6 +14,7 @@
 //!   Used by both the "insert" and "duplicate" flows in the grid.
 
 use crate::commands::schema::list_columns_inner;
+use crate::db::mysql;
 use crate::db::sql::{is_read_only, Dialect};
 use crate::db::values::{
     mysql_columns, mysql_value, pg_columns, pg_value, sqlite_columns, sqlite_value,
@@ -1814,19 +1815,14 @@ pub(crate) async fn update_cell_inner(
         && list_columns_inner(state, &connection_id, schema_for_catalog, table.clone())
             .await
             .map(|cols| {
-                cols.iter().any(|c| {
-                    c.name == column && c.data_type.trim().to_ascii_uppercase().starts_with("BIT")
-                })
+                cols.iter()
+                    .any(|c| c.name == column && mysql::is_bit_type(&c.data_type))
             })
             .unwrap_or(false);
-    let bit_cast = is_mysql
-        && (column_type
-            .as_deref()
-            .map(|t| t.trim().to_ascii_uppercase().starts_with("BIT"))
-            .unwrap_or(false)
-            || catalog_bit_cast);
+    let bit_cast =
+        is_mysql && (column_type.as_deref().is_some_and(mysql::is_bit_type) || catalog_bit_cast);
     let set_placeholder = if bit_cast {
-        format!("CAST({} AS UNSIGNED)", dialect.placeholder(1))
+        mysql::bit_cast(&dialect.placeholder(1))
     } else if dialect == Dialect::MsSql {
         // The same "text literal, wrong coercion" problem MySQL BIT has, for
         // SQL Server's binary family — see `db::mssql::binary_convert`.
@@ -1835,12 +1831,8 @@ pub(crate) async fn update_cell_inner(
         dialect.placeholder(1)
     };
     let sql = format!("UPDATE {qt} SET {col_id} = {set_placeholder} WHERE {where_clause}");
-    // Normalize the cell value for BIT columns: "true"/"false" must become
-    // "1"/"0" before being handed to CAST(? AS UNSIGNED) — MySQL evaluates
-    // CAST('true' AS UNSIGNED) as 0, silently clobbering any 1-valued cell
-    // the user saves after the cell editor formats it as "true".
     let effective_value: Option<String> = if bit_cast {
-        value.as_deref().map(normalize_bit_value)
+        value.as_deref().map(mysql::normalize_bit_value)
     } else {
         value
     };
@@ -1925,21 +1917,6 @@ pub async fn unset_field(
         ),
     }
     res
-}
-
-/// Normalize a cell value string for a MySQL BIT column write.
-///
-/// `"true"`/`"false"` (case-insensitive) map to `"1"`/`"0"` so that
-/// `CAST(? AS UNSIGNED)` receives a digit string rather than an alphabetic
-/// one — MySQL converts `CAST('true' AS UNSIGNED)` to 0 regardless of what
-/// the intended bit value is. Any other string is returned unchanged so
-/// numeric strings like `"1"`, `"0"`, or `"255"` pass through unaltered.
-fn normalize_bit_value(s: &str) -> String {
-    match s.trim().to_lowercase().as_str() {
-        "true" => "1".to_string(),
-        "false" => "0".to_string(),
-        other => other.to_string(),
-    }
 }
 
 /// Coerce a JSON scalar to its textual SQL bind form. `null` becomes `None`
@@ -2245,23 +2222,17 @@ pub(crate) async fn insert_row_inner(
             std::collections::HashSet::new()
         };
 
-    // MySQL BIT columns require CAST(? AS UNSIGNED) — binding a plain string
-    // stores the ASCII bytes of the literal rather than its numeric value (e.g.
-    // "1" stores byte 0x31 = 49, not integer 1). Build BIT-aware placeholders
-    // and normalize "true"/"false" to "1"/"0" so `CAST` gets a digit string.
+    // See `db::mysql::bit_cast` for why a BIT column cannot take the plain
+    // textual bind every other column does.
     let (mysql_placeholders, mysql_binds): (Vec<String>, Vec<Option<String>>) = if is_mysql {
         values
             .iter()
             .map(|rv| {
-                let is_bit = rv
-                    .column_type
-                    .as_deref()
-                    .map(|t| t.trim().to_ascii_uppercase().starts_with("BIT"))
-                    .unwrap_or(false)
+                let is_bit = rv.column_type.as_deref().is_some_and(mysql::is_bit_type)
                     || catalog_bit_columns.contains(&rv.column);
                 if is_bit {
-                    let normalized = rv.value.as_deref().map(normalize_bit_value);
-                    ("CAST(? AS UNSIGNED)".to_string(), normalized)
+                    let normalized = rv.value.as_deref().map(mysql::normalize_bit_value);
+                    (mysql::bit_cast("?"), normalized)
                 } else {
                     ("?".to_string(), rv.value.clone())
                 }

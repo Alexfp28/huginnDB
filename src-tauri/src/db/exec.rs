@@ -57,6 +57,29 @@ macro_rules! bind_all_scalar {
     }};
 }
 
+/// One lightweight liveness round-trip, on whichever pool this is.
+///
+/// The exception to the "no MongoDB here" rule above, and deliberately so: a
+/// ping is not SQL, every driver has one, and the alternative was what the
+/// tree actually had — [`crate::keepalive`]'s 3-minute heartbeat and
+/// [`crate::db::pool`]'s connect probe each enumerating all five drivers, with
+/// the probe's Mongo and SQL Server arms contorted into early returns because
+/// they report through [`AppError`] rather than `sqlx::Error`. One function
+/// erases that split: the probe's own job (close the pool afterwards) is the
+/// only thing left at its call site.
+pub async fn ping(pool: &DbPool) -> AppResult<()> {
+    match pool {
+        DbPool::Postgres(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
+        DbPool::Mysql(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
+        DbPool::Sqlite(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
+        DbPool::Mongo(conn) => crate::db::mongo::schema::ping(conn).await?,
+        // Runs `SELECT 1` on a pooled session; a dead session is discarded by
+        // the pool rather than handed to the next caller (see `db::mssql`).
+        DbPool::MsSql(p) => p.ping().await?,
+    };
+    Ok(())
+}
+
 /// Run a parameterless statement, returning rows affected.
 ///
 /// For DDL and other statements with no user values to bind — `TRUNCATE`,

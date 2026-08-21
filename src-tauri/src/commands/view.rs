@@ -8,7 +8,7 @@
 //! fundamentally different model), so every command here rejects it up
 //! front, matching [`crate::commands::structure`]'s existing Mongo guard.
 
-use crate::db::sql::Dialect;
+use crate::db::sql::{Dialect, Relation};
 use crate::db::view_ddl::{build_view_ddl, ViewDefinition};
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
@@ -222,42 +222,7 @@ pub async fn rename_view(
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
-    let new_ident = dialect.quote_ident(new_name.trim());
-    let sql = match dialect {
-        Dialect::Postgres => format!(
-            "ALTER VIEW {} RENAME TO {}",
-            dialect.qualify_defaulted(schema.as_deref(), &view),
-            new_ident
-        ),
-        Dialect::Mysql => match schema.as_deref() {
-            Some(s) => format!(
-                "RENAME TABLE {} TO {}.{}",
-                dialect.qualify(Some(s), &view),
-                dialect.quote_ident(s),
-                new_ident
-            ),
-            None => format!(
-                "RENAME TABLE {} TO {}",
-                dialect.quote_ident(&view),
-                new_ident
-            ),
-        },
-        Dialect::Sqlite => format!(
-            "ALTER TABLE {} RENAME TO {}",
-            dialect.quote_ident(&view),
-            new_ident
-        ),
-        // T-SQL renames through `EXEC sp_rename`, which also takes the new name
-        // as a bare string rather than an identifier — part of the deferred
-        // SQL Server view-editor work.
-        Dialect::MsSql => {
-            return Err(AppError::UnsupportedDriver(
-                "renaming a view is not supported on SQL Server yet".into(),
-            ))
-        }
-    };
-    // SQL Server was refused above (no `sp_rename` support yet) and MongoDB by
-    // `Dialect::try_of`, so this only ever reaches the three sqlx dialects.
+    let sql = dialect.rename_stmt(schema.as_deref(), &view, new_name.trim(), Relation::View)?;
     crate::db::exec::execute(&pool, &sql).await?;
     Ok(())
 }

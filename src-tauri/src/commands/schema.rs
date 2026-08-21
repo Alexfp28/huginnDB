@@ -5,7 +5,7 @@
 //! standard `information_schema` views where available, with `pg_*` /
 //! `sqlite_master` fallbacks for engine-specific metadata.
 
-use crate::db::sql::Dialect;
+use crate::db::sql::{Dialect, Relation};
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
 use serde::Serialize;
@@ -544,41 +544,7 @@ pub async fn rename_table(
         return Ok(());
     }
     let dialect = Dialect::try_of(&pool)?;
-    let new_ident = dialect.quote_ident(new_name.trim());
-    let sql = match dialect {
-        Dialect::Postgres => format!(
-            "ALTER TABLE {} RENAME TO {}",
-            dialect.qualify_defaulted(schema.as_deref(), &table),
-            new_ident,
-        ),
-        Dialect::Mysql => match schema.as_deref() {
-            Some(s) => format!(
-                "RENAME TABLE {} TO {}.{}",
-                dialect.qualify(Some(s), &table),
-                dialect.quote_ident(s),
-                new_ident,
-            ),
-            None => format!(
-                "RENAME TABLE {} TO {}",
-                dialect.quote_ident(&table),
-                new_ident,
-            ),
-        },
-        Dialect::Sqlite => format!(
-            "ALTER TABLE {} RENAME TO {}",
-            dialect.quote_ident(&table),
-            new_ident,
-        ),
-        // T-SQL renames through `EXEC sp_rename @old, @new, 'OBJECT'`, where
-        // both arguments are *strings* rather than identifiers — bound
-        // parameters, not quoted names. Wired up with the rest of the SQL
-        // Server DDL work.
-        Dialect::MsSql => {
-            return Err(AppError::UnsupportedDriver(
-                "renaming a table is not supported on SQL Server yet".into(),
-            ))
-        }
-    };
+    let sql = dialect.rename_stmt(schema.as_deref(), &table, new_name.trim(), Relation::Table)?;
     crate::db::exec::execute(&pool, &sql).await?;
     Ok(())
 }

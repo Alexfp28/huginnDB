@@ -110,6 +110,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     predicado va con `#[serde(flatten)]`), y cuatro tests de deserialización
     fijan el JSON exacto que envía la rejilla: un campo que exista a un lado de
     esa frontera y no al otro se descarta sin decir nada.
+  - Cuatro primitivas más de la capa de drivers que estaban copiadas en vez de
+    compartidas: `db::values::hex` (tres copias privadas idénticas byte a byte,
+    cada una con un comentario diciéndolo), `db::exec::ping` (el latido del
+    keepalive y la sonda de conexión enumeraban cada uno los cinco drivers),
+    `db::mysql::{is_bit_type, bit_cast, normalize_bit_value}` (el razonamiento
+    de escritura de `BIT` del gotcha #15, deletreado en seis sitios) y
+    `Dialect::rename_stmt` (`rename_table` y `rename_view` solo se diferenciaban
+    en la palabra clave de Postgres y en una palabra de un mensaje de error).
   - Frontend: `useImportWizard` (tres diálogos), `useAsyncSubmit` (diez),
     `OverlayPalette` + `useListNavigation` (paleta de comandos y conmutador de
     pestañas), `lib/schedule.ts` (tres debounces, dos sondeos), `RefreshButton`
