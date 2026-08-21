@@ -146,16 +146,18 @@ pub async fn execute(
             crate::commands::query::fetch_table_data_inner(
                 sink,
                 state,
-                connection_id.clone(),
-                schema.clone(),
-                table.clone(),
-                *limit,
-                *offset,
-                None,
-                None,
-                None,
-                None,
-                *with_count,
+                crate::commands::query::TableQuery {
+                    connection_id: connection_id.clone(),
+                    schema: schema.clone(),
+                    table: table.clone(),
+                    limit: *limit,
+                    offset: *offset,
+                    order: Vec::new(),
+                    filter: Default::default(),
+                    // The bridge's own `with_count` is an `Option<bool>` on
+                    // the wire; `None` kept the pre-struct default of "count".
+                    with_count: with_count.unwrap_or(true),
+                },
             )
             .await?,
         )?,

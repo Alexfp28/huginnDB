@@ -9,7 +9,7 @@
 
 use crate::commands::query::{
     BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp, QueryResult, RowValue, SortSpec,
-    StmtOutcome, MAX_ADHOC_QUERY_ROWS,
+    StmtOutcome, TableFilter, MAX_ADHOC_QUERY_ROWS,
 };
 use crate::error::AppResult;
 use crate::log_bus::{log_sql_sink, LogSink};
@@ -378,14 +378,16 @@ fn stmt_preview(s: &str) -> String {
 /// "what ran" record the SQL drivers and the mongo shell tab already get.
 pub(crate) fn describe_find(
     collection: &str,
-    filters: &[ColumnFilter],
-    search: Option<&str>,
-    search_columns: &[String],
+    predicate: &TableFilter,
     order: &[SortSpec],
     limit: i64,
     offset: i64,
 ) -> String {
-    let filter = build_filter(filters, search, search_columns);
+    let filter = build_filter(
+        &predicate.filters,
+        predicate.needle(),
+        &predicate.search_columns,
+    );
     let mut s = format!(
         "db.{collection}.find({})",
         Bson::Document(filter).into_canonical_extjson()
@@ -525,23 +527,24 @@ fn regex_escape(input: &str) -> String {
 }
 
 /// Paginated collection browse — the MongoDB analogue of `fetch_table_data`.
-#[allow(clippy::too_many_arguments)]
 pub async fn fetch_collection_data(
     conn: &MongoConn,
     collection: &str,
     limit: i64,
     offset: i64,
     order: &[SortSpec],
-    filters: &[ColumnFilter],
-    search: Option<&str>,
-    search_columns: &[String],
+    predicate: &TableFilter,
     with_count: bool,
 ) -> AppResult<QueryResult> {
     let start = Instant::now();
     let db = resolve_db(conn)?;
     let coll = db.collection::<Document>(collection);
 
-    let filter = build_filter(filters, search, search_columns);
+    let filter = build_filter(
+        &predicate.filters,
+        predicate.needle(),
+        &predicate.search_columns,
+    );
 
     // Skip the count when the caller already knows the total (sort/page-only
     // change); `count_documents` over a filter is the slow part on big
@@ -585,9 +588,7 @@ pub async fn fetch_collection_data(
 pub async fn count_collection(
     conn: &MongoConn,
     collection: &str,
-    filters: &[ColumnFilter],
-    search: Option<&str>,
-    search_columns: &[String],
+    predicate: &TableFilter,
     unfiltered: bool,
 ) -> AppResult<CountResult> {
     let db = resolve_db(conn)?;
@@ -599,7 +600,11 @@ pub async fn count_collection(
             estimated: true,
         })
     } else {
-        let filter = build_filter(filters, search, search_columns);
+        let filter = build_filter(
+            &predicate.filters,
+            predicate.needle(),
+            &predicate.search_columns,
+        );
         let total = coll.count_documents(filter).await?;
         Ok(CountResult {
             total,
@@ -852,7 +857,11 @@ mod tests {
             column: "atnId".to_string(),
             desc: true,
         }];
-        let s = describe_find("events", &filters, None, &[], &order, 50, 100);
+        let predicate = TableFilter {
+            filters,
+            ..TableFilter::default()
+        };
+        let s = describe_find("events", &predicate, &order, 50, 100);
         assert!(s.starts_with("db.events.find("));
         assert!(s.contains("\"atnId\""));
         assert!(s.contains(".sort("));
@@ -922,7 +931,7 @@ mod tests {
 
     #[test]
     fn describe_find_omits_skip_and_limit_when_zero() {
-        let s = describe_find("events", &[], None, &[], &[], 0, 0);
+        let s = describe_find("events", &TableFilter::default(), &[], 0, 0);
         assert_eq!(s, "db.events.find({})");
     }
 }

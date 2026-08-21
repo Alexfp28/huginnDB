@@ -102,6 +102,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     `Ok`/`Err`—, mientras `commands::query` se documentaba como la única ruta de
     log. El helper baja junto a `LogEntry`, que es lo que permite usarlo desde la
     capa `db` sin depender hacia arriba de `commands`.
+  - `TableQuery` / `TableScan` / `TableFilter` sustituyen los nueve parámetros
+    sueltos que el navegador de tablas enhebraba por `fetch_table_data`,
+    `count_table_rows`, `export_table_rows`, sus núcleos `_inner` y cuatro
+    puntos de entrada de MongoDB. Con ellos se van seis de los catorce
+    `#[allow(too_many_arguments)]`. La carga útil IPC no cambia en el cable (el
+    predicado va con `#[serde(flatten)]`), y cuatro tests de deserialización
+    fijan el JSON exacto que envía la rejilla: un campo que exista a un lado de
+    esa frontera y no al otro se descarta sin decir nada.
   - Frontend: `useImportWizard` (tres diálogos), `useAsyncSubmit` (diez),
     `OverlayPalette` + `useListNavigation` (paleta de comandos y conmutador de
     pestañas), `lib/schedule.ts` (tres debounces, dos sondeos), `RefreshButton`

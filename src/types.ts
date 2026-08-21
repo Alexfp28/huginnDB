@@ -644,6 +644,45 @@ export interface ColumnFilter {
   values?: CellValue[];
 }
 
+/**
+ * The predicate half of a table browse: structured column filters plus the
+ * free-text needle and the columns it searches. Mirrors `TableFilter` in
+ * `src-tauri/src/commands/query.rs`, where it is `#[serde(flatten)]`ed into
+ * the two payloads below — so the wire shape is one flat object, not a nested
+ * `filter` key.
+ */
+export interface TableFilter {
+  filters?: ColumnFilter[];
+  /** Free-text needle, `LIKE`-escaped server-side and OR-composed across
+   *  `searchColumns`, then AND-composed with `filters`. An empty string is
+   *  treated as "no needle", not as a match-everything predicate. */
+  search?: string;
+  searchColumns?: string[];
+}
+
+/** A table plus a predicate over it, with no paging — the payload of
+ *  `countTableRows` and `exportTableRows`. Mirrors Rust `TableScan`. */
+export interface TableScan extends TableFilter {
+  connectionId: string;
+  schema?: string;
+  table: string;
+}
+
+/** One page of a table browse — the payload of `fetchTableData`. Mirrors Rust
+ *  `TableQuery`. A field declared here but not there is dropped by serde
+ *  without a word (CLAUDE.md gotcha #14), so the two must move together. */
+export interface TableQuery extends TableScan {
+  limit: number;
+  offset: number;
+  /** Ordered multi-column sort; `order[0]` is the primary key. */
+  order?: SortSpec[];
+  /** Run the companion `COUNT(*)`. The GUI always passes `false` (the total is
+   *  fetched out-of-band via `countTableRows` so it never gates the first row
+   *  render); the headless MCP `browse_table` tool uses the inline count.
+   *  Defaults to `true` on the backend when omitted. */
+  withCount?: boolean;
+}
+
 /** One column/value pair used when building an INSERT. */
 export interface RowValue {
   column: string;

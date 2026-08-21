@@ -94,6 +94,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     `commands::query` documented itself as the single logging path. The helper
     moved down next to `LogEntry`, which is what lets the `db` layer use it
     without depending upward on `commands`.
+  - `TableQuery` / `TableScan` / `TableFilter` replace the nine loose
+    parameters the table browser threaded through `fetch_table_data`,
+    `count_table_rows`, `export_table_rows`, their `_inner` cores and four
+    MongoDB entry points. Six of the fourteen `#[allow(too_many_arguments)]`
+    are gone with them. The IPC payload is unchanged on the wire (the
+    predicate is `#[serde(flatten)]`ed), and four deserialisation tests now pin
+    the exact JSON the grid sends — a field that exists on one side of that
+    boundary and not the other is dropped in silence.
   - Frontend: `useImportWizard` (three dialogs), `useAsyncSubmit` (ten),
     `OverlayPalette` + `useListNavigation` (the command palette and the tab
     switcher), `lib/schedule.ts` (three debounces, two polls), `RefreshButton`

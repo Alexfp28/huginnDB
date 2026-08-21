@@ -42,7 +42,6 @@ import type {
   QueryResult,
   CountResult,
   RowValue,
-  SortSpec,
   StartupArgs,
   MongoIndexInfo,
   MongoViewDefinition,
@@ -52,6 +51,8 @@ import type {
   StagePreview,
   StructurePreview,
   TableInfo,
+  TableQuery,
+  TableScan,
   TableStructure,
   UserInfo,
   ViewDefinition,
@@ -466,23 +467,8 @@ export const api = {
    *   OR-composed with itself, then AND-composed with `filters`.
    *   The needle is escaped against LIKE metacharacters server-side.
    */
-  fetchTableData: (args: {
-    connectionId: string;
-    schema?: string;
-    table: string;
-    limit: number;
-    offset: number;
-    /** Ordered multi-column sort; `order[0]` is the primary key. */
-    order?: SortSpec[];
-    filters?: ColumnFilter[];
-    search?: string;
-    searchColumns?: string[];
-    /** Run the `COUNT(*)` companion. The GUI always passes `false` (the total
-     *  is fetched out-of-band via `countTableRows` so it never gates the first
-     *  row render); the headless MCP `browse_table` tool still uses the inline
-     *  count. Defaults to `true` on the backend when omitted. */
-    withCount?: boolean;
-  }) => invoke<QueryResult>("fetch_table_data", args),
+  fetchTableData: (query: TableQuery) =>
+    invoke<QueryResult>("fetch_table_data", { query }),
 
   /**
    * Row total for the table-data browser, fetched separately from the data
@@ -490,14 +476,8 @@ export const api = {
    * from painting. With no filters/search the backend returns a fast engine
    * estimate (`estimated: true`); any predicate forces an exact count.
    */
-  countTableRows: (args: {
-    connectionId: string;
-    schema?: string;
-    table: string;
-    filters?: ColumnFilter[];
-    search?: string;
-    searchColumns?: string[];
-  }) => invoke<CountResult>("count_table_rows", args),
+  countTableRows: (query: TableScan) =>
+    invoke<CountResult>("count_table_rows", { query }),
 
   /**
    * UPDATE one column of one row addressed by its (possibly composite)
@@ -979,14 +959,8 @@ export const api = {
    * DataGrid's current advanced-filter state, not the whole table. No
    * pagination limit. Rejects MongoDB.
    */
-  exportTableRows: (args: {
-    connectionId: string;
-    schema?: string;
-    table: string;
-    filters: ColumnFilter[];
-    search?: string;
-    searchColumns?: string[];
-  }) => invoke<string>("export_table_rows", args),
+  exportTableRows: (query: TableScan) =>
+    invoke<string>("export_table_rows", { query }),
 
   /**
    * Export a MongoDB collection's documents matching `filters` (all of them

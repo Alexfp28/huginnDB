@@ -95,6 +95,104 @@ pub enum FilterOp {
     IsNotNull,
 }
 
+/// The predicate half of a table browse: the structured column filters (the
+/// grid's chips) plus the free-text needle and the columns it searches.
+///
+/// These three travelled together as three separate parameters through
+/// `fetch_table_data`, `count_table_rows`, `export_table_rows`, their `_inner`
+/// cores and four MongoDB entry points — always all three, always in that
+/// order, always `Option`-wrapped and immediately unwrapped to the same
+/// defaults on the other side. Splitting a needle from the columns it applies
+/// to silently searches nothing, so they are one value.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableFilter {
+    #[serde(default)]
+    pub filters: Vec<ColumnFilter>,
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub search_columns: Vec<String>,
+}
+
+impl TableFilter {
+    /// The committed needle, or `None` when it is absent *or empty*. An empty
+    /// string is not a predicate — treating it as one turns `LIKE '%%'` into a
+    /// reason to skip the fast catalog estimate in [`count_table_rows_inner`].
+    pub fn needle(&self) -> Option<&str> {
+        self.search.as_deref().filter(|s| !s.is_empty())
+    }
+
+    /// True when this selects the whole relation. Only then may a count be
+    /// served from the engine's statistics rather than an exact `COUNT(*)`.
+    pub fn is_unfiltered(&self) -> bool {
+        self.filters.is_empty() && self.needle().is_none()
+    }
+
+    fn validate(&self) -> AppResult<()> {
+        validate_filters(&self.filters)
+    }
+
+    /// The `WHERE` clause and its binds for `dialect`, placeholders from 1.
+    fn clause(&self, dialect: Dialect) -> (String, Vec<Option<String>>) {
+        build_filter_clause(dialect, &self.filters, self.needle(), &self.search_columns)
+    }
+}
+
+/// A table plus a predicate over it, with no paging — what
+/// [`count_table_rows`] and `export_table_rows` address.
+///
+/// `filter` is `#[serde(flatten)]`ed, so the IPC payload stays the flat object
+/// the frontend already sent (`{ connectionId, schema, table, filters, search,
+/// searchColumns }`); only the Rust side gained the grouping.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableScan {
+    pub connection_id: String,
+    #[serde(default)]
+    pub schema: Option<String>,
+    pub table: String,
+    #[serde(flatten)]
+    pub filter: TableFilter,
+}
+
+/// One page of a table browse: a [`TableScan`]'s address and predicate, plus
+/// the ordering, the window and whether to count.
+///
+/// Declared as one struct rather than embedding [`TableScan`] because a
+/// doubly-flattened payload is harder to read than the nine fields it stands
+/// for, and this is the shape the frontend types mirror (see `TableQuery` in
+/// `src/types.ts` — a field missing on either side is silently dropped by
+/// serde, CLAUDE.md gotcha #14, which is what the round-trip test at the
+/// bottom of this module pins down).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableQuery {
+    pub connection_id: String,
+    #[serde(default)]
+    pub schema: Option<String>,
+    pub table: String,
+    pub limit: i64,
+    pub offset: i64,
+    /// Ordered multi-column sort; `order[0]` is the primary key.
+    #[serde(default)]
+    pub order: Vec<SortSpec>,
+    #[serde(flatten)]
+    pub filter: TableFilter,
+    /// Whether to run the companion `SELECT COUNT(*)`. The GUI passes `false`
+    /// when only the sort/offset/page changed (the total cannot have moved)
+    /// and reuses its cached total, saving a round trip per interaction; the
+    /// headless MCP `browse_table` tool wants the inline count. Defaults to
+    /// `true` when the key is absent, which is the pre-struct behaviour of
+    /// `Option<bool>::unwrap_or(true)`.
+    #[serde(default = "with_count_default")]
+    pub with_count: bool,
+}
+
+fn with_count_default() -> bool {
+    true
+}
+
 /// One column-level predicate applied by [`fetch_table_data`].
 ///
 /// Multiple filters are AND-composed. Identifiers are always quoted via
@@ -1161,86 +1259,47 @@ pub(crate) fn build_filter_clause_at(
 /// driver-appropriate helper; filter values are always bound, never
 /// interpolated.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn fetch_table_data(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
-    connection_id: String,
-    schema: Option<String>,
-    table: String,
-    limit: i64,
-    offset: i64,
-    order: Option<Vec<SortSpec>>,
-    filters: Option<Vec<ColumnFilter>>,
-    search: Option<String>,
-    search_columns: Option<Vec<String>>,
-    // Whether to run the companion `SELECT COUNT(*)`. The frontend passes
-    // `false` when only the sort/offset/page changed (the total can't have
-    // changed) and reuses its cached total, saving a round trip per
-    // interaction. Defaults to `true` (count) when omitted.
-    with_count: Option<bool>,
+    query: TableQuery,
 ) -> AppResult<QueryResult> {
-    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
-    fetch_table_data_inner(
-        &sink,
-        state.inner(),
-        connection_id,
-        schema,
-        table,
-        limit,
-        offset,
-        order,
-        filters,
-        search,
-        search_columns,
-        with_count,
-    )
-    .await
+    let sink =
+        crate::commands::entry_sink(&app, &window, state.inner(), &query.connection_id).await;
+    fetch_table_data_inner(&sink, state.inner(), query).await
 }
 
 /// Tauri-independent core of [`fetch_table_data`], reused by the headless MCP
 /// `browse_table` tool. Takes a borrowed [`AppState`] and a [`LogSink`] (a
 /// `TauriSink` in the GUI, a `NoopSink` under MCP) instead of the Tauri
 /// `State` guard + `AppHandle`.
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn fetch_table_data_inner(
     sink: &dyn LogSink,
     state: &AppState,
-    connection_id: String,
-    schema: Option<String>,
-    table: String,
-    limit: i64,
-    offset: i64,
-    order: Option<Vec<SortSpec>>,
-    filters: Option<Vec<ColumnFilter>>,
-    search: Option<String>,
-    search_columns: Option<Vec<String>>,
-    with_count: Option<bool>,
+    query: TableQuery,
 ) -> AppResult<QueryResult> {
-    if let Some(f) = filters.as_deref() {
-        validate_filters(f)?;
-    }
+    query.filter.validate()?;
+    let TableQuery {
+        connection_id,
+        schema,
+        table,
+        limit,
+        offset,
+        order,
+        filter,
+        with_count,
+    } = query;
     let pool = state.pool_for(&connection_id)?;
 
-    // MongoDB browse: delegate to the mongo module (find + count). Clone the
-    // option args so the SQL path below — though unreachable for mongo — still
-    // type-checks without a use-after-move.
-    let order = order.unwrap_or_default();
-    let want_count = with_count.unwrap_or(true);
-
     if let DbPool::Mongo(conn) = &pool {
-        let f = filters.clone().unwrap_or_default();
-        let sc = search_columns.clone().unwrap_or_default();
-        let search_ref = search.as_deref().filter(|s| !s.is_empty());
         let start = Instant::now();
         let result = crate::db::mongo::query::fetch_collection_data(
-            conn, &table, limit, offset, &order, &f, search_ref, &sc, want_count,
+            conn, &table, limit, offset, &order, &filter, with_count,
         )
         .await;
-        let sql_text = crate::db::mongo::query::describe_find(
-            &table, &f, search_ref, &sc, &order, limit, offset,
-        );
+        let sql_text =
+            crate::db::mongo::query::describe_find(&table, &filter, &order, limit, offset);
         match &result {
             Ok(r) => log_sql_sink(
                 sink,
@@ -1282,11 +1341,7 @@ pub(crate) async fn fetch_table_data_inner(
         format!(" ORDER BY {}", parts.join(", "))
     };
 
-    let filters = filters.unwrap_or_default();
-    let search_columns = search_columns.unwrap_or_default();
-    let search_ref = search.as_deref().filter(|s| !s.is_empty());
-    let (where_clause, where_binds) =
-        build_filter_clause(dialect, &filters, search_ref, &search_columns);
+    let (where_clause, where_binds) = filter.clause(dialect);
 
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
 
@@ -1325,7 +1380,7 @@ pub(crate) async fn fetch_table_data_inner(
     // The COUNT companion is skipped when the caller already knows the total
     // (only sort/offset/page changed). This halves the round trips for the
     // common case of paging through or re-sorting a large result set.
-    let total: Option<u64> = if want_count {
+    let total: Option<u64> = if with_count {
         let count_start = Instant::now();
         let raw_count: Option<i64> = try_sql_sink!(
             sink,
@@ -1391,68 +1446,43 @@ pub(crate) async fn fetch_table_data_inner(
 /// with any predicate it runs an exact `COUNT(*)` — still off the render's
 /// critical path because the frontend fires it as a separate request.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn count_table_rows(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
-    connection_id: String,
-    schema: Option<String>,
-    table: String,
-    filters: Option<Vec<ColumnFilter>>,
-    search: Option<String>,
-    search_columns: Option<Vec<String>>,
+    query: TableScan,
 ) -> AppResult<CountResult> {
-    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
-    count_table_rows_inner(
-        &sink,
-        state.inner(),
-        connection_id,
-        schema,
-        table,
-        filters,
-        search,
-        search_columns,
-    )
-    .await
+    let sink =
+        crate::commands::entry_sink(&app, &window, state.inner(), &query.connection_id).await;
+    count_table_rows_inner(&sink, state.inner(), query).await
 }
 
 /// Tauri-independent core of [`count_table_rows`].
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn count_table_rows_inner(
     sink: &dyn LogSink,
     state: &AppState,
-    connection_id: String,
-    schema: Option<String>,
-    table: String,
-    filters: Option<Vec<ColumnFilter>>,
-    search: Option<String>,
-    search_columns: Option<Vec<String>>,
+    query: TableScan,
 ) -> AppResult<CountResult> {
+    let TableScan {
+        connection_id,
+        schema,
+        table,
+        filter,
+    } = query;
     let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
-    let filters = filters.unwrap_or_default();
-    let search_columns = search_columns.unwrap_or_default();
-    let search_ref = search.as_deref().filter(|s| !s.is_empty());
     // "Unfiltered" == the whole relation: no column filters AND no committed
     // search. Only then may we serve the fast catalog estimate; any predicate
     // forces an exact count of the matching subset.
-    let unfiltered = filters.is_empty() && search_ref.is_none();
+    let unfiltered = filter.is_unfiltered();
 
     // MongoDB: estimatedDocumentCount (O(1) metadata read) when unfiltered,
     // exact countDocuments over the filter otherwise.
     if let DbPool::Mongo(conn) = &pool {
         let start = Instant::now();
-        let res = crate::db::mongo::query::count_collection(
-            conn,
-            &table,
-            &filters,
-            search_ref,
-            &search_columns,
-            unfiltered,
-        )
-        .await;
+        let res =
+            crate::db::mongo::query::count_collection(conn, &table, &filter, unfiltered).await;
         let label = if unfiltered {
             "(mongo estimatedDocumentCount)"
         } else {
@@ -1506,8 +1536,7 @@ pub(crate) async fn count_table_rows_inner(
     }
 
     // Exact count: predicate present, or no estimate available.
-    let (where_clause, where_binds) =
-        build_filter_clause(dialect, &filters, search_ref, &search_columns);
+    let (where_clause, where_binds) = filter.clause(dialect);
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
@@ -2784,5 +2813,92 @@ mod filter_tests {
         let values: Vec<serde_json::Value> = (0..MAX_IN_VALUES).map(|i| json!(i)).collect();
         let filters = vec![in_list("id", FilterOp::In, values)];
         assert!(validate_filters(&filters).is_ok());
+    }
+
+    // --- IPC payload shape -------------------------------------------------
+    //
+    // `TableQuery` / `TableScan` are the wire contract with `src/types.ts`, and
+    // serde drops any key the Rust struct does not declare — silently, before
+    // the value is ever read (CLAUDE.md gotcha #14). These pin the exact JSON
+    // the frontend sends. `withCount: false` in particular is load-bearing:
+    // lose it and every page fetch silently reacquires the `COUNT(*)` that
+    // issue #77 moved off the render path.
+
+    #[test]
+    fn table_query_deserialises_the_payload_the_grid_sends() {
+        let q: TableQuery = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "schema": "public",
+            "table": "album",
+            "limit": 100,
+            "offset": 200,
+            "order": [{ "column": "title", "desc": true }],
+            "filters": [{ "column": "id", "op": "gt", "value": 3 }],
+            "search": "needle",
+            "searchColumns": ["title", "artist"],
+            "withCount": false,
+        }))
+        .unwrap();
+
+        assert_eq!(q.connection_id, "c1");
+        assert_eq!(q.schema.as_deref(), Some("public"));
+        assert_eq!(q.table, "album");
+        assert_eq!((q.limit, q.offset), (100, 200));
+        assert_eq!(q.order.len(), 1);
+        assert!(q.order[0].desc);
+        assert_eq!(q.filter.filters.len(), 1);
+        assert_eq!(q.filter.needle(), Some("needle"));
+        assert_eq!(q.filter.search_columns, vec!["title", "artist"]);
+        assert!(!q.with_count);
+    }
+
+    #[test]
+    fn table_query_defaults_match_the_option_unwraps_it_replaced() {
+        // Every optional key absent: what `browse_table` over MCP sends, and
+        // what the `Option<_>::unwrap_or_default()` chain used to produce.
+        let q: TableQuery = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "album",
+            "limit": 50,
+            "offset": 0,
+        }))
+        .unwrap();
+
+        assert!(q.schema.is_none());
+        assert!(q.order.is_empty());
+        assert!(q.filter.is_unfiltered());
+        // `with_count` defaulted to `true`, not `false` — the old code read
+        // `with_count.unwrap_or(true)`.
+        assert!(q.with_count);
+    }
+
+    #[test]
+    fn table_scan_deserialises_the_count_payload() {
+        let q: TableScan = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "album",
+            "filters": [],
+            "searchColumns": [],
+        }))
+        .unwrap();
+
+        assert_eq!(q.table, "album");
+        assert!(q.filter.is_unfiltered());
+    }
+
+    #[test]
+    fn an_empty_search_string_is_not_a_predicate() {
+        // The grid clears its search box to `""`, not to `undefined`. Treating
+        // that as a needle would build `LIKE '%%'` and, worse, disqualify the
+        // whole-table fast count estimate.
+        let q: TableScan = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "album",
+            "search": "",
+        }))
+        .unwrap();
+
+        assert_eq!(q.filter.needle(), None);
+        assert!(q.filter.is_unfiltered());
     }
 }

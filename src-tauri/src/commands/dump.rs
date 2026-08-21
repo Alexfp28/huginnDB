@@ -20,7 +20,7 @@
 //! etc.) bracketed by `PRAGMA foreign_keys=OFF/ON`, since SQLite inlines FKs
 //! into `CREATE TABLE` text that isn't worth re-parsing to split.
 
-use crate::commands::query::{build_filter_clause_at, ColumnFilter};
+use crate::commands::query::{build_filter_clause_at, TableScan};
 use crate::commands::schema::{list_tables_inner, TableInfo};
 use crate::commands::structure::{mysql_structure, pg_structure};
 use crate::db::ddl::{build_create, TableStructure};
@@ -311,19 +311,19 @@ pub async fn export_table(
 /// [`export_table`], driven by the same [`ColumnFilter`] shape the DataGrid's
 /// advanced filter already builds. No pagination limit: every matching row
 /// is written, not just the current page. Rejects MongoDB.
-#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn export_table_rows(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
-    connection_id: String,
-    schema: Option<String>,
-    table: String,
-    filters: Vec<ColumnFilter>,
-    search: Option<String>,
-    search_columns: Option<Vec<String>>,
+    query: TableScan,
 ) -> AppResult<String> {
+    let TableScan {
+        connection_id,
+        schema,
+        table,
+        filter,
+    } = query;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
@@ -338,10 +338,13 @@ pub async fn export_table_rows(
         ));
     }
     let dialect = Dialect::try_of(&pool)?;
-    let search_columns = search_columns.unwrap_or_default();
-    let search_ref = search.as_deref().filter(|s| !s.is_empty());
-    let (where_clause, binds, _) =
-        build_filter_clause_at(1, dialect, &filters, search_ref, &search_columns);
+    let (where_clause, binds, _) = build_filter_clause_at(
+        1,
+        dialect,
+        &filter.filters,
+        filter.needle(),
+        &filter.search_columns,
+    );
     let qt = dialect.qualify(schema.as_deref(), &table);
     let select_sql = format!("SELECT * FROM {qt}{where_clause}");
 

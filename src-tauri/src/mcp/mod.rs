@@ -1710,16 +1710,16 @@ mod tests {
         let page = query::fetch_table_data_inner(
             &NoopSink,
             &state,
-            "test-conn".to_string(),
-            None,
-            "widget".to_string(),
-            10,
-            0,
-            None,
-            None,
-            None,
-            None,
-            Some(true),
+            query::TableQuery {
+                connection_id: "test-conn".to_string(),
+                schema: None,
+                table: "widget".to_string(),
+                limit: 10,
+                offset: 0,
+                order: Vec::new(),
+                filter: Default::default(),
+                with_count: true,
+            },
         )
         .await
         .unwrap();

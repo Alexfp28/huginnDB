@@ -20,7 +20,7 @@
 //! filter or explicitly acknowledged the unfiltered case.
 
 use crate::commands::query::{
-    build_filter_clause_at, count_table_rows_inner, ColumnFilter, RowValue,
+    build_filter_clause_at, count_table_rows_inner, ColumnFilter, RowValue, TableFilter, TableScan,
 };
 use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
@@ -134,12 +134,15 @@ pub async fn preview_bulk_update(
     let affected_estimate = count_table_rows_inner(
         &sink,
         state.inner(),
-        args.connection_id.clone(),
-        args.schema.clone(),
-        args.table.clone(),
-        Some(args.filters.clone()),
-        None,
-        None,
+        TableScan {
+            connection_id: args.connection_id.clone(),
+            schema: args.schema.clone(),
+            table: args.table.clone(),
+            filter: TableFilter {
+                filters: args.filters.clone(),
+                ..TableFilter::default()
+            },
+        },
     )
     .await?
     .total;
