@@ -81,6 +81,7 @@ import { cn } from "@/lib/utils";
 import { useClipFade } from "@/lib/useClipFade";
 import { api } from "@/lib/tauri";
 import type { TabAccentStyle } from "@/types";
+import { openQueryTab } from "@/lib/tabs/openQueryTab";
 
 interface Props {
   connectionId: string | null;
@@ -744,12 +745,7 @@ function NewTabAction(_props: IDockviewHeaderActionsProps) {
           disabled={!connectionId}
           onClick={() => {
             if (!connectionId) return;
-            useTabs.getState().open({
-              kind: "query",
-              title: t("tabs.queryFileName"),
-              connectionId: useTabs.getState().queryTargetFor(connectionId),
-              query: "-- write a SQL query and press Ctrl+Enter\n",
-            });
+            openQueryTab(connectionId);
           }}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -809,12 +805,7 @@ function EmptyWatermark() {
 
   function openNewQuery() {
     if (!connectionId) return;
-    useTabs.getState().open({
-      kind: "query",
-      title: t("tabs.queryFileName"),
-      connectionId: useTabs.getState().queryTargetFor(connectionId),
-      query: "-- write a SQL query and press Ctrl+Enter\n",
-    });
+    openQueryTab(connectionId);
   }
 
   return (

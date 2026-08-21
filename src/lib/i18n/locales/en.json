@@ -1530,7 +1530,8 @@
     "elapsedTitle": "Query duration",
     "batchOk": "{{count}} statements · {{rows}} rows affected",
     "batchFailed": "Stopped at statement {{index}} of {{total}}",
-    "rowsAffected": "{{rows}} rows affected · {{ms}} ms"
+    "rowsAffected": "{{rows}} rows affected · {{ms}} ms",
+    "newTabPlaceholder": "-- write a SQL query and press Ctrl+Enter\n"
   },
   "saved": {
     "connectFirst": "Connect to a database first.",

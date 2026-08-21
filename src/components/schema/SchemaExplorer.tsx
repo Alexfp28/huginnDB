@@ -122,6 +122,7 @@ import {
   supportsCreateCollection,
 } from "@/lib/db/driver";
 import type { Driver, TableInfo } from "@/types";
+import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import {
   supportsCreateDatabase,
   supportsDdlEditing,
@@ -754,12 +755,7 @@ function SingleDbExplorer({
                         icon={SquareTerminal}
                         label={t("schema.context.newQueryHere")}
                         onSelect={() =>
-                          openTab({
-                            kind: "query",
-                            title: t("tabs.queryFileName"),
-                            connectionId,
-                            query: "-- write a SQL query and press Ctrl+Enter\n",
-                          })
+                          openQueryTab(connectionId)
                         }
                       />
                     </ContextMenuContent>
@@ -1300,12 +1296,7 @@ function DatabaseRoot({
   const openQueryHere = async () => {
     const id = await resolveChildId();
     if (!id) return;
-    useTabs.getState().open({
-      kind: "query",
-      title: t("tabs.queryFileName"),
-      connectionId: id,
-      query: "-- write a SQL query and press Ctrl+Enter\n",
-    });
+    openQueryTab(id);
   };
 
   // "New table"/"New view" here: same lazy-open-then-navigate pattern as

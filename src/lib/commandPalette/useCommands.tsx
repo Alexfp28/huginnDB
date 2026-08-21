@@ -98,6 +98,7 @@ import { SETTINGS_INDEX } from "@/lib/commandPalette/settingsRegistry";
 import type { PaletteCommand } from "@/lib/commandPalette/types";
 import type { TabKind } from "@/types";
 import { SUPPORTED_LANGUAGES } from "@/lib/i18n";
+import { openQueryTab } from "@/lib/tabs/openQueryTab";
 
 /** Icon per tab kind, mirroring `TabSwitcher`'s map. */
 const TAB_ICON: Record<TabKind, React.ReactNode> = {
@@ -190,12 +191,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         keywords: "sql editor new query nueva consulta",
         icon: <Plus className="h-4 w-4" />,
         run: () =>
-          useTabs.getState().open({
-            kind: "query",
-            title: t("tabs.queryFileName"),
-            connectionId: queryTarget,
-            query: "-- write a SQL query and press Ctrl+Enter\n",
-          }),
+          openQueryTab(queryTarget),
       });
     }
 
