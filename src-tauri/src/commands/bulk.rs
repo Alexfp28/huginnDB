@@ -24,7 +24,7 @@ use crate::commands::query::{
 };
 use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
-use crate::log_bus::{self, LogEntry, LogKind, LogSink};
+use crate::log_bus::{self, log_sql_sink, LogSink};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -185,24 +185,19 @@ pub(crate) async fn apply_bulk_update_inner(
             &args.set_values,
         )
         .await;
-        match &res {
-            Ok(n) => sink.log(
-                LogEntry::new(LogKind::Sql)
-                    .connection_id(&args.connection_id)
-                    .driver(driver)
-                    .sql("(mongo bulk update)")
-                    .duration_ms(start.elapsed().as_millis() as u64)
-                    .rows_affected(*n),
-            ),
-            Err(e) => sink.log(
-                LogEntry::new(LogKind::Sql)
-                    .connection_id(&args.connection_id)
-                    .driver(driver)
-                    .sql("(mongo bulk update)")
-                    .duration_ms(start.elapsed().as_millis() as u64)
-                    .error(e.to_string()),
-            ),
-        }
+        let (affected, failure) = match &res {
+            Ok(n) => (Some(*n), None),
+            Err(e) => (None, Some(e.to_string())),
+        };
+        log_sql_sink(
+            sink,
+            &args.connection_id,
+            driver,
+            "(mongo bulk update)",
+            start,
+            affected,
+            failure.as_deref(),
+        );
         return res;
     }
 
@@ -213,23 +208,18 @@ pub(crate) async fn apply_bulk_update_inner(
     let start = Instant::now();
     let outcome = crate::db::exec::execute_params(&pool, &sql, &binds).await;
 
-    match &outcome {
-        Ok(n) => sink.log(
-            LogEntry::new(LogKind::Sql)
-                .connection_id(&args.connection_id)
-                .driver(driver)
-                .sql(&sql)
-                .duration_ms(start.elapsed().as_millis() as u64)
-                .rows_affected(*n),
-        ),
-        Err(e) => sink.log(
-            LogEntry::new(LogKind::Sql)
-                .connection_id(&args.connection_id)
-                .driver(driver)
-                .sql(&sql)
-                .duration_ms(start.elapsed().as_millis() as u64)
-                .error(e.to_string()),
-        ),
-    }
+    let (affected, failure) = match &outcome {
+        Ok(n) => (Some(*n), None),
+        Err(e) => (None, Some(e.to_string())),
+    };
+    log_sql_sink(
+        sink,
+        &args.connection_id,
+        driver,
+        &sql,
+        start,
+        affected,
+        failure.as_deref(),
+    );
     outcome
 }

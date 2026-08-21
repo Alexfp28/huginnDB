@@ -19,7 +19,7 @@ use crate::db::values::{
     mysql_columns, mysql_value, pg_columns, pg_value, sqlite_columns, sqlite_value,
 };
 use crate::error::{AppError, AppResult};
-use crate::log_bus::{LogEntry, LogKind, LogSink};
+use crate::log_bus::{log_sql_sink, LogSink};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -32,52 +32,6 @@ use sqlx::Executor as _;
 use std::collections::HashSet;
 use std::time::Instant;
 use tauri::{AppHandle, State};
-
-/// Build the SQL [`LogEntry`] shared by the window- and sink-targeted
-/// emitters below, so the field population lives in exactly one place.
-#[allow(clippy::too_many_arguments)]
-fn build_sql_entry(
-    connection_id: &str,
-    driver: &str,
-    sql: &str,
-    start: Instant,
-    rows_affected: Option<u64>,
-    error: Option<&str>,
-) -> LogEntry {
-    let mut entry = LogEntry::new(LogKind::Sql)
-        .connection_id(connection_id)
-        .driver(driver)
-        .sql(sql)
-        .duration_ms(start.elapsed().as_millis() as u64);
-    if let Some(r) = rows_affected {
-        entry = entry.rows_affected(r);
-    }
-    if let Some(e) = error {
-        entry = entry.error(e);
-    }
-    entry
-}
-
-/// Emit a SQL log entry through a [`LogSink`] after a statement finished.
-///
-/// This is the single logging path for every DB command: the GUI's
-/// `#[tauri::command]` wrappers build a [`log_bus::TauriSink`] (window-scoped
-/// Console emission) and the headless `huginndb-mcp` binary passes its own
-/// sink, so the shared `_inner` cores ([`execute_with_state`],
-/// [`fetch_table_data_inner`], [`update_cell_inner`], …) stay
-/// Tauri-independent.
-fn log_sql_sink(
-    sink: &dyn LogSink,
-    connection_id: &str,
-    driver: &str,
-    sql: &str,
-    start: Instant,
-    rows_affected: Option<u64>,
-    error: Option<&str>,
-) {
-    let entry = build_sql_entry(connection_id, driver, sql, start, rows_affected, error);
-    sink.log(entry);
-}
 
 /// Unwrap a `Result<_, sqlx::Error>` produced by a SQL call and, on failure,
 /// emit a SQL log entry through the [`LogSink`] plus early-return the error

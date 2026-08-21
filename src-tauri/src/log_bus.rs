@@ -163,6 +163,45 @@ impl LogSink for TauriSink<'_> {
     }
 }
 
+/// Emit a SQL [`LogEntry`] through a [`LogSink`] after a statement finished.
+///
+/// The single logging path for every statement the app runs, whoever ran it:
+/// a GUI command hands in a window-scoped [`TauriSink`], the headless
+/// `huginndb-mcp` binary hands in a `NoopSink`, and the `_inner` cores they
+/// share stay Tauri-independent because neither knows which it got.
+///
+/// It lives here, next to [`LogEntry`], rather than in `commands::query`
+/// where it started, because `db::mongo::query` needs it too and the layers
+/// below `commands` do not depend upward. That module and `commands::bulk`
+/// each rebuilt the same six-field builder chain by hand, twice — once per arm
+/// of an `Ok`/`Err` match. The six copies happened to agree; keeping them in
+/// step was nobody's job, which is the problem, since a Console entry that
+/// quietly stops carrying `rows_affected` or `duration_ms` looks like a
+/// missing feature rather than a bug.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn log_sql_sink(
+    sink: &dyn LogSink,
+    connection_id: &str,
+    driver: &str,
+    sql: &str,
+    start: std::time::Instant,
+    rows_affected: Option<u64>,
+    error: Option<&str>,
+) {
+    let mut entry = LogEntry::new(LogKind::Sql)
+        .connection_id(connection_id)
+        .driver(driver)
+        .sql(sql)
+        .duration_ms(start.elapsed().as_millis() as u64);
+    if let Some(r) = rows_affected {
+        entry = entry.rows_affected(r);
+    }
+    if let Some(e) = error {
+        entry = entry.error(e);
+    }
+    sink.log(entry);
+}
+
 /// [`LogSink`] that discards every entry. Used by the headless MCP binary,
 /// which has no Console panel to feed — hence gated to the `mcp` feature.
 #[cfg(feature = "mcp")]

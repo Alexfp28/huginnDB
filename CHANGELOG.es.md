@@ -96,6 +96,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     log de la Consola. Olvidarlo no se nota hasta que una vista de base de datos
     lleva inactiva lo bastante como para que el segador la cierre, así que
     reducirlo a una línea vale más que las 240 líneas que quita.
+  - `log_bus::log_sql_sink` es el único sitio donde se construye una entrada SQL
+    de la Consola. `commands::bulk` y `db::mongo::query` rehacían a mano la misma
+    cadena de seis campos, dos veces cada uno —una por rama del `match`
+    `Ok`/`Err`—, mientras `commands::query` se documentaba como la única ruta de
+    log. El helper baja junto a `LogEntry`, que es lo que permite usarlo desde la
+    capa `db` sin depender hacia arriba de `commands`.
   - Frontend: `useImportWizard` (tres diálogos), `useAsyncSubmit` (diez),
     `OverlayPalette` + `useListNavigation` (paleta de comandos y conmutador de
     pestañas), `lib/schedule.ts` (tres debounces, dos sondeos), `RefreshButton`

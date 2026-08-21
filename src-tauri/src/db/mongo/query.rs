@@ -12,7 +12,7 @@ use crate::commands::query::{
     StmtOutcome, MAX_ADHOC_QUERY_ROWS,
 };
 use crate::error::AppResult;
-use crate::log_bus::{LogEntry, LogKind, LogSink};
+use crate::log_bus::{log_sql_sink, LogSink};
 use crate::state::MongoConn;
 use mongodb::bson::{doc, Bson, Document};
 use serde_json::Value;
@@ -311,13 +311,14 @@ pub async fn execute_batch(
         match execute(conn, stmt).await {
             Ok(result) => {
                 total_affected += result.rows_affected;
-                sink.log(
-                    LogEntry::new(LogKind::Sql)
-                        .connection_id(connection_id)
-                        .driver("mongodb")
-                        .sql(stmt)
-                        .duration_ms(start.elapsed().as_millis() as u64)
-                        .rows_affected(result.rows_affected),
+                log_sql_sink(
+                    sink,
+                    connection_id,
+                    "mongodb",
+                    stmt,
+                    start,
+                    Some(result.rows_affected),
+                    None,
                 );
                 outcomes.push(StmtOutcome {
                     index,
@@ -331,13 +332,14 @@ pub async fn execute_batch(
                 }
             }
             Err(e) => {
-                sink.log(
-                    LogEntry::new(LogKind::Sql)
-                        .connection_id(connection_id)
-                        .driver("mongodb")
-                        .sql(stmt)
-                        .duration_ms(start.elapsed().as_millis() as u64)
-                        .error(e.to_string()),
+                log_sql_sink(
+                    sink,
+                    connection_id,
+                    "mongodb",
+                    stmt,
+                    start,
+                    None,
+                    Some(&e.to_string()),
                 );
                 outcomes.push(StmtOutcome {
                     index,

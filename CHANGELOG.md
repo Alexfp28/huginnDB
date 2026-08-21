@@ -88,6 +88,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     sink by hand. Omitting it is invisible until a database view has been idle
     long enough for the reaper to close it, so making it one line is worth more
     than the 240 lines it removes.
+  - `log_bus::log_sql_sink` is the one place a SQL Console entry is built.
+    `commands::bulk` and `db::mongo::query` each rebuilt the same six-field
+    builder chain by hand, twice — once per arm of an `Ok`/`Err` match — while
+    `commands::query` documented itself as the single logging path. The helper
+    moved down next to `LogEntry`, which is what lets the `db` layer use it
+    without depending upward on `commands`.
   - Frontend: `useImportWizard` (three dialogs), `useAsyncSubmit` (ten),
     `OverlayPalette` + `useListNavigation` (the command palette and the tab
     switcher), `lib/schedule.ts` (three debounces, two polls), `RefreshButton`
