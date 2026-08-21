@@ -76,6 +76,7 @@ import type { ConnectionProfile, Driver, StartupArgs } from "@/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { refreshTable } from "@/lib/grid/tableRefresh";
 import { sqliteFileLabel } from "@/lib/connectionLabel";
+import { useBridge } from "@/lib/bridges/useBridge";
 
 /** Ad-hoc connection params staged while we prompt the user for a driver
  *  (CLI launch without `--driver` and no configured default). */
@@ -526,69 +527,25 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Subscribe to the Rust `huginndb://log` Tauri event so the Console
-  // panel sees every SQL + connection event. Unlisten on unmount keeps
-  // HMR clean — without it React's StrictMode + Vite's reloads would
-  // attach multiple listeners and duplicate every entry.
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    let cancelled = false;
-    void startLogBridge().then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
+  // Subscribe to the Rust `huginndb://log` Tauri event so the Console panel
+  // sees every SQL + connection event. (`useBridge` owns the unlisten; see its
+  // doc for why the cancellation flag matters under StrictMode and HMR.)
+  useBridge(startLogBridge);
 
   // Subscribe to the Rust `huginndb://connection-lost` Tauri event so the
   // connection list can surface a reconnect action the moment the
   // background keepalive (`src-tauri/src/keepalive.rs`) detects a dead
   // pool, instead of the user finding out mid-query.
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    let cancelled = false;
-    void startConnectionHealthBridge().then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
+  useBridge(startConnectionHealthBridge);
 
   // Cross-window sync (issue #18): every window shares one backend
   // AppState, but each window's frontend used to hold a private snapshot
   // of `active`/`profiles`/`prefs` with no way to learn about another
   // window's connect/disconnect/profile edit/settings change.
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    let cancelled = false;
-    void startConnectionSyncBridge().then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
+  useBridge(startConnectionSyncBridge);
 
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    let cancelled = false;
-    void startPrefsSyncBridge().then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
+  // The other half of #18: preference writes from any window.
+  useBridge(startPrefsSyncBridge);
 
   // Keep the JSON language service in step with the three schema switches.
   // Subscribed as primitives, so this effect fires only when one actually flips
@@ -614,17 +571,8 @@ export default function App() {
   // there is no main-window-only guard here.
   useEffect(() => {
     void useJsonSchemas.getState().load();
-    let unlisten: (() => void) | null = null;
-    let cancelled = false;
-    void startJsonSchemaBridge().then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
   }, []);
+  useBridge(startJsonSchemaBridge);
 
   // Update notifications now render as a custom `UpdateBanner` at the
   // top of the window (see the JSX below). The previous implementation
