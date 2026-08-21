@@ -76,12 +76,16 @@ import { confirmDestructive } from "@/lib/confirmDestructive";
 import { toJson as rowToJson } from "@/lib/grid/copyFormats";
 import {
   BSON_TYPES,
+  defaultText,
   displayValue,
+  draftTypeFor,
   editText,
   flattenDocument,
   isValidForType,
+  nextArrayIndex,
   pathKey,
   typeLabel,
+  typeValue,
   type BsonType,
   type DocField,
 } from "@/lib/grid/documentTree";
@@ -1120,42 +1124,4 @@ function valueClass(type: string): string {
  * the picker (and the backend's type-hint vocabulary) spells it `"object"`, so
  * that one name is translated rather than silently falling through to `string`.
  */
-function draftTypeFor(dataType?: string): string {
-  if (!dataType) return "string";
-  if (dataType === "document") return "object";
-  return dataType;
-}
 
-/** The picker only knows the types it can write; anything else (a `dbPointer`,
- *  a `mixed` column) shows its own label but maps onto `string` as the
- *  selected item so the Radix trigger has a valid value. */
-function typeValue(type: string): string {
-  return (BSON_TYPES as readonly string[]).includes(type) ? type : "string";
-}
-
-/** Neutral value for a type the current text can't be reinterpreted as. */
-function defaultText(type: BsonType): string {
-  switch (type) {
-    case "int":
-    case "long":
-    case "double":
-    case "decimal128":
-      return "0";
-    case "bool":
-      return "false";
-    case "object":
-      return "{}";
-    case "array":
-      return "[]";
-    case "date":
-      return new Date().toISOString();
-    default:
-      return "";
-  }
-}
-
-/** Next free index for a new element appended to the array at `parent`. */
-function nextArrayIndex(fields: DocField[], parent: string[]): number {
-  const container = fields.find((f) => pathKey(f.path) === pathKey(parent));
-  return container?.childCount ?? 0;
-}
