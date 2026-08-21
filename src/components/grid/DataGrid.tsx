@@ -107,6 +107,7 @@ import {
   toSqlUpdate as rowToSqlUpdate,
 } from "@/lib/grid/copyFormats";
 import { formatValue } from "@/lib/grid/formatValue";
+import { useGridSelection } from "@/lib/grid/useGridSelection";
 import {
   useCellEditor,
   type CellBindingContext,
@@ -542,10 +543,6 @@ export function DataGrid({
    * (`onBulkDelete`), which the parent withholds without one.
    */
   const selectionEnabled = !!getRowKey;
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  /** Anchor for Shift-click range selection (the last row toggled). */
-  const lastClickedKeyRef = useRef<string | null>(null);
-
   /**
    * Optional client-side text filter over the rows already in memory.
    * Used by query results (where there is no underlying table to
@@ -559,6 +556,21 @@ export function DataGrid({
       r.some((c) => formatValue(c).toLowerCase().includes(q)),
     );
   }, [result.rows, globalFilter]);
+
+  // Row selection — keys, clicks, select-all and the derived answers the
+  // toolbar and context menus need. See the hook for the invariants (identity
+  // by key not index, pruning to the visible set, distinct value counts).
+  const {
+    selectedKeys,
+    selectedRows,
+    hasSelection,
+    allSelected,
+    someSelected,
+    toggleRowKey,
+    applyRowSelectionClick,
+    toggleSelectAll,
+    selectedColumnValues,
+  } = useGridSelection({ visibleRows, getRowKey, onSelectionChange });
 
   /**
    * Re-resolve `selectedCell` after a refetch replaces every row's array
@@ -589,173 +601,6 @@ export function DataGrid({
     // `selectedCell` is what this effect writes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleRows]);
-
-  /**
-   * Visible rows paired with their stable key (or null when unresolvable),
-   * memoised so the per-row render and the range-selection math read a stable
-   * list. `null`-keyed rows simply can't be selected.
-   */
-  const keyedVisibleRows = useMemo(() => {
-    if (!getRowKey) return [] as { key: string | null; row: CellValue[] }[];
-    return visibleRows.map((row) => ({ key: getRowKey(row), row }));
-  }, [visibleRows, getRowKey]);
-
-  /**
-   * The currently-selected rows, as values arrays, in visible order. Drives
-   * the bulk context-menu actions and the selection count. Memoised on the
-   * selection set + the visible rows so its identity is stable across
-   * unrelated renders.
-   */
-  const selectedRows = useMemo(() => {
-    if (selectedKeys.size === 0) return [] as CellValue[][];
-    return keyedVisibleRows
-      .filter((r) => r.key !== null && selectedKeys.has(r.key))
-      .map((r) => r.row);
-  }, [keyedVisibleRows, selectedKeys]);
-
-  /**
-   * Mirror the selection count + visible-row total up to the parent (which
-   * forwards it to the status bar keyed by tab id). Effect, not a render-time
-   * call, so we never set external state during render.
-   */
-  useEffect(() => {
-    onSelectionChange?.(selectedRows.length, keyedVisibleRows.length);
-  }, [onSelectionChange, selectedRows.length, keyedVisibleRows.length]);
-
-  /**
-   * Prune selected keys that no longer correspond to a visible row (e.g.
-   * after a refetch that dropped rows, or a filter narrowing). Keeps the
-   * checkbox header's "all selected" state honest and avoids deleting rows
-   * the user can no longer see. Runs only when the visible key set changes.
-   */
-  useEffect(() => {
-    if (selectedKeys.size === 0) return;
-    const live = new Set(
-      keyedVisibleRows.map((r) => r.key).filter((k): k is string => k !== null),
-    );
-    let changed = false;
-    const next = new Set<string>();
-    for (const k of selectedKeys) {
-      if (live.has(k)) next.add(k);
-      else changed = true;
-    }
-    if (changed) setSelectedKeys(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyedVisibleRows]);
-
-  /** Toggle a single row key (Ctrl/Cmd-click, or plain checkbox click). */
-  function toggleRowKey(key: string) {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-    lastClickedKeyRef.current = key;
-  }
-
-  /** Select the contiguous range (in visible order) between the anchor and
-   *  `key`, additively. Falls back to a single toggle when there's no anchor. */
-  function selectRangeTo(key: string) {
-    const anchor = lastClickedKeyRef.current;
-    if (!anchor) {
-      toggleRowKey(key);
-      return;
-    }
-    const keys = keyedVisibleRows
-      .map((r) => r.key)
-      .filter((k): k is string => k !== null);
-    const a = keys.indexOf(anchor);
-    const b = keys.indexOf(key);
-    if (a < 0 || b < 0) {
-      toggleRowKey(key);
-      return;
-    }
-    const [lo, hi] = a <= b ? [a, b] : [b, a];
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      for (let i = lo; i <= hi; i++) next.add(keys[i]);
-      return next;
-    });
-  }
-
-  /**
-   * OS-explorer-style selection from a row/cell click. Ctrl/Cmd-click toggles
-   * a single row; Shift-click extends a contiguous range from the anchor; a
-   * plain click clears any multi-selection (keeping the single-row blue
-   * highlight, handled separately by `setSelectedRowIndex`). No-op for rows
-   * without a resolvable key.
-   */
-  function applyRowSelectionClick(
-    rowKey: string | null,
-    e: React.MouseEvent,
-  ) {
-    if (rowKey === null) return;
-    if (e.ctrlKey || e.metaKey) {
-      toggleRowKey(rowKey);
-    } else if (e.shiftKey) {
-      selectRangeTo(rowKey);
-    } else if (selectedKeys.size > 0) {
-      setSelectedKeys(new Set());
-      lastClickedKeyRef.current = rowKey;
-    } else {
-      lastClickedKeyRef.current = rowKey;
-    }
-  }
-
-  /**
-   * The selection's values for one column, plus how many of them are actually
-   * distinct — the pair behind the "filter by the selected rows" action (#114).
-   *
-   * The distinct count is what the menu label advertises: selecting 40 rows that
-   * share 3 values builds a 3-element `IN` list (the backend dedupes), so
-   * promising "40 values" would misdescribe the filter about to be applied.
-   * NULL is counted apart from the formatted values instead of being folded in
-   * with them: `formatValue(null)` is `""`, indistinguishable from an empty
-   * string, so a column holding both would be undercounted.
-   */
-  function selectedColumnValues(colIndex: number): {
-    values: CellValue[];
-    distinct: number;
-  } {
-    const values = selectedRows.map((r) => r[colIndex] ?? null);
-    const nonNull = values.filter((v) => v !== null);
-    const distinct =
-      new Set(nonNull.map((v) => formatValue(v))).size +
-      (nonNull.length === values.length ? 0 : 1);
-    return { values, distinct };
-  }
-
-  /**
-   * Header tri-state select-all state, computed over the *visible* rows that
-   * have a resolvable key. `allSelected` when every selectable visible row is
-   * in the set; `someSelected` drives the checkbox's indeterminate dash.
-   * Toggling only ever touches the visible set — never rows filtered out of
-   * view (mirrors the prune effect above that keeps the set honest).
-   */
-  const selectableVisibleKeys = useMemo(
-    () =>
-      keyedVisibleRows
-        .map((r) => r.key)
-        .filter((k): k is string => k !== null),
-    [keyedVisibleRows],
-  );
-  const allSelected =
-    selectableVisibleKeys.length > 0 &&
-    selectableVisibleKeys.every((k) => selectedKeys.has(k));
-  const someSelected = selectedKeys.size > 0 && !allSelected;
-  /** Any row selected at all — drives the always-visible checkbox affordance. */
-  const hasSelection = selectedKeys.size > 0;
-
-  /** Select-all / clear from the header checkbox. */
-  function toggleSelectAll() {
-    setSelectedKeys((prev) => {
-      const everyVisibleSelected =
-        prev.size > 0 && selectableVisibleKeys.every((k) => prev.has(k));
-      return everyVisibleSelected ? new Set() : new Set(selectableVisibleKeys);
-    });
-    lastClickedKeyRef.current = null;
-  }
 
   /**
    * Pre-computed set of column names that carry numeric data.
