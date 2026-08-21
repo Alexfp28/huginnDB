@@ -15,7 +15,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { KeyRound, Plus, Trash2, RefreshCw, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
-import Editor from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
@@ -35,7 +34,9 @@ import { useTabs, retitleTabsForTableRename } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useReloadable } from "@/lib/useReloadable";
+import { DdlPreviewPane } from "@/components/schema/DdlPreviewPane";
+import { joinStatements } from "@/lib/sql/formatStatements";
 import {
   columnCategoriesFor,
   composeColumnType,
@@ -137,8 +138,6 @@ export function StructureEditorTab({
   const [section, setSection] = useState<"columns" | "indexes" | "fks">(
     "columns",
   );
-  const [loading, setLoading] = useState(mode === "edit");
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [ddl, setDdl] = useState<string>("");
   const [rebuild, setRebuild] = useState(false);
@@ -158,29 +157,22 @@ export function StructureEditorTab({
   // the manual refresh button (issue #25) so external changes made while the
   // tab is open can be pulled in; a refresh resets the working state to the
   // server's current definition.
-  const reload = useCallback(async () => {
+  const load = useCallback(async () => {
     const currentName = currentTableNameRef.current;
-    if (mode !== "edit" || !currentName) return;
-    setLoading(true);
-    try {
-      const s = await api.getTableStructure(connectionId, schema, currentName);
-      currentTableNameRef.current = s.name;
-      setOriginal(s);
-      setName(s.name);
-      setColumns(s.columns.map((c) => ({ ...c, _key: nextKey() })));
-      setIndexes(s.indexes);
-      setForeignKeys(s.foreignKeys);
-      setLoadError(null);
-    } catch (e) {
-      setLoadError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [mode, connectionId, schema]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+    if (!currentName) return;
+    const s = await api.getTableStructure(connectionId, schema, currentName);
+    currentTableNameRef.current = s.name;
+    setOriginal(s);
+    setName(s.name);
+    setColumns(s.columns.map((c) => ({ ...c, _key: nextKey() })));
+    setIndexes(s.indexes);
+    setForeignKeys(s.foreignKeys);
+  }, [connectionId, schema]);
+  const {
+    loading,
+    error: loadError,
+    reload,
+  } = useReloadable(mode === "edit" ? load : null);
 
   // JSON Schema bindings for this table.
   //
@@ -245,7 +237,7 @@ export function StructureEditorTab({
         desired: desiredRef.current,
       })
       .then((p) => {
-        setDdl(p.statements.join(";\n") + (p.statements.length ? ";" : ""));
+        setDdl(joinStatements(p.statements));
         setRebuild(p.rebuild);
         setPreviewError(null);
       })
@@ -501,39 +493,13 @@ export function StructureEditorTab({
           )}
         </div>
 
-        {/* DDL preview */}
-        <div className="flex h-48 flex-col border-t border-border">
-          <div className="flex items-center gap-2 px-3 py-1 text-[11px] text-muted-foreground">
-            <RefreshCw className="h-3 w-3" />
-            {t("structure.ddlPreview")}
-            {rebuild && (
-              <span className="rounded bg-warning/20 px-1.5 py-0.5 text-warning">
-                {t("structure.rebuildWarning")}
-              </span>
-            )}
-          </div>
-          {previewError ? (
-            <div className="px-3 py-2 text-xs text-destructive">
-              {previewError}
-            </div>
-          ) : (
-            <Editor
-              height="100%"
-              value={ddl}
-              language="sql"
-              theme={resolveMonacoTheme(editorPrefs.theme)}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                lineNumbers: "off",
-                fontFamily: editorPrefs.fontFamily,
-                fontSize: editorPrefs.fontSize,
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-              }}
-            />
-          )}
-        </div>
+        <DdlPreviewPane
+          title={t("structure.ddlPreview")}
+          ddl={ddl}
+          error={previewError}
+          warning={rebuild ? t("structure.rebuildWarning") : null}
+          prefs={editorPrefs}
+        />
       </div>
 
       {/* SQLite rebuild confirmation */}

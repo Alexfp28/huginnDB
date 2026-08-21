@@ -42,6 +42,9 @@ import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import type { QueryResult, StructureMode, ViewDefinition } from "@/types";
+import { useReloadable } from "@/lib/useReloadable";
+import { DdlPreviewPane } from "@/components/schema/DdlPreviewPane";
+import { joinStatements } from "@/lib/sql/formatStatements";
 
 interface Props {
   tabId: string;
@@ -103,8 +106,6 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
   const [original, setOriginal] = useState<ViewDefinition | null>(null);
   const [name, setName] = useState(view ?? "");
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(mode === "edit");
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [ddl, setDdl] = useState("");
   const [dropAndRecreate, setDropAndRecreate] = useState(false);
@@ -118,25 +119,18 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
 
   // (Re)load the existing definition. Runs on mount and from the manual
   // refresh button (same rationale as StructureEditorTab's `reload`).
-  const reload = useCallback(async () => {
-    if (mode !== "edit" || !view) return;
-    setLoading(true);
-    try {
-      const v = await api.getViewDefinition(connectionId, schema, view);
-      setOriginal(v);
-      setName(v.name);
-      setQuery(v.query);
-      setLoadError(null);
-    } catch (e) {
-      setLoadError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [mode, connectionId, schema, view]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  const load = useCallback(async () => {
+    if (!view) return;
+    const v = await api.getViewDefinition(connectionId, schema, view);
+    setOriginal(v);
+    setName(v.name);
+    setQuery(v.query);
+  }, [connectionId, schema, view]);
+  const {
+    loading,
+    error: loadError,
+    reload,
+  } = useReloadable(mode === "edit" ? load : null);
 
   const desired = useMemo<ViewDefinition>(
     () => ({ schema: schema ?? null, name: name.trim(), query }),
@@ -158,7 +152,7 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
     api
       .previewViewChange({ connectionId, original, desired: desiredRef.current })
       .then((p) => {
-        setDdl(p.statements.join(";\n") + (p.statements.length ? ";" : ""));
+        setDdl(joinStatements(p.statements));
         setDropAndRecreate(p.dropAndRecreate);
         setPreviewError(null);
       })
@@ -385,39 +379,13 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
           </Panel>
         </PanelGroup>
 
-        {/* DDL preview */}
-        <div className="flex h-48 flex-col border-t border-border">
-          <div className="flex items-center gap-2 px-3 py-1 text-[11px] text-muted-foreground">
-            <RefreshCw className="h-3 w-3" />
-            {t("view.ddlPreview")}
-            {dropAndRecreate && (
-              <span className="rounded bg-warning/20 px-1.5 py-0.5 text-warning">
-                {t("view.dropRecreateNote")}
-              </span>
-            )}
-          </div>
-          {previewError ? (
-            <div className="px-3 py-2 text-xs text-destructive">
-              {previewError}
-            </div>
-          ) : (
-            <Editor
-              height="100%"
-              value={ddl}
-              language="sql"
-              theme={resolveMonacoTheme(editorPrefs.theme)}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                lineNumbers: "off",
-                fontFamily: editorPrefs.fontFamily,
-                fontSize: editorPrefs.fontSize,
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-              }}
-            />
-          )}
-        </div>
+        <DdlPreviewPane
+          title={t("view.ddlPreview")}
+          ddl={ddl}
+          error={previewError}
+          warning={dropAndRecreate ? t("view.dropRecreateNote") : null}
+          prefs={editorPrefs}
+        />
       </div>
     </div>
   );
