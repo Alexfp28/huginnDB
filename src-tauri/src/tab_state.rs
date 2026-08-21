@@ -727,6 +727,39 @@ pub fn save_tab_state(state: &PersistedTabState) -> AppResult<()> {
     crate::state_file::save_atomic(TAB_STATE_FILE, state)
 }
 
+/// Mutate the in-memory tab state under the write lock, then persist the
+/// result — the one shape every writer of `tab_state.json` has.
+///
+/// Fourteen command bodies spelled this out by hand: take the write lock,
+/// mutate, clone the whole blob into a local, drop the guard, save. The clone
+/// is the part that is easy to get subtly wrong and impossible to notice, and
+/// it is not incidental: [`save_tab_state`] does file I/O, so holding a
+/// `parking_lot` write lock across it would block every other window's reader
+/// for the duration of a disk write — and `parking_lot`'s guards are not
+/// `Send`, so an `.await` under one does not even compile. Cloning out and
+/// releasing first is the fix, and doing it in one place is what stops the
+/// next writer from re-deriving it.
+///
+/// `f` returns [`AppResult`] so a validation failure (`no environment with id
+/// …`, "cannot delete the last environment") short-circuits *before* the save:
+/// an early `return Err(..)` from inside the old inline blocks skipped the
+/// write by falling out of the function, and this preserves that exactly.
+/// Whatever `f` returns is handed back to the caller, which covers the writers
+/// that also need the value they just built (the saved [`Environment`], the
+/// updated [`Origin`]).
+pub fn mutate<T>(
+    lock: &parking_lot::RwLock<PersistedTabState>,
+    f: impl FnOnce(&mut PersistedTabState) -> AppResult<T>,
+) -> AppResult<T> {
+    let (snapshot, out) = {
+        let mut guard = lock.write();
+        let out = f(&mut guard)?;
+        (guard.clone(), out)
+    };
+    save_tab_state(&snapshot)?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

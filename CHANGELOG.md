@@ -77,6 +77,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     mirroring `db/mssql` and `db/mongo`. All 17 `unreachable!()` are gone.
   - `state_file.rs`, `AppState::pool_for`/`mongo_for`, `Dialect::quote_ident` and
     `Dialect::truncate_stmt` replace between 9 and 10 hand-rolled copies each.
+  - `tab_state::mutate` replaces fourteen hand-written "take the write lock,
+    mutate, clone the whole blob, drop the guard, save" bodies across
+    `commands/{prefs,origins,connection}.rs`. The clone-and-release is not
+    incidental: the save does file I/O, so holding the lock across it would
+    block every other window's reader for the length of a disk write.
   - Frontend: `useImportWizard` (three dialogs), `useAsyncSubmit` (ten),
     `OverlayPalette` + `useListNavigation` (the command palette and the tab
     switcher), `lib/schedule.ts` (three debounces, two polls), `RefreshButton`

@@ -93,17 +93,13 @@ pub fn save_tab_state(
     mut tab_state_value: ConnectionTabState,
 ) -> AppResult<()> {
     tab_state::normalise(&mut tab_state_value);
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        guard
-            .active_environment_mut()
+    tab_state::mutate(&state.tab_state, |ts| {
+        ts.active_environment_mut()
             .connections
             .insert(connection_id, tab_state_value);
-        guard.prune();
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(())
+        ts.prune();
+        Ok(())
+    })
 }
 
 /// Drop the persisted tab state for `connection_id`. Invoked when a
@@ -116,9 +112,8 @@ pub fn save_tab_state(
 /// switched there.
 #[tauri::command]
 pub fn clear_tab_state(state: State<'_, AppState>, connection_id: String) -> AppResult<()> {
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        for env in &mut guard.environments {
+    tab_state::mutate(&state.tab_state, |ts| {
+        for env in &mut ts.environments {
             env.connections.remove(&connection_id);
             env.launch
                 .active_connections
@@ -127,10 +122,8 @@ pub fn clear_tab_state(state: State<'_, AppState>, connection_id: String) -> App
                 env.launch.selected_connection_id = None;
             }
         }
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Return the session-level inner-dockview geometry, or `None` for the
@@ -155,13 +148,10 @@ pub fn save_workspace_layout(
     state: State<'_, AppState>,
     layout: Option<serde_json::Value>,
 ) -> AppResult<()> {
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        guard.active_environment_mut().internal_layout = layout;
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(())
+    tab_state::mutate(&state.tab_state, |ts| {
+        ts.active_environment_mut().internal_layout = layout;
+        Ok(())
+    })
 }
 
 /// Return the active environment's launch-restore state.
@@ -184,13 +174,10 @@ pub fn get_launch_state(state: State<'_, AppState>) -> AppResult<LaunchState> {
 /// on connect/disconnect; see `src/stores/persistedTabs.ts`.
 #[tauri::command]
 pub fn save_launch_state(state: State<'_, AppState>, launch_state: LaunchState) -> AppResult<()> {
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        guard.active_environment_mut().launch = launch_state;
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(())
+    tab_state::mutate(&state.tab_state, |ts| {
+        ts.active_environment_mut().launch = launch_state;
+        Ok(())
+    })
 }
 
 // --- Environments ------------------------------------------------------------
@@ -242,48 +229,34 @@ pub fn save_environment(
     icon: Option<String>,
     theme_id: Option<String>,
 ) -> AppResult<Environment> {
-    let (snapshot, saved) = {
-        let mut guard = state.tab_state.write();
-        let saved = match id {
-            Some(id) => {
-                let env = guard
-                    .environments
-                    .iter_mut()
-                    .find(|e| e.id == id)
-                    .ok_or_else(|| {
-                        AppError::InvalidInput(format!("no environment with id {id}"))
-                    })?;
-                env.name = name;
-                env.color = color;
-                env.icon = icon;
-                env.theme_id = theme_id;
-                env.clone()
-            }
-            None => {
-                let order = guard
-                    .environments
-                    .iter()
-                    .map(|e| e.order)
-                    .max()
-                    .unwrap_or(0)
-                    + 1;
-                let env = Environment {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    name,
-                    color,
-                    icon,
-                    order,
-                    theme_id,
-                    ..Environment::default()
-                };
-                guard.environments.push(env.clone());
-                env
-            }
-        };
-        (guard.clone(), saved)
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(saved)
+    tab_state::mutate(&state.tab_state, |ts| match id {
+        Some(id) => {
+            let env = ts
+                .environments
+                .iter_mut()
+                .find(|e| e.id == id)
+                .ok_or_else(|| AppError::InvalidInput(format!("no environment with id {id}")))?;
+            env.name = name;
+            env.color = color;
+            env.icon = icon;
+            env.theme_id = theme_id;
+            Ok(env.clone())
+        }
+        None => {
+            let order = ts.environments.iter().map(|e| e.order).max().unwrap_or(0) + 1;
+            let env = Environment {
+                id: uuid::Uuid::new_v4().to_string(),
+                name,
+                color,
+                icon,
+                order,
+                theme_id,
+                ..Environment::default()
+            };
+            ts.environments.push(env.clone());
+            Ok(env)
+        }
+    })
 }
 
 /// Delete an environment and everything it remembered.
@@ -298,27 +271,24 @@ pub fn save_environment(
 /// discards tabs and layout, never credentials.
 #[tauri::command]
 pub fn delete_environment(state: State<'_, AppState>, id: String) -> AppResult<()> {
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        if guard.environments.len() <= 1 {
+    tab_state::mutate(&state.tab_state, |ts| {
+        if ts.environments.len() <= 1 {
             return Err(AppError::InvalidInput(
                 "cannot delete the last environment".into(),
             ));
         }
-        let before = guard.environments.len();
-        guard.environments.retain(|e| e.id != id);
-        if guard.environments.len() == before {
+        let before = ts.environments.len();
+        ts.environments.retain(|e| e.id != id);
+        if ts.environments.len() == before {
             return Err(AppError::InvalidInput(format!(
                 "no environment with id {id}"
             )));
         }
-        if guard.active_environment_id.as_deref() == Some(id.as_str()) {
-            guard.active_environment_id = guard.environments.first().map(|e| e.id.clone());
+        if ts.active_environment_id.as_deref() == Some(id.as_str()) {
+            ts.active_environment_id = ts.environments.first().map(|e| e.id.clone());
         }
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Detach an environment from the origin that mirrors it (#108 continuous
@@ -331,22 +301,16 @@ pub fn delete_environment(state: State<'_, AppState>, id: String) -> AppResult<(
 /// environment, and it becomes an ordinary local one.
 #[tauri::command]
 pub fn adopt_environment(state: State<'_, AppState>, id: String) -> AppResult<Environment> {
-    let (snapshot, saved) = {
-        let mut guard = state.tab_state.write();
-        let saved = {
-            let env = guard
-                .environments
-                .iter_mut()
-                .find(|e| e.id == id)
-                .ok_or_else(|| AppError::InvalidInput(format!("no environment with id {id}")))?;
-            env.origin_id = None;
-            env.origin_source_id = None;
-            env.clone()
-        };
-        (guard.clone(), saved)
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(saved)
+    tab_state::mutate(&state.tab_state, |ts| {
+        let env = ts
+            .environments
+            .iter_mut()
+            .find(|e| e.id == id)
+            .ok_or_else(|| AppError::InvalidInput(format!("no environment with id {id}")))?;
+        env.origin_id = None;
+        env.origin_source_id = None;
+        Ok(env.clone())
+    })
 }
 
 /// Switch the active environment.
@@ -357,34 +321,28 @@ pub fn adopt_environment(state: State<'_, AppState>, id: String) -> AppResult<En
 /// focus). See `src/stores/environments.ts`.
 #[tauri::command]
 pub fn set_active_environment(state: State<'_, AppState>, id: String) -> AppResult<()> {
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        if !guard.environments.iter().any(|e| e.id == id) {
+    tab_state::mutate(&state.tab_state, |ts| {
+        if !ts.environments.iter().any(|e| e.id == id) {
             return Err(AppError::InvalidInput(format!(
                 "no environment with id {id}"
             )));
         }
-        guard.active_environment_id = Some(id);
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(())
+        ts.active_environment_id = Some(id);
+        Ok(())
+    })
 }
 
 /// Persist the switcher's display order.
 #[tauri::command]
 pub fn reorder_environments(state: State<'_, AppState>, ids: Vec<String>) -> AppResult<()> {
-    let snapshot = {
-        let mut guard = state.tab_state.write();
+    tab_state::mutate(&state.tab_state, |ts| {
         for (i, id) in ids.iter().enumerate() {
-            if let Some(env) = guard.environments.iter_mut().find(|e| &e.id == id) {
+            if let Some(env) = ts.environments.iter_mut().find(|e| &e.id == id) {
                 env.order = i as i32;
             }
         }
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(())
+        Ok(())
+    })
 }
 
 // --- Environment export/import ------------------------------------------
@@ -749,15 +707,8 @@ pub async fn import_environment(
             }
         };
 
-        let (snapshot, imported_environments) = {
-            let mut guard = tab_state_lock.write();
-            let base_order = guard
-                .environments
-                .iter()
-                .map(|e| e.order)
-                .max()
-                .unwrap_or(0)
-                + 1;
+        let imported_environments = tab_state::mutate(&tab_state_lock, |ts| {
+            let base_order = ts.environments.iter().map(|e| e.order).max().unwrap_or(0) + 1;
 
             let mut imported_environments = Vec::with_capacity(export.environments.len());
             for (i, bundle) in export.environments.into_iter().enumerate() {
@@ -792,7 +743,7 @@ pub async fn import_environment(
                     Some(visible)
                 };
 
-                guard.origins.extend(origins);
+                ts.origins.extend(origins);
 
                 let env_id = uuid::Uuid::new_v4().to_string();
                 let name = environment.name.clone();
@@ -814,11 +765,10 @@ pub async fn import_environment(
                     name,
                     origin_ids,
                 });
-                guard.environments.push(env);
+                ts.environments.push(env);
             }
-            (guard.clone(), imported_environments)
-        };
-        tab_state::save_tab_state(&snapshot)?;
+            Ok(imported_environments)
+        })?;
 
         Ok(EnvironmentImportResult {
             environments: imported_environments,

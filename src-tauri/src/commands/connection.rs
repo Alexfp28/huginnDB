@@ -284,12 +284,11 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
             keychain::delete_password(&ssh_account)?;
         }
     }
-    let tab_state_snapshot = {
-        let mut guard = state.tab_state.write();
+    crate::tab_state::mutate(&state.tab_state, |ts| {
         // Sweep every environment, not just the active one: the profile is gone
         // globally, so an entry surviving elsewhere would come back as a tab
         // pointing at a connection that no longer exists.
-        for env in &mut guard.environments {
+        for env in &mut ts.environments {
             env.connections.remove(&id);
             env.launch.active_connections.retain(|c| c != &id);
             if env.launch.selected_connection_id.as_deref() == Some(id.as_str()) {
@@ -301,9 +300,8 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
             // ever reused, silently apply somebody else's subset.
             env.launch.database_visibility.remove(&id);
         }
-        guard.clone()
-    };
-    crate::tab_state::save_tab_state(&tab_state_snapshot)?;
+        Ok(())
+    })?;
 
     // Same reasoning as `database_visibility` above, one step further: a
     // binding pinned to this profile can never match again, because a profile

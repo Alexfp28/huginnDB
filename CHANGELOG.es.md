@@ -84,6 +84,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     `unreachable!()` han desaparecido.
   - `state_file.rs`, `AppState::pool_for`/`mongo_for`, `Dialect::quote_ident` y
     `Dialect::truncate_stmt` sustituyen entre 9 y 10 copias a mano cada uno.
+  - `tab_state::mutate` sustituye catorce cuerpos escritos a mano con el mismo
+    patrón —tomar el bloqueo de escritura, mutar, clonar el blob entero,
+    soltar el guard, guardar— en `commands/{prefs,origins,connection}.rs`. El
+    clonar-y-soltar no es incidental: el guardado hace E/S de disco, y mantener
+    el bloqueo durante ella dejaría bloqueado a cualquier otro lector mientras
+    dura la escritura.
   - Frontend: `useImportWizard` (tres diálogos), `useAsyncSubmit` (diez),
     `OverlayPalette` + `useListNavigation` (paleta de comandos y conmutador de
     pestañas), `lib/schedule.ts` (tres debounces, dos sondeos), `RefreshButton`

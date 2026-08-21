@@ -101,13 +101,12 @@ pub fn add_origin(
         keychain::set_password(&passphrase_account(&origin.id), secret)?;
     }
 
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        guard.origins.push(origin.clone());
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(origin)
+    let created = origin.clone();
+    tab_state::mutate(&state.tab_state, |ts| {
+        ts.origins.push(origin);
+        Ok(())
+    })?;
+    Ok(created)
 }
 
 /// Rename an origin, repoint it at a different file, and/or replace its stored
@@ -134,20 +133,16 @@ pub fn update_origin(
         None => {}
     }
 
-    let (snapshot, updated) = {
-        let mut guard = state.tab_state.write();
-        let origin = guard
+    tab_state::mutate(&state.tab_state, |ts| {
+        let origin = ts
             .origins
             .iter_mut()
             .find(|o| o.id == id)
             .ok_or_else(|| AppError::InvalidInput(format!("no origin with id {id}")))?;
         origin.name = name;
         origin.path = path;
-        let updated = origin.clone();
-        (guard.clone(), updated)
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(updated)
+        Ok(origin.clone())
+    })
 }
 
 /// Unregister an origin and forget its passphrase.
@@ -161,16 +156,14 @@ pub fn update_origin(
 /// frontend can offer to release those profiles into ordinary local ones.
 #[tauri::command]
 pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        let before = guard.origins.len();
-        guard.origins.retain(|o| o.id != id);
-        if guard.origins.len() == before {
+    tab_state::mutate(&state.tab_state, |ts| {
+        let before = ts.origins.len();
+        ts.origins.retain(|o| o.id != id);
+        if ts.origins.len() == before {
             return Err(AppError::InvalidInput(format!("no origin with id {id}")));
         }
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
+        Ok(())
+    })?;
     // Best-effort: a missing entry is the desired end state, and failing the
     // whole command over it would leave the origin registered.
     let _ = keychain::delete_password(&passphrase_account(&id));
@@ -267,8 +260,7 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
     )?;
     report.synced_at = chrono::Utc::now().to_rfc3339();
 
-    let snapshot = {
-        let mut guard = state.tab_state.write();
+    tab_state::mutate(&state.tab_state, |ts| {
         // Run this whenever the file is environment-kind, even with zero
         // bundles: an origin that used to publish environments and now
         // publishes none must still get its previously-mirrored environments
@@ -277,18 +269,17 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
         // that degenerate case behave the same as an ordinary disappearance.
         if is_environment_kind {
             let (added, updated, vanished, suspicious) =
-                sync_environment_bundles(&mut guard, &id, &environment_bundles);
+                sync_environment_bundles(ts, &id, &environment_bundles);
             report.environments_added = added;
             report.environments_updated = updated;
             report.environments_vanished = vanished;
             report.environments_suspicious = suspicious;
         }
-        if let Some(o) = guard.origins.iter_mut().find(|o| o.id == id) {
+        if let Some(o) = ts.origins.iter_mut().find(|o| o.id == id) {
             o.last_synced_at = Some(report.synced_at.clone());
         }
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
+        Ok(())
+    })?;
     Ok(report)
 }
 
