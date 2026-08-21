@@ -120,6 +120,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     transfer kind (profiles, environments, JSON Schemas), and
     `resolve_ssh_secret` is shared with the MCP connector instead of repeated
     there.
+  - The MCP connector's eight read-only tools share one `read_tool` body
+    (reopen a reaped pool, resolve the MongoDB per-database target, one bridge
+    request, serialise). The write tools keep their own — their policy check
+    sits between two of those steps, and the double check across the two layers
+    is deliberate. `resolve_mongo_target` also stops making a bridge round trip
+    to answer "is this MongoDB?" for the four tools that pass no schema and
+    ignore the answer.
   - Frontend: `useImportWizard` (three dialogs), `useAsyncSubmit` (ten),
     `OverlayPalette` + `useListNavigation` (the command palette and the tab
     switcher), `lib/schedule.ts` (three debounces, two polls), `RefreshButton`

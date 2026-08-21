@@ -130,6 +130,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     una vez por cada tipo de transferencia (perfiles, entornos, JSON Schemas), y
     `resolve_ssh_secret` se comparte con el conector MCP en lugar de repetirse
     allí.
+  - Las ocho tools de solo lectura del conector MCP comparten un mismo cuerpo
+    `read_tool` (reabrir un pool segado, resolver el destino por base de datos de
+    MongoDB, una petición al puente, serializar). Las de escritura conservan el
+    suyo: su comprobación de política va entre dos de esos pasos, y la doble
+    comprobación entre las dos capas es deliberada. `resolve_mongo_target` deja
+    además de hacer un viaje de ida y vuelta por el puente para preguntar «¿esto
+    es MongoDB?» en las cuatro tools que no pasan schema e ignoran la respuesta.
   - Frontend: `useImportWizard` (tres diálogos), `useAsyncSubmit` (diez),
     `OverlayPalette` + `useListNavigation` (paleta de comandos y conmutador de
     pestañas), `lib/schedule.ts` (tres debounces, dos sondeos), `RefreshButton`

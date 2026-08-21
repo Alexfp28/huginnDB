@@ -693,8 +693,14 @@ impl Huginn {
         connection_id: &str,
         schema: Option<&str>,
     ) -> Result<String, ErrorData> {
+        let Some(db) = schema.filter(|db| !db.is_empty()) else {
+            return Ok(connection_id.to_string());
+        };
         // Asked of whoever owns the pool: with the bridge up that is the app,
-        // and this process's own connection map is empty.
+        // and this process's own connection map is empty. Reached only when a
+        // schema was actually supplied — the four connection-scoped tools pass
+        // `None` and would otherwise pay a bridge round trip to be told
+        // something the next line ignores.
         let is_mongo = self
             .call(
                 BridgeRequest::IsMongo {
@@ -706,8 +712,8 @@ impl Huginn {
             .map_err(to_err)?
             .as_bool()
             .unwrap_or(false);
-        match schema {
-            Some(db) if is_mongo && !db.is_empty() => self
+        match is_mongo {
+            true => self
                 .call(
                     BridgeRequest::ResolveMongoTarget {
                         connection_id: connection_id.to_string(),
@@ -724,8 +730,38 @@ impl Huginn {
                         "resolve_mongo_target returned a non-string id".into(),
                     ))
                 }),
-            _ => Ok(connection_id.to_string()),
+            false => Ok(connection_id.to_string()),
         }
+    }
+
+    /// The whole body of a read-only tool: reopen the pool if it was reaped,
+    /// resolve which connection id actually holds the data, run one bridge
+    /// request, serialise the answer.
+    ///
+    /// Eight tools spelled this out, and the middle step is the reason it is
+    /// worth sharing: a MongoDB connection with no database bound needs
+    /// `schema` folded into a synthetic per-database id before the request is
+    /// built, and a tool that forgets to do so does not fail — it answers for
+    /// the wrong database, or for none. `build` receives that resolved id so
+    /// there is no way to construct the request without it.
+    ///
+    /// Read-only by construction: `call(.., false)` skips the audit log, which
+    /// is correct here and would be a hole anywhere else. The write tools keep
+    /// their own bodies — their policy check has to sit between the connect
+    /// and the call, and is deliberately duplicated across the two layers.
+    async fn read_tool<F>(
+        &self,
+        connection_id: &str,
+        schema: Option<&str>,
+        build: F,
+    ) -> Result<CallToolResult, ErrorData>
+    where
+        F: FnOnce(String) -> BridgeRequest,
+    {
+        self.ensure_connected(connection_id).await.map_err(to_err)?;
+        let target = self.resolve_mongo_target(connection_id, schema).await?;
+        let out = self.call(build(target), false).await.map_err(to_err)?;
+        ok_json(&out)
     }
 
     /// The write policy in force for `connection_id`, read **fresh from
@@ -830,19 +866,10 @@ impl Huginn {
         &self,
         Parameters(a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let out = self
-            .call(
-                BridgeRequest::ListDatabases {
-                    connection_id: a.connection_id,
-                },
-                false,
-            )
-            .await
-            .map_err(to_err)?;
-        ok_json(&out)
+        self.read_tool(&a.connection_id, None, |connection_id| {
+            BridgeRequest::ListDatabases { connection_id }
+        })
+        .await
     }
 
     #[tool(description = "List tables and views on a connection, with \
@@ -854,22 +881,10 @@ impl Huginn {
         &self,
         Parameters(a): Parameters<args::Tables>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let target = self
-            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
-            .await?;
-        let out = self
-            .call(
-                BridgeRequest::ListTables {
-                    connection_id: target,
-                },
-                false,
-            )
-            .await
-            .map_err(to_err)?;
-        ok_json(&out)
+        self.read_tool(&a.connection_id, a.schema.as_deref(), |connection_id| {
+            BridgeRequest::ListTables { connection_id }
+        })
+        .await
     }
 
     #[tool(description = "Describe a table's full structure: columns, types, \
@@ -878,24 +893,19 @@ impl Huginn {
         &self,
         Parameters(a): Parameters<args::Table>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let target = self
-            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
-            .await?;
-        let out = self
-            .call(
-                BridgeRequest::GetTableStructure {
-                    connection_id: target,
-                    schema: a.schema,
-                    table: a.table,
-                },
-                false,
-            )
-            .await
-            .map_err(to_err)?;
-        ok_json(&out)
+        let args::Table {
+            connection_id,
+            schema,
+            table,
+        } = a;
+        self.read_tool(&connection_id, schema.as_deref(), |connection_id| {
+            BridgeRequest::GetTableStructure {
+                connection_id,
+                schema: schema.clone(),
+                table,
+            }
+        })
+        .await
     }
 
     #[tool(description = "List indexes on a table, with the columns each covers.")]
@@ -903,24 +913,19 @@ impl Huginn {
         &self,
         Parameters(a): Parameters<args::Table>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let target = self
-            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
-            .await?;
-        let out = self
-            .call(
-                BridgeRequest::ListIndexes {
-                    connection_id: target,
-                    schema: a.schema,
-                    table: a.table,
-                },
-                false,
-            )
-            .await
-            .map_err(to_err)?;
-        ok_json(&out)
+        let args::Table {
+            connection_id,
+            schema,
+            table,
+        } = a;
+        self.read_tool(&connection_id, schema.as_deref(), |connection_id| {
+            BridgeRequest::ListIndexes {
+                connection_id,
+                schema: schema.clone(),
+                table,
+            }
+        })
+        .await
     }
 
     #[tool(description = "Run a single statement. Reads (SELECT / WITH / SHOW / \
@@ -1012,33 +1017,25 @@ impl Huginn {
         &self,
         Parameters(a): Parameters<args::Browse>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let target = self
-            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
-            .await?;
         let limit = a
             .limit
             .unwrap_or(self.config.max_rows)
             .clamp(1, self.config.max_rows);
         let offset = a.offset.unwrap_or(0).max(0);
-        let result = self
-            .call(
-                BridgeRequest::FetchTableData {
-                    connection_id: target,
-                    policy_id: a.connection_id,
-                    schema: a.schema,
-                    table: a.table,
-                    limit,
-                    offset,
-                    with_count: Some(true),
-                },
-                false,
-            )
-            .await
-            .map_err(to_err)?;
-        ok_json(&result)
+        let policy_id = a.connection_id.clone();
+        let (schema, table) = (a.schema, a.table);
+        self.read_tool(&policy_id, schema.as_deref(), |connection_id| {
+            BridgeRequest::FetchTableData {
+                connection_id,
+                policy_id: policy_id.clone(),
+                schema: schema.clone(),
+                table,
+                limit,
+                offset,
+                with_count: Some(true),
+            }
+        })
+        .await
     }
 
     #[tool(description = "Return the connected server's engine and version.")]
@@ -1046,19 +1043,10 @@ impl Huginn {
         &self,
         Parameters(a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let out = self
-            .call(
-                BridgeRequest::ServerVersion {
-                    connection_id: a.connection_id,
-                },
-                false,
-            )
-            .await
-            .map_err(to_err)?;
-        ok_json(&out)
+        self.read_tool(&a.connection_id, None, |connection_id| {
+            BridgeRequest::ServerVersion { connection_id }
+        })
+        .await
     }
 
     #[tool(description = "List server-side users/roles (permission context).")]
@@ -1066,19 +1054,10 @@ impl Huginn {
         &self,
         Parameters(a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let out = self
-            .call(
-                BridgeRequest::ListUsers {
-                    connection_id: a.connection_id,
-                },
-                false,
-            )
-            .await
-            .map_err(to_err)?;
-        ok_json(&out)
+        self.read_tool(&a.connection_id, None, |connection_id| {
+            BridgeRequest::ListUsers { connection_id }
+        })
+        .await
     }
 
     #[tool(description = "List the privileges granted to a user/role.")]
@@ -1086,20 +1065,17 @@ impl Huginn {
         &self,
         Parameters(a): Parameters<args::Privileges>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let out = self
-            .call(
-                BridgeRequest::ListPrivileges {
-                    connection_id: a.connection_id,
-                    user: a.user,
-                },
-                false,
-            )
-            .await
-            .map_err(to_err)?;
-        ok_json(&out)
+        let args::Privileges {
+            connection_id,
+            user,
+        } = a;
+        self.read_tool(&connection_id, None, |connection_id| {
+            BridgeRequest::ListPrivileges {
+                connection_id,
+                user,
+            }
+        })
+        .await
     }
 
     #[tool(
