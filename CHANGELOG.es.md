@@ -10,6 +10,49 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Crear un índice de MongoDB dejando el campo «Nombre» en blanco siempre
+  fallaba.** El diálogo documenta ese campo vacío como «el servidor lo deriva
+  de las claves», pero eso nunca funcionó: `NewMongoIndexSpec::to_document`
+  simplemente omitía la clave `name` cuando estaba en blanco, asumiendo que el
+  servidor lo derivaría igual que hace el helper tipado
+  `Collection::create_index()`. No lo hace: esta app envía los índices
+  deliberadamente a través del comando en crudo `createIndexes` en vez de ese
+  helper (así una recreación puede validar el spec antes de tocar el
+  servidor), y ese comando exige que `name` esté presente. La convención de
+  nombre `field_1_other_-1` ya existía en la ruta de lectura (`spec_to_info`)
+  pero nunca se aplicaba al escribir. Ahora ambas rutas comparten esa lógica
+  mediante un nuevo helper `default_index_name`, así que un nombre en blanco
+  siempre resuelve al mismo nombre que el índice acabará teniendo.
+
+- **Una actualización masiva («Actualizar filas que coincidan») sobre una
+  columna `BIT` de MySQL fallaba con `1406 (22001): Data too long for
+  column`.** Es el mismo fallo que ya se corrigió para la edición de una
+  celda y la inserción: un valor de texto plano como `"0"` se guarda como el
+  byte ASCII `0x30`, no como el entero 0, a menos que el placeholder se
+  envuelva en `CAST(? AS UNSIGNED)`. `update_cell_inner` e `insert_row` ya
+  aplicaban ese cast (y su equivalente para SQL Server,
+  `CONVERT(varbinary(max), ?, 1)`, en columnas binarias), pero la
+  actualización masiva tenía su propio constructor de la cláusula `SET`
+  (`build_update_statement` en `commands/bulk.rs`) que nunca recibió ese
+  tratamiento y vinculaba cada columna como texto plano sin mirar el tipo.
+  Ahora aplica el mismo cast por columna (más el fallback al catálogo cuando
+  la caché de esquema está desactualizada), compartido tanto por la vista
+  previa como por la aplicación real.
+
+- **La pestaña de consulta contra una conexión MongoDB se titulaba
+  `query.sql` y se sembraba con un comentario `-- ...` de SQL**, aunque esa
+  pestaña ejecuta en realidad un comando `mongosh`-style acotado
+  (`db.<coleccion>.<metodo>(...)`), no SQL — lo que llevó a confusiones reales
+  en el equipo al tratarla como si fuera una superficie SQL. Una nueva
+  pestaña de consulta contra MongoDB ahora se titula `query` y se siembra con
+  un comentario `//`, acorde a la gramática real (ambos casos detectan el
+  driver mediante `resolveConnectionDriver`); el título de respaldo al
+  restaurar sesión y la etiqueta de idioma en la barra inferior del editor
+  siguen la misma regla. La pestaña sigue ejecutando el mismo motor
+  `mongosh`-style y conserva el modo de lenguaje `sql` de Monaco (con su
+  autocompletado/CodeLens ya conscientes del driver) — solo cambió el
+  nombrado, no la superficie de edición.
+
 - **Un origen compartido con secretos cifrados guardaba lo que no debía en el
   llavero del sistema.** `sync_origin` escribía el *sobre* AES-256-GCM en base64
   como si fuera la contraseña, así que todo perfil importado desde ese origen
