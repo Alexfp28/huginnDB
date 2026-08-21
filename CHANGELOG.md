@@ -20,6 +20,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   helper, so a blank name always resolves to a real one before the spec is
   sent.
 
+- **A bulk/mass update ("Actualizar filas que coincidan") on a MySQL `BIT`
+  column failed with `1406 (22001): Data too long for column`.** Single-cell
+  edits and inserts already cast a MySQL `BIT` write through
+  `CAST(? AS UNSIGNED)` (and a SQL Server binary column through
+  `CONVERT(varbinary(max), ?, 1)`) because a plain textual placeholder is
+  bound as the literal's ASCII bytes rather than coerced to the column's
+  numeric/binary type — but the bulk-update SET-clause builder had its own,
+  separate code path that never got this treatment and bound every assigned
+  column as plain text regardless of type. `build_update_statement` now
+  applies the same per-column casting (plus the catalog fallback for a stale
+  schema cache) that `update_cell`/`insert_row` already have, shared by both
+  the preview and the actual apply.
+
 - **A shared origin carrying encrypted secrets stored the wrong thing in the OS
   keychain.** `sync_origin` wrote the base64 AES-256-GCM *envelope* as if it were
   the password, so every profile imported from such an origin failed to connect

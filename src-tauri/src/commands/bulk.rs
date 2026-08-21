@@ -22,6 +22,8 @@
 use crate::commands::query::{
     build_filter_clause_at, count_table_rows_inner, ColumnFilter, RowValue, TableFilter, TableScan,
 };
+use crate::commands::schema::list_columns_inner;
+use crate::db::mysql;
 use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{self, log_sql_sink, LogSink};
@@ -82,12 +84,50 @@ fn validate_args(args: &BulkUpdateArgs) -> AppResult<()> {
 /// bulk update. Shared by [`preview_bulk_update`] (which only displays the
 /// text) and [`apply_bulk_update`] (which executes it) via this single
 /// function, so the two can never diverge.
-fn build_update_statement(
+///
+/// Mirrors the per-value type handling `update_cell_inner`/`insert_row`
+/// already have (gotchas #15/#31): a plain textual placeholder is wrong for a
+/// MySQL `BIT` column (the literal `"0"` is stored as the ASCII byte, not the
+/// integer) and for a SQL Server binary-family column (the implicit
+/// nvarchar->varbinary conversion reinterprets the characters). This used to
+/// be a bare placeholder for every column regardless of type, which is why a
+/// bulk update setting a MySQL `BIT` column failed with "Data too long for
+/// column" (issue mirrored from the single-cell-edit fix).
+async fn build_update_statement(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<&str>,
+    table: &str,
     dialect: Dialect,
     qt: &str,
     filters: &[ColumnFilter],
     set_values: &[RowValue],
 ) -> (String, Vec<Option<String>>) {
+    let is_mysql = dialect == Dialect::Mysql;
+
+    // Same fallback as `insert_row`/`update_cell_inner`: only pay for a
+    // catalog round-trip when at least one assigned column actually lacks a
+    // type hint (a stale/unloaded frontend schema cache).
+    let catalog_bit_columns: std::collections::HashSet<String> =
+        if is_mysql && set_values.iter().any(|v| v.column_type.is_none()) {
+            list_columns_inner(
+                state,
+                connection_id,
+                schema.map(str::to_string),
+                table.to_string(),
+            )
+            .await
+            .map(|cols| {
+                cols.into_iter()
+                    .filter(|c| mysql::is_bit_type(&c.data_type))
+                    .map(|c| c.name)
+                    .collect()
+            })
+            .unwrap_or_default()
+        } else {
+            std::collections::HashSet::new()
+        };
+
     let mut next = 1usize;
     let mut binds: Vec<Option<String>> = Vec::with_capacity(set_values.len());
     let set_parts: Vec<String> = set_values
@@ -96,8 +136,24 @@ fn build_update_statement(
             let col = dialect.quote_ident(&rv.column);
             let ph = dialect.placeholder(next);
             next += 1;
-            binds.push(rv.value.clone());
-            format!("{col} = {ph}")
+            let is_bit = is_mysql
+                && (rv.column_type.as_deref().is_some_and(mysql::is_bit_type)
+                    || catalog_bit_columns.contains(&rv.column));
+            let (placeholder, value) = if is_bit {
+                (
+                    mysql::bit_cast(&ph),
+                    rv.value.as_deref().map(mysql::normalize_bit_value),
+                )
+            } else if dialect == Dialect::MsSql {
+                (
+                    crate::db::mssql::binary_convert(rv.column_type.as_deref(), &ph),
+                    rv.value.clone(),
+                )
+            } else {
+                (ph, rv.value.clone())
+            };
+            binds.push(value);
+            format!("{col} = {placeholder}")
         })
         .collect();
     let (where_clause, where_binds, _) = build_filter_clause_at(next, dialect, filters, None, &[]);
@@ -127,7 +183,18 @@ pub async fn preview_bulk_update(
     } else {
         let dialect = Dialect::try_of(&pool)?;
         let qt = dialect.qualify_defaulted(args.schema.as_deref(), &args.table);
-        build_update_statement(dialect, &qt, &args.filters, &args.set_values).0
+        build_update_statement(
+            state.inner(),
+            &args.connection_id,
+            args.schema.as_deref(),
+            &args.table,
+            dialect,
+            &qt,
+            &args.filters,
+            &args.set_values,
+        )
+        .await
+        .0
     };
 
     let sink = log_bus::TauriSink::new(&app, window.label());
@@ -206,7 +273,17 @@ pub(crate) async fn apply_bulk_update_inner(
 
     let dialect = Dialect::try_of(&pool)?;
     let qt = dialect.qualify_defaulted(args.schema.as_deref(), &args.table);
-    let (sql, binds) = build_update_statement(dialect, &qt, &args.filters, &args.set_values);
+    let (sql, binds) = build_update_statement(
+        state,
+        &args.connection_id,
+        args.schema.as_deref(),
+        &args.table,
+        dialect,
+        &qt,
+        &args.filters,
+        &args.set_values,
+    )
+    .await;
 
     let start = Instant::now();
     let outcome = crate::db::exec::execute_params(&pool, &sql, &binds).await;
@@ -225,4 +302,77 @@ pub(crate) async fn apply_bulk_update_inner(
         failure.as_deref(),
     );
     outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rv(column: &str, value: &str, column_type: Option<&str>) -> RowValue {
+        RowValue {
+            column: column.to_string(),
+            value: Some(value.to_string()),
+            column_type: column_type.map(str::to_string),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_mysql_bit_column_is_cast_instead_of_bound_as_plain_text() {
+        // Regression: a bulk update setting a BIT column with a bare
+        // placeholder stored the literal's ASCII byte and MySQL rejected it
+        // with "Data too long for column" — the exact failure this mirrors
+        // the single-cell-edit fix (gotcha #15) for.
+        let state = AppState::new();
+        let set_values = vec![rv("enabled", "0", Some("BIT(1)"))];
+        let (sql, binds) = build_update_statement(
+            &state,
+            "conn",
+            None,
+            "replicaConfig",
+            Dialect::Mysql,
+            "`replicaConfig`",
+            &[],
+            &set_values,
+        )
+        .await;
+        assert!(sql.contains("CAST(? AS UNSIGNED)"), "{sql}");
+        assert_eq!(binds, vec![Some("0".to_string())]);
+    }
+
+    #[tokio::test]
+    async fn a_plain_mysql_column_keeps_a_bare_placeholder() {
+        let state = AppState::new();
+        let set_values = vec![rv("name", "hello", Some("VARCHAR(255)"))];
+        let (sql, binds) = build_update_statement(
+            &state,
+            "conn",
+            None,
+            "t",
+            Dialect::Mysql,
+            "`t`",
+            &[],
+            &set_values,
+        )
+        .await;
+        assert!(sql.contains("`name` = ?"), "{sql}");
+        assert_eq!(binds, vec![Some("hello".to_string())]);
+    }
+
+    #[tokio::test]
+    async fn a_sql_server_binary_column_is_wrapped_in_convert() {
+        let state = AppState::new();
+        let set_values = vec![rv("payload", "4A2B", Some("varbinary"))];
+        let (sql, _binds) = build_update_statement(
+            &state,
+            "conn",
+            None,
+            "t",
+            Dialect::MsSql,
+            "[t]",
+            &[],
+            &set_values,
+        )
+        .await;
+        assert!(sql.contains("CONVERT(varbinary(max)"), "{sql}");
+    }
 }
