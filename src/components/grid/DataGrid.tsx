@@ -71,7 +71,7 @@ import {
   DocumentListView,
   type FieldSave,
 } from "@/components/grid/DocumentListView";
-import { formatComboForDisplay, matchesBinding } from "@/lib/keybindings";
+import { formatComboForDisplay } from "@/lib/keybindings";
 import type {
   CellValue,
   ColumnFilter,
@@ -110,13 +110,10 @@ import {
   useColumnSizing,
 } from "@/lib/grid/useColumnSizing";
 import { useCtrlWheelZoom } from "@/lib/grid/useCtrlWheelZoom";
+import { useGridKeyboardNav } from "@/lib/grid/useGridKeyboardNav";
 import { useGridSelection } from "@/lib/grid/useGridSelection";
-import {
-  useCellEditor,
-  type CellBindingContext,
-} from "@/stores/grid/cellEditor";
+import { useCellEditing } from "@/lib/grid/useCellEditing";
 import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
-import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import type { Driver } from "@/types";
 
 /**
@@ -457,46 +454,6 @@ export function DataGrid({
     };
   }, [draftActive]);
 
-  /** Full Monaco editor (opened via CellPreview F11 or double-click). */
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editorTarget, setEditorTarget] = useState<{
-    rowValues: CellValue[];
-    column: ColumnMeta;
-    value: string;
-    /** Set when the editor was opened from the list view: the field's path
-     *  from the document root plus its BSON type, so the commit goes through
-     *  `onFieldSave` (which can address a nested field) rather than
-     *  `onCellSave` (which only knows top-level columns). */
-    field?: { path: string[]; type: string };
-  } | null>(null);
-
-  /**
-   * Inline foreign-key editor anchored to a single cell. Activated on
-   * double-click when the column carries a single-column FK constraint;
-   * supersedes the Monaco dialog for that path so the user picks a
-   * value without losing visual context. Tracked by row identity (the
-   * values array) instead of a display index so an FK edit survives
-   * sort/filter changes between activation and commit.
-   */
-  const [fkEditCell, setFkEditCell] = useState<{
-    rowValues: CellValue[];
-    column: ColumnMeta;
-  } | null>(null);
-  /**
-   * Inline single-cell editor anchored to a cell (double-click on an
-   * editable, non-FK column). Reuses the draft-row `CellInput` so editing an
-   * existing value feels identical to typing a new one. `value` is the live
-   * draft; `original` is the value at activation, used to skip a no-op save on
-   * blur (notably when escalating to the modal via the expand button).
-   * Tracked by row identity (the values array, gotcha #7), not a display
-   * index, so it survives sort/filter reshuffles between open and commit.
-   */
-  const [inlineEdit, setInlineEdit] = useState<{
-    rowValues: CellValue[];
-    column: ColumnMeta;
-    value: string | null;
-    original: string | null;
-  } | null>(null);
   /** Fast lookup of column metadata by name for FK detection in the cell renderer. */
   const columnInfoByName = useMemo(() => {
     const m = new Map<string, ColumnInfo>();
@@ -504,34 +461,10 @@ export function DataGrid({
     return m;
   }, [draftColumns]);
 
-  // Escape exits the inline FK editor without committing. Click-outside
-  // dismissal is handled by the combobox itself, but clicks land on the
-  // panel's trigger button before the close listener fires; for that
-  // path the user can press Esc or pick another cell.
-  useEffect(() => {
-    if (!fkEditCell) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setFkEditCell(null);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fkEditCell]);
-
   /** Compact preview panel state. Cleared when the user clicks away or presses Esc. */
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
   /** Row index of the currently selected row (blue highlight). */
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
-  /**
-   * Keyboard-navigable active cell — `{ r, c }` indexing the visible row model
-   * and the visible leaf columns. Drives the inset focus ring and arrow / Home
-   * / End / Enter navigation; the grid was otherwise mouse-only, which
-   * contradicts the app's keyboard-first identity. Set on cell click (so the
-   * keyboard picks up where the mouse left off) and cleared on Escape.
-   */
-  const [activeCell, setActiveCell] = useState<{ r: number; c: number } | null>(
-    null,
-  );
-
   /**
    * Multi-row selection. Keyed by the parent-supplied stable row key
    * (PK-derived) rather than display index or array reference, so a selection
@@ -701,6 +634,36 @@ export function DataGrid({
     result.columns.forEach((c, i) => m.set(c.name, i));
     return m;
   }, [result.columns]);
+
+  /**
+   * Which editor is open on which cell, and the four entry points that decide
+   * between them (gotcha #12's routing lives in `openCellEdit`). Owns the
+   * modal / inline-FK / inline-text state, so none of it is here any more.
+   */
+  const {
+    editorOpen,
+    setEditorOpen,
+    editorTarget,
+    fkEditCell,
+    setFkEditCell,
+    inlineEdit,
+    setInlineEdit,
+    bindingContextFor,
+    openSidePanelEditor,
+    openHeavyEditor,
+    openCellEdit,
+  } = useCellEditing({
+    editable,
+    connectionId,
+    tableSchema,
+    tableName,
+    tabId,
+    cellEditorMode,
+    columnInfoByName,
+    columnIndexByName,
+    onCellSave,
+    onFieldSave,
+  });
 
   // Key-icon lookups for the header (PK = amber, FK = sky), HeidiSQL-style.
   const pkNameSet = useMemo(
@@ -1183,301 +1146,34 @@ export function DataGrid({
   }, [rowHeight, rowVirtualizer]);
 
   /**
-   * Coordinates for the JSON Schema cascade.
-   *
-   * All four axes are already props of this component; before this they were
-   * dropped at the editor boundary, which is why a schema could not be bound at
-   * all. `column.name` is the field's *dotted path* when the value came from the
-   * document view (see `onExpandField`, which synthesises the column that way),
-   * so a MongoDB nested binding needs nothing extra.
-   *
-   * Returns `undefined` without a table name: a query result has no column
-   * identity, and a binding created there would be an accidental wildcard.
+   * The inset-ring active cell plus every key that moves or acts on it. Owns
+   * `activeCell`; `setActiveCell` still comes back because a cell *click* sets
+   * it too, so the mouse and the keyboard share one position.
    */
-  function bindingContextFor(
-    column: ColumnMeta,
-    field?: { path: string[]; type: string },
-  ): CellBindingContext | undefined {
-    if (!tableName) return undefined;
-    return {
-      connectionId,
-      dbSchema: tableSchema,
-      table: tableName,
-      column: column.name,
-      bsonType: field?.type,
-    };
-  }
-
-  /** Open the heavyweight Monaco modal directly (read-only view, or the
-   *  "expand" escalation from the inline editor / CellPreview). */
-  function openModalEditor(
-    rowValues: CellValue[],
-    column: ColumnMeta,
-    value: string,
-    field?: { path: string[]; type: string },
-  ) {
-    setEditorTarget({ rowValues, column, value, field });
-    setEditorOpen(true);
-  }
-
-  /** Open the cell in the docked right-side editor (JetBrains-style). Shares
-   *  the same commit path as the modal (`onCellSave`), or read-only when the
-   *  grid isn't editable. */
-  function openSidePanelEditor(
-    rowValues: CellValue[],
-    column: ColumnMeta,
-    value: string,
-    field?: { path: string[]; type: string },
-  ) {
-    // A list-view field commits through `onFieldSave` (it may be nested and
-    // carries its own type); a table cell through `onCellSave` as before.
-    const canSave = !!(editable && (field ? onFieldSave : onCellSave));
-    useCellEditor.getState().open({
-      ownerId: tabId,
-      columnName: column.name,
-      value,
-      binding: bindingContextFor(column, field),
-      readonly: !canSave,
-      onSave: canSave
-        ? (v) =>
-            field
-              ? onFieldSave!(rowValues, field.path, v, field.type)
-              : onCellSave!(rowValues, column.name, v)
-        : undefined,
-    });
-    useSessionPanelLayout.getState().openSideEditor();
-  }
-
-  /** Escalate from inline/preview to the heavyweight editor, honouring the
-   *  user's `cellEditorMode` preference (modal vs docked side panel). */
-  function openHeavyEditor(
-    rowValues: CellValue[],
-    column: ColumnMeta,
-    value: string,
-    field?: { path: string[]; type: string },
-  ) {
-    if (cellEditorMode === "side") {
-      openSidePanelEditor(rowValues, column, value, field);
-    } else {
-      openModalEditor(rowValues, column, value, field);
-    }
-  }
-
-  /**
-   * Double-click entry point. Routes to the right editor for the cell:
-   * - single-column FK → inline combobox of valid referenced values;
-   * - editable cell → inline `CellInput` (with an expand-to-modal affordance);
-   * - read-only result grid → the Monaco modal as a viewer.
-   */
-  function openCellEdit(rowValues: CellValue[], column: ColumnMeta) {
-    const info = columnInfoByName.get(column.name);
-    if (editable && onCellSave && connectionId && info?.referenced_table) {
-      setFkEditCell({ rowValues, column });
-      return;
-    }
-    const cur = rowValues[columnIndexByName.get(column.name) ?? -1];
-    const fmt = cur === null || cur === undefined ? null : formatValue(cur);
-    if (editable && onCellSave) {
-      setInlineEdit({ rowValues, column, value: fmt, original: fmt });
-      return;
-    }
-    openModalEditor(rowValues, column, fmt ?? "");
-  }
-
-  /** Resolves the cell a Ctrl+C/Ctrl+V chord should act on: the mouse-selected
-   *  cell (carries its value already) or, as a keyboard-only fallback, the
-   *  active cell resolved the same way the Enter handler below does. */
-  function resolveTargetCell(): {
-    rowValues: CellValue[];
-    column: ColumnMeta;
-    value: CellValue;
-  } | null {
-    if (selectedCell) {
-      return {
-        rowValues: selectedCell.rowValues,
-        column: selectedCell.column,
-        value: selectedCell.value,
-      };
-    }
-    if (activeCell) {
-      const rows = table.getRowModel().rows;
-      const row = rows[activeCell.r];
-      const cell = row?.getVisibleCells()[activeCell.c];
-      const bi = cell ? (columnIndexByName.get(cell.column.id) ?? -1) : -1;
-      if (row && bi >= 0) {
-        const rowValues = row.original as CellValue[];
-        return { rowValues, column: result.columns[bi], value: rowValues[bi] };
-      }
-    }
-    return null;
-  }
-
-  /** Ctrl+C copies the raw value (same as the context menu's "Copy"); Ctrl+V
-   *  seeds `inlineEdit` with the pasted text so it flows through the existing
-   *  commit/cancel path unchanged. FK/BIT columns have no free-text control to
-   *  paste into, so paste is a no-op there (issue #79). */
-  function handleCopyPasteChord(key: "c" | "v") {
-    const cell = resolveTargetCell();
-    if (!cell) return;
-    if (key === "c") {
-      copyToClipboard(formatValue(cell.value));
-      return;
-    }
-    if (!editable || !onCellSave) return;
-    const info = columnInfoByName.get(cell.column.name);
-    if (info?.referenced_table || bitColNames.has(cell.column.name)) return;
-    navigator.clipboard
-      .readText()
-      .then((text) => {
-        const cur = cell.rowValues[columnIndexByName.get(cell.column.name) ?? -1];
-        const original =
-          cur === null || cur === undefined ? null : formatValue(cur);
-        setInlineEdit({
-          rowValues: cell.rowValues,
-          column: cell.column,
-          value: text,
-          original,
-        });
-      })
-      .catch(() => {
-        // Clipboard read denied/unsupported in this webview — silent no-op,
-        // matching `copyToClipboard`'s own convention.
-      });
-  }
-
-  /**
-   * Grid-level keyboard navigation, bound to the (focusable) scroll container.
-   * Moves the inset-ring active cell with the arrows / Home / End, opens the
-   * editor on Enter, clears on Escape. The ring never animates its movement:
-   * this fires on every keypress, so motion would read as lag (see the
-   * keyboard-action rule). Guards: skip when an inline editor is open or focus
-   * is inside a form control. Ctrl+C/Ctrl+V are the only modified chords this
-   * handles itself; every other modified chord is left alone for the browser.
-   */
-  function handleGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const key = e.key.toLowerCase();
-    const isCopyPasteChord =
-      (e.ctrlKey || e.metaKey) &&
-      !e.altKey &&
-      !e.shiftKey &&
-      (key === "c" || key === "v");
-    const isExpandChord = matchesBinding(e, expandCellCombo);
-    if (
-      (e.ctrlKey || e.metaKey || e.altKey) &&
-      !isCopyPasteChord &&
-      !isExpandChord
-    )
-      return;
-    if (inlineEdit || fkEditCell) return;
-    const target = e.target as HTMLElement;
-    if (target.closest("input, textarea, select, [contenteditable='true']")) {
-      return;
-    }
-    if (isCopyPasteChord) {
-      e.preventDefault();
-      handleCopyPasteChord(key as "c" | "v");
-      return;
-    }
-    if (isExpandChord) {
-      e.preventDefault();
-      const cell = resolveTargetCell();
-      if (cell) {
-        openHeavyEditor(
-          cell.rowValues,
-          cell.column,
-          rawCellText(cell.value, bitColNames.has(cell.column.name), bitDisplay),
-        );
-      }
-      return;
-    }
-    const rows = table.getRowModel().rows;
-    const colCount = table.getVisibleLeafColumns().length;
-    if (rows.length === 0 || colCount === 0) return;
-
-    const focusCell = (r: number, c: number) => {
-      setActiveCell({ r, c });
-      setSelectedRowIndex(r);
-      // With virtualized rows, target row `r` may have no DOM node at all
-      // yet (it's outside the currently-mounted window) — `scrollToIndex`
-      // mounts it (a no-op if it's already in view). Keep the cell in view
-      // without smooth scrolling (instant per the no-motion-on-keyboard
-      // rule); two nested frames give React's render (triggered by the
-      // virtualizer's own scroll-driven state update) time to actually mount
-      // the row before the `querySelector` below runs — a single frame can
-      // race it on a jump of more than a screenful of rows.
-      rowVirtualizer.scrollToIndex(r, { align: "auto" });
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollRef.current
-            ?.querySelector<HTMLElement>(`[data-cell="${r}-${c}"]`)
-            ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-        });
-      });
-    };
-
-    if (e.key === "Escape") {
-      if (activeCell) {
-        e.preventDefault();
-        setActiveCell(null);
-      }
-      return;
-    }
-
-    const navKeys = [
-      "ArrowDown",
-      "ArrowUp",
-      "ArrowRight",
-      "ArrowLeft",
-      "Home",
-      "End",
-    ];
-
-    // First nav keypress with no active cell just anchors at the top-left
-    // rather than jumping a step past it.
-    if (!activeCell) {
-      if (navKeys.includes(e.key)) {
-        e.preventDefault();
-        focusCell(0, 0);
-      }
-      return;
-    }
-
-    if (e.key === "Enter") {
-      const row = rows[activeCell.r];
-      const cell = row?.getVisibleCells()[activeCell.c];
-      const bi = cell ? (columnIndexByName.get(cell.column.id) ?? -1) : -1;
-      if (!row || bi < 0) return;
-      e.preventDefault();
-      openCellEdit(row.original as CellValue[], result.columns[bi]);
-      return;
-    }
-
-    let { r, c } = activeCell;
-    switch (e.key) {
-      case "ArrowDown":
-        r = Math.min(r + 1, rows.length - 1);
-        break;
-      case "ArrowUp":
-        r = Math.max(r - 1, 0);
-        break;
-      case "ArrowRight":
-        c = Math.min(c + 1, colCount - 1);
-        break;
-      case "ArrowLeft":
-        c = Math.max(c - 1, 0);
-        break;
-      case "Home":
-        c = 0;
-        break;
-      case "End":
-        c = colCount - 1;
-        break;
-      default:
-        return;
-    }
-    e.preventDefault();
-    focusCell(r, c);
-  }
+  const { activeCell, setActiveCell, handleGridKeyDown } = useGridKeyboardNav({
+    grid: {
+      table,
+      rowVirtualizer,
+      scrollRef,
+      columns: result.columns,
+      columnIndexByName,
+    },
+    editing: {
+      inlineEdit,
+      fkEditCell,
+      setInlineEdit,
+      openCellEdit,
+      openHeavyEditor,
+    },
+    selectedCell,
+    setSelectedRowIndex,
+    columnInfoByName,
+    bitColNames,
+    bitDisplay,
+    expandCellCombo,
+    editable,
+    onCellSave,
+  });
 
   /** Serialise several rows for the bulk "Copy N rows as ▸" menu. */
   function bulkCopy(rows: CellValue[][], fmt: "json" | "insert" | "update") {
