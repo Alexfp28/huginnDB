@@ -836,6 +836,7 @@
   },
   "tabs": {
     "queryFileName": "query.sql",
+    "mongoQueryFileName": "query",
     "tableFallback": "Table",
     "structureSuffix": "structure",
     "viewSuffix": "view",
@@ -1531,7 +1532,8 @@
     "batchOk": "{{count}} statements · {{rows}} rows affected",
     "batchFailed": "Stopped at statement {{index}} of {{total}}",
     "rowsAffected": "{{rows}} rows affected · {{ms}} ms",
-    "newTabPlaceholder": "-- write a SQL query and press Ctrl+Enter\n"
+    "newTabPlaceholder": "-- write a SQL query and press Ctrl+Enter\n",
+    "mongoNewTabPlaceholder": "// db.collection.find({}) — press Ctrl+Enter\n"
   },
   "saved": {
     "connectFirst": "Connect to a database first.",

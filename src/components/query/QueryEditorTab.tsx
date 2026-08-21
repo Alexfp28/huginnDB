@@ -703,7 +703,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               {editorStats.chars} chars
             </span>
             <span className="mx-3 text-muted-foreground/30">|</span>
-            <span>sql · utf-8</span>
+            <span>{driver === "mongodb" ? "mongodb" : "sql"} · utf-8</span>
           </div>
         </div>
       </Panel>

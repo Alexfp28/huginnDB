@@ -49,6 +49,8 @@ import { api } from "@/lib/tauri";
 import i18n from "@/lib/i18n";
 import { useTabs } from "@/stores/session/tabs";
 import { useSchema } from "@/stores/session/schema";
+import { useConnections } from "@/stores/session/connections";
+import { resolveConnectionDriver } from "@/lib/connectionLabel";
 import { currentLaunchView, useUi } from "@/stores/session/ui";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { isMainWindow } from "@/lib/window";
@@ -306,7 +308,14 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
           p.title ??
           p.table ??
           (p.kind === "query"
-            ? i18n.t("tabs.queryFileName")
+            ? i18n.t(
+                resolveConnectionDriver(
+                  useConnections.getState().profiles,
+                  connectionId,
+                ) === "mongodb"
+                  ? "tabs.mongoQueryFileName"
+                  : "tabs.queryFileName",
+              )
             : i18n.t("tabs.tableFallback")),
         schema: p.schema ?? undefined,
         table: p.table ?? undefined,

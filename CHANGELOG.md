@@ -33,6 +33,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   schema cache) that `update_cell`/`insert_row` already have, shared by both
   the preview and the actual apply.
 
+- **The query tab against a MongoDB connection was titled `query.sql` and
+  seeded with a `-- ...` SQL comment**, even though MongoDB's query tab runs a
+  bounded `mongosh`-style command (`db.<collection>.<method>(...)`), not SQL —
+  which repeatedly confused people into treating it as a SQL surface. A new
+  query tab against MongoDB is now titled `query` and seeded with a
+  `//`-style comment matching the actual grammar (both driver-aware, via
+  `resolveConnectionDriver`); the session-restore fallback title and the
+  editor's bottom-bar language label follow the same rule. The tab still
+  runs the same `mongosh`-style executor and keeps the Monaco `sql` language
+  mode (and its already-Mongo-aware autocomplete/CodeLens) — only the naming
+  changed, not the editing surface.
+
 - **A shared origin carrying encrypted secrets stored the wrong thing in the OS
   keychain.** `sync_origin` wrote the base64 AES-256-GCM *envelope* as if it were
   the password, so every profile imported from such an origin failed to connect

@@ -19,6 +19,8 @@
 import i18n from "i18next";
 
 import { useTabs } from "@/stores/session/tabs";
+import { useConnections } from "@/stores/session/connections";
+import { resolveConnectionDriver } from "@/lib/connectionLabel";
 
 export interface OpenQueryTabOptions {
   /** SQL to seed the tab with. Omitted means a new, empty query. */
@@ -29,19 +31,47 @@ export interface OpenQueryTabOptions {
   resolveTarget?: boolean;
 }
 
+/**
+ * Default title + seed text for a brand-new query tab, driver-aware.
+ *
+ * MongoDB's query tab does not run SQL — it runs a bounded `mongosh`-style
+ * command (`db.<collection>.<method>(...)`, see
+ * `src-tauri/src/db/mongo/shell.rs`), parsed with JS-style `//`/`/* *\/`
+ * comments, not SQL's `--`. Defaulting to `"query.sql"` and a `--` comment
+ * regardless of driver is what caused real confusion (issues reported by the
+ * team mistaking this tab for a SQL surface against Mongo).
+ */
+function defaultQuerySeed(connectionId: string): { title: string; query: string } {
+  const driver = resolveConnectionDriver(
+    useConnections.getState().profiles,
+    connectionId,
+  );
+  if (driver === "mongodb") {
+    return {
+      title: i18n.t("tabs.mongoQueryFileName"),
+      query: i18n.t("query.mongoNewTabPlaceholder"),
+    };
+  }
+  return {
+    title: i18n.t("tabs.queryFileName"),
+    query: i18n.t("query.newTabPlaceholder"),
+  };
+}
+
 /** Returns the new tab's id. */
 export function openQueryTab(
   connectionId: string,
   opts: OpenQueryTabOptions = {},
 ): string {
   const tabs = useTabs.getState();
+  const fallback = defaultQuerySeed(connectionId);
   return tabs.open({
     kind: "query",
-    title: opts.title ?? i18n.t("tabs.queryFileName"),
+    title: opts.title ?? fallback.title,
     connectionId:
       opts.resolveTarget === false
         ? connectionId
         : tabs.queryTargetFor(connectionId),
-    query: opts.sql ?? i18n.t("query.newTabPlaceholder"),
+    query: opts.sql ?? fallback.query,
   });
 }
