@@ -18,14 +18,6 @@
 
 import type { CellValue, ColumnMeta, Driver } from "@/types";
 
-/** Render a value as its plain string projection (used when serialising
- *  to JSON-incompatible payloads). */
-function plain(v: CellValue): string {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
 /**
  * Quote an identifier (table or column name) for the target driver.
  *
@@ -207,7 +199,3 @@ export function selectSnippet(
   }
   return `SELECT * FROM ${qualifiedTable(driver, schema, table)};`;
 }
-
-// Re-export the plain projector so callers (e.g. CellPreview) can share
-// the same string contract used for clipboard text without re-implementing it.
-export { plain as plainText };
