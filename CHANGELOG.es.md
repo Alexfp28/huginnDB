@@ -10,6 +10,34 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Eliminar una «vista» de MongoDB cuyo nombre era en realidad una colección
+  borraba todos sus documentos.** MongoDB guarda vistas y colecciones en el
+  mismo espacio de nombres, y eliminar cualquiera de las dos es la misma llamada
+  `drop` — así que `db::mongo::aggregation::drop_view` era un
+  `collection(name).drop()` sin comprobación alguna, y apuntarlo a una colección
+  real destruía todos sus documentos informando de éxito. En la práctica era
+  soportable porque el único llamante era el explorador de esquema, donde el
+  usuario había pulsado una fila que el árbol ya sabía que era una vista. Deja
+  de serlo en el momento en que un llamante puede pasar un nombre que solo ha
+  adivinado, que es exactamente lo que supone exponer la gestión de vistas por
+  el conector MCP — de ahí que la comprobación llegue antes de ese trabajo y no
+  junto a él.
+
+  `view_presence` resuelve ahora un nombre a uno de tres estados — ausente, una
+  colección, o una vista con su definición ya parseada — en una sola ida y
+  vuelta de `listCollections`, y `drop_view` rechaza todo lo que no sea el
+  tercero. La comprobación de tipo en sí (`spec_is_view`) es una función pura
+  para que se pueda testear sin servidor; trata un spec sin campo `type` como
+  una *colección*, porque ese campo solo existe desde MongoDB 3.4 y una
+  respuesta que no se reconoce tiene que caer del lado seguro, no del
+  destructivo. `read_view` se expresa ahora sobre el mismo helper en lugar de
+  repetir la comprobación.
+
+  Un nombre que no existe es ahora un error, en vez del éxito idempotente y
+  silencioso de MongoDB. Eso deja al driver coherente con los otros cuatro, que
+  construyen todos un `DROP VIEW` pelado sin `IF EXISTS`, y hace que un nombre
+  mal escrito lo diga en lugar de informar de que funcionó.
+
 - **Crear un índice de MongoDB dejando el campo «Nombre» en blanco siempre
   fallaba.** El diálogo documenta ese campo vacío como «el servidor lo deriva
   de las claves», pero eso nunca funcionó: `NewMongoIndexSpec::to_document`

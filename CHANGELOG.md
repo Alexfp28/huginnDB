@@ -8,6 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Dropping a MongoDB "view" whose name is actually a collection deleted all
+  of its documents.** MongoDB keeps views and collections in one namespace, and
+  dropping either is the same `drop` call — so `db::mongo::aggregation::
+  drop_view` was an unguarded `collection(name).drop()`, and pointing it at a
+  real collection destroyed every document in it while reporting success. It
+  was survivable in practice because the only caller was the schema explorer,
+  where the user had clicked a row the tree already knew was a view. It stops
+  being survivable the moment a caller can pass a name it merely guessed, which
+  is what exposing view management over the MCP connector amounts to — so the
+  guard lands ahead of that work rather than alongside it.
+
+  `view_presence` now resolves a name to one of three states — absent, a
+  collection, or a view with its definition already parsed — in a single
+  `listCollections` round trip, and `drop_view` refuses anything but the third.
+  The type check itself (`spec_is_view`) is a pure function so it can be tested
+  without a server; it treats a spec with no `type` field as a *collection*,
+  since that field only appeared in MongoDB 3.4 and an unrecognised reply must
+  fall to the safe answer rather than the destructive one. `read_view` is now
+  expressed in terms of the same helper instead of repeating the check.
+
+  An absent name is now an error rather than MongoDB's silent idempotent
+  success. That makes the driver consistent with the other four, all of which
+  build a bare `DROP VIEW` with no `IF EXISTS`, and it means a mistyped name
+  says so instead of reporting that it worked.
+
 - **Creating a MongoDB index with a blank "Name" field always failed.** The
   dialog's "leave blank to let the server derive it" behaviour never worked:
   `NewMongoIndexSpec::to_document` simply omitted the `name` key when blank,
