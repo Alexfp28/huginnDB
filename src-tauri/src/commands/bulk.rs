@@ -224,40 +224,7 @@ pub(crate) async fn apply_bulk_update_inner(
     let (sql, binds) = build_update_statement(dialect, &qt, &args.filters, &args.set_values);
 
     let start = Instant::now();
-    let outcome: AppResult<u64> = match &pool {
-        DbPool::Postgres(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            q.execute(p)
-                .await
-                .map(|r| r.rows_affected())
-                .map_err(AppError::from)
-        }
-        DbPool::Mysql(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            q.execute(p)
-                .await
-                .map(|r| r.rows_affected())
-                .map_err(AppError::from)
-        }
-        DbPool::Sqlite(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            q.execute(p)
-                .await
-                .map(|r| r.rows_affected())
-                .map_err(AppError::from)
-        }
-        DbPool::MsSql(p) => p.execute_params(&sql, &binds).await,
-        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-    };
+    let outcome = crate::db::exec::execute_params(&pool, &sql, &binds).await;
 
     match &outcome {
         Ok(n) => sink.log(

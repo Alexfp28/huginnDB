@@ -302,19 +302,9 @@ pub async fn rename_view(
             ))
         }
     };
-    match &pool {
-        DbPool::Postgres(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::Mysql(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::Sqlite(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::MsSql(_) => unreachable!("sql server rejected above"),
-        DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
-    }
+    // SQL Server was refused above (no `sp_rename` support yet) and MongoDB by
+    // `Dialect::try_of`, so this only ever reaches the three sqlx dialects.
+    crate::db::exec::execute(&pool, &sql).await?;
     Ok(())
 }
 
@@ -347,22 +337,9 @@ pub async fn drop_view(
     let dialect = Dialect::try_of(&pool)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), &view);
     let sql = format!("DROP VIEW {qt}");
-    match &pool {
-        // Dropping a view is plain, portable DDL — supported even though
-        // *editing* one isn't yet (see `build_view_ddl`).
-        DbPool::MsSql(p) => {
-            p.execute_simple(&sql).await?;
-        }
-        DbPool::Postgres(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::Mysql(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::Sqlite(p) => {
-            sqlx::query(&sql).execute(p).await?;
-        }
-        DbPool::Mongo(_) => unreachable!("mongo rejected by Dialect::try_of above"),
-    }
+    // Dropping a view is plain, portable DDL — supported on every SQL driver
+    // even though *editing* one isn't yet (see `build_view_ddl`). MongoDB took
+    // the branch above.
+    crate::db::exec::execute(&pool, &sql).await?;
     Ok(())
 }

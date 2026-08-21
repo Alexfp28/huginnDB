@@ -1492,31 +1492,7 @@ pub(crate) async fn fetch_table_data_inner(
             driver,
             &count_sql,
             count_start,
-            match &pool {
-                DbPool::Postgres(p) => {
-                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                    for b in &where_binds {
-                        q = q.bind(b);
-                    }
-                    q.fetch_optional(p).await.map_err(AppError::from)
-                }
-                DbPool::Mysql(p) => {
-                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                    for b in &where_binds {
-                        q = q.bind(b);
-                    }
-                    q.fetch_optional(p).await.map_err(AppError::from)
-                }
-                DbPool::Sqlite(p) => {
-                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                    for b in &where_binds {
-                        q = q.bind(b);
-                    }
-                    q.fetch_optional(p).await.map_err(AppError::from)
-                }
-                DbPool::MsSql(p) => p.scalar(&count_sql, &where_binds).await,
-                DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-            }
+            crate::db::exec::scalar_i64(&pool, &count_sql, &where_binds).await
         );
         let total = raw_count.map(|n| n as u64);
         log_sql_sink(
@@ -1708,31 +1684,7 @@ pub(crate) async fn count_table_rows_inner(
         driver,
         &count_sql,
         start,
-        match &pool {
-            DbPool::Postgres(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
-                }
-                q.fetch_optional(p).await.map_err(AppError::from)
-            }
-            DbPool::Mysql(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
-                }
-                q.fetch_optional(p).await.map_err(AppError::from)
-            }
-            DbPool::Sqlite(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
-                }
-                q.fetch_optional(p).await.map_err(AppError::from)
-            }
-            DbPool::MsSql(p) => p.scalar(&count_sql, &where_binds).await,
-            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-        }
+        crate::db::exec::scalar_i64(&pool, &count_sql, &where_binds).await
     );
     let total = raw_count.unwrap_or(0).max(0) as u64;
     log_sql_sink(
@@ -2386,40 +2338,7 @@ pub(crate) async fn delete_rows_inner(
         driver,
         &sql,
         start,
-        match pool {
-            DbPool::Postgres(p) => {
-                let mut q = sqlx::query(&sql);
-                for b in &binds {
-                    q = q.bind(b);
-                }
-                q.execute(&p)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(AppError::from)
-            }
-            DbPool::Mysql(p) => {
-                let mut q = sqlx::query(&sql);
-                for b in &binds {
-                    q = q.bind(b);
-                }
-                q.execute(&p)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(AppError::from)
-            }
-            DbPool::Sqlite(p) => {
-                let mut q = sqlx::query(&sql);
-                for b in &binds {
-                    q = q.bind(b);
-                }
-                q.execute(&p)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(AppError::from)
-            }
-            DbPool::MsSql(p) => p.execute_params(&sql, &binds).await,
-            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-        }
+        crate::db::exec::execute_params(&pool, &sql, &binds).await
     );
     log_sql_sink(
         sink,
