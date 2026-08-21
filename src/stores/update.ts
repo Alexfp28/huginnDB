@@ -49,6 +49,7 @@ import type { Update } from "@tauri-apps/plugin-updater";
 import { STORAGE_KEYS } from "@/lib/constants";
 import i18n from "@/lib/i18n";
 import { api } from "@/lib/tauri";
+import { confirmIrreversible } from "@/lib/confirmDestructive";
 import {
   checkForUpdate,
   downloadUpdate,
@@ -265,9 +266,12 @@ export const useUpdateStore = create<UpdateState>()(
           const sidecarRunning = await api
             .isMcpSidecarRunning()
             .catch(() => false);
+          // `confirmIrreversible`, not `confirmDestructive`: interrupting
+          // someone else's live AI session is not the kind of thing the
+          // "don't nag me about deletes" preference was meant to switch off.
           if (
             sidecarRunning &&
-            !window.confirm(i18n.t("update.mcpSidecarWarning"))
+            !confirmIrreversible(i18n.t("update.mcpSidecarWarning"))
           ) {
             set({ status: "readyToRestart" });
             return; // the user can retry later

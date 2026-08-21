@@ -45,6 +45,7 @@ import { cellModelPath, bindSchemaToModel } from "@/lib/monaco/monacoJson";
 import { useJsonSchemas, relationKey, schemaUri } from "@/stores/jsonSchemas";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { cn } from "@/lib/utils";
+import { formatComboForDisplay } from "@/lib/keybindings";
 
 interface Props {
   open: boolean;
@@ -230,7 +231,9 @@ export function CellEditor({
   const openInSide = useCellEditor((s) => s.open);
   const canSave = !readonly && !!onSave;
   // Modifier label for the save-shortcut chip (⌘ on macOS, Ctrl elsewhere).
-  const saveHint = /Mac/i.test(navigator.userAgent) ? "⌘S" : "Ctrl+S";
+  // Through `formatComboForDisplay`, which is the one place that decides how a
+  // combo is spelled for the user.
+  const saveHint = formatComboForDisplay("Ctrl+S");
   // Content-type badge label: the auto-detected / selected language.
   const typeLabel = language === "plaintext" ? "TEXT" : language.toUpperCase();
   // …and its glyph. The brief allows a little more branding in this editor

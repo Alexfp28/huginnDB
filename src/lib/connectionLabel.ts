@@ -148,12 +148,29 @@ export function resolveConnectionParts(
   const direct = profiles.find((p) => p.id === connectionId);
   if (!direct) return { profileName: null, database: null };
   let database: string | null = direct.database || null;
-  // SQLite's `database` is a filesystem path — show just the file name so the
-  // title/tab stays short. The SQL drivers store a plain catalog name.
   if (direct.driver === "sqlite" && database) {
-    database = database.replace(/\\/g, "/").split("/").pop() || database;
+    database = sqliteFileLabel(database);
   }
   return { profileName: direct.name, database };
+}
+
+/**
+ * The file name inside a SQLite `database` path.
+ *
+ * SQLite's `database` field is a filesystem path, not a catalog name, so every
+ * surface that shows it has to shorten it or blow out its own layout: the OS
+ * window title, the breadcrumb, the query editor's database chip, the
+ * connection dialog's summary, the JSON-Schema binding picker. All five were
+ * doing `split(/[/\\]/).pop()` inline — one of them with the character class
+ * the other way round, which is the kind of difference nobody notices until a
+ * path breaks on one platform and not the other.
+ *
+ * Handles both separators regardless of host platform: a profile written on
+ * Windows and synced from a shared origin reaches a Linux install with
+ * backslashes in it.
+ */
+export function sqliteFileLabel(path: string): string {
+  return path.replace(/\\/g, "/").split("/").pop() || path;
 }
 
 /**

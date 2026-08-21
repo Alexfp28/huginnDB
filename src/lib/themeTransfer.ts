@@ -7,7 +7,7 @@
 // on-disk shape is this module's own, versioned so a future colour-token
 // addition can still tell an old export apart without guessing.
 
-import { BUILT_IN_THEMES, COLOR_KEYS, type Theme, type ThemeColors } from "@/lib/themes";
+import { BUILT_IN_THEMES, type Theme, type ThemeColors } from "@/lib/themes";
 
 const KIND = "huginndb-theme";
 const CURRENT_VERSION = 1;
@@ -77,17 +77,21 @@ export function parseThemeFile(raw: string): Theme {
   const rawColors =
     typeof theme.colors === "object" && theme.colors !== null ? theme.colors : {};
   const baseline = BUILT_IN_THEMES[0].colors;
-  const colors = COLOR_KEYS.reduce((acc, { key }) => {
-    const value = rawColors[key];
-    acc[key] = typeof value === "string" ? value : baseline[key];
-    return acc;
-  }, {} as ThemeColors);
-  // Non-editable accents (pk/fk/numeric, see ThemeColors' own doc) aren't in
-  // COLOR_KEYS but are still part of the theme — carry them the same way.
-  for (const key of ["pk", "fk", "numeric"] as const) {
-    const value = rawColors[key];
-    colors[key] = typeof value === "string" ? value : baseline[key];
-  }
+  // Enumerate from the baseline theme rather than from `COLOR_KEYS`, which
+  // holds only the tokens the Appearance editor *shows*. Three others
+  // (pk/fk/numeric, see `ThemeColors`' own doc) are part of a theme but not
+  // editable, and were carried by a hand-written `["pk", "fk", "numeric"]`
+  // list — so a fourth non-editable token would have been silently dropped
+  // from every import, and the theme would have come back with the default
+  // for it and no indication why. The baseline is by definition complete.
+  const colors = (Object.keys(baseline) as (keyof ThemeColors)[]).reduce(
+    (acc, key) => {
+      const value = rawColors[key];
+      acc[key] = typeof value === "string" ? value : baseline[key];
+      return acc;
+    },
+    {} as ThemeColors,
+  );
 
   return {
     id: `custom-${Math.random().toString(36).slice(2, 8)}`,

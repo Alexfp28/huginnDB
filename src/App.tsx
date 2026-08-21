@@ -75,6 +75,7 @@ import { AdHocDriverDialog } from "@/components/connection/dialogs/AdHocDriverDi
 import type { ConnectionProfile, Driver, StartupArgs } from "@/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { refreshTable } from "@/lib/grid/tableRefresh";
+import { sqliteFileLabel } from "@/lib/connectionLabel";
 
 /** Ad-hoc connection params staged while we prompt the user for a driver
  *  (CLI launch without `--driver` and no configured default). */
@@ -790,8 +791,7 @@ export default function App() {
                   <span className="text-muted-foreground/40">·</span>
                   <span className="text-muted-foreground">
                     {selectedProfile.driver === "sqlite"
-                      ? (selectedProfile.database.split(/[/\\]/).pop() ??
-                        selectedProfile.database)
+                      ? sqliteFileLabel(selectedProfile.database)
                       : // Multi-DB connections have no single catalog, so
                         // `database` is empty; fall back to the connection
                         // name instead of rendering a blank segment (#51).

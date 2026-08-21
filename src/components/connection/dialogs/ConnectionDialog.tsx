@@ -81,6 +81,8 @@ import type {
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { usePreferences } from "@/stores/preferences/preferences";
+import { sqliteFileLabel } from "@/lib/connectionLabel";
+import { isWindows } from "@/lib/platform";
 import {
   driverMismatchHint,
   splitSqlServerName,
@@ -181,9 +183,7 @@ export function ConnectionDialog({
   const [mssqlAuth, setMssqlAuth] = useState<MsSqlAuth>("sql");
   /** Windows-only auth modes are hidden elsewhere — the backend refuses them
    *  on other platforms because the driver's NTLM support is `cfg(windows)`. */
-  const isWindows =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toLowerCase().includes("windows");
+  const onWindows = isWindows();
 
   // SSH tunnel fields ------------------------------------------------------
   const [sshEnabled, setSshEnabled] = useState(false);
@@ -464,7 +464,7 @@ export function ConnectionDialog({
     const multi = selectedIds.size > 1;
     const subline =
       p.driver === "sqlite"
-        ? p.database.split(/[/\\]/).pop() ?? p.database
+        ? sqliteFileLabel(p.database)
         : p.driver === "mongodb"
           ? p.connection_string || `${p.host}:${p.port}`
           : `${p.host}:${p.port}/${p.database}`;
@@ -1308,7 +1308,7 @@ export function ConnectionDialog({
                                 driver gates `AuthMethod::Windows` at compile
                                 time), so don't offer a mode that can only
                                 fail elsewhere. */}
-                            {isWindows && (
+                            {onWindows && (
                               <Field
                                 label={t("connectionDialog.fields.mssqlAuth")}
                               >

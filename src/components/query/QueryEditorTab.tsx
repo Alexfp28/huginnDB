@@ -60,7 +60,7 @@ import {
 } from "@/components/ui/select";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { splitSql } from "@/lib/sql/sqlSplit";
-import { databaseOfViewId, parentConnectionId } from "@/lib/connectionLabel";
+import { databaseOfViewId, parentConnectionId, sqliteFileLabel } from "@/lib/connectionLabel";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
 import { cn, formatDuration } from "@/lib/utils";
@@ -117,8 +117,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const dbName = useMemo(() => {
     const p = profiles.find((pr) => pr.id === parentId);
     if (!p) return parentId;
-    if (p.driver === "sqlite")
-      return p.database.split(/[/\\]/).pop() ?? p.database;
+    if (p.driver === "sqlite") return sqliteFileLabel(p.database);
     return selectedDb || p.database || t("query.defaultDatabase");
   }, [profiles, parentId, selectedDb, t]);
 
