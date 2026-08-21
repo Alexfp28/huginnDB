@@ -211,6 +211,20 @@ pub struct Origin {
     /// RFC 3339 timestamp of the last successful sync, or `None` if it has
     /// never completed one. Display only — the sync never diffs against it.
     pub last_synced_at: Option<String>,
+    /// Per-profile fingerprint of the ciphertext this machine has already
+    /// decrypted and written into its keychain, keyed by profile id.
+    ///
+    /// Purely a cache, and the reason a launch is not a multi-second freeze:
+    /// landing a secret costs ~600 000 PBKDF2 rounds *per slot*, and a shared
+    /// origin publishing thirty tunnelled connections therefore cost tens of
+    /// millions of them on every single sync, all to rewrite keychain entries
+    /// that had not changed. See `commands::origins::already_landed`.
+    ///
+    /// Holds no secret material — the values are SHA-256 hashes of data that
+    /// is already ciphertext. Safe to lose: a missing or stale entry only
+    /// means the next sync does the work again.
+    #[serde(default)]
+    pub landed_secrets: HashMap<String, String>,
 }
 
 /// The state needed to put a session back the way the user left it: which

@@ -41,6 +41,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   even though the connection existed locally all along. A skipped profile now
   maps to itself.
 
+- **Every launch froze the window for as long as the shared-origin sync took —
+  a multi-second "Not Responding" on a real profile set.** Two causes, both
+  fixed. `sync_origin` was a *synchronous* Tauri command, so it ran on the
+  main thread: the one pumping the window, and the one that also had to read
+  the export off a network share. And it re-landed **every** published secret
+  into the keychain on **every** sync, whether or not anything had changed —
+  at ~600 000 PBKDF2 rounds per slot. An origin publishing thirty tunnelled
+  connections therefore spent tens of millions of SHA-256 rounds on the UI
+  thread at every start, and again every four hours.
+
+  The command is now `async` with its body on `spawn_blocking`, and each
+  profile's ciphertext is fingerprinted so an unchanged secret is recognised
+  and skipped. The skip needs both halves to be safe: the fingerprint alone
+  would leave a keychain entry someone deleted missing forever, and the
+  "is it still there?" check alone would never notice a rotated password. On
+  the profile set this was found with (29 origin-owned connections, 26 of them
+  tunnelled), a second launch went from a pegged core and a frozen window to
+  0% and a responsive one.
+
 - **A SQL document was split into statements incorrectly from its first string
   literal onward.** The splitter behind the editor's per-statement "▶ Run"
   CodeLens closed a quoted string and then, in the same pass, re-opened it on

@@ -45,6 +45,26 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   desactivado aunque la conexión estuviera ahí desde el principio. Un perfil
   omitido ahora se mapea a sí mismo.
 
+- **Cada arranque congelaba la ventana durante todo el sync del origen
+  compartido — varios segundos de «No responde» con un conjunto de perfiles
+  real.** Dos causas, ambas corregidas. `sync_origin` era un comando Tauri
+  *síncrono*, así que se ejecutaba en el hilo principal: el que bombea la
+  ventana, y el que además tenía que leer el fichero de un recurso de red. Y
+  volvía a plantar en el llavero **todos** los secretos publicados en **cada**
+  sync, hubiera cambiado algo o no, a ~600 000 rondas PBKDF2 por hueco. Un
+  origen que publica treinta conexiones con túnel gastaba así decenas de
+  millones de rondas SHA-256 en el hilo de UI en cada inicio, y otra vez cada
+  cuatro horas.
+
+  Ahora el comando es `async` con el cuerpo en `spawn_blocking`, y se guarda una
+  huella del texto cifrado de cada perfil para reconocer y saltar un secreto que
+  no ha cambiado. El salto necesita las dos mitades para ser seguro: solo la
+  huella dejaría para siempre sin restaurar una entrada de llavero que alguien
+  borró, y solo la comprobación de presencia no detectaría nunca una contraseña
+  rotada. Con el conjunto donde se encontró (29 conexiones del origen, 26 de
+  ellas con túnel), el segundo arranque pasó de un núcleo saturado y la ventana
+  congelada a 0 % y ventana viva.
+
 - **Un documento SQL se dividía mal en sentencias a partir de su primer literal
   de texto.** El divisor que alimenta el CodeLens «▶ Ejecutar» por sentencia
   cerraba una cadena entrecomillada y, en la misma pasada, la reabría con ese

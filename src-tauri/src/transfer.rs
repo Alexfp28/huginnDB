@@ -41,7 +41,7 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use pbkdf2::pbkdf2_hmac;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, AppResult};
 use crate::json_schemas::{JsonSchemaBinding, JsonSchemaItem};
@@ -642,7 +642,7 @@ pub fn land_secrets(
     // never given one. Both fail to decrypt, but keeping them distinct is what
     // stops a future edit from reintroducing a "no passphrase → use the blob"
     // shortcut.
-    let mut land = |account: String, blob: &str| -> AppResult<()> {
+    for (account, blob) in secret_slots(profile, secrets) {
         let plain = match passphrase {
             Some(pass) => decrypt_secret(blob, pass),
             None => Err(AppError::Transfer(
@@ -653,27 +653,83 @@ pub fn land_secrets(
             (Ok(pw), _) => {
                 keychain::set_password(&account, &pw)?;
                 stored = true;
-                Ok(())
             }
-            (Err(e), LandMode::Strict) => Err(e),
+            (Err(e), LandMode::Strict) => return Err(e),
             // Leave the slot empty. The caller reports the profile as needing a
             // password, which is a state the UI already knows how to surface.
-            (Err(_), LandMode::BestEffort) => Ok(()),
-        }
-    };
-
-    if let Some(blob) = &secrets.db_password {
-        if !matches!(profile.driver, Driver::Sqlite) {
-            land(profile.keyring_account(), blob)?;
-        }
-    }
-    if let Some(blob) = &secrets.ssh_secret {
-        if let Some(account) = profile.ssh_keyring_account() {
-            land(account, blob)?;
+            (Err(_), LandMode::BestEffort) => {}
         }
     }
 
     Ok(stored)
+}
+
+/// The keychain accounts an [`ExportedSecret`] lands for `profile`, paired with
+/// the ciphertext each one carries.
+///
+/// The **one** definition of which slots an exported secret covers, including
+/// the SQLite rule: a file path needs no credential, so that slot is skipped
+/// for it — matching the export side, which never writes one. An SSH secret is
+/// still landed, since a SQLite file can sit behind a tunnel.
+///
+/// Extracted because [`land_secrets`] is no longer the only caller: the origin
+/// sync needs the same list to ask "is every account this secret covers still
+/// in the keychain?" before it decides it can skip the (very expensive)
+/// decryption. Re-deriving that rule at the second call site is exactly how
+/// this function's own doc says the first bug got in.
+pub fn secret_slots<'a>(
+    profile: &ConnectionProfile,
+    secrets: &'a ExportedSecret,
+) -> Vec<(String, &'a str)> {
+    let mut slots = Vec::new();
+    if let Some(blob) = &secrets.db_password {
+        if !matches!(profile.driver, Driver::Sqlite) {
+            slots.push((profile.keyring_account(), blob.as_str()));
+        }
+    }
+    if let Some(blob) = &secrets.ssh_secret {
+        if let Some(account) = profile.ssh_keyring_account() {
+            slots.push((account, blob.as_str()));
+        }
+    }
+    slots
+}
+
+/// Stable fingerprint of the ciphertext an [`ExportedSecret`] carries.
+///
+/// Lets the origin sync recognise a secret it has already decrypted and landed,
+/// and skip doing it again — see `commands::origins::already_landed`. Hashing
+/// the *ciphertext* is what keeps this cheap and safe: no plaintext is involved
+/// and no key is derived, so it costs microseconds against the ~600 000 PBKDF2
+/// rounds it avoids.
+///
+/// Note what it does **not** buy. [`encrypt_secret`] draws a fresh salt and
+/// nonce every time, so re-exporting the same password yields a different
+/// blob and a different fingerprint. This makes an *unchanged* origin file
+/// free; it cannot make a changed one cheap.
+pub fn secrets_fingerprint(secrets: &ExportedSecret) -> String {
+    let mut h = Sha256::new();
+    // Length-prefixed so `(Some("ab"), None)` and `(Some("a"), Some("b"))`
+    // cannot collide.
+    for slot in [&secrets.db_password, &secrets.ssh_secret] {
+        match slot {
+            Some(blob) => {
+                h.update((blob.len() as u64).to_le_bytes());
+                h.update(blob.as_bytes());
+            }
+            None => h.update(u64::MAX.to_le_bytes()),
+        }
+    }
+    hex_lower(&h.finalize())
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(&mut s, "{b:02x}");
+    }
+    s
 }
 
 // ---------------------------------------------------------------------------
@@ -790,6 +846,76 @@ mod tests {
         };
         assert!(!land_secrets(&p, &secrets, Some("wrong"), LandMode::BestEffort).unwrap());
         assert!(land_secrets(&p, &secrets, Some("wrong"), LandMode::Strict).is_err());
+    }
+
+    /// `secret_slots` is the single definition of which keychain accounts an
+    /// exported secret covers, so the origin sync's "are they all still
+    /// there?" check cannot drift from what `land_secrets` actually writes.
+    #[test]
+    fn secret_slots_lists_what_land_secrets_would_write() {
+        let p = profile("p1", "one");
+        let secrets = ExportedSecret {
+            db_password: Some("db-blob".into()),
+            ssh_secret: Some("ssh-blob".into()),
+        };
+        // No tunnel on the fixture, so the SSH slot has no account to land to.
+        let slots = secret_slots(&p, &secrets);
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].1, "db-blob");
+
+        // SQLite drops the DB slot: a file path needs no credential.
+        let mut lite = profile("p2", "two");
+        lite.driver = Driver::Sqlite;
+        assert!(secret_slots(&lite, &secrets).is_empty());
+    }
+
+    #[test]
+    fn the_fingerprint_tracks_the_ciphertext_and_nothing_else() {
+        let a = ExportedSecret {
+            db_password: Some("blob".into()),
+            ssh_secret: None,
+        };
+        let same = ExportedSecret {
+            db_password: Some("blob".into()),
+            ssh_secret: None,
+        };
+        let other = ExportedSecret {
+            db_password: Some("blob2".into()),
+            ssh_secret: None,
+        };
+        assert_eq!(secrets_fingerprint(&a), secrets_fingerprint(&same));
+        assert_ne!(secrets_fingerprint(&a), secrets_fingerprint(&other));
+    }
+
+    #[test]
+    fn the_fingerprint_cannot_confuse_the_two_slots() {
+        // Without length-prefixing, ("ab", None) and ("a", "b") would hash the
+        // same bytes — and a rotated SSH secret could then look unchanged.
+        let split = ExportedSecret {
+            db_password: Some("a".into()),
+            ssh_secret: Some("b".into()),
+        };
+        let joined = ExportedSecret {
+            db_password: Some("ab".into()),
+            ssh_secret: None,
+        };
+        assert_ne!(secrets_fingerprint(&split), secrets_fingerprint(&joined));
+    }
+
+    #[test]
+    fn re_encrypting_the_same_password_changes_the_fingerprint() {
+        // `encrypt_secret` draws a fresh salt and nonce every time, so this
+        // makes an *unchanged* origin file free but cannot make a re-exported
+        // one cheap. Pinned so the limitation is not mistaken for a bug.
+        let one = ExportedSecret {
+            db_password: Some(encrypt_secret("hunter2", "pass").unwrap()),
+            ssh_secret: None,
+        };
+        let two = ExportedSecret {
+            db_password: Some(encrypt_secret("hunter2", "pass").unwrap()),
+            ssh_secret: None,
+        };
+        assert_ne!(secrets_fingerprint(&one), secrets_fingerprint(&two));
     }
 
     /// SQLite has no DB password, so that slot is skipped rather than landed —

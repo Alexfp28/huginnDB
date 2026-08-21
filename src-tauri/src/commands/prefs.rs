@@ -693,6 +693,7 @@ pub async fn import_environment(
                         name: eo.name,
                         path: eo.path,
                         last_synced_at: None,
+                        landed_secrets: Default::default(),
                     });
                 }
 
