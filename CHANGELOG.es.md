@@ -144,6 +144,44 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **SQL Server era el único driver cuyo explorador de esquema podía quedarse
+  colgado para siempre en el skeleton de carga, sin ningún error y sin forma
+  de reintentar.** Todos los drivers basados en `sqlx` (Postgres/MySQL/SQLite)
+  reciben gratis un timeout a nivel de conexión: `db::pool::tuned()` fija
+  `.acquire_timeout(ACQUIRE_TIMEOUT)` en sus `PoolOptions`, así que incluso un
+  `connect()` inicial contra un host inalcanzable falla a los 30s. `tiberius`
+  no tiene ningún ajuste equivalente, y el propio `connect()` de `db::mssql`
+  nunca añadió uno: ni el TCP connect llano ni la ida y vuelta UDP del SQL
+  Browser (`Reach::Browser`, usado para instancias con nombre) tienen ningún
+  timeout a nivel de sistema operativo, así que un host que descarta paquetes
+  en silencio — un firewall, o un Browser parado sin puerto estático de
+  respaldo configurado — colgaba el intento de conexión indefinidamente.
+
+  Esa carencia era invisible para las consultas normales, que ya corren
+  dentro del wrapper `with_timeout` de `commands::schema`
+  (`OPERATION_TIMEOUT`, 20s). No era invisible para una **vista por base de
+  datos**: el explorador multi-base la abre de forma perezosa, vía
+  `commands::connection::ensure_database_view`, y cada comando de esquema
+  (`list_databases`/`list_tables`/`list_columns`/`list_indexes`) llama a eso
+  *antes* de entrar siquiera en su propio bloque `with_timeout`. Así que la
+  primera vez que se expandía una base de datos en el árbol — o la primera
+  consulta después de que el reaper de pools cerrara una sesión inactiva —
+  SQL Server podía colgar el comando entero sin ningún límite, mientras que
+  el intento de conexión equivalente de cualquier otro driver ya tenía uno
+  vía `acquire_timeout`. Desde la interfaz esto se veía exactamente como el
+  reporte: el árbol de esquema atascado en su skeleton de carga para
+  siempre, sin error y sin forma de reintentar, solo con SQL Server.
+
+  `db::mssql::connect` pasa ahora por un pequeño wrapper
+  `bound_by_acquire_timeout` que usa el mismo `ACQUIRE_TIMEOUT` de los pools
+  de `sqlx`, convirtiendo una conexión colgada en un error `OperationTimedOut`
+  claro en vez de un skeleton permanente. Esto cubre tanto la primera
+  conexión de una vista por base de datos como cualquier reconexión
+  posterior tras el cierre de una sesión por el reaper de inactividad, ya
+  que todo camino que abre una sesión TDS nueva pasa por
+  `MsSqlPool::acquire`, que es el único sitio desde el que se llama a
+  `connect`.
+
 - **Eliminar una «vista» de MongoDB cuyo nombre era en realidad una colección
   borraba todos sus documentos.** MongoDB guarda vistas y colecciones en el
   mismo espacio de nombres, y eliminar cualquiera de las dos es la misma llamada

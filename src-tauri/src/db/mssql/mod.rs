@@ -470,8 +470,56 @@ pub fn is_output_clause_conflict(e: &AppError) -> bool {
     matches!(e, AppError::MsSql(tiberius::error::Error::Server(t)) if t.code() == 334)
 }
 
-/// Open one TDS session against `cfg`.
+/// Open one TDS session against `cfg`, bounded by [`crate::db::pool::ACQUIRE_TIMEOUT`].
+///
+/// The `sqlx`-backed drivers get this for free: `tuned()` sets
+/// `.acquire_timeout(ACQUIRE_TIMEOUT)` on every `PgPoolOptions`/
+/// `MySqlPoolOptions`/`SqlitePoolOptions`, so even their eager `connect()`
+/// fails fast on an unreachable host. `tiberius` has no equivalent knob, and
+/// this function's own two network calls — a plain TCP connect, and the SQL
+/// Browser's UDP round trip in [`Reach::Browser`] — have no OS-level timeout
+/// of their own; a host that silently drops packets (a firewall, a stopped
+/// Browser with no reachable fallback port) hangs them indefinitely.
+///
+/// That indefinite hang is invisible everywhere a `list_tables`/`list_columns`
+/// call is itself wrapped in [`crate::error::with_timeout`] — the schema
+/// explorer's per-database view still has to reach this function on its
+/// *first* access, from `commands::connection::ensure_database_view`, which
+/// runs **before** the command layer's `with_timeout` wrapper. With no bound
+/// here, opening a per-database view against an unreachable database left the
+/// whole command — and the tree node's loading skeleton — stuck forever,
+/// which is what made SQL Server the one driver whose schema explorer could
+/// simply never finish loading, instead of failing with a clear timeout like
+/// every other driver already does.
 async fn connect(cfg: &Config, reach: Reach) -> AppResult<MsSqlClient> {
+    bound_by_acquire_timeout(
+        crate::db::pool::ACQUIRE_TIMEOUT,
+        connect_uncapped(cfg, reach),
+    )
+    .await
+}
+
+/// [`connect`]'s timeout wrapper, with the bound taken as a parameter so the
+/// timeout behaviour itself is unit-testable in milliseconds rather than
+/// needing a real 30-second wait (see the test below).
+async fn bound_by_acquire_timeout<T>(
+    bound: std::time::Duration,
+    fut: impl std::future::Future<Output = AppResult<T>>,
+) -> AppResult<T> {
+    match tokio::time::timeout(bound, fut).await {
+        Ok(result) => result,
+        Err(_) => Err(AppError::OperationTimedOut(format!(
+            "connecting to SQL Server took longer than {}s — the host may be \
+             unreachable, or something between here and it is silently \
+             dropping the connection",
+            bound.as_secs()
+        ))),
+    }
+}
+
+/// The actual, unbounded connect attempt — see [`connect`] for why it is
+/// always called through a timeout rather than directly.
+async fn connect_uncapped(cfg: &Config, reach: Reach) -> AppResult<MsSqlClient> {
     let tcp = match reach {
         Reach::Port => TcpStream::connect(cfg.get_addr())
             .await
@@ -708,7 +756,9 @@ pub async fn open_pool(
 
 #[cfg(test)]
 mod tests {
-    use super::{binary_convert, result_leaves_session_healthy, split_instance};
+    use super::{
+        binary_convert, bound_by_acquire_timeout, result_leaves_session_healthy, split_instance,
+    };
 
     #[test]
     fn accepts_the_ssms_host_backslash_instance_form_in_either_field() {
@@ -810,5 +860,25 @@ mod tests {
         // No type hint (stale schema cache): bind as plain text rather than
         // guessing, matching the other drivers' degradation.
         assert_eq!(binary_convert(None, "@P1"), "@P1");
+    }
+
+    /// The regression this module exists for: a connect attempt that never
+    /// resolves (a firewall silently dropping packets, a stopped SQL Browser
+    /// with no reachable fallback port) used to hang forever, because neither
+    /// a bare TCP connect nor `tiberius`'s handshake has a timeout of its
+    /// own — unlike the `sqlx` pools, which get one for free from
+    /// `PoolOptions::acquire_timeout`. `connect` (`super::connect`) now routes
+    /// through this wrapper with the real `ACQUIRE_TIMEOUT`; this test proves
+    /// the wrapper itself resolves instead of hanging, using a millisecond
+    /// bound so it doesn't cost the suite 30 real seconds.
+    #[tokio::test]
+    async fn a_connect_that_never_resolves_times_out_instead_of_hanging_forever() {
+        let result: crate::error::AppResult<()> =
+            bound_by_acquire_timeout(std::time::Duration::from_millis(20), std::future::pending())
+                .await;
+        assert!(matches!(
+            result,
+            Err(crate::error::AppError::OperationTimedOut(_))
+        ));
     }
 }

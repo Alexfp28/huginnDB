@@ -187,6 +187,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **SQL Server was the one driver whose schema explorer could get stuck on
+  the loading skeleton forever, with no error and no way to retry.** Every
+  `sqlx`-backed driver (Postgres/MySQL/SQLite) gets a connect-level timeout
+  for free: `db::pool::tuned()` sets `.acquire_timeout(ACQUIRE_TIMEOUT)` on
+  their `PoolOptions`, so even an eager `connect()` against an unreachable
+  host fails after 30s. `tiberius` has no equivalent setting, and `db::mssql`'s
+  own `connect()` never added one: neither the plain TCP connect nor the SQL
+  Browser's UDP round trip (`Reach::Browser`, used for named instances) has
+  any OS-level timeout of its own, so a host that silently drops packets — a
+  firewall, or a stopped Browser with no reachable fallback port configured —
+  hung the connect attempt indefinitely.
+
+  That gap was invisible for ordinary queries, which run inside
+  `commands::schema`'s `with_timeout` wrapper (`OPERATION_TIMEOUT`, 20s). It
+  was not invisible for a **per-database view**: the multi-database explorer
+  opens one lazily, via `commands::connection::ensure_database_view`, and
+  every schema command (`list_databases`/`list_tables`/`list_columns`/
+  `list_indexes`) calls that *before* it ever enters its own `with_timeout`
+  block. So the first time a database was expanded in the tree — or the first
+  query after the pool reaper had closed an idle session — SQL Server could
+  hang the whole command with no bound at all, while every other driver's
+  equivalent connect attempt already had one via `acquire_timeout`.
+
+  `db::mssql::connect` now routes through a small `bound_by_acquire_timeout`
+  wrapper using the same `ACQUIRE_TIMEOUT` the `sqlx` pools use, turning a
+  hung connect into a clear `OperationTimedOut` error instead of a permanent
+  skeleton. This covers both the per-database view's first connect and any
+  later reconnect after the idle reaper closes a session — every path that
+  opens a fresh TDS session goes through `MsSqlPool::acquire`, and that is the
+  one place `connect` is called from.
+
 - **Clicking a file name in any `file` notification always said "the file is
   no longer there," even for a file sitting right where it said it was.**
   `api.revealItemInDir` invoked `plugin:opener|reveal_item_in_dir` with
