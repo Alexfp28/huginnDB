@@ -46,11 +46,31 @@ fn b(row: &Row, name: &str) -> bool {
 
 /// Column `name` of `row` as an `i64`, widening whichever integer the catalog
 /// used.
+///
+/// **Must use `try_get`, never `get`.** `tiberius::Row::get::<T, _>` is
+/// `self.try_get(idx).unwrap()` — it *panics* when the column's actual
+/// `ColumnData` variant isn't the one `T`'s `FromSql` accepts, rather than
+/// returning `None`. This function exists precisely because catalog columns
+/// like `sys.columns.max_length` (a `smallint`, decoded as `ColumnData::I16`)
+/// don't match the widest type: `i64`'s `FromSql` only accepts
+/// `ColumnData::I64` (or a null `U8`/`I32`), so a first attempt with `get`
+/// panicked on the very first column of the very first table — every single
+/// call, on every server, since `max_length`/`precision`/`scale` are never
+/// `bigint`. A panic inside a Tauri command's async task never reaches the
+/// frontend as a rejected promise, so `list_columns` looked like it just
+/// hung forever with no error, on every table, which is exactly what made
+/// this so easy to miss without a real SQL Server to test against: the
+/// `.or_else` fallback chain below reads as if it handles the mismatch, but
+/// it never even ran. `try_get` reports the mismatch as `Err` instead, which
+/// `ok()` discards, letting the chain actually fall through to the next
+/// width as intended.
 fn i(row: &Row, name: &str) -> Option<i64> {
-    row.get::<i64, _>(name)
-        .or_else(|| row.get::<i32, _>(name).map(i64::from))
-        .or_else(|| row.get::<i16, _>(name).map(i64::from))
-        .or_else(|| row.get::<u8, _>(name).map(i64::from))
+    row.try_get::<i64, _>(name)
+        .ok()
+        .flatten()
+        .or_else(|| row.try_get::<i32, _>(name).ok().flatten().map(i64::from))
+        .or_else(|| row.try_get::<i16, _>(name).ok().flatten().map(i64::from))
+        .or_else(|| row.try_get::<u8, _>(name).ok().flatten().map(i64::from))
 }
 
 // ---------------------------------------------------------------------------

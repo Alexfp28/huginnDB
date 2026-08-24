@@ -144,6 +144,48 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **El explorador de esquema de SQL Server nunca llegaba a cargar las columnas
+  de una tabla — se quedaba en el skeleton de carga para siempre, sin ningún
+  error, en todas las tablas, en todos los servidores.** El fix del timeout de
+  conexión de más abajo (sigue siendo correcto, sigue mereciendo la pena) no
+  era, en realidad, lo que le pasaba a la mayoría: este es un bug distinto y
+  más fundamental en el mismo driver, y explica los reportes de "SQL Server
+  simplemente no carga el esquema" en conexiones que por lo demás funcionaban
+  perfectamente — ver datos de tablas, ejecutar consultas, todo lo demás
+  funcionaba; solo la lista de columnas del árbol nunca aparecía.
+
+  `tiberius::Row::get::<T, _>` es `self.try_get(idx).unwrap()` — hace *panic*
+  cuando la variante real de `ColumnData` de la columna no coincide con lo
+  que acepta el `FromSql` de `T`, en vez de devolver `None`. El helper `i()`
+  de `db::mssql::schema` (usado para leer una columna entera del catálogo de
+  ancho desconocido) probaba `i64` → `i32` → `i16` → `u8` con
+  `.get(...).or_else(...)`, que se lee como un ensanchamiento gradual pero no
+  lo es: el primer intento que no encaja hace panic antes de que la cadena de
+  `or_else` llegue a ejecutarse nunca. `sys.columns.max_length` es `smallint`,
+  así que `raw_columns` (por donde pasa toda llamada a `list_columns`/
+  `table_structure`) hacía panic en `i(r, "max_length")` para la primera
+  columna de la primera tabla, siempre — una lectura `i64` nunca puede tener
+  éxito contra un `ColumnData::I16`. `list_tables` no se veía afectada solo
+  porque su propio uso de `i()` (las estadísticas de filas/bytes) resulta ser
+  genuinamente `bigint`, que es por lo que la lista de tablas en sí siempre
+  cargaba bien. El `auth_type` de `list_users`
+  (`sys.database_principals.authentication_type`, un `tinyint`) tenía el
+  mismo panic latente, rompiendo la lista de usuarios del panel de Seguridad
+  por el mismo motivo.
+
+  Un panic dentro de la tarea asíncrona de un comando de Tauri nunca llega
+  al frontend como una promesa rechazada — la llamada `invoke()` del lado JS
+  simplemente se queda pendiente para siempre, indistinguible de un cuelgue,
+  que es exactamente por qué esto parecía un problema de timeout y no un
+  crash. También explica por qué nada en la batería de tests existente lo
+  detectó: el error de lógica de `i()` solo se manifiesta contra un
+  `tiberius::Row` real ya decodificado, algo que ningún test unitario
+  construye (los campos de `Row` son privados al crate `tiberius`).
+
+  `i()` ahora usa `try_get` y descarta el `Err` de un ancho que no encaja
+  (`.ok().flatten()`) en vez de dejar que haga panic, así que la cadena de
+  fallback ahora sí cae al siguiente ancho como se pretendía originalmente.
+
 - **SQL Server era el único driver cuyo explorador de esquema podía quedarse
   colgado para siempre en el skeleton de carga, sin ningún error y sin forma
   de reintentar.** Todos los drivers basados en `sqlx` (Postgres/MySQL/SQLite)

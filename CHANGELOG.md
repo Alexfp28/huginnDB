@@ -187,6 +187,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **The SQL Server schema explorer never actually loaded a table's columns —
+  it sat on the loading skeleton forever, with no error, on every table, on
+  every server.** The connect-timeout fix above (still correct, still worth
+  keeping) turned out not to be what most people were hitting: this one is a
+  separate, more fundamental bug in the same driver, and it explains the
+  "SQL Server just doesn't load the schema" reports on connections that were
+  otherwise working fine — browsing table data, running queries, everything
+  else worked; only the tree's column list never came back.
+
+  `tiberius::Row::get::<T, _>` is `self.try_get(idx).unwrap()` — it *panics*
+  when the column's actual `ColumnData` variant doesn't match what `T`'s
+  `FromSql` accepts, rather than returning `None`. `db::mssql::schema`'s `i()`
+  helper (used to read a catalog integer column of unknown width) tried
+  `i64` → `i32` → `i16` → `u8` via `.get(...).or_else(...)`, which reads as
+  graceful widening but is not: the very first mismatched attempt panics
+  before the `or_else` chain ever runs. `sys.columns.max_length` is a
+  `smallint`, so `raw_columns` (which every `list_columns`/`table_structure`
+  call goes through) panicked on `i(r, "max_length")` for the first column of
+  the first table, every single time — an `i64` read can never succeed
+  against a `ColumnData::I16`. `list_tables` was unaffected only because its
+  own use of `i()` (row/byte stats) happens to be genuinely `bigint`, which is
+  why the table list itself always loaded fine. `list_users`'s `auth_type`
+  (`sys.database_principals.authentication_type`, a `tinyint`) had the same
+  latent panic, breaking the Security panel's user list for the same reason.
+
+  A panic inside a Tauri command's async task never reaches the frontend as a
+  rejected promise — the JS side's `invoke()` call is simply left pending,
+  which is indistinguishable from a hang and is exactly why this looked like
+  a timeout problem rather than a crash. It also explains why nothing in the
+  existing test suite caught it: `i()`'s logic error only manifests against
+  a real decoded `tiberius::Row`, which nothing in the unit tests constructs
+  (`Row`'s fields are private to the `tiberius` crate).
+
+  `i()` now uses `try_get` and discards the `Err` from a width mismatch
+  (`.ok().flatten()`) instead of letting it panic, so the fallback chain
+  actually falls through as originally intended.
+
 - **SQL Server was the one driver whose schema explorer could get stuck on
   the loading skeleton forever, with no error and no way to retry.** Every
   `sqlx`-backed driver (Postgres/MySQL/SQLite) gets a connect-level timeout
