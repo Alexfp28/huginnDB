@@ -395,7 +395,8 @@
       "destPathPlaceholder": "Choose a destination file…",
       "browse": "Browse…",
       "export": "Export",
-      "exporting": "Exporting…"
+      "exporting": "Exporting…",
+      "progress": "{{done}} of {{total}} rows · SQL"
     },
     "importSql": {
       "title": "Import .sql…",

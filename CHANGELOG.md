@@ -169,6 +169,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   card in front of it instead, so an error or a running progress bar never
   gets shouldered out of view, for the second.
 
+- **"Export database…" closes the moment you click Export, and a
+  `notify.progress()` card with a real row count takes over from there.**
+  The dialog used to disable the button and relabel it "Exportando…" for the
+  whole export, blocking the dialog rather than letting the user get back to
+  work — and if they closed it anyway (Cancel/Escape/an outside click, none
+  of which were guarded), the file kept writing in total silence, since
+  `run()`'s task isn't tied to the dialog's lifecycle. `export_databases`
+  (`dump.rs`) now runs a `SELECT COUNT(*)` pass over every selected table
+  before writing anything, giving the notification a real `done`/`total` in
+  rows — not tables, since one three-row table and one three-million-row one
+  would make table-level progress worse than useless — emitted via a new
+  `huginndb://export-progress` event (`emit_to` the originating window, same
+  as `IMPORT_PROGRESS_EVENT`) as each table finishes. `export_sqlite` was
+  also unified onto the same `&[TableInfo]` shape `export_pg`/`export_mysql`
+  already took, dropping its separate `Option<&[String]>` filter path.
+
 ### Fixed
 
 - **Clicking a file name in any `file` notification always said "the file is
