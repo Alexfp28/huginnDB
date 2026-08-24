@@ -10,12 +10,23 @@
  * in-repo documentation, not arbitrary user content.
  *
  * Links to http(s) open in the OS browser via the Tauri opener (an in-webview
- * navigation would be a no-op); other hrefs (anchors, relative doc links) are
- * inert text so a click never blanks the app.
+ * navigation would be a no-op). An in-document `#anchor` or a relative link to
+ * another bundled doc is followed through the {@link DocNavigator} the host
+ * supplies — {@link DocsDialog} resolves those against the doc registry and its
+ * own section outline. Anything the navigator cannot resolve stays inert text,
+ * so a click never blanks the app.
+ *
+ * The navigator arrives by context rather than as a prop threaded down through
+ * `renderBlocks`. That is not a style preference: `renderBlocks` is memoized on
+ * `source` alone, so a threaded callback would either be captured stale or have
+ * to join the dependency array and throw the whole render away on every parent
+ * render. A context that `DocLink` reads during its own render has neither
+ * problem.
  */
 
 import * as React from "react";
 import { api } from "@/lib/tauri";
+import { slugify } from "@/lib/appInfo/docOutline";
 import { cn } from "@/lib/utils";
 
 // --- inline ---------------------------------------------------------------
@@ -24,20 +35,42 @@ import { cn } from "@/lib/utils";
 const INLINE_RE =
   /(`[^`]+`)|(\[[^\]]+\]\([^)]+\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(_[^_]+_)/;
 
+/**
+ * How the host resolves the links this renderer cannot judge for itself — an
+ * in-document `#anchor`, or a relative path to another bundled doc.
+ *
+ * Two methods rather than one so the cursor tells the truth: a link the host
+ * cannot resolve (a heading that was renamed, a doc deliberately left out of the
+ * registry) must not look clickable.
+ */
+export interface DocNavigator {
+  /** Whether `href` can be followed. Drives the cursor affordance. */
+  canFollow: (href: string) => boolean;
+  /** Follow `href`. Only called when `canFollow` returned `true`. */
+  follow: (href: string) => void;
+}
+
+const NavigatorContext = React.createContext<DocNavigator | null>(null);
+
 function DocLink({ href, children }: { href: string; children: React.ReactNode }) {
+  const nav = React.useContext(NavigatorContext);
   const external = /^https?:\/\//i.test(href);
+  const internal = !external && !!nav?.canFollow(href);
+  const active = external || internal;
   return (
     <a
       href={href}
       onClick={(e) => {
+        // Always: an in-webview navigation would blank the app.
         e.preventDefault();
         if (external) void api.openUrl(href);
+        else if (internal) nav!.follow(href);
       }}
       className={cn(
         "text-brand underline-offset-2 hover:underline",
-        !external && "cursor-default",
+        !active && "cursor-default",
       )}
-      {...(external ? { role: "link" } : {})}
+      {...(active ? { role: "link" } : {})}
     >
       {children}
     </a>
@@ -112,6 +145,18 @@ function renderBlocks(md: string): React.ReactNode[] {
   let i = 0;
   let key = 0;
   const k = () => `b-${key++}`;
+  // Heading ids, so `#anchor` links have something to land on. Scoped to this
+  // one call, which is also the scope `parseDoc` deduplicates a section's `###`
+  // slugs in — render one section's body and the two agree on the suffixes.
+  const slugs = new Set<string>();
+  const headingId = (text: string) => {
+    const base = slugify(text);
+    let candidate = base;
+    let n = 0;
+    while (slugs.has(candidate)) candidate = `${base}-${++n}`;
+    slugs.add(candidate);
+    return candidate;
+  };
 
   while (i < lines.length) {
     const line = lines[i];
@@ -158,7 +203,13 @@ function renderBlocks(md: string): React.ReactNode[] {
       };
       const Tag = `h${Math.min(level, 6)}` as keyof React.JSX.IntrinsicElements;
       out.push(
-        <Tag key={k()} className={cn("text-foreground", sizes[level])}>
+        <Tag
+          key={k()}
+          id={headingId(text)}
+          // Anchored headings are scroll targets; without this the sticky
+          // nothing-in-particular at the top of the pane would cover them.
+          className={cn("scroll-mt-4 text-foreground", sizes[level])}
+        >
           {renderInline(text, k())}
         </Tag>,
       );
@@ -304,10 +355,17 @@ function renderBlocks(md: string): React.ReactNode[] {
 export function Markdown({
   source,
   className,
+  navigator,
 }: {
   source: string;
   className?: string;
+  /** Resolves in-document anchors and links to other bundled docs. */
+  navigator?: DocNavigator;
 }) {
   const blocks = React.useMemo(() => renderBlocks(source), [source]);
-  return <div className={cn("min-w-0", className)}>{blocks}</div>;
+  return (
+    <NavigatorContext.Provider value={navigator ?? null}>
+      <div className={cn("min-w-0", className)}>{blocks}</div>
+    </NavigatorContext.Provider>
+  );
 }

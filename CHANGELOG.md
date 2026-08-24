@@ -8,6 +8,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The documentation viewer now has sections.** A guide used to be one long
+  scroll pane, which made the longer ones effectively unsearchable: `docs/MCP.md`
+  is 400+ lines in a 70vh pane, so finding what a tool requires meant scrolling
+  blind past five client configurations to reach the Security section. Each guide
+  now opens on a **cover** — its introductory prose plus a card per section — and
+  the sidebar is a tree: the guides, with the open one expanded into its
+  sections, and a section expanded into its subsections. Picking one shows that
+  section alone.
+
+  The navigation is derived from the markdown headings, not from a list kept
+  alongside them, which has two consequences worth stating. Adding a `##` to a
+  guide adds it to the sidebar with no code change. And the sidebar translates
+  itself: the Spanish body carries Spanish headings, so choosing the language
+  chooses the labels too.
+
+  In-document links work now. A `#anchor` jumps to its heading — switching page
+  first when the heading lives on another one — and a relative link to another
+  bundled guide switches to it. Both used to render in brand colour, underline
+  on hover, and do nothing at all when clicked; there were eight anchors and five
+  cross-guide links in that state. One outside the bundled set (a roadmap,
+  `SECURITY.md`) now opens on GitHub rather than being a dead end. A test asserts
+  that every anchor in every shipped guide, in both languages, resolves to a real
+  heading, so renaming one out from under its inbound links fails the build
+  rather than going unnoticed.
+
+  Also fixed while in here: switching guides kept the previous scroll offset, so
+  jumping from deep inside a long guide to a short one landed you at its end.
+
 - **Views over the MCP connector: read, edit and delete.** Views were nearly
   invisible to an AI client. `list_tables` reported `kind: "view"` and
   `describe_table` returned a view's columns, but nothing could read a view's

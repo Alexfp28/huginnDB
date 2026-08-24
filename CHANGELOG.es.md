@@ -10,6 +10,36 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **El visor de documentación ahora tiene secciones.** Una guía era un único
+  panel de scroll, lo que dejaba las más largas prácticamente imposibles de
+  consultar: `docs/MCP.md` son más de 400 líneas en un panel de 70vh, así que
+  averiguar qué exige una herramienta obligaba a bajar a ciegas pasando por la
+  configuración de cinco clientes hasta llegar a Seguridad. Cada guía abre ahora
+  en una **portada** — su prosa de entrada más una tarjeta por sección — y la
+  barra lateral es un árbol: las guías, con la abierta expandida en sus secciones,
+  y una sección expandida en sus subsecciones. Al elegir una se muestra esa
+  sección sola.
+
+  La navegación se deriva de los encabezados del markdown, no de una lista
+  mantenida al lado, y de ahí salen dos consecuencias que merece la pena decir.
+  Añadir un `##` a una guía lo añade a la barra lateral sin tocar código. Y la
+  barra lateral se traduce sola: el cuerpo en español lleva encabezados en
+  español, así que elegir el idioma elige también las etiquetas.
+
+  Los enlaces internos ya funcionan. Un `#ancla` salta a su encabezado — cambiando
+  de página primero si el encabezado vive en otra — y un enlace relativo a otra
+  guía incluida cambia a ella. Antes los dos se pintaban en color de marca, se
+  subrayaban al pasar el ratón y no hacían absolutamente nada al pulsarlos; había
+  ocho anclas y cinco enlaces entre guías en ese estado. Uno que apunte fuera del
+  conjunto incluido (una hoja de ruta, `SECURITY.md`) abre ahora en GitHub en vez
+  de ser un callejón sin salida. Un test comprueba que todas las anclas de todas
+  las guías publicadas, en los dos idiomas, resuelven a un encabezado real, así
+  que renombrar uno dejando huérfanos sus enlaces entrantes rompe el build en vez
+  de pasar desapercibido.
+
+  Arreglado de paso: cambiar de guía conservaba el scroll anterior, así que
+  saltar desde el fondo de una guía larga a una corta te dejaba al final de ella.
+
 - **Vistas por el conector MCP: leer, editar y eliminar.** Las vistas eran casi
   invisibles para un cliente de IA. `list_tables` informaba de `kind: "view"` y
   `describe_table` devolvía las columnas de una vista, pero nada podía leer su
