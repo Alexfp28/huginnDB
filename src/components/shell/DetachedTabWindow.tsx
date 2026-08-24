@@ -26,10 +26,10 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
-import { CheckCircle2, Info, TriangleAlert, XCircle } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
+import { NotificationOverflowPill } from "@/components/shell/NotificationOverflowPill";
 import { TableDataTab } from "@/components/grid/TableDataTab";
 import { QueryEditorTab } from "@/components/query/QueryEditorTab";
 import { StructureEditorTab } from "@/components/schema/StructureEditorTab";
@@ -39,7 +39,10 @@ import { MongoIndexesTab } from "@/components/indexes/MongoIndexesTab";
 import { SecurityTab } from "@/components/schema/SecurityTab";
 import { useTabs } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
-import { usePreferences } from "@/stores/preferences/preferences";
+import {
+  selectNotificationPrefs,
+  usePreferences,
+} from "@/stores/preferences/preferences";
 import { useAppFlavor } from "@/stores/preferences/appFlavor";
 import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
 import { setLanguage } from "@/lib/i18n";
@@ -108,6 +111,7 @@ export function DetachedTabWindow() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<AppTab | null | undefined>(undefined);
   const activeTheme = useThemeStore(selectActiveTheme);
+  const notificationPrefs = usePreferences(selectNotificationPrefs);
   const language = usePreferences((s) => s.prefs.ui.language);
 
   // Minimal bootstrap — just enough state for the panel components to run
@@ -144,17 +148,18 @@ export function DetachedTabWindow() {
             </ConnectionErrorBoundary>
           )}
         </div>
+        {/* Same transport-only container as the main window; a detached tab
+            raises its own notifications and keeps its own history, which is
+            the per-window scoping notifications already have. */}
         <Toaster
-          position="bottom-right"
+          position={notificationPrefs.position}
+          visibleToasts={notificationPrefs.maxVisible}
+          expand={notificationPrefs.expandOnHover}
+          gap={10}
+          offset={{ bottom: 32, top: 12, left: 16, right: 16 }}
           theme={activeTheme.mode === "dark" ? "dark" : "light"}
-          closeButton
-          icons={{
-            success: <CheckCircle2 className="h-4 w-4 text-brand" />,
-            error: <XCircle className="h-4 w-4 text-destructive" />,
-            info: <Info className="h-4 w-4 text-muted-foreground" />,
-            warning: <TriangleAlert className="h-4 w-4 text-warning" />,
-          }}
         />
+        <NotificationOverflowPill />
       </div>
     </TooltipProvider>
   );

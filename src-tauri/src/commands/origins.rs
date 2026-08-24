@@ -42,12 +42,15 @@
 
 use crate::error::{AppError, AppResult};
 use crate::keychain;
-use crate::state::AppState;
+use crate::state::{ActiveConnections, AppState, ConnectionProfile};
 use crate::tab_state::{self, Environment, LaunchState, Origin};
 use crate::transfer::{
     EnvironmentExportFile, ExportMetadata, ExportedEnvironmentBundle, ExportedProfile,
     KIND_ENVIRONMENT,
 };
+use parking_lot::RwLock;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tauri::State;
 
 /// Keychain account for an origin's passphrase.
@@ -92,6 +95,7 @@ pub fn add_origin(
         name,
         path,
         last_synced_at: None,
+        landed_secrets: HashMap::new(),
     };
 
     // Keychain first: a failure here must not leave a registered origin whose
@@ -101,13 +105,12 @@ pub fn add_origin(
         keychain::set_password(&passphrase_account(&origin.id), secret)?;
     }
 
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        guard.origins.push(origin.clone());
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(origin)
+    let created = origin.clone();
+    tab_state::mutate(&state.tab_state, |ts| {
+        ts.origins.push(origin);
+        Ok(())
+    })?;
+    Ok(created)
 }
 
 /// Rename an origin, repoint it at a different file, and/or replace its stored
@@ -134,20 +137,16 @@ pub fn update_origin(
         None => {}
     }
 
-    let (snapshot, updated) = {
-        let mut guard = state.tab_state.write();
-        let origin = guard
+    tab_state::mutate(&state.tab_state, |ts| {
+        let origin = ts
             .origins
             .iter_mut()
             .find(|o| o.id == id)
             .ok_or_else(|| AppError::InvalidInput(format!("no origin with id {id}")))?;
         origin.name = name;
         origin.path = path;
-        let updated = origin.clone();
-        (guard.clone(), updated)
-    };
-    tab_state::save_tab_state(&snapshot)?;
-    Ok(updated)
+        Ok(origin.clone())
+    })
 }
 
 /// Unregister an origin and forget its passphrase.
@@ -161,16 +160,14 @@ pub fn update_origin(
 /// frontend can offer to release those profiles into ordinary local ones.
 #[tauri::command]
 pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
-    let snapshot = {
-        let mut guard = state.tab_state.write();
-        let before = guard.origins.len();
-        guard.origins.retain(|o| o.id != id);
-        if guard.origins.len() == before {
+    tab_state::mutate(&state.tab_state, |ts| {
+        let before = ts.origins.len();
+        ts.origins.retain(|o| o.id != id);
+        if ts.origins.len() == before {
             return Err(AppError::InvalidInput(format!("no origin with id {id}")));
         }
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
+        Ok(())
+    })?;
     // Best-effort: a missing entry is the desired end state, and failing the
     // whole command over it would leave the origin registered.
     let _ = keychain::delete_password(&passphrase_account(&id));
@@ -196,10 +193,40 @@ pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
 /// beneath the user, so those land in `deferred` and apply on disconnect.
 ///
 /// Never writes to the origin's path.
+///
+/// `async fn` with the whole body on `spawn_blocking`, and that is not a
+/// stylistic choice. A synchronous `#[tauri::command]` runs on the **main
+/// thread** — the one pumping the window — and this one does two things that
+/// can hold it for a long time: it reads the export off a network share (a
+/// slow VPN is enough), and it lands every published secret into the keychain,
+/// which costs ~600 000 PBKDF2 rounds *per slot*. A shared origin publishing
+/// thirty tunnelled connections therefore froze the app for as long as tens of
+/// millions of SHA-256 rounds take, on every launch, with Windows painting the
+/// window "Not Responding" throughout. [`already_landed`] removes almost all
+/// of that work; running off the main thread is what stops whatever remains
+/// from being felt as a freeze.
 #[tauri::command]
-pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSyncReport> {
+pub async fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSyncReport> {
+    let connections = state.connections.clone();
+    let profiles = state.profiles.clone();
+    let tab_state_lock = state.tab_state.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        sync_origin_inner(&connections, &profiles, &tab_state_lock, &id)
+    })
+    .await
+    .map_err(|e| AppError::Transfer(format!("origin sync task failed: {e}")))?
+}
+
+/// The body of [`sync_origin`], off the main thread. Takes the three locks it
+/// needs rather than `AppState`, mirroring `import_environment`.
+fn sync_origin_inner(
+    connections: &Arc<RwLock<ActiveConnections>>,
+    profiles_lock: &Arc<RwLock<Vec<ConnectionProfile>>>,
+    tab_state_lock: &Arc<RwLock<tab_state::PersistedTabState>>,
+    id: &str,
+) -> AppResult<OriginSyncReport> {
     let origin = {
-        let guard = state.tab_state.read();
+        let guard = tab_state_lock.read();
         guard
             .origins
             .iter()
@@ -230,7 +257,7 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
         ))
     })?;
 
-    let passphrase = keychain::get_password(&passphrase_account(&id))?;
+    let passphrase = keychain::get_password(&passphrase_account(id))?;
     if meta_peek.meta.encrypted && passphrase.is_none() {
         return Err(AppError::InvalidInput(
             "this origin is encrypted but no passphrase is stored for it".into(),
@@ -259,16 +286,20 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
         (export.profiles, Vec::new())
     };
 
+    // Carried in and back out so the expensive keychain landing can recognise
+    // ciphertext it has already dealt with; see `already_landed`.
+    let mut landed = origin.landed_secrets.clone();
     let mut report = merge_profiles_bundle(
-        state.inner(),
-        &id,
+        connections,
+        profiles_lock,
+        id,
         passphrase.as_deref(),
         &incoming_profiles,
+        &mut landed,
     )?;
     report.synced_at = chrono::Utc::now().to_rfc3339();
 
-    let snapshot = {
-        let mut guard = state.tab_state.write();
+    tab_state::mutate(tab_state_lock, |ts| {
         // Run this whenever the file is environment-kind, even with zero
         // bundles: an origin that used to publish environments and now
         // publishes none must still get its previously-mirrored environments
@@ -277,19 +308,41 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
         // that degenerate case behave the same as an ordinary disappearance.
         if is_environment_kind {
             let (added, updated, vanished, suspicious) =
-                sync_environment_bundles(&mut guard, &id, &environment_bundles);
+                sync_environment_bundles(ts, id, &environment_bundles);
             report.environments_added = added;
             report.environments_updated = updated;
             report.environments_vanished = vanished;
             report.environments_suspicious = suspicious;
         }
-        if let Some(o) = guard.origins.iter_mut().find(|o| o.id == id) {
+        if let Some(o) = ts.origins.iter_mut().find(|o| o.id == id) {
             o.last_synced_at = Some(report.synced_at.clone());
+            o.landed_secrets = std::mem::take(&mut landed);
         }
-        guard.clone()
-    };
-    tab_state::save_tab_state(&snapshot)?;
+        Ok(())
+    })?;
     Ok(report)
+}
+
+/// Has this machine already decrypted exactly this ciphertext for
+/// `profile_id`, and does every keychain account it covers still hold a value?
+///
+/// Both halves are needed. The fingerprint alone would let a keychain entry the
+/// user (or another tool) deleted stay missing forever, since the published
+/// blob never changes; the presence check alone would never notice a rotated
+/// password, since the old entry is still there. Together they skip exactly the
+/// case that dominates every launch — an origin file that has not changed since
+/// the last sync — and nothing else.
+///
+/// `present` is injected so the decision is testable without a keychain.
+fn already_landed(
+    landed: &HashMap<String, String>,
+    profile_id: &str,
+    fingerprint: &str,
+    accounts: &[String],
+    present: impl Fn(&str) -> bool,
+) -> bool {
+    landed.get(profile_id).map(String::as_str) == Some(fingerprint)
+        && accounts.iter().all(|a| present(a))
 }
 
 /// Merge one origin's published profile list into the global pool, and land
@@ -300,19 +353,21 @@ pub fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSy
 /// pool is live, vanished detection) don't care which envelope they arrived
 /// in, only `sync_origin`'s caller does.
 fn merge_profiles_bundle(
-    state: &AppState,
+    connections: &Arc<RwLock<ActiveConnections>>,
+    profiles_lock: &Arc<RwLock<Vec<ConnectionProfile>>>,
     origin_id: &str,
     passphrase: Option<&str>,
     incoming: &[ExportedProfile],
+    landed: &mut HashMap<String, String>,
 ) -> AppResult<OriginSyncReport> {
     let incoming_ids: std::collections::HashSet<&str> =
         incoming.iter().map(|p| p.profile.id.as_str()).collect();
 
     let mut report = OriginSyncReport::default();
-    let live: Vec<String> = state.connections.read().ids();
+    let live: Vec<String> = connections.read().ids();
 
     {
-        let mut profiles = state.profiles.write();
+        let mut profiles = profiles_lock.write();
 
         // Local profiles this origin owns, before the merge — the denominator for
         // the suspicion check.
@@ -363,32 +418,39 @@ fn merge_profiles_bundle(
         crate::store::save_profiles(&profiles)?;
     }
 
-    // Secrets land in this user's own keychain, decrypted with their own stored
-    // passphrase. Best-effort per profile: a secret that fails to decrypt leaves
-    // that connection needing a password rather than failing the whole sync.
+    // Secrets land in this user's own keychain, decrypted with the passphrase
+    // stored for this origin. `BestEffort` because this runs unattended (launch,
+    // the 4-hourly poll, "Sync now"): one undecryptable profile must leave that
+    // connection needing a password rather than aborting the whole pass.
+    //
+    // The decryption itself lives in `transfer::land_secrets` — see its doc for
+    // why "no passphrase" can never mean "store the blob as-is".
     for entry in incoming {
         let Some(secrets) = &entry.secrets else {
             continue;
         };
-        if let Some(blob) = &secrets.db_password {
-            let plain = match passphrase {
-                Some(pass) => crate::transfer::decrypt_secret(blob, pass).ok(),
-                None => Some(blob.clone()),
-            };
-            if let Some(p) = plain {
-                let _ = keychain::set_password(&entry.profile.keyring_account(), &p);
-            }
+        let fingerprint = crate::transfer::secrets_fingerprint(secrets);
+        let accounts: Vec<String> = crate::transfer::secret_slots(&entry.profile, secrets)
+            .into_iter()
+            .map(|(account, _)| account)
+            .collect();
+        if already_landed(landed, &entry.profile.id, &fingerprint, &accounts, |a| {
+            keychain::get_password(a).ok().flatten().is_some()
+        }) {
+            continue;
         }
-        if let (Some(blob), Some(account)) =
-            (&secrets.ssh_secret, entry.profile.ssh_keyring_account())
+        // Only remember the fingerprint once something was actually stored: a
+        // failed decrypt (wrong or missing passphrase) must be retried on the
+        // next sync, not cached as done.
+        if crate::transfer::land_secrets(
+            &entry.profile,
+            secrets,
+            passphrase,
+            crate::transfer::LandMode::BestEffort,
+        )
+        .unwrap_or(false)
         {
-            let plain = match passphrase {
-                Some(pass) => crate::transfer::decrypt_secret(blob, pass).ok(),
-                None => Some(blob.clone()),
-            };
-            if let Some(p) = plain {
-                let _ = keychain::set_password(&account, &p);
-            }
+            landed.insert(entry.profile.id.clone(), fingerprint);
         }
     }
 
@@ -748,5 +810,82 @@ mod tests {
         // origin-2's own first sync must not flag origin-1's environment as
         // vanished — vanished detection is scoped per origin.
         assert!(vanished.is_empty());
+    }
+
+    // --- the launch-freeze guard --------------------------------------------
+    //
+    // Landing a secret costs ~600 000 PBKDF2 rounds per slot. A shared origin
+    // publishing thirty tunnelled connections re-did all of them on every
+    // sync, on the main thread, which is what made every launch a multi-second
+    // "Not Responding". These pin the two halves of the skip that stops it.
+    // All keychain-free: `already_landed` takes its presence check as an
+    // argument precisely so the decision can be tested without one.
+
+    fn fp_map(entries: &[(&str, &str)]) -> HashMap<String, String> {
+        entries
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn an_unchanged_secret_whose_accounts_are_present_is_skipped() {
+        let landed = fp_map(&[("p1", "abc")]);
+        assert!(already_landed(
+            &landed,
+            "p1",
+            "abc",
+            &["p1::user".to_string()],
+            |_| true
+        ));
+    }
+
+    #[test]
+    fn a_rotated_secret_is_landed_again_even_though_the_account_exists() {
+        // The keychain entry is still there, so the presence check alone would
+        // wrongly skip and the new password would never arrive.
+        let landed = fp_map(&[("p1", "old")]);
+        assert!(!already_landed(
+            &landed,
+            "p1",
+            "new",
+            &["p1::user".to_string()],
+            |_| true
+        ));
+    }
+
+    #[test]
+    fn a_deleted_keychain_entry_is_relanded_even_though_the_blob_is_unchanged() {
+        // The published blob never changes, so the fingerprint alone would
+        // wrongly skip and the connection would stay without a password
+        // forever. This is why the check has two halves.
+        let landed = fp_map(&[("p1", "abc")]);
+        assert!(!already_landed(
+            &landed,
+            "p1",
+            "abc",
+            &["p1::user".to_string()],
+            |_| false
+        ));
+    }
+
+    #[test]
+    fn one_missing_account_of_two_is_enough_to_reland() {
+        // A tunnelled profile has a DB slot and an SSH slot; either being gone
+        // must redo the pair rather than leave half a credential behind.
+        let landed = fp_map(&[("p1", "abc")]);
+        let accounts = ["p1::user".to_string(), "p1::ssh".to_string()];
+        assert!(!already_landed(&landed, "p1", "abc", &accounts, |a| a != "p1::ssh"));
+    }
+
+    #[test]
+    fn a_profile_never_landed_here_is_never_skipped() {
+        assert!(!already_landed(
+            &HashMap::new(),
+            "p1",
+            "abc",
+            &["p1::user".to_string()],
+            |_| true
+        ));
     }
 }

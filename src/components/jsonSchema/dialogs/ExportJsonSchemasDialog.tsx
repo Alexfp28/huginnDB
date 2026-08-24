@@ -10,15 +10,17 @@
  * frontend calls the command and gets back the path that was written.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import { api } from "@/lib/tauri";
 import { useJsonSchemas } from "@/stores/jsonSchemas";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { isExportCancelled } from "@/lib/db/driver";
+import { useMultiSelect } from "@/lib/useMultiSelect";
 import {
   Dialog,
   DialogContent,
@@ -38,37 +40,34 @@ interface Props {
 export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
   const { t } = useTranslation();
   const schemas = useJsonSchemas((s) => s.schemas);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const allIds = useMemo(() => schemas.map((s) => s.id), [schemas]);
+  const { selected, allSelected, toggle, toggleAll, reseed } = useMultiSelect(
+    allIds,
+    preselect,
+  );
   const [includeBindings, setIncludeBindings] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  // Re-seed only when the dialog opens, so a click on a checkbox is not undone by
-  // the next render (same deliberate dependency list as
+  // Re-seed only when the dialog opens, so a click on a checkbox is not undone
+  // by the next render (same deliberate dependency list as
   // `ExportEnvironmentDialog`).
   useEffect(() => {
     if (!open) return;
-    setSelected(new Set(preselect ?? schemas.map((s) => s.id)));
+    reseed();
     setIncludeBindings(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-
-  function toggle(id: string) {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
-  }
 
   async function run() {
     setBusy(true);
     try {
       const path = await api.exportJsonSchemas([...selected], includeBindings);
-      toast.success(t("transfer.export.success", { path }));
+      notify.file(t("notifications.fileSaved.jsonSchemas"), { path });
       onClose();
     } catch (e) {
       // "export cancelled" is the user closing the native dialog, not a failure.
       const message = String(e);
-      if (!message.includes("export cancelled")) toast.error(message);
+      if (!isExportCancelled(message)) notify.error(message);
     } finally {
       setBusy(false);
     }
@@ -92,15 +91,9 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
             <Button
               size="sm"
               variant="ghost"
-              onClick={() =>
-                setSelected(
-                  selected.size === schemas.length
-                    ? new Set()
-                    : new Set(schemas.map((s) => s.id)),
-                )
-              }
+              onClick={toggleAll}
             >
-              {selected.size === schemas.length
+              {allSelected
                 ? t("transfer.export.deselectAll")
                 : t("transfer.export.selectAll")}
             </Button>

@@ -57,6 +57,7 @@ import { useEnvironmentDeleteConfirm } from "@/stores/dialogs/environmentDeleteC
 import {
   environmentLabel,
   useEnvironments,
+  useOrderedEnvironments,
 } from "@/stores/session/environments";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import type { Environment } from "@/types";
@@ -75,7 +76,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isMainWindow } from "@/lib/window";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -88,7 +89,6 @@ interface EnvironmentRailProps {
 
 export function EnvironmentRail({ footer }: EnvironmentRailProps) {
   const { t } = useTranslation();
-  const environments = useEnvironments((s) => s.environments);
   const activeId = useEnvironments((s) => s.activeId);
   const switching = useEnvironments((s) => s.switching);
   const switchTo = useEnvironments((s) => s.switchTo);
@@ -102,10 +102,7 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
   const toggleSchema = useSessionPanelLayout((s) => s.toggleSchema);
   const openSchema = useSessionPanelLayout((s) => s.openSchema);
 
-  const ordered = useMemo(
-    () => [...environments].sort((a, b) => a.order - b.order),
-    [environments],
-  );
+  const ordered = useOrderedEnvironments();
   const orderedIds = useMemo(() => ordered.map((e) => e.id), [ordered]);
 
   const defaultName = t("environments.defaultName");
@@ -118,7 +115,7 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
   // Only the main window may create/rename/delete/reorder — those write
   // `tab_state.json` (gotcha #8). A secondary window still gets the rail
   // itself, in a read-only, non-draggable form (see the render below).
-  const isMain = getCurrentWindow().label === "main";
+  const isMain = isMainWindow();
 
   function handleClick(envId: string) {
     if (envId === activeId) {

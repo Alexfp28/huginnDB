@@ -17,14 +17,6 @@ use sqlx::Row;
 use std::collections::BTreeMap;
 use tauri::State;
 
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 // ---------------------------------------------------------------------------
 // Introspection
 // ---------------------------------------------------------------------------
@@ -39,13 +31,7 @@ pub async fn get_table_structure(
     schema: Option<String>,
     table: String,
 ) -> AppResult<TableStructure> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::error::with_timeout(
         "get_table_structure",
         get_table_structure_inner(state.inner(), &connection_id, schema, table),
@@ -61,7 +47,7 @@ pub async fn get_table_structure_inner(
     schema: Option<String>,
     table: String,
 ) -> AppResult<TableStructure> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     match pool {
         DbPool::Postgres(p) => pg_structure(&p, schema, table).await,
         DbPool::Mysql(p) => mysql_structure(&p, schema, table).await,
@@ -75,6 +61,57 @@ pub async fn get_table_structure_inner(
             crate::db::mssql::schema::table_structure(&p, schema.as_deref(), &table).await
         }
     }
+}
+
+/// A relation's structure, plus its view body when it turns out to be a view.
+///
+/// `#[serde(flatten)]` keeps every key `get_table_structure_inner` already
+/// emitted exactly where it was and only adds `view`, so this is a superset of
+/// the old shape rather than a new one. Safe here because the struct is
+/// serialise-only: gotcha #14's "serde silently drops what the Rust struct does
+/// not declare" is about *deserialisation*, which never happens to this type.
+///
+/// `TableStructure` itself is deliberately not widened. It is the structure
+/// editor's round-trip DTO — mirrored in `src/types.ts` and fed straight back
+/// into `apply_structure_change` as `desired` — so a field added for a different
+/// feature's benefit would ride into that payload, which is the failure
+/// gotcha #39 records for `WorkingColumn`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationDescription {
+    #[serde(flatten)]
+    pub structure: TableStructure,
+    /// Present only when the relation is a view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub view: Option<crate::commands::view::ViewBody>,
+}
+
+/// Describe a relation: its structure, and — when it is a view — what the view
+/// actually *is*.
+///
+/// One call rather than two so a caller pays a single round trip over the MCP
+/// bridge. It exists because `describe_table` was already view-aware for the
+/// wrong half: a view has columns, and it reported them, but it had no notion of
+/// a body, so the only way to read a view's definition over MCP was to
+/// hand-write a catalog query per engine — and on MongoDB, whose `mongosh`
+/// parser has no DDL vocabulary at all, there was no way whatsoever.
+///
+/// The extra work for a plain table is one indexed catalog lookup that returns
+/// no row. That is the price of not having to know a relation's kind before
+/// asking about it, and it is why the view read returns `Option` rather than
+/// `NotFound`.
+pub async fn describe_relation_inner(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<RelationDescription> {
+    let structure =
+        get_table_structure_inner(state, connection_id, schema.clone(), table.clone()).await?;
+    let view =
+        crate::commands::view::get_any_view_definition_inner(state, connection_id, schema, &table)
+            .await?;
+    Ok(RelationDescription { structure, view })
 }
 
 pub(crate) async fn pg_structure(
@@ -347,7 +384,7 @@ fn rule_to_action(rule: Option<String>) -> Option<String> {
 }
 
 async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<TableStructure> {
-    let q = format!("PRAGMA table_info(\"{}\")", table.replace('"', "\"\""));
+    let q = format!("PRAGMA table_info({})", Dialect::Sqlite.quote_ident(&table));
     let rows = sqlx::query(&q).fetch_all(p).await?;
     // Detect AUTOINCREMENT from the stored CREATE statement (PRAGMA doesn't
     // expose it).
@@ -386,7 +423,7 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
         .collect();
 
     // Indexes (skip auto-created PK/unique-from-constraint where origin != 'c').
-    let il = format!("PRAGMA index_list(\"{}\")", table.replace('"', "\"\""));
+    let il = format!("PRAGMA index_list({})", Dialect::Sqlite.quote_ident(&table));
     let idx_rows = sqlx::query(&il).fetch_all(p).await?;
     let mut indexes = Vec::new();
     for r in idx_rows {
@@ -396,7 +433,7 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
         }
         let name: String = r.get("name");
         let unique: i64 = r.get("unique");
-        let ii = format!("PRAGMA index_info(\"{}\")", name.replace('"', "\"\""));
+        let ii = format!("PRAGMA index_info({})", Dialect::Sqlite.quote_ident(&name));
         let cols_rows = sqlx::query(&ii).fetch_all(p).await?;
         let cols: Vec<String> = cols_rows.into_iter().map(|c| c.get("name")).collect();
         indexes.push(IndexDef {
@@ -408,8 +445,8 @@ async fn sqlite_structure(p: &sqlx::SqlitePool, table: String) -> AppResult<Tabl
 
     // FKs (composite-capable), grouped by id.
     let fl = format!(
-        "PRAGMA foreign_key_list(\"{}\")",
-        table.replace('"', "\"\"")
+        "PRAGMA foreign_key_list({})",
+        Dialect::Sqlite.quote_ident(&table)
     );
     let fk_rows = sqlx::query(&fl).fetch_all(p).await?;
     let mut fk_groups: BTreeMap<i64, ForeignKeyDef> = BTreeMap::new();
@@ -474,14 +511,8 @@ pub async fn preview_structure_change(
     state: State<'_, AppState>,
     args: StructureChangeArgs,
 ) -> AppResult<StructurePreview> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
-    let pool = pool_for(state.inner(), &args.connection_id)?;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    let pool = state.pool_for(&args.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "structure editing is not supported on MongoDB in this version".into(),
@@ -504,25 +535,27 @@ pub async fn apply_structure_change(
     state: State<'_, AppState>,
     args: StructureChangeArgs,
 ) -> AppResult<()> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &args.connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
     apply_structure_change_inner(state.inner(), args).await
 }
 
-/// Tauri-independent core of [`apply_structure_change`], shared with the
-/// headless MCP `apply_structure_change` write tool (gated to the `full`
-/// per-connection write policy). Takes a borrowed [`AppState`] instead of a
-/// Tauri `State`; emits no Console log (the GUI command never did either).
+/// Tauri-independent core of [`apply_structure_change`]. Takes a borrowed
+/// [`AppState`] instead of a Tauri `State`; emits no Console log (the GUI
+/// command never did either).
+///
+/// It has no second caller today. It used to claim to be shared with a headless
+/// MCP `apply_structure_change` write tool, which has never existed: a
+/// structure-editor tool was deliberately deferred (see
+/// `docs/MCP_CONNECTOR_ROADMAP.md`) because making a model synthesise a whole
+/// `TableStructure` is worse than having it emit `ALTER TABLE` through
+/// `run_query`, and table DDL still reaches the database only that way. Kept in
+/// this shape because it is the right shape for the bridge if that judgement is
+/// ever revisited.
 pub(crate) async fn apply_structure_change_inner(
     state: &AppState,
     args: StructureChangeArgs,
 ) -> AppResult<()> {
-    let pool = pool_for(state, &args.connection_id)?;
+    let pool = state.pool_for(&args.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "structure editing is not supported on MongoDB in this version".into(),
@@ -531,36 +564,8 @@ pub(crate) async fn apply_structure_change_inner(
     let dialect = Dialect::try_of(&pool)?;
     let statements = build_ddl(dialect, args.original.as_ref(), &args.desired)?;
 
-    match &pool {
-        DbPool::Postgres(p) => {
-            // PG DDL is transactional — wrap the lot.
-            let mut tx = p.begin().await?;
-            for stmt in &statements {
-                sqlx::query(stmt).execute(&mut *tx).await?;
-            }
-            tx.commit().await?;
-        }
-        DbPool::Mysql(p) => {
-            // MySQL DDL is non-transactional (implicit commits). Run in order;
-            // a mid-sequence failure may leave partial changes — surfaced to
-            // the user by the error and the editor re-reading the structure.
-            for stmt in &statements {
-                sqlx::query(stmt).execute(p).await?;
-            }
-        }
-        DbPool::Sqlite(p) => {
-            // The SQLite rebuild emits its own BEGIN/COMMIT semantics via the
-            // statement list, and PRAGMA foreign_keys must run outside a
-            // transaction — so we execute each statement directly rather than
-            // wrapping in our own tx.
-            for stmt in &statements {
-                sqlx::query(stmt).execute(p).await?;
-            }
-        }
-        // Rejected earlier by `build_ddl` (see `db::ddl::reject_unsupported`),
-        // so the statement list above was never produced for SQL Server.
-        DbPool::MsSql(_) => unreachable!("sql server rejected by build_ddl"),
-        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
-    }
+    // Per-engine transaction policy lives in `db::exec::execute_all` — see its
+    // doc for why Postgres wraps, MySQL cannot, and SQLite must not.
+    crate::db::exec::execute_all(&pool, &statements).await?;
     Ok(())
 }

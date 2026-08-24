@@ -19,79 +19,25 @@
  *   keeps acting on the current page only.
  */
 
-import {
-  Fragment,
-  memo,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import {
   flexRender,
   getCoreRowModel,
   useReactTable,
-  type ColumnDef,
-  type Row,
-  type Updater,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { tableKey } from "@/stores/session/schema";
-import {
-  AlertTriangle,
-  ArrowDown,
-  ArrowRightCircle,
-  ArrowUp,
-  ArrowUpDown,
-  ChevronDown,
-  ClipboardCopy,
-  Copy,
-  CopyPlus,
-  Eraser,
-  Filter,
-  FilterX,
-  Inbox,
-  KeyRound,
-  Loader2,
-  Maximize2,
-  MoreHorizontal,
-  PanelRight,
-  Plus,
-  Search,
-  Trash2,
-  UnfoldHorizontal,
-  X,
-} from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown";
+import { Inbox, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/EmptyState";
-import {
-  defaultColumnWidth,
-  formatBitValue,
-  isBitType,
-  isNumericType,
-} from "@/lib/grid/columnKinds";
-import {
-  computeColumnFitWidth,
-  resolveCanvasFont,
-} from "@/lib/grid/autoFitColumn";
-import { useToolbarDensity } from "@/lib/grid/toolbarDensity";
-import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
+import { isBitType, isNumericType } from "@/lib/grid/columnKinds";
+import { computeAutoFitWidths } from "@/lib/grid/autoFitColumn";
+import { useGridPrefs } from "@/lib/grid/useGridPrefs";
 import {
   DocumentListView,
   type FieldSave,
 } from "@/components/grid/DocumentListView";
-import { formatComboForDisplay, getBinding, matchesBinding } from "@/lib/keybindings";
 import type {
   CellValue,
   ColumnFilter,
@@ -102,65 +48,37 @@ import type {
   QueryResult,
   SortSpec,
 } from "@/types";
-import { BitInput } from "@/components/grid/BitInput";
 import { CellEditor } from "@/components/grid/dialogs/CellEditor";
-import { CellInput } from "@/components/grid/CellInput";
 import { CellPreview } from "@/components/grid/CellPreview";
+import { DraftRowView } from "@/components/grid/DraftRowView";
 import {
-  DraftCellControl,
-  firstEditableColumn,
-} from "@/components/grid/DraftCellControl";
-import { FkCombobox } from "@/components/ui/fk-combobox";
+  GridToolbar,
+  type GridToolbarItem,
+} from "@/components/grid/GridToolbar";
 import {
-  ContextMenu,
-  ContextMenuAction,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+  GridRow,
+  type GridRowCallbacks,
+} from "@/components/grid/GridRow";
+import { copyToClipboard } from "@/lib/grid/clipboard";
+import { toBulk } from "@/lib/grid/copyFormats";
 import {
-  toJson as rowToJson,
-  toSqlInsert as rowToSqlInsert,
-  toSqlUpdate as rowToSqlUpdate,
-} from "@/lib/grid/copyFormats";
+  formatValue,
+  rawCellText,
+  truncateForDisplay,
+} from "@/lib/grid/formatValue";
 import {
-  useCellEditor,
-  type CellBindingContext,
-} from "@/stores/grid/cellEditor";
+  MAX_AUTOFIT_WIDTH,
+  MIN_COLUMN_WIDTH,
+  useColumnSizing,
+} from "@/lib/grid/useColumnSizing";
+import { useCtrlWheelZoom } from "@/lib/grid/useCtrlWheelZoom";
+import { useGridColumns } from "@/lib/grid/useGridColumns";
+import { useGridKeyboardNav } from "@/lib/grid/useGridKeyboardNav";
+import { useGridSelection } from "@/lib/grid/useGridSelection";
+import { useCellEditing } from "@/lib/grid/useCellEditing";
 import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
-import { useSessionPanelLayout, isSideEditorOpen } from "@/stores/session/panelLayout";
 import type { Driver } from "@/types";
 
-/**
- * One toolbar action, in BOTH of its presentations.
- *
- * The toolbar is responsive: as the grid's pane narrows, actions move out of
- * the bar and into an overflow menu (see `useToolbarDensity`). A plain
- * `ReactNode` can't make that trip — a `<Button>` dropped inside
- * `DropdownMenuContent` looks wrong and loses the menu's keyboard semantics,
- * and a bar control that is itself a dropdown (Export data) has to become a
- * submenu rather than a nested menu. So each action declares both forms and
- * the grid decides which one to mount; nothing here is derived from the other,
- * because the two really are different components (an icon button with a
- * tooltip vs. a labelled row with a check state).
- *
- * `id` is the React key and exists only for that.
- */
-export interface GridToolbarItem {
-  id: string;
-  /** Rendered inline in the toolbar row. */
-  bar: ReactNode;
-  /**
-   * Rendered inside the overflow menu — one or more `DropdownMenuItem`s (or a
-   * `DropdownMenuSub`). Must not be a bare `<Button>`.
-   */
-  menu: ReactNode;
-}
 
 interface Props {
   result: QueryResult;
@@ -381,27 +299,14 @@ interface Props {
   viewMode?: "table" | "list";
 }
 
-/** Render a cell value as a plain string for display and search. */
-function formatValue(v: CellValue): string {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
 /**
- * Quote a value into a SQL literal for "copy with column name". Strings
- * use single quotes with doubling for escapes; numbers and booleans are
- * inlined as-is; null becomes `NULL`. Best-effort — purely for clipboard
- * convenience, never executed.
+ * Re-exported so the toolbar's own contract keeps its historical import path:
+ * `TableDataTab` builds its three slot arrays against it, and the type now
+ * lives with the bar that consumes it.
  */
-function sqlLiteral(v: CellValue): string {
-  if (v === null || v === undefined) return "NULL";
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  const s = typeof v === "object" ? JSON.stringify(v) : String(v);
-  return `'${s.replace(/'/g, "''")}'`;
-}
+export type { GridToolbarItem };
 
-interface SelectedCell {
+export interface SelectedCell {
   /**
    * Full row values array. We carry the row payload (not its display
    * index) so saves stay correct when the visible order diverges from
@@ -413,674 +318,6 @@ interface SelectedCell {
   column: ColumnMeta;
   value: CellValue;
 }
-
-const FILTER_LABEL: Record<ColumnFilter["op"], string> = {
-  eq: "=",
-  ne: "<>",
-  contains: "⊇",
-  not_contains: "⊉",
-  starts_with: "^…",
-  ends_with: "…$",
-  gt: ">",
-  gte: "≥",
-  lt: "<",
-  lte: "≤",
-  between: "↔",
-  in: "IN",
-  not_in: "NOT IN",
-  is_null: "IS NULL",
-  is_not_null: "IS NOT NULL",
-};
-
-/** Stable, ref-delivered slice of `DataGrid`'s own local helper functions —
- *  see the long comment on `GridRow` below for why these can't just be
- *  passed as ordinary props. */
-interface GridRowCallbacks {
-  openCellEdit: (rowValues: CellValue[], column: ColumnMeta) => void;
-  openSidePanelEditor: (
-    rowValues: CellValue[],
-    column: ColumnMeta,
-    value: string,
-  ) => void;
-  copyToClipboard: (text: string) => void;
-  bulkCopy: (rows: CellValue[][], fmt: "json" | "insert" | "update") => string;
-  selectedColumnValues: (colIndex: number) => {
-    values: CellValue[];
-    distinct: number;
-  };
-  applyRowSelectionClick: (rowKey: string | null, e: React.MouseEvent) => void;
-  toggleRowKey: (key: string) => void;
-}
-
-/** Shape of the inline single-cell editor state, narrowed to "does this
- *  belong to THIS row" before it reaches `GridRow` — see below. */
-interface InlineEditState {
-  rowValues: CellValue[];
-  column: ColumnMeta;
-  value: string | null;
-  original: string | null;
-}
-
-interface GridRowProps {
-  row: Row<CellValue[]>;
-  rowIndex: number;
-  isSelected: boolean;
-  isMultiSelected: boolean;
-  rowKey: string | null;
-  /** This row's column index for the keyboard-active cell, or `null` when
-   *  the active cell belongs to a different row entirely. */
-  activeColIdx: number | null;
-  /** The inline-edit state, but only when it belongs to this row's
-   *  `rowValues` — `null` otherwise. Narrowing this in the parent (rather
-   *  than passing the raw `inlineEdit` state) is what lets every row EXCEPT
-   *  the one being edited see an unchanged (`null`) prop. */
-  inlineEditHere: InlineEditState | null;
-  selectionEnabled: boolean;
-  hasSelection: boolean;
-  selectedRows: CellValue[][];
-  zebraStripes: boolean;
-  cellStyle: React.CSSProperties;
-  resultColumns: ColumnMeta[];
-  columnIndexByName: Map<string, number>;
-  columnInfoByName: Map<string, ColumnInfo>;
-  driver?: Driver;
-  tableName?: string;
-  tableSchema?: string;
-  pkColumnNames?: string[];
-  editable?: boolean;
-  onCellSave?: (
-    rowValues: CellValue[],
-    columnName: string,
-    value: string | null,
-  ) => Promise<void>;
-  onNavigateFk?: (columnName: string, value: CellValue) => void;
-  onAddFilter?: (f: ColumnFilter) => void;
-  onInsertRow?: () => void;
-  onDuplicateRow?: (rowValues: CellValue[]) => void;
-  onDeleteRow?: (rowValues: CellValue[]) => void;
-  onBulkDelete?: (rows: CellValue[][]) => void;
-  scrollRef: React.RefObject<HTMLDivElement | null>;
-  setSelectedRowIndex: (i: number) => void;
-  setActiveCell: (c: { r: number; c: number }) => void;
-  setSelectedCell: (c: SelectedCell | null) => void;
-  callbacksRef: React.MutableRefObject<GridRowCallbacks>;
-}
-
-/**
- * One `<tr>` of the data grid, including its per-cell context menus.
- *
- * Split out of `DataGrid`'s render body and wrapped in `React.memo` because
- * every interactive grid state (`selectedRowIndex`, `activeCell`,
- * `selectedCell`, `inlineEdit`, `fkEditCell`) used to live inline in
- * `DataGrid`, so a single click re-ran the render function for the WHOLE
- * table — every visible row × every column, each cell wrapping its own
- * `<ContextMenu>` — regardless of how many rows the click actually affected.
- * The cost scales with total visible cells, which is why clicking through a
- * 15-column table felt noticeably slower than a 5-column one at the same row
- * count, even though the click only ever changes one or two rows' worth of
- * state. `GridRow` receives only state that's already been narrowed to
- * "does this concern THIS row" by the caller (below), so React's shallow
- * prop comparison lets it bail out for every row except the (at most two)
- * whose selection / active-cell / inline-edit status actually changed.
- *
- * `callbacksRef` mirrors the `interactiveRef` pattern the `columns` cell
- * definitions already use above: `openCellEdit`, `copyToClipboard`, and the
- * other locally-declared helpers are plain function declarations recreated
- * on every `DataGrid` render — including the very clicks this component
- * exists to make cheap — so passing them as ordinary props would hand every
- * row a "changed" prop every time and defeat the memoization outright.
- * Reading them through a ref that's refreshed each render (not compared by
- * `memo`) keeps `GridRow` seeing the latest closures without their identity
- * forcing a re-render. Everything else below (column metadata, `onCellSave`
- * and friends) comes from the parent tab and — verified against `columns`'s
- * own `useMemo` deps above — stays referentially stable across a plain grid
- * click, so it's passed straight through as ordinary props.
- */
-const GridRow = memo(function GridRow({
-  row,
-  rowIndex: i,
-  isSelected,
-  isMultiSelected,
-  rowKey,
-  activeColIdx,
-  inlineEditHere,
-  selectionEnabled,
-  hasSelection,
-  selectedRows,
-  zebraStripes,
-  cellStyle,
-  resultColumns,
-  columnIndexByName,
-  columnInfoByName,
-  driver,
-  tableName,
-  tableSchema,
-  pkColumnNames,
-  editable,
-  onCellSave,
-  onNavigateFk,
-  onAddFilter,
-  onInsertRow,
-  onDuplicateRow,
-  onDeleteRow,
-  onBulkDelete,
-  scrollRef,
-  setSelectedRowIndex,
-  setActiveCell,
-  setSelectedCell,
-  callbacksRef,
-}: GridRowProps) {
-  const { t } = useTranslation();
-  const rowValues = row.original as CellValue[];
-  return (
-    <tr
-      className={cn(
-        "group/row",
-        // A multi-selected row has to be unmistakable next to the
-        // single-row cursor highlight. These used to be `bg-brand/20`
-        // against `bg-brand/10` — a delta most panels render as
-        // effectively identical, so Ctrl-click toggling a single row
-        // looked like it had done nothing (part of #113: the
-        // selection was correct, only invisible). The stronger tint
-        // pairs with the inset accent bar on the gutter cell below.
-        isMultiSelected
-          ? "bg-brand/30"
-          : isSelected
-            ? "bg-brand/10"
-            : zebraStripes && i % 2 === 1
-              ? "bg-muted/30 hover:bg-accent/40"
-              : "hover:bg-accent/40",
-      )}
-      onClick={(e) => {
-        e.stopPropagation();
-        setSelectedRowIndex(i);
-        callbacksRef.current.applyRowSelectionClick(rowKey, e);
-      }}
-    >
-      <td
-        className={cn(
-          "border-b border-border/50 border-r border-r-border/70 px-2 tabular-nums text-muted-foreground",
-          // Inset accent bar marking a selected row's left edge. It
-          // lives on the gutter cell rather than the `<tr>` because
-          // box-shadow on a table-row box is unreliable across
-          // engines, while a `<td>` is an ordinary box.
-          isMultiSelected &&
-            "shadow-[inset_3px_0_0_0_hsl(var(--brand))]",
-        )}
-        style={{ ...cellStyle, width: 40 }}
-      >
-        {selectionEnabled && rowKey !== null ? (
-          <>
-            <input
-              type="checkbox"
-              checked={isMultiSelected}
-              onChange={() => callbacksRef.current.toggleRowKey(rowKey)}
-              // Stop the row's onClick (a plain click there clears
-              // the multi-selection) from firing on checkbox click.
-              onClick={(e) => e.stopPropagation()}
-              aria-label={t("dataGrid.selectRow")}
-              className={cn(
-                "accent-brand cursor-pointer align-middle",
-                // Every checkbox stays visible while *any* row is
-                // selected, not just the selected ones: once the
-                // user is in a selecting mood the affordance for
-                // extending the set shouldn't require hunting for it
-                // on hover (#113 — the gesture was undiscoverable).
-                isMultiSelected || hasSelection
-                  ? "inline-block"
-                  : "hidden group-hover/row:inline-block",
-              )}
-            />
-            <span
-              className={
-                isMultiSelected || hasSelection
-                  ? "hidden"
-                  : "group-hover/row:hidden"
-              }
-            >
-              {i + 1}
-            </span>
-          </>
-        ) : (
-          i + 1
-        )}
-      </td>
-      {row.getVisibleCells().map((cell, cIdx) => {
-        // Resolve column meta + value by *name*, not by the
-        // position of the cell in `getVisibleCells()`. The
-        // grid currently keeps both orders in sync, but a
-        // single column hide / reorder would otherwise
-        // misalign `resultColumns[colIdx]` with the actual
-        // cell — see `columnIndexByName` above.
-        const colName = cell.column.id;
-        const backendIdx = columnIndexByName.get(colName) ?? -1;
-        if (backendIdx < 0) return null;
-        const meta = resultColumns[backendIdx];
-        const value = rowValues[backendIdx];
-        const colIdx = backendIdx;
-        // FK-navigable iff the parent wired `onNavigateFk` and this
-        // column carries a single-column FK reference. Drives the
-        // Ctrl/Cmd+click accelerator, the context-menu entry, and a
-        // subtle hover affordance.
-        const isFkCell =
-          !!onNavigateFk &&
-          !!columnInfoByName.get(meta.name)?.referenced_table;
-        const isActiveCell = activeColIdx === cIdx;
-        return (
-          <ContextMenu key={cell.id}>
-            <ContextMenuTrigger asChild>
-              <td
-                data-cell={`${i}-${cIdx}`}
-                className={cn(
-                  "cursor-pointer border-b border-border/50 border-r border-r-border/70 px-2",
-                  isFkCell &&
-                    "hover:underline hover:decoration-dotted hover:decoration-fk/70 hover:underline-offset-2",
-                  // Inset ring marks the keyboard-active cell.
-                  // `relative z-10` lifts it above neighbours so the
-                  // ring isn't clipped by adjacent cell borders. No
-                  // transition — the ring must track keys instantly.
-                  isActiveCell &&
-                    "relative z-10 ring-2 ring-inset ring-brand",
-                )}
-                title={isFkCell ? t("dataGrid.fkNavHint") : undefined}
-                style={{ ...cellStyle, width: cell.column.getSize() }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // While this cell hosts its own inline editor
-                  // (notably the BIT `<select>`), don't steal focus
-                  // back to the scroll container or recompute the
-                  // active/selected cell — focusing the container
-                  // collapses a just-opened native dropdown, which
-                  // made the boolean BIT picker unusable (issue #44).
-                  // Let the inline editor own clicks inside itself.
-                  if (inlineEditHere?.column.name === meta.name) {
-                    return;
-                  }
-                  // Second click of a double-click, detected via the
-                  // native OS click count rather than the `dblclick`
-                  // event. Some Linux WebKitGTK builds never fire
-                  // `dblclick` when the target text has
-                  // `user-select: none` (this table sets it
-                  // globally — see the `select-none` note above),
-                  // which made double-clicking directly on a cell's
-                  // text silently fail to enter edit mode while
-                  // double-clicking the cell's padding (no text
-                  // under the pointer) worked fine. `click`'s
-                  // `detail` isn't affected by that quirk, so route
-                  // through the same path as `onDoubleClick` below
-                  // instead of falling into the single-click
-                  // selection logic.
-                  if (e.detail >= 2) {
-                    callbacksRef.current.openCellEdit(rowValues, meta);
-                    return;
-                  }
-                  // Focus the container so keyboard nav continues
-                  // from here, and mark this cell active.
-                  scrollRef.current?.focus({ preventScroll: true });
-                  setActiveCell({ r: i, c: cIdx });
-                  // Alt+click on a single-column FK cell is the "go
-                  // to referenced row" accelerator. It used to be
-                  // Ctrl/Cmd+click, which collided head-on with the
-                  // OS-style multi-selection toggle on the very same
-                  // chord: this branch returned early, so on a table
-                  // whose visible columns are mostly FKs Ctrl+click
-                  // could never select a row — the reported "Shift
-                  // works, Ctrl doesn't" of #113. Selection is the
-                  // more fundamental gesture and it has to behave
-                  // identically on every column, so FK nav moved to
-                  // a chord of its own. The context-menu entry ("go
-                  // to referenced row") is unchanged.
-                  if (
-                    e.altKey &&
-                    !e.shiftKey &&
-                    onNavigateFk &&
-                    columnInfoByName.get(meta.name)
-                      ?.referenced_table &&
-                    value !== null &&
-                    value !== undefined
-                  ) {
-                    onNavigateFk(meta.name, value);
-                    return;
-                  }
-                  setSelectedRowIndex(i);
-                  // Ctrl/Cmd/Shift-click on a cell drives the
-                  // OS-style multi-selection; a plain click also
-                  // opens the cell preview below.
-                  callbacksRef.current.applyRowSelectionClick(rowKey, e);
-                  if (
-                    !e.ctrlKey &&
-                    !e.metaKey &&
-                    !e.shiftKey &&
-                    !e.altKey
-                  ) {
-                    setSelectedCell({
-                      rowValues,
-                      colIndex: colIdx,
-                      column: meta,
-                      value,
-                    });
-                    // If the docked side editor is open, follow
-                    // the clicked cell (JetBrains value-viewer
-                    // behaviour). The panel guards unsaved edits
-                    // before swapping its buffer.
-                    if (isSideEditorOpen()) {
-                      callbacksRef.current.openSidePanelEditor(
-                        rowValues,
-                        meta,
-                        formatValue(value),
-                      );
-                    }
-                  }
-                }}
-                onContextMenu={() => {
-                  setSelectedRowIndex(i);
-                  setSelectedCell({
-                    rowValues,
-                    colIndex: colIdx,
-                    column: meta,
-                    value,
-                  });
-                }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  callbacksRef.current.openCellEdit(rowValues, meta);
-                }}
-              >
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </td>
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-              {/* Bulk variant: shown when more than one row is
-                  selected and the right-clicked row is part of
-                  that selection. Replaces the per-cell/row entries
-                  with selection-wide copy + delete; otherwise the
-                  regular single-row menu below renders. */}
-              {selectionEnabled &&
-              selectedRows.length > 1 &&
-              isMultiSelected ? (
-                <>
-                  <ContextMenuLabel>
-                    {t("dataGrid.ctxRowsSelected", {
-                      count: selectedRows.length,
-                    })}
-                  </ContextMenuLabel>
-                  <ContextMenuSub>
-                    <ContextMenuSubTrigger>
-                      <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
-                      {t("dataGrid.ctxCopyRowsAs", {
-                        count: selectedRows.length,
-                      })}
-                    </ContextMenuSubTrigger>
-                    <ContextMenuSubContent>
-                      <ContextMenuItem
-                        onSelect={() =>
-                          callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(selectedRows, "json"),
-                          )
-                        }
-                      >
-                        JSON
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        onSelect={() =>
-                          callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(selectedRows, "insert"),
-                          )
-                        }
-                      >
-                        SQL INSERT
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        onSelect={() =>
-                          callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(selectedRows, "update"),
-                          )
-                        }
-                      >
-                        SQL UPDATE
-                      </ContextMenuItem>
-                    </ContextMenuSubContent>
-                  </ContextMenuSub>
-                  {onAddFilter && (
-                    <>
-                      <ContextMenuSeparator />
-                      <ContextMenuAction
-                        icon={Filter}
-                        label={t("dataGrid.ctxFilterInSelected", {
-                          column: meta.name,
-                          count:
-                            callbacksRef.current.selectedColumnValues(colIdx)
-                              .distinct,
-                        })}
-                        onSelect={() =>
-                          onAddFilter({
-                            column: meta.name,
-                            op: "in",
-                            values: callbacksRef.current.selectedColumnValues(
-                              colIdx,
-                            ).values,
-                          })
-                        }
-                      />
-                      <ContextMenuAction
-                        icon={FilterX}
-                        label={t("dataGrid.ctxFilterNotInSelected", {
-                          column: meta.name,
-                          count:
-                            callbacksRef.current.selectedColumnValues(colIdx)
-                              .distinct,
-                        })}
-                        onSelect={() =>
-                          onAddFilter({
-                            column: meta.name,
-                            op: "not_in",
-                            values: callbacksRef.current.selectedColumnValues(
-                              colIdx,
-                            ).values,
-                          })
-                        }
-                      />
-                    </>
-                  )}
-                  {onBulkDelete && (
-                    <>
-                      <ContextMenuSeparator />
-                      <ContextMenuAction
-                        icon={Trash2}
-                        destructive
-                        label={t("dataGrid.ctxDeleteRows", {
-                          count: selectedRows.length,
-                        })}
-                        onSelect={() => onBulkDelete(selectedRows)}
-                      />
-                    </>
-                  )}
-                </>
-              ) : (
-              <>
-              <ContextMenuLabel>
-                {meta.name}
-                {value === null ? " · NULL" : ""}
-              </ContextMenuLabel>
-              {isFkCell &&
-                value !== null &&
-                value !== undefined && (
-                  <>
-                    <ContextMenuAction
-                      icon={ArrowRightCircle}
-                      label={t("dataGrid.ctxGoToReference")}
-                      onSelect={() => onNavigateFk?.(meta.name, value)}
-                    />
-                    <ContextMenuSeparator />
-                  </>
-                )}
-              <ContextMenuAction
-                icon={Copy}
-                label={t("dataGrid.ctxCopy")}
-                onSelect={() =>
-                  callbacksRef.current.copyToClipboard(formatValue(value))
-                }
-              />
-              <ContextMenuAction
-                icon={ClipboardCopy}
-                label={t("dataGrid.ctxCopyWithColumn")}
-                onSelect={() =>
-                  callbacksRef.current.copyToClipboard(
-                    `${meta.name} = ${sqlLiteral(value)}`,
-                  )
-                }
-              />
-              {/* Row-level formatters. We keep the per-cell
-                  entries above (single value, single value
-                  with column name) because they're the most
-                  common path; this submenu covers the
-                  less-frequent "I want the whole row" use
-                  cases without bloating the top level. */}
-              <ContextMenuSub>
-                <ContextMenuSubTrigger>
-                  <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
-                  {t("dataGrid.ctxCopyRowAs")}
-                </ContextMenuSubTrigger>
-                <ContextMenuSubContent>
-                  <ContextMenuItem
-                    onSelect={() =>
-                      callbacksRef.current.copyToClipboard(
-                        rowToJson(rowValues, resultColumns),
-                      )
-                    }
-                  >
-                    JSON
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onSelect={() =>
-                      callbacksRef.current.copyToClipboard(
-                        rowToSqlInsert(
-                          rowValues,
-                          resultColumns,
-                          driver,
-                          tableName,
-                          tableSchema,
-                        ),
-                      )
-                    }
-                  >
-                    SQL INSERT
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onSelect={() =>
-                      callbacksRef.current.copyToClipboard(
-                        rowToSqlUpdate(
-                          rowValues,
-                          resultColumns,
-                          driver,
-                          tableName,
-                          tableSchema,
-                          pkColumnNames,
-                        ),
-                      )
-                    }
-                  >
-                    SQL UPDATE
-                  </ContextMenuItem>
-                </ContextMenuSubContent>
-              </ContextMenuSub>
-              <ContextMenuAction
-                icon={PanelRight}
-                label={t("dataGrid.openInSideEditor")}
-                onSelect={() =>
-                  callbacksRef.current.openSidePanelEditor(
-                    rowValues,
-                    meta,
-                    formatValue(value),
-                  )
-                }
-              />
-              {editable && onCellSave && (
-                <ContextMenuAction
-                  icon={Eraser}
-                  disabled={value === null}
-                  label={t("cellEditor.setNull")}
-                  onSelect={() =>
-                    onCellSave(rowValues, meta.name, null).catch(() => {})
-                  }
-                />
-              )}
-              {onAddFilter && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuAction
-                    icon={Filter}
-                    label={t("dataGrid.ctxFilterBy")}
-                    onSelect={() =>
-                      onAddFilter(
-                        value === null
-                          ? { column: meta.name, op: "is_null" }
-                          : {
-                              column: meta.name,
-                              op: "eq",
-                              value,
-                            },
-                      )
-                    }
-                  />
-                  <ContextMenuAction
-                    icon={FilterX}
-                    label={t("dataGrid.ctxFilterExcluding")}
-                    onSelect={() =>
-                      onAddFilter(
-                        value === null
-                          ? { column: meta.name, op: "is_not_null" }
-                          : {
-                              column: meta.name,
-                              op: "ne",
-                              value,
-                            },
-                      )
-                    }
-                  />
-                </>
-              )}
-              {(onInsertRow || onDuplicateRow) && (
-                <>
-                  <ContextMenuSeparator />
-                  {onInsertRow && (
-                    <ContextMenuAction
-                      icon={Plus}
-                      label={t("dataGrid.ctxInsertRow")}
-                      onSelect={() => onInsertRow()}
-                    />
-                  )}
-                  {onDuplicateRow && (
-                    <ContextMenuAction
-                      icon={CopyPlus}
-                      label={t("dataGrid.ctxDuplicateRow")}
-                      onSelect={() => onDuplicateRow(rowValues)}
-                    />
-                  )}
-                </>
-              )}
-              {onDeleteRow && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuAction
-                    icon={Trash2}
-                    destructive
-                    label={t("dataGrid.ctxDeleteRow")}
-                    onSelect={() => onDeleteRow(rowValues)}
-                  />
-                </>
-              )}
-              </>
-              )}
-            </ContextMenuContent>
-          </ContextMenu>
-        );
-      })}
-      {/* Matches the header's filler `<th>` — see the comment there. */}
-      <td className="border-b border-border/50" />
-    </tr>
-  );
-});
 
 export function DataGrid({
   result,
@@ -1162,46 +399,6 @@ export function DataGrid({
     };
   }, [draftActive]);
 
-  /** Full Monaco editor (opened via CellPreview F11 or double-click). */
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editorTarget, setEditorTarget] = useState<{
-    rowValues: CellValue[];
-    column: ColumnMeta;
-    value: string;
-    /** Set when the editor was opened from the list view: the field's path
-     *  from the document root plus its BSON type, so the commit goes through
-     *  `onFieldSave` (which can address a nested field) rather than
-     *  `onCellSave` (which only knows top-level columns). */
-    field?: { path: string[]; type: string };
-  } | null>(null);
-
-  /**
-   * Inline foreign-key editor anchored to a single cell. Activated on
-   * double-click when the column carries a single-column FK constraint;
-   * supersedes the Monaco dialog for that path so the user picks a
-   * value without losing visual context. Tracked by row identity (the
-   * values array) instead of a display index so an FK edit survives
-   * sort/filter changes between activation and commit.
-   */
-  const [fkEditCell, setFkEditCell] = useState<{
-    rowValues: CellValue[];
-    column: ColumnMeta;
-  } | null>(null);
-  /**
-   * Inline single-cell editor anchored to a cell (double-click on an
-   * editable, non-FK column). Reuses the draft-row `CellInput` so editing an
-   * existing value feels identical to typing a new one. `value` is the live
-   * draft; `original` is the value at activation, used to skip a no-op save on
-   * blur (notably when escalating to the modal via the expand button).
-   * Tracked by row identity (the values array, gotcha #7), not a display
-   * index, so it survives sort/filter reshuffles between open and commit.
-   */
-  const [inlineEdit, setInlineEdit] = useState<{
-    rowValues: CellValue[];
-    column: ColumnMeta;
-    value: string | null;
-    original: string | null;
-  } | null>(null);
   /** Fast lookup of column metadata by name for FK detection in the cell renderer. */
   const columnInfoByName = useMemo(() => {
     const m = new Map<string, ColumnInfo>();
@@ -1209,34 +406,10 @@ export function DataGrid({
     return m;
   }, [draftColumns]);
 
-  // Escape exits the inline FK editor without committing. Click-outside
-  // dismissal is handled by the combobox itself, but clicks land on the
-  // panel's trigger button before the close listener fires; for that
-  // path the user can press Esc or pick another cell.
-  useEffect(() => {
-    if (!fkEditCell) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setFkEditCell(null);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fkEditCell]);
-
   /** Compact preview panel state. Cleared when the user clicks away or presses Esc. */
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
   /** Row index of the currently selected row (blue highlight). */
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
-  /**
-   * Keyboard-navigable active cell — `{ r, c }` indexing the visible row model
-   * and the visible leaf columns. Drives the inset focus ring and arrow / Home
-   * / End / Enter navigation; the grid was otherwise mouse-only, which
-   * contradicts the app's keyboard-first identity. Set on cell click (so the
-   * keyboard picks up where the mouse left off) and cleared on Escape.
-   */
-  const [activeCell, setActiveCell] = useState<{ r: number; c: number } | null>(
-    null,
-  );
-
   /**
    * Multi-row selection. Keyed by the parent-supplied stable row key
    * (PK-derived) rather than display index or array reference, so a selection
@@ -1251,10 +424,6 @@ export function DataGrid({
    * (`onBulkDelete`), which the parent withholds without one.
    */
   const selectionEnabled = !!getRowKey;
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  /** Anchor for Shift-click range selection (the last row toggled). */
-  const lastClickedKeyRef = useRef<string | null>(null);
-
   /**
    * Optional client-side text filter over the rows already in memory.
    * Used by query results (where there is no underlying table to
@@ -1268,6 +437,21 @@ export function DataGrid({
       r.some((c) => formatValue(c).toLowerCase().includes(q)),
     );
   }, [result.rows, globalFilter]);
+
+  // Row selection — keys, clicks, select-all and the derived answers the
+  // toolbar and context menus need. See the hook for the invariants (identity
+  // by key not index, pruning to the visible set, distinct value counts).
+  const {
+    selectedKeys,
+    selectedRows,
+    hasSelection,
+    allSelected,
+    someSelected,
+    toggleRowKey,
+    applyRowSelectionClick,
+    toggleSelectAll,
+    selectedColumnValues,
+  } = useGridSelection({ visibleRows, getRowKey, onSelectionChange });
 
   /**
    * Re-resolve `selectedCell` after a refetch replaces every row's array
@@ -1300,173 +484,6 @@ export function DataGrid({
   }, [visibleRows]);
 
   /**
-   * Visible rows paired with their stable key (or null when unresolvable),
-   * memoised so the per-row render and the range-selection math read a stable
-   * list. `null`-keyed rows simply can't be selected.
-   */
-  const keyedVisibleRows = useMemo(() => {
-    if (!getRowKey) return [] as { key: string | null; row: CellValue[] }[];
-    return visibleRows.map((row) => ({ key: getRowKey(row), row }));
-  }, [visibleRows, getRowKey]);
-
-  /**
-   * The currently-selected rows, as values arrays, in visible order. Drives
-   * the bulk context-menu actions and the selection count. Memoised on the
-   * selection set + the visible rows so its identity is stable across
-   * unrelated renders.
-   */
-  const selectedRows = useMemo(() => {
-    if (selectedKeys.size === 0) return [] as CellValue[][];
-    return keyedVisibleRows
-      .filter((r) => r.key !== null && selectedKeys.has(r.key))
-      .map((r) => r.row);
-  }, [keyedVisibleRows, selectedKeys]);
-
-  /**
-   * Mirror the selection count + visible-row total up to the parent (which
-   * forwards it to the status bar keyed by tab id). Effect, not a render-time
-   * call, so we never set external state during render.
-   */
-  useEffect(() => {
-    onSelectionChange?.(selectedRows.length, keyedVisibleRows.length);
-  }, [onSelectionChange, selectedRows.length, keyedVisibleRows.length]);
-
-  /**
-   * Prune selected keys that no longer correspond to a visible row (e.g.
-   * after a refetch that dropped rows, or a filter narrowing). Keeps the
-   * checkbox header's "all selected" state honest and avoids deleting rows
-   * the user can no longer see. Runs only when the visible key set changes.
-   */
-  useEffect(() => {
-    if (selectedKeys.size === 0) return;
-    const live = new Set(
-      keyedVisibleRows.map((r) => r.key).filter((k): k is string => k !== null),
-    );
-    let changed = false;
-    const next = new Set<string>();
-    for (const k of selectedKeys) {
-      if (live.has(k)) next.add(k);
-      else changed = true;
-    }
-    if (changed) setSelectedKeys(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyedVisibleRows]);
-
-  /** Toggle a single row key (Ctrl/Cmd-click, or plain checkbox click). */
-  function toggleRowKey(key: string) {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-    lastClickedKeyRef.current = key;
-  }
-
-  /** Select the contiguous range (in visible order) between the anchor and
-   *  `key`, additively. Falls back to a single toggle when there's no anchor. */
-  function selectRangeTo(key: string) {
-    const anchor = lastClickedKeyRef.current;
-    if (!anchor) {
-      toggleRowKey(key);
-      return;
-    }
-    const keys = keyedVisibleRows
-      .map((r) => r.key)
-      .filter((k): k is string => k !== null);
-    const a = keys.indexOf(anchor);
-    const b = keys.indexOf(key);
-    if (a < 0 || b < 0) {
-      toggleRowKey(key);
-      return;
-    }
-    const [lo, hi] = a <= b ? [a, b] : [b, a];
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      for (let i = lo; i <= hi; i++) next.add(keys[i]);
-      return next;
-    });
-  }
-
-  /**
-   * OS-explorer-style selection from a row/cell click. Ctrl/Cmd-click toggles
-   * a single row; Shift-click extends a contiguous range from the anchor; a
-   * plain click clears any multi-selection (keeping the single-row blue
-   * highlight, handled separately by `setSelectedRowIndex`). No-op for rows
-   * without a resolvable key.
-   */
-  function applyRowSelectionClick(
-    rowKey: string | null,
-    e: React.MouseEvent,
-  ) {
-    if (rowKey === null) return;
-    if (e.ctrlKey || e.metaKey) {
-      toggleRowKey(rowKey);
-    } else if (e.shiftKey) {
-      selectRangeTo(rowKey);
-    } else if (selectedKeys.size > 0) {
-      setSelectedKeys(new Set());
-      lastClickedKeyRef.current = rowKey;
-    } else {
-      lastClickedKeyRef.current = rowKey;
-    }
-  }
-
-  /**
-   * The selection's values for one column, plus how many of them are actually
-   * distinct — the pair behind the "filter by the selected rows" action (#114).
-   *
-   * The distinct count is what the menu label advertises: selecting 40 rows that
-   * share 3 values builds a 3-element `IN` list (the backend dedupes), so
-   * promising "40 values" would misdescribe the filter about to be applied.
-   * NULL is counted apart from the formatted values instead of being folded in
-   * with them: `formatValue(null)` is `""`, indistinguishable from an empty
-   * string, so a column holding both would be undercounted.
-   */
-  function selectedColumnValues(colIndex: number): {
-    values: CellValue[];
-    distinct: number;
-  } {
-    const values = selectedRows.map((r) => r[colIndex] ?? null);
-    const nonNull = values.filter((v) => v !== null);
-    const distinct =
-      new Set(nonNull.map((v) => formatValue(v))).size +
-      (nonNull.length === values.length ? 0 : 1);
-    return { values, distinct };
-  }
-
-  /**
-   * Header tri-state select-all state, computed over the *visible* rows that
-   * have a resolvable key. `allSelected` when every selectable visible row is
-   * in the set; `someSelected` drives the checkbox's indeterminate dash.
-   * Toggling only ever touches the visible set — never rows filtered out of
-   * view (mirrors the prune effect above that keeps the set honest).
-   */
-  const selectableVisibleKeys = useMemo(
-    () =>
-      keyedVisibleRows
-        .map((r) => r.key)
-        .filter((k): k is string => k !== null),
-    [keyedVisibleRows],
-  );
-  const allSelected =
-    selectableVisibleKeys.length > 0 &&
-    selectableVisibleKeys.every((k) => selectedKeys.has(k));
-  const someSelected = selectedKeys.size > 0 && !allSelected;
-  /** Any row selected at all — drives the always-visible checkbox affordance. */
-  const hasSelection = selectedKeys.size > 0;
-
-  /** Select-all / clear from the header checkbox. */
-  function toggleSelectAll() {
-    setSelectedKeys((prev) => {
-      const everyVisibleSelected =
-        prev.size > 0 && selectableVisibleKeys.every((k) => prev.has(k));
-      return everyVisibleSelected ? new Set() : new Set(selectableVisibleKeys);
-    });
-    lastClickedKeyRef.current = null;
-  }
-
-  /**
    * Pre-computed set of column names that carry numeric data.
    * Recomputed only when the column list changes (not on every row render).
    */
@@ -1491,167 +508,38 @@ export function DataGrid({
       ),
     [result.columns],
   );
-  const bitDisplay = usePreferences((s) => selectGridPrefs(s).bitDisplay);
-  /** Default surface for the heavyweight editor (modal vs docked side panel).
-   *  Subscribed as a primitive so the selector stays reference-stable. */
-  const cellEditorMode = usePreferences((s) => s.prefs.ui.cellEditorMode);
-  // Grid display prefs, each subscribed as a primitive (gotcha #1).
-  const nullDisplay = usePreferences((s) => selectGridPrefs(s).nullDisplay);
-  const truncateLongTextAt = usePreferences(
-    (s) => selectGridPrefs(s).truncateLongTextAt,
-  );
-  const zebraStripes = usePreferences((s) => selectGridPrefs(s).zebraStripes);
-  const stickyHeader = usePreferences((s) => selectGridPrefs(s).stickyHeader);
-  const cellPreview = usePreferences((s) => selectGridPrefs(s).cellPreview);
-  // List-view layout prefs (Settings → Appearance → data view). Subscribed as
-  // primitives so the selectors stay reference-stable (gotcha #1).
-  const listExpandNested = usePreferences(
-    (s) => selectGridPrefs(s).listExpandNested,
-  );
-  const listShowTypes = usePreferences((s) => selectGridPrefs(s).listShowTypes);
-  const listLineNumbers = usePreferences(
-    (s) => selectGridPrefs(s).listLineNumbers,
-  );
-
   /**
-   * Persisted grid "zoom" (HeidiSQL-style). A single px row-height drives
-   * cell height, padding and font-size together. Subscribed as a primitive
-   * so the selector stays reference-stable (see the theme-store banner /
-   * CONTRIBUTING "Zustand selectors" rule).
+   * Every preference the grid reads. **Destructured, never spread into a
+   * dependency array** — `columns` below depends on four of these, and
+   * rebuilding it remounts the table body (see `interactiveRef`), so it must
+   * keep tracking the individual values rather than the bundle. See the hook
+   * for why the subscriptions inside it stay one-per-primitive (gotcha #1).
    */
-  const rowHeight = usePreferences((s) => selectGridPrefs(s).rowHeight);
-  const updateGrid = usePreferences((s) => s.updateGrid);
-
-  /** User-rebindable combo for the "expand selected cell" hotkey (issue
-   *  #78/#75). Subscribed as a primitive — `getBinding` returns a string,
-   *  which Zustand compares by value, so this stays reference-stable. */
-  const expandCellCombo = usePreferences((s) =>
-    getBinding(s.prefs.keybindings, "expandSelectedCell"),
-  );
+  const {
+    bitDisplay,
+    cellEditorMode,
+    nullDisplay,
+    truncateLongTextAt,
+    zebraStripes,
+    stickyHeader,
+    cellPreview,
+    listExpandNested,
+    listShowTypes,
+    listLineNumbers,
+    rowHeight,
+    expandCellCombo,
+    updateGrid,
+  } = useGridPrefs();
 
   /**
-   * Persisted column widths are keyed by table (`tableKey`), since widths
-   * are inherently per-schema. Ad-hoc query result grids (no `tableName` —
-   * see `QueryEditorTab`) never persist: they resize in-session only. The
-   * persisted map is a sparse `{ columnName: px }` — TanStack's own
-   * `columnSizing` state has the same shape (only explicitly-resized
-   * columns appear; everything else falls back to the column's default
-   * size), so it can be used directly as the initial state with no
-   * reshaping.
+   * Column widths (persisted per table) and the live resize drag — see
+   * `useColumnSizing` for why the drag writes the DOM directly.
    */
   const persistKey = tableName ? tableKey(tableSchema, tableName) : null;
-  const persistedColumnWidths = usePreferences(
-    (s) => selectGridPrefs(s).columnWidths,
-  );
-  const [columnSizing, setColumnSizing] = useState<Record<string, number>>(
-    () => (persistKey ? persistedColumnWidths[persistKey] ?? {} : {}),
-  );
-
-  function handleColumnSizingChange(
-    updater: Updater<Record<string, number>>,
-  ) {
-    setColumnSizing((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      if (persistKey) {
-        const grid = usePreferences.getState().prefs.grid;
-        updateGrid({
-          columnWidths: { ...grid.columnWidths, [persistKey]: next },
-        });
-      }
-      return next;
-    });
-  }
-  /**
-   * Column currently being dragged to resize, if any — drives the header's
-   * highlight + handle tint. Set on mousedown and cleared on mouseup, so it
-   * changes exactly twice per drag (never per pixel), unlike the width
-   * itself (see `startColumnResize` below).
-   */
-  const [resizingColId, setResizingColId] = useState<string | null>(null);
-  const MIN_COLUMN_WIDTH = 40;
-  /**
-   * Ceiling for the auto-fit gesture below. A column holding a long free-text
-   * value (a serialised config, a description paragraph) would otherwise
-   * expand to several thousand px and push every column after it off-screen,
-   * turning "let me read this one value" into "I lost the rest of the row".
-   * Past this the value belongs in the cell editor / preview panel, and the
-   * user can still drag wider by hand.
-   */
-  const MAX_AUTOFIT_WIDTH = 900;
+  const { columnSizing, commitWidths, resizingColId, startColumnResize } =
+    useColumnSizing({ persistKey, updateGrid });
   /** The header's dimmed type hint renders at the `text-3xs` token (10px). */
   const TYPE_HINT_FONT_SIZE = 10;
-
-  /**
-   * Drag a column's header edge to resize it — deliberately NOT TanStack's
-   * own `getResizeHandler()`. That tracks the drag through
-   * `columnSizingInfo.deltaOffset`, which changes (and forces a re-render of
-   * this whole, unvirtualised table) on every single `mousemove`; with
-   * hundreds/thousands of rows that's what made the drag feel slow, and it's
-   * also why a resize used to need a separate full-height guideline line —
-   * the actual column couldn't cheaply track the pointer that way, so there
-   * was nothing to visually resize in real time.
-   *
-   * Instead this mutates the dragged `<th>`'s `style.width` directly. The
-   * table is `table-fixed`, so per the CSS spec its column widths come from
-   * the header row's cells alone (`<thead>` precedes `<tbody>`, making it the
-   * table's first row) — one DOM write here reflows every row's matching
-   * cell natively, with zero React re-renders, for a genuinely live preview.
-   * `columnSizing` state (and its persistence to `prefs.json`) is only
-   * touched once, on release, matching the perf goal the old `onEnd` mode
-   * was reaching for — but without giving up live feedback to get there.
-   */
-  function startColumnResize(
-    e: React.MouseEvent<HTMLDivElement>,
-    colId: string,
-    currentSize: number,
-  ) {
-    e.preventDefault();
-    e.stopPropagation();
-    const thEl = (e.currentTarget as HTMLElement).closest("th");
-    if (!thEl) return;
-    const th: HTMLTableCellElement = thEl;
-    // Anchor to the column's logical size, not `getBoundingClientRect()`.
-    // The table is `table-fixed` + `w-full`; when the declared column
-    // widths don't fill the available width, the browser stretches them
-    // to fit (CSS2.1 fixed-table-layout, extra-width distribution). That
-    // makes the rendered `<th>` wider than its logical size, so measuring
-    // the DOM here would bake the cosmetic stretch in as the new
-    // committed width the instant the drag starts — the column visibly
-    // jumps before the pointer even moves.
-    const startWidth = currentSize;
-    const startX = e.clientX;
-    setResizingColId(colId);
-    const prevCursor = document.body.style.cursor;
-    const prevUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    function onMove(ev: MouseEvent) {
-      const next = Math.max(
-        MIN_COLUMN_WIDTH,
-        Math.round(startWidth + (ev.clientX - startX)),
-      );
-      th.style.width = `${next}px`;
-    }
-    function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = prevCursor;
-      document.body.style.userSelect = prevUserSelect;
-      setResizingColId(null);
-      const finalWidth = parseInt(th.style.width, 10);
-      // A bare click (no `mousemove` at all) lands here with the width
-      // untouched — notably the first click of the double-click that triggers
-      // the auto-fit below. Committing then would write an identical width
-      // into `columnSizing` (and through to `prefs.json`) for nothing, and
-      // would make the auto-fit's own commit the *second* state update of one
-      // gesture.
-      if (!Number.isFinite(finalWidth) || finalWidth === startWidth) return;
-      handleColumnSizingChange((prev) => ({ ...prev, [colId]: finalWidth }));
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
 
   /**
    * Inline styles derived from `rowHeight`. Memoised so the object identity
@@ -1673,27 +561,9 @@ export function DataGrid({
     };
   }, [rowHeight]);
 
-  /**
-   * Ctrl + mouse-wheel over the grid zooms the rows in/out, like a code
-   * editor. Bound via a non-passive native listener so `preventDefault`
-   * actually suppresses the browser's page-zoom; a JSX `onWheel` handler is
-   * passive by default and cannot. Persistence is handled by the prefs store
-   * (debounced write), so we only push the clamped row height.
-   */
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    function onWheel(e: WheelEvent) {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      const step = e.deltaY < 0 ? 2 : -2;
-      const next = Math.min(40, Math.max(14, rowHeight + step));
-      if (next !== rowHeight) updateGrid({ rowHeight: next });
-    }
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [rowHeight, updateGrid]);
+  // Ctrl+wheel row zoom (non-passive listener — gotcha #13). Also the ref the
+  // grid attaches to its scroll container.
+  const scrollRef = useCtrlWheelZoom(rowHeight, updateGrid);
 
   /**
    * Backend column index keyed by name. The cell render loop walks
@@ -1709,6 +579,36 @@ export function DataGrid({
     result.columns.forEach((c, i) => m.set(c.name, i));
     return m;
   }, [result.columns]);
+
+  /**
+   * Which editor is open on which cell, and the four entry points that decide
+   * between them (gotcha #12's routing lives in `openCellEdit`). Owns the
+   * modal / inline-FK / inline-text state, so none of it is here any more.
+   */
+  const {
+    editorOpen,
+    setEditorOpen,
+    editorTarget,
+    fkEditCell,
+    setFkEditCell,
+    inlineEdit,
+    setInlineEdit,
+    bindingContextFor,
+    openSidePanelEditor,
+    openHeavyEditor,
+    openCellEdit,
+  } = useCellEditing({
+    editable,
+    connectionId,
+    tableSchema,
+    tableName,
+    tabId,
+    cellEditorMode,
+    columnInfoByName,
+    columnIndexByName,
+    onCellSave,
+    onFieldSave,
+  });
 
   // Key-icon lookups for the header (PK = amber, FK = sky), HeidiSQL-style.
   const pkNameSet = useMemo(
@@ -1739,72 +639,46 @@ export function DataGrid({
    * user can't see would need a full-table scan per double-click.
    */
   function autoFitColumns(colIds: readonly string[]) {
-    const host = scrollRef.current;
-    const cellFontSize = (cellStyle.fontSize as number) ?? 12;
-    const headerFontSize = (headerStyle.fontSize as number) ?? 10;
-    // Resolved once per gesture, not once per column: each call appends a
-    // probe element and reads its computed style, which forces a style
-    // recalc. The "fit every column" path would otherwise pay for 3× the
-    // column count.
-    const cellFont = resolveCanvasFont(host, "font-mono", cellFontSize);
-    const headerFont = resolveCanvasFont(host, "", headerFontSize);
-    const typeFont = resolveCanvasFont(host, "", TYPE_HINT_FONT_SIZE);
-
-    const widths: Record<string, number> = {};
-    for (const colId of colIds) {
-      const idx = columnIndexByName.get(colId);
-      if (idx === undefined) continue;
-      const col = result.columns[idx];
-      const isBit = bitColNames.has(col.name);
-      const cells = visibleRows.map((row) => {
-        const v = row[idx];
-        if (v === null) return nullDisplay;
-        const raw =
-          isBit && typeof v === "number"
-            ? formatBitValue(v, bitDisplay)
-            : formatValue(v);
-        return truncateLongTextAt > 0 && raw.length > truncateLongTextAt
-          ? `${raw.slice(0, truncateLongTextAt)}…`
-          : raw;
-      });
-      widths[colId] = computeColumnFitWidth({
-        // The header renders `uppercase tracking-wider`; both change its
-        // width, and neither is visible to `measureText` unless applied here.
-        header: {
-          text: col.name.toUpperCase(),
-          font: headerFont,
-          letterSpacing: headerFontSize * 0.05,
-        },
-        // The dimmed type hint is `text-3xs` (a fixed token), not derived
-        // from the zoom like the rest of the header.
-        type: {
-          text: col.data_type.toUpperCase(),
-          font: typeFont,
-          letterSpacing: TYPE_HINT_FONT_SIZE * 0.05,
-        },
-        // gap before the type (4) + the sort glyph and its gap (16) + one key
-        // icon and its gap per PK/FK badge (16 each).
-        headerChrome:
-          20 +
-          (pkNameSet.has(col.name) ? 16 : 0) +
-          (fkNameSet.has(col.name) ? 16 : 0) +
-          // Multi-sort rank badge ("1", "2", …) next to the arrow.
-          ((sort?.length ?? 0) > 1 && sort!.some((s) => s.column === col.name)
-            ? 12
-            : 0),
-        cells,
-        cellFont,
-        // `px-2` on both the `<th>` and every `<td>`, plus the 1px right
-        // border.
-        padding: 17,
-        min: MIN_COLUMN_WIDTH,
-        max: MAX_AUTOFIT_WIDTH,
-      });
-    }
+    const widths = computeAutoFitWidths({
+      host: scrollRef.current,
+      colIds,
+      columns: result.columns,
+      columnIndexByName,
+      rows: visibleRows,
+      // The fit has to reproduce what the cell paints, NULL placeholder and
+      // length cap included — hence the same two helpers the `cell` renderer
+      // below calls, rather than a second copy of the rule.
+      cellText: (v, idx) =>
+        v === null
+          ? nullDisplay
+          : truncateForDisplay(
+              rawCellText(
+                v as CellValue,
+                bitColNames.has(result.columns[idx].name),
+                bitDisplay,
+              ),
+              truncateLongTextAt,
+            ),
+      // gap before the type (4) + the sort glyph and its gap (16) + one key
+      // icon and its gap per PK/FK badge (16 each) + the multi-sort rank
+      // badge ("1", "2", …) next to the arrow.
+      headerChrome: (name) =>
+        20 +
+        (pkNameSet.has(name) ? 16 : 0) +
+        (fkNameSet.has(name) ? 16 : 0) +
+        ((sort?.length ?? 0) > 1 && sort!.some((s) => s.column === name)
+          ? 12
+          : 0),
+      cellFontSize: (cellStyle.fontSize as number) ?? 12,
+      headerFontSize: (headerStyle.fontSize as number) ?? 10,
+      typeFontSize: TYPE_HINT_FONT_SIZE,
+      min: MIN_COLUMN_WIDTH,
+      max: MAX_AUTOFIT_WIDTH,
+    });
     // One state update (and therefore one `prefs.json` write) for the whole
     // gesture, however many columns it covered.
     if (Object.keys(widths).length > 0) {
-      handleColumnSizingChange((prev) => ({ ...prev, ...widths }));
+      commitWidths((prev) => ({ ...prev, ...widths }));
     }
   }
 
@@ -1889,315 +763,53 @@ export function DataGrid({
     return new Map(Object.entries(bucket).map(([col, hit]) => [col, hit.name]));
   }, [connectionId, tableSchema, tableName, resolvedSchemas]);
 
-  const columns = useMemo<ColumnDef<CellValue[]>[]>(
-    () =>
-      result.columns.map((col, idx) => ({
-        id: col.name,
-        header: () => {
-          // Sort level for this column (-1 when not sorted). The arrow shows
-          // the direction; the number only renders for a multi-column sort,
-          // where precedence matters.
-          const sortIndex = sort?.findIndex((s) => s.column === col.name) ?? -1;
-          const active = sortIndex >= 0;
-          const spec = active ? sort![sortIndex] : null;
-          const showRank = active && (sort?.length ?? 0) > 1;
-          const info = columnInfoByName.get(col.name);
-          // The tooltip describes the FIELD, not what a click does. Two
-          // reasons: the name is the first thing a narrow column clips, so
-          // the tooltip is where the user recovers it (plus the full type,
-          // which is clipped even earlier — see the spans below); and the
-          // old wording ("Ctrl/Cmd+click to add a column") was read as an
-          // offer to CREATE a column, which is both wrong and alarming in a
-          // window that can also run DDL. Sorting stays discoverable through
-          // the arrow glyph and the sort state reported on the last line.
-          const facts: string[] = [col.data_type];
-          if (pkNameSet.has(col.name)) facts.push(t("dataGrid.headerPk"));
-          if (fkNameSet.has(col.name)) {
-            facts.push(
-              info?.referenced_table
-                ? t("dataGrid.headerFkTo", {
-                    target: `${info.referenced_table}.${
-                      info.referenced_column ?? "id"
-                    }`,
-                  })
-                : t("dataGrid.headerFk"),
-            );
-          }
-          // `info` is absent for ad-hoc query results (no catalog metadata),
-          // where nullability is unknown — say nothing rather than guess.
-          if (info) {
-            facts.push(
-              info.nullable
-                ? t("dataGrid.headerNullable")
-                : t("dataGrid.headerNotNull"),
-            );
-          }
-          if (active) {
-            const dir = spec!.desc
-              ? t("dataGrid.headerSortedDesc")
-              : t("dataGrid.headerSortedAsc");
-            facts.push(
-              showRank
-                ? `${dir} (${t("dataGrid.headerSortLevel", {
-                    level: sortIndex + 1,
-                  })})`
-                : dir,
-            );
-          }
-          return (
-            <button
-              className="group/sort -mx-1 flex w-full items-center gap-1 rounded-sm px-1 hover:bg-accent/50 hover:text-foreground"
-              onClick={(e) =>
-                onSortChange?.(col.name, e.ctrlKey || e.metaKey)
-              }
-              title={`${col.name}\n${facts.join(" · ")}`}
-            >
-              {pkNameSet.has(col.name) && (
-                <KeyRound
-                  className="h-3 w-3 shrink-0 text-pk"
-                  aria-label={t("dataGrid.headerPk")}
-                />
-              )}
-              {fkNameSet.has(col.name) && (
-                <KeyRound
-                  className="h-3 w-3 shrink-0 text-fk"
-                  aria-label={t("dataGrid.headerFk")}
-                />
-              )}
-              {/* The NAME is the header's payload; the type is a hint. Both
-                  used to be plain flex items with the default `flex-shrink:
-                  1`, but only the name carried `truncate` — and `overflow:
-                  hidden` is what lets a flex item shrink past its min-content
-                  width. So in a column narrower than its content the name
-                  collapsed to nothing while the type stayed fully legible
-                  (a `BOOLEAN` column rendering as just "BOOL", with no clue
-                  which field it was). Giving the type `overflow-hidden` +
-                  a huge shrink factor inverts the priority: the type is
-                  clipped away first (down to zero width) and the name only
-                  starts eliding once the type is gone. `text-clip` rather
-                  than an ellipsis because a lone "…" where the type used to
-                  be is noise; the full type lives in the tooltip. */}
-              <span className="min-w-0 truncate">{col.name}</span>
-              <span className="min-w-0 shrink-[9999] overflow-hidden whitespace-nowrap text-clip text-3xs uppercase text-muted-foreground/50">
-                {col.data_type}
-              </span>
-              {active ? (
-                <span className="ml-auto flex shrink-0 items-center text-brand">
-                  {spec!.desc ? (
-                    <ArrowDown className="h-3 w-3" />
-                  ) : (
-                    <ArrowUp className="h-3 w-3" />
-                  )}
-                  {showRank && (
-                    <span className="ml-0.5 text-3xs font-semibold tabular-nums">
-                      {sortIndex + 1}
-                    </span>
-                  )}
-                </span>
-              ) : (
-                // Persistent (not near-invisible) glyph that brightens on
-                // header hover so sortability is discoverable at a glance.
-                <ArrowUpDown className="ml-auto h-3 w-3 shrink-0 opacity-40 transition-opacity group-hover/sort:opacity-100" />
-              )}
-            </button>
-          );
-        },
-        accessorFn: (row) => row[idx],
-        // Only a starting point: `columnSizing` (persisted per table, or
-        // in-session for ad-hoc results) always wins once the user resizes
-        // a column, same as TanStack's own precedence.
-        size: defaultColumnWidth(col.data_type) ?? undefined,
-        cell: (info) => {
-          const v = info.getValue() as CellValue;
-          const rowValues = info.row.original as CellValue[];
-          const colInfo = columnInfoByName.get(col.name);
-          // Read live, not from the outer closure — see `interactiveRef` above.
-          const { fkEditCell, inlineEdit, selectedCell } = interactiveRef.current;
-          // FK edit identity is the row's value array (referential
-          // identity from TanStack's row.original) — stable across
-          // sort / filter reshuffles between activation and commit.
-          const editingFk =
-            fkEditCell?.rowValues === rowValues &&
-            fkEditCell.column.name === col.name;
-          if (editingFk && connectionId && colInfo?.referenced_table) {
-            // Inline overlay: replace the read-only cell content with a
-            // combobox of valid referenced values. The popover panel
-            // hangs below this anchor so the user keeps the row in view.
-            return (
-              <FkCombobox
-                connectionId={connectionId}
-                refSchema={
-                  colInfo.referenced_schema ?? tableSchema ?? undefined
-                }
-                refTable={colInfo.referenced_table}
-                refColumn={colInfo.referenced_column ?? "id"}
-                value={v === null ? null : formatValue(v)}
-                nullable={colInfo.nullable}
-                onChange={(picked) => {
-                  setFkEditCell(null);
-                  // Skip the round-trip if the user picks the same value
-                  // that was already there (common when they just open
-                  // the dropdown and dismiss).
-                  const current = v === null ? null : formatValue(v);
-                  if (picked === current) return;
-                  onCellSave?.(rowValues, col.name, picked).catch(() => {});
-                }}
-              />
-            );
-          }
-          // Inline single-cell editor (double-click on an editable, non-FK
-          // cell). Same identity rule as the FK overlay above.
-          const editingInline =
-            inlineEdit?.rowValues === rowValues &&
-            inlineEdit.column.name === col.name;
-          if (editingInline && inlineEdit) {
-            const commit = () => {
-              const { value, original, rowValues: rv, column } = inlineEdit;
-              setInlineEdit(null);
-              // No-op when unchanged — also makes the blur that fires while
-              // escalating to the modal harmless (expand leaves value as-is).
-              if (value === original) return;
-              onCellSave?.(rv, column.name, value).catch(() => {});
-            };
-            const expand = () => {
-              openHeavyEditor(
-                inlineEdit.rowValues,
-                inlineEdit.column,
-                inlineEdit.value ?? "",
-              );
-              setInlineEdit(null);
-            };
-            // BIT columns get a dedicated 0/1 control. A `<select>` commits on
-            // pick, so we save straight from `onSelect` with the chosen value
-            // (no stale-state hop through `inlineEdit.value`).
-            if (bitColNames.has(col.name)) {
-              return (
-                <BitInput
-                  autoFocus
-                  value={inlineEdit.value}
-                  bitDisplay={bitDisplay}
-                  nullable={colInfo?.nullable ?? false}
-                  onSelect={(nv) => {
-                    const { original, rowValues: rv, column } = inlineEdit;
-                    setInlineEdit(null);
-                    if (nv === original) return;
-                    onCellSave?.(rv, column.name, nv).catch(() => {});
-                  }}
-                  onCancel={() => setInlineEdit(null)}
-                />
-              );
-            }
-            return (
-              <CellInput
-                autoFocus
-                value={inlineEdit.value}
-                nullable={colInfo?.nullable ?? false}
-                nullActive={inlineEdit.value === null}
-                onChange={(nv) =>
-                  setInlineEdit((prev) => (prev ? { ...prev, value: nv } : prev))
-                }
-                onCommit={commit}
-                onCancel={() => setInlineEdit(null)}
-                onExpand={expand}
-                schemaBound={boundSchemaNames.has(inlineEdit.column.name)}
-                expandTitle={
-                  boundSchemaNames.has(inlineEdit.column.name)
-                    ? t("dataGrid.expandEditorWithSchema", {
-                        name: boundSchemaNames.get(inlineEdit.column.name),
-                      })
-                    : t("dataGrid.expandEditor")
-                }
-              />
-            );
-          }
-          const isBit = bitColNames.has(col.name);
-          const rawDisplay =
-            isBit && typeof v === "number"
-              ? formatBitValue(v, bitDisplay)
-              : formatValue(v);
-          // Cap the rendered string so a multi-MB cell can't bloat the DOM;
-          // the full value is still reachable via the cell preview / editor.
-          // `truncateLongTextAt <= 0` disables the cap.
-          const display =
-            truncateLongTextAt > 0 && rawDisplay.length > truncateLongTextAt
-              ? `${rawDisplay.slice(0, truncateLongTextAt)}…`
-              : rawDisplay;
-          const isNumeric = numericColNames.has(col.name);
-          // Selected-but-not-editing: offer a direct "expand" affordance so
-          // the full value can be viewed (modal / side panel per
-          // `cellEditorMode`) without first entering inline edit (issue #78).
-          const isSelected =
-            selectedCell?.rowValues === rowValues &&
-            selectedCell.column.name === col.name;
-          return (
-            <div className="flex min-w-0 items-center gap-1">
-              <span
-                className={`truncate font-mono ${
-                  isNumeric ? "text-numeric" : ""
-                }`}
-              >
-                {v === null ? (
-                  <span className="italic text-muted-foreground">
-                    {nullDisplay}
-                  </span>
-                ) : (
-                  display
-                )}
-              </span>
-              {isSelected && (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  title={`${t("dataGrid.expandEditor")} (${formatComboForDisplay(expandCellCombo)})`}
-                  className="ml-auto shrink-0 rounded px-1 text-muted-foreground/80 hover:text-foreground"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openHeavyEditor(rowValues, col, rawDisplay);
-                  }}
-                >
-                  <Maximize2 className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          );
-        },
-      })),
-    // numericColNames is derived from result.columns so they change together.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      result.columns,
+  /**
+   * TanStack column definitions — the sortable header and the `cell` renderer.
+   *
+   * **Preferences are passed as individual values, never as the `useGridPrefs`
+   * bundle.** Rebuilding these definitions remounts the whole table body (see
+   * the hook's own note, and `interactiveRef` below), so the array must track
+   * exactly the four preferences the renderer reads and nothing else.
+   */
+  const columns = useGridColumns({
+    resultColumns: result.columns,
+    display: {
       numericColNames,
       bitColNames,
       bitDisplay,
       nullDisplay,
       truncateLongTextAt,
-      sort,
-      pkNameSet,
-      fkNameSet,
-      onSortChange,
       expandCellCombo,
+    },
+    meta: {
       columnInfoByName,
       columnIndexByName,
-      connectionId,
-      tableSchema,
-      onCellSave,
+      pkNameSet,
+      fkNameSet,
       boundSchemaNames,
-      t,
-    ],
-  );
+    },
+    editing: {
+      interactiveRef,
+      setFkEditCell,
+      setInlineEdit,
+      openHeavyEditor,
+    },
+    sort,
+    onSortChange,
+    connectionId,
+    tableSchema,
+    onCellSave,
+  });
 
   const table = useReactTable({
     data: visibleRows,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // Column resizing itself is handled by our own `startColumnResize` below,
-    // not TanStack's built-in `getResizeHandler()` — see the comment there for
-    // why. `columnSizing` stays the single source of truth for committed
-    // widths (persisted per table, gotcha-style — see `persistKey` above).
+    // Column resizing is handled by our own `startColumnResize`, not
+    // TanStack's built-in `getResizeHandler()` — see `useColumnSizing` for why.
+    // `columnSizing` stays the single source of truth for committed widths.
     state: { columnSizing },
-    onColumnSizingChange: handleColumnSizingChange,
+    onColumnSizingChange: commitWidths,
   });
 
   /**
@@ -2228,636 +840,71 @@ export function DataGrid({
   }, [rowHeight, rowVirtualizer]);
 
   /**
-   * Coordinates for the JSON Schema cascade.
-   *
-   * All four axes are already props of this component; before this they were
-   * dropped at the editor boundary, which is why a schema could not be bound at
-   * all. `column.name` is the field's *dotted path* when the value came from the
-   * document view (see `onExpandField`, which synthesises the column that way),
-   * so a MongoDB nested binding needs nothing extra.
-   *
-   * Returns `undefined` without a table name: a query result has no column
-   * identity, and a binding created there would be an accidental wildcard.
+   * The inset-ring active cell plus every key that moves or acts on it. Owns
+   * `activeCell`; `setActiveCell` still comes back because a cell *click* sets
+   * it too, so the mouse and the keyboard share one position.
    */
-  function bindingContextFor(
-    column: ColumnMeta,
-    field?: { path: string[]; type: string },
-  ): CellBindingContext | undefined {
-    if (!tableName) return undefined;
-    return {
-      connectionId,
-      dbSchema: tableSchema,
-      table: tableName,
-      column: column.name,
-      bsonType: field?.type,
-    };
-  }
+  const { activeCell, setActiveCell, handleGridKeyDown } = useGridKeyboardNav({
+    grid: {
+      table,
+      rowVirtualizer,
+      scrollRef,
+      columns: result.columns,
+      columnIndexByName,
+    },
+    editing: {
+      inlineEdit,
+      fkEditCell,
+      setInlineEdit,
+      openCellEdit,
+      openHeavyEditor,
+    },
+    selectedCell,
+    setSelectedRowIndex,
+    columnInfoByName,
+    bitColNames,
+    bitDisplay,
+    expandCellCombo,
+    editable,
+    onCellSave,
+  });
 
-  /** Open the heavyweight Monaco modal directly (read-only view, or the
-   *  "expand" escalation from the inline editor / CellPreview). */
-  function openModalEditor(
-    rowValues: CellValue[],
-    column: ColumnMeta,
-    value: string,
-    field?: { path: string[]; type: string },
-  ) {
-    setEditorTarget({ rowValues, column, value, field });
-    setEditorOpen(true);
-  }
-
-  /** Open the cell in the docked right-side editor (JetBrains-style). Shares
-   *  the same commit path as the modal (`onCellSave`), or read-only when the
-   *  grid isn't editable. */
-  function openSidePanelEditor(
-    rowValues: CellValue[],
-    column: ColumnMeta,
-    value: string,
-    field?: { path: string[]; type: string },
-  ) {
-    // A list-view field commits through `onFieldSave` (it may be nested and
-    // carries its own type); a table cell through `onCellSave` as before.
-    const canSave = !!(editable && (field ? onFieldSave : onCellSave));
-    useCellEditor.getState().open({
-      ownerId: tabId,
-      columnName: column.name,
-      value,
-      binding: bindingContextFor(column, field),
-      readonly: !canSave,
-      onSave: canSave
-        ? (v) =>
-            field
-              ? onFieldSave!(rowValues, field.path, v, field.type)
-              : onCellSave!(rowValues, column.name, v)
-        : undefined,
-    });
-    useSessionPanelLayout.getState().openSideEditor();
-  }
-
-  /** Escalate from inline/preview to the heavyweight editor, honouring the
-   *  user's `cellEditorMode` preference (modal vs docked side panel). */
-  function openHeavyEditor(
-    rowValues: CellValue[],
-    column: ColumnMeta,
-    value: string,
-    field?: { path: string[]; type: string },
-  ) {
-    if (cellEditorMode === "side") {
-      openSidePanelEditor(rowValues, column, value, field);
-    } else {
-      openModalEditor(rowValues, column, value, field);
-    }
-  }
-
-  /**
-   * Double-click entry point. Routes to the right editor for the cell:
-   * - single-column FK → inline combobox of valid referenced values;
-   * - editable cell → inline `CellInput` (with an expand-to-modal affordance);
-   * - read-only result grid → the Monaco modal as a viewer.
-   */
-  function openCellEdit(rowValues: CellValue[], column: ColumnMeta) {
-    const info = columnInfoByName.get(column.name);
-    if (editable && onCellSave && connectionId && info?.referenced_table) {
-      setFkEditCell({ rowValues, column });
-      return;
-    }
-    const cur = rowValues[columnIndexByName.get(column.name) ?? -1];
-    const fmt = cur === null || cur === undefined ? null : formatValue(cur);
-    if (editable && onCellSave) {
-      setInlineEdit({ rowValues, column, value: fmt, original: fmt });
-      return;
-    }
-    openModalEditor(rowValues, column, fmt ?? "");
-  }
-
-  /** Resolves the cell a Ctrl+C/Ctrl+V chord should act on: the mouse-selected
-   *  cell (carries its value already) or, as a keyboard-only fallback, the
-   *  active cell resolved the same way the Enter handler below does. */
-  function resolveTargetCell(): {
-    rowValues: CellValue[];
-    column: ColumnMeta;
-    value: CellValue;
-  } | null {
-    if (selectedCell) {
-      return {
-        rowValues: selectedCell.rowValues,
-        column: selectedCell.column,
-        value: selectedCell.value,
-      };
-    }
-    if (activeCell) {
-      const rows = table.getRowModel().rows;
-      const row = rows[activeCell.r];
-      const cell = row?.getVisibleCells()[activeCell.c];
-      const bi = cell ? (columnIndexByName.get(cell.column.id) ?? -1) : -1;
-      if (row && bi >= 0) {
-        const rowValues = row.original as CellValue[];
-        return { rowValues, column: result.columns[bi], value: rowValues[bi] };
-      }
-    }
-    return null;
-  }
-
-  /** Ctrl+C copies the raw value (same as the context menu's "Copy"); Ctrl+V
-   *  seeds `inlineEdit` with the pasted text so it flows through the existing
-   *  commit/cancel path unchanged. FK/BIT columns have no free-text control to
-   *  paste into, so paste is a no-op there (issue #79). */
-  function handleCopyPasteChord(key: "c" | "v") {
-    const cell = resolveTargetCell();
-    if (!cell) return;
-    if (key === "c") {
-      copyToClipboard(formatValue(cell.value));
-      return;
-    }
-    if (!editable || !onCellSave) return;
-    const info = columnInfoByName.get(cell.column.name);
-    if (info?.referenced_table || bitColNames.has(cell.column.name)) return;
-    navigator.clipboard
-      .readText()
-      .then((text) => {
-        const cur = cell.rowValues[columnIndexByName.get(cell.column.name) ?? -1];
-        const original =
-          cur === null || cur === undefined ? null : formatValue(cur);
-        setInlineEdit({
-          rowValues: cell.rowValues,
-          column: cell.column,
-          value: text,
-          original,
-        });
-      })
-      .catch(() => {
-        // Clipboard read denied/unsupported in this webview — silent no-op,
-        // matching copyToClipboard's own silent-failure convention below.
-      });
-  }
-
-  /**
-   * Grid-level keyboard navigation, bound to the (focusable) scroll container.
-   * Moves the inset-ring active cell with the arrows / Home / End, opens the
-   * editor on Enter, clears on Escape. The ring never animates its movement:
-   * this fires on every keypress, so motion would read as lag (see the
-   * keyboard-action rule). Guards: skip when an inline editor is open or focus
-   * is inside a form control. Ctrl+C/Ctrl+V are the only modified chords this
-   * handles itself; every other modified chord is left alone for the browser.
-   */
-  function handleGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const key = e.key.toLowerCase();
-    const isCopyPasteChord =
-      (e.ctrlKey || e.metaKey) &&
-      !e.altKey &&
-      !e.shiftKey &&
-      (key === "c" || key === "v");
-    const isExpandChord = matchesBinding(e, expandCellCombo);
-    if (
-      (e.ctrlKey || e.metaKey || e.altKey) &&
-      !isCopyPasteChord &&
-      !isExpandChord
-    )
-      return;
-    if (inlineEdit || fkEditCell) return;
-    const target = e.target as HTMLElement;
-    if (target.closest("input, textarea, select, [contenteditable='true']")) {
-      return;
-    }
-    if (isCopyPasteChord) {
-      e.preventDefault();
-      handleCopyPasteChord(key as "c" | "v");
-      return;
-    }
-    if (isExpandChord) {
-      e.preventDefault();
-      const cell = resolveTargetCell();
-      if (cell) {
-        const isBit = bitColNames.has(cell.column.name);
-        const rawDisplay =
-          isBit && typeof cell.value === "number"
-            ? formatBitValue(cell.value, bitDisplay)
-            : formatValue(cell.value);
-        openHeavyEditor(cell.rowValues, cell.column, rawDisplay);
-      }
-      return;
-    }
-    const rows = table.getRowModel().rows;
-    const colCount = table.getVisibleLeafColumns().length;
-    if (rows.length === 0 || colCount === 0) return;
-
-    const focusCell = (r: number, c: number) => {
-      setActiveCell({ r, c });
-      setSelectedRowIndex(r);
-      // With virtualized rows, target row `r` may have no DOM node at all
-      // yet (it's outside the currently-mounted window) — `scrollToIndex`
-      // mounts it (a no-op if it's already in view). Keep the cell in view
-      // without smooth scrolling (instant per the no-motion-on-keyboard
-      // rule); two nested frames give React's render (triggered by the
-      // virtualizer's own scroll-driven state update) time to actually mount
-      // the row before the `querySelector` below runs — a single frame can
-      // race it on a jump of more than a screenful of rows.
-      rowVirtualizer.scrollToIndex(r, { align: "auto" });
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollRef.current
-            ?.querySelector<HTMLElement>(`[data-cell="${r}-${c}"]`)
-            ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-        });
-      });
-    };
-
-    if (e.key === "Escape") {
-      if (activeCell) {
-        e.preventDefault();
-        setActiveCell(null);
-      }
-      return;
-    }
-
-    const navKeys = [
-      "ArrowDown",
-      "ArrowUp",
-      "ArrowRight",
-      "ArrowLeft",
-      "Home",
-      "End",
-    ];
-
-    // First nav keypress with no active cell just anchors at the top-left
-    // rather than jumping a step past it.
-    if (!activeCell) {
-      if (navKeys.includes(e.key)) {
-        e.preventDefault();
-        focusCell(0, 0);
-      }
-      return;
-    }
-
-    if (e.key === "Enter") {
-      const row = rows[activeCell.r];
-      const cell = row?.getVisibleCells()[activeCell.c];
-      const bi = cell ? (columnIndexByName.get(cell.column.id) ?? -1) : -1;
-      if (!row || bi < 0) return;
-      e.preventDefault();
-      openCellEdit(row.original as CellValue[], result.columns[bi]);
-      return;
-    }
-
-    let { r, c } = activeCell;
-    switch (e.key) {
-      case "ArrowDown":
-        r = Math.min(r + 1, rows.length - 1);
-        break;
-      case "ArrowUp":
-        r = Math.max(r - 1, 0);
-        break;
-      case "ArrowRight":
-        c = Math.min(c + 1, colCount - 1);
-        break;
-      case "ArrowLeft":
-        c = Math.max(c - 1, 0);
-        break;
-      case "Home":
-        c = 0;
-        break;
-      case "End":
-        c = colCount - 1;
-        break;
-      default:
-        return;
-    }
-    e.preventDefault();
-    focusCell(r, c);
-  }
-
-  async function copyToClipboard(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // No surfacing — clipboard failures are visually obvious to the user.
-    }
-  }
-
-  /** Serialise several rows for the bulk "Copy N rows as ▸" menu, reusing the
-   *  same per-row formatters as the single-row submenu. JSON yields one array;
-   *  INSERT/UPDATE yield newline-joined statements. */
+  /** Serialise several rows for the bulk "Copy N rows as ▸" menu. */
   function bulkCopy(rows: CellValue[][], fmt: "json" | "insert" | "update") {
-    if (fmt === "json") {
-      const arr = rows.map((r) => {
-        const obj: Record<string, unknown> = {};
-        result.columns.forEach((c, i) => {
-          obj[c.name] = r[i] as unknown;
-        });
-        return obj;
-      });
-      return JSON.stringify(arr, null, 2);
-    }
-    if (fmt === "insert") {
-      return rows
-        .map((r) =>
-          rowToSqlInsert(r, result.columns, driver, tableName, tableSchema),
-        )
-        .join("\n");
-    }
-    return rows
-      .map((r) =>
-        rowToSqlUpdate(
-          r,
-          result.columns,
-          driver,
-          tableName,
-          tableSchema,
-          pkColumnNames,
-        ),
-      )
-      .join("\n");
+    return toBulk(rows, fmt, {
+      columns: result.columns,
+      driver,
+      tableName,
+      tableSchema,
+      pkColumnNames,
+    });
   }
 
-  /**
-   * Responsive toolbar. The bar is measured (not the viewport — the grid lives
-   * in a dockview panel), and as it narrows actions move into a single
-   * overflow menu instead of wrapping onto a second row, which is what used to
-   * happen and left the filter cluster and the action cluster stacked.
-   *
-   * Two things collapse, in order of how much room they cost and how little
-   * their absence hurts:
-   * - `collapseData` — the labelled data actions (Insert plus the parent's
-   *   import/export/bulk-update group). They carry text, so they're the widest
-   *   things in the bar, and they're deliberate operations nobody triggers
-   *   twice a minute.
-   * - `collapseChrome` — the icon-only controls: the parent's leading cluster
-   *   (refresh, advanced filter) and the view controls (fit columns, the
-   *   table/list toggle). Cheap in pixels, frequently used, so they only go
-   *   when the pane is genuinely too narrow for anything but the search box.
-   */
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
-  const density = useToolbarDensity(toolbarRef);
-  const collapseData = density !== "wide";
-  const collapseChrome = density === "narrow";
-
-  /**
-   * The grid's own toolbar actions, in the same two-presentation shape the
-   * parent's slots use (`GridToolbarItem`) so the bar and the overflow menu
-   * are built from one list each. `null` when the action doesn't apply — no
-   * insert callback, or list view, which has no columns to fit. Insert itself
-   * *is* offered in list view: the draft is drawn as a card there (see
-   * `DraftDocumentCard`) and commits through the same `insert_row` call.
-   */
-  const insertItem: GridToolbarItem | null = onInsertRow
-    ? {
-        id: "insert",
-        bar: (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2 text-xs"
-            onClick={onInsertRow}
-            title={t("dataGrid.insertNewRow")}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t("dataGrid.insert")}
-          </Button>
-        ),
-        menu: (
-          <DropdownMenuItem className="text-xs" onSelect={onInsertRow}>
-            <Plus className="mr-2 h-3.5 w-3.5" />
-            {t("dataGrid.insertNewRow")}
-          </DropdownMenuItem>
-        ),
-      }
-    : null;
-
-  // Same auto-fit as double-clicking a column's edge, applied to every column
-  // — the discoverable form of that gesture.
-  const fitItem: GridToolbarItem | null =
-    viewMode !== "list" && result.columns.length > 0
-      ? {
-          id: "fit-columns",
-          bar: (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => autoFitColumns(result.columns.map((c) => c.name))}
-              title={t("dataGrid.fitColumns")}
-              aria-label={t("dataGrid.fitColumns")}
-            >
-              <UnfoldHorizontal className="h-3.5 w-3.5" />
-            </Button>
-          ),
-          menu: (
-            <DropdownMenuItem
-              className="text-xs"
-              onSelect={() => autoFitColumns(result.columns.map((c) => c.name))}
-            >
-              <UnfoldHorizontal className="mr-2 h-3.5 w-3.5" />
-              {t("dataGrid.fitColumns")}
-            </DropdownMenuItem>
-          ),
-        }
-      : null;
-
-  /**
-   * What the overflow menu holds right now, grouped so the menu keeps the
-   * bar's reading order (leading · data · view) with a separator between
-   * groups. Empty groups are dropped, and an empty result hides the trigger
-   * altogether — a `⋯` that opens nothing is worse than no `⋯`.
-   */
-  const overflowGroups: { id: string; items: GridToolbarItem[] }[] = [
-    { id: "leading", items: collapseChrome ? (toolbarLeading ?? []) : [] },
-    {
-      id: "data",
-      items: collapseData
-        ? [...(insertItem ? [insertItem] : []), ...(insertExtra ?? [])]
-        : [],
-    },
-    {
-      id: "view",
-      items: collapseChrome
-        ? [...(fitItem ? [fitItem] : []), ...(toolbarTrailing ?? [])]
-        : [],
-    },
-  ].filter((g) => g.items.length > 0);
-
-  /**
-   * The two readouts (row count, elapsed time) are squeezed out of the bar
-   * before anything else — nobody acts on them — but only when the overflow
-   * menu exists to keep showing them. A query-result tab passes no toolbar
-   * slots and has no insert action, so at `compact` it has nothing to collapse
-   * and therefore no `⋯`; hiding the timing there would delete it outright,
-   * and the timing is precisely what you're watching on an ad-hoc query.
-   */
-  const hasOverflow = overflowGroups.length > 0;
-  const rowCountInBar = density !== "narrow" || !hasOverflow;
-  const elapsedInBar = density === "wide" || !hasOverflow;
 
   return (
     // `relative` allows CellPreview to be positioned absolute within this container.
     <div className="relative flex h-full flex-col">
-      {/* Toolbar layout: leading actions (refresh · advanced filter) · growing
-          search box · filter chips  ——  then, right-aligned via the cluster's
-          `ml-auto`: Insert · insertExtra (TableDataTab's Add/Export
-          data/Bulk update, grouped right beside Insert) · optional row count ·
-          fit columns · trailing slot (view toggle) · elapsed time · overflow
-          menu. The search box flex-grows (capped) so it's the visual anchor on
-          the left; every action that adds, exports, or mass-edits data lives
-          together on the right instead of crowding the filter cluster.
-
-          As the pane narrows, actions leave the bar for the overflow menu
-          instead of wrapping onto a second row (`density`, measured on this
-          element): at `compact` the labelled data actions go, at `narrow`
-          everything but the search box does. `flex-wrap` is kept as a safety
-          net for the cases the breakpoints can't predict (a very long filter
-          chip, a future action), not as the normal behaviour. */}
-      <div
-        ref={toolbarRef}
-        className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs"
-      >
-        {!collapseChrome && toolbarLeading?.map((item) => (
-          <Fragment key={item.id}>{item.bar}</Fragment>
-        ))}
-        {!collapseChrome && toolbarLeading && toolbarLeading.length > 0 && (
-          <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
-        )}
-        <SearchInput
-          value={filterInput ?? globalFilter ?? ""}
-          onChange={onGlobalFilterChange}
-          onSubmit={onGlobalFilterSubmit}
-          history={searchHistory ?? []}
-        />
-        {/* Active server-side filters. They're content, not actions, so they
-            don't take part in the overflow-menu collapse above — but N chips
-            are the single widest thing in the bar (each one spells out
-            `column op value`), so from `compact` down they fold into one
-            summary chip whose dropdown still removes them individually.
-            Collapsing them only at `narrow` was measured and wasn't enough:
-            two chips still pushed a 700 px pane onto a second row, which is
-            the exact wrap this whole mechanism exists to prevent. */}
-        {serverFilters && serverFilters.length > 0 && (
-          density !== "wide" ? (
-            <ServerFilterSummary
-              filters={serverFilters}
-              onRemove={onRemoveFilter}
-            />
-          ) : (
-            serverFilters.map((f, i) => (
-              <ServerFilterChip
-                key={`${f.column}-${f.op}-${i}`}
-                filter={f}
-                onRemove={onRemoveFilter && (() => onRemoveFilter(i))}
-              />
-            ))
-          )
-        )}
-        {/* Right-aligned cluster. `ml-auto` opens the gap between the growing
-            search box (+ filter chips) on the left and this group. Contents:
-            Insert · insertExtra (TableDataTab's Add/Export data/Bulk update)
-            · optional row count (query/view tabs) · trailing slot (view
-            toggle) · elapsed time. Wrapped so the whole group wraps as a unit
-            on narrow panes. */}
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          {!collapseData && insertItem?.bar}
-          {!collapseData &&
-            insertExtra?.map((item) => (
-              <Fragment key={item.id}>{item.bar}</Fragment>
-            ))}
-          {showRowCount && rowCountInBar && (
-            <span className="tabular-nums text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {visibleRows.length.toLocaleString()}
-              </span>{" "}
-              {t("dataGrid.rows")}
-              {result.total !== null && result.total !== undefined && (
-                <>
-                  {" "}
-                  {t("dataGrid.of")}{" "}
-                  <span className="font-medium text-foreground">
-                    {result.total.toLocaleString()}
-                  </span>
-                </>
-              )}
-            </span>
-          )}
-          {/* Never gated by `showRowCount`/collapse — this is a warning about
-              missing data, not a "nice to have" readout, so it stays visible
-              even when the toolbar is squeezed. See `MAX_ADHOC_QUERY_ROWS`
-              in `src-tauri/src/commands/query.rs`. */}
-          {result.truncated && (
-            <span
-              className="flex items-center gap-1 rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs font-medium text-warning"
-              title={t("dataGrid.truncatedHint")}
-            >
-              <AlertTriangle className="h-3 w-3 shrink-0" />
-              {t("dataGrid.truncated")}
-            </span>
-          )}
-          {!collapseChrome && fitItem?.bar}
-          {!collapseChrome &&
-            toolbarTrailing?.map((item) => (
-              <Fragment key={item.id}>{item.bar}</Fragment>
-            ))}
-          {/* The timing is the first thing to go: it's a readout nobody acts
-              on, and the overflow menu keeps showing it (with the row count)
-              once either is squeezed out of the bar. */}
-          {elapsedInBar && (
-            <span
-              className={cn(
-                "tabular-nums",
-                // Draw attention only when a query is slow; fast queries stay
-                // muted (colouring every timing green/amber would be noise).
-                result.elapsed_ms > 2000
-                  ? "text-destructive"
-                  : result.elapsed_ms > 500
-                    ? "text-warning"
-                    : "text-muted-foreground",
-              )}
-            >
-              {result.elapsed_ms} ms
-            </span>
-          )}
-          {overflowGroups.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  title={t("dataGrid.moreActions")}
-                  aria-label={t("dataGrid.moreActions")}
-                >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[13rem]">
-                {overflowGroups.map((group, gi) => (
-                  <Fragment key={group.id}>
-                    {gi > 0 && <DropdownMenuSeparator />}
-                    {group.items.map((item) => (
-                      <Fragment key={item.id}>{item.menu}</Fragment>
-                    ))}
-                  </Fragment>
-                ))}
-                {/* Readouts the bar no longer has room for. Not menu items —
-                    there's nothing to select — just the numbers, so collapsing
-                    the toolbar never hides information outright. */}
-                {(!elapsedInBar || (showRowCount && !rowCountInBar)) && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <div className="px-2 py-1 text-xs tabular-nums text-muted-foreground">
-                      {showRowCount && !rowCountInBar && (
-                        <>
-                          {visibleRows.length.toLocaleString()}{" "}
-                          {t("dataGrid.rows")}
-                          {result.total !== null &&
-                            result.total !== undefined &&
-                            ` ${t("dataGrid.of")} ${result.total.toLocaleString()}`}
-                          {!elapsedInBar && " · "}
-                        </>
-                      )}
-                      {!elapsedInBar && `${result.elapsed_ms} ms`}
-                    </div>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
-      </div>
+      <GridToolbar
+        toolbarLeading={toolbarLeading}
+        insertExtra={insertExtra}
+        toolbarTrailing={toolbarTrailing}
+        filterInput={filterInput}
+        globalFilter={globalFilter}
+        onGlobalFilterChange={onGlobalFilterChange}
+        onGlobalFilterSubmit={onGlobalFilterSubmit}
+        searchHistory={searchHistory}
+        serverFilters={serverFilters}
+        onRemoveFilter={onRemoveFilter}
+        onInsertRow={onInsertRow}
+        onFitColumns={autoFitColumns}
+        columns={result.columns}
+        viewMode={viewMode}
+        showRowCount={showRowCount}
+        visibleRowCount={visibleRows.length}
+        total={result.total}
+        elapsedMs={result.elapsed_ms}
+        truncated={result.truncated}
+      />
 
       {/* Scrollable data table, wrapped so the refetch overlay covers only the
           grid body (not the toolbar). */}
@@ -3252,341 +1299,3 @@ export function DataGrid({
   );
 }
 
-/**
- * Toolbar search input with an optional history dropdown.
- *
- * Submitting is explicit: typing only updates the input value, and the
- * search is applied to the backend on Enter, on picking a history
- * entry, or on clicking the clear (×) button. This stops every
- * keystroke from creating a history entry and avoids spurious refetches
- * while the user is still composing the query.
- */
-/**
- * The value half of a filter chip's label — the part after `column op`. An
- * `IN` list is summarised by count (it can hold hundreds of values, with the
- * values themselves deferred to a tooltip); `IS NULL` and friends have no
- * value at all.
- */
-function filterValueLabel(f: ColumnFilter, t: TFunction): string | null {
-  if (f.op === "in" || f.op === "not_in") {
-    return t("dataGrid.filterValueCount", { count: f.values?.length ?? 0 });
-  }
-  if (f.op === "eq" || f.op === "ne") {
-    return f.value === null || f.value === undefined
-      ? "NULL"
-      : formatValue(f.value);
-  }
-  return null;
-}
-
-/** Values behind an `IN` / `NOT IN` chip, for its tooltip. */
-function filterValuesTooltip(f: ColumnFilter): string | undefined {
-  if (f.op !== "in" && f.op !== "not_in") return undefined;
-  return (f.values ?? [])
-    .map((v) => (v === null || v === undefined ? "NULL" : formatValue(v)))
-    .join(", ");
-}
-
-/** One active server-side filter, as a removable chip in the toolbar. */
-function ServerFilterChip({
-  filter: f,
-  onRemove,
-}: {
-  filter: ColumnFilter;
-  onRemove?: () => void;
-}) {
-  const { t } = useTranslation();
-  const value = filterValueLabel(f, t);
-  return (
-    <span
-      className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 font-mono text-[11px]"
-      title={t("dataGrid.serverSideFilter")}
-    >
-      <span className="text-muted-foreground">{f.column}</span>
-      <span className="text-muted-foreground/70">{FILTER_LABEL[f.op]}</span>
-      {value !== null && (
-        <span className="max-w-[10rem] truncate" title={filterValuesTooltip(f)}>
-          {value}
-        </span>
-      )}
-      {onRemove && (
-        <button
-          className="ml-1 text-muted-foreground/60 hover:text-foreground"
-          onClick={onRemove}
-          title={t("dataGrid.removeFilter")}
-        >
-          <X className="h-3 w-3" />
-        </button>
-      )}
-    </span>
-  );
-}
-
-/**
- * The narrow-pane form of the chip row: one chip carrying the filter count,
- * whose dropdown still removes filters one by one. Selecting an entry removes
- * that filter and deliberately keeps the menu open (`preventDefault` on the
- * select), since clearing several filters in a row is the common case and
- * re-opening the menu each time would be busywork.
- */
-function ServerFilterSummary({
-  filters,
-  onRemove,
-}: {
-  filters: ColumnFilter[];
-  onRemove?: (index: number) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-          title={t("dataGrid.serverSideFilter")}
-        >
-          <Filter className="h-3 w-3 text-brand" />
-          {t("dataGrid.activeFilterCount", { count: filters.length })}
-          <ChevronDown className="h-3 w-3 opacity-60" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {filters.map((f, i) => {
-          const value = filterValueLabel(f, t);
-          return (
-            <DropdownMenuItem
-              key={`${f.column}-${f.op}-${i}`}
-              className="gap-2 font-mono text-xs"
-              title={filterValuesTooltip(f) ?? t("dataGrid.removeFilter")}
-              disabled={!onRemove}
-              onSelect={(e) => {
-                e.preventDefault();
-                onRemove?.(i);
-              }}
-            >
-              <span className="text-muted-foreground">{f.column}</span>
-              <span className="text-muted-foreground/70">
-                {FILTER_LABEL[f.op]}
-              </span>
-              {value !== null && (
-                <span className="max-w-[14rem] truncate">{value}</span>
-              )}
-              <X className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/60" />
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function SearchInput({
-  value,
-  onChange,
-  onSubmit,
-  history,
-}: {
-  value: string;
-  onChange?: (v: string) => void;
-  onSubmit?: (v: string) => void;
-  history: string[];
-}) {
-  const { t } = useTranslation();
-  const hasHistory = history.length > 0;
-  const hasValue = value.length > 0;
-  return (
-    <div className="flex h-7 min-w-[12rem] max-w-xl flex-1 items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
-      <span
-        className="flex shrink-0 items-center pl-2 text-muted-foreground/70"
-        aria-hidden
-      >
-        <Search className="h-3.5 w-3.5" />
-      </span>
-      <input
-        className="w-full min-w-0 flex-1 bg-transparent px-2 text-xs focus:outline-none"
-        placeholder={t("dataGrid.filterRows")}
-        value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            onSubmit?.(value);
-          }
-        }}
-      />
-      {hasValue && (
-        <button
-          type="button"
-          className="flex items-center justify-center px-1.5 text-muted-foreground/70 hover:bg-accent/30 hover:text-foreground"
-          title="Clear filter"
-          onClick={() => {
-            // Clear immediately + apply, so the grid actually refetches
-            // and the user sees the unfiltered rows.
-            onChange?.("");
-            onSubmit?.("");
-          }}
-        >
-          <X className="h-3 w-3" />
-        </button>
-      )}
-      {hasHistory && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="flex items-center justify-center border-l border-input px-1.5 text-muted-foreground/70 hover:bg-accent/30 hover:text-foreground"
-              title="Recent searches on this connection"
-            >
-              <ChevronDown className="h-3 w-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-            {history.map((q) => (
-              <DropdownMenuItem
-                key={q}
-                onSelect={() => {
-                  onChange?.(q);
-                  onSubmit?.(q);
-                }}
-                className="font-mono text-xs"
-              >
-                <span className="truncate max-w-[20rem]">{q}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  );
-}
-
-/**
- * Editable row pinned at the top of the grid for inline INSERT.
- *
- * Each cell is a plain text input. The empty initial state ("NULL"
- * placeholder) means the column is omitted from the INSERT so the
- * database picks the default; clicking "∅" explicitly forces NULL.
- *
- * Commit fires when focus leaves the row entirely (the user clicks
- * outside). We detect this with a `setTimeout(0)` after `onBlur` and
- * check whether `document.activeElement` is still inside the row.
- * `Esc` cancels; `Enter` commits explicitly.
- */
-interface DraftRowViewProps {
-  rowRef: React.MutableRefObject<HTMLTableRowElement | null>;
-  firstInputRef: React.MutableRefObject<HTMLElement | null>;
-  columns: ColumnMeta[];
-  draftColumns: ColumnInfo[];
-  draft: DraftRow;
-  /** Connection + target table — required for FK comboboxes to query options. */
-  connectionId?: string;
-  tableSchema?: string;
-  tableName?: string;
-  /** Grid preference for BIT option labels in the dedicated control. */
-  bitDisplay: "true_false" | "zero_one";
-  onChange?: (column: string, cell: DraftCell) => void;
-  onCommit?: () => void;
-  onCancel?: () => void;
-}
-
-function DraftRowView({
-  rowRef,
-  firstInputRef,
-  columns,
-  draftColumns,
-  draft,
-  connectionId,
-  tableSchema,
-  tableName: _tableName,
-  bitDisplay,
-  onChange,
-  onCommit,
-  onCancel,
-}: DraftRowViewProps) {
-  const infoByName = useMemo(() => {
-    const m = new Map<string, ColumnInfo>();
-    for (const c of draftColumns) m.set(c.name, c);
-    return m;
-  }, [draftColumns]);
-
-  /** First non-auto-PK column index — used to bind the focus-on-mount ref. */
-  const firstEditableIdx = useMemo(
-    () => firstEditableColumn(columns, infoByName),
-    [columns, infoByName],
-  );
-
-  function handleRowBlur() {
-    // Wait one tick for focus to settle on the new target.
-    setTimeout(() => {
-      if (draft.saving) return;
-      const active = document.activeElement;
-      if (rowRef.current && active && rowRef.current.contains(active)) return;
-      onCommit?.();
-    }, 0);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onCancel?.();
-    } else if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      onCommit?.();
-    }
-  }
-
-  return (
-    <>
-      <tr
-        ref={rowRef}
-        className="border-l-2 border-l-primary bg-primary/5"
-        onBlur={handleRowBlur}
-        onKeyDown={handleKeyDown}
-      >
-        <td className="border-b border-border/50 border-r border-r-border/70 px-2 py-1 text-[10px] font-medium text-primary">
-          {draft.saving ? "…" : "+"}
-        </td>
-        {columns.map((col, idx) => {
-          const cell: DraftCell =
-            draft.cells[col.name] ?? { value: null, touched: false };
-          return (
-            <td
-              key={col.name}
-              className="border-b border-border/50 border-r border-r-border/70 px-1 py-0.5"
-            >
-              {/* Row-level onBlur / onKeyDown drive commit & cancel, so the
-                  control itself is mounted unwired. */}
-              <DraftCellControl
-                info={infoByName.get(col.name)}
-                cell={cell}
-                saving={draft.saving}
-                autoFocus={idx === firstEditableIdx}
-                focusRef={idx === firstEditableIdx ? firstInputRef : undefined}
-                connectionId={connectionId}
-                tableSchema={tableSchema}
-                bitDisplay={bitDisplay}
-                onChange={(next) => onChange?.(col.name, next)}
-              />
-            </td>
-          );
-        })}
-        <td className="border-b border-border/50" />
-      </tr>
-      {draft.error && (
-        <tr>
-          <td
-            colSpan={columns.length + 2}
-            className="border-b border-border/50 bg-destructive/10 px-3 py-1 text-[11px] text-destructive"
-          >
-            {draft.error}
-            <button
-              className="ml-3 underline-offset-2 hover:underline"
-              onClick={() => onCancel?.()}
-            >
-              discard
-            </button>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}

@@ -14,12 +14,13 @@
 //!   Used by both the "insert" and "duplicate" flows in the grid.
 
 use crate::commands::schema::list_columns_inner;
+use crate::db::mysql;
 use crate::db::sql::{is_read_only, Dialect};
 use crate::db::values::{
     mysql_columns, mysql_value, pg_columns, pg_value, sqlite_columns, sqlite_value,
 };
 use crate::error::{AppError, AppResult};
-use crate::log_bus::{self, LogEntry, LogKind, LogSink};
+use crate::log_bus::{log_sql_sink, LogSink};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -32,52 +33,6 @@ use sqlx::Executor as _;
 use std::collections::HashSet;
 use std::time::Instant;
 use tauri::{AppHandle, State};
-
-/// Build the SQL [`LogEntry`] shared by the window- and sink-targeted
-/// emitters below, so the field population lives in exactly one place.
-#[allow(clippy::too_many_arguments)]
-fn build_sql_entry(
-    connection_id: &str,
-    driver: &str,
-    sql: &str,
-    start: Instant,
-    rows_affected: Option<u64>,
-    error: Option<&str>,
-) -> LogEntry {
-    let mut entry = LogEntry::new(LogKind::Sql)
-        .connection_id(connection_id)
-        .driver(driver)
-        .sql(sql)
-        .duration_ms(start.elapsed().as_millis() as u64);
-    if let Some(r) = rows_affected {
-        entry = entry.rows_affected(r);
-    }
-    if let Some(e) = error {
-        entry = entry.error(e);
-    }
-    entry
-}
-
-/// Emit a SQL log entry through a [`LogSink`] after a statement finished.
-///
-/// This is the single logging path for every DB command: the GUI's
-/// `#[tauri::command]` wrappers build a [`log_bus::TauriSink`] (window-scoped
-/// Console emission) and the headless `huginndb-mcp` binary passes its own
-/// sink, so the shared `_inner` cores ([`execute_with_state`],
-/// [`fetch_table_data_inner`], [`update_cell_inner`], …) stay
-/// Tauri-independent.
-fn log_sql_sink(
-    sink: &dyn LogSink,
-    connection_id: &str,
-    driver: &str,
-    sql: &str,
-    start: Instant,
-    rows_affected: Option<u64>,
-    error: Option<&str>,
-) {
-    let entry = build_sql_entry(connection_id, driver, sql, start, rows_affected, error);
-    sink.log(entry);
-}
 
 /// Unwrap a `Result<_, sqlx::Error>` produced by a SQL call and, on failure,
 /// emit a SQL log entry through the [`LogSink`] plus early-return the error
@@ -139,6 +94,104 @@ pub enum FilterOp {
     NotIn,
     IsNull,
     IsNotNull,
+}
+
+/// The predicate half of a table browse: the structured column filters (the
+/// grid's chips) plus the free-text needle and the columns it searches.
+///
+/// These three travelled together as three separate parameters through
+/// `fetch_table_data`, `count_table_rows`, `export_table_rows`, their `_inner`
+/// cores and four MongoDB entry points — always all three, always in that
+/// order, always `Option`-wrapped and immediately unwrapped to the same
+/// defaults on the other side. Splitting a needle from the columns it applies
+/// to silently searches nothing, so they are one value.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableFilter {
+    #[serde(default)]
+    pub filters: Vec<ColumnFilter>,
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub search_columns: Vec<String>,
+}
+
+impl TableFilter {
+    /// The committed needle, or `None` when it is absent *or empty*. An empty
+    /// string is not a predicate — treating it as one turns `LIKE '%%'` into a
+    /// reason to skip the fast catalog estimate in [`count_table_rows_inner`].
+    pub fn needle(&self) -> Option<&str> {
+        self.search.as_deref().filter(|s| !s.is_empty())
+    }
+
+    /// True when this selects the whole relation. Only then may a count be
+    /// served from the engine's statistics rather than an exact `COUNT(*)`.
+    pub fn is_unfiltered(&self) -> bool {
+        self.filters.is_empty() && self.needle().is_none()
+    }
+
+    fn validate(&self) -> AppResult<()> {
+        validate_filters(&self.filters)
+    }
+
+    /// The `WHERE` clause and its binds for `dialect`, placeholders from 1.
+    fn clause(&self, dialect: Dialect) -> (String, Vec<Option<String>>) {
+        build_filter_clause(dialect, &self.filters, self.needle(), &self.search_columns)
+    }
+}
+
+/// A table plus a predicate over it, with no paging — what
+/// [`count_table_rows`] and `export_table_rows` address.
+///
+/// `filter` is `#[serde(flatten)]`ed, so the IPC payload stays the flat object
+/// the frontend already sent (`{ connectionId, schema, table, filters, search,
+/// searchColumns }`); only the Rust side gained the grouping.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableScan {
+    pub connection_id: String,
+    #[serde(default)]
+    pub schema: Option<String>,
+    pub table: String,
+    #[serde(flatten)]
+    pub filter: TableFilter,
+}
+
+/// One page of a table browse: a [`TableScan`]'s address and predicate, plus
+/// the ordering, the window and whether to count.
+///
+/// Declared as one struct rather than embedding [`TableScan`] because a
+/// doubly-flattened payload is harder to read than the nine fields it stands
+/// for, and this is the shape the frontend types mirror (see `TableQuery` in
+/// `src/types.ts` — a field missing on either side is silently dropped by
+/// serde, CLAUDE.md gotcha #14, which is what the round-trip test at the
+/// bottom of this module pins down).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableQuery {
+    pub connection_id: String,
+    #[serde(default)]
+    pub schema: Option<String>,
+    pub table: String,
+    pub limit: i64,
+    pub offset: i64,
+    /// Ordered multi-column sort; `order[0]` is the primary key.
+    #[serde(default)]
+    pub order: Vec<SortSpec>,
+    #[serde(flatten)]
+    pub filter: TableFilter,
+    /// Whether to run the companion `SELECT COUNT(*)`. The GUI passes `false`
+    /// when only the sort/offset/page changed (the total cannot have moved)
+    /// and reuses its cached total, saving a round trip per interaction; the
+    /// headless MCP `browse_table` tool wants the inline count. Defaults to
+    /// `true` when the key is absent, which is the pre-struct behaviour of
+    /// `Option<bool>::unwrap_or(true)`.
+    #[serde(default = "with_count_default")]
+    pub with_count: bool,
+}
+
+fn with_count_default() -> bool {
+    true
 }
 
 /// One column-level predicate applied by [`fetch_table_data`].
@@ -242,6 +295,65 @@ pub struct QueryResult {
     pub row_types: Option<Vec<Vec<Value>>>,
 }
 
+impl QueryResult {
+    /// A result set. `rows_affected` is the row *count* — every read-shaped
+    /// caller set it that way, and the nine struct literals this replaces
+    /// each restated the relationship (usually as `data.len() as u64` on the
+    /// line above `rows: data`, which only works because the field order puts
+    /// it first).
+    ///
+    /// `total`, `truncated` and `row_types` start at their neutral values and
+    /// are added by the three builder methods below, so a caller only mentions
+    /// the ones it actually has. That is the point of these: a new field on
+    /// [`QueryResult`] is one edit here instead of nine, and — the part a
+    /// compiler would not have caught — a field a caller *forgets* to set now
+    /// gets the same neutral value as everywhere else rather than whatever the
+    /// author assumed.
+    pub fn rows(columns: Vec<ColumnMeta>, rows: Vec<Vec<Value>>, elapsed_ms: u64) -> Self {
+        Self {
+            rows_affected: rows.len() as u64,
+            columns,
+            rows,
+            elapsed_ms,
+            total: None,
+            truncated: false,
+            row_types: None,
+        }
+    }
+
+    /// A write's affected-row count, with no result set.
+    pub fn affected(rows_affected: u64, elapsed_ms: u64) -> Self {
+        Self {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            rows_affected,
+            elapsed_ms,
+            total: None,
+            truncated: false,
+            row_types: None,
+        }
+    }
+
+    /// The relation's total row count, for the browse footer's "1–100 of N".
+    pub fn with_total(mut self, total: Option<u64>) -> Self {
+        self.total = total;
+        self
+    }
+
+    /// Mark the rows as having been cut at [`MAX_ADHOC_QUERY_ROWS`].
+    pub fn with_truncated(mut self, truncated: bool) -> Self {
+        self.truncated = truncated;
+        self
+    }
+
+    /// MongoDB's per-cell BSON type trees (gotcha #29). Must stay cell-aligned
+    /// with `rows`.
+    pub fn with_row_types(mut self, row_types: Vec<Vec<Value>>) -> Self {
+        self.row_types = Some(row_types);
+        self
+    }
+}
+
 /// Column descriptor in a [`QueryResult`]. `Deserialize` for the same reason
 /// as its parent — it crosses the MCP bridge.
 #[derive(Debug, Serialize, Deserialize)]
@@ -299,15 +411,6 @@ pub struct BatchResult {
     pub total_affected: u64,
 }
 
-/// Resolve the active pool for `id`, or fail with [`AppError::NotConnected`].
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 /// One-line, length-capped echo of a statement for the batch summary.
 fn stmt_preview(sql: &str) -> String {
     let one_line = sql.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -322,6 +425,16 @@ fn stmt_preview(sql: &str) -> String {
 /// Decode a Postgres result set into `(columns, rows)`. Shared by
 /// [`execute_with_state`] and [`execute_batch`] so the two paths can never
 /// drift in how they map driver rows to JSON values.
+/// Map `db::exec::query_rows`'s untyped `(name, type_name)` pairs into the
+/// serialisable DTO. The pairs stop at the `db/` boundary (see `query_rows`);
+/// this is the one place that crosses them over.
+fn column_meta(pairs: Vec<(String, String)>) -> Vec<ColumnMeta> {
+    pairs
+        .into_iter()
+        .map(|(name, data_type)| ColumnMeta { name, data_type })
+        .collect()
+}
+
 fn pg_result(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
     use sqlx::Row;
     let columns = rows
@@ -388,14 +501,7 @@ pub async fn execute_query(
     connection_id: String,
     sql: String,
 ) -> AppResult<QueryResult> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     execute_with_state(&sink, state.inner(), &connection_id, &sql).await
 }
 
@@ -412,7 +518,7 @@ pub(crate) async fn execute_with_state(
     connection_id: &str,
     sql: &str,
 ) -> AppResult<QueryResult> {
-    let pool = pool_for(state, connection_id)?;
+    let pool = state.pool_for(connection_id)?;
     let driver = pool.driver_name();
     let start = Instant::now();
 
@@ -496,15 +602,10 @@ pub(crate) async fn execute_with_state(
             Some(rows_affected),
             None,
         );
-        return Ok(QueryResult {
-            columns: vec![],
-            rows: vec![],
+        return Ok(QueryResult::affected(
             rows_affected,
-            elapsed_ms: start.elapsed().as_millis() as u64,
-            total: None,
-            truncated: false,
-            row_types: None,
-        });
+            start.elapsed().as_millis() as u64,
+        ));
     }
 
     let ((columns, data), truncated) = match pool {
@@ -567,15 +668,8 @@ pub(crate) async fn execute_with_state(
         }
         DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     };
-    let result = QueryResult {
-        rows_affected: data.len() as u64,
-        rows: data,
-        columns,
-        elapsed_ms: start.elapsed().as_millis() as u64,
-        total: None,
-        truncated,
-        row_types: None,
-    };
+    let result = QueryResult::rows(columns, data, start.elapsed().as_millis() as u64)
+        .with_truncated(truncated);
     log_sql_sink(
         sink,
         connection_id,
@@ -616,14 +710,7 @@ pub async fn execute_batch(
     connection_id: String,
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     execute_batch_inner(&sink, state.inner(), connection_id, statements).await
 }
 
@@ -636,7 +723,7 @@ pub(crate) async fn execute_batch_inner(
     connection_id: String,
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     if let DbPool::Mongo(conn) = &pool {
@@ -667,15 +754,14 @@ pub(crate) async fn execute_batch_inner(
                             let ra = data.len() as u64;
                             total_affected += ra;
                             log_sql_sink(sink, &connection_id, driver, sql, start, Some(ra), None);
-                            last_result = Some(QueryResult {
-                                columns,
-                                rows: data,
-                                rows_affected: ra,
-                                elapsed_ms: start.elapsed().as_millis() as u64,
-                                total: None,
-                                truncated,
-                                row_types: None,
-                            });
+                            last_result = Some(
+                                QueryResult::rows(
+                                    columns,
+                                    data,
+                                    start.elapsed().as_millis() as u64,
+                                )
+                                .with_truncated(truncated),
+                            );
                             outcomes.push(StmtOutcome {
                                 index,
                                 preview: stmt_preview(sql),
@@ -774,23 +860,21 @@ pub(crate) async fn execute_batch_inner(
                             let rows = sets.into_iter().find(|s| !s.is_empty()).unwrap_or_default();
                             let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
                             let ra = data.len() as u64;
+                            // No `row_types`: SQL, so the catalog column type is
+                            // the hint the editor needs, and per-cell BSON type
+                            // trees are MongoDB's alone (gotcha #29).
                             (
                                 ra,
-                                Some(QueryResult {
-                                    columns: cols
-                                        .into_iter()
-                                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                                        .collect(),
-                                    rows: data,
-                                    rows_affected: ra,
-                                    elapsed_ms: start.elapsed().as_millis() as u64,
-                                    total: None,
-                                    truncated,
-                                    // SQL, so the catalog column type is the hint
-                                    // the editor needs; per-cell BSON type trees
-                                    // are MongoDB's alone (gotcha #29).
-                                    row_types: None,
-                                }),
+                                Some(
+                                    QueryResult::rows(
+                                        cols.into_iter()
+                                            .map(|(name, data_type)| ColumnMeta { name, data_type })
+                                            .collect(),
+                                        data,
+                                        start.elapsed().as_millis() as u64,
+                                    )
+                                    .with_truncated(truncated),
+                                ),
                             )
                         })
                 } else {
@@ -1044,7 +1128,21 @@ pub(crate) fn build_filter_clause_at(
                     FilterOp::Gt => ">",
                     FilterOp::Gte => ">=",
                     FilterOp::Lt => "<",
-                    _ => "<=",
+                    FilterOp::Lte => "<=",
+                    // Unreachable: the arm above admits only those six. Listed
+                    // by name rather than `_` so that adding a `FilterOp` is a
+                    // compile error here instead of silently inheriting `<=`.
+                    FilterOp::Contains
+                    | FilterOp::NotContains
+                    | FilterOp::StartsWith
+                    | FilterOp::EndsWith
+                    | FilterOp::Between
+                    | FilterOp::In
+                    | FilterOp::NotIn
+                    | FilterOp::IsNull
+                    | FilterOp::IsNotNull => {
+                        unreachable!("non-comparison op in the comparison arm")
+                    }
                 };
                 let ph = placeholder(&mut next_placeholder);
                 parts.push(format!("{col} {sym} {ph}"));
@@ -1137,7 +1235,23 @@ pub(crate) fn build_filter_clause_at(
                     FilterOp::Contains => (format!("%{escaped}%"), like_kw),
                     FilterOp::NotContains => (format!("%{escaped}%"), "NOT LIKE"),
                     FilterOp::StartsWith => (format!("{escaped}%"), like_kw),
-                    _ => (format!("%{escaped}"), like_kw),
+                    FilterOp::EndsWith => (format!("%{escaped}"), like_kw),
+                    // Unreachable, and spelled out for the same reason as the
+                    // comparison arm above: a new `FilterOp` must not quietly
+                    // become a suffix match.
+                    FilterOp::Eq
+                    | FilterOp::Ne
+                    | FilterOp::Gt
+                    | FilterOp::Gte
+                    | FilterOp::Lt
+                    | FilterOp::Lte
+                    | FilterOp::Between
+                    | FilterOp::In
+                    | FilterOp::NotIn
+                    | FilterOp::IsNull
+                    | FilterOp::IsNotNull => {
+                        unreachable!("non-pattern op in the pattern arm")
+                    }
                 };
                 // `NOT LIKE` has no case-insensitive keyword form; on Postgres
                 // fold both sides to lower() so "not contains" stays
@@ -1190,93 +1304,47 @@ pub(crate) fn build_filter_clause_at(
 /// driver-appropriate helper; filter values are always bound, never
 /// interpolated.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn fetch_table_data(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
-    connection_id: String,
-    schema: Option<String>,
-    table: String,
-    limit: i64,
-    offset: i64,
-    order: Option<Vec<SortSpec>>,
-    filters: Option<Vec<ColumnFilter>>,
-    search: Option<String>,
-    search_columns: Option<Vec<String>>,
-    // Whether to run the companion `SELECT COUNT(*)`. The frontend passes
-    // `false` when only the sort/offset/page changed (the total can't have
-    // changed) and reuses its cached total, saving a round trip per
-    // interaction. Defaults to `true` (count) when omitted.
-    with_count: Option<bool>,
+    query: TableQuery,
 ) -> AppResult<QueryResult> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
-    fetch_table_data_inner(
-        &sink,
-        state.inner(),
-        connection_id,
-        schema,
-        table,
-        limit,
-        offset,
-        order,
-        filters,
-        search,
-        search_columns,
-        with_count,
-    )
-    .await
+    let sink =
+        crate::commands::entry_sink(&app, &window, state.inner(), &query.connection_id).await;
+    fetch_table_data_inner(&sink, state.inner(), query).await
 }
 
 /// Tauri-independent core of [`fetch_table_data`], reused by the headless MCP
 /// `browse_table` tool. Takes a borrowed [`AppState`] and a [`LogSink`] (a
 /// `TauriSink` in the GUI, a `NoopSink` under MCP) instead of the Tauri
 /// `State` guard + `AppHandle`.
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn fetch_table_data_inner(
     sink: &dyn LogSink,
     state: &AppState,
-    connection_id: String,
-    schema: Option<String>,
-    table: String,
-    limit: i64,
-    offset: i64,
-    order: Option<Vec<SortSpec>>,
-    filters: Option<Vec<ColumnFilter>>,
-    search: Option<String>,
-    search_columns: Option<Vec<String>>,
-    with_count: Option<bool>,
+    query: TableQuery,
 ) -> AppResult<QueryResult> {
-    if let Some(f) = filters.as_deref() {
-        validate_filters(f)?;
-    }
-    let pool = pool_for(state, &connection_id)?;
-
-    // MongoDB browse: delegate to the mongo module (find + count). Clone the
-    // option args so the SQL path below — though unreachable for mongo — still
-    // type-checks without a use-after-move.
-    let order = order.unwrap_or_default();
-    let want_count = with_count.unwrap_or(true);
+    query.filter.validate()?;
+    let TableQuery {
+        connection_id,
+        schema,
+        table,
+        limit,
+        offset,
+        order,
+        filter,
+        with_count,
+    } = query;
+    let pool = state.pool_for(&connection_id)?;
 
     if let DbPool::Mongo(conn) = &pool {
-        let f = filters.clone().unwrap_or_default();
-        let sc = search_columns.clone().unwrap_or_default();
-        let search_ref = search.as_deref().filter(|s| !s.is_empty());
         let start = Instant::now();
         let result = crate::db::mongo::query::fetch_collection_data(
-            conn, &table, limit, offset, &order, &f, search_ref, &sc, want_count,
+            conn, &table, limit, offset, &order, &filter, with_count,
         )
         .await;
-        let sql_text = crate::db::mongo::query::describe_find(
-            &table, &f, search_ref, &sc, &order, limit, offset,
-        );
+        let sql_text =
+            crate::db::mongo::query::describe_find(&table, &filter, &order, limit, offset);
         match &result {
             Ok(r) => log_sql_sink(
                 sink,
@@ -1318,11 +1386,7 @@ pub(crate) async fn fetch_table_data_inner(
         format!(" ORDER BY {}", parts.join(", "))
     };
 
-    let filters = filters.unwrap_or_default();
-    let search_columns = search_columns.unwrap_or_default();
-    let search_ref = search.as_deref().filter(|s| !s.is_empty());
-    let (where_clause, where_binds) =
-        build_filter_clause(dialect, &filters, search_ref, &search_columns);
+    let (where_clause, where_binds) = filter.clause(dialect);
 
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
 
@@ -1336,119 +1400,17 @@ pub(crate) async fn fetch_table_data_inner(
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
     let start = Instant::now();
-    let (columns, data) = match &pool {
-        DbPool::Postgres(p) => {
-            let mut q = sqlx::query(&data_sql);
-            for b in &where_binds {
-                q = q.bind(b);
-            }
-            let rows = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                &data_sql,
-                start,
-                q.fetch_all(p).await
-            );
-            let columns = rows
-                .first()
-                .map(|r| {
-                    pg_columns(r)
-                        .into_iter()
-                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let data: Vec<Vec<Value>> = rows
-                .iter()
-                .map(|r| {
-                    use sqlx::Row;
-                    (0..r.columns().len()).map(|i| pg_value(r, i)).collect()
-                })
-                .collect();
-            (columns, data)
-        }
-        DbPool::Mysql(p) => {
-            let mut q = sqlx::query(&data_sql);
-            for b in &where_binds {
-                q = q.bind(b);
-            }
-            let rows = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                &data_sql,
-                start,
-                q.fetch_all(p).await
-            );
-            let columns = rows
-                .first()
-                .map(|r| {
-                    mysql_columns(r)
-                        .into_iter()
-                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let data: Vec<Vec<Value>> = rows
-                .iter()
-                .map(|r| {
-                    use sqlx::Row;
-                    (0..r.columns().len()).map(|i| mysql_value(r, i)).collect()
-                })
-                .collect();
-            (columns, data)
-        }
-        DbPool::Sqlite(p) => {
-            let mut q = sqlx::query(&data_sql);
-            for b in &where_binds {
-                q = q.bind(b);
-            }
-            let rows = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                &data_sql,
-                start,
-                q.fetch_all(p).await
-            );
-            let columns = rows
-                .first()
-                .map(|r| {
-                    sqlite_columns(r)
-                        .into_iter()
-                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let data: Vec<Vec<Value>> = rows
-                .iter()
-                .map(|r| {
-                    use sqlx::Row;
-                    (0..r.columns().len()).map(|i| sqlite_value(r, i)).collect()
-                })
-                .collect();
-            (columns, data)
-        }
-        DbPool::MsSql(p) => {
-            let rows = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                &data_sql,
-                start,
-                p.query_all(&data_sql, &where_binds).await
-            );
-            let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
-            (
-                cols.into_iter()
-                    .map(|(name, data_type)| ColumnMeta { name, data_type })
-                    .collect::<Vec<_>>(),
-                data,
-            )
-        }
-        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-    };
+    // One dispatch, in `db::exec`. The PG arm here used to be a verbatim
+    // re-inlining of `pg_result`, which already existed 200 lines above.
+    let (raw_columns, data) = try_sql_sink!(
+        sink,
+        &connection_id,
+        driver,
+        &data_sql,
+        start,
+        crate::db::exec::query_rows(&pool, &data_sql, &where_binds).await
+    );
+    let columns = column_meta(raw_columns);
     let elapsed_ms = start.elapsed().as_millis() as u64;
     log_sql_sink(
         sink,
@@ -1463,7 +1425,7 @@ pub(crate) async fn fetch_table_data_inner(
     // The COUNT companion is skipped when the caller already knows the total
     // (only sort/offset/page changed). This halves the round trips for the
     // common case of paging through or re-sorting a large result set.
-    let total: Option<u64> = if want_count {
+    let total: Option<u64> = if with_count {
         let count_start = Instant::now();
         let raw_count: Option<i64> = try_sql_sink!(
             sink,
@@ -1471,31 +1433,7 @@ pub(crate) async fn fetch_table_data_inner(
             driver,
             &count_sql,
             count_start,
-            match &pool {
-                DbPool::Postgres(p) => {
-                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                    for b in &where_binds {
-                        q = q.bind(b);
-                    }
-                    q.fetch_optional(p).await.map_err(AppError::from)
-                }
-                DbPool::Mysql(p) => {
-                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                    for b in &where_binds {
-                        q = q.bind(b);
-                    }
-                    q.fetch_optional(p).await.map_err(AppError::from)
-                }
-                DbPool::Sqlite(p) => {
-                    let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                    for b in &where_binds {
-                        q = q.bind(b);
-                    }
-                    q.fetch_optional(p).await.map_err(AppError::from)
-                }
-                DbPool::MsSql(p) => p.scalar(&count_sql, &where_binds).await,
-                DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-            }
+            crate::db::exec::scalar_i64(&pool, &count_sql, &where_binds).await
         );
         let total = raw_count.map(|n| n as u64);
         log_sql_sink(
@@ -1534,15 +1472,7 @@ pub(crate) async fn fetch_table_data_inner(
         columns
     };
 
-    Ok(QueryResult {
-        rows_affected: data.len() as u64,
-        rows: data,
-        columns,
-        elapsed_ms,
-        total,
-        truncated: false,
-        row_types: None,
-    })
+    Ok(QueryResult::rows(columns, data, elapsed_ms).with_total(total))
 }
 
 /// Count the rows of `schema.table` for the current predicate.
@@ -1553,75 +1483,43 @@ pub(crate) async fn fetch_table_data_inner(
 /// with any predicate it runs an exact `COUNT(*)` — still off the render's
 /// critical path because the frontend fires it as a separate request.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn count_table_rows(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
-    connection_id: String,
-    schema: Option<String>,
-    table: String,
-    filters: Option<Vec<ColumnFilter>>,
-    search: Option<String>,
-    search_columns: Option<Vec<String>>,
+    query: TableScan,
 ) -> AppResult<CountResult> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
-    count_table_rows_inner(
-        &sink,
-        state.inner(),
-        connection_id,
-        schema,
-        table,
-        filters,
-        search,
-        search_columns,
-    )
-    .await
+    let sink =
+        crate::commands::entry_sink(&app, &window, state.inner(), &query.connection_id).await;
+    count_table_rows_inner(&sink, state.inner(), query).await
 }
 
 /// Tauri-independent core of [`count_table_rows`].
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn count_table_rows_inner(
     sink: &dyn LogSink,
     state: &AppState,
-    connection_id: String,
-    schema: Option<String>,
-    table: String,
-    filters: Option<Vec<ColumnFilter>>,
-    search: Option<String>,
-    search_columns: Option<Vec<String>>,
+    query: TableScan,
 ) -> AppResult<CountResult> {
-    let pool = pool_for(state, &connection_id)?;
+    let TableScan {
+        connection_id,
+        schema,
+        table,
+        filter,
+    } = query;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
-    let filters = filters.unwrap_or_default();
-    let search_columns = search_columns.unwrap_or_default();
-    let search_ref = search.as_deref().filter(|s| !s.is_empty());
     // "Unfiltered" == the whole relation: no column filters AND no committed
     // search. Only then may we serve the fast catalog estimate; any predicate
     // forces an exact count of the matching subset.
-    let unfiltered = filters.is_empty() && search_ref.is_none();
+    let unfiltered = filter.is_unfiltered();
 
     // MongoDB: estimatedDocumentCount (O(1) metadata read) when unfiltered,
     // exact countDocuments over the filter otherwise.
     if let DbPool::Mongo(conn) = &pool {
         let start = Instant::now();
-        let res = crate::db::mongo::query::count_collection(
-            conn,
-            &table,
-            &filters,
-            search_ref,
-            &search_columns,
-            unfiltered,
-        )
-        .await;
+        let res =
+            crate::db::mongo::query::count_collection(conn, &table, &filter, unfiltered).await;
         let label = if unfiltered {
             "(mongo estimatedDocumentCount)"
         } else {
@@ -1675,8 +1573,7 @@ pub(crate) async fn count_table_rows_inner(
     }
 
     // Exact count: predicate present, or no estimate available.
-    let (where_clause, where_binds) =
-        build_filter_clause(dialect, &filters, search_ref, &search_columns);
+    let (where_clause, where_binds) = filter.clause(dialect);
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
@@ -1687,31 +1584,7 @@ pub(crate) async fn count_table_rows_inner(
         driver,
         &count_sql,
         start,
-        match &pool {
-            DbPool::Postgres(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
-                }
-                q.fetch_optional(p).await.map_err(AppError::from)
-            }
-            DbPool::Mysql(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
-                }
-                q.fetch_optional(p).await.map_err(AppError::from)
-            }
-            DbPool::Sqlite(p) => {
-                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-                for b in &where_binds {
-                    q = q.bind(b);
-                }
-                q.fetch_optional(p).await.map_err(AppError::from)
-            }
-            DbPool::MsSql(p) => p.scalar(&count_sql, &where_binds).await,
-            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-        }
+        crate::db::exec::scalar_i64(&pool, &count_sql, &where_binds).await
     );
     let total = raw_count.unwrap_or(0).max(0) as u64;
     log_sql_sink(
@@ -1852,14 +1725,7 @@ pub async fn update_cell(
     value: Option<String>,
     column_type: Option<String>,
 ) -> AppResult<u64> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     update_cell_inner(
         &sink,
         state.inner(),
@@ -1904,7 +1770,7 @@ pub(crate) async fn update_cell_inner(
         )));
     }
 
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     // MongoDB: update one field of the document addressed by `_id` ($set). The
@@ -1985,19 +1851,14 @@ pub(crate) async fn update_cell_inner(
         && list_columns_inner(state, &connection_id, schema_for_catalog, table.clone())
             .await
             .map(|cols| {
-                cols.iter().any(|c| {
-                    c.name == column && c.data_type.trim().to_ascii_uppercase().starts_with("BIT")
-                })
+                cols.iter()
+                    .any(|c| c.name == column && mysql::is_bit_type(&c.data_type))
             })
             .unwrap_or(false);
-    let bit_cast = is_mysql
-        && (column_type
-            .as_deref()
-            .map(|t| t.trim().to_ascii_uppercase().starts_with("BIT"))
-            .unwrap_or(false)
-            || catalog_bit_cast);
+    let bit_cast =
+        is_mysql && (column_type.as_deref().is_some_and(mysql::is_bit_type) || catalog_bit_cast);
     let set_placeholder = if bit_cast {
-        format!("CAST({} AS UNSIGNED)", dialect.placeholder(1))
+        mysql::bit_cast(&dialect.placeholder(1))
     } else if dialect == Dialect::MsSql {
         // The same "text literal, wrong coercion" problem MySQL BIT has, for
         // SQL Server's binary family — see `db::mssql::binary_convert`.
@@ -2006,12 +1867,8 @@ pub(crate) async fn update_cell_inner(
         dialect.placeholder(1)
     };
     let sql = format!("UPDATE {qt} SET {col_id} = {set_placeholder} WHERE {where_clause}");
-    // Normalize the cell value for BIT columns: "true"/"false" must become
-    // "1"/"0" before being handed to CAST(? AS UNSIGNED) — MySQL evaluates
-    // CAST('true' AS UNSIGNED) as 0, silently clobbering any 1-valued cell
-    // the user saves after the cell editor formats it as "true".
     let effective_value: Option<String> = if bit_cast {
-        value.as_deref().map(normalize_bit_value)
+        value.as_deref().map(mysql::normalize_bit_value)
     } else {
         value
     };
@@ -2024,92 +1881,13 @@ pub(crate) async fn update_cell_inner(
     // was sent on composite-PK tables — this is the belt-and-braces
     // assertion that catches any future regression of that family.
     let start = Instant::now();
-    let res: AppResult<u64> = async {
-        match &pool {
-            DbPool::Postgres(p) => {
-                let mut tx = p.begin().await?;
-                let mut q = sqlx::query(&sql).bind(&effective_value);
-                for s in &pk_strs {
-                    q = q.bind(s);
-                }
-                let affected = q.execute(&mut *tx).await?.rows_affected();
-                if affected > 1 {
-                    tx.rollback().await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                tx.commit().await?;
-                Ok(affected)
-            }
-            DbPool::Mysql(p) => {
-                let mut tx = p.begin().await?;
-                let mut q = sqlx::query(&sql).bind(&effective_value);
-                for s in &pk_strs {
-                    q = q.bind(s);
-                }
-                let affected = q.execute(&mut *tx).await?.rows_affected();
-                if affected > 1 {
-                    tx.rollback().await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                tx.commit().await?;
-                Ok(affected)
-            }
-            DbPool::Sqlite(p) => {
-                let mut tx = p.begin().await?;
-                let mut q = sqlx::query(&sql).bind(&effective_value);
-                for s in &pk_strs {
-                    q = q.bind(s);
-                }
-                let affected = q.execute(&mut *tx).await?.rows_affected();
-                if affected > 1 {
-                    tx.rollback().await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                tx.commit().await?;
-                Ok(affected)
-            }
-            DbPool::MsSql(p) => {
-                // `tiberius` has no transaction handle: `BEGIN`/`COMMIT`/
-                // `ROLLBACK` are statements on the session, which is why this
-                // arm holds one `PooledClient` for the whole sequence instead
-                // of using the pool's one-shot helpers.
-                let mut binds = Vec::with_capacity(pk_strs.len() + 1);
-                binds.push(effective_value.clone());
-                binds.extend(pk_strs.iter().cloned());
-                let mut c = p.acquire().await?;
-                c.simple_execute("BEGIN TRANSACTION").await?;
-                let affected = match c.execute(&sql, &binds).await {
-                    Ok(n) => n,
-                    Err(e) => {
-                        // Best-effort unwind: if the rollback also fails the
-                        // session is already poisoned and never reused.
-                        let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
-                        return Err(e);
-                    }
-                };
-                if affected > 1 {
-                    c.simple_execute("ROLLBACK TRANSACTION").await?;
-                    return Err(AppError::InvalidInput(format!(
-                        "update_cell refused: {affected} rows matched the supplied \
-                         primary key (composite PK incomplete?) — transaction rolled back"
-                    )));
-                }
-                c.simple_execute("COMMIT TRANSACTION").await?;
-                Ok(affected)
-            }
-            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-        }
-    }
-    .await;
+    // The guard, the rollback and SQL Server's statement-based transaction all
+    // live in `db::exec::in_tx_expect_at_most_one` — see its doc for the bug it
+    // exists to catch.
+    let mut binds = Vec::with_capacity(pk_strs.len() + 1);
+    binds.push(effective_value);
+    binds.extend(pk_strs);
+    let res = crate::db::exec::in_tx_expect_at_most_one(&pool, &sql, &binds, "update_cell").await;
     let affected = try_sql_sink!(sink, &connection_id, driver, &sql, start, res);
     log_sql_sink(
         sink,
@@ -2144,15 +1922,8 @@ pub async fn unset_field(
     id_value: Value,
     field: String,
 ) -> AppResult<u64> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
     let DbPool::Mongo(conn) = &pool else {
         return Err(AppError::InvalidInput(
@@ -2182,21 +1953,6 @@ pub async fn unset_field(
         ),
     }
     res
-}
-
-/// Normalize a cell value string for a MySQL BIT column write.
-///
-/// `"true"`/`"false"` (case-insensitive) map to `"1"`/`"0"` so that
-/// `CAST(? AS UNSIGNED)` receives a digit string rather than an alphabetic
-/// one — MySQL converts `CAST('true' AS UNSIGNED)` to 0 regardless of what
-/// the intended bit value is. Any other string is returned unchanged so
-/// numeric strings like `"1"`, `"0"`, or `"255"` pass through unaltered.
-fn normalize_bit_value(s: &str) -> String {
-    match s.trim().to_lowercase().as_str() {
-        "true" => "1".to_string(),
-        "false" => "0".to_string(),
-        other => other.to_string(),
-    }
 }
 
 /// Coerce a JSON scalar to its textual SQL bind form. `null` becomes `None`
@@ -2242,14 +1998,7 @@ pub async fn delete_rows(
     pk_columns: Vec<String>,
     pk_value_rows: Vec<Vec<Value>>,
 ) -> AppResult<u64> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     delete_rows_inner(
         &sink,
         state.inner(),
@@ -2291,7 +2040,7 @@ pub(crate) async fn delete_rows_inner(
         }
     }
 
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     // MongoDB: delete by `_id` ({_id: {$in: [...]}}). Each pk tuple is a single
@@ -2365,40 +2114,7 @@ pub(crate) async fn delete_rows_inner(
         driver,
         &sql,
         start,
-        match pool {
-            DbPool::Postgres(p) => {
-                let mut q = sqlx::query(&sql);
-                for b in &binds {
-                    q = q.bind(b);
-                }
-                q.execute(&p)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(AppError::from)
-            }
-            DbPool::Mysql(p) => {
-                let mut q = sqlx::query(&sql);
-                for b in &binds {
-                    q = q.bind(b);
-                }
-                q.execute(&p)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(AppError::from)
-            }
-            DbPool::Sqlite(p) => {
-                let mut q = sqlx::query(&sql);
-                for b in &binds {
-                    q = q.bind(b);
-                }
-                q.execute(&p)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(AppError::from)
-            }
-            DbPool::MsSql(p) => p.execute_params(&sql, &binds).await,
-            DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
-        }
+        crate::db::exec::execute_params(&pool, &sql, &binds).await
     );
     log_sql_sink(
         sink,
@@ -2435,14 +2151,7 @@ pub async fn insert_row(
     pk_column: Option<String>,
     values: Vec<RowValue>,
 ) -> AppResult<Value> {
-    let sink = log_bus::TauriSink::new(&app, window.label());
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     insert_row_inner(
         &sink,
         state.inner(),
@@ -2472,7 +2181,7 @@ pub(crate) async fn insert_row_inner(
             "insert_row: no columns supplied".into(),
         ));
     }
-    let pool = pool_for(state, &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     // MongoDB: insert one document built from the column/value pairs; returns
@@ -2549,23 +2258,17 @@ pub(crate) async fn insert_row_inner(
             std::collections::HashSet::new()
         };
 
-    // MySQL BIT columns require CAST(? AS UNSIGNED) — binding a plain string
-    // stores the ASCII bytes of the literal rather than its numeric value (e.g.
-    // "1" stores byte 0x31 = 49, not integer 1). Build BIT-aware placeholders
-    // and normalize "true"/"false" to "1"/"0" so `CAST` gets a digit string.
+    // See `db::mysql::bit_cast` for why a BIT column cannot take the plain
+    // textual bind every other column does.
     let (mysql_placeholders, mysql_binds): (Vec<String>, Vec<Option<String>>) = if is_mysql {
         values
             .iter()
             .map(|rv| {
-                let is_bit = rv
-                    .column_type
-                    .as_deref()
-                    .map(|t| t.trim().to_ascii_uppercase().starts_with("BIT"))
-                    .unwrap_or(false)
+                let is_bit = rv.column_type.as_deref().is_some_and(mysql::is_bit_type)
                     || catalog_bit_columns.contains(&rv.column);
                 if is_bit {
-                    let normalized = rv.value.as_deref().map(normalize_bit_value);
-                    ("CAST(? AS UNSIGNED)".to_string(), normalized)
+                    let normalized = rv.value.as_deref().map(mysql::normalize_bit_value);
+                    (mysql::bit_cast("?"), normalized)
                 } else {
                     ("?".to_string(), rv.value.clone())
                 }
@@ -2771,13 +2474,7 @@ pub async fn fetch_fk_options(
     // through `list_columns_inner`, which resolves the pool itself and would
     // otherwise fail with `NotConnected` before this function ever reaches
     // its own `pool_for` call further down.
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
 
     // Catalog validation. Failing here means the target was dropped or
     // moved out from under us; the frontend treats this as "fall back to
@@ -2801,7 +2498,7 @@ pub async fn fetch_fk_options(
         None => pick_label_column(&cols),
     };
 
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let pool = state.pool_for(&connection_id)?;
     // MongoDB has no foreign keys; the FK combobox is not offered for it.
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
@@ -2848,101 +2545,26 @@ pub async fn fetch_fk_options(
     let page = dialect.paginate(fetch_limit, 0, true);
     let sql = format!("SELECT {projection} FROM {qt}{where_clause} ORDER BY {key_id}{page}");
 
-    let mut options: Vec<FkOption> = match pool {
-        DbPool::Postgres(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            let rows = q.fetch_all(&p).await?;
-            rows.iter()
-                .map(|r| {
-                    let v = value_to_dropdown_string(&pg_value(r, 0));
-                    let lbl = if label_id.is_some() {
-                        match pg_value(r, 1) {
-                            Value::Null => None,
-                            other => Some(value_to_dropdown_string(&other)),
-                        }
-                    } else {
-                        None
-                    };
-                    FkOption {
-                        value: v,
-                        label: lbl,
-                    }
-                })
-                .collect()
-        }
-        DbPool::Mysql(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            let rows = q.fetch_all(&p).await?;
-            rows.iter()
-                .map(|r| {
-                    let v = value_to_dropdown_string(&mysql_value(r, 0));
-                    let lbl = if label_id.is_some() {
-                        match mysql_value(r, 1) {
-                            Value::Null => None,
-                            other => Some(value_to_dropdown_string(&other)),
-                        }
-                    } else {
-                        None
-                    };
-                    FkOption {
-                        value: v,
-                        label: lbl,
-                    }
-                })
-                .collect()
-        }
-        DbPool::Sqlite(p) => {
-            let mut q = sqlx::query(&sql);
-            for b in &binds {
-                q = q.bind(b);
-            }
-            let rows = q.fetch_all(&p).await?;
-            rows.iter()
-                .map(|r| {
-                    let v = value_to_dropdown_string(&sqlite_value(r, 0));
-                    let lbl = if label_id.is_some() {
-                        match sqlite_value(r, 1) {
-                            Value::Null => None,
-                            other => Some(value_to_dropdown_string(&other)),
-                        }
-                    } else {
-                        None
-                    };
-                    FkOption {
-                        value: v,
-                        label: lbl,
-                    }
-                })
-                .collect()
-        }
-        DbPool::MsSql(p) => {
-            let rows = p.query_all(&sql, &binds).await?;
-            rows.iter()
-                .map(|r| {
-                    let v = value_to_dropdown_string(&crate::db::mssql::values::mssql_value(r, 0));
-                    let lbl = if label_id.is_some() {
-                        match crate::db::mssql::values::mssql_value(r, 1) {
-                            Value::Null => None,
-                            other => Some(value_to_dropdown_string(&other)),
-                        }
-                    } else {
-                        None
-                    };
-                    FkOption {
-                        value: v,
-                        label: lbl,
-                    }
-                })
-                .collect()
-        }
-        DbPool::Mongo(_) => unreachable!("mongo rejected above"),
-    };
+    // The four arms differed only in which `*_value` decoder they called, so
+    // this now goes through `db::exec::query_rows` and reads the two decoded
+    // columns positionally. `projection` puts the key first and the optional
+    // label second, which is what makes the indices safe.
+    let (_cols, rows) = crate::db::exec::query_rows(&pool, &sql, &binds).await?;
+    let mut options: Vec<FkOption> = rows
+        .into_iter()
+        .map(|row| {
+            let value = value_to_dropdown_string(row.first().unwrap_or(&Value::Null));
+            let label = if label_id.is_some() {
+                match row.get(1) {
+                    Some(Value::Null) | None => None,
+                    Some(other) => Some(value_to_dropdown_string(other)),
+                }
+            } else {
+                None
+            };
+            FkOption { value, label }
+        })
+        .collect();
 
     let has_more = options.len() as i64 > limit;
     if has_more {
@@ -3198,5 +2820,92 @@ mod filter_tests {
         let values: Vec<serde_json::Value> = (0..MAX_IN_VALUES).map(|i| json!(i)).collect();
         let filters = vec![in_list("id", FilterOp::In, values)];
         assert!(validate_filters(&filters).is_ok());
+    }
+
+    // --- IPC payload shape -------------------------------------------------
+    //
+    // `TableQuery` / `TableScan` are the wire contract with `src/types.ts`, and
+    // serde drops any key the Rust struct does not declare — silently, before
+    // the value is ever read (CLAUDE.md gotcha #14). These pin the exact JSON
+    // the frontend sends. `withCount: false` in particular is load-bearing:
+    // lose it and every page fetch silently reacquires the `COUNT(*)` that
+    // issue #77 moved off the render path.
+
+    #[test]
+    fn table_query_deserialises_the_payload_the_grid_sends() {
+        let q: TableQuery = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "schema": "public",
+            "table": "album",
+            "limit": 100,
+            "offset": 200,
+            "order": [{ "column": "title", "desc": true }],
+            "filters": [{ "column": "id", "op": "gt", "value": 3 }],
+            "search": "needle",
+            "searchColumns": ["title", "artist"],
+            "withCount": false,
+        }))
+        .unwrap();
+
+        assert_eq!(q.connection_id, "c1");
+        assert_eq!(q.schema.as_deref(), Some("public"));
+        assert_eq!(q.table, "album");
+        assert_eq!((q.limit, q.offset), (100, 200));
+        assert_eq!(q.order.len(), 1);
+        assert!(q.order[0].desc);
+        assert_eq!(q.filter.filters.len(), 1);
+        assert_eq!(q.filter.needle(), Some("needle"));
+        assert_eq!(q.filter.search_columns, vec!["title", "artist"]);
+        assert!(!q.with_count);
+    }
+
+    #[test]
+    fn table_query_defaults_match_the_option_unwraps_it_replaced() {
+        // Every optional key absent: what `browse_table` over MCP sends, and
+        // what the `Option<_>::unwrap_or_default()` chain used to produce.
+        let q: TableQuery = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "album",
+            "limit": 50,
+            "offset": 0,
+        }))
+        .unwrap();
+
+        assert!(q.schema.is_none());
+        assert!(q.order.is_empty());
+        assert!(q.filter.is_unfiltered());
+        // `with_count` defaulted to `true`, not `false` — the old code read
+        // `with_count.unwrap_or(true)`.
+        assert!(q.with_count);
+    }
+
+    #[test]
+    fn table_scan_deserialises_the_count_payload() {
+        let q: TableScan = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "album",
+            "filters": [],
+            "searchColumns": [],
+        }))
+        .unwrap();
+
+        assert_eq!(q.table, "album");
+        assert!(q.filter.is_unfiltered());
+    }
+
+    #[test]
+    fn an_empty_search_string_is_not_a_predicate() {
+        // The grid clears its search box to `""`, not to `undefined`. Treating
+        // that as a needle would build `LIKE '%%'` and, worse, disqualify the
+        // whole-table fast count estimate.
+        let q: TableScan = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "album",
+            "search": "",
+        }))
+        .unwrap();
+
+        assert_eq!(q.filter.needle(), None);
+        assert!(q.filter.is_unfiltered());
     }
 }

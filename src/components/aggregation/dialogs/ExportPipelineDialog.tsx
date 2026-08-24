@@ -13,7 +13,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { Check, Copy } from "lucide-react";
 import {
   Dialog,
@@ -58,7 +58,7 @@ export function ExportPipelineDialog({
   function copy() {
     void navigator.clipboard.writeText(snippet);
     setCopied(true);
-    toast.success(t("aggregation.export.copied"));
+    notify.success(t("aggregation.export.copied"));
     setTimeout(() => setCopied(false), 1500);
   }
 

@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { RefreshButton } from "@/components/common/RefreshButton";
 import { IndexEditorDialog } from "@/components/indexes/dialogs/IndexEditorDialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,7 +37,7 @@ import {
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { confirmDestructive } from "@/lib/confirmDestructive";
 import { api } from "@/lib/tauri";
-import { cn, formatBytes } from "@/lib/utils";
+import { cn, formatBytes, formatDateTime, formatNumber } from "@/lib/utils";
 import type { MongoIndexInfo, NewMongoIndexSpec } from "@/types";
 import {
   ArrowDown,
@@ -46,7 +47,6 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  RefreshCw,
   Trash2,
 } from "lucide-react";
 
@@ -189,15 +189,11 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            size="icon"
-            variant="ghost"
+          <RefreshButton
             onClick={refresh}
-            disabled={loading}
+            loading={loading}
             title={t("indexes.refresh")}
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-          </Button>
+          />
           <Button
             size="sm"
             onClick={() => {
@@ -430,7 +426,7 @@ function UsageCell({
     <SimpleTooltip
       label={
         since
-          ? t("indexes.usageSince", { date: new Date(since).toLocaleString() })
+          ? t("indexes.usageSince", { date: formatDateTime(since) })
           : t("indexes.usageUnknownSince")
       }
     >
@@ -440,7 +436,7 @@ function UsageCell({
           ops === 0 ? "text-warning" : "text-muted-foreground",
         )}
       >
-        {ops.toLocaleString()}
+        {formatNumber(ops)}
       </span>
     </SimpleTooltip>
   );

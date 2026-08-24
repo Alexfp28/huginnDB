@@ -11,6 +11,7 @@
     "window-state:default",
     "updater:default",
     "process:default",
+    "opener:allow-reveal-item-in-dir",
     {
       "identifier": "opener:allow-open-url",
       "allow": [

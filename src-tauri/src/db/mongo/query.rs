@@ -9,10 +9,10 @@
 
 use crate::commands::query::{
     BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp, QueryResult, RowValue, SortSpec,
-    StmtOutcome, MAX_ADHOC_QUERY_ROWS,
+    StmtOutcome, TableFilter, MAX_ADHOC_QUERY_ROWS,
 };
 use crate::error::AppResult;
-use crate::log_bus::{LogEntry, LogKind, LogSink};
+use crate::log_bus::{log_sql_sink, LogSink};
 use crate::state::MongoConn;
 use mongodb::bson::{doc, Bson, Document};
 use serde_json::Value;
@@ -137,46 +137,28 @@ pub(super) fn docs_to_result(docs: Vec<Document>, elapsed_ms: u64, truncated: bo
         })
         .collect();
 
-    QueryResult {
-        rows_affected: rows.len() as u64,
-        rows,
-        columns,
-        elapsed_ms,
-        total: None,
-        truncated,
-        row_types: Some(row_types),
-    }
+    QueryResult::rows(columns, rows, elapsed_ms)
+        .with_truncated(truncated)
+        .with_row_types(row_types)
 }
 
 /// Single scalar result (used by `count`): one column, one row. `data_type` is
 /// passed in by the caller rather than inferred — `count` always returns a
 /// concrete, known type (a 64-bit count), so there's nothing to sample.
 fn scalar_result(name: &str, data_type: &str, value: Value, elapsed_ms: u64) -> QueryResult {
-    QueryResult {
-        columns: vec![ColumnMeta {
+    QueryResult::rows(
+        vec![ColumnMeta {
             name: name.to_string(),
             data_type: data_type.to_string(),
         }],
-        rows: vec![vec![value]],
-        rows_affected: 1,
+        vec![vec![value]],
         elapsed_ms,
-        total: None,
-        truncated: false,
-        row_types: None,
-    }
+    )
 }
 
 /// Result carrying only an affected-document count (writes).
 fn affected_result(count: u64, elapsed_ms: u64) -> QueryResult {
-    QueryResult {
-        columns: vec![],
-        rows: vec![],
-        rows_affected: count,
-        elapsed_ms,
-        total: None,
-        truncated: false,
-        row_types: None,
-    }
+    QueryResult::affected(count, elapsed_ms)
 }
 
 /// Execute one parsed `mongosh` statement and shape it into a [`QueryResult`].
@@ -237,18 +219,15 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
             values.truncate(MAX_ADHOC_QUERY_ROWS);
             let data_type = infer_column_type(values.iter().map(Some));
             let rows: Vec<Vec<Value>> = values.iter().map(|b| vec![bson_to_json(b)]).collect();
-            Ok(QueryResult {
-                columns: vec![ColumnMeta {
+            Ok(QueryResult::rows(
+                vec![ColumnMeta {
                     name: field,
                     data_type,
                 }],
-                rows_affected: rows.len() as u64,
                 rows,
-                elapsed_ms: ms(),
-                total: None,
-                truncated,
-                row_types: None,
-            })
+                ms(),
+            )
+            .with_truncated(truncated))
         }
         MongoOp::InsertOne { doc } => {
             coll.insert_one(doc).await?;
@@ -311,13 +290,14 @@ pub async fn execute_batch(
         match execute(conn, stmt).await {
             Ok(result) => {
                 total_affected += result.rows_affected;
-                sink.log(
-                    LogEntry::new(LogKind::Sql)
-                        .connection_id(connection_id)
-                        .driver("mongodb")
-                        .sql(stmt)
-                        .duration_ms(start.elapsed().as_millis() as u64)
-                        .rows_affected(result.rows_affected),
+                log_sql_sink(
+                    sink,
+                    connection_id,
+                    "mongodb",
+                    stmt,
+                    start,
+                    Some(result.rows_affected),
+                    None,
                 );
                 outcomes.push(StmtOutcome {
                     index,
@@ -331,13 +311,14 @@ pub async fn execute_batch(
                 }
             }
             Err(e) => {
-                sink.log(
-                    LogEntry::new(LogKind::Sql)
-                        .connection_id(connection_id)
-                        .driver("mongodb")
-                        .sql(stmt)
-                        .duration_ms(start.elapsed().as_millis() as u64)
-                        .error(e.to_string()),
+                log_sql_sink(
+                    sink,
+                    connection_id,
+                    "mongodb",
+                    stmt,
+                    start,
+                    None,
+                    Some(&e.to_string()),
                 );
                 outcomes.push(StmtOutcome {
                     index,
@@ -376,14 +357,16 @@ fn stmt_preview(s: &str) -> String {
 /// "what ran" record the SQL drivers and the mongo shell tab already get.
 pub(crate) fn describe_find(
     collection: &str,
-    filters: &[ColumnFilter],
-    search: Option<&str>,
-    search_columns: &[String],
+    predicate: &TableFilter,
     order: &[SortSpec],
     limit: i64,
     offset: i64,
 ) -> String {
-    let filter = build_filter(filters, search, search_columns);
+    let filter = build_filter(
+        &predicate.filters,
+        predicate.needle(),
+        &predicate.search_columns,
+    );
     let mut s = format!(
         "db.{collection}.find({})",
         Bson::Document(filter).into_canonical_extjson()
@@ -523,23 +506,24 @@ fn regex_escape(input: &str) -> String {
 }
 
 /// Paginated collection browse — the MongoDB analogue of `fetch_table_data`.
-#[allow(clippy::too_many_arguments)]
 pub async fn fetch_collection_data(
     conn: &MongoConn,
     collection: &str,
     limit: i64,
     offset: i64,
     order: &[SortSpec],
-    filters: &[ColumnFilter],
-    search: Option<&str>,
-    search_columns: &[String],
+    predicate: &TableFilter,
     with_count: bool,
 ) -> AppResult<QueryResult> {
     let start = Instant::now();
     let db = resolve_db(conn)?;
     let coll = db.collection::<Document>(collection);
 
-    let filter = build_filter(filters, search, search_columns);
+    let filter = build_filter(
+        &predicate.filters,
+        predicate.needle(),
+        &predicate.search_columns,
+    );
 
     // Skip the count when the caller already knows the total (sort/page-only
     // change); `count_documents` over a filter is the slow part on big
@@ -583,9 +567,7 @@ pub async fn fetch_collection_data(
 pub async fn count_collection(
     conn: &MongoConn,
     collection: &str,
-    filters: &[ColumnFilter],
-    search: Option<&str>,
-    search_columns: &[String],
+    predicate: &TableFilter,
     unfiltered: bool,
 ) -> AppResult<CountResult> {
     let db = resolve_db(conn)?;
@@ -597,7 +579,11 @@ pub async fn count_collection(
             estimated: true,
         })
     } else {
-        let filter = build_filter(filters, search, search_columns);
+        let filter = build_filter(
+            &predicate.filters,
+            predicate.needle(),
+            &predicate.search_columns,
+        );
         let total = coll.count_documents(filter).await?;
         Ok(CountResult {
             total,
@@ -850,7 +836,11 @@ mod tests {
             column: "atnId".to_string(),
             desc: true,
         }];
-        let s = describe_find("events", &filters, None, &[], &order, 50, 100);
+        let predicate = TableFilter {
+            filters,
+            ..TableFilter::default()
+        };
+        let s = describe_find("events", &predicate, &order, 50, 100);
         assert!(s.starts_with("db.events.find("));
         assert!(s.contains("\"atnId\""));
         assert!(s.contains(".sort("));
@@ -920,7 +910,7 @@ mod tests {
 
     #[test]
     fn describe_find_omits_skip_and_limit_when_zero() {
-        let s = describe_find("events", &[], None, &[], &[], 0, 0);
+        let s = describe_find("events", &TableFilter::default(), &[], 0, 0);
         assert_eq!(s, "db.events.find({})");
     }
 }

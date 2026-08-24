@@ -41,7 +41,7 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use pbkdf2::pbkdf2_hmac;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, AppResult};
 use crate::json_schemas::{JsonSchemaBinding, JsonSchemaItem};
@@ -417,6 +417,112 @@ pub struct ImportedEnvironment {
     pub origin_ids: Vec<String>,
 }
 
+/// Human name for a `meta.kind`, for the one error message that has to name
+/// both the file the user picked and the importer they picked it in.
+fn kind_label(kind: &str) -> &'static str {
+    match kind {
+        KIND_ENVIRONMENT => "environment",
+        KIND_JSON_SCHEMAS => "JSON Schema",
+        // `""` is a pre-`kind` profile bundle; see [`KIND_PROFILES`].
+        _ => "profile",
+    }
+}
+
+/// Reject an export file whose `meta` this importer cannot read.
+///
+/// Both checks were spelled out at four call sites across three modules, and
+/// the `kind` half is the one that matters: `serde_json` silently ignores
+/// unknown fields, so an environment export fed to the profile importer used
+/// to parse *fine* and quietly contribute nothing but its `profiles` array.
+/// `""` counts as [`KIND_PROFILES`] — files written before the discriminant
+/// existed have no `kind` at all.
+pub fn check_meta(meta: &ExportMetadata, expected: &str) -> AppResult<()> {
+    if meta.version != 1 {
+        return Err(AppError::Transfer(format!(
+            "unsupported export format version {}",
+            meta.version
+        )));
+    }
+    let actual = if meta.kind.is_empty() {
+        KIND_PROFILES
+    } else {
+        meta.kind.as_str()
+    };
+    if actual != expected {
+        return Err(AppError::Transfer(format!(
+            "this file is a {} export, not a {} one",
+            kind_label(actual),
+            kind_label(expected)
+        )));
+    }
+    Ok(())
+}
+
+/// The `meta` block every export file carries. `app` and `version` are fixed;
+/// the three writers differed only in `kind` and `encrypted`.
+pub fn metadata(kind: &str, encrypted: bool, exported_at: &str) -> ExportMetadata {
+    ExportMetadata {
+        version: 1,
+        app: "huginndb".into(),
+        exported_at: exported_at.to_string(),
+        encrypted,
+        kind: kind.into(),
+    }
+}
+
+/// Ask the user where to put an export, write it there, return the path.
+///
+/// The tail of all three export commands: a native save dialog filtered to
+/// `.json`, a cancel mapped to [`crate::error::EXPORT_CANCELLED`] (which the
+/// frontend special-cases into "nothing happened" rather than an error toast),
+/// and the write.
+pub fn save_export(
+    app: &tauri::AppHandle,
+    title: &str,
+    suggested_name: &str,
+    json: &str,
+) -> AppResult<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let path = app
+        .dialog()
+        .file()
+        .set_title(title)
+        .set_file_name(suggested_name)
+        .add_filter("JSON", &["json"])
+        .blocking_save_file()
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
+    let dest = path.to_string();
+    std::fs::write(&dest, json)?;
+    Ok(dest)
+}
+
+/// Disambiguate `base` against `taken`: `name`, `name (imported)`,
+/// `name (2)`, `name (3)`, …
+///
+/// Every importer needs this and two had grown their own. The profile
+/// importer's inline copy jumped straight from `(imported)` to `(3)` — it
+/// reused one suffix counter for both rungs — so a third collision was named
+/// `(3)` with no `(2)` anywhere. This is the JSON Schema importer's ladder,
+/// which was the tested one and the one its doc comment claimed both used.
+pub fn disambiguate_name<'a>(base: &str, taken: impl Iterator<Item = &'a str>) -> String {
+    let used: std::collections::HashSet<&str> = taken.collect();
+    if !used.contains(base) {
+        return base.to_string();
+    }
+    let first = format!("{base} (imported)");
+    if !used.contains(first.as_str()) {
+        return first;
+    }
+    let mut n = 2;
+    loop {
+        let candidate = format!("{base} ({n})");
+        if !used.contains(candidate.as_str()) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 /// Profiles in `incoming` whose `id` already exists in `existing`. Shared by
 /// `analyze_import_file` and `analyze_environment_import` — the conflict rule
 /// (same id, different bundle) doesn't care which command found it.
@@ -482,6 +588,148 @@ pub fn build_exported_profiles(
         });
     }
     Ok(exported)
+}
+
+/// How a caller wants a per-profile secret-landing failure handled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LandMode {
+    /// Propagate the first failure. The interactive importer uses this: the
+    /// user picked the file and typed the passphrase in this very dialog, so a
+    /// wrong passphrase has to be reported rather than silently producing a
+    /// pile of connections that cannot authenticate.
+    Strict,
+    /// Swallow per-profile failures and keep going. The shared-origin sync uses
+    /// this: it runs unattended (launch, the 4-hourly poll), and one
+    /// undecryptable profile must not abort a whole pass over the origin.
+    BestEffort,
+}
+
+/// Decrypt `secrets` and land them in *this* machine's keychain for `profile`.
+///
+/// Returns `true` when at least one secret was actually stored, which is what
+/// both callers use to decide whether the profile still needs a password from
+/// the user.
+///
+/// Two rules are load-bearing, and used to be spelled differently in the two
+/// call sites — which is how the second one grew a bug:
+///
+/// * **Every value in an [`ExportedSecret`] is ciphertext, always.**
+///   [`build_exported_profiles`] refuses to export secrets without a
+///   passphrase and runs each one through [`encrypt_secret`], and
+///   `ExportMetadata::encrypted` is set to the same `include_passwords` flag —
+///   so "secrets present" and "secrets encrypted" are the same condition and
+///   there is no plaintext path to fall back to. A missing passphrase
+///   therefore means *"this secret cannot be recovered here"*, never *"the
+///   blob is the password"*. Storing the base64 envelope is precisely the
+///   failure this function exists to make unrepresentable: the connection then
+///   fails to authenticate with an opaque driver error, and because the
+///   keychain entry looks perfectly valid the bad secret survives every
+///   restart with nothing pointing at the cause.
+/// * **SQLite has no DB password.** A file path needs no credential, so that
+///   slot is skipped for it — matching the export side, which never writes one.
+///   An SSH secret is still landed, since a SQLite file can sit behind a
+///   tunnel.
+pub fn land_secrets(
+    profile: &ConnectionProfile,
+    secrets: &ExportedSecret,
+    passphrase: Option<&str>,
+    mode: LandMode,
+) -> AppResult<bool> {
+    let mut stored = false;
+
+    // `None` is deliberately *not* folded into `Some("")`: an empty passphrase
+    // is a passphrase the user could have typed, whereas absent means we were
+    // never given one. Both fail to decrypt, but keeping them distinct is what
+    // stops a future edit from reintroducing a "no passphrase → use the blob"
+    // shortcut.
+    for (account, blob) in secret_slots(profile, secrets) {
+        let plain = match passphrase {
+            Some(pass) => decrypt_secret(blob, pass),
+            None => Err(AppError::Transfer(
+                "the export carries encrypted secrets but no passphrase was supplied".into(),
+            )),
+        };
+        match (plain, mode) {
+            (Ok(pw), _) => {
+                keychain::set_password(&account, &pw)?;
+                stored = true;
+            }
+            (Err(e), LandMode::Strict) => return Err(e),
+            // Leave the slot empty. The caller reports the profile as needing a
+            // password, which is a state the UI already knows how to surface.
+            (Err(_), LandMode::BestEffort) => {}
+        }
+    }
+
+    Ok(stored)
+}
+
+/// The keychain accounts an [`ExportedSecret`] lands for `profile`, paired with
+/// the ciphertext each one carries.
+///
+/// The **one** definition of which slots an exported secret covers, including
+/// the SQLite rule: a file path needs no credential, so that slot is skipped
+/// for it — matching the export side, which never writes one. An SSH secret is
+/// still landed, since a SQLite file can sit behind a tunnel.
+///
+/// Extracted because [`land_secrets`] is no longer the only caller: the origin
+/// sync needs the same list to ask "is every account this secret covers still
+/// in the keychain?" before it decides it can skip the (very expensive)
+/// decryption. Re-deriving that rule at the second call site is exactly how
+/// this function's own doc says the first bug got in.
+pub fn secret_slots<'a>(
+    profile: &ConnectionProfile,
+    secrets: &'a ExportedSecret,
+) -> Vec<(String, &'a str)> {
+    let mut slots = Vec::new();
+    if let Some(blob) = &secrets.db_password {
+        if !matches!(profile.driver, Driver::Sqlite) {
+            slots.push((profile.keyring_account(), blob.as_str()));
+        }
+    }
+    if let Some(blob) = &secrets.ssh_secret {
+        if let Some(account) = profile.ssh_keyring_account() {
+            slots.push((account, blob.as_str()));
+        }
+    }
+    slots
+}
+
+/// Stable fingerprint of the ciphertext an [`ExportedSecret`] carries.
+///
+/// Lets the origin sync recognise a secret it has already decrypted and landed,
+/// and skip doing it again — see `commands::origins::already_landed`. Hashing
+/// the *ciphertext* is what keeps this cheap and safe: no plaintext is involved
+/// and no key is derived, so it costs microseconds against the ~600 000 PBKDF2
+/// rounds it avoids.
+///
+/// Note what it does **not** buy. [`encrypt_secret`] draws a fresh salt and
+/// nonce every time, so re-exporting the same password yields a different
+/// blob and a different fingerprint. This makes an *unchanged* origin file
+/// free; it cannot make a changed one cheap.
+pub fn secrets_fingerprint(secrets: &ExportedSecret) -> String {
+    let mut h = Sha256::new();
+    // Length-prefixed so `(Some("ab"), None)` and `(Some("a"), Some("b"))`
+    // cannot collide.
+    for slot in [&secrets.db_password, &secrets.ssh_secret] {
+        match slot {
+            Some(blob) => {
+                h.update((blob.len() as u64).to_le_bytes());
+                h.update(blob.as_bytes());
+            }
+            None => h.update(u64::MAX.to_le_bytes()),
+        }
+    }
+    hex_lower(&h.finalize())
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(&mut s, "{b:02x}");
+    }
+    s
 }
 
 // ---------------------------------------------------------------------------
@@ -559,26 +807,137 @@ mod tests {
     use super::*;
     use crate::state::Driver;
 
+    /// An encrypted secret with no passphrase must never reach the keychain.
+    ///
+    /// This is the regression guard for the bug this function was extracted to
+    /// kill: the origin-sync path used to treat "no passphrase" as "the blob is
+    /// already plaintext" and stored the base64 AES-GCM envelope as the
+    /// password. Both assertions below stay keychain-free on purpose —
+    /// decryption fails before `set_password` is ever reached, which is exactly
+    /// the property under test.
+    #[test]
+    fn encrypted_secret_without_passphrase_is_never_stored() {
+        let p = profile("p1", "one");
+        let secrets = ExportedSecret {
+            db_password: Some(encrypt_secret("hunter2", "right-passphrase").unwrap()),
+            ssh_secret: None,
+        };
+
+        // Best-effort (origin sync): the profile is simply left without a
+        // secret, so the UI reports it as needing a password.
+        let stored = land_secrets(&p, &secrets, None, LandMode::BestEffort).unwrap();
+        assert!(!stored, "nothing may be stored without a passphrase");
+
+        // Strict (interactive import): the caller must hear about it.
+        assert!(
+            land_secrets(&p, &secrets, None, LandMode::Strict).is_err(),
+            "a missing passphrase must surface to the importer"
+        );
+    }
+
+    /// A wrong passphrase is the same situation as a missing one: the ciphertext
+    /// must not be written anywhere.
+    #[test]
+    fn wrong_passphrase_is_never_stored() {
+        let p = profile("p1", "one");
+        let secrets = ExportedSecret {
+            db_password: Some(encrypt_secret("hunter2", "right-passphrase").unwrap()),
+            ssh_secret: None,
+        };
+        assert!(!land_secrets(&p, &secrets, Some("wrong"), LandMode::BestEffort).unwrap());
+        assert!(land_secrets(&p, &secrets, Some("wrong"), LandMode::Strict).is_err());
+    }
+
+    /// `secret_slots` is the single definition of which keychain accounts an
+    /// exported secret covers, so the origin sync's "are they all still
+    /// there?" check cannot drift from what `land_secrets` actually writes.
+    #[test]
+    fn secret_slots_lists_what_land_secrets_would_write() {
+        let p = profile("p1", "one");
+        let secrets = ExportedSecret {
+            db_password: Some("db-blob".into()),
+            ssh_secret: Some("ssh-blob".into()),
+        };
+        // No tunnel on the fixture, so the SSH slot has no account to land to.
+        let slots = secret_slots(&p, &secrets);
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].1, "db-blob");
+
+        // SQLite drops the DB slot: a file path needs no credential.
+        let mut lite = profile("p2", "two");
+        lite.driver = Driver::Sqlite;
+        assert!(secret_slots(&lite, &secrets).is_empty());
+    }
+
+    #[test]
+    fn the_fingerprint_tracks_the_ciphertext_and_nothing_else() {
+        let a = ExportedSecret {
+            db_password: Some("blob".into()),
+            ssh_secret: None,
+        };
+        let same = ExportedSecret {
+            db_password: Some("blob".into()),
+            ssh_secret: None,
+        };
+        let other = ExportedSecret {
+            db_password: Some("blob2".into()),
+            ssh_secret: None,
+        };
+        assert_eq!(secrets_fingerprint(&a), secrets_fingerprint(&same));
+        assert_ne!(secrets_fingerprint(&a), secrets_fingerprint(&other));
+    }
+
+    #[test]
+    fn the_fingerprint_cannot_confuse_the_two_slots() {
+        // Without length-prefixing, ("ab", None) and ("a", "b") would hash the
+        // same bytes — and a rotated SSH secret could then look unchanged.
+        let split = ExportedSecret {
+            db_password: Some("a".into()),
+            ssh_secret: Some("b".into()),
+        };
+        let joined = ExportedSecret {
+            db_password: Some("ab".into()),
+            ssh_secret: None,
+        };
+        assert_ne!(secrets_fingerprint(&split), secrets_fingerprint(&joined));
+    }
+
+    #[test]
+    fn re_encrypting_the_same_password_changes_the_fingerprint() {
+        // `encrypt_secret` draws a fresh salt and nonce every time, so this
+        // makes an *unchanged* origin file free but cannot make a re-exported
+        // one cheap. Pinned so the limitation is not mistaken for a bug.
+        let one = ExportedSecret {
+            db_password: Some(encrypt_secret("hunter2", "pass").unwrap()),
+            ssh_secret: None,
+        };
+        let two = ExportedSecret {
+            db_password: Some(encrypt_secret("hunter2", "pass").unwrap()),
+            ssh_secret: None,
+        };
+        assert_ne!(secrets_fingerprint(&one), secrets_fingerprint(&two));
+    }
+
+    /// SQLite has no DB password, so that slot is skipped rather than landed —
+    /// mirroring the export side, which never writes one. Verified with a
+    /// *correct* passphrase so the skip is what stops the store, not a failed
+    /// decrypt (which is why this test needs no keychain either).
+    #[test]
+    fn sqlite_db_password_slot_is_skipped() {
+        let mut p = profile("p1", "one");
+        p.driver = Driver::Sqlite;
+        let secrets = ExportedSecret {
+            db_password: Some(encrypt_secret("hunter2", "pass").unwrap()),
+            ssh_secret: None,
+        };
+        let stored = land_secrets(&p, &secrets, Some("pass"), LandMode::Strict).unwrap();
+        assert!(!stored, "SQLite has no DB password to land");
+    }
+
     fn profile(id: &str, name: &str) -> ConnectionProfile {
         ConnectionProfile {
-            id: id.into(),
             name: name.into(),
-            driver: Driver::Postgres,
-            host: "localhost".into(),
-            port: 5432,
-            database: String::new(),
-            username: "u".into(),
-            ssl: false,
-            ssh_tunnel: None,
-            connection_string: None,
-            auth_source: None,
-            mssql: None,
-            ephemeral: false,
-            group: None,
-            visible_databases: None,
-            mcp_write: Default::default(),
-            max_connections: None,
-            origin_id: None,
+            ..crate::testkit::profile(id)
         }
     }
 
@@ -633,6 +992,73 @@ mod tests {
         assert_ne!(KIND_PROFILES, KIND_ENVIRONMENT);
         assert_ne!(KIND_PROFILES, KIND_JSON_SCHEMAS);
         assert_ne!(KIND_ENVIRONMENT, KIND_JSON_SCHEMAS);
+    }
+
+    fn meta_of(kind: &str) -> ExportMetadata {
+        metadata(kind, false, "2026-08-21T00:00:00Z")
+    }
+
+    #[test]
+    fn check_meta_accepts_only_the_kind_the_importer_asked_for() {
+        assert!(check_meta(&meta_of(KIND_PROFILES), KIND_PROFILES).is_ok());
+        assert!(check_meta(&meta_of(KIND_ENVIRONMENT), KIND_ENVIRONMENT).is_ok());
+        assert!(check_meta(&meta_of(KIND_JSON_SCHEMAS), KIND_JSON_SCHEMAS).is_ok());
+    }
+
+    #[test]
+    fn a_missing_kind_is_a_pre_1_9_profile_bundle() {
+        // Files written before the discriminant existed carry no `kind` at all,
+        // and must keep importing as what they are.
+        let mut meta = meta_of(KIND_PROFILES);
+        meta.kind = String::new();
+        assert!(check_meta(&meta, KIND_PROFILES).is_ok());
+        assert!(check_meta(&meta, KIND_ENVIRONMENT).is_err());
+    }
+
+    #[test]
+    fn check_meta_names_both_the_file_and_the_importer() {
+        // serde ignores unknown fields, so without this an environment export
+        // fed to the profile importer parses fine and silently contributes
+        // only its `profiles` array.
+        let err = check_meta(&meta_of(KIND_ENVIRONMENT), KIND_PROFILES)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("environment"), "{err}");
+        assert!(err.contains("profile"), "{err}");
+
+        let err = check_meta(&meta_of(KIND_PROFILES), KIND_JSON_SCHEMAS)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("JSON Schema"), "{err}");
+    }
+
+    #[test]
+    fn check_meta_rejects_a_future_format_version() {
+        let mut meta = meta_of(KIND_PROFILES);
+        meta.version = 2;
+        assert!(check_meta(&meta, KIND_PROFILES)
+            .unwrap_err()
+            .to_string()
+            .contains("version 2"));
+    }
+
+    #[test]
+    fn disambiguate_name_numbers_from_two_after_the_imported_rung() {
+        // The profile importer's inline copy reused one counter for both rungs
+        // and so jumped from `(imported)` straight to `(3)`.
+        assert_eq!(disambiguate_name("prod", ["other"].into_iter()), "prod");
+        assert_eq!(
+            disambiguate_name("prod", ["prod"].into_iter()),
+            "prod (imported)"
+        );
+        assert_eq!(
+            disambiguate_name("prod", ["prod", "prod (imported)"].into_iter()),
+            "prod (2)"
+        );
+        assert_eq!(
+            disambiguate_name("prod", ["prod", "prod (imported)", "prod (2)"].into_iter()),
+            "prod (3)"
+        );
     }
 
     #[test]

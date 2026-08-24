@@ -8,7 +8,7 @@ resolver = "2"
 
 [package]
 name = "huginndb"
-version = "1.17.0"
+version = "1.18.0"
 description = "HuginnDB — minimal desktop database manager"
 authors = ["HuginnDB contributors"]
 edition = "2021"
@@ -110,7 +110,6 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
 url = "2"
-async-trait = "0.1"
 parking_lot = "0.12"
 russh = { version = "0.60", default-features = false, features = [
     "ring",

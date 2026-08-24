@@ -14,16 +14,20 @@
  * `src-tauri/src/transfer.rs` for why.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, ShieldAlert } from "lucide-react";
-import { toast } from "sonner";
+import { Download } from "lucide-react";
+import { notify } from "@/lib/notify";
 import { api } from "@/lib/tauri";
 import { useEnvironments, environmentLabel } from "@/stores/session/environments";
 import { Button } from "@/components/ui/button";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useMultiSelect } from "@/lib/useMultiSelect";
+import {
+  PassphraseFields,
+  passphraseAccepted,
+} from "@/components/common/PassphraseFields";
 import {
   Dialog,
   DialogContent,
@@ -43,7 +47,18 @@ interface Props {
 export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
   const { t } = useTranslation();
   const environments = useEnvironments((s) => s.environments);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const allIds = useMemo(() => environments.map((e) => e.id), [environments]);
+  // The trigger decides the initial checklist: the per-row shortcut in
+  // `EnvironmentSwitcher` pre-checks just that one, the File-menu entry checks
+  // everything.
+  const seed = useMemo(
+    () => (preselect && preselect.length > 0 ? preselect : undefined),
+    [preselect],
+  );
+  const { selected, allSelected, toggle, toggleAll, reseed } = useMultiSelect(
+    allIds,
+    seed,
+  );
   const [includePasswords, setIncludePasswords] = useState(false);
   // Opt-in, and off by default: schemas are global rather than owned by an
   // environment, so bundling them is a convenience for setting up a machine, not
@@ -55,41 +70,17 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
 
   const defaultName = t("environments.defaultName");
 
-  // Re-seed the checklist every time the dialog opens, from whatever the
-  // trigger asked to pre-select (or everything, for the File-menu entry).
+  // Re-seed the checklist every time the dialog opens. Deliberately *not* on
+  // every `environments` change — a live switcher update mid-dialog must not
+  // reset the user's picks.
   useEffect(() => {
-    if (!open) return;
-    setSelected(
-      new Set(preselect && preselect.length > 0 ? preselect : environments.map((e) => e.id)),
-    );
-    // Only re-seed on open, not on every `environments` change — a live
-    // switcher update mid-dialog shouldn't reset the user's picks.
+    if (open) reseed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, preselect]);
-
-  function toggleAll() {
-    if (selected.size === environments.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(environments.map((e) => e.id)));
-    }
-  }
-
-  function toggle(id: string) {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
-  }
-
-  const passphraseError =
-    includePasswords && passphrase.length > 0 && passphrase !== passphraseConfirm
-      ? t("transfer.export.passphraseMismatch")
-      : null;
+  }, [open, seed]);
 
   const canExport =
     selected.size > 0 &&
-    (!includePasswords || (passphrase.length >= 8 && passphrase === passphraseConfirm));
+    (!includePasswords || passphraseAccepted(passphrase, passphraseConfirm));
 
   async function handleExport() {
     if (!canExport) return;
@@ -101,10 +92,10 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
         includePasswords ? passphrase : undefined,
         includeJsonSchemas,
       );
-      toast.success(t("transfer.export.success", { path }));
+      notify.file(t("notifications.fileSaved.environments"), { path });
       handleOpenChange(false);
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setLoading(false);
     }
@@ -145,7 +136,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
                 onClick={toggleAll}
                 className="text-xs text-primary underline-offset-2 hover:underline"
               >
-                {selected.size === environments.length
+                {allSelected
                   ? t("transfer.export.deselectAll")
                   : t("transfer.export.selectAll")}
               </button>
@@ -206,41 +197,14 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
             </div>
           </div>
 
-          {/* Security warning + passphrase fields */}
           {includePasswords && (
-            <div className="space-y-3">
-              <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/40 px-3 py-2 text-2xs text-warning">
-                <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {t("transfer.export.securityWarning")}
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="export-env-passphrase" className="text-xs">
-                  {t("transfer.export.passphrase")}
-                </Label>
-                <PasswordInput
-                  id="export-env-passphrase"
-                  value={passphrase}
-                  onChange={(e) => setPassphrase(e.target.value)}
-                  placeholder={t("transfer.export.passphrasePlaceholder")}
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="export-env-passphrase-confirm" className="text-xs">
-                  {t("transfer.export.passphraseConfirm")}
-                </Label>
-                <PasswordInput
-                  id="export-env-passphrase-confirm"
-                  value={passphraseConfirm}
-                  onChange={(e) => setPassphraseConfirm(e.target.value)}
-                  placeholder={t("transfer.export.passphraseConfirmPlaceholder")}
-                  className="h-8 text-xs"
-                />
-                {passphraseError && (
-                  <p className="text-[11px] text-destructive">{passphraseError}</p>
-                )}
-              </div>
-            </div>
+            <PassphraseFields
+              passphrase={passphrase}
+              confirm={passphraseConfirm}
+              onPassphraseChange={setPassphrase}
+              onConfirmChange={setPassphraseConfirm}
+              idPrefix="export-env"
+            />
           )}
         </div>
 

@@ -25,7 +25,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Loader2, Trash2, Unlink } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { useConnections } from "@/stores/session/connections";
 import { useOriginSync } from "@/stores/sync/originSync";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
@@ -66,7 +66,7 @@ export function VanishedOriginNotice({
     } catch (e) {
       // Leave the notice standing: the decision was not recorded, so the user
       // can retry. Failing silently would look like the click did nothing.
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setBusy(false);
     }

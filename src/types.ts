@@ -280,7 +280,9 @@ export interface MongoIndexInfo {
  *  Rust — the frontend never parses BSON (gotcha #33). */
 export interface NewMongoIndexSpec {
   keys: string;
-  /** Omitted lets the server derive `field_1_other_-1`. */
+  /** Blank/omitted falls back to the `field_1_other_-1` convention, computed
+   *  on the Rust side (`default_index_name` in `db/mongo/indexes.rs`) — the
+   *  raw `createIndexes` command this app uses does not derive it itself. */
   name?: string | null;
   unique: boolean;
   sparse: boolean;
@@ -644,6 +646,45 @@ export interface ColumnFilter {
   values?: CellValue[];
 }
 
+/**
+ * The predicate half of a table browse: structured column filters plus the
+ * free-text needle and the columns it searches. Mirrors `TableFilter` in
+ * `src-tauri/src/commands/query.rs`, where it is `#[serde(flatten)]`ed into
+ * the two payloads below — so the wire shape is one flat object, not a nested
+ * `filter` key.
+ */
+export interface TableFilter {
+  filters?: ColumnFilter[];
+  /** Free-text needle, `LIKE`-escaped server-side and OR-composed across
+   *  `searchColumns`, then AND-composed with `filters`. An empty string is
+   *  treated as "no needle", not as a match-everything predicate. */
+  search?: string;
+  searchColumns?: string[];
+}
+
+/** A table plus a predicate over it, with no paging — the payload of
+ *  `countTableRows` and `exportTableRows`. Mirrors Rust `TableScan`. */
+export interface TableScan extends TableFilter {
+  connectionId: string;
+  schema?: string;
+  table: string;
+}
+
+/** One page of a table browse — the payload of `fetchTableData`. Mirrors Rust
+ *  `TableQuery`. A field declared here but not there is dropped by serde
+ *  without a word (CLAUDE.md gotcha #14), so the two must move together. */
+export interface TableQuery extends TableScan {
+  limit: number;
+  offset: number;
+  /** Ordered multi-column sort; `order[0]` is the primary key. */
+  order?: SortSpec[];
+  /** Run the companion `COUNT(*)`. The GUI always passes `false` (the total is
+   *  fetched out-of-band via `countTableRows` so it never gates the first row
+   *  render); the headless MCP `browse_table` tool uses the inline count.
+   *  Defaults to `true` on the backend when omitted. */
+  withCount?: boolean;
+}
+
 /** One column/value pair used when building an INSERT. */
 export interface RowValue {
   column: string;
@@ -722,6 +763,8 @@ export interface Preferences {
   editor: EditorPrefs;
   grid: GridPrefs;
   ui: UiPrefs;
+  /** Notification placement, timing and history. See {@link NotificationPrefs}. */
+  notifications: NotificationPrefs;
   /** Connection-pool policy. See {@link ConnectionPrefs}. */
   connections: ConnectionPrefs;
   /**
@@ -908,6 +951,45 @@ export interface UiPrefs {
   connectionGroupExpandMode: ConnectionGroupExpandMode;
 }
 
+/** Corner or edge the notification stack grows from. */
+export type NotificationPosition =
+  | "top-left"
+  | "top-center"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right";
+
+/** Notification card density. `compact` drops the body line. */
+export type NotificationDensity = "comfortable" | "compact";
+
+/**
+ * Where notifications appear, how long they stay and how much is remembered.
+ *
+ * Mirrors `NotificationPrefs` in `src-tauri/src/prefs.rs` — a field missing on
+ * either side is silently dropped by serde on the way through
+ * `update_preferences` (CLAUDE.md gotcha #14), so both declarations change
+ * together. `notifications_use_the_camel_case_keys_the_frontend_sends` in
+ * `prefs.rs` pins the exact JSON.
+ */
+export interface NotificationPrefs {
+  position: NotificationPosition;
+  /** Lifetime of a dismissible notification in ms. `0` = until dismissed.
+   *  Defaults to 6000; clamped to {@link NOTIFICATION_DURATION_BOUNDS}. */
+  durationMs: number;
+  /** Errors ignore `durationMs` and wait to be dismissed. Default `true`. */
+  errorsPersist: boolean;
+  /** On-screen at once; the rest collapse behind a counter. */
+  maxVisible: number;
+  /** Hovering the stack expands it and freezes every timer. */
+  expandOnHover: boolean;
+  density: NotificationDensity;
+  /** Entries the window remembers. `0` disables the history and the bell. */
+  historyLimit: number;
+  /** Whether the status bar shows the bell. The history survives either way. */
+  showBell: boolean;
+}
+
 export type CellEditorMode = "modal" | "side";
 
 export type CliConnectDefault = "ask" | "current" | "new";
@@ -945,7 +1027,7 @@ export type WorkspaceLayout = unknown | null;
 
 /**
  * A named set of connections plus the session state that belongs to them.
- * Mirrors `Environment` in `src-tauri/src/tab_state.rs` (`tab_state.json` v4).
+ * Mirrors `Environment` in `src-tauri/src/tab_state.rs` (`tab_state.json` v5).
  *
  * Only the presentation fields (plus `launch`, see below) are exposed here.
  * `connections` and `internalLayout` live in the same on-disk struct but are

@@ -17,12 +17,12 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Upload } from "lucide-react";
-import { toast } from "sonner";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { notify } from "@/lib/notify";
 
 import { api } from "@/lib/tauri";
 import { useJsonSchemas } from "@/stores/jsonSchemas";
 import { Button } from "@/components/ui/button";
+import { pickJsonFile } from "@/lib/dialogs";
 import {
   Dialog,
   DialogContent,
@@ -64,12 +64,10 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
   }
 
   async function pick() {
-    const picked = await openFileDialog({
-      title: t("transfer.importJsonSchemas.pickTitle"),
-      multiple: false,
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
-    if (typeof picked !== "string") return;
+    const picked = await pickJsonFile(
+      t("transfer.importJsonSchemas.pickTitle"),
+    );
+    if (!picked) return;
     setBusy(true);
     try {
       const found = await api.analyzeJsonSchemaImport(picked);
@@ -89,7 +87,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
       );
       setStep(found.conflicts.length > 0 ? "conflicts" : "review");
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setBusy(false);
     }
@@ -107,7 +105,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
       await reload();
       setStep("done");
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setBusy(false);
     }

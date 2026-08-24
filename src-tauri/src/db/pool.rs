@@ -365,7 +365,7 @@ impl PoolOwnership {
     /// infix is a per-database view. Used by the sweep paths, which work from
     /// ids rather than from how a pool was created.
     pub fn for_id(id: &str) -> Self {
-        if id.contains("::db::") {
+        if crate::state::is_database_view(id) {
             Self::BorrowedView
         } else {
             Self::Owned
@@ -448,31 +448,11 @@ pub async fn smoke_test(
         PoolLimits::probe(),
     )
     .await?;
-    let result = match &pool {
-        DbPool::Postgres(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
-        DbPool::Mysql(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
-        DbPool::Sqlite(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ()),
-        // Mongo and SQL Server report their probe through `AppError` rather
-        // than `sqlx::Error`, so they close and return here instead of joining
-        // the shared `result?` below.
-        DbPool::Mongo(conn) => {
-            return {
-                let ping = crate::db::mongo::schema::ping(conn).await;
-                close_pool(&pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
-                ping
-            }
-        }
-        DbPool::MsSql(p) => {
-            return {
-                let ping = p.ping().await;
-                close_pool(&pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
-                ping
-            }
-        }
-    };
+    // The probe pool is ours alone, so it is closed whether or not the ping
+    // succeeded — hence the result is held rather than `?`-ed.
+    let result = crate::db::exec::ping(&pool).await;
     close_pool(&pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
-    result?;
-    Ok(())
+    result
 }
 
 #[cfg(test)]
@@ -504,24 +484,8 @@ mod tests {
 
     fn profile(max_connections: Option<u32>) -> ConnectionProfile {
         ConnectionProfile {
-            id: "p".into(),
-            name: "p".into(),
-            driver: Driver::Postgres,
-            host: "localhost".into(),
-            port: 5432,
-            database: String::new(),
-            username: "u".into(),
-            ssl: false,
-            ssh_tunnel: None,
-            connection_string: None,
-            auth_source: None,
-            ephemeral: false,
-            group: None,
-            visible_databases: None,
-            mcp_write: Default::default(),
             max_connections,
-            origin_id: None,
-            mssql: None,
+            ..crate::testkit::profile("p")
         }
     }
 

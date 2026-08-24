@@ -124,7 +124,9 @@ pub struct MongoIndexInfo {
 pub struct NewMongoIndexSpec {
     /// The `key` document as source text, e.g. `{ createdAt: -1, status: 1 }`.
     pub keys: String,
-    /// `None` lets the server derive `field_1_other_-1`.
+    /// `None`/blank falls back to the `field_1_other_-1` convention, computed
+    /// by [`default_index_name`] — the raw `createIndexes` command this app
+    /// uses does not derive it server-side (see that function's doc comment).
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
@@ -148,6 +150,26 @@ pub struct NewMongoIndexSpec {
     /// `storageEngine`, …).
     #[serde(default)]
     pub extra_options: Option<String>,
+}
+
+/// The name MongoDB's own `mongosh`/driver helpers derive from a key document
+/// when none is given (`field_value` per key, joined by `_`), e.g.
+/// `{ atnId: 1, productionOrderId: 1 }` -> `atnId_1_productionOrderId_1`.
+///
+/// The raw `createIndexes` run-command this app sends indexes through
+/// (deliberately, over the typed `Collection::create_index()` helper — see
+/// the doc comment on [`create_index`]) does **not** apply this convention
+/// itself: unlike the typed helper, it requires `name` to be present in the
+/// spec and rejects one that omits it. So both the write path
+/// ([`NewMongoIndexSpec::to_document`]) and the read path ([`spec_to_info`])
+/// compute the same default here, to keep a blank "Nombre" field in the
+/// editor and a freshly-created index's displayed name from ever diverging.
+fn default_index_name(key_doc: &Document) -> String {
+    key_doc
+        .iter()
+        .map(|(field, value)| format!("{field}_{}", bson_to_shell_text(value)))
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
 /// Parse an optional source-text field into a BSON document.
@@ -191,16 +213,16 @@ impl NewMongoIndexSpec {
             ));
         }
 
-        let mut spec = doc! { "key": keys };
-
-        if let Some(name) = self
+        let name = self
             .name
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
-        {
-            spec.insert("name", name);
-        }
+            .map(str::to_string)
+            .unwrap_or_else(|| default_index_name(&keys));
+
+        let mut spec = doc! { "key": keys, "name": name };
+
         if self.unique {
             spec.insert("unique", true);
         }
@@ -379,12 +401,7 @@ fn spec_to_info(spec: &Document) -> MongoIndexInfo {
     let name = spec
         .get_str("name")
         .map(str::to_string)
-        .unwrap_or_else(|_| {
-            keys.iter()
-                .map(|k| format!("{}_{}", k.field, k.value))
-                .collect::<Vec<_>>()
-                .join("_")
-        });
+        .unwrap_or_else(|_| default_index_name(&key_doc));
 
     let expire_after_seconds = as_i64(spec.get("expireAfterSeconds"));
 
@@ -637,6 +654,26 @@ mod tests {
         let doc = spec.to_document().unwrap();
         // `{}` would be a *different* index: a partial one matching everything.
         assert!(!doc.contains_key("partialFilterExpression"));
+    }
+
+    #[test]
+    fn a_blank_name_falls_back_to_the_derived_convention_instead_of_being_omitted() {
+        // Regression: the raw `createIndexes` command rejects a spec with no
+        // `name` key at all ("The 'name' field is a required property of an
+        // index specification") — unlike the typed driver helper, it does not
+        // derive one server-side. `to_document` must always send a name.
+        let doc = spec_of("{ atnId: 1, productionOrderId: 1 }")
+            .to_document()
+            .unwrap();
+        assert_eq!(doc.get_str("name").unwrap(), "atnId_1_productionOrderId_1");
+    }
+
+    #[test]
+    fn an_explicit_name_is_kept_verbatim() {
+        let mut spec = spec_of("{ a: 1 }");
+        spec.name = Some("my_custom_name".into());
+        let doc = spec.to_document().unwrap();
+        assert_eq!(doc.get_str("name").unwrap(), "my_custom_name");
     }
 
     #[test]

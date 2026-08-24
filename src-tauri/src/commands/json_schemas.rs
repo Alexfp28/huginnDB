@@ -37,8 +37,8 @@ use crate::json_schemas::{
 };
 use crate::state::AppState;
 use crate::transfer::{
-    ConflictAction, ConflictResolution, ExportMetadata, JsonSchemaExportFile,
-    JsonSchemaImportAnalysis, JsonSchemaImportResult, KIND_JSON_SCHEMAS,
+    ConflictAction, ConflictResolution, JsonSchemaExportFile, JsonSchemaImportAnalysis,
+    JsonSchemaImportResult, KIND_JSON_SCHEMAS,
 };
 use std::collections::{HashMap, HashSet};
 use tauri::{AppHandle, Emitter, State};
@@ -426,33 +426,17 @@ pub async fn export_json_schemas(
 
     let now = chrono::Utc::now().to_rfc3339();
     let file = JsonSchemaExportFile {
-        meta: ExportMetadata {
-            version: 1,
-            app: "huginndb".into(),
-            exported_at: now.clone(),
-            encrypted: false,
-            kind: KIND_JSON_SCHEMAS.into(),
-        },
+        meta: crate::transfer::metadata(KIND_JSON_SCHEMAS, false, &now),
         bundle,
     };
-    let json = serde_json::to_string_pretty(&file)?;
 
     let date_part = now.get(..10).unwrap_or("export");
-    let suggested = format!("huginndb-json-schemas-{date_part}.json");
-
-    use tauri_plugin_dialog::DialogExt;
-    let path = app
-        .dialog()
-        .file()
-        .set_title("Export JSON Schemas")
-        .set_file_name(&suggested)
-        .add_filter("JSON", &["json"])
-        .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
-
-    let dest = path.to_string();
-    std::fs::write(&dest, json)?;
-    Ok(dest)
+    crate::transfer::save_export(
+        &app,
+        "Export JSON Schemas",
+        &format!("huginndb-json-schemas-{date_part}.json"),
+        &serde_json::to_string_pretty(&file)?,
+    )
 }
 
 /// Parse a schema export without touching any state, so the wizard can show
@@ -514,17 +498,7 @@ pub fn import_json_schemas(
 fn read_schema_export(file_path: &str) -> AppResult<(JsonSchemaExportFile, ())> {
     let data = std::fs::read_to_string(file_path)?;
     let export: JsonSchemaExportFile = serde_json::from_str(&data)?;
-    if export.meta.version != 1 {
-        return Err(AppError::Transfer(format!(
-            "unsupported export format version {}",
-            export.meta.version
-        )));
-    }
-    if export.meta.kind != KIND_JSON_SCHEMAS {
-        return Err(AppError::Transfer(
-            "this file is not a JSON Schema export".into(),
-        ));
-    }
+    crate::transfer::check_meta(&export.meta, KIND_JSON_SCHEMAS)?;
     Ok((export, ()))
 }
 

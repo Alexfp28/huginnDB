@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import {
   Braces,
   Code2,
@@ -78,6 +78,7 @@ import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { cn } from "@/lib/utils";
 import type { QueryResult, StagePreview, StructureMode } from "@/types";
+import { useReloadable } from "@/lib/useReloadable";
 
 interface Props {
   tabId: string;
@@ -120,8 +121,6 @@ export function AggregationTab({
   const [text, setText] = useState("[\n  { $match: {} }\n]");
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
-  const [loading, setLoading] = useState(mode === "edit");
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [showPreview, setShowPreview] = useState(true);
   const [sampleSize, setSampleSize] = useState(10);
@@ -155,28 +154,19 @@ export function AggregationTab({
   // Load an existing view
   // ---------------------------------------------------------------------
 
-  const reload = useCallback(async () => {
-    if (mode !== "edit" || !view) return;
-    setLoading(true);
-    try {
-      const def = await api.getMongoView(connectionId, view);
-      setSource(def.viewOn);
-      setBoundView(def.name);
-      setStages(
-        def.stages.length ? stagesFromBodies(def.stages) : [newStage("$match")],
-      );
-      setText(def.pipeline || "[]");
-      setLoadError(null);
-    } catch (e) {
-      setLoadError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [mode, view, connectionId]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  const load = useCallback(async () => {
+    if (!view) return;
+    const def = await api.getMongoView(connectionId, view);
+    setSource(def.viewOn);
+    setBoundView(def.name);
+    setStages(
+      def.stages.length ? stagesFromBodies(def.stages) : [newStage("$match")],
+    );
+    setText(def.pipeline || "[]");
+  }, [view, connectionId]);
+  const { loading, error: loadError } = useReloadable(
+    mode === "edit" ? load : null,
+  );
 
   // ---------------------------------------------------------------------
   // Preview
@@ -326,7 +316,7 @@ export function AggregationTab({
         });
         setText(formatted.text);
         if (dropped > 0) {
-          toast.info(t("aggregation.disabledDropped", { count: dropped }));
+          notify.info(t("aggregation.disabledDropped", { count: dropped }));
         }
       } else {
         const formatted = await api.formatMongoPipeline({ text });
@@ -340,7 +330,7 @@ export function AggregationTab({
     } catch (e) {
       // The pipeline has to parse before it can be re-shaped, so a syntax
       // error blocks the switch rather than silently discarding stages.
-      toast.error(t("aggregation.switchFailed", { message: String(e) }));
+      notify.error(t("aggregation.switchFailed", { message: String(e) }));
     }
   }
 
@@ -361,7 +351,7 @@ export function AggregationTab({
         );
       }
     } catch (e) {
-      toast.error(t("aggregation.formatFailed", { message: String(e) }));
+      notify.error(t("aggregation.formatFailed", { message: String(e) }));
     }
   }
 
@@ -403,10 +393,10 @@ export function AggregationTab({
       setBoundView(name);
       renameTab(tabId, `${name} (${t("tabs.aggregationSuffix")})`);
       await refreshSchema(connectionId);
-      toast.success(t("aggregation.saveView.saved", { name }));
+      notify.success(t("aggregation.saveView.saved", { name }));
       setSaveOpen(false);
     } catch (e) {
-      toast.error(t("aggregation.saveView.failed", { message: String(e) }));
+      notify.error(t("aggregation.saveView.failed", { message: String(e) }));
     } finally {
       setSaving(false);
     }

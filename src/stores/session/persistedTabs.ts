@@ -49,9 +49,12 @@ import { api } from "@/lib/tauri";
 import i18n from "@/lib/i18n";
 import { useTabs } from "@/stores/session/tabs";
 import { useSchema } from "@/stores/session/schema";
-import { useUi } from "@/stores/session/ui";
+import { useConnections } from "@/stores/session/connections";
+import { resolveConnectionDriver } from "@/lib/connectionLabel";
+import { currentLaunchView, useUi } from "@/stores/session/ui";
 import { usePreferences } from "@/stores/preferences/preferences";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isMainWindow } from "@/lib/window";
+import { debounce, type Debounce } from "@/lib/schedule";
 import {
   getInnerDockviewApi,
   setPendingInternalLayout,
@@ -62,7 +65,8 @@ import {
 const SAVE_DEBOUNCE_MS = 600;
 
 interface ActiveSubscription {
-  timer: ReturnType<typeof setTimeout> | null;
+  /** Trailing save for this connection, armed by its tab/schema subscriptions. */
+  save: Debounce<[]>;
   unsubTabs: () => void;
   unsubSchema: () => void;
 }
@@ -185,31 +189,24 @@ function snapshotFor(connectionId: string): ConnectionTabState {
 
 function scheduleSave(connectionId: string) {
   if (saveSuspended) return;
-  const entry = active.get(connectionId);
-  if (!entry) return;
-  if (entry.timer) clearTimeout(entry.timer);
-  entry.timer = setTimeout(() => {
-    entry.timer = null;
+  active.get(connectionId)?.save.schedule();
+}
+
+/** The debounced write for one connection, created with its subscription. */
+function saveDebounceFor(connectionId: string): Debounce<[]> {
+  return debounce(SAVE_DEBOUNCE_MS, () => {
     void api
       .saveTabState(connectionId, snapshotFor(connectionId))
       .catch((err) => {
         console.error(`[persistedTabs] save failed for ${connectionId}:`, err);
       });
-  }, SAVE_DEBOUNCE_MS);
-}
-
-/** True only in the main window — the sole owner of `tab_state.json`
- *  (gotcha #8). Secondary "New window" instances are ephemeral. */
-function isMainWindow(): boolean {
-  return getCurrentWindow().label === "main";
+  });
 }
 
 // --- Session-level workspace layout -----------------------------------------
 // The inner dockview's split/float geometry is shared across every open
 // connection (one inner dockview hosts them all), so it is persisted once at
 // the top level of `tab_state.json` rather than duplicated per connection.
-
-let layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Capture the current inner-dockview geometry and write it to disk now.
  *  Writes `null` (default tabbed layout) unless the user has actually split
@@ -229,6 +226,10 @@ async function saveWorkspaceLayoutNow(): Promise<void> {
   }
 }
 
+const saveLayout = debounce(SAVE_DEBOUNCE_MS, () => {
+  void saveWorkspaceLayoutNow();
+});
+
 /**
  * Debounced save of the session-level inner-dockview geometry. Wired to the
  * inner dockview's `onDidLayoutChange` (a pure split/float/resize gesture
@@ -239,11 +240,7 @@ async function saveWorkspaceLayoutNow(): Promise<void> {
 export function scheduleSaveActive() {
   if (!isMainWindow()) return;
   if (saveSuspended) return;
-  if (layoutSaveTimer) clearTimeout(layoutSaveTimer);
-  layoutSaveTimer = setTimeout(() => {
-    layoutSaveTimer = null;
-    void saveWorkspaceLayoutNow();
-  }, SAVE_DEBOUNCE_MS);
+  saveLayout.schedule();
 }
 
 /**
@@ -268,9 +265,7 @@ export function persistLaunchState(
       activeConnections: activeConnectionIds,
       selectedConnectionId: useUi.getState().selectedConnectionId,
       activeTabId: useTabs.getState().activeId,
-      collapsedConnections: useUi.getState().collapsedConnections,
-      visibleConnections: useUi.getState().visibleConnections,
-      databaseVisibility: useUi.getState().databaseVisibility,
+      ...currentLaunchView(),
     })
     .catch((err) => {
       console.error("[persistedTabs] launch-state save failed:", err);
@@ -288,7 +283,7 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
   // save to `tab_state.json` (see `commands::prefs::get_tab_state`). Without
   // this guard a secondary window would silently overwrite the main
   // window's persisted snapshot the moment it opened a connection.
-  if (getCurrentWindow().label !== "main") return;
+  if (!isMainWindow()) return;
 
   const restore = usePreferences.getState().prefs.ui.restoreTabsOnOpen;
   if (!restore) {
@@ -313,7 +308,14 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
           p.title ??
           p.table ??
           (p.kind === "query"
-            ? i18n.t("tabs.queryFileName")
+            ? i18n.t(
+                resolveConnectionDriver(
+                  useConnections.getState().profiles,
+                  connectionId,
+                ) === "mongodb"
+                  ? "tabs.mongoQueryFileName"
+                  : "tabs.queryFileName",
+              )
             : i18n.t("tabs.tableFallback")),
         schema: p.schema ?? undefined,
         table: p.table ?? undefined,
@@ -512,7 +514,7 @@ function attachSubscriptions(connectionId: string) {
   if (active.has(connectionId)) return;
 
   const entry: ActiveSubscription = {
-    timer: null,
+    save: saveDebounceFor(connectionId),
     unsubTabs: () => {},
     unsubSchema: () => {},
   };
@@ -544,16 +546,8 @@ function attachSubscriptions(connectionId: string) {
  * Subscriptions are left attached; only the queued writes are dropped.
  */
 export function cancelPendingSaves(): void {
-  if (layoutSaveTimer) {
-    clearTimeout(layoutSaveTimer);
-    layoutSaveTimer = null;
-  }
-  for (const entry of active.values()) {
-    if (entry.timer) {
-      clearTimeout(entry.timer);
-      entry.timer = null;
-    }
-  }
+  saveLayout.cancel();
+  for (const entry of active.values()) entry.save.cancel();
 }
 
 /**
@@ -564,9 +558,9 @@ export function cancelPendingSaves(): void {
 export async function flushTabState(connectionId: string): Promise<void> {
   const entry = active.get(connectionId);
   if (!entry) return;
-  if (entry.timer) {
-    clearTimeout(entry.timer);
-    entry.timer = null;
+  // Only write when a save was actually armed: nothing pending means whatever
+  // is in the store already reached disk.
+  if (entry.save.cancel()) {
     try {
       await api.saveTabState(connectionId, snapshotFor(connectionId));
     } catch (err) {
@@ -591,11 +585,7 @@ export async function flushTabState(connectionId: string): Promise<void> {
  */
 export async function flushAllTabState(): Promise<void> {
   for (const connectionId of active.keys()) {
-    const entry = active.get(connectionId);
-    if (entry?.timer) {
-      clearTimeout(entry.timer);
-      entry.timer = null;
-    }
+    active.get(connectionId)?.save.cancel();
     try {
       await api.saveTabState(connectionId, snapshotFor(connectionId));
     } catch (err) {
@@ -605,9 +595,6 @@ export async function flushAllTabState(): Promise<void> {
   // The session-level inner-dockview geometry is debounced separately
   // (`scheduleSaveActive`); cancel any pending timer and write it now so a
   // trailing split/resize gesture isn't lost on close.
-  if (layoutSaveTimer) {
-    clearTimeout(layoutSaveTimer);
-    layoutSaveTimer = null;
-  }
+  saveLayout.cancel();
   await saveWorkspaceLayoutNow();
 }

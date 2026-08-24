@@ -87,8 +87,10 @@ export function splitSql(source: string): SqlStatement[] {
   function commit(endIdx: number, endLineV: number, endColumnV: number) {
     if (stmtStart < 0) return;
     const raw = source.slice(stmtStart, endIdx);
-    // Drop pure-whitespace statements (e.g. a stray ";").
-    if (!raw.trim()) {
+    // Drop empty statements: pure whitespace, or a stray ";" on its own. The
+    // semicolon is not whitespace, so `trim()` alone left `;;SELECT 1;` looking
+    // like three statements, two of which the CodeLens offered to run.
+    if (!raw.trim() || raw.trim() === ";") {
       stmtStart = -1;
       return;
     }
@@ -115,21 +117,33 @@ export function splitSql(source: string): SqlStatement[] {
         column += 2;
         continue;
       }
-      if (ch === "'") mode = "default";
+      if (ch === "'") {
+        mode = "default";
+        column++;
+        continue;
+      }
     } else if (mode === "double-string") {
       if (ch === '"' && next === '"') {
         i++;
         column += 2;
         continue;
       }
-      if (ch === '"') mode = "default";
+      if (ch === '"') {
+        mode = "default";
+        column++;
+        continue;
+      }
     } else if (mode === "back-string") {
       if (ch === "`" && next === "`") {
         i++;
         column += 2;
         continue;
       }
-      if (ch === "`") mode = "default";
+      if (ch === "`") {
+        mode = "default";
+        column++;
+        continue;
+      }
     } else if (mode === "line-comment") {
       if (ch === "\n") {
         mode = "default";

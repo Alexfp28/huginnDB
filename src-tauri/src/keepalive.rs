@@ -24,7 +24,6 @@
 //! means the loop stops automatically whenever that pool is removed or
 //! replaced — no separate bookkeeping needed in `AppState`.
 
-use crate::error::AppResult;
 use crate::log_bus::{self, LogEntry, LogKind};
 use crate::state::DbPool;
 use serde::Serialize;
@@ -105,7 +104,9 @@ pub fn spawn(
             if idle < interval.as_millis() as u64 {
                 continue;
             }
-            if let Err(e) = crate::error::with_timeout("keepalive ping", ping(&pool)).await {
+            if let Err(e) =
+                crate::error::with_timeout("keepalive ping", crate::db::exec::ping(&pool)).await
+            {
                 let msg = e.to_string();
                 log_bus::broadcast(
                     &app,
@@ -126,19 +127,4 @@ pub fn spawn(
         }
     });
     Some(KeepaliveHandle { cancel })
-}
-
-/// One lightweight round-trip per driver — cheap enough to run every tick
-/// without measurable load on the server.
-async fn ping(pool: &DbPool) -> AppResult<()> {
-    match pool {
-        DbPool::Postgres(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
-        DbPool::Mysql(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
-        DbPool::Sqlite(p) => sqlx::query("SELECT 1").execute(p).await.map(|_| ())?,
-        DbPool::Mongo(conn) => crate::db::mongo::schema::ping(conn).await?,
-        // Runs `SELECT 1` on a pooled session; a dead session is discarded by
-        // the pool rather than handed to the next caller (see `db::mssql`).
-        DbPool::MsSql(p) => p.ping().await?,
-    };
-    Ok(())
 }

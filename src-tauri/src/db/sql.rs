@@ -180,6 +180,27 @@ impl Dialect {
             _ => self.qualify(self.default_schema(), table),
         }
     }
+
+    /// The statement that empties `qualified` of every row.
+    ///
+    /// `TRUNCATE TABLE` everywhere it exists; SQLite has no `TRUNCATE`, so it
+    /// gets an unfiltered `DELETE FROM` (which SQLite itself optimises into the
+    /// truncate fast path when there are no triggers).
+    ///
+    /// Spelled out per dialect rather than "SQLite, else TRUNCATE". The
+    /// difference is not "SQLite is the odd one out" — it is a per-engine fact
+    /// about which statement exists, and the next engine added has to state its
+    /// own answer instead of silently inheriting Postgres's. That is the whole
+    /// reason this enum owns the generated SQL, and this call site was the one
+    /// place still guessing.
+    pub fn truncate_stmt(self, qualified: &str) -> String {
+        match self {
+            Dialect::Postgres | Dialect::Mysql | Dialect::MsSql => {
+                format!("TRUNCATE TABLE {qualified}")
+            }
+            Dialect::Sqlite => format!("DELETE FROM {qualified}"),
+        }
+    }
 }
 
 /// Skip leading whitespace and SQL comments (`-- …` line comments and
@@ -229,6 +250,85 @@ fn skip_leading_noise(sql: &str) -> &str {
 /// whitespace/comments. Anything unusual (e.g. multi-statement scripts, DDL
 /// that returns rows on some drivers) falls back to the write path and the
 /// user still sees the row-count summary.
+/// Which kind of relation a [`Dialect::rename_stmt`] call is renaming.
+///
+/// The only thing it changes is Postgres's keyword and the wording of the SQL
+/// Server refusal — MySQL's `RENAME TABLE` and SQLite's `ALTER TABLE … RENAME`
+/// apply to a view as-is, which is exactly why the two command bodies were
+/// byte-identical apart from those two strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Relation {
+    Table,
+    View,
+}
+
+impl Relation {
+    fn noun(self) -> &'static str {
+        match self {
+            Relation::Table => "table",
+            Relation::View => "view",
+        }
+    }
+}
+
+impl Dialect {
+    /// The statement that renames `current` (in `schema`) to `new_name`.
+    ///
+    /// `new_name` must already be trimmed and validated; it is quoted here.
+    /// Returns [`AppError::UnsupportedDriver`] for SQL Server: T-SQL renames
+    /// through `EXEC sp_rename @old, @new, 'OBJECT'`, where both arguments are
+    /// *strings* rather than identifiers — bound parameters, not quoted names —
+    /// so it is not a variation on this statement but a different call, wired
+    /// up with the rest of the deferred SQL Server DDL work.
+    ///
+    /// MongoDB never reaches this: `renameCollection` is a run-command on
+    /// `admin`, dispatched before any SQL is built.
+    pub fn rename_stmt(
+        self,
+        schema: Option<&str>,
+        current: &str,
+        new_name: &str,
+        relation: Relation,
+    ) -> AppResult<String> {
+        let new_ident = self.quote_ident(new_name);
+        Ok(match self {
+            Dialect::Postgres => {
+                let kw = match relation {
+                    Relation::Table => "ALTER TABLE",
+                    Relation::View => "ALTER VIEW",
+                };
+                format!(
+                    "{kw} {} RENAME TO {new_ident}",
+                    self.qualify_defaulted(schema, current)
+                )
+            }
+            // MySQL has no `ALTER VIEW … RENAME`; `RENAME TABLE` is the one
+            // statement for both, and it re-qualifies the target rather than
+            // taking a bare new name.
+            Dialect::Mysql => match schema {
+                Some(s) => format!(
+                    "RENAME TABLE {} TO {}.{new_ident}",
+                    self.qualify(Some(s), current),
+                    self.quote_ident(s)
+                ),
+                None => format!("RENAME TABLE {} TO {new_ident}", self.quote_ident(current)),
+            },
+            // SQLite has no schemas and no `ALTER VIEW`; `ALTER TABLE` renames
+            // a view there too.
+            Dialect::Sqlite => format!(
+                "ALTER TABLE {} RENAME TO {new_ident}",
+                self.quote_ident(current)
+            ),
+            Dialect::MsSql => {
+                return Err(AppError::UnsupportedDriver(format!(
+                    "renaming a {} is not supported on SQL Server yet",
+                    relation.noun()
+                )))
+            }
+        })
+    }
+}
+
 pub fn is_read_only(sql: &str) -> bool {
     let head = skip_leading_noise(sql).to_ascii_lowercase();
     head.starts_with("select")
@@ -357,7 +457,86 @@ fn contains_word(haystack_lower: &str, word: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify, is_ddl, is_read_only, is_unfiltered_write, Dialect, StmtClass};
+    use super::{
+        classify, is_ddl, is_read_only, is_unfiltered_write, Dialect, Relation, StmtClass,
+    };
+
+    #[test]
+    fn truncate_stmt_is_delete_only_on_sqlite() {
+        assert_eq!(
+            Dialect::Postgres.truncate_stmt("\"public\".\"t\""),
+            "TRUNCATE TABLE \"public\".\"t\""
+        );
+        assert_eq!(
+            Dialect::Mysql.truncate_stmt("`db`.`t`"),
+            "TRUNCATE TABLE `db`.`t`"
+        );
+        assert_eq!(
+            Dialect::MsSql.truncate_stmt("[dbo].[t]"),
+            "TRUNCATE TABLE [dbo].[t]"
+        );
+        // SQLite has no TRUNCATE at all.
+        assert_eq!(Dialect::Sqlite.truncate_stmt("\"t\""), "DELETE FROM \"t\"");
+    }
+
+    #[test]
+    fn rename_differs_from_a_view_rename_only_on_postgres() {
+        // MySQL's `RENAME TABLE` and SQLite's `ALTER TABLE … RENAME` are the
+        // statement for a view too, which is why the two command bodies this
+        // replaced were byte-identical apart from Postgres's keyword.
+        for relation in [Relation::Table, Relation::View] {
+            assert_eq!(
+                Dialect::Mysql
+                    .rename_stmt(Some("shop"), "album", "record", relation)
+                    .unwrap(),
+                "RENAME TABLE `shop`.`album` TO `shop`.`record`"
+            );
+            assert_eq!(
+                Dialect::Sqlite
+                    .rename_stmt(None, "album", "record", relation)
+                    .unwrap(),
+                "ALTER TABLE \"album\" RENAME TO \"record\""
+            );
+        }
+        assert_eq!(
+            Dialect::Postgres
+                .rename_stmt(None, "album", "record", Relation::Table)
+                .unwrap(),
+            "ALTER TABLE \"public\".\"album\" RENAME TO \"record\""
+        );
+        assert_eq!(
+            Dialect::Postgres
+                .rename_stmt(None, "album", "record", Relation::View)
+                .unwrap(),
+            "ALTER VIEW \"public\".\"album\" RENAME TO \"record\""
+        );
+    }
+
+    #[test]
+    fn mysql_rename_re_qualifies_the_target_only_when_a_schema_is_known() {
+        assert_eq!(
+            Dialect::Mysql
+                .rename_stmt(None, "album", "record", Relation::Table)
+                .unwrap(),
+            "RENAME TABLE `album` TO `record`"
+        );
+    }
+
+    #[test]
+    fn sql_server_rename_is_refused_by_relation_name() {
+        // `sp_rename` takes both sides as bound strings, not identifiers, so it
+        // is a different call rather than a variation on this statement.
+        let err = Dialect::MsSql
+            .rename_stmt(None, "album", "record", Relation::View)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("view"), "{err}");
+        let err = Dialect::MsSql
+            .rename_stmt(None, "album", "record", Relation::Table)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("table"), "{err}");
+    }
 
     #[test]
     fn quotes_identifiers_per_dialect() {

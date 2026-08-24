@@ -8,6 +8,521 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.18.0] — 2026-08-24
+
+### Añadido
+
+- **El visor de documentación ahora tiene secciones.** Una guía era un único
+  panel de scroll, lo que dejaba las más largas prácticamente imposibles de
+  consultar: `docs/MCP.md` son más de 400 líneas en un panel de 70vh, así que
+  averiguar qué exige una herramienta obligaba a bajar a ciegas pasando por la
+  configuración de cinco clientes hasta llegar a Seguridad. Cada guía abre ahora
+  en una **portada** — su prosa de entrada más una tarjeta por sección — y la
+  barra lateral es un árbol: las guías, con la abierta expandida en sus secciones,
+  y una sección expandida en sus subsecciones. Al elegir una se muestra esa
+  sección sola.
+
+  La navegación se deriva de los encabezados del markdown, no de una lista
+  mantenida al lado, y de ahí salen dos consecuencias que merece la pena decir.
+  Añadir un `##` a una guía lo añade a la barra lateral sin tocar código. Y la
+  barra lateral se traduce sola: el cuerpo en español lleva encabezados en
+  español, así que elegir el idioma elige también las etiquetas.
+
+  Los enlaces internos ya funcionan. Un `#ancla` salta a su encabezado — cambiando
+  de página primero si el encabezado vive en otra — y un enlace relativo a otra
+  guía incluida cambia a ella. Antes los dos se pintaban en color de marca, se
+  subrayaban al pasar el ratón y no hacían absolutamente nada al pulsarlos; había
+  ocho anclas y cinco enlaces entre guías en ese estado. Uno que apunte fuera del
+  conjunto incluido (una hoja de ruta, `SECURITY.md`) abre ahora en GitHub en vez
+  de ser un callejón sin salida. Un test comprueba que todas las anclas de todas
+  las guías publicadas, en los dos idiomas, resuelven a un encabezado real, así
+  que renombrar uno dejando huérfanos sus enlaces entrantes rompe el build en vez
+  de pasar desapercibido.
+
+  Arreglado de paso: cambiar de guía conservaba el scroll anterior, así que
+  saltar desde el fondo de una guía larga a una corta te dejaba al final de ella.
+
+- **Vistas por el conector MCP: leer, editar y eliminar.** Las vistas eran casi
+  invisibles para un cliente de IA. `list_tables` informaba de `kind: "view"` y
+  `describe_table` devolvía las columnas de una vista, pero nada podía leer su
+  *cuerpo*, ni crear, redefinir o eliminar una — el único recurso era escribir a
+  mano una consulta de catálogo por motor con `run_query`, y en MongoDB ni eso,
+  porque su parser de `mongosh` no tiene vocabulario DDL y un pipeline
+  almacenado era inalcanzable en las dos direcciones.
+
+  Dos herramientas nuevas, y una existente ampliada, en los cinco drivers:
+  - `describe_table` añade ahora un objeto `view` cuando la relación es una
+    vista — `query` (el cuerpo del SELECT) en SQL, `viewOn` más el `pipeline`
+    como texto fuente en MongoDB. Sin herramienta nueva para leer:
+    `describe_table` ya conocía las vistas por la mitad de las columnas, así que
+    el cuerpo va ahí.
+  - `save_view` *(escritura)* crea, redefine o renombra una vista. Recibe solo
+    `name` y `query`, y lee ella misma la definición actual para decidir cuál de
+    las tres es y cómo expresarla en este motor — `CREATE OR REPLACE` en
+    Postgres, `RENAME TABLE` en MySQL, borrar y recrear en SQLite,
+    `createView`/`collMod` en MongoDB. Con `preview: true` devuelve las
+    sentencias exactas sin ejecutarlas.
+  - `drop_view` *(escritura)* elimina una, y rechaza cualquier cosa que no sea
+    una vista.
+
+  **El modelo de permisos no cambia** — sin eje nuevo, sin ajuste nuevo. Las dos
+  herramientas de escritura son DDL, así que las dos exigen el nivel `full` que
+  la conexión ya tenía. Y es la única respuesta coherente, no una preferencia:
+  el `CREATE OR REPLACE VIEW` que podrías escribir a mano por `run_query` ya
+  está clasificado como DDL, así que una conexión en `data` lo tiene rechazado,
+  y una herramienta que permitiera el mismo cambio devolvería justo lo que el
+  nivel acaba de negar. Queda una asimetría que conviene conocer: eliminar una
+  *vista* pide `full` mientras que borrar *filas* solo pide `data` — la misma
+  asimetría que ya existe entre `DROP TABLE` y `DELETE FROM`. El `preview` de
+  `save_view` es una excepción de verdad, no un agujero: no ejecuta nada, así
+  que está clasificado como lectura y funciona en cualquier nivel.
+
+  MongoDB va por esas mismas dos herramientas en vez de tener su propio par. Un
+  cliente de IA no puede ver la diferencia desde la salida de `list_tables`, y lo
+  que quiere es una herramienta por verbo; el pipeline viaja como texto fuente y
+  lo parsea únicamente el único parser que tiene el producto, así que un
+  `ObjectId(...)` dentro de un `$match` sigue dando la vuelta como constructor y
+  no degradado a cadena.
+
+  De paso, SQL Server ganó la capacidad de leer la definición de una vista; solo
+  *crearla* sigue sin estar soportado ahí. Ver [`docs/MCP.md`](docs/MCP.md).
+
+- **Un sistema de notificaciones propio, en lugar de la configuración por
+  defecto de la librería.** Las notificaciones eran la librería de toasts
+  montada tal cual: cuatro segundos, abajo a la derecha, una tarjeta
+  blanca/negra fija que `index.css` intentaba recolorear desde fuera con unas
+  60 líneas de `!important`, y un tick pintado con el azul de marca, de modo
+  que una confirmación se leía igual que una acción. Ahora cada decisión
+  visual es de `NotificationCard`, que se dispara a través de la nueva fachada
+  `lib/notify`: la librería se queda solo como transporte (apilado, las seis
+  posiciones, descartar arrastrando, temporizadores, foco) y, al marcarse un
+  toast `jsx` como `data-styled="false"`, deja de pintar nada, así que el
+  bloque de `!important` desaparece en vez de crecer. La tarjeta es una
+  superficie del tema: `popover` sobre `border` con radio de 10 px, un riel
+  semántico de 3 px con el mismo grosor en todos los estados (el color es la
+  única variable), un medallón de icono de 28 px, la escala `2xs`/`3xs`, la
+  rampa de sombras `elevation-*` y un hairline de 2 px que se vacía con el
+  tiempo restante y se congela mientras el puntero esté sobre la pila.
+  `success` usa por fin `--success` en lugar de `--brand`, e `info` es el
+  único estado que gasta el azul de marca.
+
+- **Al pulsar el nombre del archivo en una notificación de exportación se abre
+  el explorador con el archivo seleccionado.** Antes la ruta se incrustaba en
+  la frase traducida (`"Exportado en {{path}}"`), lo que la volvía imposible
+  de seleccionar, copiar o abrir, que es justo lo único que se quiere de ella.
+  Un nuevo tipo `file` separa el título de la ruta, dibuja el nombre como un
+  control real (`api.revealItemInDir`, sobre el comando `reveal_item_in_dir`
+  del plugin `opener`, ahora permitido en `capabilities/default.json`) y
+  ofrece «Abrir carpeta» y «Copiar ruta», con la carpeta contenedora debajo.
+  Lo heredan todas las exportaciones: tabla, filas filtradas, colección, base
+  de datos, perfiles de conexión, entornos, esquemas JSON y temas. Si el
+  archivo se movió o se borró, el nombre queda tachado y salta un aviso, en
+  vez de un botón que no hace nada en silencio.
+
+- **Las repeticiones se agrupan en una sola notificación con contador.**
+  Guardar varias filas apilaba siete tarjetas idénticas; ahora las
+  notificaciones iguales que se levantan dentro de una ventana de cinco
+  segundos se funden en una, contada, y la política de agrupado vive en un
+  único sitio para que la tarjeta en pantalla y la fila del historial no
+  puedan contar cosas distintas.
+
+- **Un historial de notificaciones tras una campana en la barra de herramientas.**
+  La misma tarjeta comprimida a una fila, agrupada por día, con cuenta de no
+  leídas y con cada entrada de archivo todavía pulsable, así que una
+  exportación de hace veinte minutos está a un clic del explorador. En memoria
+  y por ventana a propósito: es material efímero de la sesión, así que no
+  merece un archivo de estado ni un sitio en `prefs.json` (que se reescribe
+  con cada `Ctrl`+rueda en la cuadrícula), y una segunda ventana que heredara
+  las notificaciones de la principal estaría atribuyéndose trabajo que no hizo.
+
+- **Ajustes → Notificaciones**, sección nueva: la posición como una rejilla de
+  seis ventanas en miniatura en lugar de un desplegable (la elección es
+  espacial), la duración como preajustes más el valor en milisegundos, si los
+  errores esperan a que los cierres, cuántas se ven a la vez, expandir al
+  pasar el ratón, la densidad de la tarjeta, el tope del historial y si se
+  muestra la campana. Cada fila es direccionable desde la paleta de comandos,
+  y la vista previa de la sección dispara una notificación *real*: juzgar seis
+  segundos frente a cuatro es exactamente lo que un dibujo no permite.
+
+### Corregido
+
+- **El explorador de esquema de SQL Server nunca llegaba a cargar las columnas
+  de una tabla — se quedaba en el skeleton de carga para siempre, sin ningún
+  error, en todas las tablas, en todos los servidores.** El fix del timeout de
+  conexión de más abajo (sigue siendo correcto, sigue mereciendo la pena) no
+  era, en realidad, lo que le pasaba a la mayoría: este es un bug distinto y
+  más fundamental en el mismo driver, y explica los reportes de "SQL Server
+  simplemente no carga el esquema" en conexiones que por lo demás funcionaban
+  perfectamente — ver datos de tablas, ejecutar consultas, todo lo demás
+  funcionaba; solo la lista de columnas del árbol nunca aparecía.
+
+  `tiberius::Row::get::<T, _>` es `self.try_get(idx).unwrap()` — hace *panic*
+  cuando la variante real de `ColumnData` de la columna no coincide con lo
+  que acepta el `FromSql` de `T`, en vez de devolver `None`. El helper `i()`
+  de `db::mssql::schema` (usado para leer una columna entera del catálogo de
+  ancho desconocido) probaba `i64` → `i32` → `i16` → `u8` con
+  `.get(...).or_else(...)`, que se lee como un ensanchamiento gradual pero no
+  lo es: el primer intento que no encaja hace panic antes de que la cadena de
+  `or_else` llegue a ejecutarse nunca. `sys.columns.max_length` es `smallint`,
+  así que `raw_columns` (por donde pasa toda llamada a `list_columns`/
+  `table_structure`) hacía panic en `i(r, "max_length")` para la primera
+  columna de la primera tabla, siempre — una lectura `i64` nunca puede tener
+  éxito contra un `ColumnData::I16`. `list_tables` no se veía afectada solo
+  porque su propio uso de `i()` (las estadísticas de filas/bytes) resulta ser
+  genuinamente `bigint`, que es por lo que la lista de tablas en sí siempre
+  cargaba bien. El `auth_type` de `list_users`
+  (`sys.database_principals.authentication_type`, un `tinyint`) tenía el
+  mismo panic latente, rompiendo la lista de usuarios del panel de Seguridad
+  por el mismo motivo.
+
+  Un panic dentro de la tarea asíncrona de un comando de Tauri nunca llega
+  al frontend como una promesa rechazada — la llamada `invoke()` del lado JS
+  simplemente se queda pendiente para siempre, indistinguible de un cuelgue,
+  que es exactamente por qué esto parecía un problema de timeout y no un
+  crash. También explica por qué nada en la batería de tests existente lo
+  detectó: el error de lógica de `i()` solo se manifiesta contra un
+  `tiberius::Row` real ya decodificado, algo que ningún test unitario
+  construye (los campos de `Row` son privados al crate `tiberius`).
+
+  `i()` ahora usa `try_get` y descarta el `Err` de un ancho que no encaja
+  (`.ok().flatten()`) en vez de dejar que haga panic, así que la cadena de
+  fallback ahora sí cae al siguiente ancho como se pretendía originalmente.
+
+- **SQL Server era el único driver cuyo explorador de esquema podía quedarse
+  colgado para siempre en el skeleton de carga, sin ningún error y sin forma
+  de reintentar.** Todos los drivers basados en `sqlx` (Postgres/MySQL/SQLite)
+  reciben gratis un timeout a nivel de conexión: `db::pool::tuned()` fija
+  `.acquire_timeout(ACQUIRE_TIMEOUT)` en sus `PoolOptions`, así que incluso un
+  `connect()` inicial contra un host inalcanzable falla a los 30s. `tiberius`
+  no tiene ningún ajuste equivalente, y el propio `connect()` de `db::mssql`
+  nunca añadió uno: ni el TCP connect llano ni la ida y vuelta UDP del SQL
+  Browser (`Reach::Browser`, usado para instancias con nombre) tienen ningún
+  timeout a nivel de sistema operativo, así que un host que descarta paquetes
+  en silencio — un firewall, o un Browser parado sin puerto estático de
+  respaldo configurado — colgaba el intento de conexión indefinidamente.
+
+  Esa carencia era invisible para las consultas normales, que ya corren
+  dentro del wrapper `with_timeout` de `commands::schema`
+  (`OPERATION_TIMEOUT`, 20s). No era invisible para una **vista por base de
+  datos**: el explorador multi-base la abre de forma perezosa, vía
+  `commands::connection::ensure_database_view`, y cada comando de esquema
+  (`list_databases`/`list_tables`/`list_columns`/`list_indexes`) llama a eso
+  *antes* de entrar siquiera en su propio bloque `with_timeout`. Así que la
+  primera vez que se expandía una base de datos en el árbol — o la primera
+  consulta después de que el reaper de pools cerrara una sesión inactiva —
+  SQL Server podía colgar el comando entero sin ningún límite, mientras que
+  el intento de conexión equivalente de cualquier otro driver ya tenía uno
+  vía `acquire_timeout`. Desde la interfaz esto se veía exactamente como el
+  reporte: el árbol de esquema atascado en su skeleton de carga para
+  siempre, sin error y sin forma de reintentar, solo con SQL Server.
+
+  `db::mssql::connect` pasa ahora por un pequeño wrapper
+  `bound_by_acquire_timeout` que usa el mismo `ACQUIRE_TIMEOUT` de los pools
+  de `sqlx`, convirtiendo una conexión colgada en un error `OperationTimedOut`
+  claro en vez de un skeleton permanente. Esto cubre tanto la primera
+  conexión de una vista por base de datos como cualquier reconexión
+  posterior tras el cierre de una sesión por el reaper de inactividad, ya
+  que todo camino que abre una sesión TDS nueva pasa por
+  `MsSqlPool::acquire`, que es el único sitio desde el que se llama a
+  `connect`.
+
+- **Eliminar una «vista» de MongoDB cuyo nombre era en realidad una colección
+  borraba todos sus documentos.** MongoDB guarda vistas y colecciones en el
+  mismo espacio de nombres, y eliminar cualquiera de las dos es la misma llamada
+  `drop` — así que `db::mongo::aggregation::drop_view` era un
+  `collection(name).drop()` sin comprobación alguna, y apuntarlo a una colección
+  real destruía todos sus documentos informando de éxito. En la práctica era
+  soportable porque el único llamante era el explorador de esquema, donde el
+  usuario había pulsado una fila que el árbol ya sabía que era una vista. Deja
+  de serlo en el momento en que un llamante puede pasar un nombre que solo ha
+  adivinado, que es exactamente lo que supone exponer la gestión de vistas por
+  el conector MCP — de ahí que la comprobación llegue antes de ese trabajo y no
+  junto a él.
+
+  `view_presence` resuelve ahora un nombre a uno de tres estados — ausente, una
+  colección, o una vista con su definición ya parseada — en una sola ida y
+  vuelta de `listCollections`, y `drop_view` rechaza todo lo que no sea el
+  tercero. La comprobación de tipo en sí (`spec_is_view`) es una función pura
+  para que se pueda testear sin servidor; trata un spec sin campo `type` como
+  una *colección*, porque ese campo solo existe desde MongoDB 3.4 y una
+  respuesta que no se reconoce tiene que caer del lado seguro, no del
+  destructivo. `read_view` se expresa ahora sobre el mismo helper en lugar de
+  repetir la comprobación.
+
+  Un nombre que no existe es ahora un error, en vez del éxito idempotente y
+  silencioso de MongoDB. Eso deja al driver coherente con los otros cuatro, que
+  construyen todos un `DROP VIEW` pelado sin `IF EXISTS`, y hace que un nombre
+  mal escrito lo diga en lugar de informar de que funcionó.
+
+- **Crear un índice de MongoDB dejando el campo «Nombre» en blanco siempre
+  fallaba.** El diálogo documenta ese campo vacío como «el servidor lo deriva
+  de las claves», pero eso nunca funcionó: `NewMongoIndexSpec::to_document`
+  simplemente omitía la clave `name` cuando estaba en blanco, asumiendo que el
+  servidor lo derivaría igual que hace el helper tipado
+  `Collection::create_index()`. No lo hace: esta app envía los índices
+  deliberadamente a través del comando en crudo `createIndexes` en vez de ese
+  helper (así una recreación puede validar el spec antes de tocar el
+  servidor), y ese comando exige que `name` esté presente. La convención de
+  nombre `field_1_other_-1` ya existía en la ruta de lectura (`spec_to_info`)
+  pero nunca se aplicaba al escribir. Ahora ambas rutas comparten esa lógica
+  mediante un nuevo helper `default_index_name`, así que un nombre en blanco
+  siempre resuelve al mismo nombre que el índice acabará teniendo.
+
+- **Una actualización masiva («Actualizar filas que coincidan») sobre una
+  columna `BIT` de MySQL fallaba con `1406 (22001): Data too long for
+  column`.** Es el mismo fallo que ya se corrigió para la edición de una
+  celda y la inserción: un valor de texto plano como `"0"` se guarda como el
+  byte ASCII `0x30`, no como el entero 0, a menos que el placeholder se
+  envuelva en `CAST(? AS UNSIGNED)`. `update_cell_inner` e `insert_row` ya
+  aplicaban ese cast (y su equivalente para SQL Server,
+  `CONVERT(varbinary(max), ?, 1)`, en columnas binarias), pero la
+  actualización masiva tenía su propio constructor de la cláusula `SET`
+  (`build_update_statement` en `commands/bulk.rs`) que nunca recibió ese
+  tratamiento y vinculaba cada columna como texto plano sin mirar el tipo.
+  Ahora aplica el mismo cast por columna (más el fallback al catálogo cuando
+  la caché de esquema está desactualizada), compartido tanto por la vista
+  previa como por la aplicación real.
+
+- **La pestaña de consulta contra una conexión MongoDB se titulaba
+  `query.sql` y se sembraba con un comentario `-- ...` de SQL**, aunque esa
+  pestaña ejecuta en realidad un comando `mongosh`-style acotado
+  (`db.<coleccion>.<metodo>(...)`), no SQL — lo que llevó a confusiones reales
+  en el equipo al tratarla como si fuera una superficie SQL. Una nueva
+  pestaña de consulta contra MongoDB ahora se titula `query` y se siembra con
+  un comentario `//`, acorde a la gramática real (ambos casos detectan el
+  driver mediante `resolveConnectionDriver`); el título de respaldo al
+  restaurar sesión y la etiqueta de idioma en la barra inferior del editor
+  siguen la misma regla. La pestaña sigue ejecutando el mismo motor
+  `mongosh`-style y conserva el modo de lenguaje `sql` de Monaco (con su
+  autocompletado/CodeLens ya conscientes del driver) — solo cambió el
+  nombrado, no la superficie de edición.
+
+- **Un origen compartido con secretos cifrados guardaba lo que no debía en el
+  llavero del sistema.** `sync_origin` escribía el *sobre* AES-256-GCM en base64
+  como si fuera la contraseña, así que todo perfil importado desde ese origen
+  fallaba al conectar con un error de autenticación del driver — y la contraseña
+  real no era recuperable a partir de ahí. La ruta de descifrado ahora es la
+  misma que usa el importador de perfiles (`transfer::land_secrets`), que nunca
+  guarda un secreto que no ha podido descifrar; un origen cuya passphrase no
+  está disponible deja simplemente el perfil pidiendo contraseña, que es el
+  comportamiento documentado (la passphrase viaja por otro canal). Tres tests de
+  regresión lo cubren sin tocar el llavero.
+
+- **Eliminado un comando IPC inalcanzable que podía leer cualquier entrada del
+  llavero.** `load_password(account)` estaba registrado pero no se llamaba desde
+  ningún sitio de la app; aceptaba un nombre de cuenta arbitrario y devolvía el
+  secreto guardado. Nada en HuginnDB necesita esa forma — la ruta de conexión
+  resuelve su propia clave —, así que el comando y su módulo se han borrado en
+  lugar de restringirse.
+
+- **El editor de colores del tema salía entero en inglés**, con cualquier idioma
+  seleccionado: los 26 nombres de color y los 4 títulos de grupo eran cadenas
+  fijas en `lib/themes.ts`. Ahora son claves i18n, en ambos idiomas.
+
+- **Los números y las fechas seguían el idioma del sistema operativo en vez del
+  elegido en Ajustes.** Doce llamadas a `toLocaleString()` no pasaban locale, así
+  que una interfaz en español sobre un sistema en inglés mostraba `1,234` y
+  `8/21/2026`. Ahora pasan por `formatNumber` / `formatDateTime` / `formatTime`,
+  que leen `ui.language`.
+
+- **Importar un entorno ocultaba sus propias conexiones cuando un perfil en
+  conflicto se resolvía como «Omitir».** El perfil omitido no aparecía en el mapa
+  id-original → id-nuevo, así que el filtro `visible_connections` del entorno
+  nuevo lo descartaba, y cualquier binding de JSON Schema que lo apuntara quedaba
+  desactivado aunque la conexión estuviera ahí desde el principio. Un perfil
+  omitido ahora se mapea a sí mismo.
+
+- **Cada arranque congelaba la ventana durante todo el sync del origen
+  compartido — varios segundos de «No responde» con un conjunto de perfiles
+  real.** Dos causas, ambas corregidas. `sync_origin` era un comando Tauri
+  *síncrono*, así que se ejecutaba en el hilo principal: el que bombea la
+  ventana, y el que además tenía que leer el fichero de un recurso de red. Y
+  volvía a plantar en el llavero **todos** los secretos publicados en **cada**
+  sync, hubiera cambiado algo o no, a ~600 000 rondas PBKDF2 por hueco. Un
+  origen que publica treinta conexiones con túnel gastaba así decenas de
+  millones de rondas SHA-256 en el hilo de UI en cada inicio, y otra vez cada
+  cuatro horas.
+
+  Ahora el comando es `async` con el cuerpo en `spawn_blocking`, y se guarda una
+  huella del texto cifrado de cada perfil para reconocer y saltar un secreto que
+  no ha cambiado. El salto necesita las dos mitades para ser seguro: solo la
+  huella dejaría para siempre sin restaurar una entrada de llavero que alguien
+  borró, y solo la comprobación de presencia no detectaría nunca una contraseña
+  rotada. Con el conjunto donde se encontró (29 conexiones del origen, 26 de
+  ellas con túnel), el segundo arranque pasó de un núcleo saturado y la ventana
+  congelada a 0 % y ventana viva.
+
+- **Un `accept()` fallando en el puente MCP podía dejar un núcleo girando
+  indefinidamente.** El bucle del listener reintentaba sin condiciones, con el
+  argumento de que «un accept fallido es transitorio», y descartaba el error sin
+  registrarlo. Eso vale para un cliente que desaparece a mitad del saludo, pero
+  no para el agotamiento de descriptores (`EMFILE`/`ENFILE`), que es la razón de
+  manual por la que `accept()` falla repetidamente y que no se resuelve hasta
+  que algo ajeno libera un handle. Ahora los reintentos escalan hasta un tope de
+  un segundo tras unos pocos inmediatos —así el caso transitorio no cambia y el
+  persistente no cuesta nada— y el fallo se informa en la Consola en vez de
+  desaparecer. Latente, no observado en uso real: apareció al diagnosticar la
+  congelación de arranque de arriba.
+
+- **Un documento SQL se dividía mal en sentencias a partir de su primer literal
+  de texto.** El divisor que alimenta el CodeLens «▶ Ejecutar» por sentencia
+  cerraba una cadena entrecomillada y, en la misma pasada, la reabría con ese
+  mismo carácter de cierre: todo lo que iba después de `'…'`, `"…"` o `` `…` ``
+  quedaba como una cadena sin cerrar y ningún `;` posterior era un límite. Un
+  script de dos sentencias mostraba un solo lens abarcando ambas, e importar un
+  volcado `.sql` (que pasa por el mismo divisor antes de `execute_batch`)
+  enviaba el fichero entero como una única sentencia, que el protocolo
+  preparado rechaza. Los cuerpos con comillas de dólar y los comentarios nunca
+  se vieron afectados: solo a los tres caracteres de comilla les faltaba el
+  `continue` que los demás contextos ya tenían.
+
+- **Un `;` suelto contaba como sentencia.** `;;SELECT 1;` producía tres, dos de
+  ellas ofrecidas para ejecutar por el CodeLens, pese a que el divisor documenta
+  que las sentencias vacías se descartan: un punto y coma solo no es espacio en
+  blanco, así que recortar no lo detectaba.
+
+- **Al importar un tercer perfil con el mismo nombre se numeraba `(3)`, saltándose
+  el `(2)`.** La escalera de renombrado del importador de perfiles reutilizaba un
+  único contador para los dos peldaños, así que la secuencia era `nombre`,
+  `nombre (imported)`, `nombre (3)`, `nombre (4)`, … Ahora coincide con la del
+  importador de JSON Schemas —`nombre (2)` tras `nombre (imported)`— porque ambos
+  llaman a la misma función.
+
+- **Los conflictos al importar entornos vienen por defecto en «Omitir» y no en
+  «Renombrar»**, igual que en el importador de perfiles. Reimportar tu propio
+  export acumulaba `nombre (imported)`, `nombre (2)`, … en cada vuelta; el paso
+  de conflictos se sigue mostrando, así que un entorno realmente distinto está a
+  un clic de Renombrar u Sobrescribir.
+
+- **«Copiar como ▸ SELECT» no escapaba los delimitadores dentro de un nombre de
+  tabla o columna**, generando un fragmento que no parseaba. Ahora usa el mismo
+  quoting que los demás formatos de portapapeles.
+
+- **`profiles.json` era el único fichero de estado que se escribía sin
+  temporal + rename**, así que un fallo a medias podía dejar truncadas todas las
+  conexiones guardadas — y con ellas las entradas del llavero, los bindings de
+  JSON Schema y los enlaces a orígenes que se apoyan en esos ids. Ahora todos los
+  ficheros de estado JSON pasan por un único escritor atómico
+  (`src-tauri/src/state_file.rs`).
+
+- **Tres brazos de `match` que habrían tratado mal en silencio un driver o un
+  operador de filtro nuevo.** `empty_table` caía en el `TRUNCATE` de Postgres
+  para cualquier caso no listado (SQL Server habría ejecutado una sentencia que
+  acepta con otra semántica, y MongoDB una que no tiene), y los brazos de
+  comparación y `LIKE` del constructor de filtros caían en `<=` y `EndsWith`. Los
+  tres deletrean ahora todas las variantes, así que añadir una es un error de
+  compilación.
+
+### Cambiado
+
+- **Las notificaciones duran 6 s en lugar de 4 s y los errores esperan a que
+  los cierres.** Los cuatro segundos eran el valor por defecto de la librería
+  y nunca daban para leer una ruta o un mensaje del driver; los tipos que
+  traen algo que hacer reciben ahora un múltiplo de la duración configurada
+  (un aviso el doble, una notificación de archivo el cuádruple, con tope de
+  30 s) y un error se queda hasta que se cierra, porque casi siempre trae algo
+  que copiar, reintentar o reportar. Ambas cosas son preferencias, y un error
+  incluye además una acción «Copiar error» sin coste alguno.
+
+- **Interno: una pasada por todo el proyecto sobre lógica duplicada y
+  responsabilidades mal colocadas.** Sin cambios de comportamiento más allá de
+  las correcciones de arriba. Lo que merece la pena saber:
+  - `db/exec.rs` — la contraparte de ejecución de `db::sql::Dialect`. Doce sitios
+    repetían el mismo `match pool { … }`, dos de ellos byte a byte, y uno era una
+    reinserción de un decodificador que ya existía 200 líneas más arriba.
+  - La introspección de catálogo de Postgres/MySQL/SQLite sale de
+    `commands/schema.rs` (1559 → 769 líneas) hacia
+    `db/{postgres,mysql,sqlite}/`, replicando `db/mssql` y `db/mongo`. Los 17
+    `unreachable!()` han desaparecido.
+  - `state_file.rs`, `AppState::pool_for`/`mongo_for`, `Dialect::quote_ident` y
+    `Dialect::truncate_stmt` sustituyen entre 9 y 10 copias a mano cada uno.
+  - `tab_state::mutate` sustituye catorce cuerpos escritos a mano con el mismo
+    patrón —tomar el bloqueo de escritura, mutar, clonar el blob entero,
+    soltar el guard, guardar— en `commands/{prefs,origins,connection}.rs`. El
+    clonar-y-soltar no es incidental: el guardado hace E/S de disco, y mantener
+    el bloqueo durante ella dejaría bloqueado a cualquier otro lector mientras
+    dura la escritura.
+  - `commands::ensure_view` / `commands::entry_sink` sustituyen el prólogo de
+    siete líneas con `ensure_database_view` que abría cuarenta y cinco comandos
+    de nueve módulos, ocho de los cuales además construían a mano el sumidero de
+    log de la Consola. Olvidarlo no se nota hasta que una vista de base de datos
+    lleva inactiva lo bastante como para que el segador la cierre, así que
+    reducirlo a una línea vale más que las 240 líneas que quita.
+  - `log_bus::log_sql_sink` es el único sitio donde se construye una entrada SQL
+    de la Consola. `commands::bulk` y `db::mongo::query` rehacían a mano la misma
+    cadena de seis campos, dos veces cada uno —una por rama del `match`
+    `Ok`/`Err`—, mientras `commands::query` se documentaba como la única ruta de
+    log. El helper baja junto a `LogEntry`, que es lo que permite usarlo desde la
+    capa `db` sin depender hacia arriba de `commands`.
+  - `TableQuery` / `TableScan` / `TableFilter` sustituyen los nueve parámetros
+    sueltos que el navegador de tablas enhebraba por `fetch_table_data`,
+    `count_table_rows`, `export_table_rows`, sus núcleos `_inner` y cuatro
+    puntos de entrada de MongoDB. Con ellos se van seis de los catorce
+    `#[allow(too_many_arguments)]`. La carga útil IPC no cambia en el cable (el
+    predicado va con `#[serde(flatten)]`), y cuatro tests de deserialización
+    fijan el JSON exacto que envía la rejilla: un campo que exista a un lado de
+    esa frontera y no al otro se descarta sin decir nada.
+  - Cuatro primitivas más de la capa de drivers que estaban copiadas en vez de
+    compartidas: `db::values::hex` (tres copias privadas idénticas byte a byte,
+    cada una con un comentario diciéndolo), `db::exec::ping` (el latido del
+    keepalive y la sonda de conexión enumeraban cada uno los cinco drivers),
+    `db::mysql::{is_bit_type, bit_cast, normalize_bit_value}` (el razonamiento
+    de escritura de `BIT` del gotcha #15, deletreado en seis sitios) y
+    `Dialect::rename_stmt` (`rename_table` y `rename_view` solo se diferenciaban
+    en la palabra clave de Postgres y en una palabra de un mensaje de error).
+  - La fontanería de importación/exportación: `transfer::{check_meta, metadata,
+    save_export, disambiguate_name}` sustituyen los mismos cuatro pasos escritos
+    una vez por cada tipo de transferencia (perfiles, entornos, JSON Schemas), y
+    `resolve_ssh_secret` se comparte con el conector MCP en lugar de repetirse
+    allí.
+  - Las ocho tools de solo lectura del conector MCP comparten un mismo cuerpo
+    `read_tool` (reabrir un pool segado, resolver el destino por base de datos de
+    MongoDB, una petición al puente, serializar). Las de escritura conservan el
+    suyo: su comprobación de política va entre dos de esos pasos, y la doble
+    comprobación entre las dos capas es deliberada. `resolve_mongo_target` deja
+    además de hacer un viaje de ida y vuelta por el puente para preguntar «¿esto
+    es MongoDB?» en las cuatro tools que no pasan schema e ignoran la respuesta.
+  - `QueryResult::{rows, affected, with_total, with_truncated, with_row_types}`
+    sustituyen nueve literales de struct que repetían los mismos siete campos, y
+    `src-tauri/src/testkit.rs` alberga el fixture de `ConnectionProfile` del que
+    seis módulos de test tenían copia privada: así, un campo nuevo en cualquiera
+    de los dos es una edición y no nueve o seis.
+  - Frontend: `useImportWizard` (tres diálogos), `useAsyncSubmit` (diez),
+    `OverlayPalette` + `useListNavigation` (paleta de comandos y conmutador de
+    pestañas), `lib/schedule.ts` (tres debounces, dos sondeos), `RefreshButton`
+    (cinco), más `lib/grid/pagination.ts` y `lib/grid/exportTable.ts`.
+  - `PrefId` se deriva ahora de `Preferences`, así que un id de «ir a este
+    ajuste» que no nombre una preferencia real es un error de compilación en vez
+    de un salto muerto en silencio.
+  - Borrado código muerto: `ConnectPasswordDialog` (92 líneas, ningún
+    importador) y sus claves i18n, `useSavedQueries.byTag`, tres constantes sin
+    usar y la dependencia `async-trait`.
+
+- **Interno: los cinco ficheros que habían pasado de mil líneas quedan divididos
+  por responsabilidad.** Sin cambios de comportamiento más allá de las
+  correcciones de arriba. `SchemaExplorer.tsx` 2842 → 73 (sus ocho diálogos a
+  `schema/dialogs/`, cada nivel del árbol a su propio fichero,
+  `ConnectionActionsMenu` a `components/connection/`, junto al árbol que lo
+  renderiza); `DataGrid.tsx` 3592 → 1301 (fuera `GridRow`, los chips de filtro,
+  la caja de búsqueda, la fila borrador y `GridToolbar`; la selección de filas,
+  el dimensionado de columnas, el zoom con Ctrl+rueda, la lectura de
+  preferencias, la edición de celdas, la navegación por teclado y las
+  definiciones de columna a hooks bajo `lib/grid/`);
+  `ConnectionDialog.tsx` 1761 → 1267 y sus 41 `useState` a 11 (fuera el raíl y
+  el modelo del formulario); `TabbedArea.tsx` 1082 → 390 (fuera la cabecera de
+  pestaña y la pantalla vacía); `App.tsx` 820 → 530 (fuera el manejo de intents
+  de línea de comandos). Dos órdenes se han preservado a propósito y quedan
+  documentados donde se aplican: la secuencia del efecto de arranque y los
+  contratos de memoización de `GridRow` y de la cabecera de pestaña.
+
+- **Vitest está montado para el frontend** (`pnpm test`) con tests de
+  caracterización de los módulos puros de `lib/` y de cada hook extraído, y el CI
+  lo ejecuta junto a los trabajos existentes de typecheck y Cargo. 160 tests en
+  18 ficheros, incluidos el divisor de sentencias SQL (en el que los tests
+  encontraron los dos bugs de arriba), el matcher de puntuación de la paleta de
+  comandos y la división `HOST\INSTANCE` de SQL Server, cuyo gemelo autoritativo
+  en Rust sí tenía tests desde el principio.
+
 ## [1.17.0] — 2026-08-20
 
 ### Añadido

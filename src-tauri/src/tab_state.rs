@@ -51,11 +51,8 @@
 use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 const TAB_STATE_FILE: &str = "tab_state.json";
-/// Aliased from [`crate::app_identity`] so a `canary` build isolates its state.
-const APP_DIR: &str = crate::app_identity::APP_DIR;
 
 /// Soft cap on how many connections are remembered. Older entries (by
 /// `last_opened`) get pruned at save time.
@@ -214,6 +211,20 @@ pub struct Origin {
     /// RFC 3339 timestamp of the last successful sync, or `None` if it has
     /// never completed one. Display only — the sync never diffs against it.
     pub last_synced_at: Option<String>,
+    /// Per-profile fingerprint of the ciphertext this machine has already
+    /// decrypted and written into its keychain, keyed by profile id.
+    ///
+    /// Purely a cache, and the reason a launch is not a multi-second freeze:
+    /// landing a secret costs ~600 000 PBKDF2 rounds *per slot*, and a shared
+    /// origin publishing thirty tunnelled connections therefore cost tens of
+    /// millions of them on every single sync, all to rewrite keychain entries
+    /// that had not changed. See `commands::origins::already_landed`.
+    ///
+    /// Holds no secret material — the values are SHA-256 hashes of data that
+    /// is already ciphertext. Safe to lose: a missing or stale entry only
+    /// means the next sync does the work again.
+    #[serde(default)]
+    pub landed_secrets: HashMap<String, String>,
 }
 
 /// The state needed to put a session back the way the user left it: which
@@ -700,14 +711,6 @@ pub(crate) fn normalise(state: &mut ConnectionTabState) {
     }
 }
 
-fn tab_state_path() -> AppResult<PathBuf> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| crate::error::AppError::InvalidInput("no config dir available".into()))?;
-    let dir = base.join(APP_DIR);
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join(TAB_STATE_FILE))
-}
-
 /// Load persisted tab state, transparently migrating v1-v4 blobs.
 ///
 /// Falls back to an empty (but valid) container on missing or corrupt
@@ -718,26 +721,16 @@ fn tab_state_path() -> AppResult<PathBuf> {
 /// (`state::AppState::new_with_args`) is responsible for applying it to
 /// `profiles.json`, a file this module never touches.
 pub fn load_tab_state() -> (PersistedTabState, HashMap<String, String>) {
-    let path = match tab_state_path() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[tab_state] cannot resolve path: {e}; using empty state");
-            return (PersistedTabState::default(), HashMap::new());
-        }
-    };
-    if !path.exists() {
+    // `read_bytes` rather than `load_or_default`: the parse target is `RawState`
+    // (the union of every schema version) and the result is a *pair* — the
+    // migrated state plus the origin remap it produced.
+    let Some(bytes) = crate::state_file::read_bytes(TAB_STATE_FILE, "tab_state") else {
         return (PersistedTabState::default(), HashMap::new());
-    }
-    match std::fs::read(&path) {
-        Ok(bytes) => match serde_json::from_slice::<RawState>(&bytes) {
-            Ok(raw) => raw.into_state_with_remap(),
-            Err(e) => {
-                eprintln!("[tab_state] failed to parse {path:?}: {e}; using empty state");
-                (PersistedTabState::default(), HashMap::new())
-            }
-        },
+    };
+    match serde_json::from_slice::<RawState>(&bytes) {
+        Ok(raw) => raw.into_state_with_remap(),
         Err(e) => {
-            eprintln!("[tab_state] failed to read {path:?}: {e}; using empty state");
+            eprintln!("[tab_state] failed to parse {TAB_STATE_FILE}: {e}; using empty state");
             (PersistedTabState::default(), HashMap::new())
         }
     }
@@ -745,12 +738,40 @@ pub fn load_tab_state() -> (PersistedTabState, HashMap<String, String>) {
 
 /// Persist the tab state blob atomically.
 pub fn save_tab_state(state: &PersistedTabState) -> AppResult<()> {
-    let path = tab_state_path()?;
-    let tmp = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(state)?;
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, &path)?;
-    Ok(())
+    crate::state_file::save_atomic(TAB_STATE_FILE, state)
+}
+
+/// Mutate the in-memory tab state under the write lock, then persist the
+/// result — the one shape every writer of `tab_state.json` has.
+///
+/// Fourteen command bodies spelled this out by hand: take the write lock,
+/// mutate, clone the whole blob into a local, drop the guard, save. The clone
+/// is the part that is easy to get subtly wrong and impossible to notice, and
+/// it is not incidental: [`save_tab_state`] does file I/O, so holding a
+/// `parking_lot` write lock across it would block every other window's reader
+/// for the duration of a disk write — and `parking_lot`'s guards are not
+/// `Send`, so an `.await` under one does not even compile. Cloning out and
+/// releasing first is the fix, and doing it in one place is what stops the
+/// next writer from re-deriving it.
+///
+/// `f` returns [`AppResult`] so a validation failure (`no environment with id
+/// …`, "cannot delete the last environment") short-circuits *before* the save:
+/// an early `return Err(..)` from inside the old inline blocks skipped the
+/// write by falling out of the function, and this preserves that exactly.
+/// Whatever `f` returns is handed back to the caller, which covers the writers
+/// that also need the value they just built (the saved [`Environment`], the
+/// updated [`Origin`]).
+pub fn mutate<T>(
+    lock: &parking_lot::RwLock<PersistedTabState>,
+    f: impl FnOnce(&mut PersistedTabState) -> AppResult<T>,
+) -> AppResult<T> {
+    let (snapshot, out) = {
+        let mut guard = lock.write();
+        let out = f(&mut guard)?;
+        (guard.clone(), out)
+    };
+    save_tab_state(&snapshot)?;
+    Ok(out)
 }
 
 #[cfg(test)]

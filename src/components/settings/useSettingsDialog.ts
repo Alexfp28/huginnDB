@@ -8,10 +8,13 @@
 
 import { create } from "zustand";
 
+import type { PrefId } from "@/lib/prefId";
+
 export type SettingsSection =
   | "general"
   | "editor"
   | "grid"
+  | "notifications"
   | "connections"
   | "appearance"
   | "shortcuts"
@@ -29,10 +32,10 @@ interface SettingsDialogState {
    * by the `PrefRow` that consumes it (see `clearHighlight`), so the flash plays
    * once per request rather than every time that section is revisited.
    */
-  highlightPrefId: string | null;
+  highlightPrefId: PrefId | null;
   openAt: (section?: SettingsSection) => void;
   /** Open `section` and highlight the row registered under `prefId`. */
-  openAtPref: (section: SettingsSection, prefId: string) => void;
+  openAtPref: (section: SettingsSection, prefId: PrefId) => void;
   setOpen: (open: boolean) => void;
   setSection: (section: SettingsSection) => void;
   clearHighlight: () => void;

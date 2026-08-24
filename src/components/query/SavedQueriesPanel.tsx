@@ -9,11 +9,11 @@ import { useTranslation } from "react-i18next";
 import { Bookmark, Pencil, Play, Search, SearchX, Trash2 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useSavedQueries, type SavedQuery } from "@/stores/query/savedQueries";
-import { useTabs } from "@/stores/session/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
+import { openQueryTab } from "@/lib/tabs/openQueryTab";
 
 export function SavedQueriesPanel({
   connectionId,
@@ -23,7 +23,6 @@ export function SavedQueriesPanel({
   const { t } = useTranslation();
   const items = useSavedQueries((s) => s.items);
   const remove = useSavedQueries((s) => s.remove);
-  const openTab = useTabs((s) => s.open);
   const [filter, setFilter] = useState("");
   const [editing, setEditing] = useState<SavedQuery | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -45,12 +44,7 @@ export function SavedQueriesPanel({
       alert(t("saved.connectFirst"));
       return;
     }
-    openTab({
-      kind: "query",
-      title: q.name,
-      connectionId: useTabs.getState().queryTargetFor(connectionId),
-      query: q.sql,
-    });
+    openQueryTab(connectionId, { sql: q.sql, title: q.name });
   }
 
   return (

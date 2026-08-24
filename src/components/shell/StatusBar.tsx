@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { openQueryTab } from "@/lib/tabs/openQueryTab";
 
 /** Thin vertical divider between status bar sections. */
 function Sep() {
@@ -121,12 +122,10 @@ function HistoryMenu({ count }: { count: number }) {
   function openEntry(connectionId: string, sql: string) {
     if (active.has(connectionId)) {
       // Open a fresh query tab prefilled with the SQL on its connection.
-      useTabs.getState().open({
-        kind: "query",
-        title: t("tabs.queryFileName"),
-        connectionId,
-        query: sql,
-      });
+      // `resolveTarget: false` on purpose: this reopens a past query on the
+      // connection it actually ran against, not on whichever database happens
+      // to be in front of the user now.
+      openQueryTab(connectionId, { sql, resolveTarget: false });
       setSelected(connectionId);
     } else {
       // The connection isn't live — fall back to copying the SQL.

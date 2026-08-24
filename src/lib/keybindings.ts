@@ -10,6 +10,8 @@
  * (see `getBinding`).
  */
 
+import { isMac } from "@/lib/platform";
+
 export type ActionId =
   | "openSettings"
   | "toggleCommandPalette"
@@ -116,12 +118,8 @@ export function getBinding(
   return keybindings[id] ?? DEFAULT_BY_ID.get(id) ?? "";
 }
 
-const isMac =
-  typeof navigator !== "undefined" &&
-  navigator.userAgent.toLowerCase().includes("mac");
-
 /** Render a stored combo for display, swapping `Ctrl` for `⌘` on macOS. */
-export function formatComboForDisplay(combo: string, mac: boolean = isMac): string {
+export function formatComboForDisplay(combo: string, mac: boolean = isMac()): string {
   return combo
     .split("+")
     .map((part) => (part === "Ctrl" && mac ? "⌘" : part))

@@ -313,6 +313,70 @@ export function displayValue(field: DocField, nullDisplay: string): string {
  * Types with no meaningful text form (`null`, `minKey`, …) accept anything:
  * their value is discarded by the backend anyway.
  */
+/**
+ * The type the picker should show as selected for a column's `data_type`.
+ *
+ * `document` is BSON's own name; the picker calls it `object` because that is
+ * what the user types. Absent means a column the backend could not type — a
+ * freshly added field — which starts as a string.
+ */
+export function draftTypeFor(dataType?: string): string {
+  if (!dataType) return "string";
+  if (dataType === "document") return "object";
+  return dataType;
+}
+
+/**
+ * The picker only knows the types it can *write*.
+ *
+ * Anything else — a `dbPointer`, a `mixed` column — shows its own label through
+ * [`typeLabel`] but maps onto `string` here so the Radix trigger has a valid
+ * value. Those are the same types [`isOpaqueType`] refuses to edit inline
+ * (gotcha #29): committing the text `Binary(Generic, 12 bytes)` would store
+ * exactly that string.
+ */
+export function typeValue(type: string): string {
+  return (BSON_TYPES as readonly string[]).includes(type) ? type : "string";
+}
+
+/**
+ * A neutral value for a type the current text cannot be reinterpreted as.
+ *
+ * Retyping a field to something incompatible has to leave *something* valid in
+ * the editor — an empty numeric field would fail to parse on the next commit.
+ */
+export function defaultText(type: BsonType): string {
+  switch (type) {
+    case "int":
+    case "long":
+    case "double":
+    case "decimal128":
+      return "0";
+    case "bool":
+      return "false";
+    case "object":
+      return "{}";
+    case "array":
+      return "[]";
+    case "date":
+      return new Date().toISOString();
+    default:
+      return "";
+  }
+}
+
+/**
+ * The index a new element appends at, for "add item" inside an array.
+ *
+ * Read from the container's own `childCount` rather than by counting the
+ * flattened rows: a collapsed array contributes no rows, and appending to one
+ * must not land on index 0 and overwrite its first element.
+ */
+export function nextArrayIndex(fields: DocField[], parent: string[]): number {
+  const container = fields.find((f) => pathKey(f.path) === pathKey(parent));
+  return container?.childCount ?? 0;
+}
+
 export function isValidForType(type: string, text: string): boolean {
   const s = text.trim();
   switch (type) {

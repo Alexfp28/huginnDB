@@ -14,12 +14,23 @@
  * Deliberately narrower than HeidiSQL's own dialog: no create/drop toggles,
  * no INSERT batch-size control, no per-table/per-database output splitting —
  * those can be added later if they turn out to matter.
+ *
+ * Submitting closes the dialog immediately rather than disabling it in
+ * place for the export's whole duration — a `notify.progress()` card is the
+ * only feedback surface from that point on, resolved into the same
+ * `file`/`error` notification a foreground export would have raised anyway.
+ * `export_databases` reports real row counts (`withExportProgress`, backed
+ * by a `SELECT COUNT(*)` pass the backend runs before writing anything), not
+ * an indeterminate spinner — the counterpart of the profile/environment
+ * importers' `IMPORT_PROGRESS_EVENT`.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
+import { baseName } from "@/lib/filePath";
+import { withExportProgress } from "@/lib/bridges/export-progress-bridge";
 import { ChevronDown, ChevronRight, FolderOpen } from "lucide-react";
 import {
   Dialog,
@@ -107,8 +118,10 @@ export function ExportDatabaseDialog({
   );
   const [dataMode, setDataMode] = useState<DataMode>("insert");
   const [destPath, setDestPath] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Guards against a double-fire in the brief gap between calling `submit()`
+  // and the parent actually unmounting this component (`onClose()` schedules
+  // that; it doesn't happen synchronously within the same click handler).
+  const submittedRef = useRef(false);
 
   const dbNames = Object.keys(rows);
   const checkedCount = dbNames.filter((n) => rows[n].checked).length;
@@ -177,34 +190,49 @@ export function ExportDatabaseDialog({
     if (typeof picked === "string" && picked) setDestPath(picked);
   }
 
-  async function submit() {
-    if (checkedCount === 0 || !destPath || submitting) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const targets: ExportTarget[] = [];
-      for (const name of dbNames) {
-        const row = rows[name];
-        if (!row.checked) continue;
-        const connectionId =
-          row.connectionId ??
-          (scope.kind === "multi"
-            ? await openTrackedDatabaseView(scope.parentId, name)
-            : scope.connectionId);
-        targets.push({
-          connectionId,
-          databaseName: name,
-          tables: row.selectedTables ? Array.from(row.selectedTables) : undefined,
-        });
+  /**
+   * Closes right away — there is nothing left in the dialog worth keeping
+   * open for. The notification card is raised before `onClose()` so it is
+   * already on screen the instant the dialog is gone, and the export itself
+   * runs in a plain detached async function: it is not tied to this
+   * component's lifecycle, so the unmount that follows doesn't interrupt it.
+   */
+  function submit() {
+    if (checkedCount === 0 || !destPath || submittedRef.current) return;
+    submittedRef.current = true;
+
+    const handle = notify.progress(t("schema.exportDatabaseDialog.exporting"), {
+      description: baseName(destPath),
+      formatProgress: (p) =>
+        t("schema.exportDatabaseDialog.progress", { done: p.done, total: p.total }),
+    });
+    onClose();
+
+    void (async () => {
+      try {
+        const targets: ExportTarget[] = [];
+        for (const name of dbNames) {
+          const row = rows[name];
+          if (!row.checked) continue;
+          const connectionId =
+            row.connectionId ??
+            (scope.kind === "multi"
+              ? await openTrackedDatabaseView(scope.parentId, name)
+              : scope.connectionId);
+          targets.push({
+            connectionId,
+            databaseName: name,
+            tables: row.selectedTables ? Array.from(row.selectedTables) : undefined,
+          });
+        }
+        const path = await withExportProgress(handle.update, () =>
+          api.exportDatabases({ targets, dataMode, destPath }),
+        );
+        handle.file(t("notifications.fileSaved.database"), { path });
+      } catch (e) {
+        handle.error(t("schema.exportDatabaseDialog.title"), { description: String(e) });
       }
-      const path = await api.exportDatabases({ targets, dataMode, destPath });
-      toast.success(t("schema.exportDatabaseDialog.success", { path }));
-      onClose();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setSubmitting(false);
-    }
+    })();
   }
 
   return (
@@ -327,7 +355,6 @@ export function ExportDatabaseDialog({
                 </div>
               </div>
 
-              {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
 
             <div className="border-t border-border px-4 py-3">
@@ -337,12 +364,10 @@ export function ExportDatabaseDialog({
                 </Button>
                 <Button
                   type="button"
-                  disabled={checkedCount === 0 || !destPath || submitting}
-                  onClick={() => void submit()}
+                  disabled={checkedCount === 0 || !destPath}
+                  onClick={submit}
                 >
-                  {submitting
-                    ? t("schema.exportDatabaseDialog.exporting")
-                    : t("schema.exportDatabaseDialog.export")}
+                  {t("schema.exportDatabaseDialog.export")}
                 </Button>
               </div>
             </div>

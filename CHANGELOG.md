@@ -6,6 +6,542 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.18.0] — 2026-08-24
+
+### Added
+
+- **The documentation viewer now has sections.** A guide used to be one long
+  scroll pane, which made the longer ones effectively unsearchable: `docs/MCP.md`
+  is 400+ lines in a 70vh pane, so finding what a tool requires meant scrolling
+  blind past five client configurations to reach the Security section. Each guide
+  now opens on a **cover** — its introductory prose plus a card per section — and
+  the sidebar is a tree: the guides, with the open one expanded into its
+  sections, and a section expanded into its subsections. Picking one shows that
+  section alone.
+
+  The navigation is derived from the markdown headings, not from a list kept
+  alongside them, which has two consequences worth stating. Adding a `##` to a
+  guide adds it to the sidebar with no code change. And the sidebar translates
+  itself: the Spanish body carries Spanish headings, so choosing the language
+  chooses the labels too.
+
+  In-document links work now. A `#anchor` jumps to its heading — switching page
+  first when the heading lives on another one — and a relative link to another
+  bundled guide switches to it. Both used to render in brand colour, underline
+  on hover, and do nothing at all when clicked; there were eight anchors and five
+  cross-guide links in that state. One outside the bundled set (a roadmap,
+  `SECURITY.md`) now opens on GitHub rather than being a dead end. A test asserts
+  that every anchor in every shipped guide, in both languages, resolves to a real
+  heading, so renaming one out from under its inbound links fails the build
+  rather than going unnoticed.
+
+  Also fixed while in here: switching guides kept the previous scroll offset, so
+  jumping from deep inside a long guide to a short one landed you at its end.
+
+- **Views over the MCP connector: read, edit and delete.** Views were nearly
+  invisible to an AI client. `list_tables` reported `kind: "view"` and
+  `describe_table` returned a view's columns, but nothing could read a view's
+  *body*, and nothing could create, redefine or drop one — the only recourse was
+  hand-writing a catalog query per engine through `run_query`, and on MongoDB
+  not even that, since its `mongosh` parser has no DDL vocabulary at all and a
+  stored pipeline was unreachable in both directions.
+
+  Two new tools, and one existing tool widened, on all five drivers:
+  - `describe_table` now adds a `view` object when the relation is a view —
+    `query` (the bare SELECT body) on SQL, `viewOn` plus the `pipeline` as
+    source text on MongoDB. No new tool for reading: `describe_table` was
+    already view-aware for the columns half, so the body belongs there.
+  - `save_view` *(write)* creates, redefines or renames a view. It takes only
+    `name` and `query` and reads the current definition itself to decide which
+    of the three it is, and how to express it on this engine — Postgres `CREATE
+    OR REPLACE`, MySQL `RENAME TABLE`, SQLite drop-and-recreate, MongoDB
+    `createView`/`collMod`. `preview: true` returns the exact statements without
+    running them.
+  - `drop_view` *(write)* drops one, and refuses anything that is not a view.
+
+  **The permission model is unchanged** — no new axis, no new setting. Both
+  write tools are DDL, so both need the connection's existing write policy at
+  `full`. That is the only consistent answer rather than a preference: the
+  `CREATE OR REPLACE VIEW` you could write by hand through `run_query` is
+  already classified as DDL, so a `data` connection is refused it, and a tool
+  that allowed the same change anyway would hand back exactly what the policy
+  just denied. It does leave one asymmetry worth knowing: dropping a *view*
+  needs `full` while deleting *rows* needs only `data` — the same asymmetry
+  `DROP TABLE` and `DELETE FROM` already have. `save_view`'s `preview` is a real
+  exception rather than a loophole: it executes nothing, so it is classified as a
+  read and works at any level.
+
+  MongoDB rides the same two tools rather than getting its own pair. An AI
+  client cannot see the difference from `list_tables` output, and one tool per
+  verb is what it wants; the pipeline crosses as source text and is parsed only
+  by the one parser the product has, so an `ObjectId(...)` in a `$match` still
+  round-trips as a constructor rather than degrading to a string.
+
+  SQL Server gained the ability to read a view's definition along the way; only
+  *creating* one there is still unsupported. See [`docs/MCP.md`](docs/MCP.md).
+
+- **A notification system of the app's own, replacing the library defaults.**
+  Notifications were the toast library mounted with its stock configuration:
+  four seconds, bottom-right, a hardcoded white/black card that `index.css`
+  tried to recolour from the outside with ~60 lines of `!important`, and a
+  check mark painted in the brand blue so a confirmation looked exactly like
+  an affordance. Every visual decision now belongs to `NotificationCard`,
+  raised through the new `lib/notify` façade — the library is kept purely as
+  transport (stacking, the six positions, swipe-to-dismiss, timers, focus),
+  and since a `jsx` toast is flagged `data-styled="false"` it no longer paints
+  anything, so the entire `!important` block is gone rather than extended.
+  The card is a theme surface: `popover` over `border` at the 10px radius, a
+  3px semantic rail at one weight for every kind (colour is the only
+  variable), a 28px icon medallion, the `2xs`/`3xs` type scale, the
+  `elevation-*` shadow ramp, and a 2px hairline that drains for the remaining
+  lifetime and freezes while the pointer is anywhere in the stack. `success`
+  finally uses `--success` instead of `--brand`, and `info` is the one kind
+  that spends the brand blue.
+
+- **Clicking a file name in an export notification opens the file manager with
+  the file selected.** The path used to be interpolated into the translated
+  sentence (`"Exported to {{path}}"`), which made it unselectable, uncopyable
+  and unopenable — the one thing anyone wants from it. A new `file` kind
+  separates the title from the path, renders the base name as a real control
+  (`api.revealItemInDir`, over the `opener` plugin's `reveal_item_in_dir`,
+  newly permitted in `capabilities/default.json`) and offers "Open folder" and
+  "Copy path" alongside it, with the containing directory beneath. Every
+  export inherits it: table, filtered rows, collection, database, connection
+  profiles, environments, JSON Schemas and themes. A file that has since been
+  moved or deleted degrades to a struck-through name and a warning instead of
+  a button that silently does nothing.
+
+- **Repeats collapse into one notification with a counter.** A multi-row save
+  used to stack seven identical cards; identical notifications raised within
+  five seconds of each other now fold into one, counted, and the grouping
+  policy lives in one place so the card on screen and the row in the history
+  can never disagree about what happened.
+
+- **A notification history behind a bell in the toolbar.** The same card,
+  compressed to a row, grouped by day, with unread counting and every `file`
+  entry still clickable — so an export from twenty minutes ago is one click
+  from the file manager. In memory and per window on purpose: it is session
+  ephemera, so it earns neither a state file nor a place in `prefs.json`
+  (rewritten on every `Ctrl`+wheel of the grid), and a second window claiming
+  the main window's notifications would be claiming work it never did.
+
+- **Settings → Notifications**, a new section: position as a grid of six
+  miniature windows rather than a dropdown (the choice is spatial), duration
+  as presets plus the raw millisecond value, whether errors wait to be
+  dismissed, how many are visible at once, expand-on-hover, card density,
+  the history cap, and whether the bell is shown. Each row is addressable
+  from the command palette, and the section's preview fires a *real*
+  notification — judging six seconds against four is exactly what a drawing
+  of one cannot help with.
+
+- **A `progress` notification, handed a long-running import that outlives the
+  dialog it started in.** `ImportProfilesDialog`/`ImportEnvironmentDialog`
+  already show their own determinate bar (`ImportProgressBar`) while open —
+  that stays the right surface, so nothing changed there. The gap was that
+  neither dialog's close button, Escape, nor an outside click is disabled
+  while an import is running, so closing one mid-decrypt used to leave the
+  backend grinding through PBKDF2 in total silence: `useImportWizard`'s
+  `handleClose` resets the wizard's own state immediately, and by the time
+  the promise actually settled there was nothing left on screen to update.
+  `notify.progress(title)` now hands that in-flight import off to a card the
+  moment the dialog closes out from under it — a spinner or determinate bar
+  (`done`/`total`, no close button, not swipe-dismissible) that morphs in
+  place into success/error once the backend actually finishes, recorded in
+  history only then, never as an eternal "Importing…". No cancel button: the
+  backend has no way to actually cancel one.
+
+  The event behind it (`huginndb://import-progress`) was also a global
+  `emit`, so a second ("New window") import would have shown its progress in
+  every open window; both `import_profiles` and `import_environment` now
+  `emit_to` the window that started them, and the frontend bridge scopes its
+  `listen` to match (CLAUDE.md gotcha #25's pattern, applied here for the
+  first time outside `log_bus`).
+
+- **A live notification stack that protects what actually matters.** Two
+  gaps between the notifications rework above and Sonner's own stacking:
+  past `visibleToasts`, Sonner just stops rendering the overflow with no
+  indication anything is behind the fold — despite `maxVisible`'s own doc
+  comment promising "the rest collapse behind a counter" — and it evicts
+  whatever is oldest by arrival order, with no notion that an unread error
+  (or a live progress bar) is worth more than a confirmation that already
+  did its job. A small ordered mirror of the on-screen stack now backs both:
+  a "+N notifications more" pill (`NotificationOverflowPill`, mounted beside
+  every `<Toaster>`) for the first, and — before a new card would push the
+  last visible slot behind the fold — dismissing the oldest *unprotected*
+  card in front of it instead, so an error or a running progress bar never
+  gets shouldered out of view, for the second.
+
+- **"Export database…" closes the moment you click Export, and a
+  `notify.progress()` card with a real row count takes over from there.**
+  The dialog used to disable the button and relabel it "Exportando…" for the
+  whole export, blocking the dialog rather than letting the user get back to
+  work — and if they closed it anyway (Cancel/Escape/an outside click, none
+  of which were guarded), the file kept writing in total silence, since
+  `run()`'s task isn't tied to the dialog's lifecycle. `export_databases`
+  (`dump.rs`) now runs a `SELECT COUNT(*)` pass over every selected table
+  before writing anything, giving the notification a real `done`/`total` in
+  rows — not tables, since one three-row table and one three-million-row one
+  would make table-level progress worse than useless — emitted via a new
+  `huginndb://export-progress` event (`emit_to` the originating window, same
+  as `IMPORT_PROGRESS_EVENT`) as each table finishes. `export_sqlite` was
+  also unified onto the same `&[TableInfo]` shape `export_pg`/`export_mysql`
+  already took, dropping its separate `Option<&[String]>` filter path.
+
+### Fixed
+
+- **The SQL Server schema explorer never actually loaded a table's columns —
+  it sat on the loading skeleton forever, with no error, on every table, on
+  every server.** The connect-timeout fix above (still correct, still worth
+  keeping) turned out not to be what most people were hitting: this one is a
+  separate, more fundamental bug in the same driver, and it explains the
+  "SQL Server just doesn't load the schema" reports on connections that were
+  otherwise working fine — browsing table data, running queries, everything
+  else worked; only the tree's column list never came back.
+
+  `tiberius::Row::get::<T, _>` is `self.try_get(idx).unwrap()` — it *panics*
+  when the column's actual `ColumnData` variant doesn't match what `T`'s
+  `FromSql` accepts, rather than returning `None`. `db::mssql::schema`'s `i()`
+  helper (used to read a catalog integer column of unknown width) tried
+  `i64` → `i32` → `i16` → `u8` via `.get(...).or_else(...)`, which reads as
+  graceful widening but is not: the very first mismatched attempt panics
+  before the `or_else` chain ever runs. `sys.columns.max_length` is a
+  `smallint`, so `raw_columns` (which every `list_columns`/`table_structure`
+  call goes through) panicked on `i(r, "max_length")` for the first column of
+  the first table, every single time — an `i64` read can never succeed
+  against a `ColumnData::I16`. `list_tables` was unaffected only because its
+  own use of `i()` (row/byte stats) happens to be genuinely `bigint`, which is
+  why the table list itself always loaded fine. `list_users`'s `auth_type`
+  (`sys.database_principals.authentication_type`, a `tinyint`) had the same
+  latent panic, breaking the Security panel's user list for the same reason.
+
+  A panic inside a Tauri command's async task never reaches the frontend as a
+  rejected promise — the JS side's `invoke()` call is simply left pending,
+  which is indistinguishable from a hang and is exactly why this looked like
+  a timeout problem rather than a crash. It also explains why nothing in the
+  existing test suite caught it: `i()`'s logic error only manifests against
+  a real decoded `tiberius::Row`, which nothing in the unit tests constructs
+  (`Row`'s fields are private to the `tiberius` crate).
+
+  `i()` now uses `try_get` and discards the `Err` from a width mismatch
+  (`.ok().flatten()`) instead of letting it panic, so the fallback chain
+  actually falls through as originally intended.
+
+- **SQL Server was the one driver whose schema explorer could get stuck on
+  the loading skeleton forever, with no error and no way to retry.** Every
+  `sqlx`-backed driver (Postgres/MySQL/SQLite) gets a connect-level timeout
+  for free: `db::pool::tuned()` sets `.acquire_timeout(ACQUIRE_TIMEOUT)` on
+  their `PoolOptions`, so even an eager `connect()` against an unreachable
+  host fails after 30s. `tiberius` has no equivalent setting, and `db::mssql`'s
+  own `connect()` never added one: neither the plain TCP connect nor the SQL
+  Browser's UDP round trip (`Reach::Browser`, used for named instances) has
+  any OS-level timeout of its own, so a host that silently drops packets — a
+  firewall, or a stopped Browser with no reachable fallback port configured —
+  hung the connect attempt indefinitely.
+
+  That gap was invisible for ordinary queries, which run inside
+  `commands::schema`'s `with_timeout` wrapper (`OPERATION_TIMEOUT`, 20s). It
+  was not invisible for a **per-database view**: the multi-database explorer
+  opens one lazily, via `commands::connection::ensure_database_view`, and
+  every schema command (`list_databases`/`list_tables`/`list_columns`/
+  `list_indexes`) calls that *before* it ever enters its own `with_timeout`
+  block. So the first time a database was expanded in the tree — or the first
+  query after the pool reaper had closed an idle session — SQL Server could
+  hang the whole command with no bound at all, while every other driver's
+  equivalent connect attempt already had one via `acquire_timeout`.
+
+  `db::mssql::connect` now routes through a small `bound_by_acquire_timeout`
+  wrapper using the same `ACQUIRE_TIMEOUT` the `sqlx` pools use, turning a
+  hung connect into a clear `OperationTimedOut` error instead of a permanent
+  skeleton. This covers both the per-database view's first connect and any
+  later reconnect after the idle reaper closes a session — every path that
+  opens a fresh TDS session goes through `MsSqlPool::acquire`, and that is the
+  one place `connect` is called from.
+
+- **Clicking a file name in any `file` notification always said "the file is
+  no longer there," even for a file sitting right where it said it was.**
+  `api.revealItemInDir` invoked `plugin:opener|reveal_item_in_dir` with
+  `{ path }`, but the command's actual Rust argument is `paths: Vec<PathBuf>`
+  (plural — it can reveal several items at once). The name mismatch failed
+  Tauri's IPC deserialization on every single call, independent of whether the
+  path existed; `NotificationCard`'s `reveal()` caught that as a generic
+  rejection and reported it exactly like a moved-or-deleted file. Every export
+  notification went through this — table, rows, database, connection profiles,
+  environments, JSON Schemas, themes — so the "Open folder" affordance had
+  been silently broken since the notification rework landed it. Fixed by
+  sending `{ paths: [path] }`, matching the command's real shape.
+
+- **Dropping a MongoDB "view" whose name is actually a collection deleted all
+  of its documents.** MongoDB keeps views and collections in one namespace, and
+  dropping either is the same `drop` call — so `db::mongo::aggregation::
+  drop_view` was an unguarded `collection(name).drop()`, and pointing it at a
+  real collection destroyed every document in it while reporting success. It
+  was survivable in practice because the only caller was the schema explorer,
+  where the user had clicked a row the tree already knew was a view. It stops
+  being survivable the moment a caller can pass a name it merely guessed, which
+  is what exposing view management over the MCP connector amounts to — so the
+  guard lands ahead of that work rather than alongside it.
+
+  `view_presence` now resolves a name to one of three states — absent, a
+  collection, or a view with its definition already parsed — in a single
+  `listCollections` round trip, and `drop_view` refuses anything but the third.
+  The type check itself (`spec_is_view`) is a pure function so it can be tested
+  without a server; it treats a spec with no `type` field as a *collection*,
+  since that field only appeared in MongoDB 3.4 and an unrecognised reply must
+  fall to the safe answer rather than the destructive one. `read_view` is now
+  expressed in terms of the same helper instead of repeating the check.
+
+  An absent name is now an error rather than MongoDB's silent idempotent
+  success. That makes the driver consistent with the other four, all of which
+  build a bare `DROP VIEW` with no `IF EXISTS`, and it means a mistyped name
+  says so instead of reporting that it worked.
+
+- **Creating a MongoDB index with a blank "Name" field always failed.** The
+  dialog's "leave blank to let the server derive it" behaviour never worked:
+  `NewMongoIndexSpec::to_document` simply omitted the `name` key when blank,
+  but the raw `createIndexes` run-command this app uses (deliberately, over
+  the typed `Collection::create_index()` helper) does not auto-derive a name
+  the way that typed helper does, so the server rejected the spec with
+  `FailedToParse: The 'name' field is a required property`. The write path
+  now shares the same `field_1_other_-1` naming convention the read path
+  (`spec_to_info`) already used for display, via a new `default_index_name`
+  helper, so a blank name always resolves to a real one before the spec is
+  sent.
+
+- **A bulk/mass update ("Actualizar filas que coincidan") on a MySQL `BIT`
+  column failed with `1406 (22001): Data too long for column`.** Single-cell
+  edits and inserts already cast a MySQL `BIT` write through
+  `CAST(? AS UNSIGNED)` (and a SQL Server binary column through
+  `CONVERT(varbinary(max), ?, 1)`) because a plain textual placeholder is
+  bound as the literal's ASCII bytes rather than coerced to the column's
+  numeric/binary type — but the bulk-update SET-clause builder had its own,
+  separate code path that never got this treatment and bound every assigned
+  column as plain text regardless of type. `build_update_statement` now
+  applies the same per-column casting (plus the catalog fallback for a stale
+  schema cache) that `update_cell`/`insert_row` already have, shared by both
+  the preview and the actual apply.
+
+- **The query tab against a MongoDB connection was titled `query.sql` and
+  seeded with a `-- ...` SQL comment**, even though MongoDB's query tab runs a
+  bounded `mongosh`-style command (`db.<collection>.<method>(...)`), not SQL —
+  which repeatedly confused people into treating it as a SQL surface. A new
+  query tab against MongoDB is now titled `query` and seeded with a
+  `//`-style comment matching the actual grammar (both driver-aware, via
+  `resolveConnectionDriver`); the session-restore fallback title and the
+  editor's bottom-bar language label follow the same rule. The tab still
+  runs the same `mongosh`-style executor and keeps the Monaco `sql` language
+  mode (and its already-Mongo-aware autocomplete/CodeLens) — only the naming
+  changed, not the editing surface.
+
+- **A shared origin carrying encrypted secrets stored the wrong thing in the OS
+  keychain.** `sync_origin` wrote the base64 AES-256-GCM *envelope* as if it were
+  the password, so every profile imported from such an origin failed to connect
+  with an authentication error from the driver — and the real password was never
+  recoverable from it. The decrypt path is now shared with the profile importer
+  (`transfer::land_secrets`), which never stores a secret it could not decrypt;
+  an origin whose passphrase is not available simply leaves the profile asking
+  for a password, which is the documented behaviour (the passphrase travels
+  out-of-band). Three regression tests cover it without touching a keychain.
+
+- **Removed an unreachable IPC command that could read any keychain entry.**
+  `load_password(account)` was registered but called from nowhere in the app; it
+  took an arbitrary account name and returned the stored secret. Nothing in
+  HuginnDB needs that shape — the connect path resolves its own key — so the
+  command and its module are gone rather than narrowed.
+
+- **The theme colour editor was rendered entirely in English**, whatever the
+  selected language: the 26 colour names and 4 group titles were hardcoded
+  strings in `lib/themes.ts`. They are i18n keys now, in both locales.
+
+- **Numbers and dates followed the operating system's locale instead of the
+  language chosen in Settings.** Twelve `toLocaleString()` calls had no locale
+  argument, so a Spanish UI on an English system showed `1,234` and
+  `8/21/2026`. They now go through `formatNumber` / `formatDateTime` /
+  `formatTime`, which read `ui.language`.
+
+- **Importing an environment hid its own connections when a conflicting profile
+  was resolved as "Skip".** The skipped profile was absent from the
+  original-id → new-id map, so the new environment's `visible_connections`
+  filter dropped it, and any JSON Schema binding pointing at it was disabled
+  even though the connection existed locally all along. A skipped profile now
+  maps to itself.
+
+- **Every launch froze the window for as long as the shared-origin sync took —
+  a multi-second "Not Responding" on a real profile set.** Two causes, both
+  fixed. `sync_origin` was a *synchronous* Tauri command, so it ran on the
+  main thread: the one pumping the window, and the one that also had to read
+  the export off a network share. And it re-landed **every** published secret
+  into the keychain on **every** sync, whether or not anything had changed —
+  at ~600 000 PBKDF2 rounds per slot. An origin publishing thirty tunnelled
+  connections therefore spent tens of millions of SHA-256 rounds on the UI
+  thread at every start, and again every four hours.
+
+  The command is now `async` with its body on `spawn_blocking`, and each
+  profile's ciphertext is fingerprinted so an unchanged secret is recognised
+  and skipped. The skip needs both halves to be safe: the fingerprint alone
+  would leave a keychain entry someone deleted missing forever, and the
+  "is it still there?" check alone would never notice a rotated password. On
+  the profile set this was found with (29 origin-owned connections, 26 of them
+  tunnelled), a second launch went from a pegged core and a frozen window to
+  0% and a responsive one.
+
+- **A failing `accept()` on the MCP bridge could spin a core indefinitely.**
+  The listener's loop retried unconditionally on the stated grounds that "a
+  failed accept is transient", and dropped the error without logging it. That
+  holds for a client that vanished mid-handshake, but not for descriptor
+  exhaustion (`EMFILE`/`ENFILE`) — the textbook reason `accept()` fails
+  repeatedly, and one that cannot clear until something unrelated closes a
+  handle. The retries now ramp to a one-second cap after a few immediate ones,
+  so the transient case is unchanged and a persistent one costs nothing, and
+  the failure is reported to the Console instead of vanishing. Latent, not
+  observed in the wild — found while diagnosing the launch freeze above.
+
+- **A SQL document was split into statements incorrectly from its first string
+  literal onward.** The splitter behind the editor's per-statement "▶ Run"
+  CodeLens closed a quoted string and then, in the same pass, re-opened it on
+  the same closing character — so everything after `'…'`, `"…"` or `` `…` ``
+  was treated as one unterminated string and no later `;` was a boundary. A
+  two-statement script showed one lens covering both, and importing a `.sql`
+  dump (which goes through the same splitter before `execute_batch`) sent the
+  whole file as a single statement, which the prepared protocol rejects.
+  Dollar-quoted bodies and comments were never affected — only the three quote
+  characters were missing the `continue` the other contexts already had.
+
+- **A stray `;` counted as a statement.** `;;SELECT 1;` produced three, two of
+  which the CodeLens offered to run, despite the splitter documenting that
+  empty statements are skipped — a lone semicolon is not whitespace, so
+  trimming did not catch it.
+
+- **Importing a third profile with the same name numbered it `(3)`, skipping
+  `(2)`.** The profile importer's rename ladder reused one counter for both
+  rungs, so the sequence ran `name`, `name (imported)`, `name (3)`, `name (4)`,
+  … It now matches the JSON Schema importer's — `name (2)` after
+  `name (imported)` — because both call the same function.
+
+- **Environment-import conflicts default to "Skip" rather than "Rename"**,
+  matching the profile importer. Re-importing your own export accumulated
+  `name (imported)`, `name (2)`, … on every round trip; the conflicts step is
+  still shown, so a genuinely different environment is one click from Rename or
+  Overwrite.
+
+- **"Copy as ▸ SELECT" did not escape delimiters embedded in a table or column
+  name**, producing a snippet that would not parse. It now goes through the same
+  quoting the other clipboard formats use.
+
+- **`profiles.json` was the only state file written without a temp-file +
+  rename**, so a crash mid-write could leave every saved connection truncated —
+  along with the keychain entries, JSON Schema bindings and origin links keyed
+  on those profile ids. Every JSON state file now goes through one atomic writer
+  (`src-tauri/src/state_file.rs`).
+
+- **Three `match` arms that would silently mis-handle a future driver or filter
+  operator.** `empty_table` fell through to Postgres's `TRUNCATE` for anything
+  unlisted (so SQL Server would have run a statement it accepts with different
+  semantics, and MongoDB a statement it does not have), and the SQL filter
+  builder's comparison and `LIKE` arms fell through to `<=` and `EndsWith`. All
+  three now spell out every variant, so adding one is a build error.
+
+### Changed
+
+- **Notifications last 6 s instead of 4 s, and errors wait to be dismissed.**
+  Four seconds was the library's default and was never enough to read a file
+  path or a driver message; kinds that carry something to act on now get a
+  multiple of the configured duration (a warning twice, a file notification
+  four times, capped at 30 s), and an error stays until it is closed — it
+  usually carries something to copy, retry or report. Both are preferences,
+  and an error also gets a "Copy error" action for free.
+
+- **Internal: a project-wide pass over duplicated logic and misplaced
+  responsibilities.** No behaviour change beyond the fixes above. The parts worth
+  knowing about:
+  - `db/exec.rs` — the execution counterpart to `db::sql::Dialect`. Twelve sites
+    repeated the same `match pool { … }`, two of them byte-identical, one a
+    re-inlining of a decoder that already existed 200 lines above it.
+  - Postgres/MySQL/SQLite catalog introspection moved out of
+    `commands/schema.rs` (1559 → 769 lines) into `db/{postgres,mysql,sqlite}/`,
+    mirroring `db/mssql` and `db/mongo`. All 17 `unreachable!()` are gone.
+  - `state_file.rs`, `AppState::pool_for`/`mongo_for`, `Dialect::quote_ident` and
+    `Dialect::truncate_stmt` replace between 9 and 10 hand-rolled copies each.
+  - `tab_state::mutate` replaces fourteen hand-written "take the write lock,
+    mutate, clone the whole blob, drop the guard, save" bodies across
+    `commands/{prefs,origins,connection}.rs`. The clone-and-release is not
+    incidental: the save does file I/O, so holding the lock across it would
+    block every other window's reader for the length of a disk write.
+  - `commands::ensure_view` / `commands::entry_sink` replace the seven-line
+    `ensure_database_view` prologue that opened forty-five connection-scoped
+    commands across nine modules, eight of which also built the Console log
+    sink by hand. Omitting it is invisible until a database view has been idle
+    long enough for the reaper to close it, so making it one line is worth more
+    than the 240 lines it removes.
+  - `log_bus::log_sql_sink` is the one place a SQL Console entry is built.
+    `commands::bulk` and `db::mongo::query` each rebuilt the same six-field
+    builder chain by hand, twice — once per arm of an `Ok`/`Err` match — while
+    `commands::query` documented itself as the single logging path. The helper
+    moved down next to `LogEntry`, which is what lets the `db` layer use it
+    without depending upward on `commands`.
+  - `TableQuery` / `TableScan` / `TableFilter` replace the nine loose
+    parameters the table browser threaded through `fetch_table_data`,
+    `count_table_rows`, `export_table_rows`, their `_inner` cores and four
+    MongoDB entry points. Six of the fourteen `#[allow(too_many_arguments)]`
+    are gone with them. The IPC payload is unchanged on the wire (the
+    predicate is `#[serde(flatten)]`ed), and four deserialisation tests now pin
+    the exact JSON the grid sends — a field that exists on one side of that
+    boundary and not the other is dropped in silence.
+  - Four more driver-level primitives that had been copied instead of shared:
+    `db::values::hex` (three byte-identical private copies, each with a comment
+    saying so), `db::exec::ping` (the keepalive heartbeat and the connect probe
+    each enumerated all five drivers), `db::mysql::{is_bit_type, bit_cast,
+    normalize_bit_value}` (the `BIT`-write reasoning of gotcha #15, spelled out
+    at six sites), and `Dialect::rename_stmt` (`rename_table` and `rename_view`
+    differed only in Postgres's keyword and one word of an error message).
+  - The import/export plumbing: `transfer::{check_meta, metadata, save_export,
+    disambiguate_name}` replace the same four steps written out once per
+    transfer kind (profiles, environments, JSON Schemas), and
+    `resolve_ssh_secret` is shared with the MCP connector instead of repeated
+    there.
+  - The MCP connector's eight read-only tools share one `read_tool` body
+    (reopen a reaped pool, resolve the MongoDB per-database target, one bridge
+    request, serialise). The write tools keep their own — their policy check
+    sits between two of those steps, and the double check across the two layers
+    is deliberate. `resolve_mongo_target` also stops making a bridge round trip
+    to answer "is this MongoDB?" for the four tools that pass no schema and
+    ignore the answer.
+  - `QueryResult::{rows, affected, with_total, with_truncated, with_row_types}`
+    replace nine struct literals that each restated the same seven fields, and
+    `src-tauri/src/testkit.rs` holds the `ConnectionProfile` fixture six test
+    modules had a private copy of — so a new field on either is one edit rather
+    than nine or six.
+  - Frontend: `useImportWizard` (three dialogs), `useAsyncSubmit` (ten),
+    `OverlayPalette` + `useListNavigation` (the command palette and the tab
+    switcher), `lib/schedule.ts` (three debounces, two polls), `RefreshButton`
+    (five), plus `lib/grid/pagination.ts` and `lib/grid/exportTable.ts`.
+  - `PrefId` is now derived from `Preferences`, so a "go to this setting" id that
+    names no real preference is a compile error instead of a silently dead jump.
+  - Deleted dead code: `ConnectPasswordDialog` (92 lines, no importers) and its
+    i18n keys, `useSavedQueries.byTag`, three unused constants, and the
+    `async-trait` dependency.
+
+- **Internal: the five files that had grown past a thousand lines are split by
+  responsibility.** No behaviour change beyond the fixes above.
+  `SchemaExplorer.tsx` 2842 → 73 (its eight dialogs to `schema/dialogs/`, each
+  tree level to its own file, `ConnectionActionsMenu` to `components/connection/`
+  where the tree that renders it lives); `DataGrid.tsx` 3592 → 1301 (`GridRow`,
+  the filter chips, the search box, the draft row and `GridToolbar` out; row
+  selection, column sizing, the Ctrl+wheel zoom, the preference reads, cell
+  editing, keyboard navigation and the column definitions into hooks under
+  `lib/grid/`); `ConnectionDialog.tsx` 1761 → 1267
+  and its 41 `useState`s to 11 (the rail and the form model out); `TabbedArea.tsx`
+  1082 → 390 (the tab header and the empty state out); `App.tsx` 820 → 530 (the
+  command-line intent handling out). Two orderings were preserved deliberately
+  and are now documented where they are enforced: the launch-restore effect
+  sequence, and the memoisation contracts of `GridRow` and the tab header.
+
+- **Vitest is set up for the frontend** (`pnpm test`) with characterization tests
+  for the pure `lib/` modules and each extracted hook, and CI runs it alongside
+  the existing typecheck and Cargo jobs. 160 tests over 18 files, including the
+  SQL statement splitter (which the tests found two bugs in, above), the
+  command palette's scoring matcher, and the SQL Server `HOST\INSTANCE` split —
+  whose authoritative Rust twin had tests all along.
+
 ## [1.17.0] — 2026-08-20
 
 ### Added

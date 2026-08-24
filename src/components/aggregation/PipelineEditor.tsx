@@ -22,6 +22,7 @@ import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
+import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 
 interface Props {
   value: string;
@@ -96,10 +97,11 @@ export function PipelineEditor({
       onMount={handleMount}
       options={{
         readOnly,
+        ...editorOptionsFromPrefs(editorPrefs),
+        // A stage body is small and hand-written: no minimap, two-space indent
+        // regardless of the global tab size, and line numbers only when the
+        // caller wants them (the text-mode editor, not the per-stage cards).
         minimap: { enabled: false },
-        wordWrap: editorPrefs.wordWrap ? "on" : "off",
-        fontFamily: editorPrefs.fontFamily,
-        fontSize: editorPrefs.fontSize,
         tabSize: 2,
         lineNumbers: lineNumbers ? "on" : "off",
         lineDecorationsWidth: lineNumbers ? undefined : 8,

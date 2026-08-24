@@ -226,13 +226,6 @@
     "noMatches": "No connections match your search.",
     "fromOrigin": "This connection comes from a shared origin, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours."
   },
-  "connectPassword": {
-    "title": "Password required",
-    "description": "The stored password for \"{{name}}\" could not be found. Enter it to connect.",
-    "password": "Password",
-    "connect": "Connect",
-    "connecting": "Connecting…"
-  },
   "adhocDriver": {
     "title": "Which database driver?",
     "description": "\"{{name}}\" was launched without --driver and no default driver is set. Pick the backend to connect with.",
@@ -403,7 +396,7 @@
       "browse": "Browse…",
       "export": "Export",
       "exporting": "Exporting…",
-      "success": "Exported to {{path}}"
+      "progress": "{{done}} of {{total}} rows · SQL"
     },
     "importSql": {
       "title": "Import .sql…",
@@ -418,8 +411,7 @@
       "running": "Running…"
     },
     "exportCollection": {
-      "title": "Export collection (JSON)…",
-      "success": "Collection exported to {{path}}"
+      "title": "Export collection (JSON)…"
     },
     "importCollection": {
       "title": "Import JSON…",
@@ -590,9 +582,7 @@
     "exportData": {
       "label": "Export data",
       "table": "Export the full table",
-      "queryResults": "Export query results",
-      "tableSuccess": "Table exported to {{path}}",
-      "rowsSuccess": "Rows exported to {{path}}"
+      "queryResults": "Export query results"
     },
     "bulkUpdate": {
       "toolbarTitle": "Update multiple rows/documents at once",
@@ -843,6 +833,7 @@
   },
   "tabs": {
     "queryFileName": "query.sql",
+    "mongoQueryFileName": "query",
     "tableFallback": "Table",
     "structureSuffix": "structure",
     "viewSuffix": "view",
@@ -986,6 +977,10 @@
         "label": "Data grid",
         "desc": "Tables & paging"
       },
+      "notifications": {
+        "label": "Notifications",
+        "desc": "Placement & timing"
+      },
       "connections": {
         "label": "Connections",
         "desc": "Pools & limits"
@@ -1124,7 +1119,6 @@
       "deleteTooltip": "Delete custom theme",
       "duplicateLabel": "Duplicate as custom",
       "exportTooltip": "Export theme…",
-      "exportSuccess": "Theme exported to {{path}}",
       "importTitle": "Import theme…",
       "importSuccess": "Imported \"{{name}}\" as a new custom theme",
       "importError": {
@@ -1151,6 +1145,40 @@
           "label": "Number fields",
           "desc": "Number the fields of each row in the left-hand gutter."
         }
+      },
+      "color": {
+        "background": "Background",
+        "foreground": "Foreground",
+        "card": "Card",
+        "cardForeground": "Card text",
+        "primary": "Primary",
+        "primaryForeground": "Primary text",
+        "secondary": "Secondary",
+        "secondaryForeground": "Secondary text",
+        "muted": "Muted",
+        "mutedForeground": "Muted text",
+        "accent": "Accent",
+        "accentForeground": "Accent text",
+        "brand": "Brand",
+        "brandForeground": "Brand text",
+        "brandHover": "Brand hover",
+        "popover": "Popover",
+        "popoverForeground": "Popover text",
+        "success": "Success",
+        "successForeground": "Success text",
+        "warning": "Warning",
+        "warningForeground": "Warning text",
+        "destructive": "Destructive",
+        "destructiveForeground": "Destructive text",
+        "border": "Border",
+        "input": "Input border",
+        "ring": "Focus ring"
+      },
+      "colorGroup": {
+        "surfaces": "Surfaces",
+        "actions": "Actions & brand",
+        "status": "Status colours",
+        "borders": "Borders & focus"
       }
     },
     "shortcuts": {
@@ -1237,6 +1265,90 @@
         "label": "Share pools with the MCP connector",
         "desc": "Let a running huginndb-mcp sidecar use this app's connections instead of opening its own, so the whole machine shares one budget per server — and its activity appears in the Console as it happens. Opens a token-protected listener on localhost. Off by default."
       }
+    },
+    "notifications": {
+      "position": {
+        "label": "Position",
+        "desc": "Corner or edge the stack grows from.",
+        "topLeft": "Top left",
+        "topCenter": "Top centre",
+        "topRight": "Top right",
+        "bottomLeft": "Bottom left",
+        "bottomCenter": "Bottom centre",
+        "bottomRight": "Bottom right"
+      },
+      "duration": {
+        "label": "Duration",
+        "desc": "How long a dismissible notification stays. Warnings and file notifications get a multiple of this.",
+        "sticky": "Until dismissed",
+        "seconds": "{{count}} s",
+        "unit": "ms"
+      },
+      "errorsPersist": {
+        "label": "Errors wait to be dismissed",
+        "desc": "An error usually carries something to copy, retry or report — and none of that happens in six seconds."
+      },
+      "maxVisible": {
+        "label": "Visible at once",
+        "desc": "The rest collapse behind a counter and go straight to the history."
+      },
+      "expandOnHover": {
+        "label": "Expand on hover",
+        "desc": "Opens the stack and freezes every timer while the pointer is over it."
+      },
+      "density": {
+        "label": "Density",
+        "desc": "Compact drops the body line and keeps title plus actions on one row.",
+        "comfortable": "Comfortable",
+        "compact": "Compact"
+      },
+      "historyLimit": {
+        "label": "History entries",
+        "desc": "Kept in memory by this window only — never written to disk. 0 turns the history off."
+      },
+      "showBell": {
+        "label": "Bell in the toolbar",
+        "desc": "With it off the history is still kept and still reachable from the command palette."
+      },
+      "preview": {
+        "title": "Preview",
+        "desc": "Fires a real notification, with its timer and its hairline, so the seconds can be judged rather than guessed.",
+        "test": "Test",
+        "testError": "Test an error",
+        "sampleTitle": "Cell saved",
+        "sampleBody": "Artist.Name on row 4.",
+        "sampleErrorTitle": "Could not save the cell",
+        "sampleErrorBody": "ERROR 1062 (23000): Duplicate entry 'AC/DC' for key 'Artist.ux_name'"
+      }
+    }
+  },
+  "notifications": {
+    "openFolder": "Open folder",
+    "copyPath": "Copy path",
+    "copyError": "Copy error",
+    "fileMissing": "The file is no longer at that path.",
+    "fileSaved": {
+      "table": "Table exported",
+      "rows": "Results exported",
+      "collection": "Collection exported",
+      "database": "Database exported",
+      "profiles": "Connections exported",
+      "environments": "Environments exported",
+      "jsonSchemas": "JSON Schemas exported",
+      "theme": "Theme exported"
+    },
+    "center": {
+      "open": "Notifications",
+      "title": "Notifications",
+      "unread": "{{count}} unread",
+      "markAllRead": "Mark read",
+      "clear": "Clear",
+      "empty": "Nothing yet.",
+      "emptyHint": "Exports, errors and confirmations land here.",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "earlier": "Earlier",
+      "moreHidden": "{{count}} more notification(s)"
     }
   },
   "transfer": {
@@ -1254,8 +1366,7 @@
       "passphraseConfirmPlaceholder": "Re-enter passphrase",
       "passphraseMismatch": "Passphrases do not match",
       "exportButton": "Export {{count}} profile(s)",
-      "exporting": "Exporting…",
-      "success": "Exported to {{path}}"
+      "exporting": "Exporting…"
     },
     "import": {
       "title": "Import profiles",
@@ -1503,7 +1614,9 @@
     "elapsedTitle": "Query duration",
     "batchOk": "{{count}} statements · {{rows}} rows affected",
     "batchFailed": "Stopped at statement {{index}} of {{total}}",
-    "rowsAffected": "{{rows}} rows affected · {{ms}} ms"
+    "rowsAffected": "{{rows}} rows affected · {{ms}} ms",
+    "newTabPlaceholder": "-- write a SQL query and press Ctrl+Enter\n",
+    "mongoNewTabPlaceholder": "// db.collection.find({}) — press Ctrl+Enter\n"
   },
   "saved": {
     "connectFirst": "Connect to a database first.",
@@ -1558,6 +1671,8 @@
     "title": "Documentation",
     "subtitle": "Guides for getting the most out of HuginnDB.",
     "updated": "Updated {{date}}",
+    "cover": "Overview",
+    "coverSections": "In this guide",
     "empty": "No documentation is available.",
     "entries": {
       "connections": {
@@ -1595,6 +1710,31 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_18_0": {
+        "tagline": "A notification system built for the app, full view management over the MCP connector, and a project-wide performance and reliability pass.",
+        "items": {
+          "notifications": {
+            "title": "A notification system of its own",
+            "body": "Every toast is now rendered by HuginnDB itself, not the library's stock defaults — a themed card, duplicate notifications collapsed into one with a counter, a history behind a bell in the toolbar, and a progress card for imports and exports that outlive the dialog that started them."
+          },
+          "mcpViews": {
+            "title": "Views over the MCP connector: read, edit and delete",
+            "body": "An AI client can now read a view's definition, create or redefine one, and drop it, on all five drivers — including MongoDB's stored aggregation pipelines. Same write policy as any other DDL change: a connection needs full write access."
+          },
+          "performance": {
+            "title": "Internal: a faster, more reliable app under the hood",
+            "body": "Fixed a multi-second launch freeze caused by re-hashing every shared-origin secret on the main thread, and a SQL Server bug that hung the schema explorer forever loading columns. A project-wide pass also removed duplicated logic across the Rust backend and the frontend — same behavior, less code to drift."
+          },
+          "bugFixes": {
+            "title": "A round of issue and bug fixes",
+            "body": "Dropping a MongoDB \"view\" whose name matched a real collection could wipe every document in it — now refused. Blank-named MongoDB indexes, bulk updates on MySQL BIT columns, and a dozen smaller inconsistencies (locale formatting, import numbering, missing translations) are fixed too."
+          },
+          "docsSections": {
+            "title": "The documentation viewer now has sections",
+            "body": "Each guide opens on a cover with a card per section, the sidebar is a tree derived straight from the markdown, and in-document links actually jump to their target now."
+          }
+        }
+      },
       "1_17_0": {
         "tagline": "Your editor now understands JSON Schemas — and a runaway query can no longer take down the app.",
         "items": {

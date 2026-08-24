@@ -17,7 +17,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Download, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isMainWindow } from "@/lib/window";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,7 +25,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
-import { useEnvironments, environmentLabel } from "@/stores/session/environments";
+import {
+  environmentLabel,
+  useEnvironments,
+  useOrderedEnvironments,
+} from "@/stores/session/environments";
 import { useEnvironmentEditor } from "@/stores/dialogs/environmentEditor";
 import { useEnvironmentTransfer } from "@/stores/dialogs/environmentTransfer";
 import { useEnvironmentDeleteConfirm } from "@/stores/dialogs/environmentDeleteConfirm";
@@ -48,17 +52,14 @@ export function EnvironmentSwitcher() {
   const openExport = useEnvironmentTransfer((s) => s.openExport);
   const openDeleteConfirm = useEnvironmentDeleteConfirm((s) => s.open);
 
-  const ordered = useMemo(
-    () => [...environments].sort((a, b) => a.order - b.order),
-    [environments],
-  );
+  const ordered = useOrderedEnvironments();
   const active = useMemo(
     () => environments.find((e) => e.id === activeId) ?? null,
     [environments, activeId],
   );
 
   const defaultName = t("environments.defaultName");
-  const isMain = getCurrentWindow().label === "main";
+  const isMain = isMainWindow();
 
   // Nothing useful to show before the first load resolves.
   if (!active) return null;

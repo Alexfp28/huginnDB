@@ -60,15 +60,10 @@ mod tests;
 
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::collections::HashMap;
 
 /// File name used for the persisted library.
 const JSON_SCHEMAS_FILE: &str = "json_schemas.json";
-
-/// Application directory within the platform's config base. Aliased from
-/// [`crate::app_identity`] so a `canary` build isolates its state (gotcha #26).
-const APP_DIR: &str = crate::app_identity::APP_DIR;
 
 /// Current on-disk version. See the module doc: there is deliberately no
 /// migration machinery behind this.
@@ -623,35 +618,19 @@ pub fn reorder_bindings(lib: &mut JsonSchemaLibrary, ids: &[String]) {
 // Persistence.
 // ---------------------------------------------------------------------------
 
-/// Resolve (and create on demand) the path where the library lives.
-fn library_path() -> AppResult<PathBuf> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| AppError::InvalidInput("no config dir available".into()))?;
-    let dir = base.join(APP_DIR);
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join(JSON_SCHEMAS_FILE))
-}
-
 /// Read the library from disk.
 ///
 /// Returns [`JsonSchemaLibrary::default`] when the file is missing or
 /// unparseable — a corrupted library costs the user this feature, never their
 /// ability to launch the app.
 pub fn load_library() -> JsonSchemaLibrary {
-    let path = match library_path() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[json_schemas] cannot resolve path: {e}; using defaults");
-            return JsonSchemaLibrary::default();
-        }
-    };
-    if !path.exists() {
+    // `read_bytes` rather than `load_or_default`: a file written by a *newer*
+    // build has to be accepted with a warning, not silently replaced, so the
+    // version check has to run between the parse and the return.
+    let Some(bytes) = crate::state_file::read_bytes(JSON_SCHEMAS_FILE, "json_schemas") else {
         return JsonSchemaLibrary::default();
-    }
-    match std::fs::read(&path).and_then(|bytes| {
-        serde_json::from_slice::<JsonSchemaLibrary>(&bytes)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-    }) {
+    };
+    match serde_json::from_slice::<JsonSchemaLibrary>(&bytes) {
         Ok(lib) => {
             if lib.version > CURRENT_VERSION {
                 // Never refuse to load: that would cost the user the whole
@@ -666,47 +645,24 @@ pub fn load_library() -> JsonSchemaLibrary {
             lib
         }
         Err(e) => {
-            eprintln!("[json_schemas] failed to read {path:?}: {e}; using defaults");
+            eprintln!("[json_schemas] failed to parse {JSON_SCHEMAS_FILE}: {e}; using defaults");
             JsonSchemaLibrary::default()
         }
     }
 }
 
-/// Persist the library with a temp-file + rename, so a crash mid-write cannot
-/// leave a half-written file behind.
+/// Persist the library atomically (see [`crate::state_file::save_atomic`]).
 pub fn save_library(lib: &JsonSchemaLibrary) -> AppResult<()> {
-    let path = library_path()?;
-    let tmp = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(lib)?;
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, &path)?;
-    Ok(())
+    crate::state_file::save_atomic(JSON_SCHEMAS_FILE, lib)
 }
 
 // ---------------------------------------------------------------------------
 // Helpers shared with the import path (file types live in `transfer`).
 // ---------------------------------------------------------------------------
 
-/// Disambiguate `base` against `taken`, mirroring the profile importer's
-/// ladder: `name`, `name (imported)`, `name (2)`, …
-pub fn disambiguate_name<'a>(base: &str, taken: impl Iterator<Item = &'a str>) -> String {
-    let used: HashSet<&str> = taken.collect();
-    if !used.contains(base) {
-        return base.to_string();
-    }
-    let first = format!("{base} (imported)");
-    if !used.contains(first.as_str()) {
-        return first;
-    }
-    let mut n = 2;
-    loop {
-        let candidate = format!("{base} ({n})");
-        if !used.contains(candidate.as_str()) {
-            return candidate;
-        }
-        n += 1;
-    }
-}
+/// Disambiguate `base` against `taken`. Shared with the profile and
+/// environment importers — see [`crate::transfer::disambiguate_name`].
+pub use crate::transfer::disambiguate_name;
 
 /// Next free `order` value, so imported bindings land after existing ones.
 pub fn next_order(lib: &JsonSchemaLibrary) -> i32 {

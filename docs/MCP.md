@@ -241,7 +241,7 @@ per-database ones on demand.
 | `list_connections` | Which databases this server is allowed to reach. |
 | `list_databases` | Databases / schemas / catalogs on a connection. |
 | `list_tables` | Tables and views, with approximate row counts and sizes. |
-| `describe_table` | Full structure: columns, types, nullability, PK, FKs, indexes. |
+| `describe_table` | Full structure: columns, types, nullability, PK, FKs, indexes. Works on a view too, and adds a `view` object with the view's definition when the relation is one — `query` (the SELECT body) on SQL, `viewOn` + `pipeline` on MongoDB. |
 | `list_indexes` | Indexes on a table and the columns each covers. |
 | `run_query` | Run a single statement (SQL for Postgres/MySQL/SQLite/SQL Server, mongosh-style for MongoDB). Reads always work; writes require the connection's write policy to allow them (`data` for DML, `full` for DDL). |
 | `browse_table` | Browse one page of rows without writing SQL. |
@@ -250,6 +250,8 @@ per-database ones on demand.
 | `insert_row` *(write)* | Insert one row (values as text; database defaults for omitted columns). Requires `data` or `full`. |
 | `update_cell` *(write)* | Update one column of the single row addressed by its full primary key. Requires `data` or `full`. |
 | `delete_rows` *(write)* | Delete one or more rows, each addressed by its full primary key. Requires `data` or `full`. |
+| `save_view` *(write)* | Create a view, redefine an existing one, or rename one. Pass just `name` and `query` — it reads the current definition itself to work out which. `preview: true` returns the statements without running them, and is a read. Requires `full`. |
+| `drop_view` *(write)* | Drop a view. Refuses anything that isn't one. Requires `full`. |
 
 `list_connections` reports each connection's effective write policy so the
 assistant knows up front what it may do.
@@ -261,8 +263,8 @@ A MongoDB connection with no default database (`list_connections`'
 until it knows which database to use, since there's nothing equivalent to a
 SQL catalog to fall back to. Pass the database name via:
 
-- `schema` on `list_tables`, `describe_table`, `list_indexes`, and
-  `browse_table`.
+- `schema` on `list_tables`, `describe_table`, `list_indexes`,
+  `browse_table`, `save_view` and `drop_view`.
 - `database` on `run_query` (its bare `sql` has no field for this).
 
 The server resolves this the same way the desktop app's schema explorer does
@@ -286,7 +288,18 @@ only needed when `list_connections` shows an empty `database`.
     `run_query`, plus the `insert_row` / `update_cell` / `delete_rows` tools.
     No schema changes.
   - **`full`** — adds DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) through
-    `run_query`.
+    `run_query`, plus the `save_view` / `drop_view` tools.
+
+  A view is schema, which puts managing one at `full` rather than `data`. That
+  reads oddly for a second — dropping a *view* needs `full` while deleting
+  *rows* only needs `data` — and it is the same asymmetry `DROP TABLE` and
+  `DELETE FROM` already have. It is also the only consistent answer: the
+  `CREATE OR REPLACE VIEW` you could write by hand through `run_query` is
+  classified as DDL, so a `data` connection is refused it, and a tool that
+  allowed the same change anyway would hand back what the policy just denied.
+  `save_view`'s `preview: true` is a genuine exception rather than a loophole:
+  it builds the statements and runs nothing, so it is classified as a read and
+  works at any level.
 
   The policy is re-read from disk on **every write attempt**, so changing a
   connection's level in the app takes effect without restarting the AI client.
@@ -385,7 +398,17 @@ assistant on this machine*, the write policy gates *the database*.
 PostgreSQL, MySQL, SQLite, MongoDB, and Microsoft SQL Server — the same
 drivers as the desktop app, via the same backend code.
 
-The read tools work identically across all of them. The write tools
-(`insert_row`, `update_cell`, `delete_rows`) do too, but `apply_structure_change`
-is SQL-only and additionally unsupported on SQL Server, whose T-SQL DDL builder
-is not written yet — it returns an "unsupported driver" error there.
+The read tools work identically across all of them, and so do the row-level
+write tools (`insert_row`, `update_cell`, `delete_rows`).
+
+The one gap is `save_view` on SQL Server, whose T-SQL view DDL builder is not
+written yet — it returns an "unsupported driver" error there. Everything else
+about views works on all five: `describe_table` reports a view's definition on
+every driver, and `drop_view` works on every driver.
+
+There is no tool for editing a *table's* structure on any driver. That was
+deferred deliberately (see
+[`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md)): making an assistant
+synthesise a whole column list, with types, nullability, defaults and keys, is
+worse than having it emit `ALTER TABLE` through `run_query`, which `full`
+allows.

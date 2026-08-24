@@ -22,8 +22,11 @@
 
 import type { LucideIcon } from "lucide-react";
 import {
+  Bell,
   Bot,
   Braces,
+  Bug,
+  BookOpen,
   Copy,
   Database,
   Download,
@@ -82,6 +85,38 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.18.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_18_0.tagline",
+    highlights: [
+      {
+        icon: Bell,
+        titleKey: "whatsNew.releases.1_18_0.items.notifications.title",
+        bodyKey: "whatsNew.releases.1_18_0.items.notifications.body",
+      },
+      {
+        icon: Eye,
+        titleKey: "whatsNew.releases.1_18_0.items.mcpViews.title",
+        bodyKey: "whatsNew.releases.1_18_0.items.mcpViews.body",
+      },
+      {
+        icon: Gauge,
+        titleKey: "whatsNew.releases.1_18_0.items.performance.title",
+        bodyKey: "whatsNew.releases.1_18_0.items.performance.body",
+      },
+      {
+        icon: Bug,
+        titleKey: "whatsNew.releases.1_18_0.items.bugFixes.title",
+        bodyKey: "whatsNew.releases.1_18_0.items.bugFixes.body",
+      },
+      {
+        icon: BookOpen,
+        titleKey: "whatsNew.releases.1_18_0.items.docsSections.title",
+        bodyKey: "whatsNew.releases.1_18_0.items.docsSections.body",
+      },
+    ],
+  },
   {
     version: "1.17.0",
     major: true,

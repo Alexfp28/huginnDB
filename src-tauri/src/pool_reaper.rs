@@ -121,7 +121,7 @@ fn select_victims(state: &AppState, now: u64, ttl_secs: u32, max_children: u32) 
         // both surprising and useless — the servers may be different, so the
         // budget being defended isn't shared.
         for parent in conns.ids() {
-            if parent.contains("::db::") {
+            if crate::state::is_database_view(&parent) {
                 continue;
             }
             let children = conns.children_by_lru(&parent);
@@ -143,7 +143,7 @@ fn select_victims(state: &AppState, now: u64, ttl_secs: u32, max_children: u32) 
 /// the awaited close described on [`close_pool`] instead of a bare `Drop`.
 /// Returns the ids that were actually closed.
 pub async fn close_children(state: &AppState, parent_id: &str) -> Vec<String> {
-    let prefix = format!("{parent_id}::db::");
+    let prefix = crate::state::database_view_prefix(parent_id);
     let removed: Vec<_> = {
         let mut conns = state.connections.write();
         let ids: Vec<String> = conns
@@ -246,29 +246,13 @@ mod tests {
         // is spent. Scoping matters as much as ordering: closing a view on an
         // unrelated server frees capacity nobody is waiting for.
         use crate::db::endpoint::{EndpointKey, EndpointRegistry};
-        use crate::state::{ConnectionProfile, Driver};
+        use crate::state::ConnectionProfile;
         use std::sync::Arc;
 
         fn profile(host: &str) -> ConnectionProfile {
             ConnectionProfile {
-                id: "p".into(),
-                name: "p".into(),
-                driver: Driver::Postgres,
                 host: host.into(),
-                port: 5432,
-                database: String::new(),
-                username: "u".into(),
-                ssl: false,
-                ssh_tunnel: None,
-                connection_string: None,
-                auth_source: None,
-                ephemeral: false,
-                group: None,
-                visible_databases: None,
-                mcp_write: Default::default(),
-                max_connections: None,
-                mssql: None,
-                origin_id: None,
+                ..crate::testkit::profile("p")
             }
         }
 

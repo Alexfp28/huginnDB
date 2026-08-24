@@ -258,7 +258,7 @@ datos a demanda.
 | `list_connections` | Qué bases de datos puede alcanzar este servidor. |
 | `list_databases` | Bases de datos / esquemas / catálogos de una conexión. |
 | `list_tables` | Tablas y vistas, con recuentos de filas y tamaños aproximados. |
-| `describe_table` | Estructura completa: columnas, tipos, nulabilidad, PK, FKs, índices. |
+| `describe_table` | Estructura completa: columnas, tipos, nulabilidad, PK, FKs, índices. Funciona también sobre una vista, y añade un objeto `view` con su definición cuando la relación lo es — `query` (el cuerpo del SELECT) en SQL, `viewOn` + `pipeline` en MongoDB. |
 | `list_indexes` | Índices de una tabla y las columnas que cubre cada uno. |
 | `run_query` | Ejecuta una única sentencia (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Las lecturas siempre funcionan; las escrituras requieren que el nivel de la conexión lo permita (`data` para DML, `full` para DDL). |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
@@ -267,6 +267,8 @@ datos a demanda.
 | `insert_row` *(escritura)* | Inserta una fila (valores como texto; valores por defecto de la BD para columnas omitidas). Requiere `data` o `full`. |
 | `update_cell` *(escritura)* | Actualiza una columna de la única fila identificada por su clave primaria completa. Requiere `data` o `full`. |
 | `delete_rows` *(escritura)* | Borra una o más filas, cada una identificada por su clave primaria completa. Requiere `data` o `full`. |
+| `save_view` *(escritura)* | Crea una vista, redefine una existente o la renombra. Pasa solo `name` y `query` — la herramienta lee la definición actual para decidir cuál de las tres es. Con `preview: true` devuelve las sentencias sin ejecutarlas, y eso es una lectura. Requiere `full`. |
+| `drop_view` *(escritura)* | Elimina una vista. Rechaza cualquier cosa que no lo sea. Requiere `full`. |
 
 `list_connections` informa del nivel de escritura efectivo de cada conexión,
 para que el asistente sepa de antemano qué puede hacer.
@@ -279,8 +281,8 @@ ninguna herramienta a nivel de tabla hasta que sepa qué base de datos usar,
 ya que no hay nada equivalente a un catálogo SQL al que recurrir. Pasa el
 nombre de la base de datos mediante:
 
-- `schema` en `list_tables`, `describe_table`, `list_indexes` y
-  `browse_table`.
+- `schema` en `list_tables`, `describe_table`, `list_indexes`,
+  `browse_table`, `save_view` y `drop_view`.
 - `database` en `run_query` (su `sql` a secas no tiene campo para esto).
 
 El servidor lo resuelve igual que el explorador de esquema de la app de
@@ -307,7 +309,18 @@ conexión son baratas. Una conexión de una sola base de datos (con
     `run_query`, más las herramientas `insert_row` / `update_cell` /
     `delete_rows`. Sin cambios de esquema.
   - **`full`** — añade DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) vía
-    `run_query`.
+    `run_query`, más las herramientas `save_view` / `drop_view`.
+
+  Una vista es esquema, y eso deja su gestión en `full` y no en `data`. Suena
+  raro por un segundo — eliminar una *vista* pide `full` mientras que borrar
+  *filas* solo pide `data` — y es la misma asimetría que ya existe entre
+  `DROP TABLE` y `DELETE FROM`. Es además la única respuesta coherente: el
+  `CREATE OR REPLACE VIEW` que podrías escribir a mano por `run_query` está
+  clasificado como DDL, así que una conexión en `data` lo tiene rechazado, y
+  una herramienta que permitiera el mismo cambio devolvería justo lo que el
+  nivel acaba de negar. El `preview: true` de `save_view` es una excepción de
+  verdad, no un agujero: construye las sentencias y no ejecuta nada, así que
+  está clasificado como lectura y funciona en cualquier nivel.
 
   El nivel se relee de disco en **cada intento de escritura**, así que
   cambiarlo en la app surte efecto sin reiniciar el cliente de IA.
@@ -414,8 +427,17 @@ escritura controla *la base de datos*.
 PostgreSQL, MySQL, SQLite, MongoDB y Microsoft SQL Server — los mismos
 drivers que la app de escritorio, mediante el mismo código de backend.
 
-Las herramientas de lectura funcionan igual en todos. Las de escritura
-(`insert_row`, `update_cell`, `delete_rows`) también, pero
-`apply_structure_change` es solo para SQL y además no está soportada en SQL
-Server, cuyo generador de DDL T-SQL todavía no existe: ahí devuelve un error
-de «driver no soportado».
+Las herramientas de lectura funcionan igual en todos, y también las de
+escritura a nivel de fila (`insert_row`, `update_cell`, `delete_rows`).
+
+El único hueco es `save_view` en SQL Server, cuyo generador de DDL T-SQL para
+vistas todavía no existe: ahí devuelve un error de «driver no soportado». Todo
+lo demás sobre vistas funciona en los cinco: `describe_table` informa de la
+definición de una vista en todos los drivers, y `drop_view` funciona en todos.
+
+No hay herramienta para editar la estructura de una *tabla* en ningún driver.
+Se dejó fuera a propósito (ver
+[`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md)): hacer que un asistente
+sintetice una lista de columnas completa, con tipos, nulabilidad, valores por
+defecto y claves, es peor que hacerle emitir `ALTER TABLE` por `run_query`, que
+`full` permite.

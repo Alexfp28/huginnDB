@@ -24,7 +24,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FileJson, Pencil, Settings2, Sparkles, X } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import {
   DropdownMenu,
@@ -143,7 +143,7 @@ export function SchemaBindingBadge({
       // Naming the rule that just lost is what stops "why are there suddenly two
       // rows in Settings?" from being a mystery.
       if (previous && !previous.exact) {
-        toast.success(
+        notify.success(
           t("jsonSchemas.toast.boundShadowing", {
             name,
             scope,
@@ -151,10 +151,10 @@ export function SchemaBindingBadge({
           }),
         );
       } else {
-        toast.success(t("jsonSchemas.toast.bound", { name, scope }));
+        notify.success(t("jsonSchemas.toast.bound", { name, scope }));
       }
     } catch (e) {
-      toast.error(t("jsonSchemas.toast.saveFailed", { message: String(e) }));
+      notify.error(t("jsonSchemas.toast.saveFailed", { message: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -165,9 +165,9 @@ export function SchemaBindingBadge({
     setBusy(true);
     try {
       await deleteBinding(resolved.bindingId);
-      toast.success(t("jsonSchemas.toast.unbound", { scope }));
+      notify.success(t("jsonSchemas.toast.unbound", { scope }));
     } catch (e) {
-      toast.error(t("jsonSchemas.toast.saveFailed", { message: String(e) }));
+      notify.error(t("jsonSchemas.toast.saveFailed", { message: String(e) }));
     } finally {
       setBusy(false);
     }

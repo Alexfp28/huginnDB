@@ -18,7 +18,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { save as saveFileDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { Copy, Download, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,10 +52,10 @@ import { api } from "@/lib/tauri";
 import type { GridPrefs } from "@/types";
 import { PrefRow } from "./PrefRow";
 
-// Label lookup for COLOR_GROUPS' keys — COLOR_KEYS stays the single source
-// of truth for labels, this just indexes it by key for the grouped editor.
-const COLOR_LABELS = Object.fromEntries(
-  COLOR_KEYS.map(({ key, label }) => [key, label]),
+// i18n-key lookup for COLOR_GROUPS' keys — COLOR_KEYS stays the single source
+// of truth for label keys, this just indexes it by key for the grouped editor.
+const COLOR_LABEL_KEYS = Object.fromEntries(
+  COLOR_KEYS.map(({ key, labelKey }) => [key, labelKey]),
 ) as Record<keyof ThemeColors, string>;
 
 export function AppearanceSection() {
@@ -92,9 +92,9 @@ export function AppearanceSection() {
       });
       if (!destPath) return;
       await api.writeTextFile(destPath, serializeTheme(active));
-      toast.success(t("settings.appearance.exportSuccess", { path: destPath }));
+      notify.file(t("notifications.fileSaved.theme"), { path: destPath });
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     }
   }
 
@@ -113,12 +113,12 @@ export function AppearanceSection() {
       const theme = parseThemeFile(raw);
       upsertCustom(theme);
       setThemeId(theme.id);
-      toast.success(t("settings.appearance.importSuccess", { name: theme.name }));
+      notify.success(t("settings.appearance.importSuccess", { name: theme.name }));
     } catch (e) {
       if (e instanceof ThemeImportError) {
-        toast.error(t(`settings.appearance.importError.${e.message}`));
+        notify.error(t(`settings.appearance.importError.${e.message}`));
       } else {
-        toast.error(String(e));
+        notify.error(String(e));
       }
     }
   }
@@ -225,15 +225,15 @@ export function AppearanceSection() {
             <ThemePreview colors={active.colors} />
             <div className="mt-5 flex flex-col gap-5">
               {COLOR_GROUPS.map((group) => (
-                <section key={group.title}>
+                <section key={group.id}>
                   <div className="mb-2 border-b border-border/60 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {group.title}
+                    {t(group.titleKey)}
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                     {group.keys.map((key) => (
                       <ColorRow
                         key={key}
-                        label={COLOR_LABELS[key]}
+                        label={t(COLOR_LABEL_KEYS[key])}
                         value={active.colors[key]}
                         onChange={(v) => updateColor(key, v)}
                       />

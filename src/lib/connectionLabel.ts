@@ -11,6 +11,7 @@
  */
 
 import type { ConnectionProfile, Driver } from "@/types";
+import { supportsMultipleDatabases } from "@/lib/db/driver";
 
 const DB_SEP = "::db::";
 
@@ -59,6 +60,20 @@ export function databaseViewId(parentId: string, db: string): string {
 }
 
 /**
+ * The database name inside a synthetic `<parentId>::db::<db>` id, or `""` for
+ * a plain profile id.
+ *
+ * The inverse of [`databaseViewId`], and the reason the separator never has to
+ * leave this module: a caller that repoints a tab at another database by
+ * minting a new id also needs to read the current one back out of it (the query
+ * editor's database selector does exactly that round trip).
+ */
+export function databaseOfViewId(connectionId: string): string {
+  const sep = connectionId.indexOf(DB_SEP);
+  return sep > 0 ? connectionId.slice(sep + DB_SEP.length) : "";
+}
+
+/**
  * Whether `id` is one of `parentId`'s per-database children.
  *
  * Lets a caller holding only a profile id find every synthetic slice opened
@@ -90,6 +105,23 @@ export function resolveConnectionDriver(
   return undefined;
 }
 
+/**
+ * Whether `profile` addresses a whole server rather than one database, so the
+ * explorer shows a database layer above the schema tree and each expansion
+ * opens its own `<parent>::db::<db>` view.
+ *
+ * The condition is "no database bound, and the driver has more than one" —
+ * SQLite's file *is* the database, so an empty `database` there means an
+ * unconfigured profile, not a server-wide one. Written out in four places
+ * before this existed, twice as the predicate and twice as its negation, which
+ * is a poor way to keep two halves of one rule in agreement.
+ */
+export function isServerWide(
+  profile: Pick<ConnectionProfile, "driver" | "database"> | undefined | null,
+): boolean {
+  return !!profile && supportsMultipleDatabases(profile.driver) && profile.database === "";
+}
+
 export interface ConnectionParts {
   /** The owning profile's display name, or null if the profile is unknown. */
   profileName: string | null;
@@ -116,12 +148,29 @@ export function resolveConnectionParts(
   const direct = profiles.find((p) => p.id === connectionId);
   if (!direct) return { profileName: null, database: null };
   let database: string | null = direct.database || null;
-  // SQLite's `database` is a filesystem path — show just the file name so the
-  // title/tab stays short. The SQL drivers store a plain catalog name.
   if (direct.driver === "sqlite" && database) {
-    database = database.replace(/\\/g, "/").split("/").pop() || database;
+    database = sqliteFileLabel(database);
   }
   return { profileName: direct.name, database };
+}
+
+/**
+ * The file name inside a SQLite `database` path.
+ *
+ * SQLite's `database` field is a filesystem path, not a catalog name, so every
+ * surface that shows it has to shorten it or blow out its own layout: the OS
+ * window title, the breadcrumb, the query editor's database chip, the
+ * connection dialog's summary, the JSON-Schema binding picker. All five were
+ * doing `split(/[/\\]/).pop()` inline — one of them with the character class
+ * the other way round, which is the kind of difference nobody notices until a
+ * path breaks on one platform and not the other.
+ *
+ * Handles both separators regardless of host platform: a profile written on
+ * Windows and synced from a shared origin reaches a Linux install with
+ * backslashes in it.
+ */
+export function sqliteFileLabel(path: string): string {
+  return path.replace(/\\/g, "/").split("/").pop() || path;
 }
 
 /**

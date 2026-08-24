@@ -20,16 +20,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
+import { RefreshButton } from "@/components/common/RefreshButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
-import { useConnections } from "@/stores/session/connections";
+import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
@@ -42,6 +44,10 @@ import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import type { QueryResult, StructureMode, ViewDefinition } from "@/types";
+import { useReloadable } from "@/lib/useReloadable";
+import { DdlPreviewPane } from "@/components/schema/DdlPreviewPane";
+import { joinStatements } from "@/lib/sql/formatStatements";
+import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 
 interface Props {
   tabId: string;
@@ -66,16 +72,7 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
   const closeTab = useTabs((s) => s.close);
   const schemaState = useSchema((s) => s.byConnection[connectionId]);
 
-  // Same synthetic-id-aware driver resolution as StructureEditorTab.
-  const driver = useConnections((s) => {
-    const direct = s.profiles.find((p) => p.id === connectionId);
-    if (direct) return direct.driver;
-    const sep = connectionId.indexOf("::db::");
-    if (sep > 0) {
-      return s.profiles.find((p) => p.id === connectionId.slice(0, sep))?.driver;
-    }
-    return undefined;
-  });
+  const driver = useConnectionDriver(connectionId);
 
   const completionSuggestions = useMemo(
     () =>
@@ -112,8 +109,6 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
   const [original, setOriginal] = useState<ViewDefinition | null>(null);
   const [name, setName] = useState(view ?? "");
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(mode === "edit");
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [ddl, setDdl] = useState("");
   const [dropAndRecreate, setDropAndRecreate] = useState(false);
@@ -127,25 +122,18 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
 
   // (Re)load the existing definition. Runs on mount and from the manual
   // refresh button (same rationale as StructureEditorTab's `reload`).
-  const reload = useCallback(async () => {
-    if (mode !== "edit" || !view) return;
-    setLoading(true);
-    try {
-      const v = await api.getViewDefinition(connectionId, schema, view);
-      setOriginal(v);
-      setName(v.name);
-      setQuery(v.query);
-      setLoadError(null);
-    } catch (e) {
-      setLoadError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [mode, connectionId, schema, view]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  const load = useCallback(async () => {
+    if (!view) return;
+    const v = await api.getViewDefinition(connectionId, schema, view);
+    setOriginal(v);
+    setName(v.name);
+    setQuery(v.query);
+  }, [connectionId, schema, view]);
+  const {
+    loading,
+    error: loadError,
+    reload,
+  } = useReloadable(mode === "edit" ? load : null);
 
   const desired = useMemo<ViewDefinition>(
     () => ({ schema: schema ?? null, name: name.trim(), query }),
@@ -167,7 +155,7 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
     api
       .previewViewChange({ connectionId, original, desired: desiredRef.current })
       .then((p) => {
-        setDdl(p.statements.join(";\n") + (p.statements.length ? ";" : ""));
+        setDdl(joinStatements(p.statements));
         setDropAndRecreate(p.dropAndRecreate);
         setPreviewError(null);
       })
@@ -203,10 +191,7 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
     runDataPreview();
   }, [runDdlPreview, runDataPreview]);
 
-  useEffect(() => {
-    const id = setTimeout(runBothPreviews, 400);
-    return () => clearTimeout(id);
-  }, [desired, runBothPreviews]);
+  useDebouncedPreview(desired, runBothPreviews);
 
   // Ref for the same reason as QueryEditorTab's `runQueryRef`: Monaco's
   // `addCommand` (Ctrl+Enter) and the shared SQL provider registry both keep
@@ -235,7 +220,7 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
       // the DDL pane alone is easy to miss on a rejected apply.
       const message = String(e);
       setPreviewError(message);
-      toast.error(t("view.applyFailed", { message }));
+      notify.error(t("view.applyFailed", { message }));
     } finally {
       setApplying(false);
     }
@@ -317,18 +302,13 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
         />
         <div className="ml-auto flex items-center gap-2">
           {mode === "edit" && (
-            <Button
-              variant="ghost"
-              size="icon"
+            <RefreshButton
               className="h-7 w-7"
               onClick={() => void reload()}
-              disabled={loading || applying}
+              loading={loading}
+              disabled={applying}
               title={t("view.refresh")}
-            >
-              <RefreshCw
-                className={loading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"}
-              />
-            </Button>
+            />
           )}
           <Button
             size="sm"
@@ -353,15 +333,8 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
               onChange={(v) => setQuery(v ?? "")}
               onMount={handleMount}
               options={{
-                minimap: { enabled: editorPrefs.minimap },
-                wordWrap: editorPrefs.wordWrap ? "on" : "off",
-                fontFamily: editorPrefs.fontFamily,
-                fontSize: editorPrefs.fontSize,
-                tabSize: editorPrefs.tabSize,
-                lineNumbers: editorPrefs.lineNumbers ? "on" : "off",
+                ...editorOptionsFromPrefs(editorPrefs),
                 formatOnPaste: editorPrefs.formatOnPaste,
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
               }}
             />
           </Panel>
@@ -394,39 +367,13 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
           </Panel>
         </PanelGroup>
 
-        {/* DDL preview */}
-        <div className="flex h-48 flex-col border-t border-border">
-          <div className="flex items-center gap-2 px-3 py-1 text-[11px] text-muted-foreground">
-            <RefreshCw className="h-3 w-3" />
-            {t("view.ddlPreview")}
-            {dropAndRecreate && (
-              <span className="rounded bg-warning/20 px-1.5 py-0.5 text-warning">
-                {t("view.dropRecreateNote")}
-              </span>
-            )}
-          </div>
-          {previewError ? (
-            <div className="px-3 py-2 text-xs text-destructive">
-              {previewError}
-            </div>
-          ) : (
-            <Editor
-              height="100%"
-              value={ddl}
-              language="sql"
-              theme={resolveMonacoTheme(editorPrefs.theme)}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                lineNumbers: "off",
-                fontFamily: editorPrefs.fontFamily,
-                fontSize: editorPrefs.fontSize,
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-              }}
-            />
-          )}
-        </div>
+        <DdlPreviewPane
+          title={t("view.ddlPreview")}
+          ddl={ddl}
+          error={previewError}
+          warning={dropAndRecreate ? t("view.dropRecreateNote") : null}
+          prefs={editorPrefs}
+        />
       </div>
     </div>
   );

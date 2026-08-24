@@ -91,7 +91,7 @@ derivar en T-SQL incorrecto:
 | --- | --- |
 | Editor de estructura (`ALTER TABLE` visual) | La estructura es de solo lectura. El generador de DDL para T-SQL no está escrito. |
 | Renombrar una tabla o una vista | T-SQL renombra con `EXEC sp_rename`, cuyos argumentos son cadenas y no identificadores; va con el resto del trabajo de DDL. |
-| Editor de vistas | Crear/editar/eliminar una vista. Las vistas sí se pueden explorar. |
+| Editor de vistas | Crear o redefinir una vista: el generador de DDL para T-SQL no está escrito. Leer la *definición* de una vista sí funciona, y eliminarla también — el árbol no ofrece ninguna de las dos todavía, porque cierra las vistas con el mismo flag que la estructura de tablas. Las vistas se pueden explorar, y su definición se puede leer por MCP. |
 | Exportar e importar `.sql` | Necesita un codificador de literales por driver. Los datos de la tabla siguen exportándose a CSV/JSON. |
 
 Lo que sí funciona hoy, para contrastar: `CREATE DATABASE` / `DROP DATABASE`,
@@ -102,7 +102,11 @@ herramientas MCP de lectura y de escritura de datos.
 ## Por MCP
 
 No hay nada específico de SQL Server que configurar: se expone exactamente como
-los otros drivers SQL, con el mismo nivel de escritura por conexión. El único
-hueco sigue a la tabla de arriba — `apply_structure_change` devuelve un error de
-«driver no soportado», así que un asistente puede leer el esquema y escribir
-filas pero no alterar el esquema. Ver [`MCP.es.md`](MCP.es.md).
+los otros drivers SQL, con el mismo nivel de escritura por conexión. Los huecos
+siguen a la tabla de arriba: un asistente puede leer el esquema — incluida la
+definición de una vista, con `describe_table` — y escribir filas, y puede
+eliminar una vista, pero no puede crearla ni redefinirla (`save_view` devuelve
+aquí un error de «driver no soportado») ni alterar la estructura de una tabla
+con una herramienta. El DDL de tablas no es una herramienta en ningún driver: va
+por `run_query` con el nivel `full`, donde el T-SQL que escribas tú funciona con
+normalidad. Ver [`MCP.es.md`](MCP.es.md).

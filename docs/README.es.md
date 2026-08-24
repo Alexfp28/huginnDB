@@ -51,7 +51,18 @@ quedan fuera del visor de la app a propósito. Están todas en inglés:
 
 Ceñíos a lo que soporta el renderizador de la app: encabezados, párrafos, bloques
 de código, tablas GFM con pipes, listas sin anidar, citas, reglas y
-código/negrita/cursiva/enlaces en línea. No es un motor CommonMark completo. Los
-enlaces `http(s)` se abren en el navegador del sistema; los enlaces relativos a
-otros documentos se renderizan como texto plano dentro de la app, así que no
-escribas una frase que dependa de que el lector pueda pulsar uno.
+código/negrita/cursiva/enlaces en línea. No es un motor CommonMark completo.
+
+De cómo el visor presenta una guía se derivan dos cosas. **Cada `##` es una
+página**: el visor saca su navegación de los encabezados, muestra la prosa
+anterior al primer `##` como portada y luego una página por `##`, con cada `###`
+como destino de salto dentro de ella. Así que un `##` es una unidad a la que un
+lector puede llegar en frío: que ninguno dependa de haberse leído el anterior.
+
+**Los enlaces resuelven, con límites.** Los `http(s)` abren en el navegador del
+sistema. Un `#ancla` salta a ese encabezado dentro de la misma guía, y un enlace
+relativo a otra guía de la tabla de arriba cambia a ella. Un enlace a algo fuera
+de ese conjunto — una hoja de ruta, `../SECURITY.md` — abre en GitHub. Un
+`#ancla` cuyo encabezado ya no existe se renderiza como texto plano sin color y
+no hace nada, y eso hace fallar a `docOutline.test.ts`, así que un encabezado que
+renombres se lleva por delante los enlaces que apuntaban a él.

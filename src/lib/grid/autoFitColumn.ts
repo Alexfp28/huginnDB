@@ -137,3 +137,97 @@ export function computeColumnFitWidth(input: ColumnFitInput): number {
   const content = Math.max(headerWidth, bodyWidth) + input.padding + 2;
   return Math.round(Math.min(input.max, Math.max(input.min, content)));
 }
+
+/** Per-column inputs the caller resolves; see [`computeAutoFitWidths`]. */
+export interface AutoFitInput {
+  /**
+   * Element the measurement probes inherit the grid's cascade from — the
+   * scroll container. `null` falls back to `document.body`.
+   */
+  host: HTMLElement | null;
+  /** Columns to fit, by name. */
+  colIds: readonly string[];
+  /** Every column, in backend order. */
+  columns: readonly { name: string; data_type: string }[];
+  /**
+   * Backend index for a column name. Display order can differ from backend
+   * order, and the values are indexed by the latter (gotcha #7's neighbour).
+   */
+  columnIndexByName: ReadonlyMap<string, number>;
+  /** Rows in scope — the fetched page after the client filter. */
+  rows: readonly (readonly unknown[])[];
+  /**
+   * Exactly what the `cell` renderer paints for this value, NULL placeholder
+   * and length cap included. Passed as a function rather than as the four
+   * preferences behind it so the fit cannot drift from the render: a column
+   * measured as `1` and painted as `true` is fitted two characters too narrow.
+   */
+  cellText: (value: unknown, columnIndex: number) => string;
+  /**
+   * Fixed px this column's header spends on things that are not text — key
+   * icons, the sort glyph, the multi-sort rank badge, the flex gaps.
+   */
+  headerChrome: (columnName: string) => number;
+  cellFontSize: number;
+  headerFontSize: number;
+  /** The dimmed type hint's size. Fixed (`text-3xs`), not derived from the
+   *  zoom like the rest of the header. */
+  typeFontSize: number;
+  min: number;
+  max: number;
+}
+
+/**
+ * Widths for a set of columns, keyed by column name — HeidiSQL's "double-click
+ * a column's edge and it grows to fit", and the toolbar's "fit every column".
+ *
+ * Lives here rather than in the grid because it is a pure function of the
+ * strings on screen: given the same rows, fonts and clamps it returns the same
+ * widths, with no React state involved. The component keeps only the wiring —
+ * gathering the fonts, describing how a cell renders, committing the result as
+ * one preference write.
+ *
+ * The three fonts are resolved **once per gesture, not once per column**: each
+ * resolution appends a probe element and reads its computed style, which
+ * forces a style recalc, so the "fit every column" path would otherwise pay
+ * for three times the column count.
+ *
+ * Scope is the caller's `rows` — in practice the fetched page after the client
+ * filter, matching HeidiSQL. Fitting to rows the user cannot see would need a
+ * full-table scan per double-click.
+ */
+export function computeAutoFitWidths(input: AutoFitInput): Record<string, number> {
+  const cellFont = resolveCanvasFont(input.host, "font-mono", input.cellFontSize);
+  const headerFont = resolveCanvasFont(input.host, "", input.headerFontSize);
+  const typeFont = resolveCanvasFont(input.host, "", input.typeFontSize);
+
+  const widths: Record<string, number> = {};
+  for (const colId of input.colIds) {
+    const idx = input.columnIndexByName.get(colId);
+    if (idx === undefined) continue;
+    const col = input.columns[idx];
+    if (!col) continue;
+    widths[colId] = computeColumnFitWidth({
+      // The header renders `uppercase tracking-wider`; both change its width,
+      // and neither is visible to `measureText` unless applied here.
+      header: {
+        text: col.name.toUpperCase(),
+        font: headerFont,
+        letterSpacing: input.headerFontSize * 0.05,
+      },
+      type: {
+        text: col.data_type.toUpperCase(),
+        font: typeFont,
+        letterSpacing: input.typeFontSize * 0.05,
+      },
+      headerChrome: input.headerChrome(col.name),
+      cells: input.rows.map((row) => input.cellText(row[idx], idx)),
+      cellFont,
+      min: input.min,
+      max: input.max,
+      // `px-2` on both the `<th>` and every `<td>`, plus the 1px right border.
+      padding: 17,
+    });
+  }
+  return widths;
+}

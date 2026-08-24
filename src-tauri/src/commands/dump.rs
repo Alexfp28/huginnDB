@@ -20,7 +20,7 @@
 //! etc.) bracketed by `PRAGMA foreign_keys=OFF/ON`, since SQLite inlines FKs
 //! into `CREATE TABLE` text that isn't worth re-parsing to split.
 
-use crate::commands::query::{build_filter_clause_at, ColumnFilter};
+use crate::commands::query::{build_filter_clause_at, TableScan};
 use crate::commands::schema::{list_tables_inner, TableInfo};
 use crate::commands::structure::{mysql_structure, pg_structure};
 use crate::db::ddl::{build_create, TableStructure};
@@ -35,7 +35,7 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde::Deserialize;
 use sqlx::{Column, Row};
 use std::io::Write;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 /// How a table's existing data is treated relative to the rows being
 /// exported. `TruncateInsert` prefixes each table's `INSERT` block with a
@@ -49,14 +49,6 @@ use tauri::{AppHandle, State};
 pub enum DataMode {
     Insert,
     TruncateInsert,
-}
-
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
 }
 
 /// Rows per multi-row `INSERT ... VALUES (...), (...);` statement
@@ -80,6 +72,36 @@ pub struct ExportTarget {
     /// the named subset (the export dialog's per-database table checkboxes).
     #[serde(default)]
     pub tables: Option<Vec<String>>,
+}
+
+/// Emitted by [`export_databases`] as each table's rows finish writing.
+///
+/// `done`/`total` are actual row counts, not tables — a schema with one
+/// three-row table and one three-million-row table would make per-table
+/// progress meaningless (a jump to 50% for nothing, then a long stall).
+/// `total` comes from a `SELECT COUNT(*)` pass over every target's tables
+/// before any writing starts: `TableInfo.row_count` (from `list_tables_inner`)
+/// is only ever an approximate, engine-side statistic — stale on Postgres,
+/// an InnoDB estimate on MySQL, always absent on SQLite — and its own doc
+/// comment says as much. `emit_to`, not a broadcast `emit`, for the same
+/// reason as `IMPORT_PROGRESS_EVENT` (CLAUDE.md gotcha #25): the export was
+/// started from one window's dialog.
+pub const EXPORT_PROGRESS_EVENT: &str = "huginndb://export-progress";
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ExportProgress {
+    pub done: i64,
+    pub total: i64,
+}
+
+/// One target resolved to an open pool and its concrete table list, ready to
+/// write — the shape [`export_databases`] needs twice: once to count rows,
+/// once to actually dump them, without resolving pools or re-listing tables
+/// a second time.
+struct ResolvedExportTarget {
+    database_name: String,
+    pool: DbPool,
+    tables: Vec<TableInfo>,
 }
 
 /// Export one or more databases — each optionally scoped to a subset of its
@@ -107,22 +129,10 @@ pub async fn export_databases(
         ));
     }
 
-    let mut w = std::io::BufWriter::new(std::fs::File::create(&dest_path)?);
-    writeln!(
-        w,
-        "-- HuginnDB export — {}\n",
-        chrono::Utc::now().to_rfc3339()
-    )?;
-
+    let mut resolved = Vec::with_capacity(targets.len());
     for target in &targets {
-        crate::commands::connection::ensure_database_view(
-            &app,
-            state.inner(),
-            Some(window.label()),
-            &target.connection_id,
-        )
-        .await;
-        let pool = pool_for(state.inner(), &target.connection_id)?;
+        crate::commands::ensure_view(&app, &window, state.inner(), &target.connection_id).await;
+        let pool = state.pool_for(&target.connection_id)?;
         if matches!(&pool, DbPool::Mongo(_)) {
             return Err(AppError::InvalidInput(format!(
                 "database export is not supported for MongoDB (database: {})",
@@ -138,14 +148,58 @@ pub async fn export_databases(
         if let Some(names) = &target.tables {
             tables.retain(|t| names.contains(&t.name));
         }
+        resolved.push(ResolvedExportTarget {
+            database_name: target.database_name.clone(),
+            pool,
+            tables,
+        });
+    }
 
-        writeln!(w, "-- Database: {}\n", target.database_name)?;
-        match pool {
-            DbPool::Postgres(p) => export_pg(&mut w, &p, &tables, data_mode).await?,
-            DbPool::Mysql(p) => export_mysql(&mut w, &p, &tables, data_mode).await?,
+    let mut total_rows: i64 = 0;
+    for r in &resolved {
+        let dialect = Dialect::try_of(&r.pool)?;
+        for t in &r.tables {
+            let qt = dialect.qualify(Some(&t.schema), &t.name);
+            let count =
+                crate::db::exec::scalar_i64(&r.pool, &format!("SELECT COUNT(*) FROM {qt}"), &[])
+                    .await?
+                    .unwrap_or(0);
+            total_rows += count;
+        }
+    }
+
+    let window_label = window.label().to_string();
+    let mut done_rows: i64 = 0;
+    let mut on_progress = move |just_written: i64| {
+        done_rows += just_written;
+        let _ = app.emit_to(
+            &window_label,
+            EXPORT_PROGRESS_EVENT,
+            ExportProgress {
+                done: done_rows,
+                total: total_rows,
+            },
+        );
+    };
+
+    let mut w = std::io::BufWriter::new(std::fs::File::create(&dest_path)?);
+    writeln!(
+        w,
+        "-- HuginnDB export — {}\n",
+        chrono::Utc::now().to_rfc3339()
+    )?;
+
+    for r in &resolved {
+        writeln!(w, "-- Database: {}\n", r.database_name)?;
+        match &r.pool {
+            DbPool::Postgres(p) => {
+                export_pg(&mut w, p, &r.tables, data_mode, &mut on_progress).await?
+            }
+            DbPool::Mysql(p) => {
+                export_mysql(&mut w, p, &r.tables, data_mode, &mut on_progress).await?
+            }
             DbPool::Sqlite(p) => {
-                let table_filter = target.tables.as_deref();
-                export_sqlite(&mut w, &p, table_filter, data_mode).await?
+                export_sqlite(&mut w, p, &r.tables, data_mode, &mut on_progress).await?
             }
             // SQL Server export needs its own literal encoder (`0x…` binaries,
             // `N'…'` unicode strings) plus `SET IDENTITY_INSERT` bracketing
@@ -257,14 +311,8 @@ pub async fn export_table(
     schema: Option<String>,
     table: String,
 ) -> AppResult<String> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "table export is not supported for MongoDB; use \"Export collection\" instead".into(),
@@ -293,7 +341,7 @@ pub async fn export_table(
         .set_file_name(&suggested)
         .add_filter("SQL", &["sql"])
         .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
     let dest = path.to_string();
 
     let mut w = std::io::BufWriter::new(std::fs::File::create(&dest)?);
@@ -303,22 +351,25 @@ pub async fn export_table(
         chrono::Utc::now().to_rfc3339()
     )?;
 
+    // Nothing observes this single-table export's progress today — the
+    // DataGrid toolbar action that triggers it has no notification handoff
+    // like `export_databases` does — so the callback is a no-op rather than
+    // wiring up an event nobody listens for.
+    let mut no_progress = |_rows: i64| {};
     match pool {
         DbPool::MsSql(_) => {
             return Err(AppError::UnsupportedDriver(
                 "table export is not supported for SQL Server yet".into(),
             ))
         }
-        DbPool::Postgres(p) => export_pg(&mut w, &p, &tables, DataMode::Insert).await?,
-        DbPool::Mysql(p) => export_mysql(&mut w, &p, &tables, DataMode::Insert).await?,
+        DbPool::Postgres(p) => {
+            export_pg(&mut w, &p, &tables, DataMode::Insert, &mut no_progress).await?
+        }
+        DbPool::Mysql(p) => {
+            export_mysql(&mut w, &p, &tables, DataMode::Insert, &mut no_progress).await?
+        }
         DbPool::Sqlite(p) => {
-            export_sqlite(
-                &mut w,
-                &p,
-                Some(std::slice::from_ref(&table)),
-                DataMode::Insert,
-            )
-            .await?
+            export_sqlite(&mut w, &p, &tables, DataMode::Insert, &mut no_progress).await?
         }
         DbPool::Mongo(_) => unreachable!("rejected above"),
     }
@@ -331,27 +382,21 @@ pub async fn export_table(
 /// [`export_table`], driven by the same [`ColumnFilter`] shape the DataGrid's
 /// advanced filter already builds. No pagination limit: every matching row
 /// is written, not just the current page. Rejects MongoDB.
-#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn export_table_rows(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
-    connection_id: String,
-    schema: Option<String>,
-    table: String,
-    filters: Vec<ColumnFilter>,
-    search: Option<String>,
-    search_columns: Option<Vec<String>>,
+    query: TableScan,
 ) -> AppResult<String> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    let TableScan {
+        connection_id,
+        schema,
+        table,
+        filter,
+    } = query;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
             "row export is not supported for MongoDB here; use \"Export collection\" instead"
@@ -364,10 +409,13 @@ pub async fn export_table_rows(
         ));
     }
     let dialect = Dialect::try_of(&pool)?;
-    let search_columns = search_columns.unwrap_or_default();
-    let search_ref = search.as_deref().filter(|s| !s.is_empty());
-    let (where_clause, binds, _) =
-        build_filter_clause_at(1, dialect, &filters, search_ref, &search_columns);
+    let (where_clause, binds, _) = build_filter_clause_at(
+        1,
+        dialect,
+        &filter.filters,
+        filter.needle(),
+        &filter.search_columns,
+    );
     let qt = dialect.qualify(schema.as_deref(), &table);
     let select_sql = format!("SELECT * FROM {qt}{where_clause}");
 
@@ -380,7 +428,7 @@ pub async fn export_table_rows(
         .set_file_name(&suggested)
         .add_filter("SQL", &["sql"])
         .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
     let dest = path.to_string();
 
     let mut w = std::io::BufWriter::new(std::fs::File::create(&dest)?);
@@ -489,6 +537,7 @@ async fn export_pg(
     pool: &sqlx::PgPool,
     tables: &[TableInfo],
     data_mode: DataMode,
+    on_progress: &mut impl FnMut(i64),
 ) -> AppResult<()> {
     let mut cached = Vec::with_capacity(tables.len());
     for t in tables {
@@ -560,6 +609,7 @@ async fn export_pg(
                 pg_sequence_resync_stmt(&unquoted_table, col_name, max_val)
             )?;
         }
+        on_progress(literal_rows.len() as i64);
     }
 
     for c in &cached {
@@ -579,6 +629,7 @@ async fn export_mysql(
     pool: &sqlx::MySqlPool,
     tables: &[TableInfo],
     data_mode: DataMode,
+    on_progress: &mut impl FnMut(i64),
 ) -> AppResult<()> {
     let mut cached = Vec::with_capacity(tables.len());
     for t in tables {
@@ -638,6 +689,7 @@ async fn export_mysql(
         if let Some(max_val) = max_val {
             writeln!(w, "{};\n", mysql_auto_increment_resync_stmt(&c.qt, max_val))?;
         }
+        on_progress(literal_rows.len() as i64);
     }
 
     for c in &cached {
@@ -652,57 +704,45 @@ async fn export_mysql(
 // SQLite
 // ---------------------------------------------------------------------------
 
-/// `table_filter` scopes the dump to the named tables (used by
-/// [`export_table`] with one name, [`export_databases`] with the export
-/// dialog's per-database checkbox subset); `None` dumps every table.
+/// `tables` scopes the dump to exactly those tables — resolved by the caller
+/// via `list_tables_inner` the same way as [`export_pg`]/[`export_mysql`], so
+/// SQLite's "every table" case is just the caller's unfiltered list rather
+/// than a `None` this function has to special-case.
 async fn export_sqlite(
     w: &mut impl Write,
     pool: &sqlx::SqlitePool,
-    table_filter: Option<&[String]>,
+    tables: &[TableInfo],
     data_mode: DataMode,
+    on_progress: &mut impl FnMut(i64),
 ) -> AppResult<()> {
+    if tables.is_empty() {
+        return Ok(());
+    }
     // `sqlx::query` takes a runtime `&str` (not the compile-time-checked
     // `query!` macro), so the `IN (?, ?, …)` placeholder list can be built to
     // match the filter's length rather than hard-coding an arity.
-    let placeholders = |n: usize| (0..n).map(|_| "?").collect::<Vec<_>>().join(", ");
+    let names: Vec<&str> = tables.iter().map(|t| t.name.as_str()).collect();
+    let placeholders = names.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 
-    let table_sql = match table_filter {
-        Some(names) => format!(
-            "SELECT name, sql FROM sqlite_master \
-             WHERE type = 'table' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
-             AND name IN ({}) ORDER BY name",
-            placeholders(names.len())
-        ),
-        None => "SELECT name, sql FROM sqlite_master \
-             WHERE type = 'table' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
-             ORDER BY name"
-            .to_string(),
-    };
+    let table_sql = format!(
+        "SELECT name, sql FROM sqlite_master \
+         WHERE type = 'table' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
+         AND name IN ({placeholders}) ORDER BY name"
+    );
     let mut tq = sqlx::query(&table_sql);
-    if let Some(names) = table_filter {
-        for n in names {
-            tq = tq.bind(n);
-        }
+    for n in &names {
+        tq = tq.bind(n);
     }
     let table_rows = tq.fetch_all(pool).await?;
 
-    let index_sql = match table_filter {
-        Some(names) => format!(
-            "SELECT sql FROM sqlite_master \
-             WHERE type = 'index' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
-             AND tbl_name IN ({}) ORDER BY name",
-            placeholders(names.len())
-        ),
-        None => "SELECT sql FROM sqlite_master \
-             WHERE type = 'index' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
-             ORDER BY name"
-            .to_string(),
-    };
+    let index_sql = format!(
+        "SELECT sql FROM sqlite_master \
+         WHERE type = 'index' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
+         AND tbl_name IN ({placeholders}) ORDER BY name"
+    );
     let mut iq = sqlx::query(&index_sql);
-    if let Some(names) = table_filter {
-        for n in names {
-            iq = iq.bind(n);
-        }
+    for n in &names {
+        iq = iq.bind(n);
     }
     let index_rows = iq.fetch_all(pool).await?;
 
@@ -722,6 +762,7 @@ async fn export_sqlite(
             writeln!(w, "DELETE FROM {quoted};\n")?;
         }
         if rows.is_empty() {
+            on_progress(0);
             continue;
         }
         // No `TableStructure` is built for SQLite (schema is dumped verbatim
@@ -743,6 +784,7 @@ async fn export_sqlite(
         for stmt in build_insert_statements(&quoted, &quoted_cols, &literal_rows, BATCH_SIZE) {
             writeln!(w, "{stmt};\n")?;
         }
+        on_progress(literal_rows.len() as i64);
     }
 
     for r in &index_rows {

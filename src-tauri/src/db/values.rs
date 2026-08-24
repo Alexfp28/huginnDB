@@ -265,31 +265,76 @@ pub fn sqlite_value(row: &sqlx::sqlite::SqliteRow, idx: usize) -> Value {
 }
 
 /// Map the columns of a `sqlx` row into `(name, type_name)` pairs.
-pub fn pg_columns(row: &sqlx::postgres::PgRow) -> Vec<(String, String)> {
-    row.columns()
-        .iter()
-        .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
-        .collect()
+///
+/// One body per row type, generated: `sqlx::Row` is object-safe only through
+/// its associated `Database`, so a single generic function would need the
+/// column and type-info bounds spelled out for each backend anyway. The three
+/// used to be hand-written copies of these four lines.
+macro_rules! columns_fn {
+    ($name:ident, $row:ty $(, $doc:literal)?) => {
+        $(#[doc = $doc])?
+        pub fn $name(row: &$row) -> Vec<(String, String)> {
+            row.columns()
+                .iter()
+                .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
+                .collect()
+        }
+    };
 }
 
-/// See [`pg_columns`].
-pub fn mysql_columns(row: &sqlx::mysql::MySqlRow) -> Vec<(String, String)> {
-    row.columns()
-        .iter()
-        .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
-        .collect()
+columns_fn!(pg_columns, sqlx::postgres::PgRow);
+columns_fn!(mysql_columns, sqlx::mysql::MySqlRow);
+columns_fn!(sqlite_columns, sqlx::sqlite::SqliteRow);
+
+/// Decode a whole `sqlx` result set into `(columns, rows)`.
+///
+/// The untyped `(name, type_name)` shape rather than a `ColumnMeta`: that DTO
+/// lives in `commands::query` and `db/` must not depend upward on `commands/`.
+/// `db::mssql::schema::decode_rows` returns the same shape for the same reason,
+/// so [`crate::db::exec::query_rows`] can hand back one type for all four
+/// drivers and let its caller do the mapping.
+///
+/// Column metadata comes from the *first* row, so an empty result set reports no
+/// columns. That is a real limitation of decoding rows rather than statements,
+/// and it is why the grid falls back to the catalog's column list when a
+/// filtered page comes back empty.
+macro_rules! result_fn {
+    ($name:ident, $row:ty, $cols:ident, $value:ident) => {
+        pub fn $name(rows: &[$row]) -> (Vec<(String, String)>, Vec<Vec<Value>>) {
+            let columns = rows.first().map($cols).unwrap_or_default();
+            let data = rows
+                .iter()
+                .map(|r| (0..r.columns().len()).map(|i| $value(r, i)).collect())
+                .collect();
+            (columns, data)
+        }
+    };
 }
 
-/// See [`pg_columns`].
-pub fn sqlite_columns(row: &sqlx::sqlite::SqliteRow) -> Vec<(String, String)> {
-    row.columns()
-        .iter()
-        .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
-        .collect()
-}
+result_fn!(pg_result, sqlx::postgres::PgRow, pg_columns, pg_value);
+result_fn!(
+    mysql_result,
+    sqlx::mysql::MySqlRow,
+    mysql_columns,
+    mysql_value
+);
+result_fn!(
+    sqlite_result,
+    sqlx::sqlite::SqliteRow,
+    sqlite_columns,
+    sqlite_value
+);
 
-/// Lowercase hex encoding of a byte slice.
-fn hex(bytes: &[u8]) -> String {
+/// Lowercase hex encoding of a byte slice — how every driver renders a value
+/// it could not decode as text.
+///
+/// Three modules had a byte-identical private copy of this (`db::dump` and
+/// `db::mssql::values` were the other two), each carrying a comment explaining
+/// that it was a deliberate duplicate. It lives here because this is the module
+/// that decides *when* a value becomes hex: `mysql_value` reads a
+/// `BINARY`-flagged column as raw bytes and falls back to hex only when
+/// `String::from_utf8` fails (gotcha #17), and the other two follow that call.
+pub fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {

@@ -25,6 +25,7 @@
 //! Anything that cannot be decoded degrades to `Value::Null` rather than
 //! failing the whole query — again matching [`crate::db::values`].
 
+use crate::db::values::hex;
 use serde_json::Value;
 use tiberius::{ColumnData, ColumnType, Row};
 
@@ -220,17 +221,6 @@ fn finite_f32(v: f32) -> Option<Value> {
 
 fn finite_f64(v: f64) -> Option<Value> {
     serde_json::Number::from_f64(v).map(Value::Number)
-}
-
-/// Lowercase hex encoding (mirrors the private helper of the same shape in
-/// [`crate::db::values`] and [`crate::db::dump`]).
-fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        let _ = write!(&mut s, "{b:02x}");
-    }
-    s
 }
 
 #[cfg(test)]

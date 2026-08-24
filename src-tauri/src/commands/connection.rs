@@ -12,8 +12,8 @@ use crate::ssh_known_hosts;
 use crate::state::{ActivePool, AppState, ConnectionProfile, Driver, StartupArgs};
 use crate::store;
 use crate::transfer::{
-    self, ConflictAction, ConflictResolution, ExportFile, ExportMetadata, ImportAnalysis,
-    ImportResult, KIND_PROFILES,
+    self, ConflictAction, ConflictResolution, ExportFile, ImportAnalysis, ImportResult,
+    KIND_PROFILES,
 };
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -188,7 +188,7 @@ pub(crate) fn resolve_password(profile: &ConnectionProfile) -> AppResult<String>
 /// the OS keychain. Returns `Ok(None)` if the profile has no tunnel, or if
 /// no secret has been stored yet (some tunnels — e.g. a passphrase-less
 /// key — legitimately have no stored secret).
-fn resolve_ssh_secret(profile: &ConnectionProfile) -> AppResult<Option<String>> {
+pub(crate) fn resolve_ssh_secret(profile: &ConnectionProfile) -> AppResult<Option<String>> {
     let Some(account) = profile.ssh_keyring_account() else {
         return Ok(None);
     };
@@ -284,12 +284,11 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
             keychain::delete_password(&ssh_account)?;
         }
     }
-    let tab_state_snapshot = {
-        let mut guard = state.tab_state.write();
+    crate::tab_state::mutate(&state.tab_state, |ts| {
         // Sweep every environment, not just the active one: the profile is gone
         // globally, so an entry surviving elsewhere would come back as a tab
         // pointing at a connection that no longer exists.
-        for env in &mut guard.environments {
+        for env in &mut ts.environments {
             env.connections.remove(&id);
             env.launch.active_connections.retain(|c| c != &id);
             if env.launch.selected_connection_id.as_deref() == Some(id.as_str()) {
@@ -301,9 +300,8 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
             // ever reused, silently apply somebody else's subset.
             env.launch.database_visibility.remove(&id);
         }
-        guard.clone()
-    };
-    crate::tab_state::save_tab_state(&tab_state_snapshot)?;
+        Ok(())
+    })?;
 
     // Same reasoning as `database_visibility` above, one step further: a
     // binding pinned to this profile can never match again, because a profile
@@ -707,25 +705,11 @@ async fn close_view(
     }
 }
 
-/// Synthetic connection id for a per-database browse session under
-/// `parent_id`. Format is stable so callers can derive the id without a
-/// round-trip when they only need to address an already-open child.
-pub fn database_view_id(parent_id: &str, database: &str) -> String {
-    format!("{parent_id}::db::{database}")
-}
-
-/// The *profile* id behind a connection id: `id` itself for a plain one, the
-/// parent for a synthetic `<parent>::db::<database>` child.
-///
-/// Rust twin of `lib/connectionLabel.ts`'s `parentConnectionId`. Lives here
-/// because [`database_view_id`] already owns the format, so the two spellings of
-/// `::db::` stay in one file (gotcha #36).
-pub fn parent_connection_id(id: &str) -> &str {
-    match id.split_once("::db::") {
-        Some((parent, _)) => parent,
-        None => id,
-    }
-}
+// The synthetic-id vocabulary lives in `crate::state`, next to the connection
+// map it addresses, so the layers *below* `commands` (`db::pool`,
+// `pool_reaper`) can use it without depending upward. Re-exported here because
+// these two paths are what the rest of `commands` already calls.
+pub use crate::state::{database_view_id, parent_connection_id};
 
 /// If `id` names a `<parent>::db::<database>` view the idle reaper
 /// (`pool_reaper.rs`) has since closed, transparently reopen it with the same
@@ -755,7 +739,7 @@ pub async fn ensure_database_view(
     if state.connections.read().get(id).is_some() {
         return;
     }
-    if let Some((parent_id, database)) = id.split_once("::db::") {
+    if let Some((parent_id, database)) = crate::state::split_database_view(id) {
         let _ = open_database_view_inner(app, state, window_label, parent_id, database).await;
     }
 }
@@ -1138,17 +1122,7 @@ pub fn analyze_import_file(
     let data = std::fs::read_to_string(&file_path)?;
     let export: ExportFile = serde_json::from_str(&data)?;
 
-    if export.meta.version != 1 {
-        return Err(AppError::Transfer(format!(
-            "unsupported export format version {}",
-            export.meta.version
-        )));
-    }
-    if !export.meta.kind.is_empty() && export.meta.kind != KIND_PROFILES {
-        return Err(AppError::Transfer(
-            "this file is an environment export — use Import Environment instead".into(),
-        ));
-    }
+    transfer::check_meta(&export.meta, KIND_PROFILES)?;
 
     let profiles = state.profiles.read();
     let conflicts = transfer::detect_conflicts(&profiles, &export.profiles);
@@ -1200,35 +1174,18 @@ pub async fn export_profiles(
 
     let now = chrono::Utc::now().to_rfc3339();
     let file = ExportFile {
-        meta: ExportMetadata {
-            version: 1,
-            app: "huginndb".into(),
-            exported_at: now.clone(),
-            encrypted: include_passwords,
-            kind: KIND_PROFILES.into(),
-        },
+        meta: transfer::metadata(KIND_PROFILES, include_passwords, &now),
         profiles: exported_profiles,
     };
 
-    let json = serde_json::to_string_pretty(&file)?;
-
-    // Build a suggested filename like `huginndb-profiles-2025-06-02.json`.
+    // A suggested filename like `huginndb-profiles-2025-06-02.json`.
     let date_part = now.get(..10).unwrap_or("export");
-    let suggested = format!("huginndb-profiles-{date_part}.json");
-
-    use tauri_plugin_dialog::DialogExt;
-    let path = app
-        .dialog()
-        .file()
-        .set_title("Export profiles")
-        .set_file_name(&suggested)
-        .add_filter("JSON", &["json"])
-        .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
-
-    let dest = path.to_string();
-    std::fs::write(&dest, json)?;
-    Ok(dest)
+    transfer::save_export(
+        &app,
+        "Export profiles",
+        &format!("huginndb-profiles-{date_part}.json"),
+        &serde_json::to_string_pretty(&file)?,
+    )
 }
 
 /// Import profiles from a previously exported JSON file.
@@ -1250,9 +1207,14 @@ pub async fn export_profiles(
 /// enough profiles in one file, slow enough to freeze the window (issue: app
 /// reported "not responding" importing a multi-environment bundle with dozens
 /// of encrypted secrets).
+///
+/// `window` is only used to scope [`IMPORT_PROGRESS_EVENT`] to the caller —
+/// see the event's own doc comment for why a plain `app.emit` would leak
+/// progress into every open window (CLAUDE.md gotcha #25).
 #[tauri::command]
 pub async fn import_profiles(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     file_path: String,
     passphrase: Option<String>,
@@ -1261,22 +1223,13 @@ pub async fn import_profiles(
     let profiles_lock = state.profiles.clone();
     let json_schemas_lock = state.json_schemas.clone();
     let app_for_task = app.clone();
+    let window_label = window.label().to_string();
 
     let (result, schema_changed) = tauri::async_runtime::spawn_blocking(move || -> AppResult<_> {
         let data = std::fs::read_to_string(&file_path)?;
         let export: ExportFile = serde_json::from_str(&data)?;
 
-        if export.meta.version != 1 {
-            return Err(AppError::Transfer(format!(
-                "unsupported export format version {}",
-                export.meta.version
-            )));
-        }
-        if !export.meta.kind.is_empty() && export.meta.kind != KIND_PROFILES {
-            return Err(AppError::Transfer(
-                "this file is an environment export — use Import Environment instead".into(),
-            ));
-        }
+        transfer::check_meta(&export.meta, KIND_PROFILES)?;
         if export.meta.encrypted && passphrase.is_none() {
             return Err(AppError::Transfer(
                 "this export file contains encrypted passwords — provide a passphrase".into(),
@@ -1297,8 +1250,11 @@ pub async fn import_profiles(
                 passphrase.as_deref(),
                 &resolution_map,
                 |done, total| {
-                    let _ =
-                        app_for_task.emit(IMPORT_PROGRESS_EVENT, ImportProgress { done, total });
+                    let _ = app_for_task.emit_to(
+                        &window_label,
+                        IMPORT_PROGRESS_EVENT,
+                        ImportProgress { done, total },
+                    );
                 },
             )?;
             store::save_profiles(&profiles)?;
@@ -1352,6 +1308,14 @@ pub(crate) type ProfileImportOutcome = (
 /// can take long enough that a bare spinner isn't enough feedback. Snake_case
 /// on the wire, matching `ImportResult` and every other DTO in this module
 /// (no `rename_all`).
+///
+/// Emitted with `emit_to(window_label, ...)`, not a broadcast `emit` — each
+/// import is triggered from one window's dialog, so a second ("New window")
+/// window has no business rendering someone else's import progress (CLAUDE.md
+/// gotcha #25). The frontend bridge (`lib/bridges/import-progress-bridge.ts`)
+/// scopes its `listen` the same way, which is the half that actually matters:
+/// an unscoped `listen()` defaults to `EventTarget::Any` and receives every
+/// `emit_to(...)` regardless of the emitter's target.
 pub const IMPORT_PROGRESS_EVENT: &str = "huginndb://import-progress";
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -1370,10 +1334,13 @@ pub struct ImportProgress {
 /// Every imported profile receives a **fresh UUID** regardless of whether it
 /// came with one in the file, to avoid keychain-account collisions with
 /// profiles already on this machine. The second return value maps each
-/// *original* profile id to that fresh one (skipped profiles are absent) —
+/// *original* profile id to the local id it should now resolve to —
 /// `import_profiles` has no use for it, but `import_environment` needs it to
 /// translate each environment bundle's `connection_ids` into the ids that
-/// actually landed in `profiles.json`.
+/// actually landed in `profiles.json`. A **skipped** profile maps to *itself*:
+/// the conflict was matched by id, so the local profile already answers to it.
+/// Every incoming profile therefore has an entry, and an id missing from this
+/// map genuinely means "did not land".
 ///
 /// The **third** return value is the subset of that map for profiles that were
 /// *overwritten*. Because a fresh UUID is minted even when overwriting, anything
@@ -1382,8 +1349,9 @@ pub struct ImportProgress {
 /// JSON-Schema bindings are exactly that (`crate::json_schemas`), so both
 /// callers feed this map to `json_schemas::remap_connection_ids`. It is
 /// deliberately *only* the overwrite subset: on `Rename` the local profile keeps
-/// its original id and its bindings must stay on it, and a `Skip` has no entry
-/// at all.
+/// its original id and its bindings must stay on it, and on `Skip` nothing was
+/// replaced, so there is nothing to repoint (it appears in the *second* map, as
+/// an identity entry, but never in this one).
 pub(crate) fn apply_profile_imports(
     profiles: &mut Vec<ConnectionProfile>,
     exported: Vec<transfer::ExportedProfile>,
@@ -1425,7 +1393,28 @@ pub(crate) fn apply_profile_imports(
         };
 
         if matches!(conflict_action, ConflictAction::Skip) {
+            // Map the skipped id to *itself*. A conflict is matched by id, so
+            // "skip" means "a profile with this exact id is already here" — the
+            // incoming reference resolves perfectly well, it just resolves to
+            // the local profile instead of a freshly minted one. Leaving the
+            // entry out made `id_map` say "this connection did not land",
+            // which is false, and both consumers acted on it:
+            //
+            //   * `import_environment` builds the new environment's
+            //     `launch.visible_connections` by translating the bundle's
+            //     `connection_ids` through this map, so a skipped connection
+            //     was dropped from the filter — the environment came up hiding
+            //     the very connections it was exported to describe.
+            //   * JSON-Schema bindings are repointed through the same map, and
+            //     an id absent from it is taken to name a connection unknown
+            //     locally, so the binding is *disabled* (gotcha #39). It was
+            //     disabling bindings for profiles that were sitting right
+            //     there under the same id.
+            //
+            // `overwritten_ids` (the third return value) deliberately gets no
+            // entry: nothing was overwritten, so there is nothing to repoint.
             result.skipped.push(ep.profile.id.clone());
+            id_map.insert(ep.profile.id.clone(), ep.profile.id.clone());
             continue;
         }
 
@@ -1451,21 +1440,10 @@ pub(crate) fn apply_profile_imports(
         }
         let original_name = ep.profile.name.clone();
 
-        // Ensure the display name is unique; append " (imported)" or " (2)" etc.
-        let final_name = {
-            let base = ep.profile.name.clone();
-            let mut candidate = base.clone();
-            let mut suffix = 2u32;
-            while profiles.iter().any(|p| p.name == candidate) {
-                candidate = if suffix == 2 {
-                    format!("{base} (imported)")
-                } else {
-                    format!("{base} ({suffix})")
-                };
-                suffix += 1;
-            }
-            candidate
-        };
+        let final_name = crate::transfer::disambiguate_name(
+            &ep.profile.name,
+            profiles.iter().map(|p| p.name.as_str()),
+        );
 
         let renamed = final_name != original_name;
         if renamed {
@@ -1478,27 +1456,17 @@ pub(crate) fn apply_profile_imports(
         new_profile.id = new_id.clone();
         new_profile.name = final_name;
 
-        // Decrypt and store secrets if present.
-        let has_secrets = if let Some(secrets) = &ep.secrets {
-            let pp = passphrase.unwrap_or("");
-            let mut any = false;
-            if let Some(enc_pw) = &secrets.db_password {
-                if !matches!(new_profile.driver, Driver::Sqlite) {
-                    let pw = crate::transfer::decrypt_secret(enc_pw, pp)?;
-                    keychain::set_password(&new_profile.keyring_account(), &pw)?;
-                    any = true;
-                }
-            }
-            if let Some(enc_ssh) = &secrets.ssh_secret {
-                if let Some(ssh_acct) = new_profile.ssh_keyring_account() {
-                    let secret = crate::transfer::decrypt_secret(enc_ssh, pp)?;
-                    keychain::set_password(&ssh_acct, &secret)?;
-                    any = true;
-                }
-            }
-            any
-        } else {
-            false
+        // Decrypt and store secrets if present. `Strict` because the user is
+        // sitting in the import dialog: a wrong passphrase has to surface here
+        // rather than yielding a pile of connections that cannot authenticate.
+        let has_secrets = match &ep.secrets {
+            Some(secrets) => crate::transfer::land_secrets(
+                &new_profile,
+                secrets,
+                passphrase,
+                crate::transfer::LandMode::Strict,
+            )?,
+            None => false,
         };
 
         if !has_secrets && !matches!(new_profile.driver, Driver::Sqlite) {
@@ -1702,24 +1670,8 @@ mod tests {
 
     fn profile(id: &str, name: &str) -> ConnectionProfile {
         ConnectionProfile {
-            id: id.into(),
             name: name.into(),
-            driver: crate::state::Driver::Postgres,
-            host: "localhost".into(),
-            port: 5432,
-            database: String::new(),
-            username: "u".into(),
-            ssl: false,
-            ssh_tunnel: None,
-            connection_string: None,
-            auth_source: None,
-            mssql: None,
-            ephemeral: false,
-            group: None,
-            visible_databases: None,
-            mcp_write: Default::default(),
-            max_connections: None,
-            origin_id: None,
+            ..crate::testkit::profile(id)
         }
     }
 
@@ -1757,14 +1709,14 @@ mod tests {
     }
 
     #[test]
-    fn apply_profile_imports_skipped_profiles_are_absent_from_the_id_map() {
+    fn apply_profile_imports_maps_a_skipped_profile_to_itself() {
         let mut profiles = Vec::new();
         let mut resolutions = std::collections::HashMap::new();
         resolutions.insert("orig-a".to_string(), ConflictAction::Skip);
         // Pre-seed a profile with the same id so it registers as a conflict.
         profiles.push(profile("orig-a", "Existing"));
 
-        let (result, id_map, _overwritten) = apply_profile_imports(
+        let (result, id_map, overwritten) = apply_profile_imports(
             &mut profiles,
             vec![exported("orig-a", "A")],
             None,
@@ -1774,10 +1726,18 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.skipped, vec!["orig-a".to_string()]);
-        assert!(
-            !id_map.contains_key("orig-a"),
-            "a skipped profile must not appear in the id map"
+        // The conflict was matched by id, so the local profile already answers
+        // to it: the reference resolves, it just resolves to what is already
+        // here. Callers translate ids through this map to decide what an
+        // imported environment can see and where a JSON-Schema binding points,
+        // and both read a missing entry as "this connection did not land".
+        assert_eq!(
+            id_map.get("orig-a").map(String::as_str),
+            Some("orig-a"),
+            "a skipped profile must map to the local profile it collided with"
         );
+        // Nothing was replaced, so nothing needs repointing.
+        assert!(overwritten.is_empty());
     }
 
     #[test]
@@ -1801,7 +1761,7 @@ mod tests {
         assert_eq!(result.skipped, vec!["orig-a".to_string()]);
         assert!(result.imported.is_empty());
         assert!(result.renamed.is_empty());
-        assert!(!id_map.contains_key("orig-a"));
+        assert_eq!(id_map.get("orig-a").map(String::as_str), Some("orig-a"));
         assert_eq!(profiles.len(), 1, "no duplicate profile must be created");
         // Nothing was overwritten, so no JSON-Schema binding should be
         // repointed either (see the third return value).

@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import {
   Dialog,
   DialogContent,
@@ -78,14 +78,14 @@ export function ImportSqlDialog({
       const result = await api.executeBatch(connectionId, statements);
       const failed = result.statements.find((s) => s.error);
       if (failed) {
-        toast.error(
+        notify.error(
           t("schema.importSql.failed", {
             index: failed.index + 1,
             message: failed.error,
           }),
         );
       } else {
-        toast.success(
+        notify.success(
           t("schema.importSql.success", { count: result.statements.length }),
         );
       }

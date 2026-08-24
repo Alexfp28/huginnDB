@@ -23,14 +23,6 @@ use std::convert::TryFrom;
 use std::io::Write;
 use tauri::{AppHandle, State};
 
-fn pool_for(state: &AppState, id: &str) -> AppResult<DbPool> {
-    state
-        .connections
-        .read()
-        .get(id)
-        .ok_or_else(|| AppError::NotConnected(id.to_string()))
-}
-
 fn mongo_conn(pool: &DbPool) -> AppResult<&crate::state::MongoConn> {
     match pool {
         DbPool::Mongo(conn) => Ok(conn),
@@ -59,14 +51,8 @@ pub async fn export_collection(
     collection: String,
     filters: Option<Vec<ColumnFilter>>,
 ) -> AppResult<String> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    let pool = state.pool_for(&connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;
     let filters = filters.unwrap_or_default();
@@ -80,7 +66,7 @@ pub async fn export_collection(
         .set_file_name(&suggested)
         .add_filter("JSON", &["json"])
         .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer("export cancelled".into()))?;
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
     let dest = path.to_string();
 
     let coll = db.collection::<Document>(&collection);
@@ -121,14 +107,8 @@ pub async fn import_collection(
     collection: String,
     file_path: String,
 ) -> AppResult<u64> {
-    crate::commands::connection::ensure_database_view(
-        &app,
-        state.inner(),
-        Some(window.label()),
-        &connection_id,
-    )
-    .await;
-    let pool = pool_for(state.inner(), &connection_id)?;
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    let pool = state.pool_for(&connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;
 

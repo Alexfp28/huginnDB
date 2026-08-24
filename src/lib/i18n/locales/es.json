@@ -226,13 +226,6 @@
     "noMatches": "Ninguna conexión coincide con la búsqueda.",
     "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya."
   },
-  "connectPassword": {
-    "title": "Contraseña requerida",
-    "description": "No se encontró la contraseña guardada para \"{{name}}\". Introdúcela para conectar.",
-    "password": "Contraseña",
-    "connect": "Conectar",
-    "connecting": "Conectando…"
-  },
   "adhocDriver": {
     "title": "¿Qué driver de base de datos?",
     "description": "\"{{name}}\" se lanzó sin --driver y no hay un driver por defecto configurado. Elige el motor con el que conectar.",
@@ -403,7 +396,7 @@
       "browse": "Examinar…",
       "export": "Exportar",
       "exporting": "Exportando…",
-      "success": "Exportado a {{path}}"
+      "progress": "{{done}} de {{total}} filas · SQL"
     },
     "importSql": {
       "title": "Importar .sql…",
@@ -418,8 +411,7 @@
       "running": "Ejecutando…"
     },
     "exportCollection": {
-      "title": "Exportar colección (JSON)…",
-      "success": "Colección exportada a {{path}}"
+      "title": "Exportar colección (JSON)…"
     },
     "importCollection": {
       "title": "Importar JSON…",
@@ -590,9 +582,7 @@
     "exportData": {
       "label": "Exportar datos",
       "table": "Exportar la tabla completa",
-      "queryResults": "Exportar resultado de la consulta",
-      "tableSuccess": "Tabla exportada a {{path}}",
-      "rowsSuccess": "Filas exportadas a {{path}}"
+      "queryResults": "Exportar resultado de la consulta"
     },
     "bulkUpdate": {
       "toolbarTitle": "Actualizar varias filas/documentos a la vez",
@@ -843,6 +833,7 @@
   },
   "tabs": {
     "queryFileName": "query.sql",
+    "mongoQueryFileName": "query",
     "tableFallback": "Tabla",
     "structureSuffix": "estructura",
     "viewSuffix": "vista",
@@ -986,6 +977,10 @@
         "label": "Tabla de datos",
         "desc": "Filas y paginación"
       },
+      "notifications": {
+        "label": "Notificaciones",
+        "desc": "Posición y duración"
+      },
       "connections": {
         "label": "Conexiones",
         "desc": "Pools y límites"
@@ -1124,7 +1119,6 @@
       "deleteTooltip": "Eliminar tema personalizado",
       "duplicateLabel": "Duplicar como personalizado",
       "exportTooltip": "Exportar tema…",
-      "exportSuccess": "Tema exportado a {{path}}",
       "importTitle": "Importar tema…",
       "importSuccess": "Se importó «{{name}}» como nuevo tema personalizado",
       "importError": {
@@ -1151,6 +1145,40 @@
           "label": "Numerar los campos",
           "desc": "Numera los campos de cada fila en el margen izquierdo."
         }
+      },
+      "color": {
+        "background": "Fondo",
+        "foreground": "Texto",
+        "card": "Tarjeta",
+        "cardForeground": "Texto de tarjeta",
+        "primary": "Primario",
+        "primaryForeground": "Texto primario",
+        "secondary": "Secundario",
+        "secondaryForeground": "Texto secundario",
+        "muted": "Atenuado",
+        "mutedForeground": "Texto atenuado",
+        "accent": "Acento",
+        "accentForeground": "Texto de acento",
+        "brand": "Marca",
+        "brandForeground": "Texto de marca",
+        "brandHover": "Marca al pasar",
+        "popover": "Popover",
+        "popoverForeground": "Texto de popover",
+        "success": "Éxito",
+        "successForeground": "Texto de éxito",
+        "warning": "Advertencia",
+        "warningForeground": "Texto de advertencia",
+        "destructive": "Destructivo",
+        "destructiveForeground": "Texto destructivo",
+        "border": "Borde",
+        "input": "Borde de campo",
+        "ring": "Anillo de foco"
+      },
+      "colorGroup": {
+        "surfaces": "Superficies",
+        "actions": "Acciones y marca",
+        "status": "Colores de estado",
+        "borders": "Bordes y foco"
       }
     },
     "shortcuts": {
@@ -1237,6 +1265,90 @@
         "label": "Compartir pools con el conector MCP",
         "desc": "Permite que un sidecar huginndb-mcp en ejecución use las conexiones de esta app en lugar de abrir las suyas, de modo que toda la máquina comparta un presupuesto por servidor — y su actividad aparezca en la Consola en tiempo real. Abre un listener en localhost protegido por token. Desactivado por defecto."
       }
+    },
+    "notifications": {
+      "position": {
+        "label": "Posición",
+        "desc": "Esquina o borde desde el que crece la pila.",
+        "topLeft": "Arriba izquierda",
+        "topCenter": "Arriba centro",
+        "topRight": "Arriba derecha",
+        "bottomLeft": "Abajo izquierda",
+        "bottomCenter": "Abajo centro",
+        "bottomRight": "Abajo derecha"
+      },
+      "duration": {
+        "label": "Duración",
+        "desc": "Cuánto vive una notificación que se cierra sola. Los avisos y las de archivo duran un múltiplo de esto.",
+        "sticky": "Hasta cerrarla",
+        "seconds": "{{count}} s",
+        "unit": "ms"
+      },
+      "errorsPersist": {
+        "label": "Los errores esperan a que los cierres",
+        "desc": "Un error suele traer algo que copiar, reintentar o reportar, y nada de eso pasa en seis segundos."
+      },
+      "maxVisible": {
+        "label": "Visibles a la vez",
+        "desc": "Las que sobran se cuentan en una píldora y van directas al historial."
+      },
+      "expandOnHover": {
+        "label": "Expandir al pasar el ratón",
+        "desc": "Abre la pila y congela todos los temporizadores mientras el puntero esté encima."
+      },
+      "density": {
+        "label": "Densidad",
+        "desc": "La compacta quita la línea de detalle y deja título y acciones en una sola fila.",
+        "comfortable": "Cómoda",
+        "compact": "Compacta"
+      },
+      "historyLimit": {
+        "label": "Entradas del historial",
+        "desc": "Las guarda esta ventana en memoria; nunca se escriben en disco. 0 desactiva el historial."
+      },
+      "showBell": {
+        "label": "Campana en la barra de herramientas",
+        "desc": "Apagada, el historial sigue existiendo y se abre desde la paleta de comandos."
+      },
+      "preview": {
+        "title": "Vista previa",
+        "desc": "Dispara una notificación real, con su temporizador y su hairline, para poder juzgar los segundos en vez de adivinarlos.",
+        "test": "Probar",
+        "testError": "Probar un error",
+        "sampleTitle": "Celda guardada",
+        "sampleBody": "Artist.Name en la fila 4.",
+        "sampleErrorTitle": "No se pudo guardar la celda",
+        "sampleErrorBody": "ERROR 1062 (23000): Duplicate entry 'AC/DC' for key 'Artist.ux_name'"
+      }
+    }
+  },
+  "notifications": {
+    "openFolder": "Abrir carpeta",
+    "copyPath": "Copiar ruta",
+    "copyError": "Copiar error",
+    "fileMissing": "El archivo ya no está en esa ruta.",
+    "fileSaved": {
+      "table": "Tabla exportada",
+      "rows": "Resultados exportados",
+      "collection": "Colección exportada",
+      "database": "Base de datos exportada",
+      "profiles": "Conexiones exportadas",
+      "environments": "Entornos exportados",
+      "jsonSchemas": "Esquemas JSON exportados",
+      "theme": "Tema exportado"
+    },
+    "center": {
+      "open": "Notificaciones",
+      "title": "Notificaciones",
+      "unread": "{{count}} sin leer",
+      "markAllRead": "Marcar leídas",
+      "clear": "Limpiar",
+      "empty": "Nada por ahora.",
+      "emptyHint": "Aquí quedan las exportaciones, los errores y las confirmaciones.",
+      "today": "Hoy",
+      "yesterday": "Ayer",
+      "earlier": "Anterior",
+      "moreHidden": "{{count}} notificación(es) más"
     }
   },
   "transfer": {
@@ -1254,8 +1366,7 @@
       "passphraseConfirmPlaceholder": "Repite la contraseña",
       "passphraseMismatch": "Las contraseñas no coinciden",
       "exportButton": "Exportar {{count}} perfil(es)",
-      "exporting": "Exportando…",
-      "success": "Exportado en {{path}}"
+      "exporting": "Exportando…"
     },
     "import": {
       "title": "Importar perfiles",
@@ -1503,7 +1614,9 @@
     "elapsedTitle": "Duración de la consulta",
     "batchOk": "{{count}} sentencias · {{rows}} filas afectadas",
     "batchFailed": "Detenido en la sentencia {{index}} de {{total}}",
-    "rowsAffected": "{{rows}} filas afectadas · {{ms}} ms"
+    "rowsAffected": "{{rows}} filas afectadas · {{ms}} ms",
+    "newTabPlaceholder": "-- escribe una consulta SQL y pulsa Ctrl+Intro\n",
+    "mongoNewTabPlaceholder": "// db.coleccion.find({}) — pulsa Ctrl+Intro\n"
   },
   "saved": {
     "connectFirst": "Conéctate primero a una base de datos.",
@@ -1558,6 +1671,8 @@
     "title": "Documentación",
     "subtitle": "Guías para sacar el máximo partido a HuginnDB.",
     "updated": "Actualizado {{date}}",
+    "cover": "Portada",
+    "coverSections": "En esta guía",
     "empty": "No hay documentación disponible.",
     "entries": {
       "connections": {
@@ -1595,6 +1710,31 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_18_0": {
+        "tagline": "Un sistema de notificaciones propio de la app, gestión completa de vistas desde el conector MCP, y un repaso de rendimiento y fiabilidad a nivel de todo el proyecto.",
+        "items": {
+          "notifications": {
+            "title": "Un sistema de notificaciones propio",
+            "body": "Cada aviso lo renderiza ahora HuginnDB, no los valores por defecto de la librería — una tarjeta con el tema de la app, notificaciones repetidas agrupadas en una con contador, un historial tras una campana en la barra de herramientas, y una tarjeta de progreso para importaciones y exportaciones que sobreviven al diálogo que las inició."
+          },
+          "mcpViews": {
+            "title": "Vistas desde el conector MCP: leer, editar y eliminar",
+            "body": "Un cliente de IA ya puede leer la definición de una vista, crearla o redefinirla, y eliminarla, en los cinco drivers — incluidas las pipelines de agregación guardadas de MongoDB. Misma política de escritura que cualquier otro cambio DDL: la conexión necesita acceso de escritura completo."
+          },
+          "performance": {
+            "title": "Interno: una app más rápida y fiable por dentro",
+            "body": "Corregido un congelamiento del arranque de varios segundos causado por re-calcular el hash de cada secreto de un origen compartido en el hilo principal, y un fallo de SQL Server que dejaba el explorador de esquema cargando columnas para siempre. Un repaso a todo el proyecto también eliminó lógica duplicada en el backend de Rust y en el frontend — mismo comportamiento, menos código que pueda desincronizarse."
+          },
+          "bugFixes": {
+            "title": "Una ronda de control de issues y bugs",
+            "body": "Eliminar una \"vista\" de MongoDB cuyo nombre coincidía con una colección real podía borrar todos sus documentos — ahora se rechaza. También se corrigen los índices de MongoDB con nombre en blanco, las actualizaciones masivas sobre columnas BIT de MySQL, y una docena de inconsistencias menores (formato según el idioma, numeración de importaciones, traducciones que faltaban)."
+          },
+          "docsSections": {
+            "title": "El visor de documentación ahora tiene secciones",
+            "body": "Cada guía abre en una portada con una tarjeta por sección, la barra lateral es un árbol derivado directamente del markdown, y los enlaces internos ya saltan de verdad a su destino."
+          }
+        }
+      },
       "1_17_0": {
         "tagline": "Tu editor ya entiende de esquemas JSON — y una consulta descontrolada ya no puede tirar la app.",
         "items": {

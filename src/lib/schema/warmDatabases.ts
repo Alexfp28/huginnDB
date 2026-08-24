@@ -15,16 +15,36 @@
  * nineteen databases turned one keystroke into nineteen simultaneous connection
  * attempts, which was itself enough to exhaust a shared server's limit (see the
  * prefetch note in `SchemaExplorer.tsx`). This mirrors that fix's shape —
- * `CONCURRENCY` at a time, and a hard stop the moment the server says it is
- * full, because every remaining database would fail identically.
+ * `DB_VIEW_WARM_CONCURRENCY` at a time, and a hard stop the moment the server
+ * says it is full, because every remaining database would fail identically.
  */
 
 import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
 import { useSchema } from "@/stores/session/schema";
 import { isTooManyConnections } from "@/lib/db/driver";
+import { databaseViewId } from "@/lib/connectionLabel";
 
-/** How many database views may be opened at once. Matches the explorer's. */
-const CONCURRENCY = 3;
+/**
+ * How many database views may be opened at once.
+ *
+ * Every `openDatabaseView` is a separate connection pool against the same
+ * server, so an unbounded fan-out is indistinguishable from a denial-of-service
+ * against a database the user shares with their IDE, their application backend
+ * and any MCP sidecars — a nineteen-database server firing nineteen at once was
+ * itself enough to exhaust a shared limit (1.13.0). Three keeps a warm feeling
+ * responsive on a handful of databases while making that case a queue rather
+ * than a burst.
+ *
+ * Exported because the schema explorer's cross-database search is bounded by the
+ * same number for the same reason. The two remain **separate schedulers on
+ * purpose**: this one is a one-shot walk over a fixed list, awaited by its
+ * caller and reporting counts, while the explorer's is a re-entrant effect that
+ * re-derives its queue on every pass so a keystroke, a newly active database or
+ * a changed visible set changes what still gets warmed — and so the tree fills
+ * in progressively rather than in one batch at the end. Collapsing them would
+ * mean giving one of those two behaviours up.
+ */
+export const DB_VIEW_WARM_CONCURRENCY = 3;
 
 export interface WarmResult {
   /** Databases whose table list is now in the store. */
@@ -37,7 +57,7 @@ export interface WarmResult {
 
 /**
  * Open a view per database of `parentId` and pull its table list into
- * `useSchema`, `CONCURRENCY` at a time.
+ * `useSchema`, `DB_VIEW_WARM_CONCURRENCY` at a time.
  *
  * Individual failures are counted and skipped — one unreachable database
  * shouldn't cost the others — but a connection-limit refusal aborts the rest.
@@ -75,7 +95,7 @@ export async function warmDatabases(
   };
 
   await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker),
+    Array.from({ length: Math.min(DB_VIEW_WARM_CONCURRENCY, queue.length) }, worker),
   );
   return result;
 }
@@ -91,7 +111,7 @@ export function unwarmedDatabases(
   byConnection: Record<string, { tables?: unknown[]; initialized?: boolean }>,
 ): string[] {
   return databases.filter((name) => {
-    const slice = byConnection[`${parentId}::db::${name}`];
+    const slice = byConnection[databaseViewId(parentId, name)];
     return !slice?.initialized;
   });
 }

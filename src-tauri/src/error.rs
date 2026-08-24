@@ -113,6 +113,16 @@ pub enum AppError {
 /// sync.
 pub const TOO_MANY_CONNECTIONS_TAG: &str = "too many connections";
 
+/// Message of the [`AppError::Transfer`] raised when the user closes the native
+/// save dialog instead of picking a file.
+///
+/// Not an error the user should see: five export commands return it, and every
+/// caller has to tell it apart from a real failure so it can stay quiet.
+/// Crosses the IPC boundary as a plain string like everything else, so it is
+/// matched by substring — see `isExportCancelled` in `src/lib/db/driver.ts`,
+/// and keep the two in sync.
+pub const EXPORT_CANCELLED: &str = "export cancelled";
+
 /// Substrings that identify a connection-limit refusal in a driver's own
 /// message. Checked case-insensitively as a fallback for the drivers whose
 /// structured error codes don't cleanly single the condition out.

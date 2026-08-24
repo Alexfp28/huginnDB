@@ -79,6 +79,11 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit
 
+      # Runs after the typecheck on purpose: a type error is the cheaper, more
+      # legible failure, and vitest would report it as a transform error.
+      - name: Tests
+        run: pnpm test
+
   rust:
     name: clippy + tests (${{ matrix.platform }})
     strategy:

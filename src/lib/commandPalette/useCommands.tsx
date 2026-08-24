@@ -20,9 +20,10 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import {
   AppWindow,
+  Bell,
   BookOpen,
   Braces,
   Cable,
@@ -79,6 +80,7 @@ import {
 import { BUILT_IN_THEMES } from "@/lib/themes";
 import { DOCS } from "@/lib/appInfo/docs";
 import {
+  isServerWide,
   parentConnectionId,
   resolveConnectionLabel,
   tabLeafTitle,
@@ -88,14 +90,16 @@ import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
 import {
   unwarmedDatabases,
   warmDatabases,
-} from "@/lib/commandPalette/warmSchema";
+} from "@/lib/schema/warmDatabases";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { refreshTable } from "@/lib/grid/tableRefresh";
 import { ACTIONS, formatComboForDisplay, getBinding } from "@/lib/keybindings";
 import { api } from "@/lib/tauri";
 import { SETTINGS_INDEX } from "@/lib/commandPalette/settingsRegistry";
 import type { PaletteCommand } from "@/lib/commandPalette/types";
-import type { AppLanguage, TabKind } from "@/types";
+import type { TabKind } from "@/types";
+import { SUPPORTED_LANGUAGES } from "@/lib/i18n";
+import { openQueryTab } from "@/lib/tabs/openQueryTab";
 
 /** Icon per tab kind, mirroring `TabSwitcher`'s map. */
 const TAB_ICON: Record<TabKind, React.ReactNode> = {
@@ -113,6 +117,7 @@ const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
   general: <Settings className="h-4 w-4" />,
   editor: <FileText className="h-4 w-4" />,
   grid: <TableIcon className="h-4 w-4" />,
+  notifications: <Bell className="h-4 w-4" />,
   connections: <Plug className="h-4 w-4" />,
   appearance: <Palette className="h-4 w-4" />,
   shortcuts: <Keyboard className="h-4 w-4" />,
@@ -153,6 +158,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   const updateEditor = usePreferences((s) => s.updateEditor);
   const updateGrid = usePreferences((s) => s.updateGrid);
   const updateUi = usePreferences((s) => s.updateUi);
+  const updateNotifications = usePreferences((s) => s.updateNotifications);
   const updateConnections = usePreferences((s) => s.updateConnections);
   const customThemes = useThemeStore((s) => s.customThemes);
   const themeId = useThemeStore((s) => s.themeId);
@@ -169,7 +175,13 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     if (!enabled) return [];
 
     const list: PaletteCommand[] = [];
-    const writers = { updateEditor, updateGrid, updateUi, updateConnections };
+    const writers = {
+      updateEditor,
+      updateGrid,
+      updateUi,
+      updateNotifications,
+      updateConnections,
+    };
     const combo = (id: Parameters<typeof getBinding>[1]) =>
       formatComboForDisplay(getBinding(prefs.keybindings, id));
     const activeTab = tabs.find((x) => x.id === activeTabId) ?? null;
@@ -188,12 +200,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         keywords: "sql editor new query nueva consulta",
         icon: <Plus className="h-4 w-4" />,
         run: () =>
-          useTabs.getState().open({
-            kind: "query",
-            title: t("tabs.queryFileName"),
-            connectionId: queryTarget,
-            query: "-- write a SQL query and press Ctrl+Enter\n",
-          }),
+          openQueryTab(queryTarget),
       });
     }
 
@@ -332,7 +339,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         icon: <Unplug className="h-4 w-4" />,
         run: () => {
           for (const id of Array.from(active)) {
-            void disconnect(id).catch((e) => toast.error(String(e)));
+            void disconnect(id).catch((e) => notify.error(String(e)));
           }
         },
       });
@@ -346,7 +353,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         keywords: "window new ventana nueva",
         icon: <AppWindow className="h-4 w-4" />,
         run: () => {
-          void api.openNewWindow().catch((e) => toast.error(String(e)));
+          void api.openNewWindow().catch((e) => notify.error(String(e)));
         },
       },
       {
@@ -462,7 +469,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         run: () => setThemeId(th.id),
       });
     }
-    for (const lng of ["en", "es"] as AppLanguage[]) {
+    for (const lng of SUPPORTED_LANGUAGES) {
       if (lng === prefs.ui.language) continue;
       list.push({
         id: `lang:${lng}`,
@@ -525,7 +532,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
               await refreshSchema(p.id);
               setSelected(p.id);
             } catch (e) {
-              toast.error(String(e));
+              notify.error(String(e));
             }
           })();
         },
@@ -533,7 +540,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
           ? {
               hintKey: "commandPalette.hintDisconnect",
               run: () => {
-                void disconnect(p.id).catch((e) => toast.error(String(e)));
+                void disconnect(p.id).catch((e) => notify.error(String(e)));
               },
             }
           : undefined,
@@ -555,7 +562,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
           run: () => {
             if (env.id === activeEnvId) return;
             void switchEnvironment(env.id).catch((e) =>
-              toast.error(t("environments.switchFailed", { error: String(e) })),
+              notify.error(t("environments.switchFailed", { error: String(e) })),
             );
           },
         });
@@ -571,7 +578,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     // palette (gotcha #27 — resolved through the shared two-layer helper).
     for (const p of profiles) {
       if (!active.has(p.id)) continue;
-      if (p.driver === "sqlite" || p.database !== "") continue;
+      if (!isServerWide(p)) continue;
       const visible = resolveVisibleDatabases(
         databaseVisibility[p.id],
         p.visible_databases,
@@ -598,7 +605,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
                 // child id — see `parentConnectionId`.
                 setSelected(p.id);
               } catch (e) {
-                toast.error(String(e));
+                notify.error(String(e));
               }
             })();
           },
@@ -609,8 +616,8 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       // freshly connected server has databases to offer but no tables to search.
       // This is the opt-in way to fill that in — deliberately an action the user
       // asks for, since every view is another connection pool (see
-      // `warmSchema.ts`). Keeps the palette open so the tables it just indexed
-      // are one keystroke away.
+      // `lib/schema/warmDatabases.ts`). Keeps the palette open so the tables it just
+      // indexed are one keystroke away.
       const cold = unwarmedDatabases(p.id, names, byConnection);
       if (cold.length > 0) {
         list.push({
@@ -627,10 +634,10 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
             void (async () => {
               const res = await warmDatabases(p.id, cold);
               if (res.limitError) {
-                toast.error(String(res.limitError));
+                notify.error(String(res.limitError));
                 return;
               }
-              toast.success(
+              notify.success(
                 t("commandPalette.indexedDatabases", { count: res.loaded }),
               );
             })();
@@ -804,6 +811,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     updateEditor,
     updateGrid,
     updateUi,
+    updateNotifications,
     updateConnections,
     customThemes,
     themeId,

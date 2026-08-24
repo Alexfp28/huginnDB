@@ -14,6 +14,8 @@
 //!   comments before touching a decode branch.
 //! * [`sql`] — driver-aware SQL helpers: identifier quoting and the statement
 //!   classifier that drives the MCP connector's write policy.
+//! * [`exec`] — the counterpart of [`sql`] for *running* a statement on any
+//!   pool, so a command never has to enumerate the drivers itself.
 //! * [`ddl`] — pure builder that diffs two table structures into ordered DDL,
 //!   shared by structure-editor preview and apply so they cannot drift.
 //! * [`view_ddl`] — the same idea for views.
@@ -26,10 +28,14 @@
 pub mod ddl;
 pub mod dump;
 pub mod endpoint;
+pub mod exec;
 pub mod mongo;
 pub mod mssql;
+pub mod mysql;
 pub mod pool;
+pub mod postgres;
 pub mod sql;
+pub mod sqlite;
 pub mod ssh;
 pub mod values;
 pub mod view_ddl;

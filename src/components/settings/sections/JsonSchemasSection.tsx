@@ -40,7 +40,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,9 +58,10 @@ import { SCHEMA_TEMPLATES } from "@/lib/jsonSchema/templates";
 import { tryFormat } from "@/lib/grid/detectContentType";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { api } from "@/lib/tauri";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { cn } from "@/lib/utils";
 import type { JsonSchemaBinding, JsonSchemaMatch } from "@/types";
+import { pickJsonFile } from "@/lib/dialogs";
+import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 
 export function JsonSchemasSection() {
   const { t } = useTranslation();
@@ -204,19 +205,18 @@ export function JsonSchemasSection() {
         body,
       });
       setBodyDirty(false);
-      toast.success(t("jsonSchemas.detail.bodySaved"));
+      notify.success(t("jsonSchemas.detail.bodySaved"));
     } catch (e) {
-      toast.error(t("jsonSchemas.toast.saveFailed", { message: String(e) }));
+      notify.error(t("jsonSchemas.toast.saveFailed", { message: String(e) }));
     }
   }
 
   async function importFromFile() {
-    const picked = await openFileDialog({
-      title: t("jsonSchemas.library.addFromFileTitle"),
-      multiple: false,
-      filters: [{ name: "JSON", extensions: ["json", "schema.json"] }],
-    });
-    if (typeof picked !== "string") return;
+    const picked = await pickJsonFile(
+      t("jsonSchemas.library.addFromFileTitle"),
+      ["json", "schema.json"],
+    );
+    if (!picked) return;
     try {
       const text = await api.readTextFile(picked);
       // Validate here rather than at save time so a wrong file is rejected with a
@@ -228,9 +228,9 @@ export function JsonSchemasSection() {
           .pop()
           ?.replace(/\.schema\.json$|\.json$/i, "") || "schema";
       await createFrom(base, text);
-      toast.success(t("jsonSchemas.toast.created", { name: base }));
+      notify.success(t("jsonSchemas.toast.created", { name: base }));
     } catch (e) {
-      toast.error(t("jsonSchemas.library.fileNotJson", { message: String(e) }));
+      notify.error(t("jsonSchemas.library.fileNotJson", { message: String(e) }));
     }
   }
 
@@ -243,7 +243,7 @@ export function JsonSchemasSection() {
         : t("jsonSchemas.deleteConfirm", { name: selected.name });
     if (!confirmIrreversible(message)) return;
     const dropped = await deleteSchema(selected.id);
-    toast.success(
+    notify.success(
       dropped > 0
         ? t("jsonSchemas.toast.deletedWithBindings", {
             name: selected.name,
@@ -464,15 +464,11 @@ export function JsonSchemasSection() {
                         setBodyDirty(true);
                       }}
                       options={{
+                        ...editorOptionsFromPrefs(editorPrefs),
+                        // A schema body is a document the user navigates, so
+                        // folding is on; the pane is too narrow for a minimap.
                         minimap: { enabled: false },
-                        fontFamily: editorPrefs.fontFamily,
-                        fontSize: editorPrefs.fontSize,
-                        tabSize: editorPrefs.tabSize,
-                        lineNumbers: editorPrefs.lineNumbers ? "on" : "off",
-                        wordWrap: editorPrefs.wordWrap ? "on" : "off",
-                        scrollBeyondLastLine: false,
                         folding: true,
-                        automaticLayout: true,
                       }}
                     />
                   </div>

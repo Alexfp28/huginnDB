@@ -38,13 +38,14 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
+import { RefreshButton } from "@/components/common/RefreshButton";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { useFilterHistory } from "@/stores/grid/filterHistory";
 import { useConnections } from "@/stores/session/connections";
+import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { tableTabTitle } from "@/lib/connectionLabel";
 import { useGridSelection } from "@/stores/grid/gridSelection";
 import {
@@ -83,6 +84,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
+import { formatNumber } from "@/lib/utils";
+import { runExport } from "@/lib/grid/exportTable";
+import { clampRowHeight } from "@/lib/grid/rowHeight";
+import {
+  nextOffset,
+  pageWindow,
+  prevOffset,
+} from "@/lib/grid/pagination";
+import { pickJsonFile } from "@/lib/dialogs";
 import {
   registerTableRefresh,
   unregisterTableRefresh,
@@ -185,23 +195,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // disconnect) so the status bar never reads a stale count.
   useEffect(() => () => clearSelection(tabId), [tabId, clearSelection]);
   const loadColumns = useSchema((s) => s.loadColumns);
-  // Resolve the driver for this connection — needed by the DataGrid so
-  // its "Copy as SQL …" snippets use the right identifier quoting
-  // (backticks for MySQL, double quotes for PG/SQLite). Multi-DB
-  // synthetic child IDs (`<parent>::db::<name>`) inherit the parent's
-  // driver, matching the lookup already done by SchemaExplorer.
-  const driver = useConnections((s) => {
-    const direct = s.profiles.find((p) => p.id === connectionId);
-    if (direct) return direct.driver;
-    const sep = connectionId.indexOf("::db::");
-    if (sep > 0) {
-      const parent = s.profiles.find(
-        (p) => p.id === connectionId.slice(0, sep),
-      );
-      if (parent) return parent.driver;
-    }
-    return undefined;
-  });
+  // Needed by the DataGrid so its "Copy as SQL …" snippets use the right
+  // identifier quoting (backticks for MySQL, brackets for SQL Server, double
+  // quotes for PG/SQLite).
+  const driver = useConnectionDriver(connectionId);
   const tableKey = `${schema ?? ""}.${table}`;
   // Subscribe to THIS tab's own column entry, not the whole per-connection
   // `columns` map. `loadColumns` (schema.ts) writes a new map reference on
@@ -334,7 +331,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const isMongo = driver === "mongodb";
   const zoomRows = useCallback(
     (delta: number) =>
-      updateGrid({ rowHeight: Math.min(40, Math.max(14, rowHeight + delta)) }),
+      updateGrid({ rowHeight: clampRowHeight(rowHeight + delta) }),
     [rowHeight, updateGrid],
   );
 
@@ -576,53 +573,37 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     return pkColumnIndices.map((i) => rowValues[i]);
   }
 
-  async function onCellSave(
-    rowValues: CellValue[],
-    columnName: string,
-    value: string | null,
-  ) {
-    if (pkColumns.length === 0) {
-      throw new Error("Cannot update: table has no primary key");
-    }
-    const pkValues = pkValuesFromRow(rowValues);
-    // Forward the raw column type so the backend can cast textual literals
-    // server-side where a plain string bind would be coerced wrongly (MySQL
-    // BIT — see update_cell; MongoDB Date/int/long — see string_to_bson).
-    // Prefer the catalog/inferred type from the schema store (`cols`) since a
-    // MongoDB result set reports a generic "bson" per column, while the schema
-    // store carries the inferred per-field BSON type.
-    const columnType =
-      cols?.find((c) => c.name === columnName)?.data_type ??
-      result?.columns.find((c) => c.name === columnName)?.data_type;
-    await api.updateCell({
-      connectionId,
-      schema,
-      table,
-      pkColumns: pkColumns.map((c) => c.name),
-      pkValues,
-      column: columnName,
-      value,
-      columnType,
-    });
-    await fetchData();
-  }
-
   /**
-   * List-view field commit — `onCellSave` generalised to a field **path**.
+   * Commit one field of one row, addressed by **path**.
    *
-   * On MongoDB the path is sent as a dotted update path (`customData.format`,
-   * `tags.2`), which `$set` understands natively, together with the field's
-   * real BSON type so an edit doesn't silently rewrite a `Long` as an `Int`
-   * (the type comes from `QueryResult.row_types`, not from a guess at the
-   * display JSON). On the SQL drivers only a top-level column can be
-   * addressed, and the type hint is deliberately IGNORED: `update_cell` reads
-   * `columnType` to decide whether a MySQL `BIT` needs its
-   * `CAST(? AS UNSIGNED)` (gotcha #15), and handing it the list view's
-   * inferred `"string"` would both miss the cast and suppress the backend's
-   * catalog fallback — so the catalog/schema type wins there, exactly as it
-   * does for a table-view cell save.
+   * A table-view cell is the single-segment case of a list-view field, so both
+   * grids commit through here (`onCellSave` = `saveField(row, [column], value)`)
+   * — the two used to be near-copies, and the copy is exactly where the type
+   * rule below would drift.
+   *
+   * The `columnType` hint exists so the backend can cast a textual literal
+   * server-side where a plain string bind would be coerced wrongly (MySQL
+   * `BIT` — see `update_cell`; MongoDB Date/int/long — see `string_to_bson`).
+   * Which type to send is **not** uniform:
+   *
+   * - On MongoDB, prefer the field's real BSON type as reported by
+   *   `QueryResult.row_types`, never a guess at the display JSON: `Int32`,
+   *   `Int64` and `Double` all arrive as a plain JSON number, so inferring
+   *   would silently rewrite a `Long` as an `Int` the first time someone fixed
+   *   a typo in it (gotcha #29). A dotted path (`customData.format`, `tags.2`)
+   *   is what `$set` takes natively.
+   * - On the SQL drivers the hint is deliberately IGNORED and the catalog type
+   *   wins. `update_cell` reads `columnType` to decide whether a MySQL `BIT`
+   *   needs its `CAST(? AS UNSIGNED)` (gotcha #15), and handing it the list
+   *   view's inferred `"string"` would both miss the cast and suppress the
+   *   backend's catalog fallback. Only a top-level column is addressable there
+   *   anyway.
+   *
+   * The catalog side prefers the schema store (`cols`) over the result set
+   * because a MongoDB result reports a generic `"bson"` per column while the
+   * store carries the inferred per-field type.
    */
-  async function onFieldSave(
+  async function saveField(
     rowValues: CellValue[],
     path: string[],
     value: string | null,
@@ -649,11 +630,20 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     await fetchData();
   }
 
+  /** Table-view cell commit: one column, no type hint of its own. */
+  function onCellSave(
+    rowValues: CellValue[],
+    columnName: string,
+    value: string | null,
+  ) {
+    return saveField(rowValues, [columnName], value);
+  }
+
   /**
    * List-view field removal — MongoDB `$unset` on the document addressed by
    * its `_id`. Only wired for MongoDB: a SQL row's columns are a property of
    * the table, not of the row, so "remove this field from this row" has no
-   * counterpart there (setting it to NULL does, and that is `onFieldSave`).
+   * counterpart there (setting it to NULL does, and that is `saveField`).
    */
   async function onFieldDelete(rowValues: CellValue[], path: string[]) {
     const idValue = pkValuesFromRow(rowValues)[0] ?? null;
@@ -768,20 +758,21 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * MongoDB tree's per-collection JSON export (#65), now also available for
    * SQL tables via `exportTable`. A cancelled save dialog is a silent no-op.
    */
-  async function exportFull() {
-    try {
-      const path = isMongo
-        ? await api.exportCollection(connectionId, table)
-        : await api.exportTable(connectionId, schema, table);
-      toast.success(
+  function exportFull() {
+    return runExport(
+      () =>
         isMongo
-          ? t("schema.exportCollection.success", { path })
-          : t("tableData.exportData.tableSuccess", { path }),
-      );
-    } catch (e) {
-      const message = String(e);
-      if (!message.includes("export cancelled")) toast.error(message);
-    }
+          ? api.exportCollection(connectionId, table)
+          : api.exportTable(connectionId, schema, table),
+      (path) =>
+        notify.file(
+          isMongo
+            ? t("notifications.fileSaved.collection")
+            : t("notifications.fileSaved.table"),
+          { path },
+        ),
+      (message) => notify.error(message),
+    );
   }
 
   /**
@@ -789,27 +780,28 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * (`serverFilters`) and committed search, without any pagination limit.
    * Identical to `exportFull` when no filter is active.
    */
-  async function exportFiltered() {
-    try {
-      const path = isMongo
-        ? await api.exportCollection(connectionId, table, serverFilters)
-        : await api.exportTableRows({
-            connectionId,
-            schema,
-            table,
-            filters: serverFilters,
-            search: appliedFilter || undefined,
-            searchColumns: appliedFilter ? searchColumns : undefined,
-          });
-      toast.success(
+  function exportFiltered() {
+    return runExport(
+      () =>
         isMongo
-          ? t("schema.exportCollection.success", { path })
-          : t("tableData.exportData.rowsSuccess", { path }),
-      );
-    } catch (e) {
-      const message = String(e);
-      if (!message.includes("export cancelled")) toast.error(message);
-    }
+          ? api.exportCollection(connectionId, table, serverFilters)
+          : api.exportTableRows({
+              connectionId,
+              schema,
+              table,
+              filters: serverFilters,
+              search: appliedFilter || undefined,
+              searchColumns: appliedFilter ? searchColumns : undefined,
+            }),
+      (path) =>
+        notify.file(
+          isMongo
+            ? t("notifications.fileSaved.collection")
+            : t("notifications.fileSaved.rows"),
+          { path },
+        ),
+      (message) => notify.error(message),
+    );
   }
 
   /**
@@ -820,13 +812,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * destructive-write confirmation like the tree version did.
    */
   async function importCollectionJsonForTab() {
-    const picked = await openFileDialog({
-      multiple: false,
-      directory: false,
-      title: t("schema.importCollection.pickTitle"),
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
-    if (typeof picked !== "string" || !picked) return;
+    const picked = await pickJsonFile(
+      t("schema.importCollection.pickTitle"),
+    );
+    if (!picked) return;
     if (
       !confirmDestructive(
         t("schema.importCollection.confirm", { collection: table }),
@@ -836,10 +825,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     }
     try {
       const count = await api.importCollection(connectionId, table, picked);
-      toast.success(t("schema.importCollection.success", { count }));
+      notify.success(t("schema.importCollection.success", { count }));
       await fetchData();
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     }
   }
 
@@ -910,16 +899,15 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     }
   }
 
-  const canPrev = offset > 0;
-  // With an *exact* total, stop at the last page. Otherwise — count still in
-  // flight, failed, or only an *estimate* (which can undershoot the real row
-  // count on stale stats, and must not strand the user before the true end) —
-  // fall back to "there might be more" whenever the current page came back
-  // full. A short page then naturally disables Next at the real end.
-  const canNext =
-    total !== null && !totalEstimated
-      ? offset + pageSize < total
-      : (result?.rows.length ?? 0) >= pageSize;
+  // Which rows this page covers and whether either arrow is live — see
+  // `lib/grid/pagination.ts` for the estimated-total rule and its tests.
+  const page = pageWindow({
+    offset,
+    pageSize,
+    total,
+    totalEstimated,
+    rowsOnPage: result?.rows.length ?? 0,
+  });
   // Editable iff the table has at least one PK column AND every PK
   // column is present in the result set (otherwise we couldn't build a
   // safe WHERE clause).
@@ -979,17 +967,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     {
       id: "refresh",
       bar: (
-        <Button
-          variant="ghost"
-          size="icon"
+        <RefreshButton
           onClick={fetchData}
-          disabled={loading}
+          loading={loading}
           title={t("tableData.refresh")}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-          />
-        </Button>
+        />
       ),
       menu: (
         <DropdownMenuItem
@@ -1265,18 +1247,14 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           className="tabular-nums text-muted-foreground"
           title={totalEstimated ? t("tableData.approxTotal") : undefined}
         >
-          {(offset + 1).toLocaleString()}–
-          {Math.min(
-            offset + pageSize,
-            total ?? offset + pageSize,
-          ).toLocaleString()}
+          {formatNumber(page.from)}–{formatNumber(page.to)}
           {total !== null && (
             <>
               {" "}
               {t("dataGrid.of")}{" "}
               <span className="font-medium text-foreground">
                 {totalEstimated ? "~" : ""}
-                {total.toLocaleString()}
+                {formatNumber(total)}
               </span>
             </>
           )}
@@ -1285,8 +1263,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setOffset(Math.max(0, offset - pageSize))}
-            disabled={!canPrev || loading}
+            onClick={() => setOffset(prevOffset(offset, pageSize))}
+            disabled={!page.canPrev || loading}
             title={t("tableData.prevPage")}
           >
             <ChevronLeft className="h-3.5 w-3.5" />
@@ -1294,8 +1272,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setOffset(offset + pageSize)}
-            disabled={!canNext || loading}
+            onClick={() => setOffset(nextOffset(offset, pageSize))}
+            disabled={!page.canNext || loading}
             title={t("tableData.nextPage")}
           >
             <ChevronRight className="h-3.5 w-3.5" />
@@ -1340,7 +1318,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             fkColumnNames={fkColumnNames}
             onNavigateFk={onNavigateFk}
             onCellSave={onCellSave}
-            onFieldSave={onFieldSave}
+            onFieldSave={saveField}
             onFieldDelete={isMongo ? onFieldDelete : undefined}
             sort={sort}
             onSortChange={applySort}

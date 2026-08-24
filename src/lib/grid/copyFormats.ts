@@ -18,20 +18,20 @@
 
 import type { CellValue, ColumnMeta, Driver } from "@/types";
 
-/** Render a value as its plain string projection (used when serialising
- *  to JSON-incompatible payloads). */
-function plain(v: CellValue): string {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
 /**
  * Quote an identifier (table or column name) for the target driver.
  *
  * Doubles any embedded quote character, which is the standard escape in
  * SQL identifier syntax for every supported driver. We don't try to
  * detect "already-quoted" inputs — callers pass raw catalog names.
+ *
+ * The twin of `Dialect::quote_ident` in `src-tauri/src/db/sql.rs`, which is the
+ * authoritative one: it quotes identifiers for SQL the app actually *executes*,
+ * so its rules are load-bearing (and it enforces SECURITY.md's "only
+ * catalog-sourced names reach `quote_ident`"). This copy exists only to build
+ * snippets the user copies to their clipboard, and duplicating it beats routing
+ * a clipboard format through an IPC round-trip. Keep the two in sync — the Rust
+ * side carries the per-dialect rationale.
  */
 export function quoteIdent(driver: Driver | undefined, name: string): string {
   if (driver === "mysql") {
@@ -174,6 +174,72 @@ function qualifiedTable(
   return quoteIdent(driver, table);
 }
 
-// Re-export the plain projector so callers (e.g. CellPreview) can share
-// the same string contract used for clipboard text without re-implementing it.
-export { plain as plainText };
+/**
+ * The "Copy SELECT" snippet for a relation: a `SELECT *` for the SQL drivers
+ * and a `find()` for MongoDB, which has no SQL.
+ *
+ * This lives here rather than in the schema tree because per-driver identifier
+ * quoting is a serialisation rule, and this module already owns every other
+ * one. The tree used to assemble the string inline with its own copy of the
+ * quoting triple, and that copy did not double embedded delimiters — so a
+ * table named `a"b` produced a snippet that would not parse. Building it from
+ * `qualifiedTable` means there is one escaping rule to get right.
+ *
+ * Note this is a clipboard snippet, not DDL: nothing here is ever executed by
+ * the app, which is why assembling SQL text in the frontend is fine here and
+ * not in the structure editor (whose statements are built in Rust).
+ */
+export function selectSnippet(
+  driver: Driver | undefined,
+  schema: string | undefined,
+  table: string,
+): string {
+  if (driver === "mongodb") {
+    return `db.${table}.find({}).limit(100)`;
+  }
+  return `SELECT * FROM ${qualifiedTable(driver, schema, table)};`;
+}
+
+/**
+ * Serialise several rows for the bulk "Copy N rows as ▸" menu, reusing the same
+ * per-row formatters as the single-row submenu. JSON yields one array;
+ * INSERT/UPDATE yield newline-joined statements.
+ *
+ * The JSON branch goes through `jsonSafe`, exactly as `toJson` does. `DataGrid`
+ * had its own copy of this that cast values straight into the object instead, so
+ * a `BigInt` cell that copied fine as a single row threw
+ * "Do not know how to serialize a BigInt" the moment two rows were selected.
+ */
+export function toBulk(
+  rows: CellValue[][],
+  fmt: "json" | "insert" | "update",
+  ctx: {
+    columns: ColumnMeta[];
+    driver: Driver | undefined;
+    tableName?: string;
+    tableSchema?: string;
+    pkColumnNames?: string[];
+  },
+): string {
+  const { columns, driver, tableName, tableSchema, pkColumnNames } = ctx;
+  if (fmt === "json") {
+    const arr = rows.map((r) => {
+      const obj: Record<string, unknown> = {};
+      columns.forEach((c, i) => {
+        obj[c.name] = jsonSafe(r[i]);
+      });
+      return obj;
+    });
+    return JSON.stringify(arr, null, 2);
+  }
+  if (fmt === "insert") {
+    return rows
+      .map((r) => toSqlInsert(r, columns, driver, tableName, tableSchema))
+      .join("\n");
+  }
+  return rows
+    .map((r) =>
+      toSqlUpdate(r, columns, driver, tableName, tableSchema, pkColumnNames),
+    )
+    .join("\n");
+}

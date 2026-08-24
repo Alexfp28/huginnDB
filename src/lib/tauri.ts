@@ -42,7 +42,6 @@ import type {
   QueryResult,
   CountResult,
   RowValue,
-  SortSpec,
   StartupArgs,
   MongoIndexInfo,
   MongoViewDefinition,
@@ -52,6 +51,8 @@ import type {
   StagePreview,
   StructurePreview,
   TableInfo,
+  TableQuery,
+  TableScan,
   TableStructure,
   UserInfo,
   ViewDefinition,
@@ -135,15 +136,6 @@ export const api = {
    */
   openDatabaseView: (parentId: string, database: string) =>
     invoke<string>("open_database_view", { parentId, database }),
-
-  /**
-   * Stable synthetic id for a per-database browse session. Kept in sync
-   * with `connection.rs::database_view_id` so the frontend can compute it
-   * without a round-trip when it only needs to address an already-open
-   * child (e.g. dispatching tab actions).
-   */
-  databaseViewId: (parentId: string, database: string) =>
-    `${parentId}::db::${database}`,
 
   /**
    * How many pools the backend is holding right now, split into top-level
@@ -475,23 +467,8 @@ export const api = {
    *   OR-composed with itself, then AND-composed with `filters`.
    *   The needle is escaped against LIKE metacharacters server-side.
    */
-  fetchTableData: (args: {
-    connectionId: string;
-    schema?: string;
-    table: string;
-    limit: number;
-    offset: number;
-    /** Ordered multi-column sort; `order[0]` is the primary key. */
-    order?: SortSpec[];
-    filters?: ColumnFilter[];
-    search?: string;
-    searchColumns?: string[];
-    /** Run the `COUNT(*)` companion. The GUI always passes `false` (the total
-     *  is fetched out-of-band via `countTableRows` so it never gates the first
-     *  row render); the headless MCP `browse_table` tool still uses the inline
-     *  count. Defaults to `true` on the backend when omitted. */
-    withCount?: boolean;
-  }) => invoke<QueryResult>("fetch_table_data", args),
+  fetchTableData: (query: TableQuery) =>
+    invoke<QueryResult>("fetch_table_data", { query }),
 
   /**
    * Row total for the table-data browser, fetched separately from the data
@@ -499,14 +476,8 @@ export const api = {
    * from painting. With no filters/search the backend returns a fast engine
    * estimate (`estimated: true`); any predicate forces an exact count.
    */
-  countTableRows: (args: {
-    connectionId: string;
-    schema?: string;
-    table: string;
-    filters?: ColumnFilter[];
-    search?: string;
-    searchColumns?: string[];
-  }) => invoke<CountResult>("count_table_rows", args),
+  countTableRows: (query: TableScan) =>
+    invoke<CountResult>("count_table_rows", { query }),
 
   /**
    * UPDATE one column of one row addressed by its (possibly composite)
@@ -988,14 +959,8 @@ export const api = {
    * DataGrid's current advanced-filter state, not the whole table. No
    * pagination limit. Rejects MongoDB.
    */
-  exportTableRows: (args: {
-    connectionId: string;
-    schema?: string;
-    table: string;
-    filters: ColumnFilter[];
-    search?: string;
-    searchColumns?: string[];
-  }) => invoke<string>("export_table_rows", args),
+  exportTableRows: (query: TableScan) =>
+    invoke<string>("export_table_rows", { query }),
 
   /**
    * Export a MongoDB collection's documents matching `filters` (all of them
@@ -1069,6 +1034,30 @@ export const api = {
    */
   openUrl: (url: string) =>
     invoke<void>("plugin:opener|open_url", { url, with: null }),
+
+  /**
+   * Show `path` in the OS file manager **with the item selected** (Explorer on
+   * Windows, Finder on macOS, the desktop's file manager on Linux) — not merely
+   * opened, which is why this is `reveal_item_in_dir` rather than `open_path`.
+   *
+   * Used by the notification raised after an export (`notify.file`): the point
+   * of showing a path is being able to get to the file. Unlike `open_url` there
+   * is no URL allowlist to scope — the permission
+   * (`opener:allow-reveal-item-in-dir`) grants the command as a whole, and the
+   * only paths we ever hand it are ones the user just chose in a save dialog.
+   *
+   * Rejects when the file has since been moved or deleted; callers surface that
+   * rather than swallowing it, so a dead path doesn't look like a dead button.
+   *
+   * The command's Rust argument is `paths: Vec<PathBuf>` (plural — it can
+   * reveal several items at once), not `path`. Sending `{ path }` used to
+   * fail IPC deserialization on every call regardless of whether the file
+   * existed, which `reveal()` in `NotificationCard.tsx` then reported as
+   * "the file is no longer there" — a false positive for a file that was
+   * sitting right where it said it was.
+   */
+  revealItemInDir: (path: string) =>
+    invoke<void>("plugin:opener|reveal_item_in_dir", { paths: [path] }),
 
   // MCP connector ----------------------------------------------------------
 

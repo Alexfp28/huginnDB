@@ -73,6 +73,12 @@ pub async fn execute(
             )
             .await?,
         )?,
+        // `describe_relation_inner`, not `get_table_structure_inner`: the reply
+        // gains an optional `view` key when the relation is a view. The
+        // *request* shape is unchanged, and bridge payloads are opaque
+        // `Value`s, so this needs no `PROTOCOL_VERSION` bump and both mismatched
+        // app/sidecar pairings degrade cleanly — one omits the key, the other
+        // passes it through.
         GetTableStructure {
             connection_id,
             schema,
@@ -80,7 +86,7 @@ pub async fn execute(
         } => serde_json::to_value(
             crate::error::with_timeout(
                 "get_table_structure",
-                crate::commands::structure::get_table_structure_inner(
+                crate::commands::structure::describe_relation_inner(
                     state,
                     connection_id,
                     schema.clone(),
@@ -146,16 +152,18 @@ pub async fn execute(
             crate::commands::query::fetch_table_data_inner(
                 sink,
                 state,
-                connection_id.clone(),
-                schema.clone(),
-                table.clone(),
-                *limit,
-                *offset,
-                None,
-                None,
-                None,
-                None,
-                *with_count,
+                crate::commands::query::TableQuery {
+                    connection_id: connection_id.clone(),
+                    schema: schema.clone(),
+                    table: table.clone(),
+                    limit: *limit,
+                    offset: *offset,
+                    order: Vec::new(),
+                    filter: Default::default(),
+                    // The bridge's own `with_count` is an `Option<bool>` on
+                    // the wire; `None` kept the pre-struct default of "count".
+                    with_count: with_count.unwrap_or(true),
+                },
             )
             .await?,
         )?,
@@ -222,6 +230,84 @@ pub async fn execute(
             )
             .await?,
         ),
+        GetViewDefinition {
+            connection_id,
+            schema,
+            view,
+        } => serde_json::to_value(
+            crate::error::with_timeout(
+                "get_view_definition",
+                crate::commands::view::get_any_view_definition_inner(
+                    state,
+                    connection_id,
+                    schema.clone(),
+                    view,
+                ),
+            )
+            .await?,
+        )?,
+        // One arm for both: the two differ only in whether the change is
+        // executed, and that is carried by the *variant* rather than a field
+        // (see `BridgeRequest::PreviewViewChange`), so it is read from the
+        // discriminant here and nowhere else.
+        //
+        // No `with_timeout` on the apply, matching every other write arm above:
+        // a DDL statement can legitimately outlast `OPERATION_TIMEOUT`, and
+        // timing out a write is the worst available outcome — the statement may
+        // already have landed. The preview shares the arm and executes nothing,
+        // so it needs none either.
+        PreviewViewChange {
+            connection_id,
+            schema,
+            name,
+            query,
+            rename_from,
+            view_on,
+            ..
+        }
+        | ApplyViewChange {
+            connection_id,
+            schema,
+            name,
+            query,
+            rename_from,
+            view_on,
+            ..
+        } => serde_json::to_value(
+            crate::commands::view::save_any_view_inner(
+                sink,
+                state,
+                &crate::commands::view::ViewSaveRequest {
+                    connection_id: connection_id.clone(),
+                    schema: schema.clone(),
+                    name: name.clone(),
+                    query: query.clone(),
+                    rename_from: rename_from.clone(),
+                    view_on: view_on.clone(),
+                    preview: matches!(request, PreviewViewChange { .. }),
+                },
+            )
+            .await?,
+        )?,
+        DropView {
+            connection_id,
+            schema,
+            view,
+            ..
+        } => {
+            crate::commands::view::drop_view_inner(
+                sink,
+                state,
+                connection_id,
+                schema.clone(),
+                view,
+            )
+            .await?;
+            // A genuine success carrying no payload; `OkWrapper` is what keeps
+            // this distinguishable from "empty reply" on the wire
+            // (`PROTOCOL_VERSION: 2`).
+            Value::Null
+        }
     };
     Ok(value)
 }

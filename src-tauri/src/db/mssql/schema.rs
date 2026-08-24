@@ -46,11 +46,31 @@ fn b(row: &Row, name: &str) -> bool {
 
 /// Column `name` of `row` as an `i64`, widening whichever integer the catalog
 /// used.
+///
+/// **Must use `try_get`, never `get`.** `tiberius::Row::get::<T, _>` is
+/// `self.try_get(idx).unwrap()` — it *panics* when the column's actual
+/// `ColumnData` variant isn't the one `T`'s `FromSql` accepts, rather than
+/// returning `None`. This function exists precisely because catalog columns
+/// like `sys.columns.max_length` (a `smallint`, decoded as `ColumnData::I16`)
+/// don't match the widest type: `i64`'s `FromSql` only accepts
+/// `ColumnData::I64` (or a null `U8`/`I32`), so a first attempt with `get`
+/// panicked on the very first column of the very first table — every single
+/// call, on every server, since `max_length`/`precision`/`scale` are never
+/// `bigint`. A panic inside a Tauri command's async task never reaches the
+/// frontend as a rejected promise, so `list_columns` looked like it just
+/// hung forever with no error, on every table, which is exactly what made
+/// this so easy to miss without a real SQL Server to test against: the
+/// `.or_else` fallback chain below reads as if it handles the mismatch, but
+/// it never even ran. `try_get` reports the mismatch as `Err` instead, which
+/// `ok()` discards, letting the chain actually fall through to the next
+/// width as intended.
 fn i(row: &Row, name: &str) -> Option<i64> {
-    row.get::<i64, _>(name)
-        .or_else(|| row.get::<i32, _>(name).map(i64::from))
-        .or_else(|| row.get::<i16, _>(name).map(i64::from))
-        .or_else(|| row.get::<u8, _>(name).map(i64::from))
+    row.try_get::<i64, _>(name)
+        .ok()
+        .flatten()
+        .or_else(|| row.try_get::<i32, _>(name).ok().flatten().map(i64::from))
+        .or_else(|| row.try_get::<i16, _>(name).ok().flatten().map(i64::from))
+        .or_else(|| row.try_get::<u8, _>(name).ok().flatten().map(i64::from))
 }
 
 // ---------------------------------------------------------------------------
@@ -572,6 +592,55 @@ pub async fn estimate_rows(pool: &MsSqlPool, schema: Option<&str>, table: &str) 
         .and_then(first_i64)
         .filter(|n| *n > 0)
         .and_then(|n| u64::try_from(n).ok())
+}
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+
+/// The body of a view — just the `SELECT`. See
+/// [`crate::db::postgres::schema::view_definition`] for why a missing view is
+/// `Ok(None)` rather than an error.
+///
+/// Reading a definition works here even though *editing* one does not: the
+/// refusal in [`crate::db::view_ddl::build_view_ddl`] is about the T-SQL DDL
+/// builder not being written, never about the catalog being unable to answer.
+///
+/// Two details are load-bearing:
+///
+/// - The join to `sys.views` is not decoration. `sys.sql_modules` holds the
+///   body of every module-backed object — procedures, functions, triggers,
+///   default constraints — and `OBJECT_ID` happily resolves those names too, so
+///   without the join this would hand back a stored procedure's source for a
+///   caller that asked for a view.
+/// - `sys.sql_modules.definition` is NULL for a view created `WITH
+///   ENCRYPTION`, which lands as `Ok(None)` — indistinguishable from "not a
+///   view". That is the honest answer available: the body genuinely cannot be
+///   read, and the alternative would be an error on a relation the caller may
+///   only have been probing.
+///
+/// SQL Server stores the whole `CREATE VIEW ... AS ...` statement, as SQLite
+/// does, so the header is stripped to keep the body meaning the same thing on
+/// every driver.
+pub async fn view_definition(
+    pool: &MsSqlPool,
+    schema: Option<&str>,
+    view: &str,
+) -> AppResult<Option<String>> {
+    let object = object_name(schema, view);
+    let mut c = pool.acquire().await?;
+    let rows = c
+        .query_rows(
+            "SELECT m.definition FROM sys.sql_modules m \
+             JOIN sys.views v ON v.object_id = m.object_id \
+             WHERE m.object_id = OBJECT_ID(@P1)",
+            &[Some(object)],
+        )
+        .await?;
+    Ok(rows
+        .first()
+        .and_then(first_string)
+        .map(|sql| crate::db::view_ddl::strip_view_header(&sql)))
 }
 
 /// Decode a whole result set into the `(columns, rows)` shape the query and

@@ -60,9 +60,12 @@ import {
 } from "@/components/ui/select";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { splitSql } from "@/lib/sql/sqlSplit";
+import { databaseOfViewId, parentConnectionId, sqliteFileLabel } from "@/lib/connectionLabel";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
-import { cn, formatDuration } from "@/lib/utils";
+import { cn, formatDuration, formatTime } from "@/lib/utils";
+import { supportsMultipleDatabases } from "@/lib/db/driver";
+import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 import {
   ensureSqlProviders,
   registerSqlEditor,
@@ -74,7 +77,6 @@ interface Props {
   connectionId: string;
 }
 
-const DB_SEP = "::db::";
 /** Radix Select can't carry an empty value, so the parent / default-database
  *  option uses this sentinel. */
 const DEFAULT_DB = "__default__";
@@ -92,10 +94,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
 
   /** Parent connection id (a query tab may be opened against a `::db::`
    *  child already). Database listing / switching always works off the parent. */
-  const parentId = useMemo(() => {
-    const sep = connectionId.indexOf(DB_SEP);
-    return sep > 0 ? connectionId.slice(0, sep) : connectionId;
-  }, [connectionId]);
+  const parentId = useMemo(() => parentConnectionId(connectionId), [connectionId]);
 
   /** The id the query actually runs against. Starts as the tab's connection
    *  and is repointed to a `parent::db::<name>` child when the user picks a
@@ -106,10 +105,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   useEffect(() => setEffectiveId(connectionId), [connectionId]);
 
   /** Database currently targeted, parsed back out of `effectiveId`. */
-  const selectedDb = useMemo(() => {
-    const sep = effectiveId.indexOf(DB_SEP);
-    return sep > 0 ? effectiveId.slice(sep + DB_SEP.length) : "";
-  }, [effectiveId]);
+  const selectedDb = useMemo(() => databaseOfViewId(effectiveId), [effectiveId]);
 
   const schemaState = useSchema((s) => s.byConnection[effectiveId]);
 
@@ -122,8 +118,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const dbName = useMemo(() => {
     const p = profiles.find((pr) => pr.id === parentId);
     if (!p) return parentId;
-    if (p.driver === "sqlite")
-      return p.database.split(/[/\\]/).pop() ?? p.database;
+    if (p.driver === "sqlite") return sqliteFileLabel(p.database);
     return selectedDb || p.database || t("query.defaultDatabase");
   }, [profiles, parentId, selectedDb, t]);
 
@@ -545,7 +540,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               <History className="h-3.5 w-3.5" />
             </Button>
 
-            {driver !== "sqlite" && databases.length > 0 && (
+            {supportsMultipleDatabases(driver) && databases.length > 0 && (
               <div className="ml-auto flex items-center gap-1">
                 <Database className="h-3.5 w-3.5 text-muted-foreground" />
                 <Select
@@ -590,15 +585,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 onChange={(v) => updateQuery(tabId, v ?? "")}
                 onMount={handleMount}
                 options={{
-                  minimap: { enabled: editorPrefs.minimap },
-                  wordWrap: editorPrefs.wordWrap ? "on" : "off",
-                  fontFamily: editorPrefs.fontFamily,
-                  fontSize: editorPrefs.fontSize,
-                  tabSize: editorPrefs.tabSize,
-                  lineNumbers: editorPrefs.lineNumbers ? "on" : "off",
+                  ...editorOptionsFromPrefs(editorPrefs),
                   formatOnPaste: editorPrefs.formatOnPaste,
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
                 }}
               />
             </div>
@@ -663,7 +651,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                           {h.sql}
                         </div>
                         <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <span>{new Date(h.ranAt).toLocaleTimeString()}</span>
+                          <span>{formatTime(h.ranAt)}</span>
                           {h.error ? (
                             <span className="truncate text-destructive">
                               {h.error}
@@ -715,7 +703,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               {editorStats.chars} chars
             </span>
             <span className="mx-3 text-muted-foreground/30">|</span>
-            <span>sql · utf-8</span>
+            <span>{driver === "mongodb" ? "mongodb" : "sql"} · utf-8</span>
           </div>
         </div>
       </Panel>

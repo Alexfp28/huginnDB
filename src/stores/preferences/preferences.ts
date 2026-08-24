@@ -22,11 +22,13 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
+import { debounce } from "@/lib/schedule";
 import { STORAGE_KEYS } from "@/lib/constants";
 import type {
   ConnectionPrefs,
   EditorPrefs,
   GridPrefs,
+  NotificationPrefs,
   Preferences,
   SchemaTableMetric,
   UiPrefs,
@@ -77,6 +79,19 @@ const DEFAULT_PREFS: Preferences = {
     tabAccentStyle: "cap",
     connectionGroupExpandMode: "remember",
   },
+  // Mirrors `NotificationPrefs::default()` in `src-tauri/src/prefs.rs`. The
+  // 6000 ms is deliberate: the toast library's own default is 4000, which is
+  // what made a file path or a driver error unreadable before it vanished.
+  notifications: {
+    position: "bottom-right",
+    durationMs: 6000,
+    errorsPersist: true,
+    maxVisible: 3,
+    expandOnHover: true,
+    density: "comfortable",
+    historyLimit: 50,
+    showBell: true,
+  },
   // Mirrors `ConnectionPrefs::default()` in `src-tauri/src/prefs.rs`. Only
   // used before `hydrate()` lands — the backend is the source of truth and
   // re-applies its own defaults for any field an older `prefs.json` omits.
@@ -98,6 +113,7 @@ interface PreferencesState {
   updateEditor: (patch: Partial<EditorPrefs>) => void;
   updateGrid: (patch: Partial<GridPrefs>) => void;
   updateUi: (patch: Partial<UiPrefs>) => void;
+  updateNotifications: (patch: Partial<NotificationPrefs>) => void;
   updateConnections: (patch: Partial<ConnectionPrefs>) => void;
   updateKeybindings: (patch: Record<string, string>) => void;
   resetAll: () => void;
@@ -113,20 +129,16 @@ interface PreferencesState {
   applyExternal: (prefs: Preferences) => void;
 }
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_DEBOUNCE_MS = 400;
 
-function scheduleSave(prefs: Preferences) {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    api.updatePreferences(prefs).catch((err) => {
-      // Disk writes shouldn't fail in normal operation; if they do the user
-      // can keep working with the in-memory copy and we surface to console.
-      console.error("[preferences] failed to persist:", err);
-    });
-  }, SAVE_DEBOUNCE_MS);
-}
+const save = debounce(SAVE_DEBOUNCE_MS, (prefs: Preferences) => {
+  api.updatePreferences(prefs).catch((err) => {
+    // Disk writes shouldn't fail in normal operation; if they do the user
+    // can keep working with the in-memory copy and we surface to console.
+    console.error("[preferences] failed to persist:", err);
+  });
+});
+
 
 /**
  * Read the legacy `localStorage["huginndb.viewPrefs.v1"]` blob and return
@@ -188,7 +200,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     }
 
     set({ prefs: loaded, hydrated: true });
-    if (seeded) scheduleSave(loaded);
+    if (seeded) save.schedule(loaded);
   },
 
   updateEditor(patch) {
@@ -197,7 +209,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         ...s.prefs,
         editor: { ...s.prefs.editor, ...patch },
       };
-      scheduleSave(next);
+      save.schedule(next);
       return { prefs: next };
     });
   },
@@ -208,7 +220,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         ...s.prefs,
         grid: { ...s.prefs.grid, ...patch },
       };
-      scheduleSave(next);
+      save.schedule(next);
       return { prefs: next };
     });
   },
@@ -219,7 +231,18 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         ...s.prefs,
         ui: { ...s.prefs.ui, ...patch },
       };
-      scheduleSave(next);
+      save.schedule(next);
+      return { prefs: next };
+    });
+  },
+
+  updateNotifications(patch) {
+    set((s) => {
+      const next: Preferences = {
+        ...s.prefs,
+        notifications: { ...s.prefs.notifications, ...patch },
+      };
+      save.schedule(next);
       return { prefs: next };
     });
   },
@@ -230,7 +253,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         ...s.prefs,
         connections: { ...s.prefs.connections, ...patch },
       };
-      scheduleSave(next);
+      save.schedule(next);
       return { prefs: next };
     });
   },
@@ -241,14 +264,14 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         ...s.prefs,
         keybindings: { ...s.prefs.keybindings, ...patch },
       };
-      scheduleSave(next);
+      save.schedule(next);
       return { prefs: next };
     });
   },
 
   resetAll() {
     set({ prefs: DEFAULT_PREFS });
-    scheduleSave(DEFAULT_PREFS);
+    save.schedule(DEFAULT_PREFS);
   },
 
   applyExternal(prefs) {
@@ -262,5 +285,6 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
 export const selectEditorPrefs = (s: PreferencesState) => s.prefs.editor;
 export const selectGridPrefs = (s: PreferencesState) => s.prefs.grid;
 export const selectUiPrefs = (s: PreferencesState) => s.prefs.ui;
+export const selectNotificationPrefs = (s: PreferencesState) => s.prefs.notifications;
 export const selectConnectionPrefs = (s: PreferencesState) => s.prefs.connections;
 export const selectKeybindings = (s: PreferencesState) => s.prefs.keybindings;

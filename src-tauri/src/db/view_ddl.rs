@@ -34,8 +34,63 @@ pub struct ViewDefinition {
     pub name: String,
     /// The view body only (a `SELECT ...` statement), never the surrounding
     /// `CREATE VIEW ... AS`. Drivers that only expose the full statement
-    /// (SQLite) have it stripped before reaching this struct.
+    /// (SQLite, SQL Server) have it stripped by [`strip_view_header`] before
+    /// reaching this struct.
     pub query: String,
+}
+
+// ---------------------------------------------------------------------------
+// Reading a stored definition back
+// ---------------------------------------------------------------------------
+
+/// Strip a `CREATE VIEW ... AS` header, leaving just the body.
+///
+/// Lives here rather than in a driver module because two drivers need it and
+/// this is the module that knows how such a header is *built*: SQLite's
+/// `sqlite_master.sql` and SQL Server's `sys.sql_modules.definition` both store
+/// the whole statement, unlike Postgres (`pg_get_viewdef`) and MySQL
+/// (`information_schema.views.VIEW_DEFINITION`), which expose only the body.
+/// Stripping it here is what makes [`ViewDefinition::query`] mean the same
+/// thing on all five drivers.
+///
+/// No SQL parser, and no new `regex` dependency (CLAUDE.md asks that new crates
+/// be discussed first, and this doesn't warrant one). Both grammars are
+/// `CREATE [OR ALTER | TEMP[ORARY]] VIEW [IF NOT EXISTS] name [(col, ...)]
+/// [WITH ...] AS select-stmt`, so the parenthesised column list is the only
+/// thing before the body that can contain an `AS`-like substring, and column
+/// lists are bare names with no expressions. Tracking paren depth and taking
+/// the first whole-word `AS` at depth 0 is therefore exact for any statement
+/// either engine would itself have produced. Falls back to the raw text when no
+/// such `AS` is found — better to hand back something editable than to block
+/// outright.
+pub fn strip_view_header(create_sql: &str) -> String {
+    let upper = create_sql.to_ascii_uppercase();
+    let chars: Vec<(usize, char)> = upper.char_indices().collect();
+    let n = chars.len();
+    let mut depth = 0i32;
+    let mut idx = 0usize;
+    let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    while idx < n {
+        let c = chars[idx].1;
+        if c == '(' {
+            depth += 1;
+        } else if c == ')' {
+            depth -= 1;
+        } else if depth == 0 && c == 'A' && idx + 1 < n && chars[idx + 1].1 == 'S' {
+            let prev_ok = idx == 0 || !is_word(chars[idx - 1].1);
+            let next_ok = idx + 2 >= n || !is_word(chars[idx + 2].1);
+            if prev_ok && next_ok {
+                let body_start = if idx + 2 < n {
+                    chars[idx + 2].0
+                } else {
+                    upper.len()
+                };
+                return create_sql[body_start..].trim().to_string();
+            }
+        }
+        idx += 1;
+    }
+    create_sql.trim().to_string()
 }
 
 fn validate_view(v: &ViewDefinition) -> AppResult<()> {
@@ -213,5 +268,58 @@ mod tests {
     #[test]
     fn empty_query_rejected() {
         assert!(build_view_ddl(Dialect::Postgres, None, &view(None, "v", "   ")).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // strip_view_header
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn strips_a_plain_create_view_header() {
+        assert_eq!(strip_view_header("CREATE VIEW v AS SELECT 1"), "SELECT 1");
+    }
+
+    #[test]
+    fn strips_temp_and_if_not_exists_variants() {
+        // Every optional clause SQLite's grammar allows before the body.
+        assert_eq!(
+            strip_view_header("CREATE TEMP VIEW v AS SELECT 1"),
+            "SELECT 1"
+        );
+        assert_eq!(
+            strip_view_header("CREATE TEMPORARY VIEW IF NOT EXISTS v AS SELECT 1"),
+            "SELECT 1"
+        );
+        // SQL Server's spelling, including a pre-body WITH clause.
+        assert_eq!(
+            strip_view_header("CREATE VIEW [dbo].[v] WITH SCHEMABINDING AS SELECT 1"),
+            "SELECT 1"
+        );
+    }
+
+    #[test]
+    fn a_column_list_cannot_be_mistaken_for_the_body() {
+        // The parenthesised column list is the only thing before the body that
+        // can hold an `AS`-like token; depth tracking is what keeps a column
+        // actually named `as_of` (or a bare `as`) from ending the header early.
+        assert_eq!(
+            strip_view_header("CREATE VIEW v (a, as_of, b) AS SELECT 1, 2, 3"),
+            "SELECT 1, 2, 3"
+        );
+    }
+
+    #[test]
+    fn a_word_containing_as_is_not_the_separator() {
+        // `LAST` and `ASSET` both contain the letters; neither is a whole word.
+        assert_eq!(
+            strip_view_header("CREATE VIEW assets AS SELECT last_seen FROM t"),
+            "SELECT last_seen FROM t"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_the_raw_text_when_no_header_is_found() {
+        // Documented behaviour: hand back something editable rather than block.
+        assert_eq!(strip_view_header("  SELECT 1  "), "SELECT 1");
     }
 }
