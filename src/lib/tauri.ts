@@ -1048,9 +1048,16 @@ export const api = {
    *
    * Rejects when the file has since been moved or deleted; callers surface that
    * rather than swallowing it, so a dead path doesn't look like a dead button.
+   *
+   * The command's Rust argument is `paths: Vec<PathBuf>` (plural — it can
+   * reveal several items at once), not `path`. Sending `{ path }` used to
+   * fail IPC deserialization on every call regardless of whether the file
+   * existed, which `reveal()` in `NotificationCard.tsx` then reported as
+   * "the file is no longer there" — a false positive for a file that was
+   * sitting right where it said it was.
    */
   revealItemInDir: (path: string) =>
-    invoke<void>("plugin:opener|reveal_item_in_dir", { path }),
+    invoke<void>("plugin:opener|reveal_item_in_dir", { paths: [path] }),
 
   // MCP connector ----------------------------------------------------------
 

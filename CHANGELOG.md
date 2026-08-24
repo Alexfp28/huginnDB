@@ -171,6 +171,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Clicking a file name in any `file` notification always said "the file is
+  no longer there," even for a file sitting right where it said it was.**
+  `api.revealItemInDir` invoked `plugin:opener|reveal_item_in_dir` with
+  `{ path }`, but the command's actual Rust argument is `paths: Vec<PathBuf>`
+  (plural — it can reveal several items at once). The name mismatch failed
+  Tauri's IPC deserialization on every single call, independent of whether the
+  path existed; `NotificationCard`'s `reveal()` caught that as a generic
+  rejection and reported it exactly like a moved-or-deleted file. Every export
+  notification went through this — table, rows, database, connection profiles,
+  environments, JSON Schemas, themes — so the "Open folder" affordance had
+  been silently broken since the notification rework landed it. Fixed by
+  sending `{ paths: [path] }`, matching the command's real shape.
+
 - **Dropping a MongoDB "view" whose name is actually a collection deleted all
   of its documents.** MongoDB keeps views and collections in one namespace, and
   dropping either is the same `drop` call — so `db::mongo::aggregation::
