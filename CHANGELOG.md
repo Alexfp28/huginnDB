@@ -6,6 +6,72 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **A notification system of the app's own, replacing the library defaults.**
+  Notifications were the toast library mounted with its stock configuration:
+  four seconds, bottom-right, a hardcoded white/black card that `index.css`
+  tried to recolour from the outside with ~60 lines of `!important`, and a
+  check mark painted in the brand blue so a confirmation looked exactly like
+  an affordance. Every visual decision now belongs to `NotificationCard`,
+  raised through the new `lib/notify` façade — the library is kept purely as
+  transport (stacking, the six positions, swipe-to-dismiss, timers, focus),
+  and since a `jsx` toast is flagged `data-styled="false"` it no longer paints
+  anything, so the entire `!important` block is gone rather than extended.
+  The card is a theme surface: `popover` over `border` at the 10px radius, a
+  3px semantic rail at one weight for every kind (colour is the only
+  variable), a 28px icon medallion, the `2xs`/`3xs` type scale, the
+  `elevation-*` shadow ramp, and a 2px hairline that drains for the remaining
+  lifetime and freezes while the pointer is anywhere in the stack. `success`
+  finally uses `--success` instead of `--brand`, and `info` is the one kind
+  that spends the brand blue.
+
+- **Clicking a file name in an export notification opens the file manager with
+  the file selected.** The path used to be interpolated into the translated
+  sentence (`"Exported to {{path}}"`), which made it unselectable, uncopyable
+  and unopenable — the one thing anyone wants from it. A new `file` kind
+  separates the title from the path, renders the base name as a real control
+  (`api.revealItemInDir`, over the `opener` plugin's `reveal_item_in_dir`,
+  newly permitted in `capabilities/default.json`) and offers "Open folder" and
+  "Copy path" alongside it, with the containing directory beneath. Every
+  export inherits it: table, filtered rows, collection, database, connection
+  profiles, environments, JSON Schemas and themes. A file that has since been
+  moved or deleted degrades to a struck-through name and a warning instead of
+  a button that silently does nothing.
+
+- **Repeats collapse into one notification with a counter.** A multi-row save
+  used to stack seven identical cards; identical notifications raised within
+  five seconds of each other now fold into one, counted, and the grouping
+  policy lives in one place so the card on screen and the row in the history
+  can never disagree about what happened.
+
+- **A notification history behind a bell in the toolbar.** The same card,
+  compressed to a row, grouped by day, with unread counting and every `file`
+  entry still clickable — so an export from twenty minutes ago is one click
+  from the file manager. In memory and per window on purpose: it is session
+  ephemera, so it earns neither a state file nor a place in `prefs.json`
+  (rewritten on every `Ctrl`+wheel of the grid), and a second window claiming
+  the main window's notifications would be claiming work it never did.
+
+- **Settings → Notifications**, a new section: position as a grid of six
+  miniature windows rather than a dropdown (the choice is spatial), duration
+  as presets plus the raw millisecond value, whether errors wait to be
+  dismissed, how many are visible at once, expand-on-hover, card density,
+  the history cap, and whether the bell is shown. Each row is addressable
+  from the command palette, and the section's preview fires a *real*
+  notification — judging six seconds against four is exactly what a drawing
+  of one cannot help with.
+
+### Changed
+
+- **Notifications last 6 s instead of 4 s, and errors wait to be dismissed.**
+  Four seconds was the library's default and was never enough to read a file
+  path or a driver message; kinds that carry something to act on now get a
+  multiple of the configured duration (a warning twice, a file notification
+  four times, capped at 30 s), and an error stays until it is closed — it
+  usually carries something to copy, retry or report. Both are preferences,
+  and an error also gets a "Copy error" action for free.
+
 ### Fixed
 
 - **Creating a MongoDB index with a blank "Name" field always failed.** The

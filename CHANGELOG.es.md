@@ -8,6 +8,76 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Un sistema de notificaciones propio, en lugar de la configuración por
+  defecto de la librería.** Las notificaciones eran la librería de toasts
+  montada tal cual: cuatro segundos, abajo a la derecha, una tarjeta
+  blanca/negra fija que `index.css` intentaba recolorear desde fuera con unas
+  60 líneas de `!important`, y un tick pintado con el azul de marca, de modo
+  que una confirmación se leía igual que una acción. Ahora cada decisión
+  visual es de `NotificationCard`, que se dispara a través de la nueva fachada
+  `lib/notify`: la librería se queda solo como transporte (apilado, las seis
+  posiciones, descartar arrastrando, temporizadores, foco) y, al marcarse un
+  toast `jsx` como `data-styled="false"`, deja de pintar nada, así que el
+  bloque de `!important` desaparece en vez de crecer. La tarjeta es una
+  superficie del tema: `popover` sobre `border` con radio de 10 px, un riel
+  semántico de 3 px con el mismo grosor en todos los estados (el color es la
+  única variable), un medallón de icono de 28 px, la escala `2xs`/`3xs`, la
+  rampa de sombras `elevation-*` y un hairline de 2 px que se vacía con el
+  tiempo restante y se congela mientras el puntero esté sobre la pila.
+  `success` usa por fin `--success` en lugar de `--brand`, e `info` es el
+  único estado que gasta el azul de marca.
+
+- **Al pulsar el nombre del archivo en una notificación de exportación se abre
+  el explorador con el archivo seleccionado.** Antes la ruta se incrustaba en
+  la frase traducida (`"Exportado en {{path}}"`), lo que la volvía imposible
+  de seleccionar, copiar o abrir, que es justo lo único que se quiere de ella.
+  Un nuevo tipo `file` separa el título de la ruta, dibuja el nombre como un
+  control real (`api.revealItemInDir`, sobre el comando `reveal_item_in_dir`
+  del plugin `opener`, ahora permitido en `capabilities/default.json`) y
+  ofrece «Abrir carpeta» y «Copiar ruta», con la carpeta contenedora debajo.
+  Lo heredan todas las exportaciones: tabla, filas filtradas, colección, base
+  de datos, perfiles de conexión, entornos, esquemas JSON y temas. Si el
+  archivo se movió o se borró, el nombre queda tachado y salta un aviso, en
+  vez de un botón que no hace nada en silencio.
+
+- **Las repeticiones se agrupan en una sola notificación con contador.**
+  Guardar varias filas apilaba siete tarjetas idénticas; ahora las
+  notificaciones iguales que se levantan dentro de una ventana de cinco
+  segundos se funden en una, contada, y la política de agrupado vive en un
+  único sitio para que la tarjeta en pantalla y la fila del historial no
+  puedan contar cosas distintas.
+
+- **Un historial de notificaciones tras una campana en la barra de herramientas.**
+  La misma tarjeta comprimida a una fila, agrupada por día, con cuenta de no
+  leídas y con cada entrada de archivo todavía pulsable, así que una
+  exportación de hace veinte minutos está a un clic del explorador. En memoria
+  y por ventana a propósito: es material efímero de la sesión, así que no
+  merece un archivo de estado ni un sitio en `prefs.json` (que se reescribe
+  con cada `Ctrl`+rueda en la cuadrícula), y una segunda ventana que heredara
+  las notificaciones de la principal estaría atribuyéndose trabajo que no hizo.
+
+- **Ajustes → Notificaciones**, sección nueva: la posición como una rejilla de
+  seis ventanas en miniatura en lugar de un desplegable (la elección es
+  espacial), la duración como preajustes más el valor en milisegundos, si los
+  errores esperan a que los cierres, cuántas se ven a la vez, expandir al
+  pasar el ratón, la densidad de la tarjeta, el tope del historial y si se
+  muestra la campana. Cada fila es direccionable desde la paleta de comandos,
+  y la vista previa de la sección dispara una notificación *real*: juzgar seis
+  segundos frente a cuatro es exactamente lo que un dibujo no permite.
+
+### Cambiado
+
+- **Las notificaciones duran 6 s en lugar de 4 s y los errores esperan a que
+  los cierres.** Los cuatro segundos eran el valor por defecto de la librería
+  y nunca daban para leer una ruta o un mensaje del driver; los tipos que
+  traen algo que hacer reciben ahora un múltiplo de la duración configurada
+  (un aviso el doble, una notificación de archivo el cuádruple, con tope de
+  30 s) y un error se queda hasta que se cierra, porque casi siempre trae algo
+  que copiar, reintentar o reportar. Ambas cosas son preferencias, y un error
+  incluye además una acción «Copiar error» sin coste alguno.
+
 ### Corregido
 
 - **Crear un índice de MongoDB dejando el campo «Nombre» en blanco siempre
