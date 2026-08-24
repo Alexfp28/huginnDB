@@ -976,6 +976,10 @@
         "label": "Data grid",
         "desc": "Tables & paging"
       },
+      "notifications": {
+        "label": "Notifications",
+        "desc": "Placement & timing"
+      },
       "connections": {
         "label": "Connections",
         "desc": "Pools & limits"
@@ -1259,6 +1263,61 @@
       "mcpBridge": {
         "label": "Share pools with the MCP connector",
         "desc": "Let a running huginndb-mcp sidecar use this app's connections instead of opening its own, so the whole machine shares one budget per server — and its activity appears in the Console as it happens. Opens a token-protected listener on localhost. Off by default."
+      }
+    },
+    "notifications": {
+      "position": {
+        "label": "Position",
+        "desc": "Corner or edge the stack grows from.",
+        "topLeft": "Top left",
+        "topCenter": "Top centre",
+        "topRight": "Top right",
+        "bottomLeft": "Bottom left",
+        "bottomCenter": "Bottom centre",
+        "bottomRight": "Bottom right"
+      },
+      "duration": {
+        "label": "Duration",
+        "desc": "How long a dismissible notification stays. Warnings and file notifications get a multiple of this.",
+        "sticky": "Until dismissed",
+        "seconds": "{{count}} s",
+        "unit": "ms"
+      },
+      "errorsPersist": {
+        "label": "Errors wait to be dismissed",
+        "desc": "An error usually carries something to copy, retry or report — and none of that happens in six seconds."
+      },
+      "maxVisible": {
+        "label": "Visible at once",
+        "desc": "The rest collapse behind a counter and go straight to the history."
+      },
+      "expandOnHover": {
+        "label": "Expand on hover",
+        "desc": "Opens the stack and freezes every timer while the pointer is over it."
+      },
+      "density": {
+        "label": "Density",
+        "desc": "Compact drops the body line and keeps title plus actions on one row.",
+        "comfortable": "Comfortable",
+        "compact": "Compact"
+      },
+      "historyLimit": {
+        "label": "History entries",
+        "desc": "Kept in memory by this window only — never written to disk. 0 turns the history off."
+      },
+      "showBell": {
+        "label": "Bell in the toolbar",
+        "desc": "With it off the history is still kept and still reachable from the command palette."
+      },
+      "preview": {
+        "title": "Preview",
+        "desc": "Fires a real notification, with its timer and its hairline, so the seconds can be judged rather than guessed.",
+        "test": "Test",
+        "testError": "Test an error",
+        "sampleTitle": "Cell saved",
+        "sampleBody": "Artist.Name on row 4.",
+        "sampleErrorTitle": "Could not save the cell",
+        "sampleErrorBody": "ERROR 1062 (23000): Duplicate entry 'AC/DC' for key 'Artist.ux_name'"
       }
     }
   },

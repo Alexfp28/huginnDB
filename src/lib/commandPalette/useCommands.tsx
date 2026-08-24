@@ -23,6 +23,7 @@ import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
 import {
   AppWindow,
+  Bell,
   BookOpen,
   Braces,
   Cable,
@@ -116,6 +117,7 @@ const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
   general: <Settings className="h-4 w-4" />,
   editor: <FileText className="h-4 w-4" />,
   grid: <TableIcon className="h-4 w-4" />,
+  notifications: <Bell className="h-4 w-4" />,
   connections: <Plug className="h-4 w-4" />,
   appearance: <Palette className="h-4 w-4" />,
   shortcuts: <Keyboard className="h-4 w-4" />,
@@ -156,6 +158,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   const updateEditor = usePreferences((s) => s.updateEditor);
   const updateGrid = usePreferences((s) => s.updateGrid);
   const updateUi = usePreferences((s) => s.updateUi);
+  const updateNotifications = usePreferences((s) => s.updateNotifications);
   const updateConnections = usePreferences((s) => s.updateConnections);
   const customThemes = useThemeStore((s) => s.customThemes);
   const themeId = useThemeStore((s) => s.themeId);
@@ -176,6 +179,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       updateEditor,
       updateGrid,
       updateUi,
+      updateNotifications,
       updateConnections,
     };
     const combo = (id: Parameters<typeof getBinding>[1]) =>
@@ -807,6 +811,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     updateEditor,
     updateGrid,
     updateUi,
+    updateNotifications,
     updateConnections,
     customThemes,
     themeId,
