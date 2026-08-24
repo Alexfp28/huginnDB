@@ -29,6 +29,7 @@
  * screen and the history can never disagree about what counts as a repeat.
  */
 
+import { create } from "zustand";
 import { toast } from "sonner";
 import { NotificationCard } from "@/components/shell/NotificationCard";
 import type { NotificationAction } from "@/components/shell/NotificationCard";
@@ -110,10 +111,104 @@ function clampDuration(ms: number): number {
   return Math.min(Math.max(ms, MIN_DURATION_MS), MAX_DURATION_MS);
 }
 
+/**
+ * A live ordered mirror of the on-screen stack — newest first, exactly like
+ * Sonner's own internal array — used for two things Sonner has no concept
+ * of: protecting a card from being pushed behind `maxVisible` (see
+ * {@link protectStackBoundary}) and driving the "+N more" pill
+ * (`NotificationOverflowPill`), since Sonner does not expose how many toasts
+ * it stopped rendering.
+ *
+ * A "progress" entry is tracked here too even though it is not a
+ * {@link NotificationKind} — see {@link raise}'s `forceToastId` branch, which
+ * relabels it in place once it resolves.
+ */
+interface ToastStackState {
+  entries: { id: string; kind: NotificationKind | "progress" }[];
+  push: (id: string, kind: NotificationKind | "progress") => void;
+  remove: (id: string) => void;
+  setKind: (id: string, kind: NotificationKind) => void;
+}
+
+/** Exported only so tests can reset it between cases — module state, like
+ *  `groups`, otherwise outlives any single test in the same file. */
+export const useToastStack = create<ToastStackState>()((set) => ({
+  entries: [],
+  push(id, kind) {
+    set((s) => ({ entries: [{ id, kind }, ...s.entries] }));
+  },
+  remove(id) {
+    set((s) =>
+      s.entries.some((e) => e.id === id)
+        ? { entries: s.entries.filter((e) => e.id !== id) }
+        : s,
+    );
+  },
+  setKind(id, kind) {
+    set((s) => ({ entries: s.entries.map((e) => (e.id === id ? { ...e, kind } : e)) }));
+  },
+}));
+
+/**
+ * Kinds a stack-boundary crossing must never bump behind `maxVisible`: an
+ * error nobody has read yet, and a progress bar that is still running.
+ */
+const PROTECTED_STACK_KINDS = new Set<NotificationKind | "progress">(["error", "progress"]);
+
+/**
+ * Called right before a brand-new card takes a stack slot. Sonner unshifts
+ * every new toast to the front and everything else shifts one slot back —
+ * the entry that was at the last visible slot (`maxVisible - 1`) falls
+ * behind the fold. If that entry is protected, dismiss the nearest
+ * unprotected one in front of it instead, so the count entering this
+ * function still nets to "one slot freed" but the protected card keeps its
+ * place. Removal from `entries` is optimistic (not deferred to the toast's
+ * own `onDismiss`) so the very next call sees the corrected count even
+ * though Sonner's own removal animates.
+ */
+function protectStackBoundary(maxVisible: number) {
+  if (maxVisible <= 0) return;
+  const entries = useToastStack.getState().entries;
+  if (entries.length < maxVisible) return;
+  const boundary = entries[maxVisible - 1];
+  if (!boundary || !PROTECTED_STACK_KINDS.has(boundary.kind)) return;
+  for (let i = maxVisible - 2; i >= 0; i--) {
+    if (!PROTECTED_STACK_KINDS.has(entries[i].kind)) {
+      toast.dismiss(entries[i].id);
+      useToastStack.getState().remove(entries[i].id);
+      return;
+    }
+  }
+  // Every visible slot is protected (all errors/progress) — nothing safe to
+  // evict instead, so the natural Sonner behaviour applies this once.
+}
+
+/**
+ * How many active notifications are currently pushed behind `maxVisible` —
+ * the count the "+N more" pill (`NotificationOverflowPill`) renders.
+ *
+ * `entries` is the raw store array (stable unless the stack actually
+ * changes), and the subtraction is cheap arithmetic done at render time, not
+ * a selector return — so this stays clear of the infinite-re-render trap in
+ * CLAUDE.md gotcha #1.
+ */
+export function useHiddenToastCount(): number {
+  const entries = useToastStack((s) => s.entries);
+  const maxVisible = usePreferences((s) => s.prefs.notifications.maxVisible);
+  return Math.max(0, entries.length - maxVisible);
+}
+
 function raise(
   kind: NotificationKind,
   title: string,
   opts: NotifyOptions & { path?: string; size?: string } = {},
+  /**
+   * Resolve an existing card in place instead of raising a new one — how a
+   * `notify.progress()` handle turns its bar into success/error/file. The
+   * slot already exists (and was already protected from eviction when the
+   * progress bar first appeared), so this only relabels it.
+   */
+  forceToastId?: string,
 ) {
   const prefs = usePreferences.getState().prefs.notifications;
   const base = clampDuration(prefs.durationMs);
@@ -158,8 +253,17 @@ function raise(
       : record()
     : record();
 
-  const toastId = grouped ? grouped.toastId : `notif-${++seq}`;
+  const toastId = forceToastId ?? (grouped ? grouped.toastId : `notif-${++seq}`);
   if (groupKey) groups.set(groupKey, { toastId, historyId, count, at: now });
+
+  if (forceToastId) {
+    // Relabelling a progress bar's slot in place — it already occupies a
+    // stack position (and already went through the eviction guard once).
+    useToastStack.getState().setKind(forceToastId, kind);
+  } else if (!grouped) {
+    protectStackBoundary(prefs.maxVisible);
+    useToastStack.getState().push(toastId, kind);
+  }
 
   // An error carries a message worth keeping even when nothing can be retried,
   // and copying it needs no context from the call site — so it is the one
@@ -197,12 +301,123 @@ function raise(
       // Whether it timed out or was swiped away, the group is over: the next
       // identical notification starts a fresh card rather than resurrecting
       // this one's counter.
-      onAutoClose: () => groupKey && groups.delete(groupKey),
-      onDismiss: () => groupKey && groups.delete(groupKey),
+      onAutoClose: () => {
+        if (groupKey) groups.delete(groupKey);
+        useToastStack.getState().remove(toastId);
+      },
+      onDismiss: () => {
+        if (groupKey) groups.delete(groupKey);
+        useToastStack.getState().remove(toastId);
+      },
     },
   );
 
   return toastId;
+}
+
+export interface ProgressUpdate {
+  done: number;
+  total: number;
+}
+
+export interface NotifyProgressOptions {
+  /** Static second line while no numbers have arrived yet. */
+  description?: string;
+  /** Formats the second line once numbers are known; overrides `description`. */
+  formatProgress?: (p: ProgressUpdate) => string;
+}
+
+export interface ProgressHandle {
+  /** Push a done/total tick. A card with no `formatProgress` just fills the bar. */
+  update: (p: ProgressUpdate) => void;
+  /** Resolve into a normal card, in the same slot, recorded in history for the
+   *  first time — the history never carries an "Importando…" placeholder. */
+  success: (title: string, opts?: NotifyOptions) => void;
+  error: (title: string, opts?: NotifyOptions) => void;
+  file: (title: string, opts: NotifyFileOptions) => void;
+  /** Withdraw without recording anything — nothing worth telling happened. */
+  dismiss: () => void;
+}
+
+function renderProgressCard(
+  toastId: string,
+  title: string,
+  description: string | undefined,
+  progress: ProgressUpdate | undefined,
+) {
+  const density = usePreferences.getState().prefs.notifications.density;
+  toast.custom(
+    () => (
+      <NotificationCard
+        kind="progress"
+        title={title}
+        description={description}
+        progress={progress}
+        density={density}
+        // Not dismissible while running (see the toast option below); the
+        // card renders no close button for this kind, so this is never called.
+        onDismiss={() => {}}
+      />
+    ),
+    {
+      id: toastId,
+      duration: Infinity,
+      dismissible: false,
+    },
+  );
+}
+
+/**
+ * A long-running task with a determinate outcome, reported the same way a
+ * normal notification is — the card just starts as a spinner/bar and morphs
+ * into success/error/file in place once the handle is told how it ended.
+ *
+ * Deliberately outside `raise()`'s grouping: two concurrent progress bars are
+ * two cards, never one with a counter (`group: false` is implicit here, not
+ * a caller option), which is also why resolving always passes it through to
+ * `raise` explicitly rather than trusting a default.
+ */
+function progress(title: string, opts: NotifyProgressOptions = {}): ProgressHandle {
+  const toastId = `notif-${++seq}`;
+  const prefs = usePreferences.getState().prefs.notifications;
+  let settled = false;
+
+  protectStackBoundary(prefs.maxVisible);
+  useToastStack.getState().push(toastId, "progress");
+  renderProgressCard(toastId, title, opts.description, undefined);
+
+  return {
+    update(p) {
+      if (settled) return;
+      renderProgressCard(
+        toastId,
+        title,
+        opts.formatProgress ? opts.formatProgress(p) : opts.description,
+        p,
+      );
+    },
+    success: (t, o) => {
+      if (settled) return;
+      settled = true;
+      raise("success", t, { ...o, group: false }, toastId);
+    },
+    error: (t, o) => {
+      if (settled) return;
+      settled = true;
+      raise("error", t, { ...o, group: false }, toastId);
+    },
+    file: (t, o) => {
+      if (settled) return;
+      settled = true;
+      raise("file", t, { ...o, group: false }, toastId);
+    },
+    dismiss: () => {
+      if (settled) return;
+      settled = true;
+      useToastStack.getState().remove(toastId);
+      toast.dismiss(toastId);
+    },
+  };
 }
 
 export const notify = {
@@ -220,6 +435,12 @@ export const notify = {
    * with the path glued into the sentence.
    */
   file: (title: string, opts: NotifyFileOptions) => raise("file", title, opts),
+  /**
+   * A long-running task reported live — a spinner or determinate bar that
+   * turns into success/error/file in the same card once it's told the
+   * outcome. See {@link ProgressHandle}.
+   */
+  progress,
   /** Dismiss one notification, or every one when called bare. */
   dismiss: (id?: string) => toast.dismiss(id),
 };

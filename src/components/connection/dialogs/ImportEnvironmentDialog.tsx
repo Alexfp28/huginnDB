@@ -65,6 +65,10 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
     run: api.importEnvironment,
     reviewStep: true,
     afterImport: () => useEnvironments.getState().load(),
+    open,
+    notifyTitle: t("transfer.importEnvironment.title"),
+    notifySuccess: (result) =>
+      t("transfer.importEnvironment.done", { count: result.environments.length }),
   });
   const {
     step,

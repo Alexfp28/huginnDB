@@ -14,15 +14,30 @@
  * passphrase step and no progress event, its review step comes *after*
  * conflicts, and it reports errors through toasts rather than inline state — a
  * different shape that would cost more in optionality than it saves.
+ *
+ * While the dialog is open, `ImportProgressBar` inside it is the right
+ * surface for progress — a toast saying the same thing next to it would be
+ * noise. But nothing here stops the user closing the dialog (the X, Escape,
+ * a click outside — none of them are disabled during `loading`) while the
+ * backend is still grinding through PBKDF2 for the rest of the file, and
+ * until now that left the import running in total silence: `handleClose`
+ * resets the wizard's own state immediately, so by the time the promise
+ * resolves there was nothing left on screen to update. `doImportInFlightRef`
+ * plus the two effects below hand the in-flight import off to a
+ * `notify.progress()` card the moment the dialog closes out from under it,
+ * and resolve that card into success/error once the promise actually
+ * settles — the only case that needs a toast at all.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { pickJsonFile } from "@/lib/dialogs";
 import {
   withImportProgress,
   type ImportProgress,
 } from "@/lib/bridges/import-progress-bridge";
+import { notify, type ProgressHandle } from "@/lib/notify";
+import i18n from "@/lib/i18n";
 import type { ConflictAction, ConflictResolution } from "@/types";
 
 /** The steps in order. "review" is skipped unless the caller asks for it. */
@@ -55,6 +70,14 @@ export interface ImportWizardConfig<A extends ImportAnalysisLike, R> {
   reviewStep?: boolean;
   /** Refresh whatever store the import invalidated. */
   afterImport?: () => Promise<void>;
+  /** Whether the dialog is currently visible — passed straight through from
+   *  the dialog's own `open` prop. Closing it while an import is in flight is
+   *  what triggers the `notify.progress()` handoff. */
+  open: boolean;
+  /** Notification title for that handoff — typically the dialog's own title. */
+  notifyTitle: string;
+  /** Success copy for the resolved notification, once the import finishes. */
+  notifySuccess: (result: R) => string;
 }
 
 export interface ImportWizard<A, R> {
@@ -107,6 +130,13 @@ export function useImportWizard<A extends ImportAnalysisLike, R>(
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
 
+  // Distinct from `loading`, which also brackets the much shorter `analyze`
+  // call in `pickFile` — the handoff below only cares about the long-running
+  // decrypt/import, not a quick file-metadata read.
+  const doImportInFlightRef = useRef(false);
+  const progressHandleRef = useRef<ProgressHandle | null>(null);
+  const wasOpenRef = useRef(cfg.open);
+
   async function doImport(
     path: string,
     pp: string | undefined,
@@ -114,6 +144,7 @@ export function useImportWizard<A extends ImportAnalysisLike, R>(
   ) {
     setLoading(true);
     setError(null);
+    doImportInFlightRef.current = true;
     try {
       const r = await withImportProgress(setProgress, () =>
         cfg.run(path, pp, resolved),
@@ -125,8 +156,47 @@ export function useImportWizard<A extends ImportAnalysisLike, R>(
       setError(String(e));
     } finally {
       setLoading(false);
+      doImportInFlightRef.current = false;
     }
   }
+
+  // The dialog just closed (X / Escape / outside click — `handleClose` in
+  // both dialogs resets step/progress/error synchronously, but never touches
+  // `loading`) while the import is still running. Hand it off to a
+  // notification so the outcome isn't lost.
+  useEffect(() => {
+    const justClosed = wasOpenRef.current && !cfg.open;
+    wasOpenRef.current = cfg.open;
+    if (justClosed && doImportInFlightRef.current && !progressHandleRef.current) {
+      progressHandleRef.current = notify.progress(cfg.notifyTitle, {
+        formatProgress: (p) =>
+          i18n.t("transfer.import.progress", { done: p.done, total: p.total }),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.open]);
+
+  // Feed it live numbers while it runs.
+  useEffect(() => {
+    if (progress) progressHandleRef.current?.update(progress);
+  }, [progress]);
+
+  // Resolve it once the promise actually settles — success/error, whichever
+  // it was, is what belongs in history, never the progress itself.
+  useEffect(() => {
+    const handle = progressHandleRef.current;
+    if (!handle || loading) return;
+    progressHandleRef.current = null;
+    if (error) {
+      handle.error(cfg.notifyTitle, { description: error });
+    } else if (result) {
+      handle.success(cfg.notifySuccess(result));
+    } else {
+      // Reset ran before the promise settled — nothing meaningful to show.
+      handle.dismiss();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   /** Where to go once the analysis (or the review step) is behind us. */
   async function advance(path: string, info: A) {

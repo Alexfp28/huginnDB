@@ -17,26 +17,60 @@ vi.mock("@/lib/bridges/import-progress-bridge", () => ({
     task: () => Promise<unknown>,
   ) => task(),
 }));
+vi.mock("@/lib/i18n", () => ({ default: { t: (k: string) => k } }));
+
+// `useImportWizard.ts`'s own static `import { notify } from "@/lib/notify"`
+// resolves before this file's top-level code runs, so the mock factory below
+// (also hoisted, per vitest's rules) cannot close over a plain top-level
+// `const` — it would read it before initialization. `vi.hoisted` runs first.
+const { progressHandle, notifyProgress } = vi.hoisted(() => {
+  const progressHandle = {
+    update: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+    file: vi.fn(),
+    dismiss: vi.fn(),
+  };
+  return { progressHandle, notifyProgress: vi.fn(() => progressHandle) };
+});
+vi.mock("@/lib/notify", () => ({ notify: { progress: notifyProgress } }));
 
 function analysis(over: Partial<ImportAnalysisLike> = {}): ImportAnalysisLike {
   return { encrypted: false, conflicts: [], ...over };
+}
+
+/** A promise this test can settle from the outside, on its own schedule. */
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 function setup(cfg: {
   analysis: ImportAnalysisLike;
   reviewStep?: boolean;
   run?: ReturnType<typeof vi.fn>;
+  open?: boolean;
 }) {
   const run = cfg.run ?? vi.fn().mockResolvedValue({ ok: true });
   const afterImport = vi.fn().mockResolvedValue(undefined);
-  const hook = renderHook(() =>
-    useImportWizard({
-      pickTitle: "pick",
-      analyze: vi.fn().mockResolvedValue(cfg.analysis),
-      run,
-      reviewStep: cfg.reviewStep,
-      afterImport,
-    }),
+  const hook = renderHook(
+    (open: boolean) =>
+      useImportWizard({
+        pickTitle: "pick",
+        analyze: vi.fn().mockResolvedValue(cfg.analysis),
+        run,
+        reviewStep: cfg.reviewStep,
+        afterImport,
+        open,
+        notifyTitle: "Import profiles",
+        notifySuccess: () => "Import complete",
+      }),
+    { initialProps: cfg.open ?? true },
   );
   return { ...hook, run, afterImport };
 }
@@ -44,6 +78,11 @@ function setup(cfg: {
 beforeEach(() => {
   picked.mockReset();
   picked.mockResolvedValue("/tmp/export.json");
+  notifyProgress.mockClear();
+  progressHandle.update.mockClear();
+  progressHandle.success.mockClear();
+  progressHandle.error.mockClear();
+  progressHandle.dismiss.mockClear();
 });
 
 describe("useImportWizard routing", () => {
@@ -162,5 +201,66 @@ describe("useImportWizard failure and reset", () => {
     expect(result.current.passphrase).toBe("");
     expect(result.current.resolutions).toEqual({});
     expect(result.current.error).toBeNull();
+  });
+});
+
+// The dialog's own close affordances (X, Escape, outside click) are never
+// disabled during `loading` — nothing stops the user closing it while the
+// backend is still mid-PBKDF2 for the rest of the file. This is the one case
+// that needs a toast at all: while the dialog is open, `ImportProgressBar`
+// already covers it.
+describe("useImportWizard progress handoff", () => {
+  it("raises nothing when the dialog closes with no import in flight", () => {
+    const { rerender } = setup({ analysis: analysis(), open: true });
+    act(() => rerender(false));
+    expect(notifyProgress).not.toHaveBeenCalled();
+  });
+
+  it("hands the in-flight import to a notification once the dialog closes, and resolves it on success", async () => {
+    const d = deferred<{ ok: boolean }>();
+    const run = vi.fn(() => d.promise);
+    const { result, rerender } = setup({ analysis: analysis(), run, open: true });
+
+    let pickPromise!: Promise<void>;
+    act(() => {
+      pickPromise = result.current.pickFile();
+    });
+    await waitFor(() => expect(result.current.loading).toBe(true));
+
+    act(() => rerender(false));
+    expect(notifyProgress).toHaveBeenCalledWith(
+      "Import profiles",
+      expect.anything(),
+    );
+    expect(progressHandle.success).not.toHaveBeenCalled();
+
+    act(() => d.resolve({ ok: true }));
+    await act(async () => void (await pickPromise));
+    expect(progressHandle.success).toHaveBeenCalledWith("Import complete");
+  });
+
+  it("resolves the handoff into an error card when the import fails", async () => {
+    const d = deferred<never>();
+    const run = vi.fn(() => d.promise);
+    const { result, rerender } = setup({ analysis: analysis(), run, open: true });
+
+    act(() => {
+      void result.current.pickFile();
+    });
+    await waitFor(() => expect(result.current.loading).toBe(true));
+    act(() => rerender(false));
+
+    act(() => d.reject(new Error("bad passphrase")));
+    await waitFor(() => expect(progressHandle.error).toHaveBeenCalled());
+    expect(progressHandle.error.mock.calls[0][0]).toBe("Import profiles");
+    expect(progressHandle.error.mock.calls[0][1]).toMatchObject({
+      description: expect.stringContaining("bad passphrase"),
+    });
+  });
+
+  it("does not hand off an import that finishes before the dialog closes", async () => {
+    const { result } = setup({ analysis: analysis(), open: true });
+    await act(async () => void (await result.current.pickFile()));
+    expect(notifyProgress).not.toHaveBeenCalled();
   });
 });

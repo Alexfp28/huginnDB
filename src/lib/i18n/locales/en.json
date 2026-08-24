@@ -1346,7 +1346,8 @@
       "emptyHint": "Exports, errors and confirmations land here.",
       "today": "Today",
       "yesterday": "Yesterday",
-      "earlier": "Earlier"
+      "earlier": "Earlier",
+      "moreHidden": "{{count}} more notification(s)"
     }
   },
   "transfer": {

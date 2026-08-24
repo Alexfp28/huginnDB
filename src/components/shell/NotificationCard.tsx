@@ -32,6 +32,7 @@ import {
   FileDown,
   FolderOpen,
   Info,
+  Loader2,
   TriangleAlert,
   X,
   XCircle,
@@ -53,8 +54,11 @@ export interface NotificationAction {
   dismiss?: boolean;
 }
 
+/** The one kind the history/preferences layer never sees — a live card only. */
+export type CardKind = NotificationKind | "progress";
+
 interface Props {
-  kind: NotificationKind;
+  kind: CardKind;
   title: string;
   description?: string;
   /** Render the description monospaced — errors, identifiers, raw values. */
@@ -65,6 +69,9 @@ interface Props {
   actions?: NotificationAction[];
   /** Lifetime in ms, for the drain hairline. Omit for a persistent card. */
   durationMs?: number;
+  /** `kind: "progress"` only — done/total for the determinate fill. Omit for
+   *  the indeterminate spinner (no bar, just the spinning medallion icon). */
+  progress?: { done: number; total: number };
   density: NotificationDensity;
   onDismiss: () => void;
   /** The reveal failed: the file is no longer where it was written. */
@@ -79,7 +86,7 @@ interface Props {
  * a `warning` ends up amber on screen and grey in the panel.
  */
 export const NOTIFICATION_KIND_VISUALS: Record<
-  NotificationKind,
+  CardKind,
   {
     rail: string;
     medallion: string;
@@ -127,6 +134,15 @@ export const NOTIFICATION_KIND_VISUALS: Record<
     drain: "bg-success/55",
     Icon: FileDown,
   },
+  // Never persisted — a progress card resolves into one of the kinds above
+  // before it ever reaches history (see `notify.progress`).
+  progress: {
+    rail: "bg-brand",
+    medallion: "bg-brand/15",
+    icon: "text-brand",
+    drain: "bg-brand/55",
+    Icon: Loader2,
+  },
 };
 
 export function NotificationCard({
@@ -138,6 +154,7 @@ export function NotificationCard({
   file,
   actions,
   durationMs,
+  progress,
   density,
   onDismiss,
   onFileMissing,
@@ -145,6 +162,10 @@ export function NotificationCard({
   const { t } = useTranslation();
   const k = NOTIFICATION_KIND_VISUALS[kind];
   const compact = density === "compact";
+  const pct =
+    kind === "progress" && progress && progress.total > 0
+      ? Math.min(100, Math.round((progress.done / progress.total) * 100))
+      : 0;
   // Set once a reveal comes back rejected, so the name stops looking clickable
   // in the card the user is still looking at (the history row is marked through
   // `onFileMissing`).
@@ -187,7 +208,7 @@ export function NotificationCard({
             k.medallion,
           )}
         >
-          <k.Icon className={cn("h-4 w-4", k.icon)} />
+          <k.Icon className={cn("h-4 w-4", k.icon, kind === "progress" && "animate-spin")} />
         </div>
 
         <div className="min-w-0 flex-1 pr-5">
@@ -248,6 +269,12 @@ export function NotificationCard({
             </>
           )}
 
+          {kind === "progress" && progress && (
+            <div className="mt-2.5 flex items-center justify-end">
+              <span className="font-mono text-3xs text-muted-foreground">{pct}%</span>
+            </div>
+          )}
+
           {(actions?.length || file) && (
             <div className="mt-2.5 flex items-center gap-2">
               {file && (
@@ -295,17 +322,33 @@ export function NotificationCard({
           )}
         </div>
 
-        <button
-          type="button"
-          aria-label={t("common.close")}
-          onClick={onDismiss}
-          className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <X className="h-3 w-3" />
-        </button>
+        {kind !== "progress" && (
+          <button
+            type="button"
+            aria-label={t("common.close")}
+            onClick={onDismiss}
+            className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
       </div>
 
-      {durationMs ? (
+      {kind === "progress" ? (
+        progress && (
+          <>
+            <span
+              aria-hidden
+              className="absolute bottom-0 left-[3px] right-0 h-0.5 bg-muted-foreground/15"
+            />
+            <span
+              aria-hidden
+              className="absolute bottom-0 left-[3px] h-0.5 bg-brand transition-[width] duration-200 ease-out"
+              style={{ width: `${pct}%` }}
+            />
+          </>
+        )
+      ) : durationMs ? (
         <>
           <span
             aria-hidden

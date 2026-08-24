@@ -51,6 +51,9 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
     analyze: api.analyzeImportFile,
     run: api.importProfiles,
     afterImport: refresh,
+    open,
+    notifyTitle: t("transfer.import.title"),
+    notifySuccess: () => t("transfer.import.done"),
   });
   const {
     step,

@@ -132,6 +132,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   notification — judging six seconds against four is exactly what a drawing
   of one cannot help with.
 
+- **A `progress` notification, handed a long-running import that outlives the
+  dialog it started in.** `ImportProfilesDialog`/`ImportEnvironmentDialog`
+  already show their own determinate bar (`ImportProgressBar`) while open —
+  that stays the right surface, so nothing changed there. The gap was that
+  neither dialog's close button, Escape, nor an outside click is disabled
+  while an import is running, so closing one mid-decrypt used to leave the
+  backend grinding through PBKDF2 in total silence: `useImportWizard`'s
+  `handleClose` resets the wizard's own state immediately, and by the time
+  the promise actually settled there was nothing left on screen to update.
+  `notify.progress(title)` now hands that in-flight import off to a card the
+  moment the dialog closes out from under it — a spinner or determinate bar
+  (`done`/`total`, no close button, not swipe-dismissible) that morphs in
+  place into success/error once the backend actually finishes, recorded in
+  history only then, never as an eternal "Importing…". No cancel button: the
+  backend has no way to actually cancel one.
+
+  The event behind it (`huginndb://import-progress`) was also a global
+  `emit`, so a second ("New window") import would have shown its progress in
+  every open window; both `import_profiles` and `import_environment` now
+  `emit_to` the window that started them, and the frontend bridge scopes its
+  `listen` to match (CLAUDE.md gotcha #25's pattern, applied here for the
+  first time outside `log_bus`).
+
+- **A live notification stack that protects what actually matters.** Two
+  gaps between the notifications rework above and Sonner's own stacking:
+  past `visibleToasts`, Sonner just stops rendering the overflow with no
+  indication anything is behind the fold — despite `maxVisible`'s own doc
+  comment promising "the rest collapse behind a counter" — and it evicts
+  whatever is oldest by arrival order, with no notion that an unread error
+  (or a live progress bar) is worth more than a confirmation that already
+  did its job. A small ordered mirror of the on-screen stack now backs both:
+  a "+N notifications more" pill (`NotificationOverflowPill`, mounted beside
+  every `<Toaster>`) for the first, and — before a new card would push the
+  last visible slot behind the fold — dismissing the oldest *unprotected*
+  card in front of it instead, so an error or a running progress bar never
+  gets shouldered out of view, for the second.
+
 ### Fixed
 
 - **Dropping a MongoDB "view" whose name is actually a collection deleted all

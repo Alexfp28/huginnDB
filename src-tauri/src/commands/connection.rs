@@ -1207,9 +1207,14 @@ pub async fn export_profiles(
 /// enough profiles in one file, slow enough to freeze the window (issue: app
 /// reported "not responding" importing a multi-environment bundle with dozens
 /// of encrypted secrets).
+///
+/// `window` is only used to scope [`IMPORT_PROGRESS_EVENT`] to the caller —
+/// see the event's own doc comment for why a plain `app.emit` would leak
+/// progress into every open window (CLAUDE.md gotcha #25).
 #[tauri::command]
 pub async fn import_profiles(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     file_path: String,
     passphrase: Option<String>,
@@ -1218,6 +1223,7 @@ pub async fn import_profiles(
     let profiles_lock = state.profiles.clone();
     let json_schemas_lock = state.json_schemas.clone();
     let app_for_task = app.clone();
+    let window_label = window.label().to_string();
 
     let (result, schema_changed) = tauri::async_runtime::spawn_blocking(move || -> AppResult<_> {
         let data = std::fs::read_to_string(&file_path)?;
@@ -1244,8 +1250,11 @@ pub async fn import_profiles(
                 passphrase.as_deref(),
                 &resolution_map,
                 |done, total| {
-                    let _ =
-                        app_for_task.emit(IMPORT_PROGRESS_EVENT, ImportProgress { done, total });
+                    let _ = app_for_task.emit_to(
+                        &window_label,
+                        IMPORT_PROGRESS_EVENT,
+                        ImportProgress { done, total },
+                    );
                 },
             )?;
             store::save_profiles(&profiles)?;
@@ -1299,6 +1308,14 @@ pub(crate) type ProfileImportOutcome = (
 /// can take long enough that a bare spinner isn't enough feedback. Snake_case
 /// on the wire, matching `ImportResult` and every other DTO in this module
 /// (no `rename_all`).
+///
+/// Emitted with `emit_to(window_label, ...)`, not a broadcast `emit` — each
+/// import is triggered from one window's dialog, so a second ("New window")
+/// window has no business rendering someone else's import progress (CLAUDE.md
+/// gotcha #25). The frontend bridge (`lib/bridges/import-progress-bridge.ts`)
+/// scopes its `listen` the same way, which is the half that actually matters:
+/// an unscoped `listen()` defaults to `EventTarget::Any` and receives every
+/// `emit_to(...)` regardless of the emitter's target.
 pub const IMPORT_PROGRESS_EVENT: &str = "huginndb://import-progress";
 
 #[derive(Debug, Clone, serde::Serialize)]

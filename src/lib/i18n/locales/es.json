@@ -1346,7 +1346,8 @@
       "emptyHint": "Aquí quedan las exportaciones, los errores y las confirmaciones.",
       "today": "Hoy",
       "yesterday": "Ayer",
-      "earlier": "Anterior"
+      "earlier": "Anterior",
+      "moreHidden": "{{count}} notificación(es) más"
     }
   },
   "transfer": {

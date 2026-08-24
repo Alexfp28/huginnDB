@@ -11,6 +11,7 @@
  */
 
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 /** Mirrors `IMPORT_PROGRESS_EVENT` in `src-tauri/src/commands/connection.rs`. */
 const IMPORT_PROGRESS_EVENT = "huginndb://import-progress";
@@ -26,13 +27,21 @@ export interface ImportProgress {
  * Unsubscribes and clears the progress on the way out whatever happens —
  * a leaked listener would keep feeding a closed dialog's setState, and a
  * progress bar left at 8/12 after a failure is worse than none.
+ *
+ * Scoped to this window's label: the backend now emits with `emit_to`, but a
+ * bare `listen()` defaults to `EventTarget::Any` and would still receive a
+ * *different* window's import (CLAUDE.md gotcha #25) — see `log-bridge.ts`
+ * for the identical pattern.
  */
 export async function withImportProgress<T>(
   onProgress: (p: ImportProgress | null) => void,
   task: () => Promise<T>,
 ): Promise<T> {
-  const unlisten = await listen<ImportProgress>(IMPORT_PROGRESS_EVENT, (e) =>
-    onProgress(e.payload),
+  const label = getCurrentWindow().label;
+  const unlisten = await listen<ImportProgress>(
+    IMPORT_PROGRESS_EVENT,
+    (e) => onProgress(e.payload),
+    { target: label },
   );
   try {
     return await task();

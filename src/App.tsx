@@ -48,6 +48,7 @@ import { HelpMenu } from "@/components/menus/HelpMenu";
 import { AppShell } from "@/components/shell/AppShell";
 import { LayoutToggles } from "@/components/shell/LayoutToggles";
 import { NotificationCenter } from "@/components/shell/NotificationCenter";
+import { NotificationOverflowPill } from "@/components/shell/NotificationOverflowPill";
 import { StatusBar } from "@/components/shell/StatusBar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
@@ -538,6 +539,7 @@ export default function App() {
         offset={{ bottom: 32, top: 12, left: 16, right: 16 }}
         theme={activeTheme.mode === "dark" ? "dark" : "light"}
       />
+      <NotificationOverflowPill />
       {updateNotificationVisible && availableVersion && (
         <UpdateBanner version={availableVersion} />
       )}

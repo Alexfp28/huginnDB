@@ -29,6 +29,7 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
+import { NotificationOverflowPill } from "@/components/shell/NotificationOverflowPill";
 import { TableDataTab } from "@/components/grid/TableDataTab";
 import { QueryEditorTab } from "@/components/query/QueryEditorTab";
 import { StructureEditorTab } from "@/components/schema/StructureEditorTab";
@@ -158,6 +159,7 @@ export function DetachedTabWindow() {
           offset={{ bottom: 32, top: 12, left: 16, right: 16 }}
           theme={activeTheme.mode === "dark" ? "dark" : "light"}
         />
+        <NotificationOverflowPill />
       </div>
     </TooltipProvider>
   );
