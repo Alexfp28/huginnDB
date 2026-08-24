@@ -1710,6 +1710,31 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_18_0": {
+        "tagline": "A notification system built for the app, full view management over the MCP connector, and a project-wide performance and reliability pass.",
+        "items": {
+          "notifications": {
+            "title": "A notification system of its own",
+            "body": "Every toast is now rendered by HuginnDB itself, not the library's stock defaults — a themed card, duplicate notifications collapsed into one with a counter, a history behind a bell in the toolbar, and a progress card for imports and exports that outlive the dialog that started them."
+          },
+          "mcpViews": {
+            "title": "Views over the MCP connector: read, edit and delete",
+            "body": "An AI client can now read a view's definition, create or redefine one, and drop it, on all five drivers — including MongoDB's stored aggregation pipelines. Same write policy as any other DDL change: a connection needs full write access."
+          },
+          "performance": {
+            "title": "Internal: a faster, more reliable app under the hood",
+            "body": "Fixed a multi-second launch freeze caused by re-hashing every shared-origin secret on the main thread, and a SQL Server bug that hung the schema explorer forever loading columns. A project-wide pass also removed duplicated logic across the Rust backend and the frontend — same behavior, less code to drift."
+          },
+          "bugFixes": {
+            "title": "A round of issue and bug fixes",
+            "body": "Dropping a MongoDB \"view\" whose name matched a real collection could wipe every document in it — now refused. Blank-named MongoDB indexes, bulk updates on MySQL BIT columns, and a dozen smaller inconsistencies (locale formatting, import numbering, missing translations) are fixed too."
+          },
+          "docsSections": {
+            "title": "The documentation viewer now has sections",
+            "body": "Each guide opens on a cover with a card per section, the sidebar is a tree derived straight from the markdown, and in-document links actually jump to their target now."
+          }
+        }
+      },
       "1_17_0": {
         "tagline": "Your editor now understands JSON Schemas — and a runaway query can no longer take down the app.",
         "items": {

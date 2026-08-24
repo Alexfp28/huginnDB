@@ -7,7 +7,7 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 - **HuginnDB** — desktop database manager, Tauri 2 (Rust backend) + React + TypeScript frontend.
 - Targets PostgreSQL, MySQL, SQLite, **MongoDB**, and **Microsoft SQL Server**. Inspired by HeidiSQL but minimal-UI / keyboard-first / Monaco-everywhere.
 - Public repo: <https://github.com/Alexfp28/huginnDB>.
-- License: MIT. Status: **1.17.x** (stable; SemVer applies). MongoDB support landed in 1.1.0; the headless MCP connector (`huginndb-mcp`) landed across the 1.5–1.9 line (per-connection write policy in 1.9.0).
+- License: MIT. Status: **1.18.x** (stable; SemVer applies). MongoDB support landed in 1.1.0; the headless MCP connector (`huginndb-mcp`) landed across the 1.5–1.9 line (per-connection write policy in 1.9.0).
 
 ## Maintainer / collaboration notes
 

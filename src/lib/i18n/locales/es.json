@@ -1710,6 +1710,31 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_18_0": {
+        "tagline": "Un sistema de notificaciones propio de la app, gestión completa de vistas desde el conector MCP, y un repaso de rendimiento y fiabilidad a nivel de todo el proyecto.",
+        "items": {
+          "notifications": {
+            "title": "Un sistema de notificaciones propio",
+            "body": "Cada aviso lo renderiza ahora HuginnDB, no los valores por defecto de la librería — una tarjeta con el tema de la app, notificaciones repetidas agrupadas en una con contador, un historial tras una campana en la barra de herramientas, y una tarjeta de progreso para importaciones y exportaciones que sobreviven al diálogo que las inició."
+          },
+          "mcpViews": {
+            "title": "Vistas desde el conector MCP: leer, editar y eliminar",
+            "body": "Un cliente de IA ya puede leer la definición de una vista, crearla o redefinirla, y eliminarla, en los cinco drivers — incluidas las pipelines de agregación guardadas de MongoDB. Misma política de escritura que cualquier otro cambio DDL: la conexión necesita acceso de escritura completo."
+          },
+          "performance": {
+            "title": "Interno: una app más rápida y fiable por dentro",
+            "body": "Corregido un congelamiento del arranque de varios segundos causado por re-calcular el hash de cada secreto de un origen compartido en el hilo principal, y un fallo de SQL Server que dejaba el explorador de esquema cargando columnas para siempre. Un repaso a todo el proyecto también eliminó lógica duplicada en el backend de Rust y en el frontend — mismo comportamiento, menos código que pueda desincronizarse."
+          },
+          "bugFixes": {
+            "title": "Una ronda de control de issues y bugs",
+            "body": "Eliminar una \"vista\" de MongoDB cuyo nombre coincidía con una colección real podía borrar todos sus documentos — ahora se rechaza. También se corrigen los índices de MongoDB con nombre en blanco, las actualizaciones masivas sobre columnas BIT de MySQL, y una docena de inconsistencias menores (formato según el idioma, numeración de importaciones, traducciones que faltaban)."
+          },
+          "docsSections": {
+            "title": "El visor de documentación ahora tiene secciones",
+            "body": "Cada guía abre en una portada con una tarjeta por sección, la barra lateral es un árbol derivado directamente del markdown, y los enlaces internos ya saltan de verdad a su destino."
+          }
+        }
+      },
       "1_17_0": {
         "tagline": "Tu editor ya entiende de esquemas JSON — y una consulta descontrolada ya no puede tirar la app.",
         "items": {

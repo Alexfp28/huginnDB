@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.18.0] — 2026-08-24
+
 ### Added
 
 - **The documentation viewer now has sections.** A guide used to be one long
