@@ -1276,6 +1276,18 @@
       "environments": "Entornos exportados",
       "jsonSchemas": "Esquemas JSON exportados",
       "theme": "Tema exportado"
+    },
+    "center": {
+      "open": "Notificaciones",
+      "title": "Notificaciones",
+      "unread": "{{count}} sin leer",
+      "markAllRead": "Marcar leídas",
+      "clear": "Limpiar",
+      "empty": "Nada por ahora.",
+      "emptyHint": "Aquí quedan las exportaciones, los errores y las confirmaciones.",
+      "today": "Hoy",
+      "yesterday": "Ayer",
+      "earlier": "Anterior"
     }
   },
   "transfer": {

@@ -47,6 +47,7 @@ import { ViewMenu } from "@/components/menus/ViewMenu";
 import { HelpMenu } from "@/components/menus/HelpMenu";
 import { AppShell } from "@/components/shell/AppShell";
 import { LayoutToggles } from "@/components/shell/LayoutToggles";
+import { NotificationCenter } from "@/components/shell/NotificationCenter";
 import { StatusBar } from "@/components/shell/StatusBar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
@@ -465,7 +466,14 @@ export default function App() {
             </div>
           </div>
 
-          <div className="ml-auto">
+          {/* Right — the notification bell, then the panel toggles. The bell
+              sits with the chrome controls rather than in the status bar: it is
+              a thing you click, its unread badge has to be noticed, and the
+              status bar's 10px row gave it neither the size nor the contrast to
+              be either. */}
+          <div className="ml-auto flex items-center gap-1">
+            <NotificationCenter />
+            <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
             <LayoutToggles />
           </div>
         </header>
