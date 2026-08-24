@@ -160,9 +160,10 @@ pub async fn export_databases(
         let dialect = Dialect::try_of(&r.pool)?;
         for t in &r.tables {
             let qt = dialect.qualify(Some(&t.schema), &t.name);
-            let count = crate::db::exec::scalar_i64(&r.pool, &format!("SELECT COUNT(*) FROM {qt}"), &[])
-                .await?
-                .unwrap_or(0);
+            let count =
+                crate::db::exec::scalar_i64(&r.pool, &format!("SELECT COUNT(*) FROM {qt}"), &[])
+                    .await?
+                    .unwrap_or(0);
             total_rows += count;
         }
     }
