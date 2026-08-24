@@ -402,6 +402,68 @@ mod args {
         #[schemars(schema_with = "pk_value_rows_schema")]
         pub pk_value_rows: Vec<Vec<serde_json::Value>>,
     }
+
+    /// Arguments for the `save_view` write tool — creates, redefines or renames
+    /// a view.
+    ///
+    /// Every field is a plain scalar (`String` / `Option<String>` / `bool`): no
+    /// `serde_json::Value`, no nested struct, no `Vec`. That is a design
+    /// constraint, not luck — it is why the derived schema needs none of the
+    /// hand-written `json_schema!` helpers above, and it is the reason `query`
+    /// carries a MongoDB pipeline as *text* rather than as structured JSON (see
+    /// its own note).
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct SaveView {
+        pub connection_id: String,
+        /// Schema / namespace. Omit for the driver default. For MongoDB this is
+        /// the **database name** — required when the connection has no database
+        /// bound (see [`Table::schema`]).
+        #[serde(default)]
+        pub schema: Option<String>,
+        /// The view's name after this call.
+        pub name: String,
+        /// SQL drivers: the view body only — a bare `SELECT ...`, WITHOUT a
+        /// surrounding `CREATE VIEW ... AS`, which this tool adds itself.
+        ///
+        /// MongoDB: the aggregation pipeline as source text, exactly as you
+        /// would type it in `mongosh` — `[{ $match: { _id: ObjectId("...") } }]`.
+        /// Relaxed JSON with `ObjectId(...)` / `NumberLong(...)` constructors is
+        /// accepted and is the only correct way to express those values: plain
+        /// JSON would store a string where the view needs an ObjectId, leaving a
+        /// view that matches nothing.
+        pub query: String,
+        /// The view's CURRENT name, when this call is also a rename. Omit
+        /// otherwise. You never supply the old body — the tool reads the
+        /// existing definition itself. Not supported on MongoDB, which cannot
+        /// rename a view.
+        #[serde(default)]
+        pub rename_from: Option<String>,
+        /// MongoDB only: the collection (or view) the pipeline reads from
+        /// (`viewOn`). Required when creating a view; when redefining one it
+        /// defaults to the existing source. Ignored on SQL drivers.
+        #[serde(default)]
+        pub view_on: Option<String>,
+        /// Dry run: return the exact statements this call would execute (and, on
+        /// MongoDB, the pipeline as it would be stored) and run nothing.
+        /// Allowed on a read-only connection.
+        #[serde(default)]
+        pub preview: bool,
+    }
+
+    /// Arguments for the `drop_view` write tool.
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct DropView {
+        pub connection_id: String,
+        /// Schema / namespace; the **database name** for MongoDB. See
+        /// [`Table::schema`].
+        #[serde(default)]
+        pub schema: Option<String>,
+        /// The view to drop, as reported by `list_tables` with `kind: "view"`.
+        /// Refused if the name is not a view: on MongoDB a view and a collection
+        /// share one namespace, so the catalog is checked before anything is
+        /// dropped.
+        pub view: String,
+    }
 }
 
 /// The MCP server. `Clone` (cheap — everything is behind `Arc`) as required by
@@ -444,7 +506,13 @@ fn bridged_connection_id(request: &BridgeRequest) -> Option<String> {
         BridgeRequest::RunStatement { policy_id, .. }
         | BridgeRequest::InsertRow { policy_id, .. }
         | BridgeRequest::UpdateCell { policy_id, .. }
-        | BridgeRequest::DeleteRows { policy_id, .. } => Some(policy_id.clone()),
+        | BridgeRequest::DeleteRows { policy_id, .. }
+        // Not `PreviewViewChange`: a dry run is not audited, so it never
+        // reaches here.
+        | BridgeRequest::ApplyViewChange { policy_id, .. }
+        | BridgeRequest::DropView { policy_id, .. } => Some(policy_id.clone()),
+        // Careful when adding a write variant: this arm makes forgetting one a
+        // silent `conn=-` in `mcp-audit.log` rather than a compile error.
         _ => None,
     }
 }
@@ -887,8 +955,14 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Describe a table's full structure: columns, types, \
-                          nullability, primary key, foreign keys, and indexes.")]
+    #[tool(description = "Describe a relation's full structure: columns, types, \
+                          nullability, primary key, foreign keys, and indexes. \
+                          Works on a view too, and when the relation IS a view \
+                          the reply carries an extra `view` object with what the \
+                          view actually is: `query` (the bare SELECT body) on \
+                          SQL drivers, or `viewOn` plus `pipeline` on MongoDB, \
+                          where a view is a stored aggregation pipeline. Absent \
+                          `view` key means the relation is a plain table.")]
     async fn describe_table(
         &self,
         Parameters(a): Parameters<args::Table>,
@@ -1190,6 +1264,126 @@ impl Huginn {
                     table: a.table,
                     pk_columns: a.pk_columns,
                     pk_value_rows: a.pk_value_rows,
+                },
+                true,
+            )
+            .await
+            .map_err(to_err)?;
+        ok_json(&out)
+    }
+
+    #[tool(
+        description = "Create a view, redefine an existing one, or rename one. \
+                       Requires the connection's MCP write policy to be 'full' \
+                       — a view is schema, so this is the same DDL tier \
+                       CREATE/DROP/ALTER need through run_query. Pass just \
+                       `name` and `query`: the tool reads the current definition \
+                       itself to decide whether this is a create or a replace \
+                       and how to express it on this engine (Postgres CREATE OR \
+                       REPLACE, MySQL RENAME TABLE, SQLite drop-and-recreate, \
+                       MongoDB createView/collMod). Set `preview: true` to see \
+                       the statements without running them — that dry run is a \
+                       read and works on any connection. Note a rename plus a \
+                       body change is atomic on Postgres but NOT on MySQL, \
+                       which commits each DDL statement implicitly. Not \
+                       supported on SQL Server, whose T-SQL view DDL is not \
+                       written yet."
+    )]
+    async fn save_view(
+        &self,
+        Parameters(a): Parameters<args::SaveView>,
+    ) -> Result<CallToolResult, ErrorData> {
+        if a.preview {
+            // A dry run executes nothing, so it goes through the shared
+            // read-only body: `call(.., false)` skips the audit log, which is
+            // right here and would be a hole on the apply path. The app still
+            // gates it independently, as `StmtClass::Read`.
+            let args::SaveView {
+                connection_id,
+                schema,
+                name,
+                query,
+                rename_from,
+                view_on,
+                ..
+            } = a;
+            let policy_id = connection_id.clone();
+            return self
+                .read_tool(&connection_id, schema.as_deref(), |connection_id| {
+                    BridgeRequest::PreviewViewChange {
+                        connection_id,
+                        policy_id,
+                        schema: schema.clone(),
+                        name,
+                        query,
+                        rename_from,
+                        view_on,
+                    }
+                })
+                .await;
+        }
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
+        // See the comment in `run_query`: policy is checked against the real
+        // profile id, not the resolved (possibly synthetic per-database) target.
+        // `Ddl` because a view is schema — the same tier `db::sql::classify`
+        // gives the `CREATE OR REPLACE VIEW` a caller could write by hand
+        // through `run_query`. Anything lower would let a `data` connection
+        // reach through this tool what `run_query` refuses it.
+        self.require_class(&a.connection_id, StmtClass::Ddl)?;
+        let out = self
+            .call(
+                BridgeRequest::ApplyViewChange {
+                    connection_id: target,
+                    policy_id: a.connection_id,
+                    schema: a.schema,
+                    name: a.name,
+                    query: a.query,
+                    rename_from: a.rename_from,
+                    view_on: a.view_on,
+                },
+                true,
+            )
+            .await
+            .map_err(to_err)?;
+        ok_json(&out)
+    }
+
+    #[tool(
+        description = "Drop a view. Requires the connection's MCP write policy \
+                       to be 'full' (DROP is schema, the same tier run_query \
+                       needs for it — note that deleting *rows* only needs \
+                       'data'). Works on every driver, SQL Server and MongoDB \
+                       included. Refuses to drop anything that is not a view: on \
+                       SQL a DROP VIEW against a table errors, and on MongoDB — \
+                       where a view and a collection are one namespace — the \
+                       catalog is checked first, so a mistyped name cannot \
+                       destroy a collection's documents."
+    )]
+    async fn drop_view(
+        &self,
+        Parameters(a): Parameters<args::DropView>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
+        // Policy against the real profile id, never the resolved target — see
+        // `save_view` above and `run_query`.
+        self.require_class(&a.connection_id, StmtClass::Ddl)?;
+        let out = self
+            .call(
+                BridgeRequest::DropView {
+                    connection_id: target,
+                    policy_id: a.connection_id,
+                    schema: a.schema,
+                    view: a.view,
                 },
                 true,
             )
@@ -1702,6 +1896,214 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// End-to-end exercise of the whole view lifecycle against a real
+    /// (file-backed) SQLite database, through the same `_inner` cores the MCP
+    /// tools call.
+    ///
+    /// SQLite is the ideal driver for this: no server, no fixtures, and it takes
+    /// the *hardest* path in `build_view_ddl` — it has neither `CREATE OR
+    /// REPLACE VIEW` nor `ALTER VIEW`, so every change is a drop-and-recreate
+    /// whose statement order matters (emit them the other way round and the
+    /// second statement destroys what the first just built).
+    ///
+    /// Its own temp file, deliberately not the one
+    /// `sqlite_inner_data_path_end_to_end` uses: the two run concurrently in one
+    /// process and would fight over it.
+    #[tokio::test]
+    async fn sqlite_view_lifecycle_end_to_end() {
+        use crate::commands::view::{
+            drop_view_inner, get_any_view_definition_inner, save_any_view_inner, ViewSaveRequest,
+        };
+        use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+        let path = std::env::temp_dir().join("huginndb_mcp_view_lifecycle_test.db");
+        let _ = std::fs::remove_file(&path);
+        let opts = SqliteConnectOptions::new()
+            .filename(&path)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE widget (id INTEGER PRIMARY KEY, name TEXT NOT NULL, ok INTEGER)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO widget (name, ok) VALUES ('alpha', 1), ('beta', 0)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let state = AppState::new();
+        state.connections.write().insert(
+            "test-conn".to_string(),
+            ActivePool::bare(DbPool::Sqlite(pool)),
+        );
+
+        let request =
+            |name: &str, query: &str, rename_from: Option<&str>, preview: bool| ViewSaveRequest {
+                connection_id: "test-conn".to_string(),
+                schema: None,
+                name: name.to_string(),
+                query: query.to_string(),
+                rename_from: rename_from.map(str::to_string),
+                view_on: None,
+                preview,
+            };
+
+        // A table is not a view: `describe_table`'s view half stays absent, and
+        // that is an answer rather than an error.
+        assert!(
+            get_any_view_definition_inner(&state, "test-conn", None, "widget")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        // Create. `original` is absent, so this is a plain CREATE — one
+        // statement, no drop-and-recreate.
+        let created = save_any_view_inner(
+            &NoopSink,
+            &state,
+            &request(
+                "ok_widgets",
+                "SELECT id, name FROM widget WHERE ok = 1",
+                None,
+                false,
+            ),
+        )
+        .await
+        .unwrap();
+        assert!(created.applied);
+        assert!(!created.drop_and_recreate);
+        assert_eq!(created.statements.len(), 1);
+
+        // The body reads back, stripped of its `CREATE VIEW ... AS` header.
+        let body = get_any_view_definition_inner(&state, "test-conn", None, "ok_widgets")
+            .await
+            .unwrap()
+            .expect("the view exists");
+        assert_eq!(
+            body.query.as_deref(),
+            Some("SELECT id, name FROM widget WHERE ok = 1")
+        );
+        // SQL drivers fill only `query` — no Mongo fields leak in.
+        assert!(body.view_on.is_none() && body.pipeline.is_none());
+
+        // And it is a working relation, not just a catalog row.
+        let rows = query::execute_with_state(
+            &NoopSink,
+            &state,
+            "test-conn",
+            "SELECT COUNT(*) AS n FROM ok_widgets",
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows.rows.len(), 1);
+
+        // Preview a redefinition: statements are built, nothing runs.
+        let preview = save_any_view_inner(
+            &NoopSink,
+            &state,
+            &request("ok_widgets", "SELECT id FROM widget", None, true),
+        )
+        .await
+        .unwrap();
+        assert!(!preview.applied);
+        assert!(
+            preview.drop_and_recreate,
+            "SQLite always drops and recreates"
+        );
+        assert_eq!(preview.statements.len(), 2);
+        assert!(preview.statements[0].starts_with("DROP VIEW"));
+        assert!(
+            preview.statements[1].starts_with("CREATE VIEW"),
+            "order is load-bearing: recreating before dropping destroys the new view"
+        );
+        // The database is untouched by a dry run.
+        assert_eq!(
+            get_any_view_definition_inner(&state, "test-conn", None, "ok_widgets")
+                .await
+                .unwrap()
+                .and_then(|b| b.query)
+                .as_deref(),
+            Some("SELECT id, name FROM widget WHERE ok = 1")
+        );
+
+        // Apply the same change: what was previewed is what runs.
+        let applied = save_any_view_inner(
+            &NoopSink,
+            &state,
+            &request("ok_widgets", "SELECT id FROM widget", None, false),
+        )
+        .await
+        .unwrap();
+        assert!(applied.applied);
+        assert_eq!(applied.statements, preview.statements);
+        assert_eq!(
+            get_any_view_definition_inner(&state, "test-conn", None, "ok_widgets")
+                .await
+                .unwrap()
+                .and_then(|b| b.query)
+                .as_deref(),
+            Some("SELECT id FROM widget")
+        );
+
+        // Rename, preserving the body. The caller supplies only the old and new
+        // names — the tool reads the definition itself.
+        save_any_view_inner(
+            &NoopSink,
+            &state,
+            &request(
+                "widget_ids",
+                "SELECT id FROM widget",
+                Some("ok_widgets"),
+                false,
+            ),
+        )
+        .await
+        .unwrap();
+        assert!(
+            get_any_view_definition_inner(&state, "test-conn", None, "ok_widgets")
+                .await
+                .unwrap()
+                .is_none(),
+            "the old name is gone"
+        );
+        assert_eq!(
+            get_any_view_definition_inner(&state, "test-conn", None, "widget_ids")
+                .await
+                .unwrap()
+                .and_then(|b| b.query)
+                .as_deref(),
+            Some("SELECT id FROM widget")
+        );
+
+        // Renaming something absent is an error, not a silent create under the
+        // new name.
+        assert!(save_any_view_inner(
+            &NoopSink,
+            &state,
+            &request("whatever", "SELECT 1", Some("no_such_view"), false),
+        )
+        .await
+        .is_err());
+
+        // Drop, and it is gone.
+        drop_view_inner(&NoopSink, &state, "test-conn", None, "widget_ids")
+            .await
+            .unwrap();
+        assert!(
+            get_any_view_definition_inner(&state, "test-conn", None, "widget_ids")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// Regression test for issue #83: the write tools' input schemas must
     /// stay free of `$ref`/`$defs` and bare-boolean subschemas, since at
     /// least one MCP client's `tools/list` ingestion chokes on those shapes
@@ -1711,7 +2113,13 @@ mod tests {
     #[test]
     fn write_tool_schemas_avoid_ref_and_bare_boolean_subschemas() {
         let tools = Huginn::tool_router().list_all();
-        for name in ["insert_row", "update_cell", "delete_rows"] {
+        for name in [
+            "insert_row",
+            "update_cell",
+            "delete_rows",
+            "save_view",
+            "drop_view",
+        ] {
             let tool = tools
                 .iter()
                 .find(|t| t.name == name)
@@ -1734,6 +2142,58 @@ mod tests {
                 !raw.contains("\"items\":true") && !raw.contains("\"items\": true"),
                 "{name}: schema must not have a bare-boolean items subschema: {raw}"
             );
+            // The other bare-boolean shape schemars can emit, and one the
+            // original version of this test did not cover.
+            assert!(
+                !raw.contains("\"additionalProperties\":true")
+                    && !raw.contains("\"additionalProperties\": true"),
+                "{name}: schema must not have a bare-boolean additionalProperties: {raw}"
+            );
         }
+    }
+
+    /// The view tools are DDL, and must be refused at `data` as firmly as at
+    /// `read-only`.
+    ///
+    /// Written down because the tempting simplification — "a view is just a
+    /// stored query, let `data` manage them" — is a privilege escalation rather
+    /// than a convenience: `db::sql::classify` already sends `CREATE OR REPLACE
+    /// VIEW` and `DROP VIEW` to `StmtClass::Ddl`, so a `data` connection is
+    /// refused those through `run_query`, and a tool that granted them anyway
+    /// would hand back exactly what the policy just denied. If this assertion
+    /// ever needs changing, that reasoning has to be answered first.
+    #[test]
+    fn managing_a_view_needs_full_not_data() {
+        use crate::state::McpWritePolicy::{Data, Full, ReadOnly};
+        assert!(!ReadOnly.allows(StmtClass::Ddl));
+        assert!(!Data.allows(StmtClass::Ddl));
+        assert!(Full.allows(StmtClass::Ddl));
+        // A preview builds statements and executes nothing, so it rides the
+        // read tier and is available at every level.
+        assert!(ReadOnly.allows(StmtClass::Read));
+    }
+
+    /// Regression guard for the Mongo policy-id trap, at the DDL tier the two
+    /// view writes use.
+    ///
+    /// A MongoDB per-database target is the synthetic `<id>::db::<name>`, which
+    /// is never a key in `profiles.json`. `require_class` must therefore be
+    /// handed the real profile id: called with the resolved target it misses the
+    /// lookup, and because `McpWritePolicy` defaults to `ReadOnly` it would
+    /// refuse a view change the user had explicitly allowed. Sibling of
+    /// `write_policy_is_checked_against_the_real_connection_not_the_mongo_db_binding`
+    /// above, which covers the same trap one tier down.
+    #[test]
+    fn view_writes_check_the_ddl_policy_against_the_profile_not_the_mongo_view() {
+        let huginn = huginn_with_policy("mongo-conn", McpWritePolicy::Full, false);
+
+        // The real profile id: `full` admits DDL, so both view writes proceed.
+        assert!(huginn.require_class("mongo-conn", StmtClass::Ddl).is_ok());
+
+        // The resolved per-database id is not a profile id, so a policy lookup
+        // against it falls back to ReadOnly and refuses.
+        assert!(huginn
+            .require_class("mongo-conn::db::shop", StmtClass::Ddl)
+            .is_err());
     }
 }

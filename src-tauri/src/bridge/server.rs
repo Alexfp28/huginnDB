@@ -326,7 +326,11 @@ fn connection_id_of(request: &BridgeRequest) -> String {
         | FetchTableData { connection_id, .. }
         | InsertRow { connection_id, .. }
         | UpdateCell { connection_id, .. }
-        | DeleteRows { connection_id, .. } => connection_id.clone(),
+        | DeleteRows { connection_id, .. }
+        | GetViewDefinition { connection_id, .. }
+        | PreviewViewChange { connection_id, .. }
+        | ApplyViewChange { connection_id, .. }
+        | DropView { connection_id, .. } => connection_id.clone(),
     }
 }
 
@@ -345,7 +349,37 @@ fn policy_id_of(request: &BridgeRequest) -> Option<&str> {
         | FetchTableData { policy_id, .. }
         | InsertRow { policy_id, .. }
         | UpdateCell { policy_id, .. }
-        | DeleteRows { policy_id, .. } => Some(policy_id),
+        | DeleteRows { policy_id, .. }
+        | PreviewViewChange { policy_id, .. }
+        | ApplyViewChange { policy_id, .. }
+        | DropView { policy_id, .. } => Some(policy_id),
+        _ => None,
+    }
+}
+
+/// The tier a request needs, or `None` when it needs no policy at all.
+///
+/// Split out of [`check_policy`] so it can be tested: this and the sidecar's
+/// own `require_class` are the only two places in the product that decide
+/// whether an operation counts as DDL, and getting it wrong here is not a
+/// compile error.
+fn class_of(request: &BridgeRequest) -> Option<StmtClass> {
+    match request {
+        BridgeRequest::RunStatement { sql, .. } => Some(crate::db::sql::classify(sql)),
+        BridgeRequest::FetchTableData { .. } => Some(StmtClass::Read),
+        BridgeRequest::InsertRow { .. }
+        | BridgeRequest::UpdateCell { .. }
+        | BridgeRequest::DeleteRows { .. } => Some(StmtClass::DataWrite),
+        // A dry run builds statements and executes nothing.
+        BridgeRequest::PreviewViewChange { .. } => Some(StmtClass::Read),
+        // A view is schema, so creating, redefining or dropping one is the same
+        // tier `db::sql::classify` already assigns to the `CREATE OR REPLACE
+        // VIEW` / `DROP VIEW` a caller could write by hand through
+        // `run_query`. Anything lower would let a `data` connection reach
+        // through these requests what `run_query` refuses it.
+        BridgeRequest::ApplyViewChange { .. } | BridgeRequest::DropView { .. } => {
+            Some(StmtClass::Ddl)
+        }
         _ => None,
     }
 }
@@ -361,13 +395,8 @@ fn check_policy(state: &AppState, request: &BridgeRequest) -> AppResult<()> {
     let Some(policy_id) = policy_id_of(request) else {
         return Ok(());
     };
-    let class = match request {
-        BridgeRequest::RunStatement { sql, .. } => crate::db::sql::classify(sql),
-        BridgeRequest::FetchTableData { .. } => StmtClass::Read,
-        BridgeRequest::InsertRow { .. }
-        | BridgeRequest::UpdateCell { .. }
-        | BridgeRequest::DeleteRows { .. } => StmtClass::DataWrite,
-        _ => return Ok(()),
+    let Some(class) = class_of(request) else {
+        return Ok(());
     };
     let policy = crate::store::load_profiles()
         .ok()
@@ -533,5 +562,85 @@ mod tests {
                 .is_some_and(|r| r.contains("protocol version mismatch")),
             "got {refusal:?}"
         );
+    }
+
+    fn view_change(preview: bool) -> BridgeRequest {
+        let (connection_id, policy_id) = ("c".to_string(), "c".to_string());
+        let (schema, name) = (None, "v".to_string());
+        let query = "SELECT 1".to_string();
+        if preview {
+            BridgeRequest::PreviewViewChange {
+                connection_id,
+                policy_id,
+                schema,
+                name,
+                query,
+                rename_from: None,
+                view_on: None,
+            }
+        } else {
+            BridgeRequest::ApplyViewChange {
+                connection_id,
+                policy_id,
+                schema,
+                name,
+                query,
+                rename_from: None,
+                view_on: None,
+            }
+        }
+    }
+
+    #[test]
+    fn managing_a_view_is_classified_as_ddl() {
+        // A view is schema. `db::sql::classify` already sends the `CREATE OR
+        // REPLACE VIEW` / `DROP VIEW` a caller could write by hand through
+        // `run_query` to `StmtClass::Ddl`, so classifying these lower would let
+        // a `data` connection reach through them exactly what `run_query`
+        // refuses it — a privilege escalation introduced by a new request
+        // rather than a convenience.
+        assert_eq!(class_of(&view_change(false)), Some(StmtClass::Ddl));
+        assert_eq!(
+            class_of(&BridgeRequest::DropView {
+                connection_id: "c".into(),
+                policy_id: "c".into(),
+                schema: None,
+                view: "v".into(),
+            }),
+            Some(StmtClass::Ddl)
+        );
+    }
+
+    #[test]
+    fn previewing_a_view_change_is_a_read() {
+        // It builds statements and executes nothing, so it is available on a
+        // read-only connection.
+        assert_eq!(class_of(&view_change(true)), Some(StmtClass::Read));
+    }
+
+    #[test]
+    fn reading_a_view_definition_needs_no_policy() {
+        assert_eq!(
+            class_of(&BridgeRequest::GetViewDefinition {
+                connection_id: "c".into(),
+                schema: None,
+                view: "v".into(),
+            }),
+            None
+        );
+    }
+
+    #[test]
+    fn a_data_policy_does_not_admit_view_management() {
+        // The assertion that has to be answered before anyone "simplifies" the
+        // tier: a view is not row data, and `data` must not reach it.
+        for policy in [McpWritePolicy::ReadOnly, McpWritePolicy::Data] {
+            assert!(
+                !policy.allows(StmtClass::Ddl),
+                "{} must not admit view management",
+                policy.label()
+            );
+        }
+        assert!(McpWritePolicy::Full.allows(StmtClass::Ddl));
     }
 }

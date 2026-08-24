@@ -1669,6 +1669,8 @@
     "title": "Documentación",
     "subtitle": "Guías para sacar el máximo partido a HuginnDB.",
     "updated": "Actualizado {{date}}",
+    "cover": "Portada",
+    "coverSections": "En esta guía",
     "empty": "No hay documentación disponible.",
     "entries": {
       "connections": {

@@ -84,7 +84,7 @@ T-SQL:
 | --- | --- |
 | Structure editor (visual `ALTER TABLE`) | Structure is read-only. The T-SQL DDL builder isn't written. |
 | Rename a table or view | T-SQL renames through `EXEC sp_rename`, whose arguments are strings rather than identifiers; it is wired up with the rest of the DDL work. |
-| View editor | Create/edit/drop a view. Views themselves are browsable. |
+| View editor | Creating or redefining a view: the T-SQL DDL builder isn't written. Reading a view's *definition* does work, and so does dropping one — the tree offers neither yet, because it gates views on the same flag as table structure. Views are browsable, and their definition is readable over MCP. |
 | `.sql` export and import | Needs a per-driver literal encoder. Grid data still exports to CSV/JSON. |
 
 Working today, for contrast: `CREATE DATABASE` / `DROP DATABASE`, `TRUNCATE`
@@ -94,7 +94,10 @@ privileges), multi-database browsing, and every MCP read and data-write tool.
 ## Over MCP
 
 Nothing SQL Server-specific to configure: it is exposed exactly like the other
-SQL drivers, with the same per-connection write policy. The one gap follows the
-table above — `apply_structure_change` returns an "unsupported driver" error
-there, so an assistant can read the schema and write rows but cannot alter the
-schema. See [`MCP.md`](MCP.md).
+SQL drivers, with the same per-connection write policy. The gaps follow the
+table above: an assistant can read the schema — including a view's definition,
+through `describe_table` — and write rows, and it can drop a view, but it cannot
+create or redefine one (`save_view` returns an "unsupported driver" error here)
+and it cannot alter a table's structure through a tool. Table DDL is not a tool
+on any driver; it goes through `run_query` at the `full` policy, where T-SQL you
+write yourself works normally. See [`MCP.md`](MCP.md).

@@ -45,6 +45,18 @@ out of the in-app viewer:
 
 Keep the markdown to what the in-app renderer supports: headings, paragraphs,
 fenced code, GFM pipe tables, flat lists, blockquotes, rules, and inline
-code/bold/italic/links. It is not a full CommonMark engine. Links to `http(s)`
-open in the OS browser; relative links to other docs render as plain text
-in-app, so don't make a sentence depend on the reader being able to click one.
+code/bold/italic/links. It is not a full CommonMark engine.
+
+Two things follow from how the viewer presents a guide. **Each `##` is a page**
+— the viewer derives its navigation from the headings, showing the prose above
+the first `##` as a cover and one `##` per page, with each `###` as a jump target
+inside it. So a `##` is a unit a reader can land on cold: don't let one depend on
+having just read the one before it.
+
+**Links resolve, within limits.** `http(s)` opens in the OS browser. A `#anchor`
+jumps to that heading in the same guide, and a relative link to another guide in
+the table above switches to it. A link to something outside that set — a
+roadmap, `../SECURITY.md` — opens on GitHub instead. A `#anchor` whose heading no
+longer exists renders as plain uncoloured text and does nothing, which
+`docOutline.test.ts` fails on, so a heading you rename takes its inbound links
+with it.

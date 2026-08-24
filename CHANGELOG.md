@@ -8,6 +8,76 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The documentation viewer now has sections.** A guide used to be one long
+  scroll pane, which made the longer ones effectively unsearchable: `docs/MCP.md`
+  is 400+ lines in a 70vh pane, so finding what a tool requires meant scrolling
+  blind past five client configurations to reach the Security section. Each guide
+  now opens on a **cover** — its introductory prose plus a card per section — and
+  the sidebar is a tree: the guides, with the open one expanded into its
+  sections, and a section expanded into its subsections. Picking one shows that
+  section alone.
+
+  The navigation is derived from the markdown headings, not from a list kept
+  alongside them, which has two consequences worth stating. Adding a `##` to a
+  guide adds it to the sidebar with no code change. And the sidebar translates
+  itself: the Spanish body carries Spanish headings, so choosing the language
+  chooses the labels too.
+
+  In-document links work now. A `#anchor` jumps to its heading — switching page
+  first when the heading lives on another one — and a relative link to another
+  bundled guide switches to it. Both used to render in brand colour, underline
+  on hover, and do nothing at all when clicked; there were eight anchors and five
+  cross-guide links in that state. One outside the bundled set (a roadmap,
+  `SECURITY.md`) now opens on GitHub rather than being a dead end. A test asserts
+  that every anchor in every shipped guide, in both languages, resolves to a real
+  heading, so renaming one out from under its inbound links fails the build
+  rather than going unnoticed.
+
+  Also fixed while in here: switching guides kept the previous scroll offset, so
+  jumping from deep inside a long guide to a short one landed you at its end.
+
+- **Views over the MCP connector: read, edit and delete.** Views were nearly
+  invisible to an AI client. `list_tables` reported `kind: "view"` and
+  `describe_table` returned a view's columns, but nothing could read a view's
+  *body*, and nothing could create, redefine or drop one — the only recourse was
+  hand-writing a catalog query per engine through `run_query`, and on MongoDB
+  not even that, since its `mongosh` parser has no DDL vocabulary at all and a
+  stored pipeline was unreachable in both directions.
+
+  Two new tools, and one existing tool widened, on all five drivers:
+  - `describe_table` now adds a `view` object when the relation is a view —
+    `query` (the bare SELECT body) on SQL, `viewOn` plus the `pipeline` as
+    source text on MongoDB. No new tool for reading: `describe_table` was
+    already view-aware for the columns half, so the body belongs there.
+  - `save_view` *(write)* creates, redefines or renames a view. It takes only
+    `name` and `query` and reads the current definition itself to decide which
+    of the three it is, and how to express it on this engine — Postgres `CREATE
+    OR REPLACE`, MySQL `RENAME TABLE`, SQLite drop-and-recreate, MongoDB
+    `createView`/`collMod`. `preview: true` returns the exact statements without
+    running them.
+  - `drop_view` *(write)* drops one, and refuses anything that is not a view.
+
+  **The permission model is unchanged** — no new axis, no new setting. Both
+  write tools are DDL, so both need the connection's existing write policy at
+  `full`. That is the only consistent answer rather than a preference: the
+  `CREATE OR REPLACE VIEW` you could write by hand through `run_query` is
+  already classified as DDL, so a `data` connection is refused it, and a tool
+  that allowed the same change anyway would hand back exactly what the policy
+  just denied. It does leave one asymmetry worth knowing: dropping a *view*
+  needs `full` while deleting *rows* needs only `data` — the same asymmetry
+  `DROP TABLE` and `DELETE FROM` already have. `save_view`'s `preview` is a real
+  exception rather than a loophole: it executes nothing, so it is classified as a
+  read and works at any level.
+
+  MongoDB rides the same two tools rather than getting its own pair. An AI
+  client cannot see the difference from `list_tables` output, and one tool per
+  verb is what it wants; the pipeline crosses as source text and is parsed only
+  by the one parser the product has, so an `ObjectId(...)` in a `$match` still
+  round-trips as a constructor rather than degrading to a string.
+
+  SQL Server gained the ability to read a view's definition along the way; only
+  *creating* one there is still unsupported. See [`docs/MCP.md`](docs/MCP.md).
+
 - **A notification system of the app's own, replacing the library defaults.**
   Notifications were the toast library mounted with its stock configuration:
   four seconds, bottom-right, a hardcoded white/black card that `index.css`
@@ -62,17 +132,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   notification — judging six seconds against four is exactly what a drawing
   of one cannot help with.
 
-### Changed
-
-- **Notifications last 6 s instead of 4 s, and errors wait to be dismissed.**
-  Four seconds was the library's default and was never enough to read a file
-  path or a driver message; kinds that carry something to act on now get a
-  multiple of the configured duration (a warning twice, a file notification
-  four times, capped at 30 s), and an error stays until it is closed — it
-  usually carries something to copy, retry or report. Both are preferences,
-  and an error also gets a "Copy error" action for free.
-
 ### Fixed
+
+- **Dropping a MongoDB "view" whose name is actually a collection deleted all
+  of its documents.** MongoDB keeps views and collections in one namespace, and
+  dropping either is the same `drop` call — so `db::mongo::aggregation::
+  drop_view` was an unguarded `collection(name).drop()`, and pointing it at a
+  real collection destroyed every document in it while reporting success. It
+  was survivable in practice because the only caller was the schema explorer,
+  where the user had clicked a row the tree already knew was a view. It stops
+  being survivable the moment a caller can pass a name it merely guessed, which
+  is what exposing view management over the MCP connector amounts to — so the
+  guard lands ahead of that work rather than alongside it.
+
+  `view_presence` now resolves a name to one of three states — absent, a
+  collection, or a view with its definition already parsed — in a single
+  `listCollections` round trip, and `drop_view` refuses anything but the third.
+  The type check itself (`spec_is_view`) is a pure function so it can be tested
+  without a server; it treats a spec with no `type` field as a *collection*,
+  since that field only appeared in MongoDB 3.4 and an unrecognised reply must
+  fall to the safe answer rather than the destructive one. `read_view` is now
+  expressed in terms of the same helper instead of repeating the check.
+
+  An absent name is now an error rather than MongoDB's silent idempotent
+  success. That makes the driver consistent with the other four, all of which
+  build a bare `DROP VIEW` with no `IF EXISTS`, and it means a mistyped name
+  says so instead of reporting that it worked.
 
 - **Creating a MongoDB index with a blank "Name" field always failed.** The
   dialog's "leave blank to let the server derive it" behaviour never worked:
@@ -220,6 +305,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   three now spell out every variant, so adding one is a build error.
 
 ### Changed
+
+- **Notifications last 6 s instead of 4 s, and errors wait to be dismissed.**
+  Four seconds was the library's default and was never enough to read a file
+  path or a driver message; kinds that carry something to act on now get a
+  multiple of the configured duration (a warning twice, a file notification
+  four times, capped at 30 s), and an error stays until it is closed — it
+  usually carries something to copy, retry or report. Both are preferences,
+  and an error also gets a "Copy error" action for free.
 
 - **Internal: a project-wide pass over duplicated logic and misplaced
   responsibilities.** No behaviour change beyond the fixes above. The parts worth

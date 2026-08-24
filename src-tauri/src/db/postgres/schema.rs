@@ -241,3 +241,36 @@ pub async fn list_privileges(p: &sqlx::PgPool, user: String) -> AppResult<Vec<Pr
             .collect()
     })
 }
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+
+/// The body of a view — just the `SELECT`, with no `CREATE VIEW ... AS` wrapper
+/// and no trailing semicolon.
+///
+/// `Ok(None)` when `schema.view` is not a view: a table of that name, or nothing
+/// at all. Not an error, because the callers ask this *about* a relation whose
+/// kind they may not know yet (`describe_table` over MCP asks for every
+/// relation), and "this is a table" is an answer rather than a failure.
+///
+/// `relkind = 'v'` only, deliberately matching [`list_tables`]: materialised
+/// views are absent from `information_schema.tables`, so they never surface as
+/// `kind: "view"` and there is nothing for a definition to belong to.
+pub async fn view_definition(
+    p: &sqlx::PgPool,
+    schema: Option<&str>,
+    view: &str,
+) -> AppResult<Option<String>> {
+    let schema = schema.filter(|s| !s.is_empty()).unwrap_or("public");
+    let def: Option<String> = sqlx::query_scalar(
+        "SELECT pg_get_viewdef(c.oid, true) \
+         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+         WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'v'",
+    )
+    .bind(schema)
+    .bind(view)
+    .fetch_optional(p)
+    .await?;
+    Ok(def.map(|q| q.trim().trim_end_matches(';').trim().to_string()))
+}

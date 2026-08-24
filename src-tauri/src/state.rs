@@ -114,8 +114,9 @@ pub struct MsSqlOptions {
 ///   `run_query` is refused.
 /// * `Data` — row-level DML: `INSERT`/`UPDATE`/`DELETE` (and their Mongo
 ///   equivalents), plus the structured write tools. No schema changes.
-/// * `Full` — adds DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) and the
-///   structure-editor tool.
+/// * `Full` — adds DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) through
+///   `run_query`, plus the `save_view` / `drop_view` tools. There is no
+///   structure-editor tool on any tier; table DDL goes through `run_query`.
 ///
 /// This is metadata-only from the backend's perspective (like
 /// [`ConnectionProfile::visible_databases`]); the desktop app never acts on

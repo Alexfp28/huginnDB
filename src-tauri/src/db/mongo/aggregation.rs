@@ -359,14 +359,43 @@ pub async fn preview_stages(
 // Views
 // ---------------------------------------------------------------------------
 
-/// Read a view's stored definition and render its pipeline back as editable
-/// source.
+/// What `name` currently is in this database.
 ///
-/// Goes through the raw `listCollections` command rather than the typed
-/// helper: `viewOn`/`pipeline` live in the spec's free-form `options` document,
-/// and reading them as BSON keeps this independent of how the driver's
-/// `CollectionSpecification` models options across versions.
-pub async fn read_view(conn: &MongoConn, name: &str) -> AppResult<MongoViewDefinition> {
+/// The three states are kept distinct because collapsing any two of them loses
+/// something a caller needs. A view and a collection share one namespace in
+/// MongoDB, so "exists" is not enough to know whether an operation is safe:
+/// [`drop_view`] must refuse a collection outright (dropping one deletes its
+/// documents), while a caller deciding between `create` and `collMod` must tell
+/// "absent" from "already a view" — and a caller merely *describing* a relation
+/// treats both non-view answers as "no view body", not as an error.
+pub enum ViewPresence {
+    /// Nothing by that name.
+    Absent,
+    /// A plain collection. Never a view operation's target.
+    Collection,
+    /// A view, with its stored definition already parsed.
+    View(MongoViewDefinition),
+}
+
+/// Whether a `listCollections` spec describes a view.
+///
+/// Pure, and split out for that reason: this predicate is the whole thing
+/// standing between [`drop_view`] and a collection's documents, so it is worth
+/// being testable without a server. Absent `type` means collection — the field
+/// only appeared in MongoDB 3.4, and treating an unknown reply as the
+/// destructive case would be the wrong way round.
+fn spec_is_view(spec: &Document) -> bool {
+    spec.get_str("type").unwrap_or("collection") == "view"
+}
+
+/// The `listCollections` spec for `name`, or `None` when nothing by that name
+/// exists.
+///
+/// Goes through the raw command rather than the typed helper: `viewOn` and
+/// `pipeline` live in the spec's free-form `options` document, and reading them
+/// as BSON keeps this independent of how the driver's `CollectionSpecification`
+/// models options across versions.
+async fn collection_spec(conn: &MongoConn, name: &str) -> AppResult<Option<Document>> {
     let db = resolve_db(conn)?;
     let reply = db
         .run_command(doc! {
@@ -374,21 +403,17 @@ pub async fn read_view(conn: &MongoConn, name: &str) -> AppResult<MongoViewDefin
             "filter": { "name": name },
         })
         .await?;
-
-    let spec = reply
+    Ok(reply
         .get_document("cursor")
         .ok()
         .and_then(|c| c.get_array("firstBatch").ok())
         .and_then(|batch| batch.first())
         .and_then(Bson::as_document)
-        .ok_or_else(|| AppError::NotFound(format!("view {name}")))?;
+        .cloned())
+}
 
-    if spec.get_str("type").unwrap_or("collection") != "view" {
-        return Err(AppError::InvalidInput(format!(
-            "`{name}` is a collection, not a view"
-        )));
-    }
-
+/// Parse a view's spec into the editable definition.
+fn view_from_spec(name: &str, spec: &Document) -> AppResult<MongoViewDefinition> {
     let options = spec.get_document("options").map_err(|_| {
         AppError::InvalidInput(format!("view {name} has no stored definition to edit"))
     })?;
@@ -413,6 +438,35 @@ pub async fn read_view(conn: &MongoConn, name: &str) -> AppResult<MongoViewDefin
             .map(|d| bson_to_shell_text(&Bson::Document(d.clone())))
             .collect(),
     })
+}
+
+/// Resolve what `name` is, parsing the definition when it turns out to be a
+/// view. One round trip, and the only place the three states are derived.
+pub async fn view_presence(conn: &MongoConn, name: &str) -> AppResult<ViewPresence> {
+    let Some(spec) = collection_spec(conn, name).await? else {
+        return Ok(ViewPresence::Absent);
+    };
+    if !spec_is_view(&spec) {
+        return Ok(ViewPresence::Collection);
+    }
+    Ok(ViewPresence::View(view_from_spec(name, &spec)?))
+}
+
+/// Read a view's stored definition and render its pipeline back as editable
+/// source.
+///
+/// Errors on anything that is not a view, which is what the editor wants: it
+/// was opened on a specific view and has nothing to show otherwise. A caller
+/// that would rather treat "not a view" as an ordinary answer wants
+/// [`view_presence`].
+pub async fn read_view(conn: &MongoConn, name: &str) -> AppResult<MongoViewDefinition> {
+    match view_presence(conn, name).await? {
+        ViewPresence::View(def) => Ok(def),
+        ViewPresence::Collection => Err(AppError::InvalidInput(format!(
+            "`{name}` is a collection, not a view"
+        ))),
+        ViewPresence::Absent => Err(AppError::NotFound(format!("view {name}"))),
+    }
 }
 
 /// Create a new view (`{create, viewOn, pipeline}`) or redefine an existing one
@@ -458,9 +512,34 @@ pub async fn save_view(
     Ok(())
 }
 
-/// Drop a view. Same call as dropping a collection — MongoDB stores a view in
-/// the same namespace — but kept separate so the caller's intent is explicit.
+/// Drop a view, refusing anything that is not one.
+///
+/// The call itself is identical to dropping a collection — MongoDB keeps views
+/// and collections in one namespace — which is exactly why the check in front
+/// of it is not optional. Unguarded, `drop_view("orders")` against a database
+/// whose `orders` is a real collection deletes every document in it, reporting
+/// success. That was survivable while the only caller was the schema explorer,
+/// where the user had clicked a row the tree already knew was a view; it is not
+/// survivable once a caller can pass a name it merely guessed, which is what
+/// exposing this over the MCP connector means.
+///
+/// An absent name is an error rather than a silent success, even though
+/// MongoDB's own `drop` is idempotent: every SQL driver here builds a bare
+/// `DROP VIEW` with no `IF EXISTS`, so erroring is what makes this consistent
+/// with the other four rather than a special case — and a caller that mistyped
+/// a name learns so instead of being told it worked.
 pub async fn drop_view(conn: &MongoConn, name: &str) -> AppResult<()> {
+    match view_presence(conn, name).await? {
+        ViewPresence::View(_) => {}
+        ViewPresence::Collection => {
+            return Err(AppError::InvalidInput(format!(
+                "`{name}` is a collection, not a view — refusing to drop it. Dropping a \
+                 collection deletes every document in it; drop the collection itself if that \
+                 is really what you meant."
+            )))
+        }
+        ViewPresence::Absent => return Err(AppError::NotFound(format!("view {name}"))),
+    }
     let db = resolve_db(conn)?;
     db.collection::<Document>(name).drop().await?;
     Ok(())
@@ -576,5 +655,50 @@ mod tests {
         let text = pipeline_to_shell_text(&stages);
         assert!(text.contains("\"customData.format\""), "{text}");
         assert_eq!(parse_pipeline_text(&text).unwrap(), stages);
+    }
+
+    // -----------------------------------------------------------------------
+    // The guard in front of `drop_view`
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn a_view_spec_is_recognised_as_a_view() {
+        assert!(spec_is_view(
+            &doc! { "name": "active_orders", "type": "view" }
+        ));
+    }
+
+    #[test]
+    fn a_collection_spec_is_not_a_view() {
+        // The case that costs data if it goes the other way: `drop_view` on
+        // this name would delete every document in the collection.
+        assert!(!spec_is_view(
+            &doc! { "name": "orders", "type": "collection" }
+        ));
+    }
+
+    #[test]
+    fn a_spec_with_no_type_is_treated_as_a_collection() {
+        // `type` only appeared in MongoDB 3.4, and an unknown reply must fall
+        // to the *safe* answer, not the destructive one.
+        assert!(!spec_is_view(&doc! { "name": "orders" }));
+        assert!(!spec_is_view(&doc! { "name": "orders", "type": 1 }));
+    }
+
+    #[test]
+    fn a_view_spec_parses_into_an_editable_definition() {
+        let spec = doc! {
+            "name": "active_orders",
+            "type": "view",
+            "options": {
+                "viewOn": "orders",
+                "pipeline": [ { "$match": { "status": "A" } } ],
+            },
+        };
+        let def = view_from_spec("active_orders", &spec).unwrap();
+        assert_eq!(def.name, "active_orders");
+        assert_eq!(def.view_on, "orders");
+        assert!(def.pipeline.contains("$match"));
+        assert_eq!(def.stages.len(), 1);
     }
 }

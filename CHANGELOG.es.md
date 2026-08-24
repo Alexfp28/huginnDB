@@ -10,6 +10,81 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **El visor de documentación ahora tiene secciones.** Una guía era un único
+  panel de scroll, lo que dejaba las más largas prácticamente imposibles de
+  consultar: `docs/MCP.md` son más de 400 líneas en un panel de 70vh, así que
+  averiguar qué exige una herramienta obligaba a bajar a ciegas pasando por la
+  configuración de cinco clientes hasta llegar a Seguridad. Cada guía abre ahora
+  en una **portada** — su prosa de entrada más una tarjeta por sección — y la
+  barra lateral es un árbol: las guías, con la abierta expandida en sus secciones,
+  y una sección expandida en sus subsecciones. Al elegir una se muestra esa
+  sección sola.
+
+  La navegación se deriva de los encabezados del markdown, no de una lista
+  mantenida al lado, y de ahí salen dos consecuencias que merece la pena decir.
+  Añadir un `##` a una guía lo añade a la barra lateral sin tocar código. Y la
+  barra lateral se traduce sola: el cuerpo en español lleva encabezados en
+  español, así que elegir el idioma elige también las etiquetas.
+
+  Los enlaces internos ya funcionan. Un `#ancla` salta a su encabezado — cambiando
+  de página primero si el encabezado vive en otra — y un enlace relativo a otra
+  guía incluida cambia a ella. Antes los dos se pintaban en color de marca, se
+  subrayaban al pasar el ratón y no hacían absolutamente nada al pulsarlos; había
+  ocho anclas y cinco enlaces entre guías en ese estado. Uno que apunte fuera del
+  conjunto incluido (una hoja de ruta, `SECURITY.md`) abre ahora en GitHub en vez
+  de ser un callejón sin salida. Un test comprueba que todas las anclas de todas
+  las guías publicadas, en los dos idiomas, resuelven a un encabezado real, así
+  que renombrar uno dejando huérfanos sus enlaces entrantes rompe el build en vez
+  de pasar desapercibido.
+
+  Arreglado de paso: cambiar de guía conservaba el scroll anterior, así que
+  saltar desde el fondo de una guía larga a una corta te dejaba al final de ella.
+
+- **Vistas por el conector MCP: leer, editar y eliminar.** Las vistas eran casi
+  invisibles para un cliente de IA. `list_tables` informaba de `kind: "view"` y
+  `describe_table` devolvía las columnas de una vista, pero nada podía leer su
+  *cuerpo*, ni crear, redefinir o eliminar una — el único recurso era escribir a
+  mano una consulta de catálogo por motor con `run_query`, y en MongoDB ni eso,
+  porque su parser de `mongosh` no tiene vocabulario DDL y un pipeline
+  almacenado era inalcanzable en las dos direcciones.
+
+  Dos herramientas nuevas, y una existente ampliada, en los cinco drivers:
+  - `describe_table` añade ahora un objeto `view` cuando la relación es una
+    vista — `query` (el cuerpo del SELECT) en SQL, `viewOn` más el `pipeline`
+    como texto fuente en MongoDB. Sin herramienta nueva para leer:
+    `describe_table` ya conocía las vistas por la mitad de las columnas, así que
+    el cuerpo va ahí.
+  - `save_view` *(escritura)* crea, redefine o renombra una vista. Recibe solo
+    `name` y `query`, y lee ella misma la definición actual para decidir cuál de
+    las tres es y cómo expresarla en este motor — `CREATE OR REPLACE` en
+    Postgres, `RENAME TABLE` en MySQL, borrar y recrear en SQLite,
+    `createView`/`collMod` en MongoDB. Con `preview: true` devuelve las
+    sentencias exactas sin ejecutarlas.
+  - `drop_view` *(escritura)* elimina una, y rechaza cualquier cosa que no sea
+    una vista.
+
+  **El modelo de permisos no cambia** — sin eje nuevo, sin ajuste nuevo. Las dos
+  herramientas de escritura son DDL, así que las dos exigen el nivel `full` que
+  la conexión ya tenía. Y es la única respuesta coherente, no una preferencia:
+  el `CREATE OR REPLACE VIEW` que podrías escribir a mano por `run_query` ya
+  está clasificado como DDL, así que una conexión en `data` lo tiene rechazado,
+  y una herramienta que permitiera el mismo cambio devolvería justo lo que el
+  nivel acaba de negar. Queda una asimetría que conviene conocer: eliminar una
+  *vista* pide `full` mientras que borrar *filas* solo pide `data` — la misma
+  asimetría que ya existe entre `DROP TABLE` y `DELETE FROM`. El `preview` de
+  `save_view` es una excepción de verdad, no un agujero: no ejecuta nada, así
+  que está clasificado como lectura y funciona en cualquier nivel.
+
+  MongoDB va por esas mismas dos herramientas en vez de tener su propio par. Un
+  cliente de IA no puede ver la diferencia desde la salida de `list_tables`, y lo
+  que quiere es una herramienta por verbo; el pipeline viaja como texto fuente y
+  lo parsea únicamente el único parser que tiene el producto, así que un
+  `ObjectId(...)` dentro de un `$match` sigue dando la vuelta como constructor y
+  no degradado a cadena.
+
+  De paso, SQL Server ganó la capacidad de leer la definición de una vista; solo
+  *crearla* sigue sin estar soportado ahí. Ver [`docs/MCP.md`](docs/MCP.md).
+
 - **Un sistema de notificaciones propio, en lugar de la configuración por
   defecto de la librería.** Las notificaciones eran la librería de toasts
   montada tal cual: cuatro segundos, abajo a la derecha, una tarjeta
@@ -67,18 +142,35 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   y la vista previa de la sección dispara una notificación *real*: juzgar seis
   segundos frente a cuatro es exactamente lo que un dibujo no permite.
 
-### Cambiado
-
-- **Las notificaciones duran 6 s en lugar de 4 s y los errores esperan a que
-  los cierres.** Los cuatro segundos eran el valor por defecto de la librería
-  y nunca daban para leer una ruta o un mensaje del driver; los tipos que
-  traen algo que hacer reciben ahora un múltiplo de la duración configurada
-  (un aviso el doble, una notificación de archivo el cuádruple, con tope de
-  30 s) y un error se queda hasta que se cierra, porque casi siempre trae algo
-  que copiar, reintentar o reportar. Ambas cosas son preferencias, y un error
-  incluye además una acción «Copiar error» sin coste alguno.
-
 ### Corregido
+
+- **Eliminar una «vista» de MongoDB cuyo nombre era en realidad una colección
+  borraba todos sus documentos.** MongoDB guarda vistas y colecciones en el
+  mismo espacio de nombres, y eliminar cualquiera de las dos es la misma llamada
+  `drop` — así que `db::mongo::aggregation::drop_view` era un
+  `collection(name).drop()` sin comprobación alguna, y apuntarlo a una colección
+  real destruía todos sus documentos informando de éxito. En la práctica era
+  soportable porque el único llamante era el explorador de esquema, donde el
+  usuario había pulsado una fila que el árbol ya sabía que era una vista. Deja
+  de serlo en el momento en que un llamante puede pasar un nombre que solo ha
+  adivinado, que es exactamente lo que supone exponer la gestión de vistas por
+  el conector MCP — de ahí que la comprobación llegue antes de ese trabajo y no
+  junto a él.
+
+  `view_presence` resuelve ahora un nombre a uno de tres estados — ausente, una
+  colección, o una vista con su definición ya parseada — en una sola ida y
+  vuelta de `listCollections`, y `drop_view` rechaza todo lo que no sea el
+  tercero. La comprobación de tipo en sí (`spec_is_view`) es una función pura
+  para que se pueda testear sin servidor; trata un spec sin campo `type` como
+  una *colección*, porque ese campo solo existe desde MongoDB 3.4 y una
+  respuesta que no se reconoce tiene que caer del lado seguro, no del
+  destructivo. `read_view` se expresa ahora sobre el mismo helper en lugar de
+  repetir la comprobación.
+
+  Un nombre que no existe es ahora un error, en vez del éxito idempotente y
+  silencioso de MongoDB. Eso deja al driver coherente con los otros cuatro, que
+  construyen todos un `DROP VIEW` pelado sin `IF EXISTS`, y hace que un nombre
+  mal escrito lo diga en lugar de informar de que funcionó.
 
 - **Crear un índice de MongoDB dejando el campo «Nombre» en blanco siempre
   fallaba.** El diálogo documenta ese campo vacío como «el servidor lo deriva
@@ -240,6 +332,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   compilación.
 
 ### Cambiado
+
+- **Las notificaciones duran 6 s en lugar de 4 s y los errores esperan a que
+  los cierres.** Los cuatro segundos eran el valor por defecto de la librería
+  y nunca daban para leer una ruta o un mensaje del driver; los tipos que
+  traen algo que hacer reciben ahora un múltiplo de la duración configurada
+  (un aviso el doble, una notificación de archivo el cuádruple, con tope de
+  30 s) y un error se queda hasta que se cierra, porque casi siempre trae algo
+  que copiar, reintentar o reportar. Ambas cosas son preferencias, y un error
+  incluye además una acción «Copiar error» sin coste alguno.
 
 - **Interno: una pasada por todo el proyecto sobre lógica duplicada y
   responsabilidades mal colocadas.** Sin cambios de comportamiento más allá de
