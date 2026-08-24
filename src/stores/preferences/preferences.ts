@@ -28,6 +28,7 @@ import type {
   ConnectionPrefs,
   EditorPrefs,
   GridPrefs,
+  NotificationPrefs,
   Preferences,
   SchemaTableMetric,
   UiPrefs,
@@ -78,6 +79,19 @@ const DEFAULT_PREFS: Preferences = {
     tabAccentStyle: "cap",
     connectionGroupExpandMode: "remember",
   },
+  // Mirrors `NotificationPrefs::default()` in `src-tauri/src/prefs.rs`. The
+  // 6000 ms is deliberate: the toast library's own default is 4000, which is
+  // what made a file path or a driver error unreadable before it vanished.
+  notifications: {
+    position: "bottom-right",
+    durationMs: 6000,
+    errorsPersist: true,
+    maxVisible: 3,
+    expandOnHover: true,
+    density: "comfortable",
+    historyLimit: 50,
+    showBell: true,
+  },
   // Mirrors `ConnectionPrefs::default()` in `src-tauri/src/prefs.rs`. Only
   // used before `hydrate()` lands — the backend is the source of truth and
   // re-applies its own defaults for any field an older `prefs.json` omits.
@@ -99,6 +113,7 @@ interface PreferencesState {
   updateEditor: (patch: Partial<EditorPrefs>) => void;
   updateGrid: (patch: Partial<GridPrefs>) => void;
   updateUi: (patch: Partial<UiPrefs>) => void;
+  updateNotifications: (patch: Partial<NotificationPrefs>) => void;
   updateConnections: (patch: Partial<ConnectionPrefs>) => void;
   updateKeybindings: (patch: Record<string, string>) => void;
   resetAll: () => void;
@@ -221,6 +236,17 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     });
   },
 
+  updateNotifications(patch) {
+    set((s) => {
+      const next: Preferences = {
+        ...s.prefs,
+        notifications: { ...s.prefs.notifications, ...patch },
+      };
+      save.schedule(next);
+      return { prefs: next };
+    });
+  },
+
   updateConnections(patch) {
     set((s) => {
       const next: Preferences = {
@@ -259,5 +285,6 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
 export const selectEditorPrefs = (s: PreferencesState) => s.prefs.editor;
 export const selectGridPrefs = (s: PreferencesState) => s.prefs.grid;
 export const selectUiPrefs = (s: PreferencesState) => s.prefs.ui;
+export const selectNotificationPrefs = (s: PreferencesState) => s.prefs.notifications;
 export const selectConnectionPrefs = (s: PreferencesState) => s.prefs.connections;
 export const selectKeybindings = (s: PreferencesState) => s.prefs.keybindings;

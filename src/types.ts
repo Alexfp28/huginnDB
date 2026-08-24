@@ -763,6 +763,8 @@ export interface Preferences {
   editor: EditorPrefs;
   grid: GridPrefs;
   ui: UiPrefs;
+  /** Notification placement, timing and history. See {@link NotificationPrefs}. */
+  notifications: NotificationPrefs;
   /** Connection-pool policy. See {@link ConnectionPrefs}. */
   connections: ConnectionPrefs;
   /**
@@ -947,6 +949,45 @@ export interface UiPrefs {
    *  "collapsed" force it. Either way each surface then keeps its own
    *  session-local overrides — see `useConnectionGroupCollapse`. */
   connectionGroupExpandMode: ConnectionGroupExpandMode;
+}
+
+/** Corner or edge the notification stack grows from. */
+export type NotificationPosition =
+  | "top-left"
+  | "top-center"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right";
+
+/** Notification card density. `compact` drops the body line. */
+export type NotificationDensity = "comfortable" | "compact";
+
+/**
+ * Where notifications appear, how long they stay and how much is remembered.
+ *
+ * Mirrors `NotificationPrefs` in `src-tauri/src/prefs.rs` — a field missing on
+ * either side is silently dropped by serde on the way through
+ * `update_preferences` (CLAUDE.md gotcha #14), so both declarations change
+ * together. `notifications_use_the_camel_case_keys_the_frontend_sends` in
+ * `prefs.rs` pins the exact JSON.
+ */
+export interface NotificationPrefs {
+  position: NotificationPosition;
+  /** Lifetime of a dismissible notification in ms. `0` = until dismissed.
+   *  Defaults to 6000; clamped to {@link NOTIFICATION_DURATION_BOUNDS}. */
+  durationMs: number;
+  /** Errors ignore `durationMs` and wait to be dismissed. Default `true`. */
+  errorsPersist: boolean;
+  /** On-screen at once; the rest collapse behind a counter. */
+  maxVisible: number;
+  /** Hovering the stack expands it and freezes every timer. */
+  expandOnHover: boolean;
+  density: NotificationDensity;
+  /** Entries the window remembers. `0` disables the history and the bell. */
+  historyLimit: number;
+  /** Whether the status bar shows the bell. The history survives either way. */
+  showBell: boolean;
 }
 
 export type CellEditorMode = "modal" | "side";
