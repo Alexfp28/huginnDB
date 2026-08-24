@@ -1035,6 +1035,23 @@ export const api = {
   openUrl: (url: string) =>
     invoke<void>("plugin:opener|open_url", { url, with: null }),
 
+  /**
+   * Show `path` in the OS file manager **with the item selected** (Explorer on
+   * Windows, Finder on macOS, the desktop's file manager on Linux) — not merely
+   * opened, which is why this is `reveal_item_in_dir` rather than `open_path`.
+   *
+   * Used by the notification raised after an export (`notify.file`): the point
+   * of showing a path is being able to get to the file. Unlike `open_url` there
+   * is no URL allowlist to scope — the permission
+   * (`opener:allow-reveal-item-in-dir`) grants the command as a whole, and the
+   * only paths we ever hand it are ones the user just chose in a save dialog.
+   *
+   * Rejects when the file has since been moved or deleted; callers surface that
+   * rather than swallowing it, so a dead path doesn't look like a dead button.
+   */
+  revealItemInDir: (path: string) =>
+    invoke<void>("plugin:opener|reveal_item_in_dir", { path }),
+
   // MCP connector ----------------------------------------------------------
 
   /** Resolve the bundled `huginndb-mcp` sidecar's path (Settings → MCP). */

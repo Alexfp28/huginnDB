@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { KeyRound, Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
 import { RefreshButton } from "@/components/common/RefreshButton";
 import { Button } from "@/components/ui/button";
@@ -273,7 +273,7 @@ export function StructureEditorTab({
               to: c.name,
             });
           } catch (e) {
-            toast.error(
+            notify.error(
               t("structure.jsonSchemaRenameFailed", { message: String(e) }),
             );
           }
@@ -313,7 +313,7 @@ export function StructureEditorTab({
       // silently did nothing (issue #26).
       const message = String(e);
       setPreviewError(message);
-      toast.error(t("structure.applyFailed", { message }));
+      notify.error(t("structure.applyFailed", { message }));
     } finally {
       setApplying(false);
       setConfirmRebuild(false);

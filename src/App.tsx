@@ -14,7 +14,6 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import "dockview-react/dist/styles/dockview.css";
-import { CheckCircle2, Info, TriangleAlert, XCircle } from "lucide-react";
 import { Toaster } from "sonner";
 import {
   selectUpdateNotificationVisible,
@@ -34,7 +33,10 @@ import { useTabs } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
 import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
 import { useAppFlavor } from "@/stores/preferences/appFlavor";
-import { usePreferences } from "@/stores/preferences/preferences";
+import {
+  selectNotificationPrefs,
+  usePreferences,
+} from "@/stores/preferences/preferences";
 import { getBinding, matchesBinding } from "@/lib/keybindings";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useTranslation } from "react-i18next";
@@ -45,6 +47,7 @@ import { ViewMenu } from "@/components/menus/ViewMenu";
 import { HelpMenu } from "@/components/menus/HelpMenu";
 import { AppShell } from "@/components/shell/AppShell";
 import { LayoutToggles } from "@/components/shell/LayoutToggles";
+import { NotificationCenter } from "@/components/shell/NotificationCenter";
 import { StatusBar } from "@/components/shell/StatusBar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
@@ -87,6 +90,9 @@ export default function App() {
   const canaryFlavor = useAppFlavor((s) => s.canary);
   const hydratePreferences = usePreferences((s) => s.hydrate);
   const language = usePreferences((s) => s.prefs.ui.language);
+  // A stable slice reference (gotcha #1) — the whole group is handed to the
+  // toaster container at once.
+  const notificationPrefs = usePreferences(selectNotificationPrefs);
   const openSettings = useSettingsDialog((s) => s.openAt);
   const updateNotificationVisible = useUpdateStore(
     selectUpdateNotificationVisible,
@@ -460,7 +466,14 @@ export default function App() {
             </div>
           </div>
 
-          <div className="ml-auto">
+          {/* Right — the notification bell, then the panel toggles. The bell
+              sits with the chrome controls rather than in the status bar: it is
+              a thing you click, its unread badge has to be noticed, and the
+              status bar's 10px row gave it neither the size nor the contrast to
+              be either. */}
+          <div className="ml-auto flex items-center gap-1">
+            <NotificationCenter />
+            <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
             <LayoutToggles />
           </div>
         </header>
@@ -511,16 +524,19 @@ export default function App() {
       <WhatsNewDialog />
       <DocsDialog />
       <WindowTitleSync />
+      {/* Transport only: every visual decision lives in `NotificationCard`,
+          and the props below are the user's own (Settings → Notifications).
+          `icons` and `closeButton` are deliberately gone — the library draws
+          neither for a custom card, and the old `success` icon spent the brand
+          blue on a confirmation. `duration` is per-notification (`lib/notify`
+          scales it per kind), so it is not set here. */}
       <Toaster
-        position="bottom-right"
+        position={notificationPrefs.position}
+        visibleToasts={notificationPrefs.maxVisible}
+        expand={notificationPrefs.expandOnHover}
+        gap={10}
+        offset={{ bottom: 32, top: 12, left: 16, right: 16 }}
         theme={activeTheme.mode === "dark" ? "dark" : "light"}
-        closeButton
-        icons={{
-          success: <CheckCircle2 className="h-4 w-4 text-brand" />,
-          error: <XCircle className="h-4 w-4 text-destructive" />,
-          info: <Info className="h-4 w-4 text-muted-foreground" />,
-          warning: <TriangleAlert className="h-4 w-4 text-warning" />,
-        }}
       />
       {updateNotificationVisible && availableVersion && (
         <UpdateBanner version={availableVersion} />

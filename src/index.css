@@ -675,66 +675,61 @@ input[type="password"]::-ms-clear {
 }
 
 /* -------------------------------------------------------------------------
- * Sonner toast theme bridge
+ * Notifications
  * -------------------------------------------------------------------------
- * Sonner's own stylesheet hardcodes a literal white (light) / black (dark)
- * toast via --normal-bg/--normal-border/--normal-text and a fixed grey
- * description colour, ignoring the active HuginnDB theme — hence the
- * "black and white" look. It also floats the close button half outside the
- * card's top-left corner (--toast-close-button-transform). We repoint the
- * variables at our own tokens so a toast reads as a themed popover-surface
- * card, move the close button to an inset top-right position, and give
- * each outcome a slim colour-coded left edge instead of a solid rich-colour
- * block (keeps it minimal; the coloured icon from `App.tsx`'s `icons` prop
- * carries the rest of the signal). Sonner injects its stylesheet at mount
- * time, so — same rationale as the dockview overrides above — !important
- * is required to win the cascade reliably. */
+ * Sonner is the transport only — the stack, the six positions, swipe-to-
+ * dismiss, timers and focus handling — while the card itself is ours
+ * (`components/shell/NotificationCard.tsx`, raised through `lib/notify.tsx`).
+ * That is what shrank this block: a `jsx` toast is flagged
+ * `data-styled="false"` and skips every rule in the library's stylesheet, so
+ * there is no longer a hardcoded white card, a grey description or a close
+ * button floating half outside the corner to override. The previous ~60 lines
+ * of `!important` all existed to fight styling we now simply don't receive.
+ *
+ * What remains is the container (our card is a fixed-width surface) and the
+ * drain hairline, which needs a keyframe and one piece of coordination: Sonner
+ * pauses *every* timer while the pointer is inside the toaster, so the bars
+ * have to pause on the same condition or a card would keep draining while its
+ * timer is frozen. */
 [data-sonner-toaster] {
-  --normal-bg: hsl(var(--popover));
-  --normal-border: hsl(var(--border));
-  --normal-text: hsl(var(--popover-foreground));
-  --border-radius: calc(var(--radius) + 2px);
+  --width: 380px;
+  /* The library hardcodes its own `ui-sans-serif, system-ui, …` stack on the
+     container, which our card would then inherit — rendering the one surface
+     that is supposed to look like the app in a font the app never uses (on
+     Windows, plain Segoe UI instead of Segoe UI Variable). Inherit instead, so
+     the card picks up the `font-sans` stack from `html` like everything else. */
+  font-family: inherit;
 }
-[data-sonner-toast] {
-  box-shadow:
-    0 8px 24px hsl(var(--background) / 0.28),
-    0 1px 2px hsl(var(--background) / 0.16) !important;
-  padding-right: 34px !important;
+/* A custom (`jsx`) toast is absolutely positioned with `width: auto` — the
+   library only sizes the ones it styles itself — so the card inside it would
+   shrink to fit its text and every notification would be a different width.
+   Give the unstyled ones the container width the styled ones get. */
+[data-sonner-toast]:not([data-styled="true"]) {
+  width: var(--width);
 }
-[data-sonner-toast] [data-description] {
-  color: hsl(var(--muted-foreground)) !important;
+
+@keyframes notif-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
-[data-sonner-toast] [data-button] {
-  background: hsl(var(--brand)) !important;
-  color: hsl(var(--brand-foreground)) !important;
+.notif-drain {
+  transform-origin: left;
+  animation-name: notif-drain;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
 }
-[data-sonner-toast] [data-close-button] {
-  top: 6px !important;
-  right: 6px !important;
-  left: unset !important;
-  transform: none !important;
-  background: transparent !important;
-  border: none !important;
-  color: hsl(var(--muted-foreground)) !important;
+[data-sonner-toaster]:hover .notif-drain {
+  animation-play-state: paused;
 }
-[data-sonner-toast] [data-close-button]:hover {
-  background: hsl(var(--accent)) !important;
-  color: hsl(var(--foreground)) !important;
-}
-/* One colour-coded left edge per outcome, all at the same 3px weight (the
-   brand language asks for identical border weight across success / warning /
-   error so the colour is the only variable). `success` and `warning` used to
-   be the brand blue and a hard-coded #f59e0b — the former made a confirmation
-   indistinguishable from an affordance, the latter ignored the active theme. */
-[data-sonner-toast][data-type="success"] {
-  border-left: 3px solid hsl(var(--success)) !important;
-}
-[data-sonner-toast][data-type="error"] {
-  border-left: 3px solid hsl(var(--destructive)) !important;
-}
-[data-sonner-toast][data-type="info"] {
-  border-left: 3px solid hsl(var(--brand)) !important;
-}
-[data-sonner-toast][data-type="warning"] {
-  border-left: 3px solid hsl(var(--warning)) !important;
+@media (prefers-reduced-motion: reduce) {
+  /* The bar is a nicety, the timer is the real thing: stop animating and just
+     show the lifetime as a static rail rather than removing the affordance. */
+  .notif-drain {
+    animation: none;
+    opacity: 0.45;
+  }
 }

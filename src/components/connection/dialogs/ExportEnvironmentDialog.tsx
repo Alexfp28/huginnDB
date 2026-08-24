@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { api } from "@/lib/tauri";
 import { useEnvironments, environmentLabel } from "@/stores/session/environments";
 import { Button } from "@/components/ui/button";
@@ -92,10 +92,10 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
         includePasswords ? passphrase : undefined,
         includeJsonSchemas,
       );
-      toast.success(t("transfer.export.success", { path }));
+      notify.file(t("notifications.fileSaved.environments"), { path });
       handleOpenChange(false);
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setLoading(false);
     }

@@ -40,7 +40,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -205,9 +205,9 @@ export function JsonSchemasSection() {
         body,
       });
       setBodyDirty(false);
-      toast.success(t("jsonSchemas.detail.bodySaved"));
+      notify.success(t("jsonSchemas.detail.bodySaved"));
     } catch (e) {
-      toast.error(t("jsonSchemas.toast.saveFailed", { message: String(e) }));
+      notify.error(t("jsonSchemas.toast.saveFailed", { message: String(e) }));
     }
   }
 
@@ -228,9 +228,9 @@ export function JsonSchemasSection() {
           .pop()
           ?.replace(/\.schema\.json$|\.json$/i, "") || "schema";
       await createFrom(base, text);
-      toast.success(t("jsonSchemas.toast.created", { name: base }));
+      notify.success(t("jsonSchemas.toast.created", { name: base }));
     } catch (e) {
-      toast.error(t("jsonSchemas.library.fileNotJson", { message: String(e) }));
+      notify.error(t("jsonSchemas.library.fileNotJson", { message: String(e) }));
     }
   }
 
@@ -243,7 +243,7 @@ export function JsonSchemasSection() {
         : t("jsonSchemas.deleteConfirm", { name: selected.name });
     if (!confirmIrreversible(message)) return;
     const dropped = await deleteSchema(selected.id);
-    toast.success(
+    notify.success(
       dropped > 0
         ? t("jsonSchemas.toast.deletedWithBindings", {
             name: selected.name,

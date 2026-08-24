@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { Bug, Lightbulb, KeyRound } from "lucide-react";
 import {
   Dialog,
@@ -78,9 +78,9 @@ export function FeedbackDialog() {
       setHasPat(patInput.trim().length > 0);
       setShowPatField(false);
       setPatInput("");
-      toast.success(t("feedback.patSaved"));
+      notify.success(t("feedback.patSaved"));
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     }
   }
 
@@ -88,9 +88,9 @@ export function FeedbackDialog() {
     try {
       await api.clearGithubPat();
       setHasPat(false);
-      toast.success(t("feedback.patCleared"));
+      notify.success(t("feedback.patCleared"));
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     }
   }
 
@@ -111,10 +111,10 @@ export function FeedbackDialog() {
       const body = await buildBody();
       const url = await api.mailtoReportUrl({ kind, title: title.trim(), body });
       await api.openUrl(url);
-      toast.info(t("feedback.openedMailClient"));
+      notify.info(t("feedback.openedMailClient"));
       setOpen(false);
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setSubmitting(false);
     }
@@ -127,22 +127,25 @@ export function FeedbackDialog() {
       const body = await buildBody();
       const outcome = await api.submitIssue({ kind, title: title.trim(), body });
       if (outcome.created) {
-        toast.success(t("feedback.created"), {
-          action: {
-            label: t("feedback.viewIssue"),
-            onClick: () => {
-              void api.openUrl(outcome.url);
+        notify.success(t("feedback.created"), {
+          actions: [
+            {
+              label: t("feedback.viewIssue"),
+              variant: "primary",
+              onClick: () => {
+                void api.openUrl(outcome.url);
+              },
             },
-          },
+          ],
         });
       } else {
         // No token: open the pre-filled new-issue page for manual submission.
         await api.openUrl(outcome.url);
-        toast.info(t("feedback.openedBrowser"));
+        notify.info(t("feedback.openedBrowser"));
       }
       setOpen(false);
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setSubmitting(false);
     }

@@ -24,6 +24,7 @@
  */
 
 import type { SettingsSection } from "@/components/settings/useSettingsDialog";
+import { POSITION_LABEL_KEYS } from "@/lib/notificationPosition";
 import type { PrefId } from "@/lib/prefId";
 import type { Preferences } from "@/types";
 
@@ -32,6 +33,7 @@ export interface PrefsWriters {
   updateEditor: (patch: Partial<Preferences["editor"]>) => void;
   updateGrid: (patch: Partial<Preferences["grid"]>) => void;
   updateUi: (patch: Partial<Preferences["ui"]>) => void;
+  updateNotifications: (patch: Partial<Preferences["notifications"]>) => void;
   updateConnections: (patch: Partial<Preferences["connections"]>) => void;
 }
 
@@ -304,6 +306,85 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: (p) => ({
       i18nKey: `settings.grid.tabAccentStyle.${p.ui.tabAccentStyle}`,
     }),
+  },
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  {
+    prefId: "notifications.position",
+    section: "notifications",
+    labelKey: "settings.notifications.position.label",
+    descKey: "settings.notifications.position.desc",
+    keywords:
+      "notification toast position corner posición esquina notificación aviso bottom right top",
+    value: (p) => ({
+      i18nKey: `settings.notifications.position.${POSITION_LABEL_KEYS[p.notifications.position]}`,
+    }),
+  },
+  {
+    prefId: "notifications.durationMs",
+    section: "notifications",
+    labelKey: "settings.notifications.duration.label",
+    descKey: "settings.notifications.duration.desc",
+    keywords: "notification duration seconds duración segundos tiempo toast",
+    value: (p) =>
+      p.notifications.durationMs > 0
+        ? { raw: `${Math.round(p.notifications.durationMs / 100) / 10} s` }
+        : { i18nKey: "settings.notifications.duration.sticky" },
+  },
+  {
+    prefId: "notifications.errorsPersist",
+    section: "notifications",
+    labelKey: "settings.notifications.errorsPersist.label",
+    descKey: "settings.notifications.errorsPersist.desc",
+    keywords: "error persist dismiss errores persistentes cerrar",
+    value: onOff((p) => p.notifications.errorsPersist),
+    toggle: (p, w) =>
+      w.updateNotifications({ errorsPersist: !p.notifications.errorsPersist }),
+  },
+  {
+    prefId: "notifications.maxVisible",
+    section: "notifications",
+    labelKey: "settings.notifications.maxVisible.label",
+    descKey: "settings.notifications.maxVisible.desc",
+    keywords: "notification stack visible pila visibles apiladas",
+    value: num((p) => p.notifications.maxVisible),
+  },
+  {
+    prefId: "notifications.expandOnHover",
+    section: "notifications",
+    labelKey: "settings.notifications.expandOnHover.label",
+    descKey: "settings.notifications.expandOnHover.desc",
+    keywords: "expand hover stack expandir ratón pila",
+    value: onOff((p) => p.notifications.expandOnHover),
+    toggle: (p, w) =>
+      w.updateNotifications({ expandOnHover: !p.notifications.expandOnHover }),
+  },
+  {
+    prefId: "notifications.density",
+    section: "notifications",
+    labelKey: "settings.notifications.density.label",
+    descKey: "settings.notifications.density.desc",
+    keywords: "density compact comfortable densidad compacta cómoda",
+    value: (p) => ({
+      i18nKey: `settings.notifications.density.${p.notifications.density}`,
+    }),
+  },
+  {
+    prefId: "notifications.historyLimit",
+    section: "notifications",
+    labelKey: "settings.notifications.historyLimit.label",
+    descKey: "settings.notifications.historyLimit.desc",
+    keywords: "notification history limit historial límite campana",
+    value: num((p) => p.notifications.historyLimit),
+  },
+  {
+    prefId: "notifications.showBell",
+    section: "notifications",
+    labelKey: "settings.notifications.showBell.label",
+    descKey: "settings.notifications.showBell.desc",
+    keywords: "bell status bar campana barra estado historial",
+    value: onOff((p) => p.notifications.showBell),
+    toggle: (p, w) => w.updateNotifications({ showBell: !p.notifications.showBell }),
   },
 
   // ── Connections ───────────────────────────────────────────────────────────

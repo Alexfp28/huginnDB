@@ -395,8 +395,7 @@
       "destPathPlaceholder": "Choose a destination file…",
       "browse": "Browse…",
       "export": "Export",
-      "exporting": "Exporting…",
-      "success": "Exported to {{path}}"
+      "exporting": "Exporting…"
     },
     "importSql": {
       "title": "Import .sql…",
@@ -411,8 +410,7 @@
       "running": "Running…"
     },
     "exportCollection": {
-      "title": "Export collection (JSON)…",
-      "success": "Collection exported to {{path}}"
+      "title": "Export collection (JSON)…"
     },
     "importCollection": {
       "title": "Import JSON…",
@@ -583,9 +581,7 @@
     "exportData": {
       "label": "Export data",
       "table": "Export the full table",
-      "queryResults": "Export query results",
-      "tableSuccess": "Table exported to {{path}}",
-      "rowsSuccess": "Rows exported to {{path}}"
+      "queryResults": "Export query results"
     },
     "bulkUpdate": {
       "toolbarTitle": "Update multiple rows/documents at once",
@@ -980,6 +976,10 @@
         "label": "Data grid",
         "desc": "Tables & paging"
       },
+      "notifications": {
+        "label": "Notifications",
+        "desc": "Placement & timing"
+      },
       "connections": {
         "label": "Connections",
         "desc": "Pools & limits"
@@ -1118,7 +1118,6 @@
       "deleteTooltip": "Delete custom theme",
       "duplicateLabel": "Duplicate as custom",
       "exportTooltip": "Export theme…",
-      "exportSuccess": "Theme exported to {{path}}",
       "importTitle": "Import theme…",
       "importSuccess": "Imported \"{{name}}\" as a new custom theme",
       "importError": {
@@ -1265,6 +1264,89 @@
         "label": "Share pools with the MCP connector",
         "desc": "Let a running huginndb-mcp sidecar use this app's connections instead of opening its own, so the whole machine shares one budget per server — and its activity appears in the Console as it happens. Opens a token-protected listener on localhost. Off by default."
       }
+    },
+    "notifications": {
+      "position": {
+        "label": "Position",
+        "desc": "Corner or edge the stack grows from.",
+        "topLeft": "Top left",
+        "topCenter": "Top centre",
+        "topRight": "Top right",
+        "bottomLeft": "Bottom left",
+        "bottomCenter": "Bottom centre",
+        "bottomRight": "Bottom right"
+      },
+      "duration": {
+        "label": "Duration",
+        "desc": "How long a dismissible notification stays. Warnings and file notifications get a multiple of this.",
+        "sticky": "Until dismissed",
+        "seconds": "{{count}} s",
+        "unit": "ms"
+      },
+      "errorsPersist": {
+        "label": "Errors wait to be dismissed",
+        "desc": "An error usually carries something to copy, retry or report — and none of that happens in six seconds."
+      },
+      "maxVisible": {
+        "label": "Visible at once",
+        "desc": "The rest collapse behind a counter and go straight to the history."
+      },
+      "expandOnHover": {
+        "label": "Expand on hover",
+        "desc": "Opens the stack and freezes every timer while the pointer is over it."
+      },
+      "density": {
+        "label": "Density",
+        "desc": "Compact drops the body line and keeps title plus actions on one row.",
+        "comfortable": "Comfortable",
+        "compact": "Compact"
+      },
+      "historyLimit": {
+        "label": "History entries",
+        "desc": "Kept in memory by this window only — never written to disk. 0 turns the history off."
+      },
+      "showBell": {
+        "label": "Bell in the toolbar",
+        "desc": "With it off the history is still kept and still reachable from the command palette."
+      },
+      "preview": {
+        "title": "Preview",
+        "desc": "Fires a real notification, with its timer and its hairline, so the seconds can be judged rather than guessed.",
+        "test": "Test",
+        "testError": "Test an error",
+        "sampleTitle": "Cell saved",
+        "sampleBody": "Artist.Name on row 4.",
+        "sampleErrorTitle": "Could not save the cell",
+        "sampleErrorBody": "ERROR 1062 (23000): Duplicate entry 'AC/DC' for key 'Artist.ux_name'"
+      }
+    }
+  },
+  "notifications": {
+    "openFolder": "Open folder",
+    "copyPath": "Copy path",
+    "copyError": "Copy error",
+    "fileMissing": "The file is no longer at that path.",
+    "fileSaved": {
+      "table": "Table exported",
+      "rows": "Results exported",
+      "collection": "Collection exported",
+      "database": "Database exported",
+      "profiles": "Connections exported",
+      "environments": "Environments exported",
+      "jsonSchemas": "JSON Schemas exported",
+      "theme": "Theme exported"
+    },
+    "center": {
+      "open": "Notifications",
+      "title": "Notifications",
+      "unread": "{{count}} unread",
+      "markAllRead": "Mark read",
+      "clear": "Clear",
+      "empty": "Nothing yet.",
+      "emptyHint": "Exports, errors and confirmations land here.",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "earlier": "Earlier"
     }
   },
   "transfer": {
@@ -1282,8 +1364,7 @@
       "passphraseConfirmPlaceholder": "Re-enter passphrase",
       "passphraseMismatch": "Passphrases do not match",
       "exportButton": "Export {{count}} profile(s)",
-      "exporting": "Exporting…",
-      "success": "Exported to {{path}}"
+      "exporting": "Exporting…"
     },
     "import": {
       "title": "Import profiles",

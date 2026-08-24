@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useEnvironmentDeleteConfirm } from "@/stores/dialogs/environmentDeleteConfirm";
 import { useEnvironments } from "@/stores/session/environments";
@@ -29,7 +29,7 @@ export function EnvironmentDeleteConfirmDialog() {
     } catch (e) {
       // Leave the dialog open: the environment is still there, so the user
       // can retry rather than being left thinking it was deleted.
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setRemoving(false);
     }

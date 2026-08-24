@@ -17,7 +17,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Upload } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import { api } from "@/lib/tauri";
 import { useJsonSchemas } from "@/stores/jsonSchemas";
@@ -87,7 +87,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
       );
       setStep(found.conflicts.length > 0 ? "conflicts" : "review");
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setBusy(false);
     }
@@ -105,7 +105,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
       await reload();
       setStep("done");
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setBusy(false);
     }

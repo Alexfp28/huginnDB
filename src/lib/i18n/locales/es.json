@@ -395,8 +395,7 @@
       "destPathPlaceholder": "Elige un archivo de destino…",
       "browse": "Examinar…",
       "export": "Exportar",
-      "exporting": "Exportando…",
-      "success": "Exportado a {{path}}"
+      "exporting": "Exportando…"
     },
     "importSql": {
       "title": "Importar .sql…",
@@ -411,8 +410,7 @@
       "running": "Ejecutando…"
     },
     "exportCollection": {
-      "title": "Exportar colección (JSON)…",
-      "success": "Colección exportada a {{path}}"
+      "title": "Exportar colección (JSON)…"
     },
     "importCollection": {
       "title": "Importar JSON…",
@@ -583,9 +581,7 @@
     "exportData": {
       "label": "Exportar datos",
       "table": "Exportar la tabla completa",
-      "queryResults": "Exportar resultado de la consulta",
-      "tableSuccess": "Tabla exportada a {{path}}",
-      "rowsSuccess": "Filas exportadas a {{path}}"
+      "queryResults": "Exportar resultado de la consulta"
     },
     "bulkUpdate": {
       "toolbarTitle": "Actualizar varias filas/documentos a la vez",
@@ -980,6 +976,10 @@
         "label": "Tabla de datos",
         "desc": "Filas y paginación"
       },
+      "notifications": {
+        "label": "Notificaciones",
+        "desc": "Posición y duración"
+      },
       "connections": {
         "label": "Conexiones",
         "desc": "Pools y límites"
@@ -1118,7 +1118,6 @@
       "deleteTooltip": "Eliminar tema personalizado",
       "duplicateLabel": "Duplicar como personalizado",
       "exportTooltip": "Exportar tema…",
-      "exportSuccess": "Tema exportado a {{path}}",
       "importTitle": "Importar tema…",
       "importSuccess": "Se importó «{{name}}» como nuevo tema personalizado",
       "importError": {
@@ -1265,6 +1264,89 @@
         "label": "Compartir pools con el conector MCP",
         "desc": "Permite que un sidecar huginndb-mcp en ejecución use las conexiones de esta app en lugar de abrir las suyas, de modo que toda la máquina comparta un presupuesto por servidor — y su actividad aparezca en la Consola en tiempo real. Abre un listener en localhost protegido por token. Desactivado por defecto."
       }
+    },
+    "notifications": {
+      "position": {
+        "label": "Posición",
+        "desc": "Esquina o borde desde el que crece la pila.",
+        "topLeft": "Arriba izquierda",
+        "topCenter": "Arriba centro",
+        "topRight": "Arriba derecha",
+        "bottomLeft": "Abajo izquierda",
+        "bottomCenter": "Abajo centro",
+        "bottomRight": "Abajo derecha"
+      },
+      "duration": {
+        "label": "Duración",
+        "desc": "Cuánto vive una notificación que se cierra sola. Los avisos y las de archivo duran un múltiplo de esto.",
+        "sticky": "Hasta cerrarla",
+        "seconds": "{{count}} s",
+        "unit": "ms"
+      },
+      "errorsPersist": {
+        "label": "Los errores esperan a que los cierres",
+        "desc": "Un error suele traer algo que copiar, reintentar o reportar, y nada de eso pasa en seis segundos."
+      },
+      "maxVisible": {
+        "label": "Visibles a la vez",
+        "desc": "Las que sobran se cuentan en una píldora y van directas al historial."
+      },
+      "expandOnHover": {
+        "label": "Expandir al pasar el ratón",
+        "desc": "Abre la pila y congela todos los temporizadores mientras el puntero esté encima."
+      },
+      "density": {
+        "label": "Densidad",
+        "desc": "La compacta quita la línea de detalle y deja título y acciones en una sola fila.",
+        "comfortable": "Cómoda",
+        "compact": "Compacta"
+      },
+      "historyLimit": {
+        "label": "Entradas del historial",
+        "desc": "Las guarda esta ventana en memoria; nunca se escriben en disco. 0 desactiva el historial."
+      },
+      "showBell": {
+        "label": "Campana en la barra de herramientas",
+        "desc": "Apagada, el historial sigue existiendo y se abre desde la paleta de comandos."
+      },
+      "preview": {
+        "title": "Vista previa",
+        "desc": "Dispara una notificación real, con su temporizador y su hairline, para poder juzgar los segundos en vez de adivinarlos.",
+        "test": "Probar",
+        "testError": "Probar un error",
+        "sampleTitle": "Celda guardada",
+        "sampleBody": "Artist.Name en la fila 4.",
+        "sampleErrorTitle": "No se pudo guardar la celda",
+        "sampleErrorBody": "ERROR 1062 (23000): Duplicate entry 'AC/DC' for key 'Artist.ux_name'"
+      }
+    }
+  },
+  "notifications": {
+    "openFolder": "Abrir carpeta",
+    "copyPath": "Copiar ruta",
+    "copyError": "Copiar error",
+    "fileMissing": "El archivo ya no está en esa ruta.",
+    "fileSaved": {
+      "table": "Tabla exportada",
+      "rows": "Resultados exportados",
+      "collection": "Colección exportada",
+      "database": "Base de datos exportada",
+      "profiles": "Conexiones exportadas",
+      "environments": "Entornos exportados",
+      "jsonSchemas": "Esquemas JSON exportados",
+      "theme": "Tema exportado"
+    },
+    "center": {
+      "open": "Notificaciones",
+      "title": "Notificaciones",
+      "unread": "{{count}} sin leer",
+      "markAllRead": "Marcar leídas",
+      "clear": "Limpiar",
+      "empty": "Nada por ahora.",
+      "emptyHint": "Aquí quedan las exportaciones, los errores y las confirmaciones.",
+      "today": "Hoy",
+      "yesterday": "Ayer",
+      "earlier": "Anterior"
     }
   },
   "transfer": {
@@ -1282,8 +1364,7 @@
       "passphraseConfirmPlaceholder": "Repite la contraseña",
       "passphraseMismatch": "Las contraseñas no coinciden",
       "exportButton": "Exportar {{count}} perfil(es)",
-      "exporting": "Exportando…",
-      "success": "Exportado en {{path}}"
+      "exporting": "Exportando…"
     },
     "import": {
       "title": "Importar perfiles",

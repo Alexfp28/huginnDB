@@ -35,7 +35,7 @@ import {
   Unplug,
   Upload,
 } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import {
   ContextMenu,
@@ -224,7 +224,7 @@ export function ConnectionActionsMenu({
             // Always toast, unlike the old multi-DB toolbar button, which relied
             // on the new node appearing in the tree as its own confirmation.
             // Driven from a connection row, the subtree may well be collapsed.
-            toast.success(t("schema.createDatabase.createdSingleDb", { name }));
+            notify.success(t("schema.createDatabase.createdSingleDb", { name }));
           }}
         />
       )}
@@ -235,7 +235,7 @@ export function ConnectionActionsMenu({
           onDone={(name) => {
             setCreateCollectionOpen(false);
             refresh(connectionId);
-            toast.success(t("schema.createCollection.created", { name }));
+            notify.success(t("schema.createCollection.created", { name }));
           }}
         />
       )}

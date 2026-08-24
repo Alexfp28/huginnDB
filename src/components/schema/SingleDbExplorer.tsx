@@ -25,7 +25,7 @@ import {
   Table as TableIcon,
   Table2,
 } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import { IndexesSectionHeader } from "@/components/schema/IndexesSectionHeader";
 import { TableSection } from "@/components/schema/SchemaTableSection";
@@ -176,10 +176,10 @@ export function SingleDbExplorer({
       void (async () => {
         try {
           await api.emptyTable(connectionId, tbl.schema, tbl.name);
-          toast.success(t("schema.empty.emptied", { name: tbl.name }));
+          notify.success(t("schema.empty.emptied", { name: tbl.name }));
           refresh(connectionId);
         } catch (e) {
-          toast.error(String(e));
+          notify.error(String(e));
         }
       })();
     },

@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -131,11 +131,11 @@ export function InferSchemaDialog({
             binding.column,
           ),
         );
-        toast.success(
+        notify.success(
           t("jsonSchemas.toast.bound", { name: saved.name, scope: scopeLabel }),
         );
       } else {
-        toast.success(t("jsonSchemas.toast.created", { name: saved.name }));
+        notify.success(t("jsonSchemas.toast.created", { name: saved.name }));
       }
       onOpenChange(false);
     } catch (e) {

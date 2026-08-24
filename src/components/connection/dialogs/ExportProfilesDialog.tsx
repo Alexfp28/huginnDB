@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
 import { Button } from "@/components/ui/button";
@@ -59,10 +59,10 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
         includePasswords,
         includePasswords ? passphrase : undefined,
       );
-      toast.success(t("transfer.export.success", { path }));
+      notify.file(t("notifications.fileSaved.profiles"), { path });
       onOpenChange(false);
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setLoading(false);
     }

@@ -19,7 +19,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { ChevronDown, ChevronRight, FolderOpen } from "lucide-react";
 import {
   Dialog,
@@ -196,7 +196,7 @@ export function ExportDatabaseDialog({
         });
       }
       const path = await api.exportDatabases({ targets, dataMode, destPath });
-      toast.success(t("schema.exportDatabaseDialog.success", { path }));
+      notify.file(t("notifications.fileSaved.database"), { path });
       onClose();
     });
   }

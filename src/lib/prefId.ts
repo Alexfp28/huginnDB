@@ -24,7 +24,7 @@ import type { ActionId } from "@/lib/keybindings";
 import type { Preferences } from "@/types";
 
 /** The preference groups that render as sections of rows. */
-type PrefGroup = "editor" | "grid" | "ui" | "connections";
+type PrefGroup = "editor" | "grid" | "ui" | "notifications" | "connections";
 
 /** `"editor.wordWrap" | "grid.rowHeight" | …` — every real preference path. */
 type PrefPath = {

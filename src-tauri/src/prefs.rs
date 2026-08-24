@@ -27,6 +27,9 @@ pub struct Preferences {
     pub editor: EditorPrefs,
     pub grid: GridPrefs,
     pub ui: UiPrefs,
+    /// Where notifications appear, how long they stay and how many are
+    /// remembered. See [`NotificationPrefs`].
+    pub notifications: NotificationPrefs,
     /// How many database connections HuginnDB is allowed to hold, and for how
     /// long. See [`ConnectionPrefs`].
     pub connections: ConnectionPrefs,
@@ -168,6 +171,57 @@ pub struct UiPrefs {
     pub connection_group_expand_mode: String,
 }
 
+/// How notifications behave: where they appear, how long they stay, how many
+/// at once, and how much of them is remembered.
+///
+/// Its own group rather than more fields on [`UiPrefs`] because the frontend
+/// hands the whole struct to one component tree (the `<Toaster>` container plus
+/// the notification store) and reads it as a unit; a group also gives the
+/// settings dialog a section and the command palette a `notifications.*`
+/// `prefId` namespace for free.
+///
+/// Everything enum-shaped is stringly-typed, like [`GridPrefs::bit_display`]:
+/// the frontend owns the enum, the backend just round-trips whatever it stored.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct NotificationPrefs {
+    /// Corner or edge the stack grows from. One of "top-left" | "top-center" |
+    /// "top-right" | "bottom-left" | "bottom-center" | "bottom-right".
+    pub position: String,
+    /// How long a dismissible notification lives, in milliseconds. `0` means
+    /// "until dismissed".
+    ///
+    /// Defaults to **6000**, not the 4000 the toast library uses: the old value
+    /// was not long enough to read a file path or a driver error, which is what
+    /// made the notifications feel like they had happened to somebody else.
+    /// Clamped into `[MIN_DURATION_MS, MAX_DURATION_MS]` by the frontend before
+    /// it reaches the container.
+    pub duration_ms: u32,
+    /// Whether errors ignore `duration_ms` and wait to be dismissed. On by
+    /// default — an error usually carries a message the user has to act on
+    /// (copy it, retry, report it), and none of that fits in six seconds.
+    pub errors_persist: bool,
+    /// How many notifications are on screen at once; the rest collapse behind
+    /// a counter and go straight to the history.
+    pub max_visible: u32,
+    /// Whether hovering the stack expands it and freezes every timer.
+    pub expand_on_hover: bool,
+    /// Card density. One of "comfortable" | "compact" — compact drops the body
+    /// line and keeps title plus actions on one row.
+    pub density: String,
+    /// How many past notifications the window remembers. `0` disables the
+    /// history (and hides the bell).
+    ///
+    /// In-memory and per window: notifications are already scoped to the window
+    /// that raised them (see the `target` rule in `log-bridge.ts`), and a
+    /// history that outlived the session would be a state file nobody asked
+    /// for. The number is here only so the cap is the user's to set.
+    pub history_limit: u32,
+    /// Whether the status bar shows the notification bell. With it off the
+    /// history is still kept and still reachable from the command palette.
+    pub show_bell: bool,
+}
+
 /// Connection-pool policy.
 ///
 /// Until 1.13.0 none of this was configurable and most of it wasn't even
@@ -243,6 +297,7 @@ impl Default for Preferences {
             editor: EditorPrefs::default(),
             grid: GridPrefs::default(),
             ui: UiPrefs::default(),
+            notifications: NotificationPrefs::default(),
             connections: ConnectionPrefs::default(),
             keybindings: HashMap::new(),
         }
@@ -311,6 +366,23 @@ impl Default for UiPrefs {
     }
 }
 
+impl Default for NotificationPrefs {
+    fn default() -> Self {
+        Self {
+            // Where they already were, and still the least intrusive corner:
+            // away from the editing caret and next to the bell.
+            position: "bottom-right".into(),
+            duration_ms: 6000,
+            errors_persist: true,
+            max_visible: 3,
+            expand_on_hover: true,
+            density: "comfortable".into(),
+            history_limit: 50,
+            show_bell: true,
+        }
+    }
+}
+
 /// Read the preferences blob from disk.
 ///
 /// Returns [`Preferences::default`] when the file is missing or unparseable —
@@ -356,6 +428,55 @@ mod tests {
         assert_eq!(parsed.editor.font_family, "JetBrains Mono");
         assert_eq!(parsed.grid.default_page_size, 100);
         assert!(parsed.ui.restore_tabs_on_open);
+    }
+
+    /// A `prefs.json` written before the notifications group existed — i.e.
+    /// every install upgrading into this version — must load with the new
+    /// defaults rather than dropping the rest of the blob.
+    #[test]
+    fn blob_without_notifications_gets_the_new_defaults() {
+        let before = r#"{ "version": 1, "grid": { "rowHeight": 30 }, "ui": { "language": "es" } }"#;
+        let parsed: Preferences = serde_json::from_str(before).unwrap();
+        assert_eq!(parsed.grid.row_height, 30);
+        assert_eq!(parsed.ui.language, "es");
+        assert_eq!(parsed.notifications.position, "bottom-right");
+        assert_eq!(parsed.notifications.duration_ms, 6000);
+        assert!(parsed.notifications.errors_persist);
+        assert_eq!(parsed.notifications.max_visible, 3);
+        assert_eq!(parsed.notifications.history_limit, 50);
+    }
+
+    /// The camelCase spelling is the IPC contract with `src/types.ts`; a rename
+    /// on either side has to break here.
+    #[test]
+    fn notifications_use_the_camel_case_keys_the_frontend_sends() {
+        let sent = r#"{
+            "notifications": {
+                "position": "top-center",
+                "durationMs": 10000,
+                "errorsPersist": false,
+                "maxVisible": 5,
+                "expandOnHover": false,
+                "density": "compact",
+                "historyLimit": 0,
+                "showBell": false
+            }
+        }"#;
+        let parsed: Preferences = serde_json::from_str(sent).unwrap();
+        let n = &parsed.notifications;
+        assert_eq!(n.position, "top-center");
+        assert_eq!(n.duration_ms, 10000);
+        assert!(!n.errors_persist);
+        assert_eq!(n.max_visible, 5);
+        assert!(!n.expand_on_hover);
+        assert_eq!(n.density, "compact");
+        assert_eq!(n.history_limit, 0);
+        assert!(!n.show_bell);
+
+        // And back out again in the same spelling.
+        let json = serde_json::to_value(&parsed).unwrap();
+        assert!(json["notifications"]["durationMs"].is_number());
+        assert!(json["notifications"]["errorsPersist"].is_boolean());
     }
 
     #[test]
