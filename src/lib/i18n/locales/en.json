@@ -395,8 +395,7 @@
       "destPathPlaceholder": "Choose a destination file…",
       "browse": "Browse…",
       "export": "Export",
-      "exporting": "Exporting…",
-      "success": "Exported to {{path}}"
+      "exporting": "Exporting…"
     },
     "importSql": {
       "title": "Import .sql…",
@@ -411,8 +410,7 @@
       "running": "Running…"
     },
     "exportCollection": {
-      "title": "Export collection (JSON)…",
-      "success": "Collection exported to {{path}}"
+      "title": "Export collection (JSON)…"
     },
     "importCollection": {
       "title": "Import JSON…",
@@ -583,9 +581,7 @@
     "exportData": {
       "label": "Export data",
       "table": "Export the full table",
-      "queryResults": "Export query results",
-      "tableSuccess": "Table exported to {{path}}",
-      "rowsSuccess": "Rows exported to {{path}}"
+      "queryResults": "Export query results"
     },
     "bulkUpdate": {
       "toolbarTitle": "Update multiple rows/documents at once",
@@ -1118,7 +1114,6 @@
       "deleteTooltip": "Delete custom theme",
       "duplicateLabel": "Duplicate as custom",
       "exportTooltip": "Export theme…",
-      "exportSuccess": "Theme exported to {{path}}",
       "importTitle": "Import theme…",
       "importSuccess": "Imported \"{{name}}\" as a new custom theme",
       "importError": {
@@ -1267,6 +1262,22 @@
       }
     }
   },
+  "notifications": {
+    "openFolder": "Open folder",
+    "copyPath": "Copy path",
+    "copyError": "Copy error",
+    "fileMissing": "The file is no longer at that path.",
+    "fileSaved": {
+      "table": "Table exported",
+      "rows": "Results exported",
+      "collection": "Collection exported",
+      "database": "Database exported",
+      "profiles": "Connections exported",
+      "environments": "Environments exported",
+      "jsonSchemas": "JSON Schemas exported",
+      "theme": "Theme exported"
+    }
+  },
   "transfer": {
     "export": {
       "title": "Export profiles",
@@ -1282,8 +1293,7 @@
       "passphraseConfirmPlaceholder": "Re-enter passphrase",
       "passphraseMismatch": "Passphrases do not match",
       "exportButton": "Export {{count}} profile(s)",
-      "exporting": "Exporting…",
-      "success": "Exported to {{path}}"
+      "exporting": "Exporting…"
     },
     "import": {
       "title": "Import profiles",

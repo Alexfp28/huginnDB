@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { api } from "@/lib/tauri";
@@ -47,7 +47,7 @@ export function EmptyTableDialog({
         run(async () => {
           await api.emptyTable(connectionId, target.schema, target.name);
           if (dontAsk) updateUi({ confirmEmptyTable: false });
-          toast.success(t("schema.empty.emptied", { name: target.name }));
+          notify.success(t("schema.empty.emptied", { name: target.name }));
           onDone();
         })
       }

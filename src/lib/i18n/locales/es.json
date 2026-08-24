@@ -395,8 +395,7 @@
       "destPathPlaceholder": "Elige un archivo de destino…",
       "browse": "Examinar…",
       "export": "Exportar",
-      "exporting": "Exportando…",
-      "success": "Exportado a {{path}}"
+      "exporting": "Exportando…"
     },
     "importSql": {
       "title": "Importar .sql…",
@@ -411,8 +410,7 @@
       "running": "Ejecutando…"
     },
     "exportCollection": {
-      "title": "Exportar colección (JSON)…",
-      "success": "Colección exportada a {{path}}"
+      "title": "Exportar colección (JSON)…"
     },
     "importCollection": {
       "title": "Importar JSON…",
@@ -583,9 +581,7 @@
     "exportData": {
       "label": "Exportar datos",
       "table": "Exportar la tabla completa",
-      "queryResults": "Exportar resultado de la consulta",
-      "tableSuccess": "Tabla exportada a {{path}}",
-      "rowsSuccess": "Filas exportadas a {{path}}"
+      "queryResults": "Exportar resultado de la consulta"
     },
     "bulkUpdate": {
       "toolbarTitle": "Actualizar varias filas/documentos a la vez",
@@ -1118,7 +1114,6 @@
       "deleteTooltip": "Eliminar tema personalizado",
       "duplicateLabel": "Duplicar como personalizado",
       "exportTooltip": "Exportar tema…",
-      "exportSuccess": "Tema exportado a {{path}}",
       "importTitle": "Importar tema…",
       "importSuccess": "Se importó «{{name}}» como nuevo tema personalizado",
       "importError": {
@@ -1267,6 +1262,22 @@
       }
     }
   },
+  "notifications": {
+    "openFolder": "Abrir carpeta",
+    "copyPath": "Copiar ruta",
+    "copyError": "Copiar error",
+    "fileMissing": "El archivo ya no está en esa ruta.",
+    "fileSaved": {
+      "table": "Tabla exportada",
+      "rows": "Resultados exportados",
+      "collection": "Colección exportada",
+      "database": "Base de datos exportada",
+      "profiles": "Conexiones exportadas",
+      "environments": "Entornos exportados",
+      "jsonSchemas": "Esquemas JSON exportados",
+      "theme": "Tema exportado"
+    }
+  },
   "transfer": {
     "export": {
       "title": "Exportar perfiles",
@@ -1282,8 +1293,7 @@
       "passphraseConfirmPlaceholder": "Repite la contraseña",
       "passphraseMismatch": "Las contraseñas no coinciden",
       "exportButton": "Exportar {{count}} perfil(es)",
-      "exporting": "Exportando…",
-      "success": "Exportado en {{path}}"
+      "exporting": "Exportando…"
     },
     "import": {
       "title": "Importar perfiles",

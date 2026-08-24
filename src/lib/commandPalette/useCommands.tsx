@@ -20,7 +20,7 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import {
   AppWindow,
   BookOpen,
@@ -172,7 +172,12 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     if (!enabled) return [];
 
     const list: PaletteCommand[] = [];
-    const writers = { updateEditor, updateGrid, updateUi, updateConnections };
+    const writers = {
+      updateEditor,
+      updateGrid,
+      updateUi,
+      updateConnections,
+    };
     const combo = (id: Parameters<typeof getBinding>[1]) =>
       formatComboForDisplay(getBinding(prefs.keybindings, id));
     const activeTab = tabs.find((x) => x.id === activeTabId) ?? null;
@@ -330,7 +335,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         icon: <Unplug className="h-4 w-4" />,
         run: () => {
           for (const id of Array.from(active)) {
-            void disconnect(id).catch((e) => toast.error(String(e)));
+            void disconnect(id).catch((e) => notify.error(String(e)));
           }
         },
       });
@@ -344,7 +349,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         keywords: "window new ventana nueva",
         icon: <AppWindow className="h-4 w-4" />,
         run: () => {
-          void api.openNewWindow().catch((e) => toast.error(String(e)));
+          void api.openNewWindow().catch((e) => notify.error(String(e)));
         },
       },
       {
@@ -523,7 +528,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
               await refreshSchema(p.id);
               setSelected(p.id);
             } catch (e) {
-              toast.error(String(e));
+              notify.error(String(e));
             }
           })();
         },
@@ -531,7 +536,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
           ? {
               hintKey: "commandPalette.hintDisconnect",
               run: () => {
-                void disconnect(p.id).catch((e) => toast.error(String(e)));
+                void disconnect(p.id).catch((e) => notify.error(String(e)));
               },
             }
           : undefined,
@@ -553,7 +558,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
           run: () => {
             if (env.id === activeEnvId) return;
             void switchEnvironment(env.id).catch((e) =>
-              toast.error(t("environments.switchFailed", { error: String(e) })),
+              notify.error(t("environments.switchFailed", { error: String(e) })),
             );
           },
         });
@@ -596,7 +601,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
                 // child id — see `parentConnectionId`.
                 setSelected(p.id);
               } catch (e) {
-                toast.error(String(e));
+                notify.error(String(e));
               }
             })();
           },
@@ -625,10 +630,10 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
             void (async () => {
               const res = await warmDatabases(p.id, cold);
               if (res.limitError) {
-                toast.error(String(res.limitError));
+                notify.error(String(res.limitError));
                 return;
               }
-              toast.success(
+              notify.success(
                 t("commandPalette.indexedDatabases", { count: res.loaded }),
               );
             })();

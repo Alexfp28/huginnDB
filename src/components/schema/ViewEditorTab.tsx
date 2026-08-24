@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
@@ -220,7 +220,7 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
       // the DDL pane alone is easy to miss on a rejected apply.
       const message = String(e);
       setPreviewError(message);
-      toast.error(t("view.applyFailed", { message }));
+      notify.error(t("view.applyFailed", { message }));
     } finally {
       setApplying(false);
     }

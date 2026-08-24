@@ -19,7 +19,7 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { ImagePlus, X } from "lucide-react";
 import {
   Dialog,
@@ -100,7 +100,7 @@ export function EnvironmentEditorDialog() {
       const icon = await pickAvatarImage(t("environments.imagePickTitle"));
       if (icon) patchDraft({ icon });
     } catch (e) {
-      toast.error(t("environments.imageError", { error: String(e) }));
+      notify.error(t("environments.imageError", { error: String(e) }));
     }
   }
 
@@ -109,7 +109,7 @@ export function EnvironmentEditorDialog() {
     try {
       patchDraft({ icon: await avatarImageFromFile(file) });
     } catch (e) {
-      toast.error(t("environments.imageError", { error: String(e) }));
+      notify.error(t("environments.imageError", { error: String(e) }));
     }
   }
 

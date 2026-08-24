@@ -38,7 +38,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { RefreshButton } from "@/components/common/RefreshButton";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
@@ -765,12 +765,13 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           ? api.exportCollection(connectionId, table)
           : api.exportTable(connectionId, schema, table),
       (path) =>
-        toast.success(
+        notify.file(
           isMongo
-            ? t("schema.exportCollection.success", { path })
-            : t("tableData.exportData.tableSuccess", { path }),
+            ? t("notifications.fileSaved.collection")
+            : t("notifications.fileSaved.table"),
+          { path },
         ),
-      (message) => toast.error(message),
+      (message) => notify.error(message),
     );
   }
 
@@ -793,12 +794,13 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               searchColumns: appliedFilter ? searchColumns : undefined,
             }),
       (path) =>
-        toast.success(
+        notify.file(
           isMongo
-            ? t("schema.exportCollection.success", { path })
-            : t("tableData.exportData.rowsSuccess", { path }),
+            ? t("notifications.fileSaved.collection")
+            : t("notifications.fileSaved.rows"),
+          { path },
         ),
-      (message) => toast.error(message),
+      (message) => notify.error(message),
     );
   }
 
@@ -823,10 +825,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     }
     try {
       const count = await api.importCollection(connectionId, table, picked);
-      toast.success(t("schema.importCollection.success", { count }));
+      notify.success(t("schema.importCollection.success", { count }));
       await fetchData();
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     }
   }
 

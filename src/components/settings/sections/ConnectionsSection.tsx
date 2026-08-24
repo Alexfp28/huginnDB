@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -57,10 +57,10 @@ export function ConnectionsSection() {
     setReleasing(true);
     try {
       const closed = await api.releaseIdlePools();
-      toast.success(t("schema.releasedIdlePools", { count: closed }));
+      notify.success(t("schema.releasedIdlePools", { count: closed }));
       refreshStats();
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     } finally {
       setReleasing(false);
     }

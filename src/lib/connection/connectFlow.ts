@@ -14,7 +14,7 @@
  * and a couple of the call sites need it outside React's render cycle.
  */
 
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
@@ -35,7 +35,7 @@ export async function connectAndWarm(id: string): Promise<boolean> {
   } catch (e) {
     const msg = String(e);
     const hint = driverMismatchHint(msg);
-    toast.error(hint ? `${msg} — ${hint}` : msg);
+    notify.error(hint ? `${msg} — ${hint}` : msg);
     return false;
   }
 }

@@ -18,7 +18,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { save as saveFileDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { Copy, Download, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,9 +92,9 @@ export function AppearanceSection() {
       });
       if (!destPath) return;
       await api.writeTextFile(destPath, serializeTheme(active));
-      toast.success(t("settings.appearance.exportSuccess", { path: destPath }));
+      notify.file(t("notifications.fileSaved.theme"), { path: destPath });
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     }
   }
 
@@ -113,12 +113,12 @@ export function AppearanceSection() {
       const theme = parseThemeFile(raw);
       upsertCustom(theme);
       setThemeId(theme.id);
-      toast.success(t("settings.appearance.importSuccess", { name: theme.name }));
+      notify.success(t("settings.appearance.importSuccess", { name: theme.name }));
     } catch (e) {
       if (e instanceof ThemeImportError) {
-        toast.error(t(`settings.appearance.importError.${e.message}`));
+        notify.error(t(`settings.appearance.importError.${e.message}`));
       } else {
-        toast.error(String(e));
+        notify.error(String(e));
       }
     }
   }

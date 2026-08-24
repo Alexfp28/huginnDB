@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import {
   Braces,
   Code2,
@@ -316,7 +316,7 @@ export function AggregationTab({
         });
         setText(formatted.text);
         if (dropped > 0) {
-          toast.info(t("aggregation.disabledDropped", { count: dropped }));
+          notify.info(t("aggregation.disabledDropped", { count: dropped }));
         }
       } else {
         const formatted = await api.formatMongoPipeline({ text });
@@ -330,7 +330,7 @@ export function AggregationTab({
     } catch (e) {
       // The pipeline has to parse before it can be re-shaped, so a syntax
       // error blocks the switch rather than silently discarding stages.
-      toast.error(t("aggregation.switchFailed", { message: String(e) }));
+      notify.error(t("aggregation.switchFailed", { message: String(e) }));
     }
   }
 
@@ -351,7 +351,7 @@ export function AggregationTab({
         );
       }
     } catch (e) {
-      toast.error(t("aggregation.formatFailed", { message: String(e) }));
+      notify.error(t("aggregation.formatFailed", { message: String(e) }));
     }
   }
 
@@ -393,10 +393,10 @@ export function AggregationTab({
       setBoundView(name);
       renameTab(tabId, `${name} (${t("tabs.aggregationSuffix")})`);
       await refreshSchema(connectionId);
-      toast.success(t("aggregation.saveView.saved", { name }));
+      notify.success(t("aggregation.saveView.saved", { name }));
       setSaveOpen(false);
     } catch (e) {
-      toast.error(t("aggregation.saveView.failed", { message: String(e) }));
+      notify.error(t("aggregation.saveView.failed", { message: String(e) }));
     } finally {
       setSaving(false);
     }

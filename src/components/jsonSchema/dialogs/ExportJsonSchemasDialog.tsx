@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import { api } from "@/lib/tauri";
 import { useJsonSchemas } from "@/stores/jsonSchemas";
@@ -62,12 +62,12 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
     setBusy(true);
     try {
       const path = await api.exportJsonSchemas([...selected], includeBindings);
-      toast.success(t("transfer.export.success", { path }));
+      notify.file(t("notifications.fileSaved.jsonSchemas"), { path });
       onClose();
     } catch (e) {
       // "export cancelled" is the user closing the native dialog, not a failure.
       const message = String(e);
-      if (!isExportCancelled(message)) toast.error(message);
+      if (!isExportCancelled(message)) notify.error(message);
     } finally {
       setBusy(false);
     }

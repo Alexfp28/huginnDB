@@ -13,7 +13,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,7 +47,7 @@ export function BindingScopeFields({ binding, onClose }: Props) {
       onClose();
     } catch (e) {
       setError(String(e));
-      toast.error(t("jsonSchemas.bindings.saveError", { message: String(e) }));
+      notify.error(t("jsonSchemas.bindings.saveError", { message: String(e) }));
     }
   }
 

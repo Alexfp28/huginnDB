@@ -31,7 +31,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 
 import { SingleDbExplorer } from "@/components/schema/SingleDbExplorer";
 import {
@@ -205,21 +205,22 @@ export function MultiDbExplorer({
           // queue would fail the same way.
           if (isTooManyConnections(e)) {
             setLimitReached(true);
-            toast.error(String(e), {
-              action: {
+            notify.error(String(e), {
+              actions: [{
                 label: t("schema.releaseIdlePools"),
+                variant: "primary",
                 onClick: () => {
                   void api
                     .releaseIdlePools()
                     .then((closed) => {
-                      toast.success(
+                      notify.success(
                         t("schema.releasedIdlePools", { count: closed }),
                       );
                       setLimitReached(false);
                     })
-                    .catch((err) => toast.error(String(err)));
+                    .catch((err) => notify.error(String(err)));
                 },
-              },
+              }],
             });
           }
         })
@@ -708,7 +709,7 @@ function DatabaseRoot({
             const id = createCollectionId;
             setCreateCollectionId(null);
             if (id) void useSchema.getState().refresh(id);
-            toast.success(t("schema.createCollection.created", { name }));
+            notify.success(t("schema.createCollection.created", { name }));
           }}
         />
       )}

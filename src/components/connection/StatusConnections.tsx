@@ -13,7 +13,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronUp, RotateCw, X } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
 import { useSchema } from "@/stores/session/schema";
@@ -79,7 +79,7 @@ export function StatusConnections() {
       // silently doing nothing.
       const msg = String(e);
       const hint = driverMismatchHint(msg);
-      toast.error(hint ? `${msg} — ${hint}` : msg);
+      notify.error(hint ? `${msg} — ${hint}` : msg);
     }
   }
 

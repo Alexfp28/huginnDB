@@ -47,7 +47,7 @@ import {
   type MutableRefObject,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import {
   ChevronDown,
   ChevronRight,
@@ -542,7 +542,7 @@ const DocumentCard = memo(function DocumentCard({
       await onFieldSave(rowValues, path, value, typeHint);
       return true;
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
       return false;
     }
   }
@@ -577,7 +577,7 @@ const DocumentCard = memo(function DocumentCard({
         ? "string"
         : f.type;
     if (edit.text !== null && !isValidForType(hint, edit.text)) {
-      toast.error(t("dataGrid.list.invalidValue", { type: typeLabel(hint) }));
+      notify.error(t("dataGrid.list.invalidValue", { type: typeLabel(hint) }));
       return;
     }
     committingRef.current = true;
@@ -615,7 +615,7 @@ const DocumentCard = memo(function DocumentCard({
     try {
       await onFieldDelete(rowValues, f.path);
     } catch (e) {
-      toast.error(String(e));
+      notify.error(String(e));
     }
   }
 
@@ -639,11 +639,11 @@ const DocumentCard = memo(function DocumentCard({
     if (!draft) return;
     const key = draft.key.trim();
     if (!key) {
-      toast.error(t("dataGrid.list.fieldNameRequired"));
+      notify.error(t("dataGrid.list.fieldNameRequired"));
       return;
     }
     if (draft.type !== "null" && !isValidForType(draft.type, draft.text)) {
-      toast.error(
+      notify.error(
         t("dataGrid.list.invalidValue", { type: typeLabel(draft.type) }),
       );
       return;

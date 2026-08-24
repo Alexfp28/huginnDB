@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { Copy, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,7 @@ function CopyButton({ text }: { text: string }) {
       className="h-6 gap-1 px-2 text-[11px]"
       onClick={() => {
         void navigator.clipboard.writeText(text);
-        toast.success(t("settings.mcp.copied"));
+        notify.success(t("settings.mcp.copied"));
       }}
     >
       <Copy className="h-3 w-3" />
@@ -93,7 +93,7 @@ export function McpSection() {
     try {
       await api.saveProfile(updated);
     } catch {
-      toast.error(t("settings.mcp.writePolicySaveError"));
+      notify.error(t("settings.mcp.writePolicySaveError"));
       void api.listProfiles().then(setProfiles).catch(() => {});
     }
   }
