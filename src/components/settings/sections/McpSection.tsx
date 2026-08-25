@@ -32,7 +32,6 @@ import {
   type ProfileScope,
 } from "@/lib/connection/origin";
 import { buildRailSections } from "@/lib/connection/railSections";
-import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 import { useOrigins } from "@/stores/sync/origins";
 import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
@@ -73,7 +72,19 @@ export function McpSection() {
   const [scope, setScope] = useState<ProfileScope>("all");
   /** Pending "set everything to full", which is the one level worth a prompt. */
   const [pendingFull, setPendingFull] = useState(false);
-  const bulkPolicy = useAsyncSubmit();
+  /**
+   * In-flight state for the bulk policy row.
+   *
+   * Deliberately NOT `useAsyncSubmit`: that hook leaves `submitting` true after a
+   * success, on the contract that the success path unmounts the dialog it is
+   * driving (gotcha #44). This row lives in a section that stays mounted, so the
+   * flag never cleared and the three buttons stayed disabled until the user
+   * navigated to another section and back. Clearing in a `finally` is right here
+   * for the same reason it is wrong there — nothing unmounts to do it for us,
+   * and re-applying the same policy twice is harmless.
+   */
+  const [applying, setApplying] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   useEffect(() => {
     void api
@@ -178,15 +189,15 @@ export function McpSection() {
    * `merge_profiles_bundle` preserves the policy across a sync; before it did,
    * this would have appeared to work and reverted on the next pull.
    */
-  function applyBulkPolicy(level: McpWritePolicy) {
+  async function applyBulkPolicy(level: McpWritePolicy) {
     const ids = filteredProfiles.map((p) => p.id);
     if (ids.length === 0) return;
-    bulkPolicy.run(async () => {
+    setApplying(true);
+    setBulkError(null);
+    try {
       const changed = await api.setMcpWritePolicy(ids, level);
       setProfiles((prev) =>
-        prev.map((p) =>
-          ids.includes(p.id) ? { ...p, mcp_write: level } : p,
-        ),
+        prev.map((p) => (ids.includes(p.id) ? { ...p, mcp_write: level } : p)),
       );
       setPendingFull(false);
       notify.success(
@@ -194,7 +205,14 @@ export function McpSection() {
           ? t("settings.mcp.bulkPolicyApplied", { count: changed })
           : t("settings.mcp.bulkPolicyNoop"),
       );
-    });
+    } catch (e) {
+      // Stays in the confirm dialog when there is one, and falls back to a toast
+      // for the two levels that have none.
+      setBulkError(String(e));
+      if (!pendingFull) notify.error(String(e));
+    } finally {
+      setApplying(false);
+    }
   }
 
   const allFilteredSelected =
@@ -377,12 +395,12 @@ export function McpSection() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={bulkPolicy.submitting}
+                    disabled={applying}
                     className="h-6 px-2 text-[11px]"
                     onClick={() =>
                       lvl === "full"
                         ? setPendingFull(true)
-                        : applyBulkPolicy(lvl)
+                        : void applyBulkPolicy(lvl)
                     }
                   >
                     {t(`settings.mcp.level.${lvl}`)}
@@ -444,7 +462,10 @@ export function McpSection() {
         <ConfirmDialog
           open
           onOpenChange={(next) => {
-            if (!next) setPendingFull(false);
+            if (!next) {
+              setPendingFull(false);
+              setBulkError(null);
+            }
           }}
           title={t("settings.mcp.bulkPolicyFullTitle", {
             count: filteredProfiles.length,
@@ -453,9 +474,9 @@ export function McpSection() {
           confirmLabel={t("settings.mcp.bulkPolicyFullConfirm", {
             count: filteredProfiles.length,
           })}
-          confirming={bulkPolicy.submitting}
-          error={bulkPolicy.error}
-          onConfirm={() => applyBulkPolicy("full")}
+          confirming={applying}
+          error={bulkError}
+          onConfirm={() => void applyBulkPolicy("full")}
         />
       )}
     </div>
