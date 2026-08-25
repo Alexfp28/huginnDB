@@ -182,11 +182,29 @@ describe("the shipped docs", () => {
     // trailing whitespace trimmed, so blank-line runs between sections cannot
     // survive, but every line that carries content must. A looser comparison
     // (collapsing all whitespace) would not notice a lost line at all.
+    //
+    // `\r` goes on both sides because `parseDoc` normalises and this must
+    // compare like with like. Without it the suite passed on CI and failed on a
+    // Windows checkout — where `core.autocrlf` hands the `?raw` import CRLF —
+    // which is the worst way for a test to fail: on the reviewer's machine only.
+    // `.gitattributes` now pins the markdown to LF, so this is belt and braces.
     const content = (md: string) =>
-      md.split("\n").filter((l) => l.trim() !== "");
+      md
+        .replace(/\r\n/g, "\n")
+        .split("\n")
+        .filter((l) => l.trim() !== "");
     expect(
       content([parsed.cover, ...parsed.sections.map((s) => s.body)].join("\n")),
     ).toEqual(content(body));
+  });
+
+  it.each(CORPUS)("$doc.id/$lang parses identically from CRLF", ({ body }) => {
+    // The contract the round-trip above leans on, asserted rather than assumed:
+    // line endings are the checkout's business, never the outline's. A slug
+    // carrying a stray `\r` would break every anchor in the document, and
+    // silently — a link that goes nowhere is not an error.
+    const lf = body.replace(/\r\n/g, "\n");
+    expect(parseDoc(lf.replace(/\n/g, "\r\n"))).toEqual(parseDoc(lf));
   });
 
   it.each(CORPUS)("$doc.id/$lang has unique section slugs", ({ body }) => {

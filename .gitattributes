@@ -1,0 +1,15 @@
+# Line endings are the checkout's business — except for the files whose *content*
+# the app parses, where they are the product's.
+#
+# `docs/*.md` and the changelogs are bundled with Vite `?raw` and split line by
+# line at runtime (`lib/appInfo/docOutline.ts`, `changelog.ts`,
+# `components/shell/Markdown.tsx`). With `core.autocrlf=true` — the default on a
+# Windows clone — those imports carried CRLF, so the app's behaviour differed
+# between a Windows dev machine and CI, and the docs-outline round-trip test
+# failed on the former only. Pinning markdown to LF makes the three
+# `replace(/\r\n/g, "\n")` calls belt and braces instead of load-bearing.
+#
+# Everything else keeps git's normal auto-detection: source files may be CRLF in
+# a Windows working copy, as they are today.
+* text=auto
+*.md text eol=lf
