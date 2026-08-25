@@ -380,6 +380,86 @@ fn already_landed(
         && accounts.iter().all(|a| present(a))
 }
 
+/// Apply one origin's published list to `profiles` in memory, returning what
+/// changed. No I/O whatsoever: no disk, no keychain.
+///
+/// Split out of [`merge_profiles_bundle`] so the merge *rules* — ownership,
+/// deferral while a pool is live, vanished detection, which fields a refresh may
+/// overwrite — are testable without writing the real `profiles.json`. They were
+/// not, and the first test written against the combined function silently
+/// clobbered the developer's own saved connections. A rule this fiddly needs
+/// tests; tests this cheap must not need a disk.
+///
+/// `live` is the set of connection ids with an open pool, passed in for the same
+/// reason.
+fn merge_into(
+    profiles: &mut Vec<ConnectionProfile>,
+    origin_id: &str,
+    incoming: &[ExportedProfile],
+    live: &[String],
+) -> OriginSyncReport {
+    let incoming_ids: std::collections::HashSet<&str> =
+        incoming.iter().map(|p| p.profile.id.as_str()).collect();
+    let mut report = OriginSyncReport::default();
+
+    // Local profiles this origin owns, before the merge — the denominator for
+    // the suspicion check.
+    let owned: Vec<String> = profiles
+        .iter()
+        .filter(|p| p.origin_id.as_deref() == Some(origin_id))
+        .map(|p| p.id.clone())
+        .collect();
+    report.vanished = owned
+        .iter()
+        .filter(|pid| !incoming_ids.contains(pid.as_str()))
+        .cloned()
+        .collect();
+    report.suspicious = !disappearance_is_trustworthy(owned.len(), report.vanished.len());
+    if report.suspicious {
+        // Say nothing actionable about a read we don't trust.
+        report.vanished.clear();
+    }
+
+    for entry in incoming {
+        let mut profile = entry.profile.clone();
+        profile.origin_id = Some(origin_id.to_string());
+        // An origin never publishes session-only profiles.
+        profile.ephemeral = false;
+
+        match profiles.iter_mut().find(|p| p.id == profile.id) {
+            Some(existing) => {
+                // Only ever refresh a profile this origin already owns. A
+                // local profile that happens to share an id (an earlier
+                // import, later detached) is the user's, not the file's.
+                if existing.origin_id.as_deref() != Some(origin_id) {
+                    continue;
+                }
+                if live.iter().any(|c| c == &profile.id) {
+                    report.deferred.push(profile.id.clone());
+                    continue;
+                }
+                // The MCP write policy is a LOCAL trust decision and must
+                // survive the refresh. It is the one field on a published
+                // profile that says what an AI client is allowed to do on
+                // *this* machine, which the publisher cannot know; before
+                // this, setting a shared connection to "data" in Settings
+                // silently reverted on the next pull, so the whole panel was
+                // unusable for anyone whose connections all come from an
+                // origin. Everything else — host, port, credentials, the
+                // visible-database default — is the file's to dictate.
+                profile.mcp_write = existing.mcp_write;
+                *existing = profile.clone();
+                report.updated.push(profile.id);
+            }
+            None => {
+                report.added.push(profile.id.clone());
+                profiles.push(profile);
+            }
+        }
+    }
+    report
+}
+
 /// Merge one origin's published profile list into the global pool, and land
 /// any secrets it carries into this user's keychain. Shared by a plain
 /// `ExportFile` (`kind = "profiles"`, or the pre-`kind` legacy shape) and the
@@ -395,71 +475,12 @@ fn merge_profiles_bundle(
     incoming: &[ExportedProfile],
     landed: &mut HashMap<String, String>,
 ) -> AppResult<OriginSyncReport> {
-    let incoming_ids: std::collections::HashSet<&str> =
-        incoming.iter().map(|p| p.profile.id.as_str()).collect();
-
-    let mut report = OriginSyncReport::default();
+    let report;
     let live: Vec<String> = connections.read().ids();
 
     {
         let mut profiles = profiles_lock.write();
-
-        // Local profiles this origin owns, before the merge — the denominator for
-        // the suspicion check.
-        let owned: Vec<String> = profiles
-            .iter()
-            .filter(|p| p.origin_id.as_deref() == Some(origin_id))
-            .map(|p| p.id.clone())
-            .collect();
-        report.vanished = owned
-            .iter()
-            .filter(|pid| !incoming_ids.contains(pid.as_str()))
-            .cloned()
-            .collect();
-        report.suspicious = !disappearance_is_trustworthy(owned.len(), report.vanished.len());
-        if report.suspicious {
-            // Say nothing actionable about a read we don't trust.
-            report.vanished.clear();
-        }
-
-        for entry in incoming {
-            let mut profile = entry.profile.clone();
-            profile.origin_id = Some(origin_id.to_string());
-            // An origin never publishes session-only profiles.
-            profile.ephemeral = false;
-
-            match profiles.iter_mut().find(|p| p.id == profile.id) {
-                Some(existing) => {
-                    // Only ever refresh a profile this origin already owns. A
-                    // local profile that happens to share an id (an earlier
-                    // import, later detached) is the user's, not the file's.
-                    if existing.origin_id.as_deref() != Some(origin_id) {
-                        continue;
-                    }
-                    if live.iter().any(|c| c == &profile.id) {
-                        report.deferred.push(profile.id.clone());
-                        continue;
-                    }
-                    // The MCP write policy is a LOCAL trust decision and must
-                    // survive the refresh. It is the one field on a published
-                    // profile that says what an AI client is allowed to do on
-                    // *this* machine, which the publisher cannot know; before
-                    // this, setting a shared connection to "data" in Settings
-                    // silently reverted on the next pull, so the whole panel was
-                    // unusable for anyone whose connections all come from an
-                    // origin. Everything else — host, port, credentials, the
-                    // visible-database default — is the file's to dictate.
-                    profile.mcp_write = existing.mcp_write;
-                    *existing = profile.clone();
-                    report.updated.push(profile.id);
-                }
-                None => {
-                    report.added.push(profile.id.clone());
-                    profiles.push(profile);
-                }
-            }
-        }
-
+        report = merge_into(&mut profiles, origin_id, incoming, &live);
         crate::store::save_profiles(&profiles)?;
     }
 
@@ -690,17 +711,17 @@ mod tests {
         }
     }
 
+    /// Runs the merge rules against `local` with no pools open.
+    ///
+    /// Deliberately `merge_into`, not `merge_profiles_bundle`: the latter writes
+    /// the real `profiles.json`, so calling it from a test both raced the other
+    /// tests and overwrote the developer's own saved connections.
     fn merge(
-        local: Vec<ConnectionProfile>,
+        mut local: Vec<ConnectionProfile>,
         incoming: &[ExportedProfile],
     ) -> Vec<ConnectionProfile> {
-        let connections = Arc::new(RwLock::new(ActiveConnections::default()));
-        let profiles = Arc::new(RwLock::new(local));
-        let mut landed = HashMap::new();
-        merge_profiles_bundle(&connections, &profiles, "o1", None, incoming, &mut landed)
-            .expect("merge with no secrets and no live pools cannot fail");
-        let after = profiles.read().clone();
-        after
+        merge_into(&mut local, "o1", incoming, &[]);
+        local
     }
 
     /// The write policy says what an AI client may do on *this* machine, which
