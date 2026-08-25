@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { usePreferences } from "@/stores/preferences/preferences";
 import {
+  bucketByGroup,
   formatBytes,
   formatCount,
   formatDateTime,
@@ -62,5 +63,43 @@ describe("the compact formatters are locale-independent by design", () => {
     expect(formatDuration(1240)).toBe("1.24 s");
     expect(formatDuration(64_000)).toBe("1m 04s");
     expect(formatDuration(-1)).toBe("0 ms");
+  });
+});
+
+// The connection rail now calls this once per provenance section, so its two
+// quiet contracts — what counts as ungrouped, and what order things come out in
+// — are worth pinning down.
+describe("bucketByGroup", () => {
+  it("treats null, undefined and empty-string groups as ungrouped", () => {
+    const { ungrouped, groups } = bucketByGroup([
+      { id: "a", group: null },
+      { id: "b" },
+      { id: "c", group: "" },
+      { id: "d", group: "Prod" },
+    ]);
+    expect(ungrouped.map((i) => i.id)).toEqual(["a", "b", "c"]);
+    expect(groups).toEqual([{ name: "Prod", items: [{ id: "d", group: "Prod" }] }]);
+  });
+
+  it("sorts group names locale-aware, not by code point", () => {
+    setLanguage("es");
+    const { groups } = bucketByGroup([
+      { group: "Zulu" },
+      { group: "Ávila" },
+      { group: "Alfa" },
+    ]);
+    expect(groups.map((g) => g.name)).toEqual(["Alfa", "Ávila", "Zulu"]);
+  });
+
+  it("preserves the input order inside a group", () => {
+    const { groups } = bucketByGroup([
+      { id: "z", group: "Prod" },
+      { id: "a", group: "Prod" },
+    ]);
+    expect(groups[0].items.map((i) => i.id)).toEqual(["z", "a"]);
+  });
+
+  it("returns two empty buckets for an empty list", () => {
+    expect(bucketByGroup([])).toEqual({ ungrouped: [], groups: [] });
   });
 });

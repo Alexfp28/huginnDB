@@ -117,6 +117,37 @@
     "searchEnvironments": "Buscar entornos…"
   },
   "connections": {
+    "scope": {
+      "all": "Todas",
+      "local": "Locales",
+      "shared": "Compartidas"
+    },
+    "scopeLabel": "Filtrar por procedencia",
+    "sharedSection": "Compartidas · {{origin}}",
+    "orphanedSection": "Compartidas · origen ya no registrado",
+    "sharedReadOnly": "solo lectura",
+    "sharedBadgeTooltip": "Publicada por el origen compartido «{{origin}}»",
+    "sharedBadgeTooltipUnknown": "Publicada por un origen compartido que ya no está registrado",
+    "originProtectedTooltip": "Publicada por «{{origin}}». Borrarla aquí no hace nada: la siguiente sincronización la trae de vuelta. Quita el origen en Ajustes → Orígenes compartidos para eliminarla definitivamente.",
+    "originProtectedTooltipUnknown": "Publicada por un origen compartido que ya no está registrado. Conviértela en conexión local desde el aviso de su fila para poder borrarla.",
+    "selectAll": "Seleccionar todas las conexiones locales",
+    "selectAllSection": "Seleccionar todas las conexiones de {{section}}",
+    "deleteAllLocal": "Eliminar todas las locales",
+    "deleteAllLocalNeedsClearSearch": "Borra primero la búsqueda: con un filtro activo, «todas» es ambiguo. Usa las casillas.",
+    "listActions": "Acciones de la lista de conexiones",
+    "deleteTitle": "¿Eliminar {{count}} conexión(es)?",
+    "deleteAction": "Eliminar {{count}}",
+    "deleting": "Eliminando…",
+    "deleteMoreNames": "y {{count}} más",
+    "deleteSweeps": {
+      "title": "También se elimina:",
+      "password": "sus contraseñas del almacén de credenciales del sistema",
+      "sshSecret": "sus secretos de túnel SSH del almacén de credenciales del sistema",
+      "tabs": "sus pestañas abiertas y su árbol de esquema, en todos los entornos",
+      "visibility": "su filtro de «bases de datos a mostrar», en todos los entornos",
+      "jsonSchemas": "los vínculos de JSON Schema fijados a sus columnas"
+    },
+    "deleteIrreversible": "Esta acción no se puede deshacer. Las bases de datos en sí no se tocan.",
     "disconnectTooltip": "Desconectar",
     "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",
     "bulkDeleteTitle": "Eliminar {{count}} conexiones",
@@ -1199,6 +1230,9 @@
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",
+      "sharedIdsHint": "Una conexión publicada por un origen compartido conserva el mismo id en todas las máquinas, así que un snippet hecho con conexiones compartidas sirve tal cual para todo el equipo.",
+      "selectAllInSection": "Seleccionar todas las conexiones de {{section}}",
+      "localSection": "Locales",
       "binaryLabel": "Binario del conector",
       "available": "Instalado y listo.",
       "unavailable": "No encontrado — esta build no viene de un release empaquetado, así que el conector no está incluido.",

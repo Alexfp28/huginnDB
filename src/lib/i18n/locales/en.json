@@ -117,6 +117,37 @@
     "searchEnvironments": "Search environments…"
   },
   "connections": {
+    "scope": {
+      "all": "All",
+      "local": "Local",
+      "shared": "Shared"
+    },
+    "scopeLabel": "Filter by provenance",
+    "sharedSection": "Shared · {{origin}}",
+    "orphanedSection": "Shared · origin no longer registered",
+    "sharedReadOnly": "read-only",
+    "sharedBadgeTooltip": "Published by the shared origin “{{origin}}”",
+    "sharedBadgeTooltipUnknown": "Published by a shared origin that is no longer registered",
+    "originProtectedTooltip": "Published by “{{origin}}”. Deleting it here does nothing — the next sync brings it back. Remove the origin in Settings → Shared origins to get rid of it for good.",
+    "originProtectedTooltipUnknown": "Published by a shared origin that is no longer registered. Release it into a local connection from the notice on its row to be able to delete it.",
+    "selectAll": "Select all local connections",
+    "selectAllSection": "Select every connection in {{section}}",
+    "deleteAllLocal": "Delete all local connections",
+    "deleteAllLocalNeedsClearSearch": "Clear the search first — with a filter active, “all” is ambiguous. Use the checkboxes instead.",
+    "listActions": "Connection list actions",
+    "deleteTitle": "Delete {{count}} connection(s)?",
+    "deleteAction": "Delete {{count}}",
+    "deleting": "Deleting…",
+    "deleteMoreNames": "and {{count}} more",
+    "deleteSweeps": {
+      "title": "This also removes:",
+      "password": "their passwords from the OS credential store",
+      "sshSecret": "their SSH tunnel secrets from the OS credential store",
+      "tabs": "their open tabs and schema tree, in every environment",
+      "visibility": "their “databases to show” filter, in every environment",
+      "jsonSchemas": "the JSON Schema bindings pinned to their columns"
+    },
+    "deleteIrreversible": "This cannot be undone. The databases themselves are not touched.",
     "disconnectTooltip": "Disconnect",
     "deleteConfirm": "Delete connection \"{{name}}\"?",
     "bulkDeleteTitle": "Delete {{count}} connections",
@@ -1199,6 +1230,9 @@
     },
     "mcp": {
       "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",
+      "sharedIdsHint": "A connection published by a shared origin keeps the same id on every machine, so a snippet built from shared connections works for the whole team as-is.",
+      "selectAllInSection": "Select every connection in {{section}}",
+      "localSection": "Local",
       "binaryLabel": "Connector binary",
       "available": "Installed and ready.",
       "unavailable": "Not found — this build wasn't installed from a packaged release, so the connector isn't bundled.",

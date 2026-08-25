@@ -65,7 +65,7 @@ import {
   type SshAuthMethod,
 } from "@/lib/connection/useConnectionForm";
 import { api } from "@/lib/tauri";
-import { confirmIrreversible } from "@/lib/confirmDestructive";
+import { DeleteConnectionsDialog } from "@/components/connection/dialogs/DeleteConnectionsDialog";
 import { isFromOrigin } from "@/lib/connection/origin";
 import { useOriginName } from "@/stores/sync/origins";
 import type {
@@ -112,7 +112,6 @@ export function ConnectionDialog({
 }: Props) {
   const { t } = useTranslation();
   const save = useConnections((s) => s.save);
-  const remove = useConnections((s) => s.remove);
   const connect = useConnections((s) => s.connect);
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
@@ -176,6 +175,9 @@ export function ConnectionDialog({
   const [connecting, setConnecting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  /** Profiles queued for deletion. Non-empty is what mounts the confirmation —
+   *  see `DeleteConnectionsDialog` for why it has no `open` prop. */
+  const [deleteTargets, setDeleteTargets] = useState<ConnectionProfile[]>([]);
 
   /**
    * Stable id for the profile being edited. For existing profiles this is
@@ -345,27 +347,14 @@ export function ConnectionDialog({
     }
   }
 
-  async function onDelete() {
-    if (!editingId) return;
+  function onDelete() {
+    if (!editingId || !stored) return;
     // Deleting an origin-published profile locally is pointless — the next sync
     // re-imports it — and destroys its keychain entry on the way. Retiring one
     // for good is offered where it makes sense: on the notice raised when the
     // origin itself stops publishing it (`useOriginSync.retire`).
     if (fromOrigin) return;
-    const target = profiles.find((p) => p.id === editingId);
-    if (
-      !confirmIrreversible(
-        t("connections.deleteConfirm", { name: target?.name ?? name }),
-      )
-    )
-      return;
-    try {
-      await remove(editingId);
-      // Fall back to a fresh draft; the load effect repopulates the form.
-      setEditingId(null);
-    } catch (e) {
-      setTestStatus({ kind: "saveError", message: String(e) });
-    }
+    setDeleteTargets([stored]);
   }
 
   /** Duplicate the profile currently in the editor (#38). Clones every
@@ -479,7 +468,7 @@ export function ConnectionDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[82vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="flex h-[85vh] max-w-6xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b border-border px-5 py-3">
           <div className="flex items-center justify-between gap-2">
             <DialogTitle className="flex items-center gap-2 text-base">
@@ -526,13 +515,18 @@ export function ConnectionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid flex-1 grid-cols-[240px_1fr] overflow-hidden">
+        {/* The rail is 320px, not the 240px it started at: the provenance filter
+            put a three-segment control above a list whose rows already carry a
+            name, a driver badge and a shared-origin mark, and at 240 the names
+            truncated mid-word. The dialog widened with it (4xl → 6xl) so the
+            editor beside it did not pay for the space. */}
+        <div className="grid flex-1 grid-cols-[320px_1fr] overflow-hidden">
           <ConnectionRail
             profiles={profiles}
             active={active}
             editingId={editingId}
             onEdit={setEditingId}
-            removeProfile={remove}
+            onDeleteRequest={setDeleteTargets}
           />
 
           {/* Right pane — editor */}
@@ -1161,6 +1155,18 @@ export function ConnectionDialog({
 
       <ExportProfilesDialog open={exportOpen} onOpenChange={setExportOpen} />
       <ImportProfilesDialog open={importOpen} onOpenChange={setImportOpen} />
+      {deleteTargets.length > 0 && (
+        <DeleteConnectionsDialog
+          targets={deleteTargets}
+          onClose={() => setDeleteTargets([])}
+          onDeleted={(ids) => {
+            setDeleteTargets([]);
+            // Fall back to a fresh draft if the editor was showing one of them;
+            // the load effect repopulates the form.
+            if (editingId && ids.includes(editingId)) setEditingId(null);
+          }}
+        />
+      )}
     </>
   );
 }

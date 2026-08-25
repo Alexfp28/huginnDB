@@ -12,10 +12,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
-import { Copy, Search, X } from "lucide-react";
+import { Copy, FolderSync, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/tauri";
+import { isFromOrigin, originIdOf } from "@/lib/connection/origin";
+import { buildRailSections, type RailSection } from "@/lib/connection/railSections";
+import { useOrigins } from "@/stores/sync/origins";
 import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import type {
@@ -69,6 +72,45 @@ export function McpSection() {
     return profiles.filter((p) => p.name.toLowerCase().includes(q));
   }, [profiles, filter]);
 
+  // Grouped by provenance, for the same reason the connection rail is: picking
+  // ids by hand out of a flat list gives no way to tell a shared connection from
+  // the stale local copy of it that predates the origin — and it is the shared
+  // one whose id is portable. `buildRailSections` is reused rather than
+  // reimplemented so the two surfaces agree on the labels and the ordering,
+  // including how a dangling `origin_id` is presented; each section is
+  // flattened back out here, because the MCP list has never had `group`
+  // folders and this is not the change to add them.
+  const originsById = useOrigins((s) => s.byId);
+  const sections = useMemo(() => {
+    const nameOf = (id: string) => originsById[id]?.name ?? null;
+    const labels = {
+      shared: (origin: string) => t("connections.sharedSection", { origin }),
+      orphaned: t("connections.orphanedSection"),
+    };
+    const flatten = (section: RailSection) => ({
+      label: section.label,
+      items: [
+        ...section.ungrouped,
+        ...section.groups.flatMap((g) => g.items),
+      ],
+    });
+    return [
+      ...buildRailSections(filteredProfiles, "local", nameOf, labels).map(
+        (s) => ({ ...flatten(s), label: t("settings.mcp.localSection") }),
+      ),
+      ...buildRailSections(filteredProfiles, "shared", nameOf, labels).map(
+        flatten,
+      ),
+    ];
+  }, [filteredProfiles, originsById, t]);
+
+  const sharedTooltip = (p: ConnectionProfile) => {
+    const name = originsById[originIdOf(p) ?? ""]?.name;
+    return name
+      ? t("connections.sharedBadgeTooltip", { origin: name })
+      : t("connections.sharedBadgeTooltipUnknown");
+  };
+
   function toggle(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -102,13 +144,16 @@ export function McpSection() {
     filteredProfiles.length > 0 &&
     filteredProfiles.every((p) => selected.has(p.id));
 
-  function toggleAllFiltered() {
+  /** Check every id in the list, or clear them if all are already in. Drives
+   *  both the toolbar button (every filtered profile) and each section header. */
+  function toggleAll(ids: string[]) {
+    if (ids.length === 0) return;
     setSelected((prev) => {
       const next = new Set(prev);
-      if (allFilteredSelected) {
-        for (const p of filteredProfiles) next.delete(p.id);
+      if (ids.every((id) => next.has(id))) {
+        for (const id of ids) next.delete(id);
       } else {
-        for (const p of filteredProfiles) next.add(p.id);
+        for (const id of ids) next.add(id);
       }
       return next;
     });
@@ -208,7 +253,7 @@ export function McpSection() {
                 size="sm"
                 className="h-7 shrink-0 px-2 text-[11px]"
                 disabled={filteredProfiles.length === 0}
-                onClick={toggleAllFiltered}
+                onClick={() => toggleAll(filteredProfiles.map((p) => p.id))}
               >
                 {allFilteredSelected
                   ? t("settings.mcp.deselectAll")
@@ -216,50 +261,86 @@ export function McpSection() {
               </Button>
             </div>
 
-            <div className="max-h-48 divide-y divide-border/60 overflow-y-auto rounded-md border border-border">
+            <div className="max-h-64 overflow-y-auto rounded-md border border-border">
               {filteredProfiles.length === 0 ? (
                 <p className="px-3 py-2 text-[12px] text-muted-foreground">
                   {t("settings.mcp.noMatches", { query: filter })}
                 </p>
               ) : (
-                filteredProfiles.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center gap-2 px-3 py-2 hover:bg-accent/50"
-                  >
-                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="accent-brand"
-                        checked={selected.has(p.id)}
-                        onChange={() => toggle(p.id)}
-                      />
-                      <span className="truncate text-xs">{p.name}</span>
-                    </label>
-                    <select
-                      value={p.mcp_write ?? "read-only"}
-                      onChange={(e) =>
-                        void setWritePolicy(
-                          p.id,
-                          e.target.value as McpWritePolicy,
-                        )
-                      }
-                      aria-label={t("settings.mcp.writePolicyLabel")}
-                      title={t("settings.mcp.writePolicyLabel")}
-                      className="h-6 shrink-0 rounded border border-border bg-background px-1.5 text-[11px]"
-                    >
-                      {WRITE_LEVELS.map((lvl) => (
-                        <option key={lvl} value={lvl}>
-                          {t(`settings.mcp.level.${lvl}`)}
-                        </option>
+                sections.map((section) => {
+                  const ids = section.items.map((p) => p.id);
+                  const allIn = ids.every((id) => selected.has(id));
+                  return (
+                    <div key={section.label}>
+                      <div className="flex items-center gap-1.5 border-y border-border/60 bg-muted/30 px-3 py-1 first:border-t-0">
+                        <input
+                          type="checkbox"
+                          checked={allIn}
+                          onChange={() => toggleAll(ids)}
+                          aria-label={t("settings.mcp.selectAllInSection", {
+                            section: section.label,
+                          })}
+                          className="accent-brand h-3 w-3 cursor-pointer"
+                        />
+                        <span className="truncate text-[11px] text-muted-foreground">
+                          {section.label}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground/60">
+                          ({ids.length})
+                        </span>
+                      </div>
+                      {section.items.map((p) => (
+                        <div
+                          key={p.id}
+                          className="flex items-center gap-2 border-b border-border/60 px-3 py-2 last:border-b-0 hover:bg-accent/50"
+                        >
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                            <input
+                              type="checkbox"
+                              className="accent-brand"
+                              checked={selected.has(p.id)}
+                              onChange={() => toggle(p.id)}
+                            />
+                            <span className="truncate text-xs">{p.name}</span>
+                            {isFromOrigin(p) && (
+                              <span
+                                className="flex shrink-0 items-center"
+                                title={sharedTooltip(p)}
+                              >
+                                <FolderSync className="h-3 w-3 text-muted-foreground" />
+                              </span>
+                            )}
+                          </label>
+                          <select
+                            value={p.mcp_write ?? "read-only"}
+                            onChange={(e) =>
+                              void setWritePolicy(
+                                p.id,
+                                e.target.value as McpWritePolicy,
+                              )
+                            }
+                            aria-label={t("settings.mcp.writePolicyLabel")}
+                            title={t("settings.mcp.writePolicyLabel")}
+                            className="h-6 shrink-0 rounded border border-border bg-background px-1.5 text-[11px]"
+                          >
+                            {WRITE_LEVELS.map((lvl) => (
+                              <option key={lvl} value={lvl}>
+                                {t(`settings.mcp.level.${lvl}`)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       ))}
-                    </select>
-                  </div>
-                ))
+                    </div>
+                  );
+                })
               )}
             </div>
             <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
               {t("settings.mcp.writePolicyHint")}
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              {t("settings.mcp.sharedIdsHint")}
             </p>
           </>
         )}
