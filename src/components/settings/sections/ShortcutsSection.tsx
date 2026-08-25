@@ -164,7 +164,12 @@ export function ShortcutsSection() {
   }
 
   return (
-    <div className="space-y-3">
+    // Fills the settings pane and owns its own scrolling, the shape
+    // `AppearanceSection` already uses: the toolbar and the filters describe
+    // the whole set, so they must not scroll away from the list they act on.
+    // `h-full` resolves against the pane's content box, so the pane's own
+    // scrollbar never appears for this section.
+    <div className="flex h-full flex-col gap-3">
       {/* Toolbar. Above the filters rather than under the list: these three act
           on the whole set, and burying them past twenty-five rows meant nobody
           found them without scrolling to the bottom first. */}
@@ -273,35 +278,40 @@ export function ShortcutsSection() {
         ))}
       </div>
 
-      {grouped.length === 0 ? (
-        <p className="py-8 text-center text-xs text-muted-foreground">
-          {t("settings.shortcuts.noMatches")}
-        </p>
-      ) : (
-        grouped.map((group) => (
-          <div key={group.category}>
-            <div className="px-1 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {t(`settings.shortcuts.categories.${group.category}`)}
+      {/* The only scroller. `-mr-2 pr-2` parks the scrollbar in the pane's own
+          right padding, so the rows stay flush with the toolbar above them
+          instead of being inset by the scrollbar's width. */}
+      <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
+        {grouped.length === 0 ? (
+          <p className="py-8 text-center text-xs text-muted-foreground">
+            {t("settings.shortcuts.noMatches")}
+          </p>
+        ) : (
+          grouped.map((group) => (
+            <div key={group.category}>
+              <div className="px-1 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {t(`settings.shortcuts.categories.${group.category}`)}
+              </div>
+              {group.actions.map((action) => (
+                <ShortcutRow
+                  key={action.id}
+                  action={action}
+                  bindings={userBindings(keybindings, action.id)}
+                  isDefault={keybindings[action.id] === undefined}
+                  onEdit={(replacing) => setCapture({ action, replacing })}
+                  onRemove={(binding) =>
+                    setBindings(
+                      action.id,
+                      userBindings(keybindings, action.id).filter((b) => b !== binding),
+                    )
+                  }
+                  onReset={() => updateKeybindings({ [action.id]: undefined })}
+                />
+              ))}
             </div>
-            {group.actions.map((action) => (
-              <ShortcutRow
-                key={action.id}
-                action={action}
-                bindings={userBindings(keybindings, action.id)}
-                isDefault={keybindings[action.id] === undefined}
-                onEdit={(replacing) => setCapture({ action, replacing })}
-                onRemove={(binding) =>
-                  setBindings(
-                    action.id,
-                    userBindings(keybindings, action.id).filter((b) => b !== binding),
-                  )
-                }
-                onReset={() => updateKeybindings({ [action.id]: undefined })}
-              />
-            ))}
-          </div>
-        ))
-      )}
+          ))
+        )}
+      </div>
 
       <CaptureShortcutDialog
         action={capture?.action ?? null}
