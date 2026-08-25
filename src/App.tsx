@@ -12,7 +12,7 @@
  * "workspaces", which was never the intent).
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import "dockview-react/dist/styles/dockview.css";
 import { Toaster } from "sonner";
 import {
@@ -37,7 +37,7 @@ import {
   selectNotificationPrefs,
   usePreferences,
 } from "@/stores/preferences/preferences";
-import { getBinding, matchesBinding } from "@/lib/keybindings";
+import { useKeybindingDispatcher } from "@/lib/keybindings";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useTranslation } from "react-i18next";
 import { setLanguage } from "@/lib/i18n";
@@ -305,109 +305,52 @@ export default function App() {
   // entry for 0.4.0. Sonner stays available for short-lived toasts
   // (errors, copy-success confirmations, etc.).
 
-  // Global shortcuts, attached to `window` so they fire regardless of focus
-  // inside the panel layout — except inside Monaco, which swallows all of
-  // these; the editor registers its own redispatch for that case (see
-  // QueryEditorTab/ViewEditorTab, gotcha #9). All of them are user-rebindable
-  // (issue #75) via `matchesBinding` against the live `keybindings` pref.
+  // Global shortcuts. One `window` listener for the whole app, owned by
+  // `useKeybindingDispatcher` — it resolves the chord against the live index,
+  // checks the focused surface's `data-kb-scope`, and calls the handler below.
+  // Monaco still swallows keys inside its own focus area and redispatches them
+  // itself (gotcha #9), but through the same resolver.
   const togglePalette = useCommandPalette((s) => s.toggle);
   const openPaletteWith = useCommandPalette((s) => s.openWith);
   const toggleSwitcher = useTabSwitcher((s) => s.toggle);
-  const openSettingsCombo = usePreferences((s) =>
-    getBinding(s.prefs.keybindings, "openSettings"),
-  );
-  const paletteCombo = usePreferences((s) =>
-    getBinding(s.prefs.keybindings, "toggleCommandPalette"),
-  );
-  const paletteActionsCombo = usePreferences((s) =>
-    getBinding(s.prefs.keybindings, "openCommandActions"),
-  );
-  const switcherCombo = usePreferences((s) =>
-    getBinding(s.prefs.keybindings, "toggleTabSwitcher"),
-  );
-  const refreshCombo = usePreferences((s) =>
-    getBinding(s.prefs.keybindings, "refreshData"),
-  );
-  const refreshSchemaCombo = usePreferences((s) =>
-    getBinding(s.prefs.keybindings, "refreshSchema"),
-  );
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.isComposing) return;
-      if (matchesBinding(e, openSettingsCombo)) {
-        e.preventDefault();
-        openSettings();
-        return;
-      }
-      if (matchesBinding(e, paletteCombo)) {
-        e.preventDefault();
-        togglePalette();
-        return;
-      }
+
+  const refreshActiveData = useCallback(() => {
+    // The same "refresh" the toolbar button offers: the active table tab's
+    // data if one is open, otherwise the schema tree (databases + tables) for
+    // the selected connection — the target the explorer's own refresh button
+    // hits in both single-DB and multi-DB mode.
+    const tabs = useTabs.getState();
+    const activeTab = tabs.tabs.find((t) => t.id === tabs.activeId);
+    if (activeTab?.kind === "table" && refreshTable(activeTab.id)) return;
+    // `refreshTree`: `selected` is always a profile id, and a multi-DB
+    // connection keeps its tables in the child slices under it.
+    if (selected) void useSchema.getState().refreshTree(selected);
+  }, [refreshTable, selected]);
+
+  const shortcutHandlers = useMemo(
+    () => ({
+      openSettings: () => openSettings(),
+      toggleCommandPalette: () => togglePalette(),
       // Same palette, pre-filtered to its actions mode (VS Code's
       // Ctrl+Shift+P), so "run a command" never competes with the tables and
       // settings the catch-all mode also searches.
-      if (matchesBinding(e, paletteActionsCombo)) {
-        e.preventDefault();
-        openPaletteWith(">");
-        return;
-      }
-      if (matchesBinding(e, switcherCombo)) {
-        e.preventDefault();
-        toggleSwitcher();
-        return;
-      }
-      // Checked *before* `refreshData` below, whose hard-coded `Ctrl/Cmd+R`
-      // alias would otherwise swallow the default `Ctrl+Shift+R` (with Shift
-      // held, `e.key` is `"R"`).
-      if (!e.repeat && matchesBinding(e, refreshSchemaCombo)) {
-        e.preventDefault();
+      openCommandActions: () => openPaletteWith(">"),
+      toggleTabSwitcher: () => toggleSwitcher(),
+      refreshData: refreshActiveData,
+      refreshSchema: () => {
         if (selected) void useSchema.getState().refreshTree(selected);
-        return;
-      }
-      // `Ctrl/Cmd+R` is a permanent alias on top of the rebindable
-      // `refreshData` combo (default F5) — always intercepting the native
-      // WebView reload is a safety necessity, not a preference, so it can't
-      // be rebound away.
-      if (
-        !e.repeat &&
-        (matchesBinding(e, refreshCombo) ||
-          ((e.ctrlKey || e.metaKey) &&
-            !e.shiftKey &&
-            (e.key === "r" || e.key === "R")))
-      ) {
-        // Redirect to the same "refresh" action already offered as a
-        // button: the active table tab's data if one is open, otherwise the
-        // schema tree (database + table list) for the selected connection —
-        // same target the explorer's own refresh button hits in both
-        // single-DB and multi-DB mode.
-        e.preventDefault();
-        const activeTab = useTabs
-          .getState()
-          .tabs.find((t) => t.id === useTabs.getState().activeId);
-        if (activeTab?.kind === "table" && refreshTable(activeTab.id)) {
-          return;
-        }
-        // `refreshTree`: `selected` is always a profile id, and a multi-DB
-        // connection keeps its tables in the child slices under it.
-        if (selected) void useSchema.getState().refreshTree(selected);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [
-    openSettings,
-    togglePalette,
-    openPaletteWith,
-    toggleSwitcher,
-    selected,
-    openSettingsCombo,
-    paletteCombo,
-    paletteActionsCombo,
-    switcherCombo,
-    refreshCombo,
-    refreshSchemaCombo,
-  ]);
+      },
+    }),
+    [
+      openSettings,
+      togglePalette,
+      openPaletteWith,
+      toggleSwitcher,
+      refreshActiveData,
+      selected,
+    ],
+  );
+  useKeybindingDispatcher(shortcutHandlers);
 
   // Stable derived breadcrumb metadata; both inputs are reference-stable
   // store values, so this satisfies the Zustand selector invariant.

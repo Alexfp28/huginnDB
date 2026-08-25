@@ -924,7 +924,8 @@
     "densityComfortable": "Cómoda",
     "toggleTheme": "Cambiar claro / oscuro",
     "commandPaletteHint": "Ctrl+K",
-    "commandPaletteTooltip": "Paleta de comandos (Ctrl+K)"
+    "commandPaletteTooltip": "Paleta de comandos (Ctrl+K)",
+    "chordPending": "esperando la siguiente tecla…"
   },
   "shell": {
     "console": {

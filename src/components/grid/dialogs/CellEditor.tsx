@@ -177,7 +177,10 @@ export function CellEditorBody({
           className="ml-auto"
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border">
+      <div
+        className="min-h-0 flex-1 overflow-hidden rounded-md border border-border"
+        data-kb-scope="editor"
+      >
         <Editor
           key={editorKey}
           height="100%"

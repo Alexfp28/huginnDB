@@ -31,6 +31,17 @@ export {
 } from "./chord";
 
 export {
+  CHORD_TIMEOUT_MS,
+  type ActionHandlers,
+  type KeyDispatcher,
+  createKeyDispatcher,
+  isTypeableChord,
+  scopesAt,
+} from "./dispatch";
+
+export { useKeybindingDispatcher } from "./useDispatcher";
+
+export {
   type Binding,
   type Conflict,
   type Keybindings,

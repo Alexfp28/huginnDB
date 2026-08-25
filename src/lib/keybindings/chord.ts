@@ -26,6 +26,11 @@ export interface KeyLike {
   metaKey: boolean;
   shiftKey: boolean;
   altKey: boolean;
+  /** Optional because a hand-built test event has no IME and no autorepeat;
+   *  every real event carries both, and the dispatcher reads them. */
+  isComposing?: boolean;
+  repeat?: boolean;
+  target?: EventTarget | null;
 }
 
 /** Named keys whose `e.key` is already stable regardless of Shift state. */

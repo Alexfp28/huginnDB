@@ -21,6 +21,8 @@ import { usePreferences, selectGridPrefs } from "@/stores/preferences/preference
 import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useUi } from "@/stores/session/ui";
+import { usePendingChord } from "@/stores/session/pendingChord";
+import { formatForDisplay } from "@/lib/keybindings";
 import { StatusConnections } from "@/components/connection/StatusConnections";
 import { EnvironmentSwitcher } from "@/components/connection/EnvironmentSwitcher";
 import {
@@ -81,8 +83,9 @@ export function StatusBar() {
         )}
       </div>
 
-      {/* Right — encoding · version · history · density · theme */}
+      {/* Right — pending chord · encoding · version · history · density · theme */}
       <div className="flex items-center gap-2">
+        <PendingChordHint />
         <SimpleTooltip label={t("statusBar.commandPaletteTooltip")} side="top">
           <button
             type="button"
@@ -276,5 +279,28 @@ function ThemeToggle() {
         )}
       </button>
     </SimpleTooltip>
+  );
+}
+
+/**
+ * What the app is waiting for mid-chord.
+ *
+ * A half-typed sequence swallows the next keystroke, so it has to be visible —
+ * otherwise `Mod+K` followed by a pause looks exactly like a broken keyboard.
+ * Renders nothing at all when there is no prefix pending, which is almost
+ * always, so it costs one subscription and no layout.
+ */
+function PendingChordHint() {
+  const { t } = useTranslation();
+  const chords = usePendingChord((s) => s.chords);
+  if (chords.length === 0) return null;
+  return (
+    <>
+      <span className="rounded-sm bg-brand/15 px-1.5 py-0.5 font-mono text-brand">
+        {formatForDisplay(chords.join(" "))}
+      </span>
+      <span>{t("statusBar.chordPending")}</span>
+      <Sep />
+    </>
   );
 }
