@@ -59,6 +59,8 @@ import { McpSection } from "@/components/settings/sections/McpSection";
 import { JsonSchemasSection } from "@/components/settings/sections/JsonSchemasSection";
 import { OriginsSection } from "@/components/settings/sections/OriginsSection";
 import { AboutSection } from "@/components/settings/sections/AboutSection";
+import { Kbd } from "@/components/ui/kbd";
+import { useShortcutLabel } from "@/lib/keybindings";
 
 interface Props {
   /** Optional controlled-mode signature kept for backwards compatibility. */
@@ -86,6 +88,7 @@ const SECTIONS: {
 ];
 
 export function SettingsDialog({ open, onOpenChange }: Props) {
+  const openSettingsShortcut = useShortcutLabel("openSettings");
   const storeOpen = useSettingsDialog((s) => s.open);
   const setStoreOpen = useSettingsDialog((s) => s.setOpen);
   const section = useSettingsDialog((s) => s.section);
@@ -116,9 +119,11 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
           </DialogTitle>
           <DialogDescription className="text-[11px]">
             {t("settings.description")}{" "}
-            <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">
-              Ctrl/Cmd + ,
-            </kbd>
+            {/* Read from the catalogue, not written out: this line used to say
+                `Ctrl/Cmd + ,` regardless of what the user had rebound it to. */}
+            <Kbd className="px-1 py-0.5 text-[10px]">
+              {openSettingsShortcut ?? t("settings.shortcuts.unassigned")}
+            </Kbd>
             .
           </DialogDescription>
         </DialogHeader>

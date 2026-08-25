@@ -49,6 +49,25 @@ describe("the action catalogue", () => {
     }
   });
 
+  it.each(["en", "es"] as const)(
+    "has a %s name for every category and scope the settings list renders",
+    (lang) => {
+      const bundle = lang === "en" ? en : es;
+      for (const cat of [...CATEGORY_ORDER, "all"]) {
+        expect(
+          typeof lookup(bundle, `settings.shortcuts.categories.${cat}`),
+          `${lang}: ${cat}`,
+        ).toBe("string");
+      }
+      for (const scope of new Set(ACTIONS.map((a) => a.scope))) {
+        expect(
+          typeof lookup(bundle, `settings.shortcuts.scopes.${scope}`),
+          `${lang}: ${scope}`,
+        ).toBe("string");
+      }
+    },
+  );
+
   it.each(["en", "es"] as const)("has a %s label for every action", (lang) => {
     const bundle = lang === "en" ? en : es;
     for (const action of ACTIONS) {
