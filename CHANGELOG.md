@@ -8,6 +8,99 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The keyboard-shortcut system, rebuilt.** It shipped in 1.10.0 as the
+  smallest thing that could work — eight rebindable actions, one combo each,
+  and 127 lines holding the catalogue, the key lexicon and the matcher
+  together. What it could not express had accumulated: no secondary keys, no
+  chord sequences, no notion of *where* a shortcut applies, no way to unbind
+  anything, and no tests at all.
+
+  **A binding is now a list.** `prefs.json` stores `["Mod+Enter", "F9"]` rather
+  than one string: the first entry is the primary one (what menus, the palette
+  and tooltips display), the rest are aliases that fire just as well. Three
+  states stay distinct and all three mean something — a missing key is "use the
+  default", `[]` is "I unbound this on purpose", and a non-empty list is
+  primary plus aliases. `Preferences.keybindings` became
+  `HashMap<String, Vec<String>>` behind a deserializer that also accepts the
+  old bare string, so an existing `prefs.json` needs no migration and no
+  version bump. (A downgrade to a build predating this cannot parse the list
+  form, and since a bad `prefs.json` degrades to defaults, such a downgrade
+  loses every preference rather than just the shortcuts. Documented at the
+  deserializer.)
+
+  **Chord sequences work**, VS Code style: `Mod+K` then `Mod+S`. Nothing ships
+  as a sequence — they exist so there is somewhere to put the commands that no
+  longer fit in one combo. A half-typed prefix waits two seconds and shows
+  itself in the status bar, because a shortcut that silently swallows the next
+  keystroke reads as a broken keyboard.
+
+  **Actions now have a scope**, and it is resolved from the DOM: a surface
+  declares `data-kb-scope` and the nearest one to the focused element decides
+  what is audible, together with `global`. This is what lets `grid` and
+  `editor` hold the same key without ambiguity, and it replaces the ad-hoc
+  arrangements the four previous listeners had grown — `DataGrid`
+  hand-filtering modified chords, `SideEditorPanel` calling
+  `stopImmediatePropagation` to win a `Mod+S` race. One `createKeyDispatcher`
+  now serves the window listener and Monaco's `onKeyDown` alike (the editor
+  still needs its own redispatch — `addCommand` freezes a keybinding bitmask at
+  registration and cannot re-check a live one).
+
+  **The catalogue grew from 8 actions to 25, merged with the command
+  palette's.** The palette already knew how to run sixteen commands and the
+  menus another handful; none could be given a key, because the shortcut table
+  was a separate list that happened to describe some of the same actions. Each
+  new action reuses the label the palette or the menu already had, so there is
+  one name per command rather than a second wording for the shortcut list. Most
+  ship deliberately **unbound**: being in the catalogue is what makes an action
+  searchable, bindable and conflict-checked, and spending a default key on it
+  would take that key from whatever the user actually reaches for. Four get
+  one: `Mod+T` (new query), `Mod+W` (close tab), `Mod+B` (schema panel) and
+  `` Mod+` `` (console), plus `Mod+Shift+N` for a new window. The palette and
+  the menus now read the live binding instead of restating it, so a rebind
+  shows up in both without a reload.
+
+  **Settings → Shortcuts was rebuilt** around the three questions a list of
+  twenty-five is actually asked. *What fires this action* — each binding is its
+  own chip, click to re-record, `×` to drop, `+` to add; reserved keys sit
+  beside them dimmed. *What does this key do* — a "By key" chip turns the
+  search box into a capture field and filters to whoever uses the combo you
+  press. *What have I changed* — a "Modified" filter and a count, which is why
+  "Reset all" now **clears** the overrides map instead of writing every default
+  into it: an override equal to its default is not an override, and that filter
+  would be lying. Recording moved into a dialog, where capture is *armed rather
+  than permanent* — while armed it eats every key, so `Escape` and `Enter` are
+  bindable; the moment a chord lands it disarms and those two go back to
+  meaning Cancel and Save.
+
+  **Conflicts stopped being a wall.** A clash is only reported when the two
+  scopes can actually be heard together, so anything reported is a real
+  ambiguity — and the dialog offers to take the key off the other action, in
+  the same write, rather than just refusing. It now also sees the reserved
+  bindings and the normalized spelling, both of which the old check was blind
+  to: rebinding something onto `Mod+R` used to be accepted silently and then
+  never fire.
+
+  **Shortcuts export and import** as JSON, following `themeTransfer.ts`. Only
+  your overrides travel, never the resolved bindings — exporting what each
+  action currently does would bake this version's defaults into the file and
+  opt the importing machine out of every default added since. An action the
+  importing build does not recognise is named rather than dropped in silence.
+
+  Two long-standing defects went with the rewrite. **Nothing checked where the
+  focus was:** the old listener's only guard was `e.isComposing`, so binding an
+  action to a bare letter made that letter untypeable across the app — now a
+  chord indistinguishable from typing is suppressed inside a text field, while
+  `F5`, `Escape` and the arrows keep working there. And **`Ctrl+Enter` was
+  rebindable in only one of the three Monaco editors**; the view and pipeline
+  editors used a fixed `addCommand`. Both now go through the redispatch.
+
+  Also: `Ctrl` in a stored combo is renamed `Mod`, which is what it always
+  meant (`ctrlKey || metaKey`) — the old name was a lie on macOS and left no
+  way to bind the real Control key, which `Ctrl` and `Meta` now do as exact
+  tokens. Stored combos migrate on read, so nothing is rewritten on disk.
+  Documented in `docs/SHORTCUTS.md` (English and Spanish), and covered by 96
+  frontend tests plus two Rust contract tests where there were none.
+
 - **Settings → MCP is now a tree, with bulk write-policy buttons.** It gets the
   same All / Local / Shared filter and the same collapsible sections per origin
   as the connection manager, plus the group folders, so a server sits in the same

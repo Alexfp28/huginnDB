@@ -91,6 +91,9 @@ export function PipelineEditor({
     <Editor
       height={height}
       language={MONGO_PIPELINE_LANGUAGE}
+      // See the note in `ViewEditorTab`: this marks Monaco's focus area for
+      // the window-level dispatcher.
+      wrapperProps={{ "data-kb-scope": "editor" }}
       theme={resolveMonacoTheme(editorPrefs.theme)}
       value={value}
       onChange={(v) => onChange(v ?? "")}

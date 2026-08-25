@@ -768,12 +768,22 @@ export interface Preferences {
   /** Connection-pool policy. See {@link ConnectionPrefs}. */
   connections: ConnectionPrefs;
   /**
-   * User-rebound keyboard shortcuts, keyed by action id to a combo string
-   * (e.g. `"Ctrl+K"`, `"Space"`). A missing entry means "use that action's
-   * default" — see `ACTIONS`/`getBinding` in `src/lib/keybindings.ts`, the
-   * single source of truth for default combos.
+   * User-rebound keyboard shortcuts, keyed by action id to an ordered list of
+   * bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is the
+   * primary one — what menus and tooltips display; the rest are aliases that
+   * fire just as well.
+   *
+   * Three states, all distinct and all meaningful:
+   * - key absent → use that action's defaults
+   * - `[]`       → the user deliberately unbound it
+   * - `[a, b]`   → primary plus aliases
+   *
+   * `ACTIONS` in `src/lib/keybindings/actions.ts` is the single source of truth
+   * for the defaults, so an empty map here is a fully functional state. The
+   * backend accepts a bare string per key too (the pre-1.19 shape) and folds it
+   * into a one-element list on read.
    */
-  keybindings: Record<string, string>;
+  keybindings: Record<string, string[]>;
 }
 
 /**

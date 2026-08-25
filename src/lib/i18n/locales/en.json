@@ -20,7 +20,9 @@
     "retry": "Retry",
     "copy": "Copy",
     "errorPanelCrashed": "Something went wrong rendering this panel.",
-    "add": "Add"
+    "add": "Add",
+    "import": "Import",
+    "export": "Export"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -924,7 +926,8 @@
     "densityComfortable": "Comfortable",
     "toggleTheme": "Toggle light / dark",
     "commandPaletteHint": "Ctrl+K",
-    "commandPaletteTooltip": "Command palette (Ctrl+K)"
+    "commandPaletteTooltip": "Command palette (Ctrl+K)",
+    "chordPending": "waiting for the next key…"
   },
   "shell": {
     "console": {
@@ -1218,13 +1221,57 @@
       "toggleTabSwitcher": "Switch between open tabs",
       "refreshData": "Refresh data",
       "refreshSchema": "Refresh schema",
-      "refreshHint": "Ctrl/Cmd+R also always refreshes.",
+      "refreshHint": "Mod+R is reserved on top of this: intercepting the WebView's own reload is a safety necessity, not a preference.",
       "runQuery": "Run query in active editor",
       "expandSelectedCell": "Expand selected cell",
       "pressKey": "Press a key…",
       "resetToDefault": "Reset to default",
       "resetAll": "Reset all shortcuts",
-      "conflict": "Already used by {{action}}. Choose a different key."
+      "conflict": "Already used by {{action}}. Choose a different key.",
+      "unassigned": "Unassigned",
+      "fixedHint": "Reserved by the app — cannot be rebound.",
+      "togglePanelSchema": "Toggle the Schema panel",
+      "togglePanelSaved": "Toggle the Saved queries panel",
+      "togglePanelConsole": "Toggle the Console panel",
+      "searchPlaceholder": "Search an action…",
+      "searchByKey": "By key",
+      "modifiedOnly": "Modified ({{count}})",
+      "noMatches": "No action matches that.",
+      "summary": "{{total}} actions · {{modified}} modified",
+      "resetAllConfirm": "This clears your {{count}} customised shortcut(s) and puts every action back to its default.",
+      "captureHint": "Press Save to keep it, or click the key to record again.",
+      "listening": "Waiting for a key…",
+      "then": "then",
+      "addChord": "Add chord",
+      "reassign": "Reassign",
+      "reserved": "Reserved by {{action}} and cannot be taken over.",
+      "rebind": "Record a different key",
+      "addBinding": "Add another key",
+      "removeBinding": "Remove this key",
+      "categories": {
+        "all": "All",
+        "general": "General",
+        "tabs": "Tabs",
+        "query": "Query",
+        "grid": "Data grid",
+        "schema": "Schema",
+        "panels": "Panels and window"
+      },
+      "scopes": {
+        "global": "Fires anywhere in the app.",
+        "editor": "Only while the focus is in a Monaco editor.",
+        "grid": "Only while the focus is in the data grid.",
+        "tree": "Only while the focus is in the schema tree.",
+        "overlay": "Only while a palette or dialog is open."
+      },
+      "importTitle": "Import shortcuts",
+      "importSuccess": "Imported {{count}} customised shortcut(s).",
+      "importUnknown": "Imported, but {{count}} action(s) in this file are unknown to this version: {{ids}}",
+      "importError": {
+        "notJson": "That file isn't valid JSON.",
+        "notShortcuts": "That file isn't a HuginnDB shortcuts export."
+      },
+      "recordAgainHint": "Click to record a different key"
     },
     "mcp": {
       "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",
@@ -1375,7 +1422,8 @@
       "profiles": "Connections exported",
       "environments": "Environments exported",
       "jsonSchemas": "JSON Schemas exported",
-      "theme": "Theme exported"
+      "theme": "Theme exported",
+      "shortcuts": "Shortcuts exported"
     },
     "center": {
       "open": "Notifications",
@@ -1738,6 +1786,10 @@
       "mcp": {
         "title": "MCP connector",
         "description": "Connect AI tools to your databases"
+      },
+      "shortcuts": {
+        "title": "Keyboard shortcuts",
+        "description": "Rebind anything, chord sequences, scopes and reserved keys."
       }
     }
   },

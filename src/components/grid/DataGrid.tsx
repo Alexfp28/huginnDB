@@ -912,6 +912,8 @@ export function DataGrid({
         <div
           ref={scrollRef}
           className="h-full overflow-auto outline-none"
+        // Anything bound at `grid` scope is only audible from in here.
+        data-kb-scope="grid"
         // Focusable so it can receive keyboard navigation; a cell click focuses
         // it (below). The active-cell ring is the visible focus affordance, so
         // the container's own outline is suppressed.

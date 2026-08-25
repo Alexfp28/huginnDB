@@ -30,6 +30,8 @@ import sqlServerRaw from "../../../docs/SQL_SERVER.md?raw";
 import sqlServerEsRaw from "../../../docs/SQL_SERVER.es.md?raw";
 import mcpRaw from "../../../docs/MCP.md?raw";
 import mcpEsRaw from "../../../docs/MCP.es.md?raw";
+import shortcutsRaw from "../../../docs/SHORTCUTS.md?raw";
+import shortcutsEsRaw from "../../../docs/SHORTCUTS.es.md?raw";
 
 export interface DocEntry {
   /** Stable id (used as the selected-doc key and React key). */
@@ -95,6 +97,17 @@ export const DOCS: DocEntry[] = [
     path: "docs/SQL_SERVER.md",
     bodies: { en: sqlServerRaw, es: sqlServerEsRaw },
     updated: dates["docs/SQL_SERVER.md"] ?? null,
+  },
+  {
+    // Before the per-driver guides would be wrong (it applies to all of them)
+    // and after MCP would bury it; a keyboard-first tool's key map belongs
+    // right after the two "how do I get set up" guides.
+    id: "shortcuts",
+    titleKey: "docs.entries.shortcuts.title",
+    descriptionKey: "docs.entries.shortcuts.description",
+    path: "docs/SHORTCUTS.md",
+    bodies: { en: shortcutsRaw, es: shortcutsEsRaw },
+    updated: dates["docs/SHORTCUTS.md"] ?? null,
   },
   {
     id: "mcp",

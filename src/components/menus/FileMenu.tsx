@@ -39,6 +39,7 @@ import { useConnections } from "@/stores/session/connections";
 import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
 import { useEnvironmentTransfer } from "@/stores/dialogs/environmentTransfer";
 import { Button } from "@/components/ui/button";
+import { ShortcutHint } from "@/components/menus/ShortcutHint";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -113,10 +114,12 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
           <DropdownMenuItem onSelect={() => openNew()}>
             <Plus className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.newConnection")}
+            <ShortcutHint action="newConnection" />
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => openManage(selectedConnectionId)}>
             <Settings className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.manageConnections")}
+            <ShortcutHint action="manageConnections" />
           </DropdownMenuItem>
           <DropdownMenuSeparator />
 
@@ -126,10 +129,12 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
           <DropdownMenuItem onSelect={() => setImportOpen(true)}>
             <Upload className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.importProfiles")}
+            <ShortcutHint action="importProfiles" />
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setExportOpen(true)}>
             <Download className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.exportProfiles")}
+            <ShortcutHint action="exportProfiles" />
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
@@ -154,10 +159,12 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
           <DropdownMenuItem onSelect={() => setImportSchemasOpen(true)}>
             <Upload className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.importJsonSchemas")}
+            <ShortcutHint action="importJsonSchemas" />
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => openExportSchemas()}>
             <Download className="mr-2 h-3.5 w-3.5" />
             {t("menu.file.exportJsonSchemas")}
+            <ShortcutHint action="exportJsonSchemas" />
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

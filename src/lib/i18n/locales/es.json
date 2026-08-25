@@ -20,7 +20,9 @@
     "retry": "Reintentar",
     "copy": "Copiar",
     "errorPanelCrashed": "Algo falló al renderizar este panel.",
-    "add": "Añadir"
+    "add": "Añadir",
+    "import": "Importar",
+    "export": "Exportar"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -924,7 +926,8 @@
     "densityComfortable": "Cómoda",
     "toggleTheme": "Cambiar claro / oscuro",
     "commandPaletteHint": "Ctrl+K",
-    "commandPaletteTooltip": "Paleta de comandos (Ctrl+K)"
+    "commandPaletteTooltip": "Paleta de comandos (Ctrl+K)",
+    "chordPending": "esperando la siguiente tecla…"
   },
   "shell": {
     "console": {
@@ -1218,13 +1221,57 @@
       "toggleTabSwitcher": "Cambiar entre pestañas abiertas",
       "refreshData": "Refrescar datos",
       "refreshSchema": "Recargar esquema",
-      "refreshHint": "Ctrl/Cmd+R también refresca siempre.",
+      "refreshHint": "Mod+R queda reservado además de este: interceptar la recarga del WebView es una necesidad de seguridad, no una preferencia.",
       "runQuery": "Ejecutar query en el editor activo",
       "expandSelectedCell": "Expandir celda seleccionada",
       "pressKey": "Pulsa una tecla…",
       "resetToDefault": "Restablecer por defecto",
       "resetAll": "Restablecer todos los atajos",
-      "conflict": "Ya usado por {{action}}. Elige otra tecla."
+      "conflict": "Ya usado por {{action}}. Elige otra tecla.",
+      "unassigned": "Sin asignar",
+      "fixedHint": "Reservado por la app: no se puede reasignar.",
+      "togglePanelSchema": "Mostrar u ocultar el panel Esquema",
+      "togglePanelSaved": "Mostrar u ocultar el panel Guardadas",
+      "togglePanelConsole": "Mostrar u ocultar el panel Consola",
+      "searchPlaceholder": "Buscar una acción…",
+      "searchByKey": "Por tecla",
+      "modifiedOnly": "Modificados ({{count}})",
+      "noMatches": "Ninguna acción coincide.",
+      "summary": "{{total}} acciones · {{modified}} modificadas",
+      "resetAllConfirm": "Se borrarán tus {{count}} atajo(s) personalizados y cada acción volverá a su valor por defecto.",
+      "captureHint": "Pulsa Guardar para conservarlo, o haz clic en la tecla para volver a grabar.",
+      "listening": "Esperando una tecla…",
+      "then": "luego",
+      "addChord": "Añadir acorde",
+      "reassign": "Reasignar",
+      "reserved": "Reservado por {{action}}; no se puede ocupar.",
+      "rebind": "Grabar otra tecla",
+      "addBinding": "Añadir otra tecla",
+      "removeBinding": "Quitar esta tecla",
+      "categories": {
+        "all": "Todas",
+        "general": "General",
+        "tabs": "Pestañas",
+        "query": "Consulta",
+        "grid": "Rejilla de datos",
+        "schema": "Esquema",
+        "panels": "Paneles y ventana"
+      },
+      "scopes": {
+        "global": "Se dispara en cualquier parte de la app.",
+        "editor": "Solo con el foco en un editor Monaco.",
+        "grid": "Solo con el foco en la rejilla de datos.",
+        "tree": "Solo con el foco en el árbol de esquema.",
+        "overlay": "Solo con una paleta o un diálogo abiertos."
+      },
+      "importTitle": "Importar atajos",
+      "importSuccess": "Importados {{count}} atajo(s) personalizados.",
+      "importUnknown": "Importado, pero este archivo trae {{count}} acción/es que esta versión no conoce: {{ids}}",
+      "importError": {
+        "notJson": "Ese archivo no es JSON válido.",
+        "notShortcuts": "Ese archivo no es una exportación de atajos de HuginnDB."
+      },
+      "recordAgainHint": "Haz clic para grabar otra tecla"
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",
@@ -1375,7 +1422,8 @@
       "profiles": "Conexiones exportadas",
       "environments": "Entornos exportados",
       "jsonSchemas": "Esquemas JSON exportados",
-      "theme": "Tema exportado"
+      "theme": "Tema exportado",
+      "shortcuts": "Atajos exportados"
     },
     "center": {
       "open": "Notificaciones",
@@ -1738,6 +1786,10 @@
       "mcp": {
         "title": "Conector MCP",
         "description": "Conecta herramientas de IA a tus bases de datos"
+      },
+      "shortcuts": {
+        "title": "Atajos de teclado",
+        "description": "Reasignar cualquier cosa, secuencias, ámbitos y teclas reservadas."
       }
     }
   },

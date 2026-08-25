@@ -19,6 +19,7 @@ const DOC_FILES = [
   "docs/MONGODB.md",
   "docs/SQL_SERVER.md",
   "docs/MCP.md",
+  "docs/SHORTCUTS.md",
 ];
 
 /**

@@ -61,7 +61,8 @@ export function SchemaExplorer({
   // mode can't drift, and above the tree because it's about the connection
   // itself, not about anything in its schema.
   return (
-    <div className="flex flex-col">
+    // Anything bound at `tree` scope is only audible from inside the explorer.
+    <div className="flex flex-col" data-kb-scope="tree">
       <VanishedOriginNotice profileId={connectionId} />
       {isMultiDb ? (
         <MultiDbExplorer parentId={connectionId} filter={filter} />
