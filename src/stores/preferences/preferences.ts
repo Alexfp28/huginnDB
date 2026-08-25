@@ -115,7 +115,16 @@ interface PreferencesState {
   updateUi: (patch: Partial<UiPrefs>) => void;
   updateNotifications: (patch: Partial<NotificationPrefs>) => void;
   updateConnections: (patch: Partial<ConnectionPrefs>) => void;
-  updateKeybindings: (patch: Record<string, string>) => void;
+  /**
+   * Merge shortcut overrides. A key mapped to `undefined` is **deleted**,
+   * which is how "reset this row to its default" is expressed — writing the
+   * default back explicitly would leave the overrides map full of things that
+   * aren't overrides, and `isDefault` would then be a value comparison rather
+   * than a key lookup.
+   */
+  updateKeybindings: (patch: Record<string, string[] | undefined>) => void;
+  /** Drop every override at once, so all actions fall back to `ACTIONS`. */
+  resetKeybindings: () => void;
   resetAll: () => void;
   /**
    * Adopt a snapshot that's already persisted elsewhere — the cross-window
@@ -260,10 +269,20 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
 
   updateKeybindings(patch) {
     set((s) => {
-      const next: Preferences = {
-        ...s.prefs,
-        keybindings: { ...s.prefs.keybindings, ...patch },
-      };
+      const keybindings: Record<string, string[]> = { ...s.prefs.keybindings };
+      for (const [id, bindings] of Object.entries(patch)) {
+        if (bindings === undefined) delete keybindings[id];
+        else keybindings[id] = bindings;
+      }
+      const next: Preferences = { ...s.prefs, keybindings };
+      save.schedule(next);
+      return { prefs: next };
+    });
+  },
+
+  resetKeybindings() {
+    set((s) => {
+      const next: Preferences = { ...s.prefs, keybindings: {} };
       save.schedule(next);
       return { prefs: next };
     });

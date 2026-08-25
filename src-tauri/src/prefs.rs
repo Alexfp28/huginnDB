@@ -18,6 +18,40 @@ use std::collections::HashMap;
 /// File name used for the persisted preferences blob.
 const PREFS_FILE: &str = "prefs.json";
 
+/// Accepts both shapes of the `keybindings` map: the pre-1.19
+/// `{"runQuery": "Ctrl+Enter"}` and the current
+/// `{"runQuery": ["Mod+Enter", "F9"]}`.
+///
+/// Keeping the *same* field name (rather than adding a `keybindings2` and
+/// deprecating the old one) means an existing `prefs.json` needs no migration
+/// pass and no version bump. The cost, accepted knowingly: a downgrade to a
+/// build that predates this cannot parse the list form, and since a bad
+/// `prefs.json` degrades to `Preferences::default()`, such a downgrade loses
+/// *all* preferences rather than just the shortcuts.
+fn string_or_vec<'de, D>(deserializer: D) -> Result<HashMap<String, Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    let raw: HashMap<String, OneOrMany> = HashMap::deserialize(deserializer)?;
+    Ok(raw
+        .into_iter()
+        .map(|(k, v)| {
+            let list = match v {
+                OneOrMany::One(s) => vec![s],
+                OneOrMany::Many(v) => v,
+            };
+            (k, list)
+        })
+        .collect())
+}
+
 /// Top-level preferences blob. Bumped on incompatible schema changes; the
 /// `#[serde(default)]` everywhere means older files keep loading.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,12 +68,21 @@ pub struct Preferences {
     /// long. See [`ConnectionPrefs`].
     pub connections: ConnectionPrefs,
     /// User-rebound keyboard shortcuts, keyed by action id (e.g.
-    /// `"openSettings"`, `"expandSelectedCell"`) to a combo string (e.g.
-    /// `"Ctrl+K"`, `"Space"`). Missing entries fall back to that action's
-    /// default combo — the frontend's `ACTIONS` table in
-    /// `src/lib/keybindings.ts` is the single source of truth for defaults,
-    /// so an empty map here is a perfectly valid, fully-functional state.
-    pub keybindings: HashMap<String, String>,
+    /// `"openSettings"`, `"expandSelectedCell"`) to an ordered list of
+    /// bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is
+    /// the primary one; the rest are aliases that fire just as well, and an
+    /// empty list means the user deliberately unbound the action.
+    ///
+    /// Missing entries fall back to that action's defaults — the frontend's
+    /// `ACTIONS` table in `src/lib/keybindings/actions.ts` is the single source
+    /// of truth for those, so an empty map here is a perfectly valid,
+    /// fully-functional state.
+    ///
+    /// Pre-1.19 files stored one bare string per action; [`string_or_vec`]
+    /// reads those unchanged and folds each into a one-element list. Writes are
+    /// always in the list form.
+    #[serde(deserialize_with = "string_or_vec")]
+    pub keybindings: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -477,6 +520,52 @@ mod tests {
         let json = serde_json::to_value(&parsed).unwrap();
         assert!(json["notifications"]["durationMs"].is_number());
         assert!(json["notifications"]["errorsPersist"].is_boolean());
+    }
+
+    /// The pre-1.19 shape stored one bare string per action. Those files are
+    /// still out there, and losing every rebind on upgrade would be worse than
+    /// the type change is worth — `string_or_vec` folds each into a one-element
+    /// list on read.
+    #[test]
+    fn keybindings_accept_the_legacy_bare_string_shape() {
+        let sent = r#"{
+            "keybindings": {
+                "runQuery": "Ctrl+Enter",
+                "expandSelectedCell": "Space"
+            }
+        }"#;
+        let parsed: Preferences = serde_json::from_str(sent).unwrap();
+        assert_eq!(parsed.keybindings["runQuery"], vec!["Ctrl+Enter".to_string()]);
+        assert_eq!(
+            parsed.keybindings["expandSelectedCell"],
+            vec!["Space".to_string()]
+        );
+    }
+
+    /// The list shape is what the frontend sends now: primary first, aliases
+    /// after, and an empty list meaning "the user unbound this on purpose" —
+    /// which must survive the round trip rather than collapsing to a missing
+    /// key, since a missing key means "use the default" instead.
+    #[test]
+    fn keybindings_round_trip_the_list_shape_the_frontend_sends() {
+        let sent = r#"{
+            "keybindings": {
+                "runQuery": ["Mod+Enter", "F9"],
+                "openSettings": []
+            }
+        }"#;
+        let parsed: Preferences = serde_json::from_str(sent).unwrap();
+        assert_eq!(
+            parsed.keybindings["runQuery"],
+            vec!["Mod+Enter".to_string(), "F9".to_string()]
+        );
+        assert!(parsed.keybindings["openSettings"].is_empty());
+
+        // And back out again as arrays, never as bare strings.
+        let json = serde_json::to_value(&parsed).unwrap();
+        assert!(json["keybindings"]["runQuery"].is_array());
+        assert_eq!(json["keybindings"]["runQuery"][1], "F9");
+        assert!(json["keybindings"]["openSettings"].is_array());
     }
 
     #[test]

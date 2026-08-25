@@ -1,31 +1,38 @@
 /**
- * One rebindable-shortcut row: idle state shows the current combo + a reset
- * button; clicking it enters capture mode, where the next keydown becomes
- * the new combo (Escape always cancels, never becomes the binding itself).
+ * One rebindable-shortcut row: idle state shows every binding that fires the
+ * action + a reset button; clicking a binding enters capture mode, where the
+ * next keydown becomes the new one (Escape always cancels, never becomes the
+ * binding itself).
+ *
+ * `fixed` bindings (today only `Mod+R`, which has to keep the WebView from
+ * reloading the app) render dimmed and are not clickable — they are shown
+ * rather than hidden, because a shortcut the user cannot discover is a
+ * shortcut they will report as a bug.
  */
 
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { comboFromEvent, formatComboForDisplay, type ActionSpec } from "@/lib/keybindings";
+import { chordFromEvent, formatForDisplay, type ActionSpec } from "@/lib/keybindings";
 import { PrefRow } from "./PrefRow";
 
 interface Props {
   action: ActionSpec;
-  combo: string;
+  /** User-editable bindings, primary first. May be empty (unbound). */
+  bindings: string[];
   isDefault: boolean;
   isCapturing: boolean;
   conflictMsg: string | null;
   onStartCapture: () => void;
   onCancelCapture: () => void;
-  onCaptured: (combo: string) => void;
+  onCaptured: (binding: string) => void;
   onReset: () => void;
 }
 
 export function ShortcutRow({
   action,
-  combo,
+  bindings,
   isDefault,
   isCapturing,
   conflictMsg,
@@ -48,7 +55,7 @@ export function ShortcutRow({
         onCancelCapture();
         return;
       }
-      const next = comboFromEvent(e);
+      const next = chordFromEvent(e);
       if (next === null) return; // bare modifier keydown — keep listening
       onCaptured(next);
     };
@@ -65,8 +72,8 @@ export function ShortcutRow({
       description={
         isCapturing
           ? (conflictMsg ?? t("settings.shortcuts.pressKey"))
-          : action.id === "refreshData"
-            ? t("settings.shortcuts.refreshHint")
+          : action.descKey
+            ? t(action.descKey)
             : undefined
       }
     >
@@ -76,13 +83,37 @@ export function ShortcutRow({
             {t("common.cancel")}
           </Button>
         ) : (
-          <button
-            type="button"
-            onClick={onStartCapture}
-            className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-brand hover:text-foreground"
-          >
-            {formatComboForDisplay(combo)}
-          </button>
+          <>
+            {bindings.length === 0 ? (
+              <button
+                type="button"
+                onClick={onStartCapture}
+                className="rounded border border-dashed border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-brand hover:text-foreground"
+              >
+                {t("settings.shortcuts.unassigned")}
+              </button>
+            ) : (
+              bindings.map((binding) => (
+                <button
+                  key={binding}
+                  type="button"
+                  onClick={onStartCapture}
+                  className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-brand hover:text-foreground"
+                >
+                  {formatForDisplay(binding)}
+                </button>
+              ))
+            )}
+            {action.fixed?.map((binding) => (
+              <span
+                key={binding}
+                title={t("settings.shortcuts.fixedHint")}
+                className="rounded border border-border/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground/60"
+              >
+                {formatForDisplay(binding)}
+              </span>
+            ))}
+          </>
         )}
         <Button
           variant="ghost"

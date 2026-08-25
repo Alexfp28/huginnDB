@@ -1224,7 +1224,9 @@
       "pressKey": "Press a key…",
       "resetToDefault": "Reset to default",
       "resetAll": "Reset all shortcuts",
-      "conflict": "Already used by {{action}}. Choose a different key."
+      "conflict": "Already used by {{action}}. Choose a different key.",
+      "unassigned": "Unassigned",
+      "fixedHint": "Reserved by the app — cannot be rebound."
     },
     "mcp": {
       "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",
