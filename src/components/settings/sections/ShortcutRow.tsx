@@ -48,7 +48,11 @@ export function ShortcutRow({
       prefId={`keybinding.${action.id}`}
       description={action.descKey ? t(action.descKey) : undefined}
     >
-      <div className="flex flex-wrap items-center justify-end gap-1">
+      {/* `PrefRow` puts its control column in a `shrink-0`, so this container
+          sizes to max-content and `flex-wrap` alone would never trigger. The
+          cap is what makes it wrap: an action with three or four aliases
+          squeezes the label otherwise. */}
+      <div className="flex max-w-[20rem] flex-wrap items-center justify-end gap-1">
         <span
           className="rounded border border-border/60 px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground/70"
           title={t(`settings.shortcuts.scopes.${action.scope}`)}

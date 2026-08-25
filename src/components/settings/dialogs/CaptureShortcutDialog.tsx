@@ -5,9 +5,14 @@
  * armed, a capture-phase window listener eats every keystroke — which is what
  * lets you record `Escape` or `Enter` as a binding. The moment a chord lands,
  * capture disarms and those two keys go back to meaning Cancel and Save, so
- * the whole dialog stays operable from the keyboard. "Add a second chord"
- * re-arms it, which is how a sequence like `Mod+K Mod+S` gets recorded without
- * a modal-inside-a-modal or a timeout the user has to race.
+ * the whole dialog stays operable from the keyboard. "Add chord" re-arms it,
+ * which is how a sequence like `Mod+K Mod+S` gets recorded without a
+ * modal-inside-a-modal or a timeout the user has to race.
+ *
+ * The recorded keys are themselves the "record again" control — clicking the
+ * box re-arms. That is both more discoverable than a button underneath it and
+ * one fewer long label in the footer, which is what used to blow the dialog's
+ * grid track wide enough to push every child over the border.
  *
  * Conflicts are shown as you record rather than on submit: `findConflicts`
  * only reports bindings whose scope can actually be heard alongside this one,
@@ -17,6 +22,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +69,7 @@ export function CaptureShortcutDialog({
   // rather than state because the listener below reads it at fire time and
   // must not be re-registered when it changes.
   const appending = useRef(false);
+  const saveRef = useRef<HTMLButtonElement>(null);
 
   // Re-arm and clear whenever a different row opens the dialog.
   useEffect(() => {
@@ -87,6 +95,14 @@ export function CaptureShortcutDialog({
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
+  }, [action, armed]);
+
+  // A chord just landed: put the focus on Save so Enter commits. Without this
+  // the focus sits on the recording box — which is a button now — and Enter
+  // would start recording again instead of accepting what was just recorded.
+  useEffect(() => {
+    if (!action || armed) return;
+    saveRef.current?.focus();
   }, [action, armed]);
 
   if (!action) return null;
@@ -120,7 +136,23 @@ export function CaptureShortcutDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-[3.5rem] flex-wrap items-center justify-center gap-1.5 rounded-md border border-border bg-muted/40 p-3">
+        {/* The display *is* the re-record button; while armed it is already
+            recording, so there is nothing to click. */}
+        <button
+          type="button"
+          disabled={armed}
+          title={armed ? undefined : t("settings.shortcuts.recordAgainHint")}
+          onClick={() => {
+            appending.current = false;
+            setArmed(true);
+          }}
+          className={cn(
+            "flex min-h-[3.5rem] w-full flex-wrap items-center justify-center gap-1.5 rounded-md border p-3 text-left transition-colors",
+            armed
+              ? "border-brand bg-brand/5"
+              : "border-border bg-muted/40 hover:border-brand focus-visible:border-brand focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand/20",
+          )}
+        >
           {chords.length === 0 ? (
             <span className="animate-pulse text-xs text-muted-foreground">
               {t("settings.shortcuts.listening")}
@@ -140,7 +172,24 @@ export function CaptureShortcutDialog({
           {armed && chords.length > 0 && (
             <span className="text-xs text-muted-foreground">…</span>
           )}
-        </div>
+        </button>
+
+        {/* Its own grid item rather than a footer button: the footer is for
+            committing, and four buttons of Spanish-length labels do not fit in
+            a `max-w-md` row. `self-start` because grid items stretch. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="self-start"
+          disabled={armed || chords.length === 0}
+          onClick={() => {
+            appending.current = true;
+            setArmed(true);
+          }}
+        >
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          {t("settings.shortcuts.addChord")}
+        </Button>
 
         {clashes.length > 0 && (
           <p className="text-xs text-warning">
@@ -150,50 +199,25 @@ export function CaptureShortcutDialog({
           </p>
         )}
 
-        <DialogFooter className="gap-2 sm:justify-between">
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={armed}
-              onClick={() => {
-                appending.current = false;
-                setArmed(true);
-              }}
-            >
-              {t("settings.shortcuts.recordAgain")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={armed || chords.length === 0}
-              onClick={() => {
-                appending.current = true;
-                setArmed(true);
-              }}
-            >
-              {t("settings.shortcuts.addChord")}
-            </Button>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={onCancel}>
-              {t("common.cancel")}
-            </Button>
-            <Button
-              size="sm"
-              disabled={!canSave}
-              onClick={() =>
-                onSave(
-                  binding,
-                  clashes.filter((c) => !c.fixed).map((c) => c.actionId),
-                )
-              }
-            >
-              {clashes.length > 0 && !reserved
-                ? t("settings.shortcuts.reassign")
-                : t("common.save")}
-            </Button>
-          </div>
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            ref={saveRef}
+            size="sm"
+            disabled={!canSave}
+            onClick={() =>
+              onSave(
+                binding,
+                clashes.filter((c) => !c.fixed).map((c) => c.actionId),
+              )
+            }
+          >
+            {clashes.length > 0 && !reserved
+              ? t("settings.shortcuts.reassign")
+              : t("common.save")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

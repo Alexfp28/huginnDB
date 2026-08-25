@@ -1239,11 +1239,10 @@
       "noMatches": "No action matches that.",
       "summary": "{{total}} actions · {{modified}} modified",
       "resetAllConfirm": "This clears your {{count}} customised shortcut(s) and puts every action back to its default.",
-      "captureHint": "Press Save to keep it, or record another key.",
+      "captureHint": "Press Save to keep it, or click the key to record again.",
       "listening": "Waiting for a key…",
       "then": "then",
-      "recordAgain": "Record again",
-      "addChord": "Add a second chord",
+      "addChord": "Add chord",
       "reassign": "Reassign",
       "reserved": "Reserved by {{action}} and cannot be taken over.",
       "rebind": "Record a different key",
@@ -1271,7 +1270,8 @@
       "importError": {
         "notJson": "That file isn't valid JSON.",
         "notShortcuts": "That file isn't a HuginnDB shortcuts export."
-      }
+      },
+      "recordAgainHint": "Click to record a different key"
     },
     "mcp": {
       "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",

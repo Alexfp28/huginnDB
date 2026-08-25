@@ -1239,11 +1239,10 @@
       "noMatches": "Ninguna acción coincide.",
       "summary": "{{total}} acciones · {{modified}} modificadas",
       "resetAllConfirm": "Se borrarán tus {{count}} atajo(s) personalizados y cada acción volverá a su valor por defecto.",
-      "captureHint": "Pulsa Guardar para conservarlo, o graba otra tecla.",
+      "captureHint": "Pulsa Guardar para conservarlo, o haz clic en la tecla para volver a grabar.",
       "listening": "Esperando una tecla…",
       "then": "luego",
-      "recordAgain": "Grabar otra vez",
-      "addChord": "Añadir un segundo acorde",
+      "addChord": "Añadir acorde",
       "reassign": "Reasignar",
       "reserved": "Reservado por {{action}}; no se puede ocupar.",
       "rebind": "Grabar otra tecla",
@@ -1271,7 +1270,8 @@
       "importError": {
         "notJson": "Ese archivo no es JSON válido.",
         "notShortcuts": "Ese archivo no es una exportación de atajos de HuginnDB."
-      }
+      },
+      "recordAgainHint": "Haz clic para grabar otra tecla"
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",

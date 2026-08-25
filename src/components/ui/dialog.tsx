@@ -35,7 +35,15 @@ const DialogContent = React.forwardRef<
         // Modal stays centred and scales from centre on enter (zoom), not a
         // bare fade — and rides the shared elevation scale instead of a flat
         // shadow, so dialogs read as raised rather than stock-shadcn flat.
-        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border bg-card p-6 shadow-elevation-4 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.98] sm:rounded-lg",
+        //
+        // `[&>*]:min-w-0` is load-bearing, not tidying. This is a grid, and a
+        // grid item defaults to `min-width: auto`, so a child too wide to fit
+        // widens the implicit column *past* `max-w-*` instead of shrinking —
+        // and because every other item stretches to that column, one overwide
+        // child drags all its siblings out over the dialog's own border. A
+        // footer of four `whitespace-nowrap` buttons did exactly that. Zeroing
+        // the minimum makes the offending child shrink instead.
+        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border bg-card p-6 shadow-elevation-4 duration-200 [&>*]:min-w-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.98] sm:rounded-lg",
         className,
       )}
       {...props}
@@ -63,12 +71,22 @@ const DialogHeader = ({
 );
 DialogHeader.displayName = "DialogHeader";
 
+/**
+ * `flex-wrap` + `gap-2` rather than `space-x-2`: buttons are
+ * `whitespace-nowrap`, so a row of them that outgrows the dialog used to push
+ * the grid column wide instead of wrapping (see `DialogContent`). The two go
+ * together — `space-x-*` only adds a left margin, so a wrapped second row
+ * would sit flush against the first.
+ *
+ * `gap-2` renders identically to `space-x-2` for a row that does not wrap, so
+ * this changes nothing for the footers that already fit.
+ */
 const DialogFooter = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("flex justify-end space-x-2", className)}
+    className={cn("flex flex-wrap justify-end gap-2", className)}
     {...props}
   />
 );
