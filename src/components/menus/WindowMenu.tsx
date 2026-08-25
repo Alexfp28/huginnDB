@@ -8,6 +8,7 @@ import { AppWindow, ChevronDown, LayoutGrid } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { api } from "@/lib/tauri";
+import { ShortcutHint } from "@/components/menus/ShortcutHint";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -38,12 +39,14 @@ export function WindowMenu() {
         >
           <AppWindow className="mr-2 h-3.5 w-3.5" />
           {t("menu.window.newWindow")}
+          <ShortcutHint action="newWindow" />
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => useSessionPanelLayout.getState().resetLayout()}
         >
           <LayoutGrid className="mr-2 h-3.5 w-3.5" />
           {t("menu.window.resetLayout")}
+          <ShortcutHint action="resetLayout" />
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

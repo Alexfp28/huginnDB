@@ -93,7 +93,12 @@ import {
 } from "@/lib/schema/warmDatabases";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { refreshTable } from "@/lib/grid/tableRefresh";
-import { ACTIONS, formatComboForDisplay, getBinding } from "@/lib/keybindings";
+import {
+  ACTIONS,
+  formatComboForDisplay,
+  getBinding,
+  type ActionId,
+} from "@/lib/keybindings";
 import { api } from "@/lib/tauri";
 import { SETTINGS_INDEX } from "@/lib/commandPalette/settingsRegistry";
 import type { PaletteCommand } from "@/lib/commandPalette/types";
@@ -182,8 +187,12 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       updateNotifications,
       updateConnections,
     };
-    const combo = (id: Parameters<typeof getBinding>[1]) =>
-      formatComboForDisplay(getBinding(prefs.keybindings, id));
+    /** The action's current primary binding, for the row's badge. `undefined`
+     *  when it ships or was left unbound, so no empty chip renders. */
+    const combo = (id: ActionId) => {
+      const binding = getBinding(prefs.keybindings, id);
+      return binding ? formatComboForDisplay(binding) : undefined;
+    };
     const activeTab = tabs.find((x) => x.id === activeTabId) ?? null;
     /** Where a new query tab should land: the active connection, or nothing. */
     const queryTarget = selected
@@ -195,6 +204,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       list.push({
         id: "action:new-query",
         group: "actions",
+        combo: combo("newQuery"),
         label: t("commandPalette.newQuery"),
         detail: resolveConnectionLabel(profiles, queryTarget),
         keywords: "sql editor new query nueva consulta",
@@ -208,6 +218,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       {
         id: "action:new-connection",
         group: "actions",
+        combo: combo("newConnection"),
         label: t("menu.file.newConnection"),
         keywords: "connection profile server nueva conexión perfil servidor",
         icon: <Plus className="h-4 w-4" />,
@@ -216,6 +227,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       {
         id: "action:manage-connections",
         group: "actions",
+        combo: combo("manageConnections"),
         label: t("menu.file.manageConnections"),
         keywords: "connections manager edit gestionar conexiones editar",
         icon: <Settings className="h-4 w-4" />,
@@ -224,6 +236,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       {
         id: "action:import-profiles",
         group: "actions",
+        combo: combo("importProfiles"),
         label: t("menu.file.importProfiles"),
         keywords: "import profiles importar perfiles",
         icon: <FolderOpen className="h-4 w-4" />,
@@ -232,6 +245,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       {
         id: "action:export-profiles",
         group: "actions",
+        combo: combo("exportProfiles"),
         label: t("menu.file.exportProfiles"),
         keywords: "export profiles exportar perfiles",
         icon: <FolderOpen className="h-4 w-4" />,
@@ -240,6 +254,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       {
         id: "action:manage-json-schemas",
         group: "actions",
+        combo: combo("manageJsonSchemas"),
         label: t("jsonSchemas.title"),
         detail: t("settings.sections.jsonSchemas.desc"),
         keywords:
@@ -250,6 +265,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       {
         id: "action:export-json-schemas",
         group: "actions",
+        combo: combo("exportJsonSchemas"),
         label: t("menu.file.exportJsonSchemas"),
         keywords: "export json schemas exportar esquemas json",
         icon: <FileJson className="h-4 w-4" />,
@@ -258,6 +274,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       {
         id: "action:import-json-schemas",
         group: "actions",
+        combo: combo("importJsonSchemas"),
         label: t("menu.file.importJsonSchemas"),
         keywords: "import json schemas importar esquemas json",
         icon: <FileJson className="h-4 w-4" />,
@@ -296,6 +313,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         {
           id: "action:close-tab",
           group: "actions",
+          combo: combo("closeTab"),
           label: t("commandPalette.closeTab"),
           detail: activeTab.title,
           keywords: "close tab cerrar pestaña",
@@ -305,6 +323,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         {
           id: "action:toggle-pin-tab",
           group: "actions",
+          combo: combo("togglePinTab"),
           label: activeTab.pinned
             ? t("commandPalette.unpinTab")
             : t("commandPalette.pinTab"),
@@ -324,6 +343,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       list.push({
         id: "action:close-all-tabs",
         group: "actions",
+        combo: combo("closeAllTabs"),
         label: t("commandPalette.closeAllTabs"),
         keywords: "close all tabs cerrar todas pestañas",
         icon: <X className="h-4 w-4" />,
@@ -334,6 +354,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       list.push({
         id: "action:disconnect-all",
         group: "actions",
+        combo: combo("disconnectAll"),
         label: t("menu.file.disconnectAll"),
         keywords: "disconnect all close pools desconectar todo",
         icon: <Unplug className="h-4 w-4" />,
@@ -349,6 +370,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       {
         id: "action:new-window",
         group: "actions",
+        combo: combo("newWindow"),
         label: t("menu.window.newWindow"),
         keywords: "window new ventana nueva",
         icon: <AppWindow className="h-4 w-4" />,
@@ -359,6 +381,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       {
         id: "action:reset-layout",
         group: "actions",
+        combo: combo("resetLayout"),
         label: t("menu.window.resetLayout"),
         keywords: "reset layout panels restablecer disposición paneles",
         icon: <RotateCcw className="h-4 w-4" />,
@@ -369,18 +392,20 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     // ── Panels ───────────────────────────────────────────────────────────────
     const PANEL_TOGGLES: {
       id: string;
+      actionId: ActionId;
       i18nKey: string;
       shown: boolean;
       toggle: () => void;
     }[] = [
-      { id: "schema", i18nKey: "panels.schema", shown: schemaOpen, toggle: useSessionPanelLayout.getState().toggleSchema },
-      { id: "saved", i18nKey: "panels.saved", shown: savedOpen, toggle: useSessionPanelLayout.getState().toggleSaved },
-      { id: "console", i18nKey: "panels.console", shown: consoleOpen, toggle: useSessionPanelLayout.getState().toggleConsole },
+      { id: "schema", actionId: "togglePanelSchema", i18nKey: "panels.schema", shown: schemaOpen, toggle: useSessionPanelLayout.getState().toggleSchema },
+      { id: "saved", actionId: "togglePanelSaved", i18nKey: "panels.saved", shown: savedOpen, toggle: useSessionPanelLayout.getState().toggleSaved },
+      { id: "console", actionId: "togglePanelConsole", i18nKey: "panels.console", shown: consoleOpen, toggle: useSessionPanelLayout.getState().toggleConsole },
     ];
     for (const panel of PANEL_TOGGLES) {
       list.push({
         id: `panel:${panel.id}`,
         group: "panels",
+        combo: combo(panel.actionId),
         label: t("commandPalette.togglePanel", { name: t(panel.i18nKey) }),
         keywords: `panel view toggle panel vista ${panel.id}`,
         icon: <PanelsTopLeft className="h-4 w-4" />,

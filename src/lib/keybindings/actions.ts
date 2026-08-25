@@ -34,14 +34,37 @@ export const CATEGORY_ORDER: Category[] = [
 ];
 
 export type ActionId =
+  // general
   | "openSettings"
   | "toggleCommandPalette"
   | "openCommandActions"
+  | "newConnection"
+  | "manageConnections"
+  | "importProfiles"
+  | "exportProfiles"
+  | "manageJsonSchemas"
+  | "importJsonSchemas"
+  | "exportJsonSchemas"
+  // tabs
   | "toggleTabSwitcher"
-  | "refreshData"
-  | "refreshSchema"
+  | "newQuery"
+  | "closeTab"
+  | "closeAllTabs"
+  | "togglePinTab"
+  // query
   | "runQuery"
-  | "expandSelectedCell";
+  // grid
+  | "refreshData"
+  | "expandSelectedCell"
+  // schema
+  | "refreshSchema"
+  | "disconnectAll"
+  // panels
+  | "togglePanelSchema"
+  | "togglePanelSaved"
+  | "togglePanelConsole"
+  | "newWindow"
+  | "resetLayout";
 
 export interface ActionSpec {
   id: ActionId;
@@ -123,6 +146,137 @@ export const ACTIONS: ActionSpec[] = [
     scope: "grid",
     defaults: ["Space"],
     labelKey: "settings.shortcuts.expandSelectedCell",
+  },
+
+  // ── Actions the command palette already knew how to run ──────────────────
+  //
+  // These reuse the palette's and the menus' existing labels rather than
+  // minting a second wording for the same command: one catalogue means one
+  // name, and a shortcut called something different from the menu item it
+  // fires is its own small bug.
+  //
+  // Most ship **unbound on purpose**. Being in the catalogue already makes an
+  // action searchable and bindable; spending a default key on it would take
+  // that key away from whatever the user actually reaches for. Only the four
+  // with an unambiguous convention get one.
+  {
+    id: "newConnection",
+    category: "general",
+    scope: "global",
+    defaults: [],
+    labelKey: "menu.file.newConnection",
+  },
+  {
+    id: "manageConnections",
+    category: "general",
+    scope: "global",
+    defaults: [],
+    labelKey: "menu.file.manageConnections",
+  },
+  {
+    id: "importProfiles",
+    category: "general",
+    scope: "global",
+    defaults: [],
+    labelKey: "menu.file.importProfiles",
+  },
+  {
+    id: "exportProfiles",
+    category: "general",
+    scope: "global",
+    defaults: [],
+    labelKey: "menu.file.exportProfiles",
+  },
+  {
+    id: "manageJsonSchemas",
+    category: "general",
+    scope: "global",
+    defaults: [],
+    labelKey: "jsonSchemas.title",
+  },
+  {
+    id: "importJsonSchemas",
+    category: "general",
+    scope: "global",
+    defaults: [],
+    labelKey: "menu.file.importJsonSchemas",
+  },
+  {
+    id: "exportJsonSchemas",
+    category: "general",
+    scope: "global",
+    defaults: [],
+    labelKey: "menu.file.exportJsonSchemas",
+  },
+  {
+    id: "newQuery",
+    category: "tabs",
+    scope: "global",
+    defaults: ["Mod+T"],
+    labelKey: "commandPalette.newQuery",
+  },
+  {
+    id: "closeTab",
+    category: "tabs",
+    scope: "global",
+    defaults: ["Mod+W"],
+    labelKey: "commandPalette.closeTab",
+  },
+  {
+    id: "closeAllTabs",
+    category: "tabs",
+    scope: "global",
+    defaults: [],
+    labelKey: "commandPalette.closeAllTabs",
+  },
+  {
+    id: "togglePinTab",
+    category: "tabs",
+    scope: "global",
+    defaults: [],
+    labelKey: "commandPalette.pinTab",
+  },
+  {
+    id: "disconnectAll",
+    category: "schema",
+    scope: "global",
+    defaults: [],
+    labelKey: "menu.file.disconnectAll",
+  },
+  {
+    id: "togglePanelSchema",
+    category: "panels",
+    scope: "global",
+    defaults: ["Mod+B"],
+    labelKey: "settings.shortcuts.togglePanelSchema",
+  },
+  {
+    id: "togglePanelSaved",
+    category: "panels",
+    scope: "global",
+    defaults: [],
+    labelKey: "settings.shortcuts.togglePanelSaved",
+  },
+  {
+    id: "togglePanelConsole",
+    category: "panels",
+    scope: "global",
+    defaults: ["Mod+`"],
+    labelKey: "settings.shortcuts.togglePanelConsole",
+  },
+  {
+    id: "newWindow",
+    category: "panels",
+    scope: "global",
+    defaults: ["Mod+Shift+N"],
+    labelKey: "menu.window.newWindow",
+  },
+  {
+    id: "resetLayout",
+    category: "panels",
+    scope: "global",
+    defaults: [],
+    labelKey: "menu.window.resetLayout",
   },
 ];
 

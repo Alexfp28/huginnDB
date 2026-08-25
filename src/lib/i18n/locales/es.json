@@ -1227,7 +1227,10 @@
       "resetAll": "Restablecer todos los atajos",
       "conflict": "Ya usado por {{action}}. Elige otra tecla.",
       "unassigned": "Sin asignar",
-      "fixedHint": "Reservado por la app: no se puede reasignar."
+      "fixedHint": "Reservado por la app: no se puede reasignar.",
+      "togglePanelSchema": "Mostrar u ocultar el panel Esquema",
+      "togglePanelSaved": "Mostrar u ocultar el panel Guardadas",
+      "togglePanelConsole": "Mostrar u ocultar el panel Consola"
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",

@@ -41,6 +41,8 @@ export {
 
 export { useKeybindingDispatcher } from "./useDispatcher";
 
+export { useShortcutLabel } from "./useShortcutLabel";
+
 export {
   type Binding,
   type Conflict,

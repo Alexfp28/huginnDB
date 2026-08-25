@@ -138,6 +138,25 @@ const DropdownMenuSeparator = React.forwardRef<
 DropdownMenuSeparator.displayName =
   DropdownMenuPrimitive.Separator.displayName;
 
+/**
+ * Right-aligned shortcut hint inside a menu item. Mirrors
+ * `ContextMenuShortcut`; the combo must already have been through
+ * `formatForDisplay`, so the menu never renders the stored `Mod+` spelling.
+ */
+const DropdownMenuShortcut = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement>) => (
+  <span
+    className={cn(
+      "ml-auto pl-4 font-mono text-[10px] tracking-wide text-muted-foreground",
+      className,
+    )}
+    {...props}
+  />
+);
+DropdownMenuShortcut.displayName = "DropdownMenuShortcut";
+
 export {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -146,6 +165,7 @@ export {
   DropdownMenuGroup,
   DropdownMenuCheckboxItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,

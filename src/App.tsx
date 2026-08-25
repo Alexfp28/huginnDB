@@ -38,6 +38,12 @@ import {
   usePreferences,
 } from "@/stores/preferences/preferences";
 import { useKeybindingDispatcher } from "@/lib/keybindings";
+import { api } from "@/lib/tauri";
+import { notify } from "@/lib/notify";
+import { openQueryTab } from "@/lib/tabs/openQueryTab";
+import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
+import { useJsonSchemaTransfer } from "@/stores/dialogs/jsonSchemaTransfer";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useTranslation } from "react-i18next";
 import { setLanguage } from "@/lib/i18n";
@@ -340,6 +346,48 @@ export default function App() {
       refreshSchema: () => {
         if (selected) void useSchema.getState().refreshTree(selected);
       },
+
+      // Everything below was already a command the palette could run; giving
+      // it a catalogue id is what makes it bindable too. Each reads its store
+      // imperatively, so none of them widens this memo's dependency list.
+      newConnection: () => useConnectionDialog.getState().openNew(),
+      manageConnections: () => useConnectionDialog.getState().openManage(selected),
+      importProfiles: () => useConnectionDialog.getState().setImportOpen(true),
+      exportProfiles: () => useConnectionDialog.getState().setExportOpen(true),
+      manageJsonSchemas: () => openSettings("jsonSchemas"),
+      importJsonSchemas: () => useJsonSchemaTransfer.getState().setImportOpen(true),
+      exportJsonSchemas: () => useJsonSchemaTransfer.getState().openExport(),
+
+      newQuery: () => {
+        if (!selected) return;
+        const target = useTabs.getState().queryTargetFor(selected);
+        if (target) openQueryTab(target);
+      },
+      closeTab: () => {
+        const tabs = useTabs.getState();
+        if (tabs.activeId) tabs.close(tabs.activeId);
+      },
+      closeAllTabs: () => useTabs.getState().closeAll(),
+      togglePinTab: () => {
+        const tabs = useTabs.getState();
+        const active = tabs.tabs.find((t) => t.id === tabs.activeId);
+        if (active) tabs.setPinned(active.id, !active.pinned);
+      },
+
+      disconnectAll: () => {
+        const connections = useConnections.getState();
+        for (const id of Array.from(connections.active)) {
+          void connections.disconnect(id).catch((e) => notify.error(String(e)));
+        }
+      },
+
+      togglePanelSchema: () => useSessionPanelLayout.getState().toggleSchema(),
+      togglePanelSaved: () => useSessionPanelLayout.getState().toggleSaved(),
+      togglePanelConsole: () => useSessionPanelLayout.getState().toggleConsole(),
+      newWindow: () => {
+        void api.openNewWindow().catch((e) => notify.error(String(e)));
+      },
+      resetLayout: () => useSessionPanelLayout.getState().resetLayout(),
     }),
     [
       openSettings,
