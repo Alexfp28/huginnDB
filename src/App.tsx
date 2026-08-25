@@ -65,11 +65,13 @@ import { startConnectionHealthBridge } from "@/lib/bridges/connection-health-bri
 import { startConnectionSyncBridge } from "@/lib/bridges/connection-sync-bridge";
 import { startPrefsSyncBridge } from "@/lib/bridges/prefs-sync-bridge";
 import { startJsonSchemaBridge } from "@/lib/bridges/json-schema-bridge";
+import { startOriginsBridge } from "@/lib/bridges/origins-bridge";
 import { useJsonSchemas } from "@/stores/jsonSchemas";
 import { setModePrefs } from "@/lib/monaco/monacoJson";
 import { flushAllTabState, persistLaunchState } from "@/stores/session/persistedTabs";
 import { useEnvironments } from "@/stores/session/environments";
 import { startPeriodicOriginSync } from "@/stores/sync/originSync";
+import { useOrigins } from "@/stores/sync/origins";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isMainWindow } from "@/lib/window";
 import { CliConnectChoiceDialog } from "@/components/connection/dialogs/CliConnectChoiceDialog";
@@ -286,6 +288,15 @@ export default function App() {
     void useJsonSchemas.getState().load();
   }, []);
   useBridge(startJsonSchemaBridge);
+
+  // The shared-origin registry: same shape as the JSON Schema library above and
+  // for the same reason — one global list, read by every window, so no
+  // main-window guard and an unscoped listener. Read-only, unlike the sync
+  // itself (`startPeriodicOriginSync`, which is main-window-only).
+  useEffect(() => {
+    void useOrigins.getState().load();
+  }, []);
+  useBridge(startOriginsBridge);
 
   // Update notifications now render as a custom `UpdateBanner` at the
   // top of the window (see the JSX below). The previous implementation

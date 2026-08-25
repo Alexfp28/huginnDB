@@ -224,7 +224,8 @@
     "emptyList": "No saved connections yet.",
     "searchPlaceholder": "Search connections…",
     "noMatches": "No connections match your search.",
-    "fromOrigin": "This connection comes from a shared origin, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours."
+    "fromOrigin": "This connection comes from a shared origin, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours.",
+    "fromOriginNamed": "This connection comes from the shared origin “{{origin}}”, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours."
   },
   "adhocDriver": {
     "title": "Which database driver?",

@@ -9,11 +9,12 @@
  * neighbours, is the same regardless of which environment is active.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, FolderSync, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useOriginSync } from "@/stores/sync/originSync";
+import { useOrigins } from "@/stores/sync/origins";
 import { useConnections } from "@/stores/session/connections";
 import { useEnvironments } from "@/stores/session/environments";
 import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
@@ -46,7 +47,12 @@ export function OriginsSection() {
     [vanishedEnvironments],
   );
 
-  const [origins, setOrigins] = useState<Origin[]>([]);
+  // The registry lives in `stores/sync/origins.ts`, not in local state: the
+  // connection manager and the MCP panel need the same id→name map, and the
+  // `origins-changed` event keeps every window's copy fresh — which also means
+  // "Sync now" below no longer has to remember to re-read `lastSyncedAt`.
+  const origins = useOrigins((s) => s.origins);
+  const loadOrigins = useOrigins((s) => s.load);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ name: "", path: "", passphrase: "" });
   const [busy, setBusy] = useState(false);
@@ -74,19 +80,6 @@ export function OriginsSection() {
     [environments, pendingRemove],
   );
 
-  async function reload() {
-    try {
-      setOrigins(await api.listOrigins());
-    } catch {
-      // A failure here means the environment couldn't be read; the sync
-      // surfaces that far more visibly than an empty list would.
-    }
-  }
-
-  useEffect(() => {
-    void reload();
-  }, []);
-
   async function performRemove() {
     if (!pendingRemove) return;
     setRemoving(true);
@@ -97,7 +90,10 @@ export function OriginsSection() {
       // ever report these as orphaned.
       noticeOriginRemoved(pendingRemove);
       await api.removeOrigin(pendingRemove.id);
-      await reload();
+      // The backend's `origins-changed` event refreshes the store too, but
+      // awaiting it here means the row is gone before the dialog closes rather
+      // than a frame later.
+      await loadOrigins();
       setPendingRemove(null);
     } finally {
       setRemoving(false);
@@ -135,7 +131,7 @@ export function OriginsSection() {
       });
       setDraft({ name: "", path: "", passphrase: "" });
       setAdding(false);
-      await reload();
+      await loadOrigins();
       // Pull immediately: registering an origin and seeing nothing happen reads
       // as broken, and this is the one moment the user is definitely watching.
       await syncAll();

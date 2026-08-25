@@ -51,7 +51,7 @@ use crate::transfer::{
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 /// Keychain account for an origin's passphrase.
 ///
@@ -62,6 +62,23 @@ use tauri::State;
 fn passphrase_account(origin_id: &str) -> String {
     format!("origin::{origin_id}")
 }
+
+/// Emitted whenever the origin registry changes: one was added, renamed,
+/// repointed, removed, or synced (which stamps `last_synced_at`).
+///
+/// Broadcast with an unscoped `emit`, and the frontend listens **without a
+/// `target`**, which looks like gotcha #25's cross-window leak and is its
+/// deliberate opposite — same reasoning as
+/// [`crate::commands::json_schemas::JSON_SCHEMAS_CHANGED_EVENT`]. The registry
+/// is one global list in `tab_state.json`; a rename in the Settings window must
+/// reach the connection manager in the main window, and every window's cached
+/// id-to-name map goes stale at the same instant. Scoping it would leave one
+/// window rendering a name that no longer exists.
+///
+/// The payload is `()`: listeners re-run `list_origins`, which is a clone of a
+/// short `Vec`, and shipping the list would put `landed_secrets` fingerprints on
+/// an event bus for no reason.
+pub const ORIGINS_CHANGED_EVENT: &str = "huginndb://origins-changed";
 
 /// Every registered origin, global across all environments, in insertion
 /// order.
@@ -82,6 +99,7 @@ pub fn list_origins(state: State<'_, AppState>) -> AppResult<Vec<Origin>> {
 /// `None` for a plaintext export. It is never written to `tab_state.json`.
 #[tauri::command]
 pub fn add_origin(
+    app: AppHandle,
     state: State<'_, AppState>,
     name: String,
     path: String,
@@ -110,6 +128,7 @@ pub fn add_origin(
         ts.origins.push(origin);
         Ok(())
     })?;
+    let _ = app.emit(ORIGINS_CHANGED_EVENT, ());
     Ok(created)
 }
 
@@ -122,6 +141,7 @@ pub fn add_origin(
 /// origin that used to be encrypted becomes a plaintext one.
 #[tauri::command]
 pub fn update_origin(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     name: String,
@@ -137,7 +157,7 @@ pub fn update_origin(
         None => {}
     }
 
-    tab_state::mutate(&state.tab_state, |ts| {
+    let updated = tab_state::mutate(&state.tab_state, |ts| {
         let origin = ts
             .origins
             .iter_mut()
@@ -146,7 +166,9 @@ pub fn update_origin(
         origin.name = name;
         origin.path = path;
         Ok(origin.clone())
-    })
+    })?;
+    let _ = app.emit(ORIGINS_CHANGED_EVENT, ());
+    Ok(updated)
 }
 
 /// Unregister an origin and forget its passphrase.
@@ -159,7 +181,7 @@ pub fn update_origin(
 /// `origin_id` is harmless — no sync resolves against it any more, and the
 /// frontend can offer to release those profiles into ordinary local ones.
 #[tauri::command]
-pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
+pub fn remove_origin(app: AppHandle, state: State<'_, AppState>, id: String) -> AppResult<()> {
     tab_state::mutate(&state.tab_state, |ts| {
         let before = ts.origins.len();
         ts.origins.retain(|o| o.id != id);
@@ -171,6 +193,7 @@ pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
     // Best-effort: a missing entry is the desired end state, and failing the
     // whole command over it would leave the origin registered.
     let _ = keychain::delete_password(&passphrase_account(&id));
+    let _ = app.emit(ORIGINS_CHANGED_EVENT, ());
     Ok(())
 }
 
@@ -206,15 +229,27 @@ pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
 /// of that work; running off the main thread is what stops whatever remains
 /// from being felt as a freeze.
 #[tauri::command]
-pub async fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSyncReport> {
+pub async fn sync_origin(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<OriginSyncReport> {
     let connections = state.connections.clone();
     let profiles = state.profiles.clone();
     let tab_state_lock = state.tab_state.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let report = tauri::async_runtime::spawn_blocking(move || {
         sync_origin_inner(&connections, &profiles, &tab_state_lock, &id)
     })
     .await
-    .map_err(|e| AppError::Transfer(format!("origin sync task failed: {e}")))?
+    .map_err(|e| AppError::Transfer(format!("origin sync task failed: {e}")))?;
+    // Only on success: a failed pull writes nothing, `last_synced_at` included,
+    // so there is no registry change to announce (outcome 1 in the doc above).
+    // The emit stays out of `sync_origin_inner` so that body needs no
+    // `AppHandle` and stays callable off the main thread.
+    if report.is_ok() {
+        let _ = app.emit(ORIGINS_CHANGED_EVENT, ());
+    }
+    report
 }
 
 /// The body of [`sync_origin`], off the main thread. Takes the three locks it

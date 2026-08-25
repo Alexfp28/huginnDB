@@ -67,6 +67,7 @@ import {
 import { api } from "@/lib/tauri";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { isFromOrigin } from "@/lib/connection/origin";
+import { useOriginName } from "@/stores/sync/origins";
 import type {
   ConnectionProfile,
   Driver,
@@ -227,9 +228,12 @@ export function ConnectionDialog({
    * the stored profile rather than from form state: the form is a draft, and a
    * draft can't be trusted to still carry `origin_id`.
    */
-  const fromOrigin = isFromOrigin(
-    editingId ? profiles.find((p) => p.id === editingId) : null,
-  );
+  const stored = editingId ? profiles.find((p) => p.id === editingId) : null;
+  const fromOrigin = isFromOrigin(stored);
+  /** Name of the publishing origin, for the banner. `null` when the origin has
+   *  been unregistered — the profile stays read-only (the tag is what gates
+   *  that), so the banner falls back to the unnamed copy rather than lying. */
+  const originName = useOriginName(stored?.origin_id);
 
   function buildProfile(): ConnectionProfile {
     // Start from the stored profile so fields this form doesn't edit survive a
@@ -238,10 +242,9 @@ export function ConnectionDialog({
     // `visible_databases` every time a connection was edited. Spreading first
     // and overriding below fixes that for the existing fields as well as for
     // `max_connections`.
-    const stored = editingId ? profiles.find((p) => p.id === editingId) : undefined;
     const parsedMax = Number.parseInt(maxConnections, 10);
     return {
-      ...stored,
+      ...(stored ?? undefined),
       id: editingId ?? draftId,
       name,
       group: group.trim() || null,
@@ -571,7 +574,11 @@ export function ConnectionDialog({
                     editing is what's blocked, not just the saving. */}
                 {fromOrigin && (
                   <div className="mb-2 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-[11px] text-muted-foreground">
-                    {t("connectionDialog.fromOrigin")}
+                    {originName
+                      ? t("connectionDialog.fromOriginNamed", {
+                          origin: originName,
+                        })
+                      : t("connectionDialog.fromOrigin")}
                   </div>
                 )}
                 <TabsContent value="general" className="pt-3">

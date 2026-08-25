@@ -224,7 +224,8 @@
     "emptyList": "Aún no hay conexiones guardadas.",
     "searchPlaceholder": "Buscar conexiones…",
     "noMatches": "Ninguna conexión coincide con la búsqueda.",
-    "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya."
+    "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
+    "fromOriginNamed": "Esta conexión viene del origen compartido «{{origin}}», así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya."
   },
   "adhocDriver": {
     "title": "¿Qué driver de base de datos?",
