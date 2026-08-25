@@ -66,6 +66,7 @@ import {
 } from "@/lib/connection/useConnectionForm";
 import { api } from "@/lib/tauri";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
+import { isFromOrigin } from "@/lib/connection/origin";
 import type {
   ConnectionProfile,
   Driver,
@@ -226,8 +227,8 @@ export function ConnectionDialog({
    * the stored profile rather than from form state: the form is a draft, and a
    * draft can't be trusted to still carry `origin_id`.
    */
-  const isFromOrigin = !!(
-    editingId && profiles.find((p) => p.id === editingId)?.origin_id
+  const fromOrigin = isFromOrigin(
+    editingId ? profiles.find((p) => p.id === editingId) : null,
   );
 
   function buildProfile(): ConnectionProfile {
@@ -293,7 +294,7 @@ export function ConnectionDialog({
     // not only by disabling the form, because Enter-to-save and any future call
     // site would otherwise slip past the UI guard (`origin_id`'s contract in
     // `state.rs` says read-only; until now only the docs said so).
-    if (isFromOrigin) return;
+    if (fromOrigin) return;
     setSaving(true);
     try {
       const saved = await save(
@@ -347,7 +348,7 @@ export function ConnectionDialog({
     // re-imports it — and destroys its keychain entry on the way. Retiring one
     // for good is offered where it makes sense: on the notice raised when the
     // origin itself stops publishing it (`useOriginSync.retire`).
-    if (isFromOrigin) return;
+    if (fromOrigin) return;
     const target = profiles.find((p) => p.id === editingId);
     if (
       !confirmIrreversible(
@@ -568,7 +569,7 @@ export function ConnectionDialog({
                     typing into a field and finding Save greyed out. Placed at the
                     top of the first tab rather than beside the button, since the
                     editing is what's blocked, not just the saving. */}
-                {isFromOrigin && (
+                {fromOrigin && (
                   <div className="mb-2 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-[11px] text-muted-foreground">
                     {t("connectionDialog.fromOrigin")}
                   </div>
@@ -1113,7 +1114,7 @@ export function ConnectionDialog({
                     {t("connectionDialog.duplicate")}
                   </Button>
                 )}
-                {editingId && !isFromOrigin && (
+                {editingId && !fromOrigin && (
                   <Button
                     variant="ghost"
                     className="text-destructive hover:text-destructive"
@@ -1137,7 +1138,7 @@ export function ConnectionDialog({
                   </Button>
                   <Button
                     onClick={onSave}
-                    disabled={busy || !name || isFromOrigin}
+                    disabled={busy || !name || fromOrigin}
                   >
                     {saving
                       ? t("connectionDialog.saving")

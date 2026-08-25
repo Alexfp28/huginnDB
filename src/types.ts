@@ -1097,6 +1097,18 @@ export interface Origin {
   path: string;
   /** RFC 3339, or `null` if it has never synced. Display only. */
   lastSyncedAt: string | null;
+  /**
+   * Per-profile fingerprints of the encrypted secrets this machine has already
+   * decrypted and landed in its keychain, so an unchanged origin file doesn't
+   * re-derive a PBKDF2 key on every launch (`already_landed` in
+   * `commands/origins.rs`).
+   *
+   * Never read this to render anything. It is declared because `list_origins`
+   * serialises it and the type would otherwise lie about the payload: the day a
+   * command *saves* a whole `Origin` back, serde would drop the field and wipe
+   * the cache (gotcha #14, inverted).
+   */
+  landedSecrets?: Record<string, string>;
 }
 
 /**
