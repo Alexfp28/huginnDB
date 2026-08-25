@@ -535,7 +535,10 @@ mod tests {
             }
         }"#;
         let parsed: Preferences = serde_json::from_str(sent).unwrap();
-        assert_eq!(parsed.keybindings["runQuery"], vec!["Ctrl+Enter".to_string()]);
+        assert_eq!(
+            parsed.keybindings["runQuery"],
+            vec!["Ctrl+Enter".to_string()]
+        );
         assert_eq!(
             parsed.keybindings["expandSelectedCell"],
             vec!["Space".to_string()]
