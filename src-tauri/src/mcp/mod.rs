@@ -464,6 +464,79 @@ mod args {
         /// dropped.
         pub view: String,
     }
+
+    /// Arguments for the `create_index` write tool (MongoDB only).
+    ///
+    /// **Flat on purpose.** The obvious shape is one nested `spec` object
+    /// mirroring `NewMongoIndexSpec`, and `schemars` renders a nested struct as
+    /// a `$ref` into `$defs` — which is exactly what made some clients drop
+    /// *every* tool from `tools/list` in #83. Every field here is a string,
+    /// bool, number or null, and the struct is assembled into the backend DTO
+    /// by the tool body.
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct CreateIndex {
+        pub connection_id: String,
+        /// MongoDB database to target on a multi-database connection. See
+        /// [`Table::schema`].
+        #[serde(default)]
+        pub schema: Option<String>,
+        /// The collection to index.
+        pub collection: String,
+        /// The key document, as source text: `{createdAt: -1}`,
+        /// `{location: "2dsphere"}`, `{title: "text", body: "text"}`. Relaxed
+        /// JSON is accepted (unquoted keys, single quotes, trailing commas), and
+        /// key **order matters** — a compound index is only usable in the order
+        /// it was declared.
+        pub keys: String,
+        /// Blank falls back to the `field_1_other_-1` convention MongoDB's own
+        /// helpers use.
+        #[serde(default)]
+        pub name: Option<String>,
+        #[serde(default)]
+        pub unique: bool,
+        #[serde(default)]
+        pub sparse: bool,
+        /// Create it hidden — invisible to the query planner but fully
+        /// maintained. The reversible way to rehearse a drop.
+        #[serde(default)]
+        pub hidden: bool,
+        /// TTL in seconds. Requires a single-field index on a date field.
+        #[serde(default)]
+        pub expire_after_seconds: Option<i64>,
+        /// Partial-index predicate, as source text. Omit for a full index —
+        /// `{}` is *not* the same thing, it is a predicate that matches
+        /// everything.
+        #[serde(default)]
+        pub partial_filter_expression: Option<String>,
+        /// Collation document, as source text.
+        #[serde(default)]
+        pub collation: Option<String>,
+        /// Per-field weights for a text index, as source text.
+        #[serde(default)]
+        pub weights: Option<String>,
+        /// Default language for a text index.
+        #[serde(default)]
+        pub default_language: Option<String>,
+        /// A source-text document merged into the spec last and allowed to win —
+        /// the escape hatch for options with no field above
+        /// (`wildcardProjection`, `storageEngine`, …).
+        #[serde(default)]
+        pub extra_options: Option<String>,
+    }
+
+    /// Arguments for the `drop_index` write tool (MongoDB only).
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct DropIndex {
+        pub connection_id: String,
+        /// MongoDB database to target on a multi-database connection. See
+        /// [`Table::schema`].
+        #[serde(default)]
+        pub schema: Option<String>,
+        pub collection: String,
+        /// The index name, exactly as `list_indexes` reports it. `_id_` is
+        /// refused — MongoDB maintains it for every collection.
+        pub name: String,
+    }
 }
 
 /// The MCP server. `Clone` (cheap — everything is behind `Arc`) as required by
@@ -510,7 +583,9 @@ fn bridged_connection_id(request: &BridgeRequest) -> Option<String> {
         // Not `PreviewViewChange`: a dry run is not audited, so it never
         // reaches here.
         | BridgeRequest::ApplyViewChange { policy_id, .. }
-        | BridgeRequest::DropView { policy_id, .. } => Some(policy_id.clone()),
+        | BridgeRequest::DropView { policy_id, .. }
+        | BridgeRequest::CreateMongoIndex { policy_id, .. }
+        | BridgeRequest::DropMongoIndex { policy_id, .. } => Some(policy_id.clone()),
         // Careful when adding a write variant: this arm makes forgetting one a
         // silent `conn=-` in `mcp-audit.log` rather than a compile error.
         _ => None,
@@ -1021,38 +1096,23 @@ impl Huginn {
             .resolve_mongo_target(&a.connection_id, a.database.as_deref())
             .await?;
 
-        // Classify the statement into its required tier. The classifier is
-        // driver-aware: plain-SQL keyword matching (`db::sql::classify`) never
-        // recognises mongosh syntax (`db.coll.find({...})` starts with none of
-        // select/with/show/explain/pragma), so MongoDB is classified via
-        // `MongoOp::is_read()` — the same classifier the desktop query editor
-        // relies on. Mongo has no DDL path through this parser (only
-        // collection-level read/write ops), so a Mongo write is always
-        // `DataWrite`.
-        let is_mongo = matches!(
-            self.state.connections.read().get(&target),
-            Some(crate::state::DbPool::Mongo(_))
-        );
-        let class = if is_mongo {
-            if crate::db::mongo::shell::parse(&a.sql)
-                .map_err(to_err)?
-                .op
-                .is_read()
-            {
-                StmtClass::Read
-            } else {
-                StmtClass::DataWrite
-            }
-        } else {
-            crate::db::sql::classify(&a.sql)
-        };
+        // Classify the statement into its required tier. `classify_statement`
+        // picks the grammar from the statement *text*, which is deliberate:
+        // this used to derive "is this Mongo?" from `self.state.connections`,
+        // and that map is empty whenever the app is serving the shared pool —
+        // so every bridged Mongo statement was classified by the SQL keyword
+        // heuristic instead. See `crate::db::classify` for the two bugs that
+        // caused.
+        let class = crate::db::classify::classify_statement(&a.sql);
 
-        // Refuse whole-table UPDATE/DELETE outright (SQL drivers), regardless
-        // of tier — a classic AI footgun; the user can add `WHERE 1=1` to opt in.
-        if !is_mongo && crate::db::sql::is_unfiltered_write(&a.sql) {
+        // Refuse a whole-relation UPDATE/DELETE outright, regardless of tier —
+        // a classic AI footgun. Both grammars are covered: the caller can opt in
+        // with `WHERE 1=1`, or `{_id: {$exists: true}}` on MongoDB.
+        if crate::db::classify::is_unfiltered_write(&a.sql) {
             return Err(ErrorData::invalid_params(
-                "run_query refused a whole-table UPDATE/DELETE (no WHERE clause). \
-                 Add a WHERE predicate — use `WHERE 1=1` if you really mean every row."
+                "run_query refused a whole-relation UPDATE/DELETE with no predicate. \
+                 Add one — `WHERE 1=1` on SQL, or `{_id: {$exists: true}}` on MongoDB, \
+                 if you really mean every row."
                     .to_string(),
                 None,
             ));
@@ -1391,6 +1451,97 @@ impl Huginn {
             .map_err(to_err)?;
         ok_json(&out)
     }
+
+    #[tool(
+        description = "Create an index on a MongoDB collection. MongoDB only — on \
+                       the SQL drivers an index is created with CREATE INDEX \
+                       through run_query, which is more expressive than any \
+                       portable form (USING gin, INCLUDE, a partial predicate). \
+                       Requires the connection's MCP write policy to be 'full': \
+                       an index is schema, the same tier run_query needs for \
+                       db.coll.createIndex(...). Read the existing indexes with \
+                       list_indexes first — its 'mongo' object reports each key's \
+                       direction and type, which a bare column list cannot."
+    )]
+    async fn create_index(
+        &self,
+        Parameters(a): Parameters<args::CreateIndex>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
+        // Policy against the real profile id, never the resolved target — see
+        // `run_query`. `Ddl`, because `db.coll.createIndex(…)` is `Ddl`: a
+        // lower tier here would grant through a tool what the statement path
+        // refuses.
+        self.require_class(&a.connection_id, StmtClass::Ddl)?;
+        let out = self
+            .call(
+                BridgeRequest::CreateMongoIndex {
+                    connection_id: target,
+                    policy_id: a.connection_id,
+                    collection: a.collection,
+                    // Assembled here rather than deserialised as a nested
+                    // object — see `args::CreateIndex`.
+                    spec: crate::db::mongo::indexes::NewMongoIndexSpec {
+                        keys: a.keys,
+                        name: a.name,
+                        unique: a.unique,
+                        sparse: a.sparse,
+                        hidden: a.hidden,
+                        expire_after_seconds: a.expire_after_seconds,
+                        partial_filter_expression: a.partial_filter_expression,
+                        collation: a.collation,
+                        weights: a.weights,
+                        default_language: a.default_language,
+                        extra_options: a.extra_options,
+                    },
+                },
+                true,
+            )
+            .await
+            .map_err(to_err)?;
+        ok_json(&out)
+    }
+
+    #[tool(
+        description = "Drop an index from a MongoDB collection. MongoDB only (on \
+                       SQL, use DROP INDEX through run_query). Requires the \
+                       connection's MCP write policy to be 'full'. The `_id_` \
+                       index is refused. There is no 'edit an index' tool \
+                       because MongoDB cannot alter one in place: replacing it \
+                       is drop_index then create_index, and doing it as two \
+                       calls keeps the window where the index is missing \
+                       visible to you."
+    )]
+    async fn drop_index(
+        &self,
+        Parameters(a): Parameters<args::DropIndex>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
+            .await?;
+        self.require_class(&a.connection_id, StmtClass::Ddl)?;
+        let out = self
+            .call(
+                BridgeRequest::DropMongoIndex {
+                    connection_id: target,
+                    policy_id: a.connection_id,
+                    collection: a.collection,
+                    name: a.name,
+                },
+                true,
+            )
+            .await
+            .map_err(to_err)?;
+        ok_json(&out)
+    }
 }
 
 /// Truncate a query result to at most `max` rows, flagging the trim in
@@ -1697,6 +1848,56 @@ mod tests {
         let full = huginn_with_policy("t-full", McpWritePolicy::Full, false);
         assert!(full.require_class("t-full", StmtClass::DataWrite).is_ok());
         assert!(full.require_class("t-full", StmtClass::Ddl).is_ok());
+    }
+
+    /// The sidecar-side half of the escalation guard, spelled out as the pair
+    /// of steps `run_query` actually performs: classify, then require.
+    ///
+    /// Before the grammar gained DDL this could not go wrong, because every
+    /// mongosh write was `DataWrite` and `data` was the right answer. It can now.
+    #[test]
+    fn mongo_ddl_through_run_query_needs_full() {
+        use crate::db::classify::classify_statement;
+
+        let data = huginn_with_policy("t-data", McpWritePolicy::Data, false);
+        let full = huginn_with_policy("t-full", McpWritePolicy::Full, false);
+
+        for sql in [
+            "db.users.createIndex({a: 1})",
+            "db.users.dropIndex(\"a_1\")",
+            "db.users.drop()",
+            "db.users.renameCollection(\"clients\")",
+        ] {
+            let class = classify_statement(sql);
+            assert_eq!(class, StmtClass::Ddl, "{sql}");
+            assert!(
+                data.require_class("t-data", class).is_err(),
+                "a `data` connection must not reach {sql}"
+            );
+            assert!(full.require_class("t-full", class).is_ok(), "{sql}");
+        }
+
+        // ...and the DML it must not drag with it.
+        let class = classify_statement("db.users.insertOne({a: 1})");
+        assert_eq!(class, StmtClass::DataWrite);
+        assert!(data.require_class("t-data", class).is_ok());
+    }
+
+    /// The availability half: a `read-only` MongoDB connection must be able to
+    /// read. It could not when the tier came from the SQL keyword heuristic,
+    /// which is what every bridged Mongo statement fell through to.
+    #[test]
+    fn a_read_only_mongo_connection_can_still_read() {
+        let ro = huginn_with_policy("t-ro", McpWritePolicy::ReadOnly, false);
+        for sql in [
+            "db.users.find({})",
+            "db.users.aggregate([{$match: {a: 1}}])",
+            "db.users.countDocuments({})",
+        ] {
+            let class = crate::db::classify::classify_statement(sql);
+            assert_eq!(class, StmtClass::Read, "{sql}");
+            assert!(ro.require_class("t-ro", class).is_ok(), "{sql}");
+        }
     }
 
     #[test]
@@ -2119,6 +2320,8 @@ mod tests {
             "delete_rows",
             "save_view",
             "drop_view",
+            "create_index",
+            "drop_index",
         ] {
             let tool = tools
                 .iter()

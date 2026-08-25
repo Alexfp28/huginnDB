@@ -119,7 +119,12 @@ pub struct MongoIndexInfo {
 }
 
 /// The index the editor wants to exist. Field-for-field what the dialog holds.
-#[derive(Debug, Clone, Deserialize)]
+///
+/// `Serialize` is here for the MCP bridge, which carries this struct inside
+/// `BridgeRequest::CreateMongoIndex` from the connector to whichever process
+/// owns the pool. It is not a display DTO — the read side is
+/// [`MongoIndexInfo`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewMongoIndexSpec {
     /// The `key` document as source text, e.g. `{ createdAt: -1, status: 1 }`.
@@ -191,6 +196,45 @@ fn optional_document(label: &str, source: Option<&String>) -> AppResult<Option<D
     }
 }
 
+/// Assemble the `createIndexes` entry for an already-parsed key document plus an
+/// already-parsed options document.
+///
+/// The shared core of the two ways an index reaches this module: the index
+/// manager's [`NewMongoIndexSpec`], whose fields arrive as source text and are
+/// parsed by [`NewMongoIndexSpec::to_document`] before delegating here, and the
+/// query editor's `db.coll.createIndex({…}, {…})`, whose arguments the mongosh
+/// parser has already turned into `Document`s.
+///
+/// It exists so the name-defaulting rule has one home. Raw `createIndexes`
+/// *requires* `name` (see [`default_index_name`]), so a second caller computing
+/// its own default is a second chance for a freshly-created index to be
+/// displayed under a name the server never gave it.
+///
+/// `options` is merged last and allowed to win over nothing — the two callers
+/// arrive with disjoint concerns, and the only key this function insists on is
+/// the one the server would reject the request without.
+pub(super) fn index_entry(
+    keys: Document,
+    name: Option<&str>,
+    options: Document,
+) -> AppResult<Document> {
+    if keys.is_empty() {
+        return Err(AppError::InvalidInput(
+            "an index needs at least one key".into(),
+        ));
+    }
+    let resolved = name
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| default_index_name(&keys));
+    let mut spec = doc! { "key": keys, "name": resolved };
+    for (k, v) in options {
+        spec.insert(k, v);
+    }
+    Ok(spec)
+}
+
 impl NewMongoIndexSpec {
     /// Build the entry that goes into `createIndexes`' `indexes` array.
     ///
@@ -207,21 +251,8 @@ impl NewMongoIndexSpec {
                 )))
             }
         };
-        if keys.is_empty() {
-            return Err(AppError::InvalidInput(
-                "an index needs at least one key".into(),
-            ));
-        }
 
-        let name = self
-            .name
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| default_index_name(&keys));
-
-        let mut spec = doc! { "key": keys, "name": name };
+        let mut spec = Document::new();
 
         if self.unique {
             spec.insert("unique", true);
@@ -268,7 +299,7 @@ impl NewMongoIndexSpec {
                 spec.insert(k, v);
             }
         }
-        Ok(spec)
+        index_entry(keys, self.name.as_deref(), spec)
     }
 }
 
@@ -487,8 +518,29 @@ pub async fn create_index(
     collection: &str,
     spec: &NewMongoIndexSpec,
 ) -> AppResult<()> {
+    create_index_entry(conn, collection, spec.to_document()?).await
+}
+
+/// `db.coll.createIndex(keys, options?)` from the query editor's mongosh
+/// grammar.
+///
+/// `options` is passed through [`index_entry`] with no name of its own, so a
+/// `name` the caller spelled out wins and anything else falls back to the
+/// convention MongoDB's own helpers use — which is what makes
+/// `createIndex({a: 1})` behave in the editor the way it does in `mongosh`,
+/// where the driver, not the server, supplies the default.
+pub async fn create_index_docs(
+    conn: &MongoConn,
+    collection: &str,
+    keys: Document,
+    options: Document,
+) -> AppResult<()> {
+    create_index_entry(conn, collection, index_entry(keys, None, options)?).await
+}
+
+/// Send one already-assembled `createIndexes` entry.
+async fn create_index_entry(conn: &MongoConn, collection: &str, index: Document) -> AppResult<()> {
     let collection = validate_collection(collection)?;
-    let index = spec.to_document()?;
     let db = resolve_db(conn)?;
     db.run_command(doc! {
         "createIndexes": collection,
@@ -686,5 +738,54 @@ mod tests {
     fn the_id_index_refuses_destructive_verbs() {
         assert!(reject_id_index(ID_INDEX, "dropped").is_err());
         assert!(reject_id_index("createdAt_-1", "dropped").is_ok());
+    }
+    /// The two ways an index reaches this module must agree on the name a blank
+    /// one defaults to — that is the whole reason `index_entry` exists.
+    #[test]
+    fn index_entry_matches_the_spec_path_on_naming() {
+        let spec = NewMongoIndexSpec {
+            keys: "{createdAt: -1, status: 1}".into(),
+            name: None,
+            unique: true,
+            sparse: false,
+            hidden: false,
+            expire_after_seconds: None,
+            partial_filter_expression: None,
+            collation: None,
+            weights: None,
+            default_language: None,
+            extra_options: None,
+        };
+        let from_spec = spec.to_document().unwrap();
+        let from_docs = index_entry(
+            doc! {"createdAt": -1, "status": 1},
+            None,
+            doc! {"unique": true},
+        )
+        .unwrap();
+        assert_eq!(from_spec, from_docs);
+        assert_eq!(
+            from_docs.get_str("name").unwrap(),
+            "createdAt_-1_status_1",
+            "raw createIndexes requires a name; both paths must derive the same one"
+        );
+    }
+
+    /// A `name` in the caller's options wins, which is what makes
+    /// `createIndex({a: 1}, {name: "x"})` behave like mongosh.
+    #[test]
+    fn index_entry_lets_an_explicit_name_win() {
+        let entry = index_entry(doc! {"a": 1}, None, doc! {"name": "custom"}).unwrap();
+        assert_eq!(entry.get_str("name").unwrap(), "custom");
+        let entry = index_entry(doc! {"a": 1}, Some("named"), Document::new()).unwrap();
+        assert_eq!(entry.get_str("name").unwrap(), "named");
+        // Blank is not a name.
+        let entry = index_entry(doc! {"a": 1}, Some("   "), Document::new()).unwrap();
+        assert_eq!(entry.get_str("name").unwrap(), "a_1");
+    }
+
+    #[test]
+    fn index_entry_refuses_an_empty_key_document() {
+        assert!(index_entry(Document::new(), None, Document::new()).is_err());
     }
 }

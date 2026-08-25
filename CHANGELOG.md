@@ -8,6 +8,55 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **MongoDB index and collection DDL, reachable from the query editor and over
+  MCP.** The report that started this was from a colleague's AI client, and it
+  was accurate: the connector had no way to create an index, drop one, drop a
+  collection or rename one — "neither through `run_query` nor as a separate
+  tool". `drop_view` refuses a collection by design (a MongoDB view and a
+  collection share one namespace, and a mistyped name must not delete
+  documents), so there was no way round it either.
+
+  **The gap was in the grammar, not in the connector.** The list of accepted
+  operations is `build_op` in `db/mongo/shell.rs` — the parser the *desktop
+  query editor* uses — so the editor could not create an index either. Widening
+  it fixed both surfaces at once: `db.coll.createIndex({createdAt: -1})`,
+  `dropIndex("name")`, `hideIndex`/`unhideIndex`, `drop()` and
+  `renameCollection("clients")` all parse and run now. Each one delegates to
+  the code that already owned its guards rather than issuing its own
+  run-command, so the `_id_` refusal, the `createIndexes` name defaulting and
+  the `dropTarget: false` pin apply unchanged — and `dropTarget: true` is
+  refused by the parser, because otherwise the grammar would be the one way to
+  make a rename silently delete whatever held the destination name.
+
+  `renameCollection` is same-database only, matching what `mongosh` accepts. A
+  cross-database move stays in the explorer's Rename dialog: a qualified
+  `"otherDb.coll"` looks like the obvious spelling for it, but a collection name
+  may legitimately contain dots (`system.views`, `logs.2024`), so that reading
+  would turn a valid rename into a silent move.
+
+  **Two MCP tools, MongoDB-only: `create_index` and `drop_index`.** Both at the
+  `full` tier, which was forced rather than chosen — `createIndex` through
+  `run_query` is classified DDL, so a `data`-tier tool would have handed back
+  exactly what the statement path denies. There is deliberately nothing for the
+  SQL drivers: an index there is created with `CREATE INDEX`, which `run_query`
+  already reaches at `full` and which is strictly more expressive than any
+  portable set of fields (`USING gin`, `INCLUDE`, a partial predicate). And
+  nothing for replacing an index, because MongoDB cannot alter one in place —
+  it is a drop plus a create, and two calls keep the window where the index is
+  missing visible to the caller.
+
+  **`list_indexes` had to grow with them.** Over MCP it reported the SQL-shaped
+  `{name, columns, unique}`, so a model that read `["createdAt"]` and wrote it
+  back would recreate the index *ascending* — invisible in testing, permanent
+  in the data. Its bridge arm now answers from the rich reader on MongoDB and
+  each entry carries a `mongo` object with the real definition: per-key
+  direction and type, `sparse`, TTL, partial filter, collation, weights, size
+  and usage. The explorer still calls the lossy reader, so the extra
+  `$collStats`/`$indexStats` round trips are paid only on the MCP path.
+
+  Index writes also emit a Console entry now, which they never did — the same
+  `LogSink` seam that puts them in `mcp-audit.log`.
+
 - **The keyboard-shortcut system, rebuilt.** It shipped in 1.10.0 as the
   smallest thing that could work — eight rebindable actions, one combo each,
   and 127 lines holding the catalogue, the key lexicon and the matcher
@@ -169,6 +218,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   a driver badge and an origin mark, and names were truncating mid-word.
 
 ### Fixed
+
+- **A MongoDB connection set to `read-only` could not be read over MCP while the
+  desktop app was sharing its pools.** `run_query` decided which classifier to
+  use by looking the connection up in the *connector's own* pool map — and that
+  map is empty by design whenever the app owns the pool (pool sharing, 1.13.0).
+  So every bridged MongoDB statement fell through to the SQL keyword heuristic,
+  where `db.users.find({})` matches none of
+  `select`/`with`/`show`/`explain`/`pragma` and therefore came back as a write.
+  A plain `find` was refused at `read-only` and only worked from `data` upward.
+  The app's own independent re-check agreed, for the same wrong reason.
+
+  Both now call one classifier, `db::classify::classify_statement`, which picks
+  the grammar from the statement *text* — the one input both enforcement points
+  always have, and pure enough to test without a server. While the mongosh
+  grammar had no DDL this bug was merely too strict; it would have become a
+  privilege escalation the moment `db.coll.drop()` existed, since both sides
+  would have tiered it `data`. Tests now pin every operation's tier on both
+  layers.
+
+- **`updateMany({})` and `deleteMany({})` over MCP are refused, like their SQL
+  equivalents.** The whole-relation guard exempted MongoDB, so a `data`
+  connection could empty a collection in one call while `DELETE FROM users`
+  was refused at every tier — the same blast radius, opposite answers. The
+  opt-in mirrors SQL's `WHERE 1=1`: a predicate that is trivially true, e.g.
+  `deleteMany({_id: {$exists: true}})`. `drop()` is not covered, deliberately —
+  its scope is unambiguous and it already sits behind `full`, exactly like
+  `DROP TABLE`.
 
 - **A shared connection's MCP write policy no longer reverts on the next sync.**
   The policy is a local decision about what an AI client may do on *this*

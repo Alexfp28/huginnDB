@@ -242,7 +242,7 @@ per-database ones on demand.
 | `list_databases` | Databases / schemas / catalogs on a connection. |
 | `list_tables` | Tables and views, with approximate row counts and sizes. |
 | `describe_table` | Full structure: columns, types, nullability, PK, FKs, indexes. Works on a view too, and adds a `view` object with the view's definition when the relation is one — `query` (the SELECT body) on SQL, `viewOn` + `pipeline` on MongoDB. |
-| `list_indexes` | Indexes on a table and the columns each covers. |
+| `list_indexes` | Indexes on a table and the columns each covers. On MongoDB each entry also carries a `mongo` object with the full definition — per-key direction and type, `sparse`, TTL, partial filter, collation, weights, size and usage. Read it before recreating an index: the column list alone cannot tell `{createdAt: -1}` from `{createdAt: 1}`. |
 | `run_query` | Run a single statement (SQL for Postgres/MySQL/SQLite/SQL Server, mongosh-style for MongoDB). Reads always work; writes require the connection's write policy to allow them (`data` for DML, `full` for DDL). |
 | `browse_table` | Browse one page of rows without writing SQL. |
 | `server_version` | The connected engine and version. |
@@ -252,9 +252,32 @@ per-database ones on demand.
 | `delete_rows` *(write)* | Delete one or more rows, each addressed by its full primary key. Requires `data` or `full`. |
 | `save_view` *(write)* | Create a view, redefine an existing one, or rename one. Pass just `name` and `query` — it reads the current definition itself to work out which. `preview: true` returns the statements without running them, and is a read. Requires `full`. |
 | `drop_view` *(write)* | Drop a view. Refuses anything that isn't one. Requires `full`. |
+| `create_index` *(write)* | **MongoDB only.** Create one index. `keys` is source text (`{createdAt: -1}`, `{location: "2dsphere"}`), plus the usual options — unique, sparse, hidden, TTL, partial filter, collation, text weights, and an `extraOptions` escape hatch. Requires `full`. |
+| `drop_index` *(write)* | **MongoDB only.** Drop one index by name. `_id_` is refused. Requires `full`. |
 
 `list_connections` reports each connection's effective write policy so the
 assistant knows up front what it may do.
+
+### Indexes: why the two write tools are MongoDB-only
+
+On the SQL drivers an index is created with `CREATE INDEX`, which `run_query`
+reaches at `full` and which is strictly more expressive than any portable form —
+`USING gin`, `INCLUDE`, a partial predicate, an expression index. A tool would
+have to flatten all of that into a fixed set of fields, and HuginnDB's own
+SQL-side index vocabulary is deliberately narrow (name, columns, unique) because
+it exists to be *diffed* by the structure editor, not to describe every index a
+server can build. Exposing that as a tool would be a downgrade.
+
+MongoDB is the opposite case: until 1.19.0 the mongosh grammar had no
+`createIndex` at all, so the operation was not reachable *by any route*. Both
+routes exist now — the two tools, and `db.coll.createIndex(...)` through
+`run_query` — and they share one implementation.
+
+There is no "edit an index" tool because MongoDB cannot alter one in place: a
+replacement is `drop_index` then `create_index`, and leaving it as two calls
+keeps the window where the index is missing visible to the caller. Hiding an
+index (`collMod`) is reachable through `run_query` as
+`db.coll.hideIndex("name")` — the reversible way to rehearse a drop.
 
 ## MongoDB: targeting a database on a multi-database connection
 
@@ -288,7 +311,14 @@ only needed when `list_connections` shows an empty `database`.
     `run_query`, plus the `insert_row` / `update_cell` / `delete_rows` tools.
     No schema changes.
   - **`full`** — adds DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) through
-    `run_query`, plus the `save_view` / `drop_view` tools.
+    `run_query`, plus the `save_view` / `drop_view` / `create_index` /
+    `drop_index` tools. On MongoDB this is also the tier for
+    `createIndex`/`dropIndex`/`hideIndex`, `drop()` and `renameCollection`
+    through `run_query`.
+
+  An index and a namespace are schema too, for the same reason and with the
+  same consequence: `create_index` and `drop_index` sit at `full`, and so does
+  every MongoDB statement that touches an index or a collection's existence.
 
   A view is schema, which puts managing one at `full` rather than `data`. That
   reads oddly for a second — dropping a *view* needs `full` while deleting
@@ -313,9 +343,14 @@ only needed when `list_connections` shows an empty `database`.
 - **Audit log.** Every write (success or failure) appends a line to
   `mcp-audit.log`, in the same config directory as `profiles.json`. Reads are
   not logged, so the file is a clean record of state-changing operations.
-- **Whole-table guard.** A `run_query` `UPDATE`/`DELETE` with no `WHERE` clause
-  is refused outright, at any level — add an explicit predicate (`WHERE 1=1` if
-  you truly mean every row).
+- **Whole-relation guard.** A `run_query` `UPDATE`/`DELETE` with no `WHERE`
+  clause is refused outright, at any level — add an explicit predicate
+  (`WHERE 1=1` if you truly mean every row). MongoDB is covered by the same
+  guard: `updateMany({})` and `deleteMany({})` are refused, and the way to say
+  you mean it is a predicate that is trivially true, e.g.
+  `deleteMany({_id: {$exists: true}})`. `drop()` is not covered — it is
+  unambiguous about its scope and already behind `full`, exactly like
+  `DROP TABLE`.
 - **Global kill-switch.** `--read-only` forces every connection to read-only
   regardless of its saved policy.
 - **Opt-in exposure.** Only the profile ids you pass to `--connections` are
@@ -406,9 +441,15 @@ written yet — it returns an "unsupported driver" error there. Everything else
 about views works on all five: `describe_table` reports a view's definition on
 every driver, and `drop_view` works on every driver.
 
+`create_index` and `drop_index` are MongoDB-only and return an "unsupported
+driver" error elsewhere; `list_indexes` reads on all five. See [Indexes: why the
+two write tools are MongoDB-only](#indexes-why-the-two-write-tools-are-mongodb-only).
+
 There is no tool for editing a *table's* structure on any driver. That was
 deferred deliberately (see
 [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md)): making an assistant
 synthesise a whole column list, with types, nullability, defaults and keys, is
 worse than having it emit `ALTER TABLE` through `run_query`, which `full`
-allows.
+allows. That argument is about the *size of the DTO*, which is why it did not
+carry over to indexes on MongoDB: an index spec is a key document plus a handful
+of flags, closer in shape to `save_view` than to a table.

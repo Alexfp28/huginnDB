@@ -259,7 +259,7 @@ datos a demanda.
 | `list_databases` | Bases de datos / esquemas / catálogos de una conexión. |
 | `list_tables` | Tablas y vistas, con recuentos de filas y tamaños aproximados. |
 | `describe_table` | Estructura completa: columnas, tipos, nulabilidad, PK, FKs, índices. Funciona también sobre una vista, y añade un objeto `view` con su definición cuando la relación lo es — `query` (el cuerpo del SELECT) en SQL, `viewOn` + `pipeline` en MongoDB. |
-| `list_indexes` | Índices de una tabla y las columnas que cubre cada uno. |
+| `list_indexes` | Índices de una tabla y las columnas que cubre cada uno. En MongoDB cada entrada lleva además un objeto `mongo` con la definición completa — dirección y tipo de cada clave, `sparse`, TTL, filtro parcial, colación, pesos, tamaño y uso. Léelo antes de recrear un índice: la lista de columnas por sí sola no distingue `{createdAt: -1}` de `{createdAt: 1}`. |
 | `run_query` | Ejecuta una única sentencia (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Las lecturas siempre funcionan; las escrituras requieren que el nivel de la conexión lo permita (`data` para DML, `full` para DDL). |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
 | `server_version` | El motor y la versión conectados. |
@@ -269,9 +269,34 @@ datos a demanda.
 | `delete_rows` *(escritura)* | Borra una o más filas, cada una identificada por su clave primaria completa. Requiere `data` o `full`. |
 | `save_view` *(escritura)* | Crea una vista, redefine una existente o la renombra. Pasa solo `name` y `query` — la herramienta lee la definición actual para decidir cuál de las tres es. Con `preview: true` devuelve las sentencias sin ejecutarlas, y eso es una lectura. Requiere `full`. |
 | `drop_view` *(escritura)* | Elimina una vista. Rechaza cualquier cosa que no lo sea. Requiere `full`. |
+| `create_index` *(escritura)* | **Solo MongoDB.** Crea un índice. `keys` es texto fuente (`{createdAt: -1}`, `{location: "2dsphere"}`), más las opciones habituales — unique, sparse, hidden, TTL, filtro parcial, colación, pesos de texto y una vía de escape `extraOptions`. Requiere `full`. |
+| `drop_index` *(escritura)* | **Solo MongoDB.** Elimina un índice por nombre. `_id_` se rechaza. Requiere `full`. |
 
 `list_connections` informa del nivel de escritura efectivo de cada conexión,
 para que el asistente sepa de antemano qué puede hacer.
+
+### Índices: por qué las dos herramientas de escritura son solo de MongoDB
+
+En los drivers SQL un índice se crea con `CREATE INDEX`, que `run_query` alcanza
+en `full` y que es estrictamente más expresivo que cualquier forma portable —
+`USING gin`, `INCLUDE`, un predicado parcial, un índice sobre expresión. Una
+herramienta tendría que aplanar todo eso en un conjunto fijo de campos, y el
+vocabulario de índices del lado SQL de HuginnDB es deliberadamente estrecho
+(nombre, columnas, unique) porque existe para que el editor de estructura lo
+*diffee*, no para describir cualquier índice que un servidor sepa construir.
+Exponerlo como herramienta sería un retroceso.
+
+MongoDB es el caso opuesto: hasta 1.19.0 la gramática mongosh no tenía
+`createIndex` en absoluto, así que la operación no era alcanzable *por ninguna
+vía*. Ahora existen las dos — las dos herramientas y
+`db.coll.createIndex(...)` por `run_query` — y comparten una sola
+implementación.
+
+No hay herramienta para «editar» un índice porque MongoDB no puede alterarlo en
+sitio: reemplazarlo es `drop_index` y luego `create_index`, y dejarlo en dos
+llamadas mantiene visible para quien llama la ventana en la que el índice no
+existe. Ocultar un índice (`collMod`) se alcanza por `run_query` como
+`db.coll.hideIndex("nombre")` — la forma reversible de ensayar un borrado.
 
 ## MongoDB: apuntar a una base de datos en una conexión multi-base
 
@@ -309,7 +334,15 @@ conexión son baratas. Una conexión de una sola base de datos (con
     `run_query`, más las herramientas `insert_row` / `update_cell` /
     `delete_rows`. Sin cambios de esquema.
   - **`full`** — añade DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) vía
-    `run_query`, más las herramientas `save_view` / `drop_view`.
+    `run_query`, más las herramientas `save_view` / `drop_view` /
+    `create_index` / `drop_index`. En MongoDB este es también el nivel de
+    `createIndex`/`dropIndex`/`hideIndex`, `drop()` y `renameCollection` vía
+    `run_query`.
+
+  Un índice y un *namespace* también son esquema, por la misma razón y con la
+  misma consecuencia: `create_index` y `drop_index` viven en `full`, igual que
+  cualquier sentencia de MongoDB que toque un índice o la existencia de una
+  colección.
 
   Una vista es esquema, y eso deja su gestión en `full` y no en `data`. Suena
   raro por un segundo — eliminar una *vista* pide `full` mientras que borrar
@@ -336,9 +369,13 @@ conexión son baratas. Una conexión de una sola base de datos (con
   `mcp-audit.log`, en el mismo directorio de configuración que `profiles.json`.
   Las lecturas no se registran, así que el fichero es un registro limpio de las
   operaciones que cambian estado.
-- **Guarda anti-tabla-entera.** Un `UPDATE`/`DELETE` sin `WHERE` en `run_query`
-  se rechaza de plano, en cualquier nivel — añade un predicado explícito
-  (`WHERE 1=1` si de verdad quieres todas las filas).
+- **Guarda anti-relación-entera.** Un `UPDATE`/`DELETE` sin `WHERE` en
+  `run_query` se rechaza de plano, en cualquier nivel — añade un predicado
+  explícito (`WHERE 1=1` si de verdad quieres todas las filas). MongoDB entra
+  en la misma guarda: `updateMany({})` y `deleteMany({})` se rechazan, y la
+  forma de decir que lo quieres es un predicado trivialmente cierto, p. ej.
+  `deleteMany({_id: {$exists: true}})`. `drop()` queda fuera: su alcance no es
+  ambiguo y ya está detrás de `full`, exactamente como `DROP TABLE`.
 - **Kill-switch global.** `--read-only` fuerza todas las conexiones a solo
   lectura sin importar su nivel guardado.
 - **Exposición opt-in.** Solo los IDs de perfil que pases a `--connections`
@@ -435,9 +472,16 @@ vistas todavía no existe: ahí devuelve un error de «driver no soportado». To
 lo demás sobre vistas funciona en los cinco: `describe_table` informa de la
 definición de una vista en todos los drivers, y `drop_view` funciona en todos.
 
+`create_index` y `drop_index` son solo de MongoDB y devuelven un error de
+«driver no soportado» en el resto; `list_indexes` lee en los cinco. Ver
+[Índices: por qué las dos herramientas de escritura son solo de
+MongoDB](#índices-por-qué-las-dos-herramientas-de-escritura-son-solo-de-mongodb).
+
 No hay herramienta para editar la estructura de una *tabla* en ningún driver.
 Se dejó fuera a propósito (ver
 [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md)): hacer que un asistente
 sintetice una lista de columnas completa, con tipos, nulabilidad, valores por
 defecto y claves, es peor que hacerle emitir `ALTER TABLE` por `run_query`, que
-`full` permite.
+`full` permite. Ese argumento va del *tamaño del DTO*, y por eso no se traslada
+a los índices de MongoDB: la especificación de un índice es un documento de
+claves y un puñado de flags, más cerca de `save_view` que de una tabla.

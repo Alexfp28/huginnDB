@@ -41,7 +41,15 @@ use serde_json::Value;
 /// sidecar's client can't parse the new `{"ok":{"value":…}}` shape as success
 /// — bumping this forces that mismatch through the handshake version check
 /// below, not into a silent misparse mid-call.
-pub const PROTOCOL_VERSION: u32 = 2;
+///
+/// `3`: [`BridgeRequest`] gained `CreateMongoIndex` / `DropMongoIndex`. Adding a
+/// variant looks additive, and for the *reply* direction it is — but an old app
+/// cannot deserialise a request method it has never heard of, and that failure
+/// arrives as an error reply rather than as [`crate::bridge::client::BridgeError::Unreachable`],
+/// so the sidecar would surface it to the AI client instead of falling back to
+/// its own pool. The handshake check is the only place that mismatch degrades
+/// correctly, so every new request variant bumps this.
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Opening frame. Sent once, before any request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -215,6 +223,34 @@ pub enum BridgeRequest {
         schema: Option<String>,
         view: String,
     },
+    /// Create one index on a MongoDB collection.
+    ///
+    /// MongoDB-only by design: on the SQL drivers an index is created by
+    /// `CREATE INDEX`, which `run_query` already reaches at the `full` tier and
+    /// which is strictly more expressive than any portable DTO (`USING gin`,
+    /// `INCLUDE`, a partial predicate). The mongosh grammar had no such
+    /// statement at all until this pass, which is what made a dedicated tool
+    /// worth its surface here and nowhere else.
+    ///
+    /// `spec` mirrors `db::mongo::indexes::NewMongoIndexSpec`: source text for
+    /// the key document and the optional documents, plain flags for the rest.
+    /// That is the same shape a `ViewDefinition` has, and the reason this
+    /// cleared the bar a table-structure tool did not — there is no column
+    /// list to synthesise.
+    CreateMongoIndex {
+        connection_id: String,
+        policy_id: String,
+        collection: String,
+        spec: crate::db::mongo::indexes::NewMongoIndexSpec,
+    },
+    /// Drop one index from a MongoDB collection. `_id_` is refused by
+    /// `db::mongo::indexes::drop_index`, not here.
+    DropMongoIndex {
+        connection_id: String,
+        policy_id: String,
+        collection: String,
+        name: String,
+    },
 }
 
 impl BridgeRequest {
@@ -235,7 +271,9 @@ impl BridgeRequest {
             | BridgeRequest::UpdateCell { .. }
             | BridgeRequest::DeleteRows { .. }
             | BridgeRequest::ApplyViewChange { .. }
-            | BridgeRequest::DropView { .. } => true,
+            | BridgeRequest::DropView { .. }
+            | BridgeRequest::CreateMongoIndex { .. }
+            | BridgeRequest::DropMongoIndex { .. } => true,
             BridgeRequest::EnsureConnected { .. }
             | BridgeRequest::ResolveMongoTarget { .. }
             | BridgeRequest::IsMongo { .. }
@@ -279,6 +317,8 @@ impl BridgeRequest {
             BridgeRequest::PreviewViewChange { .. } => "save_view (preview)",
             BridgeRequest::ApplyViewChange { .. } => "save_view",
             BridgeRequest::DropView { .. } => "drop_view",
+            BridgeRequest::CreateMongoIndex { .. } => "create_index",
+            BridgeRequest::DropMongoIndex { .. } => "drop_index",
         }
     }
 }

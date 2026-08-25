@@ -25,6 +25,7 @@
 //! * [`mssql`] — the SQL Server client: its own session pool, `sys.*` catalog
 //!   introspection and `ColumnData` → JSON decoding.
 
+pub mod classify;
 pub mod ddl;
 pub mod dump;
 pub mod endpoint;
