@@ -4,20 +4,35 @@
  * Surfaces the bundled `huginndb-mcp` sidecar's on-disk path and generates
  * a ready-to-paste client config, so wiring up an AI tool doesn't require
  * hunting through the install directory or the source tree (see
- * `docs/MCP.md` and gotcha #20 in `CLAUDE.md`). This panel only reads
- * (profile list, sidecar path) — actually starting the server is the AI
- * client's job, never this app's.
+ * `docs/MCP.md` and gotcha #20 in `CLAUDE.md`). It never starts the server —
+ * that is the AI client's job — but it does write one field: each connection's
+ * MCP write policy.
+ *
+ * The picker is a tree grouped by provenance, mirroring the connection manager's
+ * rail (`McpConnectionTree`), because that is the distinction this panel turns on:
+ * a connection a shared origin publishes keeps the **same id on every machine**,
+ * so a snippet built from shared connections works for the whole team as-is,
+ * while one built from a stale local copy works only here. Out of a flat list
+ * those two are indistinguishable.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
-import { Copy, FolderSync, Search, X } from "lucide-react";
+import { Copy, Search, X } from "lucide-react";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import { api } from "@/lib/tauri";
-import { isFromOrigin, originIdOf } from "@/lib/connection/origin";
-import { buildRailSections, type RailSection } from "@/lib/connection/railSections";
+import {
+  filterByScope,
+  isFromOrigin,
+  originIdOf,
+  type ProfileScope,
+} from "@/lib/connection/origin";
+import { buildRailSections } from "@/lib/connection/railSections";
+import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 import { useOrigins } from "@/stores/sync/origins";
 import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
@@ -27,7 +42,8 @@ import type {
   McpWritePolicy,
 } from "@/types";
 
-const WRITE_LEVELS: McpWritePolicy[] = ["read-only", "data", "full"];
+import { McpConnectionTree } from "./McpConnectionTree";
+import { WRITE_LEVELS } from "./McpWritePolicySelect";
 
 function CopyButton({ text }: { text: string }) {
   const { t } = useTranslation();
@@ -54,6 +70,10 @@ export function McpSection() {
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
+  const [scope, setScope] = useState<ProfileScope>("all");
+  /** Pending "set everything to full", which is the one level worth a prompt. */
+  const [pendingFull, setPendingFull] = useState(false);
+  const bulkPolicy = useAsyncSubmit();
 
   useEffect(() => {
     void api
@@ -66,20 +86,28 @@ export function McpSection() {
       .catch(() => setProfiles([]));
   }, []);
 
+  const shared = useMemo(() => profiles.filter(isFromOrigin), [profiles]);
+  const hasShared = shared.length > 0;
+
+  // Removing the last origin must not leave the panel stuck on an empty
+  // "Shared" — same reset the connection rail does.
+  useEffect(() => {
+    if (!hasShared && scope !== "all") setScope("all");
+  }, [hasShared, scope]);
+
+  /** What the list is showing: the provenance scope, then the name filter. */
   const filteredProfiles = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return profiles;
-    return profiles.filter((p) => p.name.toLowerCase().includes(q));
-  }, [profiles, filter]);
+    const inScope = filterByScope(profiles, scope);
+    if (!q) return inScope;
+    return inScope.filter((p) => p.name.toLowerCase().includes(q));
+  }, [profiles, filter, scope]);
 
-  // Grouped by provenance, for the same reason the connection rail is: picking
-  // ids by hand out of a flat list gives no way to tell a shared connection from
-  // the stale local copy of it that predates the origin — and it is the shared
-  // one whose id is portable. `buildRailSections` is reused rather than
-  // reimplemented so the two surfaces agree on the labels and the ordering,
-  // including how a dangling `origin_id` is presented; each section is
-  // flattened back out here, because the MCP list has never had `group`
-  // folders and this is not the change to add them.
+  // `buildRailSections` is reused rather than reimplemented so this panel and
+  // the connection rail cannot drift on labels or ordering. Local and shared are
+  // built separately and concatenated, because unlike the rail — which shows one
+  // scope at a time — the All view here wants both headers: this is where the
+  // difference between a portable id and a local-only one is acted on.
   const originsById = useOrigins((s) => s.byId);
   const sections = useMemo(() => {
     const nameOf = (id: string) => originsById[id]?.name ?? null;
@@ -87,20 +115,14 @@ export function McpSection() {
       shared: (origin: string) => t("connections.sharedSection", { origin }),
       orphaned: t("connections.orphanedSection"),
     };
-    const flatten = (section: RailSection) => ({
-      label: section.label,
-      items: [
-        ...section.ungrouped,
-        ...section.groups.flatMap((g) => g.items),
-      ],
-    });
     return [
       ...buildRailSections(filteredProfiles, "local", nameOf, labels).map(
-        (s) => ({ ...flatten(s), label: t("settings.mcp.localSection") }),
+        (section) => ({
+          ...section,
+          label: t("settings.mcp.localSection"),
+        }),
       ),
-      ...buildRailSections(filteredProfiles, "shared", nameOf, labels).map(
-        flatten,
-      ),
+      ...buildRailSections(filteredProfiles, "shared", nameOf, labels),
     ];
   }, [filteredProfiles, originsById, t]);
 
@@ -121,23 +143,58 @@ export function McpSection() {
   }
 
   /**
-   * Persist a connection's MCP write policy. Saves with no password so the
-   * keychain entry is untouched (see `api.saveProfile`); the sidecar re-reads
-   * this from `profiles.json` on its next write attempt, so no client restart
-   * is needed. On failure we resync from disk rather than leave optimistic
-   * state that never actually landed.
+   * Persist one connection's MCP write policy. The sidecar re-reads it from
+   * `profiles.json` on its next write attempt, so no client restart is needed.
+   * On failure we resync from disk rather than leave optimistic state that never
+   * actually landed.
+   *
+   * Goes through `setMcpWritePolicy` rather than `saveProfile`, even for a single
+   * row: `save_profile` replaces the whole record, so it can only be called with
+   * a complete profile in hand and silently erases anything the caller forgot to
+   * carry over. This writes the one field it means to.
    */
   async function setWritePolicy(id: string, level: McpWritePolicy) {
-    const profile = profiles.find((p) => p.id === id);
-    if (!profile) return;
-    const updated = { ...profile, mcp_write: level };
-    setProfiles((prev) => prev.map((p) => (p.id === id ? updated : p)));
+    if (!profiles.some((p) => p.id === id)) return;
+    setProfiles((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, mcp_write: level } : p)),
+    );
     try {
-      await api.saveProfile(updated);
+      await api.setMcpWritePolicy([id], level);
     } catch {
       notify.error(t("settings.mcp.writePolicySaveError"));
       void api.listProfiles().then(setProfiles).catch(() => {});
     }
+  }
+
+  /**
+   * Set every listed connection's policy in one backend write.
+   *
+   * "Listed" — scope plus name filter — rather than "selected": the selection
+   * here means "expose these over MCP", a different question, and overloading it
+   * would make one checkbox mean two things. The button carries the count so
+   * what it will touch is never implicit.
+   *
+   * Runs over shared connections too. That is only honest because
+   * `merge_profiles_bundle` preserves the policy across a sync; before it did,
+   * this would have appeared to work and reverted on the next pull.
+   */
+  function applyBulkPolicy(level: McpWritePolicy) {
+    const ids = filteredProfiles.map((p) => p.id);
+    if (ids.length === 0) return;
+    bulkPolicy.run(async () => {
+      const changed = await api.setMcpWritePolicy(ids, level);
+      setProfiles((prev) =>
+        prev.map((p) =>
+          ids.includes(p.id) ? { ...p, mcp_write: level } : p,
+        ),
+      );
+      setPendingFull(false);
+      notify.success(
+        changed > 0
+          ? t("settings.mcp.bulkPolicyApplied", { count: changed })
+          : t("settings.mcp.bulkPolicyNoop"),
+      );
+    });
   }
 
   const allFilteredSelected =
@@ -226,6 +283,32 @@ export function McpSection() {
           </p>
         ) : (
           <>
+            {hasShared && (
+              <Segmented
+                size="sm"
+                variant="underline"
+                className="mb-1.5"
+                value={scope}
+                onValueChange={setScope}
+                options={[
+                  {
+                    value: "all",
+                    label: `${t("settings.mcp.scopeAll")} ${profiles.length}`,
+                  },
+                  {
+                    value: "local",
+                    label: `${t("connections.scope.local")} ${
+                      profiles.length - shared.length
+                    }`,
+                  },
+                  {
+                    value: "shared",
+                    label: `${t("connections.scope.shared")} ${shared.length}`,
+                  },
+                ]}
+                aria-label={t("connections.scopeLabel")}
+              />
+            )}
             <div className="mb-1.5 flex items-center gap-1.5">
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
@@ -261,81 +344,55 @@ export function McpSection() {
               </Button>
             </div>
 
-            <div className="max-h-64 overflow-y-auto rounded-md border border-border">
+            <div className="max-h-72 overflow-y-auto rounded-md border border-border">
               {filteredProfiles.length === 0 ? (
                 <p className="px-3 py-2 text-[12px] text-muted-foreground">
                   {t("settings.mcp.noMatches", { query: filter })}
                 </p>
               ) : (
-                sections.map((section) => {
-                  const ids = section.items.map((p) => p.id);
-                  const allIn = ids.every((id) => selected.has(id));
-                  return (
-                    <div key={section.label}>
-                      <div className="flex items-center gap-1.5 border-y border-border/60 bg-muted/30 px-3 py-1 first:border-t-0">
-                        <input
-                          type="checkbox"
-                          checked={allIn}
-                          onChange={() => toggleAll(ids)}
-                          aria-label={t("settings.mcp.selectAllInSection", {
-                            section: section.label,
-                          })}
-                          className="accent-brand h-3 w-3 cursor-pointer"
-                        />
-                        <span className="truncate text-[11px] text-muted-foreground">
-                          {section.label}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground/60">
-                          ({ids.length})
-                        </span>
-                      </div>
-                      {section.items.map((p) => (
-                        <div
-                          key={p.id}
-                          className="flex items-center gap-2 border-b border-border/60 px-3 py-2 last:border-b-0 hover:bg-accent/50"
-                        >
-                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-                            <input
-                              type="checkbox"
-                              className="accent-brand"
-                              checked={selected.has(p.id)}
-                              onChange={() => toggle(p.id)}
-                            />
-                            <span className="truncate text-xs">{p.name}</span>
-                            {isFromOrigin(p) && (
-                              <span
-                                className="flex shrink-0 items-center"
-                                title={sharedTooltip(p)}
-                              >
-                                <FolderSync className="h-3 w-3 text-muted-foreground" />
-                              </span>
-                            )}
-                          </label>
-                          <select
-                            value={p.mcp_write ?? "read-only"}
-                            onChange={(e) =>
-                              void setWritePolicy(
-                                p.id,
-                                e.target.value as McpWritePolicy,
-                              )
-                            }
-                            aria-label={t("settings.mcp.writePolicyLabel")}
-                            title={t("settings.mcp.writePolicyLabel")}
-                            className="h-6 shrink-0 rounded border border-border bg-background px-1.5 text-[11px]"
-                          >
-                            {WRITE_LEVELS.map((lvl) => (
-                              <option key={lvl} value={lvl}>
-                                {t(`settings.mcp.level.${lvl}`)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })
+                <McpConnectionTree
+                  sections={sections}
+                  selected={selected}
+                  onToggle={toggle}
+                  onToggleAll={toggleAll}
+                  onSetPolicy={(id, level) => void setWritePolicy(id, level)}
+                  sharedTooltip={sharedTooltip}
+                  searching={filter.trim().length > 0}
+                />
               )}
             </div>
+
+            {/* Bulk policy. Acts on what is listed, not on what is checked —
+                the checkboxes answer "expose this over MCP", which is a
+                different question. `full` is the only level that can change
+                schema, so it is the only one that asks first. */}
+            {filteredProfiles.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground">
+                  {t("settings.mcp.bulkPolicyLabel")}
+                </span>
+                {WRITE_LEVELS.map((lvl) => (
+                  <Button
+                    key={lvl}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={bulkPolicy.submitting}
+                    className="h-6 px-2 text-[11px]"
+                    onClick={() =>
+                      lvl === "full"
+                        ? setPendingFull(true)
+                        : applyBulkPolicy(lvl)
+                    }
+                  >
+                    {t(`settings.mcp.level.${lvl}`)}
+                  </Button>
+                ))}
+                <span className="text-[11px] text-muted-foreground/60">
+                  ({filteredProfiles.length})
+                </span>
+              </div>
+            )}
             <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
               {t("settings.mcp.writePolicyHint")}
             </p>
@@ -382,6 +439,25 @@ export function McpSection() {
       >
         {t("settings.mcp.fullGuide")}
       </Button>
+
+      {pendingFull && (
+        <ConfirmDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setPendingFull(false);
+          }}
+          title={t("settings.mcp.bulkPolicyFullTitle", {
+            count: filteredProfiles.length,
+          })}
+          description={t("settings.mcp.bulkPolicyFullBody")}
+          confirmLabel={t("settings.mcp.bulkPolicyFullConfirm", {
+            count: filteredProfiles.length,
+          })}
+          confirming={bulkPolicy.submitting}
+          error={bulkPolicy.error}
+          onConfirm={() => applyBulkPolicy("full")}
+        />
+      )}
     </div>
   );
 }

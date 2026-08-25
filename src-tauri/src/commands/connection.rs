@@ -372,6 +372,49 @@ pub struct DeleteProfilesReport {
     pub failed: Vec<(String, String)>,
 }
 
+/// Set the MCP write policy on several profiles at once.
+///
+/// One write of `profiles.json` and one `profiles-changed` event, for the same
+/// reason [`delete_profiles`] exists: the Settings panel offers "set every
+/// connection to read-only", and looping `save_profile` over thirty connections
+/// means thirty atomic rewrites and thirty global events, each of which makes
+/// every open window re-read and re-render.
+///
+/// Touches keychain entries not at all — this is one enum field — which is what
+/// makes it safe to run over a profile a shared origin published. That policy is
+/// a local trust decision and `merge_profiles_bundle` preserves it across a
+/// sync; without that, this command would appear to work and quietly revert.
+///
+/// Returns how many profiles actually changed, so a caller can tell "done" from
+/// "they were already all like that".
+#[tauri::command]
+pub fn set_mcp_write_policy(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    level: crate::state::McpWritePolicy,
+) -> AppResult<usize> {
+    let changed = {
+        let mut profiles = state.profiles.write();
+        let wanted: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+        let mut changed = 0usize;
+        for p in profiles.iter_mut() {
+            if wanted.contains(p.id.as_str()) && p.mcp_write != level {
+                p.mcp_write = level;
+                changed += 1;
+            }
+        }
+        if changed > 0 {
+            store::save_profiles(&profiles)?;
+        }
+        changed
+    };
+    if changed > 0 {
+        let _ = app.emit(PROFILES_CHANGED_EVENT, ());
+    }
+    Ok(changed)
+}
+
 /// Delete the profile with `id` and its associated keychain entries.
 ///
 /// Also drops the persisted per-connection tab state (open tabs, schema-tree

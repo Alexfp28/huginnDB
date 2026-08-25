@@ -22,6 +22,7 @@ import type {
   BatchResult,
   ConnectionProfile,
   DeleteProfilesReport,
+  McpWritePolicy,
   ConnectionTabState,
   DatabaseInfo,
   DataMode,
@@ -111,6 +112,13 @@ export const api = {
    */
   deleteProfiles: (ids: string[]) =>
     invoke<DeleteProfilesReport>("delete_profiles", { ids }),
+
+  /**
+   * Set the MCP write policy on several profiles in one write. Returns how many
+   * actually changed, so a caller can tell "done" from "already like that".
+   */
+  setMcpWritePolicy: (ids: string[], level: McpWritePolicy) =>
+    invoke<number>("set_mcp_write_policy", { ids, level }),
 
   /**
    * Open a throwaway pool, run `SELECT 1`, then close it. `sshSecret` is

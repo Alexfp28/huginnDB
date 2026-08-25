@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Settings → MCP is now a tree, with bulk write-policy buttons.** It gets the
+  same All / Local / Shared filter and the same collapsible sections per origin
+  as the connection manager, plus the group folders, so a server sits in the same
+  place in both surfaces — with less on each row, since a snippet is built from
+  ids and not endpoints. Below the list, one button per policy sets **every listed
+  connection** at once (the scope filter and the search decide what "listed"
+  means, and the count is on the button). "Full" asks first: it is the level that
+  lets an AI client change schema.
+
+  The buttons act on what is listed rather than on what is checked, because the
+  checkboxes already answer a different question — which connections to expose —
+  and one control cannot mean two things.
+
 - **The connection manager now tells local connections apart from the ones a
   shared origin publishes.** A registered origin (#108) imports its connections
   next to your own, and until now nothing in the manager said which was which.
@@ -63,6 +76,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   a driver badge and an origin mark, and names were truncating mid-word.
 
 ### Fixed
+
+- **A shared connection's MCP write policy no longer reverts on the next sync.**
+  The policy is a local decision about what an AI client may do on *this*
+  machine, which the publisher of a shared origin cannot know, but a sync
+  replaced the whole record and took it with it. Setting a shared connection to
+  "data" therefore worked until the next pull and then silently went back to
+  read-only — which made the MCP panel unusable for anyone whose connections all
+  come from an origin. Everything else on a published profile is still the
+  file's to dictate.
 
 - **Renaming a shared origin now reaches the rest of the app.** The origin
   registry was read once, locally, by the Settings panel that owns it, so nothing

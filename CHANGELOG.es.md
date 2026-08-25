@@ -10,6 +10,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Ajustes → MCP es ahora un árbol, con botones de política en lote.** Recibe el
+  mismo filtro Todas / Locales / Compartidas y las mismas secciones plegables por
+  origen que el gestor de conexiones, más las carpetas de grupo, así que un
+  servidor está en el mismo sitio en las dos superficies — con menos información
+  por fila, porque un snippet se construye con ids, no con endpoints. Debajo de la
+  lista, un botón por política pone **todas las conexiones listadas** a la vez (el
+  filtro de procedencia y la búsqueda deciden qué es «listadas», y el contador
+  está en el propio botón). «Completo» pregunta antes: es el nivel que permite a
+  un cliente de IA cambiar el esquema.
+
+  Los botones actúan sobre lo listado y no sobre lo marcado, porque las casillas
+  ya responden a otra pregunta —qué conexiones exponer— y un mismo control no
+  puede significar dos cosas.
+
 - **El gestor de conexiones ya distingue las conexiones locales de las que
   publica un origen compartido.** Un origen registrado (#108) importa sus
   conexiones junto a las tuyas y, hasta ahora, nada en el gestor decía cuál era
@@ -70,6 +84,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   cortaban a mitad de palabra.
 
 ### Corregido
+
+- **La política de escritura MCP de una conexión compartida ya no se revierte en
+  la siguiente sincronización.** La política es una decisión local sobre lo que un
+  cliente de IA puede hacer en *esta* máquina, algo que quien publica un origen
+  compartido no puede saber, pero la sincronización reemplazaba el registro
+  completo y se la llevaba por delante. Poner una conexión compartida en «datos»
+  funcionaba hasta el siguiente pull y volvía en silencio a solo lectura, lo que
+  dejaba el panel MCP inservible para quien tiene todas sus conexiones en un
+  origen. Todo lo demás de un perfil publicado lo sigue dictando el fichero.
 
 - **Renombrar un origen compartido llega ya al resto de la app.** El registro de
   orígenes se leía una sola vez, en local, desde el panel de Ajustes que lo

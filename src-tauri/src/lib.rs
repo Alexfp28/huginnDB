@@ -268,6 +268,7 @@ pub fn run() {
             commands::connection::save_profile,
             commands::connection::delete_profile,
             commands::connection::delete_profiles,
+            commands::connection::set_mcp_write_policy,
             commands::connection::test_connection,
             commands::connection::connect,
             commands::connection::disconnect,

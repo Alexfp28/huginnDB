@@ -440,6 +440,16 @@ fn merge_profiles_bundle(
                         report.deferred.push(profile.id.clone());
                         continue;
                     }
+                    // The MCP write policy is a LOCAL trust decision and must
+                    // survive the refresh. It is the one field on a published
+                    // profile that says what an AI client is allowed to do on
+                    // *this* machine, which the publisher cannot know; before
+                    // this, setting a shared connection to "data" in Settings
+                    // silently reverted on the next pull, so the whole panel was
+                    // unusable for anyone whose connections all come from an
+                    // origin. Everything else — host, port, credentials, the
+                    // visible-database default — is the file's to dictate.
+                    profile.mcp_write = existing.mcp_write;
                     *existing = profile.clone();
                     report.updated.push(profile.id);
                 }
@@ -667,6 +677,87 @@ pub struct OriginSyncReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::McpWritePolicy;
+    use crate::testkit;
+    use crate::transfer::ExportedProfile;
+
+    /// One published entry with no attached secrets, so the merge never touches
+    /// the keychain and the test needs no OS credential store.
+    fn published(profile: ConnectionProfile) -> ExportedProfile {
+        ExportedProfile {
+            profile,
+            secrets: None,
+        }
+    }
+
+    fn merge(
+        local: Vec<ConnectionProfile>,
+        incoming: &[ExportedProfile],
+    ) -> Vec<ConnectionProfile> {
+        let connections = Arc::new(RwLock::new(ActiveConnections::default()));
+        let profiles = Arc::new(RwLock::new(local));
+        let mut landed = HashMap::new();
+        merge_profiles_bundle(&connections, &profiles, "o1", None, incoming, &mut landed)
+            .expect("merge with no secrets and no live pools cannot fail");
+        let after = profiles.read().clone();
+        after
+    }
+
+    /// The write policy says what an AI client may do on *this* machine, which
+    /// the publisher cannot know. Before it was preserved, setting a shared
+    /// connection to "data" reverted on the next pull — silently, so the MCP
+    /// panel was unusable for anyone whose connections all come from an origin.
+    #[test]
+    fn a_sync_preserves_the_local_mcp_write_policy() {
+        let local = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            mcp_write: McpWritePolicy::Data,
+            ..testkit::profile("shared")
+        };
+        let incoming = published(ConnectionProfile {
+            host: "newhost".into(),
+            mcp_write: McpWritePolicy::ReadOnly,
+            ..testkit::profile("shared")
+        });
+
+        let after = merge(vec![local], &[incoming]);
+
+        assert_eq!(after[0].mcp_write, McpWritePolicy::Data, "policy is local");
+        assert_eq!(after[0].host, "newhost", "everything else is the file's");
+    }
+
+    /// A profile arriving for the first time has no local decision to keep, so
+    /// it takes whatever the file published (which is the export's default,
+    /// read-only, unless the publisher changed it).
+    #[test]
+    fn a_newly_published_profile_takes_the_files_policy() {
+        let incoming = published(ConnectionProfile {
+            mcp_write: McpWritePolicy::Full,
+            ..testkit::profile("fresh")
+        });
+        let after = merge(vec![], &[incoming]);
+        assert_eq!(after[0].mcp_write, McpWritePolicy::Full);
+        assert_eq!(after[0].origin_id.as_deref(), Some("o1"));
+    }
+
+    /// A local profile that merely shares an id is the user's, not the file's —
+    /// the existing ownership guard, pinned here because the policy line sits
+    /// right next to it.
+    #[test]
+    fn a_sync_never_claims_a_profile_another_origin_owns() {
+        let local = ConnectionProfile {
+            origin_id: Some("other".into()),
+            host: "mine".into(),
+            ..testkit::profile("contested")
+        };
+        let incoming = published(ConnectionProfile {
+            host: "theirs".into(),
+            ..testkit::profile("contested")
+        });
+        let after = merge(vec![local], &[incoming]);
+        assert_eq!(after[0].host, "mine");
+        assert_eq!(after[0].origin_id.as_deref(), Some("other"));
+    }
 
     #[test]
     fn a_single_disappearance_is_trusted() {
