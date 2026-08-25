@@ -13,7 +13,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, Keyboard, Search, Upload } from "lucide-react";
+import { Download, Keyboard, RotateCcw, Search, Upload } from "lucide-react";
 import { save as saveFileDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -165,6 +165,42 @@ export function ShortcutsSection() {
 
   return (
     <div className="space-y-3">
+      {/* Toolbar. Above the filters rather than under the list: these three act
+          on the whole set, and burying them past twenty-five rows meant nobody
+          found them without scrolling to the bottom first. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
+        <span className="text-[11px] text-muted-foreground">
+          {t("settings.shortcuts.summary", {
+            total: ACTIONS.length,
+            modified: modifiedCount,
+          })}
+        </span>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => void handleImport()}>
+            <Upload className="mr-1.5 h-3.5 w-3.5" />
+            {t("common.import")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={modifiedCount === 0}
+            onClick={() => void handleExport()}
+          >
+            <Download className="mr-1.5 h-3.5 w-3.5" />
+            {t("common.export")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={modifiedCount === 0}
+            onClick={() => setConfirmReset(true)}
+          >
+            <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+            {t("settings.shortcuts.resetAll")}
+          </Button>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[12rem] flex-1">
           {keyQuery === null ? (
@@ -266,38 +302,6 @@ export function ShortcutsSection() {
           </div>
         ))
       )}
-
-      <div className="flex items-center justify-between border-t border-border/60 pt-3 text-[11px] text-muted-foreground">
-        <span>
-          {t("settings.shortcuts.summary", {
-            total: ACTIONS.length,
-            modified: modifiedCount,
-          })}
-        </span>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => void handleImport()}>
-            <Upload className="mr-1.5 h-3.5 w-3.5" />
-            {t("common.import")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={modifiedCount === 0}
-            onClick={() => void handleExport()}
-          >
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            {t("common.export")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={modifiedCount === 0}
-            onClick={() => setConfirmReset(true)}
-          >
-            {t("settings.shortcuts.resetAll")}
-          </Button>
-        </div>
-      </div>
 
       <CaptureShortcutDialog
         action={capture?.action ?? null}
