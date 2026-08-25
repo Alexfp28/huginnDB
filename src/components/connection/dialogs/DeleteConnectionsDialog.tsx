@@ -32,9 +32,10 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { notify } from "@/lib/notify";
 import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 import { useConnections } from "@/stores/session/connections";
-import type { ConnectionProfile } from "@/types";
+import type { ConnectionProfile, DeleteProfilesReport } from "@/types";
 
 /** How many names to spell out before collapsing the rest into a count. */
 const MAX_NAMES = 8;
@@ -46,12 +47,12 @@ export function DeleteConnectionsDialog({
 }: {
   /** Profiles to delete. Render this component only while non-empty. */
   targets: ConnectionProfile[];
-  /** Called once every deletion has resolved, with the ids that were asked for. */
-  onDeleted: (ids: string[]) => void;
+  /** Called once the batch has resolved, with the backend's report. */
+  onDeleted: (report: DeleteProfilesReport) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const remove = useConnections((s) => s.remove);
+  const removeMany = useConnections((s) => s.removeMany);
   const { submitting, error, run } = useAsyncSubmit();
 
   const names = useMemo(() => targets.map((p) => p.name), [targets]);
@@ -72,10 +73,27 @@ export function DeleteConnectionsDialog({
   function onConfirm() {
     const ids = targets.map((p) => p.id);
     run(async () => {
-      for (const id of ids) {
-        await remove(id);
-      }
-      onDeleted(ids);
+      const report = await removeMany(ids);
+      // A refusal or a stuck keychain entry is reported as a toast, not as the
+      // dialog's own error, and the dialog still closes. By this point the batch
+      // has already been written: keeping it open would list connections that no
+      // longer exist, and pressing Delete again could only produce the same
+      // caveat forever. `error` on the dialog stays for the case it is right
+      // for — the whole call failing, where nothing happened and retrying is
+      // meaningful.
+      const caveats = [
+        report.skippedOrigin.length > 0 &&
+          t("connections.bulkDeleteOriginSkipped", {
+            count: report.skippedOrigin.length,
+          }),
+        report.failed.length > 0 &&
+          t("connections.bulkDeleteFailed", {
+            count: report.failed.length,
+            names: report.failed.map(([, message]) => message).join("; "),
+          }),
+      ].filter((x): x is string => !!x);
+      for (const caveat of caveats) notify.error(caveat);
+      onDeleted(report);
     });
   }
 

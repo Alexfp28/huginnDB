@@ -24,7 +24,7 @@ import { useConnectionHealth } from "@/stores/session/connectionHealth";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { clearProtectedPanelsForConnection } from "@/lib/dockview";
-import type { ConnectionProfile } from "@/types";
+import type { ConnectionProfile, DeleteProfilesReport } from "@/types";
 import { isDatabaseViewOf } from "@/lib/connectionLabel";
 
 interface ConnectionsState {
@@ -50,6 +50,14 @@ interface ConnectionsState {
   ) => Promise<ConnectionProfile>;
   /** Delete a profile and its keychain entries. */
   remove: (id: string) => Promise<void>;
+  /**
+   * Delete several profiles in one backend call, refreshing once at the end.
+   *
+   * `remove` stays as it is rather than delegating here: it is the path
+   * `useOriginSync.retire` takes, and that one legitimately deletes a profile a
+   * shared origin published — which `deleteProfiles` refuses by design.
+   */
+  removeMany: (ids: string[]) => Promise<DeleteProfilesReport>;
   /** Open a pool for `id`. Falls back to the stored secrets if omitted. */
   connect: (id: string, password?: string, sshSecret?: string) => Promise<void>;
   /** Close the pool for `id`. */
@@ -109,6 +117,11 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
   remove: async (id) => {
     await api.deleteProfile(id);
     await get().refresh();
+  },
+  removeMany: async (ids) => {
+    const report = await api.deleteProfiles(ids);
+    await get().refresh();
+    return report;
   },
   connect: async (id, password, sshSecret) => {
     await api.connect(id, password, sshSecret);

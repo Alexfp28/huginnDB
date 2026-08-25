@@ -1159,11 +1159,13 @@ export function ConnectionDialog({
         <DeleteConnectionsDialog
           targets={deleteTargets}
           onClose={() => setDeleteTargets([])}
-          onDeleted={(ids) => {
+          onDeleted={(report) => {
             setDeleteTargets([]);
             // Fall back to a fresh draft if the editor was showing one of them;
             // the load effect repopulates the form.
-            if (editingId && ids.includes(editingId)) setEditingId(null);
+            if (editingId && report.deleted.includes(editingId)) {
+              setEditingId(null);
+            }
           }}
         />
       )}

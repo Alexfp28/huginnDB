@@ -21,6 +21,7 @@ import type {
   ConflictResolution,
   BatchResult,
   ConnectionProfile,
+  DeleteProfilesReport,
   ConnectionTabState,
   DatabaseInfo,
   DataMode,
@@ -99,6 +100,17 @@ export const api = {
 
   /** Delete a profile and its keychain entries (DB + optional SSH). */
   deleteProfile: (id: string) => invoke<void>("delete_profile", { id }),
+
+  /**
+   * Delete several profiles in one pass: one rewrite of `profiles.json`, one
+   * sweep of `tab_state.json`, one `profiles-changed` event — instead of N of
+   * each, which made every open window re-read and re-render N times.
+   *
+   * The backend refuses ids a shared origin publishes and hands them back in
+   * `skippedOrigin`; deleting one locally is a no-op the next sync undoes.
+   */
+  deleteProfiles: (ids: string[]) =>
+    invoke<DeleteProfilesReport>("delete_profiles", { ids }),
 
   /**
    * Open a throwaway pool, run `SELECT 1`, then close it. `sshSecret` is

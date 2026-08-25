@@ -1091,6 +1091,23 @@ export interface Environment {
  * sync is pull-only — HuginnDB never writes back to it — and the passphrase for
  * an encrypted file lives in this user's OS keychain, never here.
  */
+/**
+ * Outcome of `deleteProfiles`. Mirrors `DeleteProfilesReport` in
+ * `src-tauri/src/commands/connection.rs`.
+ *
+ * `skippedOrigin` is unreachable from the connection manager — a profile a
+ * shared origin publishes can never be checked there — and is reported anyway,
+ * because the refusal lives at the boundary where the CLI and the MCP connector
+ * also arrive.
+ */
+export interface DeleteProfilesReport {
+  deleted: string[];
+  skippedOrigin: string[];
+  missing: string[];
+  /** `[id, message]` pairs: the profile is gone, its keychain entry was not. */
+  failed: Array<[string, string]>;
+}
+
 export interface Origin {
   id: string;
   name: string;

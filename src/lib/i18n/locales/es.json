@@ -148,13 +148,11 @@
       "jsonSchemas": "los vínculos de JSON Schema fijados a sus columnas"
     },
     "deleteIrreversible": "Esta acción no se puede deshacer. Las bases de datos en sí no se tocan.",
+    "bulkDeleteOriginSkipped": "Se han conservado {{count}} conexión(es): las publica un origen compartido, así que borrarlas aquí no haría nada, la siguiente sincronización las trae de vuelta. Quita el origen en Ajustes para eliminarlas.",
+    "bulkDeleteFailed": "No se han podido eliminar {{count}} contraseña(s) del almacén de credenciales: {{names}}",
     "disconnectTooltip": "Desconectar",
-    "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",
-    "bulkDeleteTitle": "Eliminar {{count}} conexiones",
-    "bulkDeleteConfirm": "¿Eliminar {{count}} conexiones? Esta acción no se puede deshacer.",
     "selectConnection": "Seleccionar {{name}}",
     "selectedCount": "{{count}} seleccionadas",
-    "manageTitle": "Gestionar conexiones",
     "reconnectTooltip": "Conexión perdida — reconectar",
     "reconnect": "Reconectar",
     "lost": "Conexión perdida: {{message}}"

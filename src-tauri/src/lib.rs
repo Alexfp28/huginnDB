@@ -267,6 +267,7 @@ pub fn run() {
             commands::connection::list_profiles,
             commands::connection::save_profile,
             commands::connection::delete_profile,
+            commands::connection::delete_profiles,
             commands::connection::test_connection,
             commands::connection::connect,
             commands::connection::disconnect,

@@ -8,6 +8,77 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **El gestor de conexiones ya distingue las conexiones locales de las que
+  publica un origen compartido.** Un origen registrado (#108) importa sus
+  conexiones junto a las tuyas y, hasta ahora, nada en el gestor decía cuál era
+  cuál. Peor aún: las carpetas de grupo se fundían a través de esa frontera, así
+  que una carpeta "Producción" tuya y una "Producción" que publica IT aparecían
+  bajo la misma cabecera. La lista arranca ahora con un filtro **Todas /
+  Locales / Compartidas** (con contadores) que desaparece por completo si no
+  tienes ningún origen registrado. La vista Compartidas se divide en una sección
+  plegable por origen, con su nombre y marcada como de solo lectura, más una
+  sección final para las conexiones cuyo origen ya no está registrado. En las
+  otras dos vistas, una conexión compartida lleva un distintivo cuyo tooltip
+  nombra el origen que la publica.
+
+  Ajustes → MCP recibe las mismas secciones, y ahí está el motivo de todo el
+  cambio: una conexión publicada por un origen conserva **el mismo id en todas
+  las máquinas**, así que un snippet del conector hecho con conexiones
+  compartidas sirve tal cual para todo el equipo, mientras que uno hecho con una
+  copia local antigua solo funciona en tu portátil — y eligiendo ids de una lista
+  plana no había forma de distinguirlas.
+
+- **«Eliminar todas las locales»**, en el menú de la lista de conexiones. La
+  forma prevista de pasar un equipo a un origen compartido es borrar las copias
+  locales y quedarse solo con lo que publica el origen; antes eso había que
+  hacerlo conexión a conexión. Está deshabilitada mientras haya una búsqueda
+  activa: con un filtro puesto, «todas» es ambiguo, y equivocarse borra
+  conexiones que no has visto. Para ese caso están las casillas, donde lo que va
+  a caer está en pantalla.
+
+### Cambiado
+
+- **Borrar conexiones se confirma dentro de la app y dice qué se lleva por
+  delante.** Antes había dos confirmaciones distintas: un `window.confirm` del
+  sistema para una conexión y un diálogo propio para una multiselección, y
+  ninguna mencionaba que borrar también elimina la contraseña del almacén de
+  credenciales del sistema, las pestañas y el filtro de «bases de datos a
+  mostrar» **en todos los entornos**, y los vínculos de JSON Schema fijados a sus
+  columnas. Ahora un único diálogo sirve para los tres caminos y enumera
+  exactamente lo que aplica a las conexiones elegidas: un fichero SQLite no
+  guarda contraseña, una conexión sin túnel no tiene secreto SSH.
+
+- **Una conexión publicada por un origen compartido ya no se puede borrar en
+  lote.** Antes se podía seleccionar, y borrarla era peor que inútil: el id viaja
+  en el fichero publicado, así que la siguiente sincronización la recreaba
+  idéntica — después de haber eliminado tu contraseña local. Su casilla está
+  ahora deshabilitada, con un tooltip que apunta a lo que sí funciona (quitar el
+  origen en Ajustes). El backend también rechaza esos ids, así que ni la CLI ni
+  el conector MCP pueden saltárselo.
+
+- **Un borrado en lote es una sola operación en vez de N.** Borrar cuarenta
+  conexiones reescribía `profiles.json` y `tab_state.json` cuarenta veces cada
+  uno y emitía cuarenta eventos de cambio, con lo que cada ventana abierta releía
+  y repintaba cuarenta veces. Ahora es una única pasada, e informa de lo que se
+  ha saltado o no ha podido limpiar en lugar de tragárselo en silencio.
+
+- El gestor de conexiones es más ancho (y su lista mide 320px en vez de 240px):
+  el filtro de procedencia puso tres segmentos encima de filas que ya llevan un
+  nombre, un distintivo de driver y una marca de origen, y los nombres se
+  cortaban a mitad de palabra.
+
+### Corregido
+
+- **Renombrar un origen compartido llega ya al resto de la app.** El registro de
+  orígenes se leía una sola vez, en local, desde el panel de Ajustes que lo
+  gestiona, así que nada más podía nombrar el origen detrás de una conexión — y
+  «Sincronizar ahora» no refrescaba su propia marca de última sincronización, que
+  se quedaba obsoleta hasta reabrir el panel. Ahora se cachea en un solo sitio y
+  se invalida con un evento del backend, así que cualquier ventana ve un
+  renombrado o una sincronización al instante.
+
 ## [1.18.0] — 2026-08-24
 
 ### Añadido

@@ -6,6 +6,71 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **The connection manager now tells local connections apart from the ones a
+  shared origin publishes.** A registered origin (#108) imports its connections
+  next to your own, and until now nothing in the manager said which was which.
+  Worse, the free-text group folders merged across the divide: a "Producción"
+  folder you made and a "Producción" folder IT publishes appeared under one
+  header. The rail now leads with an **All / Local / Shared** filter (with
+  counts), which hides itself entirely if you have no origins registered. The
+  Shared view splits into a collapsible section per origin, named after it and
+  marked read-only, plus a trailing section for connections whose origin has
+  since been unregistered. In the other two views a shared connection carries a
+  small badge whose tooltip names the publishing origin.
+
+  Settings → MCP gets the same sections. That is the point of the whole change:
+  a connection published by an origin keeps the **same id on every machine**, so
+  a connector snippet built from shared connections works for the whole team
+  as-is, while one built from a stale local copy works only on your laptop —
+  and picking ids out of a flat list gave you no way to tell them apart.
+
+- **"Delete all local connections"**, in the connection list's overflow menu.
+  The supported way to move a team onto a shared origin is to drop the local
+  copies and keep only what the origin publishes; doing that one connection at a
+  time was the only option before. It is disabled while a search is active: with
+  a filter on, "all" is ambiguous, and guessing wrong deletes connections you
+  never saw. Use the checkboxes for that case, where what will go is on screen.
+
+### Changed
+
+- **Deleting connections now confirms in-app, and says what it takes with it.**
+  There were two confirmations before: a bare OS `window.confirm` for a single
+  connection and an in-app dialog for a multi-selection, and neither mentioned
+  that a delete also removes the password from the OS credential store, the
+  connection's tabs and "databases to show" filter **in every environment**, and
+  any JSON Schema bindings pinned to its columns. One dialog now serves all three
+  paths and lists exactly what applies to the connections you picked — a SQLite
+  file has no stored password, an untunnelled connection has no SSH secret.
+
+- **A connection a shared origin publishes can no longer be bulk-deleted.** It
+  used to be selectable, and deleting it was worse than useless: the id travels
+  in the published file, so the next sync recreated the connection identically —
+  after your local password entry was gone. Its checkbox is now disabled, with a
+  tooltip pointing at what actually works (removing the origin in Settings). The
+  backend refuses those ids too, so the CLI and the MCP connector cannot route
+  around it.
+
+- **Bulk deletes are one operation instead of N.** Deleting forty connections
+  used to rewrite `profiles.json` and `tab_state.json` forty times each and fire
+  forty change events, which made every open window re-read and re-render forty
+  times. It is now a single pass, and it reports what it skipped or could not
+  clean up instead of silently swallowing it.
+
+- The connection manager is wider (and its list 320px instead of 240px):
+  the provenance filter put three segments above rows that already carry a name,
+  a driver badge and an origin mark, and names were truncating mid-word.
+
+### Fixed
+
+- **Renaming a shared origin now reaches the rest of the app.** The origin
+  registry was read once, locally, by the Settings panel that owns it, so nothing
+  else could name the origin behind a connection — and "Sync now" never refreshed
+  its own "last synced" timestamp, which stayed stale until the panel was
+  reopened. It is now cached in one place and invalidated by a backend event, so
+  every window sees a rename or a sync immediately.
+
 ## [1.18.0] — 2026-08-24
 
 ### Added

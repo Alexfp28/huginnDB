@@ -148,13 +148,11 @@
       "jsonSchemas": "the JSON Schema bindings pinned to their columns"
     },
     "deleteIrreversible": "This cannot be undone. The databases themselves are not touched.",
+    "bulkDeleteOriginSkipped": "{{count}} connection(s) were kept: a shared origin publishes them, so deleting them here would do nothing — the next sync brings them back. Remove the origin in Settings to get rid of them.",
+    "bulkDeleteFailed": "{{count}} password(s) could not be removed from the credential store: {{names}}",
     "disconnectTooltip": "Disconnect",
-    "deleteConfirm": "Delete connection \"{{name}}\"?",
-    "bulkDeleteTitle": "Delete {{count}} connections",
-    "bulkDeleteConfirm": "Delete {{count}} connections? This cannot be undone.",
     "selectConnection": "Select {{name}}",
     "selectedCount": "{{count}} selected",
-    "manageTitle": "Manage connections",
     "reconnectTooltip": "Connection lost — reconnect",
     "reconnect": "Reconnect",
     "lost": "Connection lost: {{message}}"
