@@ -13,10 +13,13 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Keyboard, Search } from "lucide-react";
+import { Download, Keyboard, Search, Upload } from "lucide-react";
+import { save as saveFileDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { api } from "@/lib/tauri";
+import { notify } from "@/lib/notify";
 import { usePreferences, selectKeybindings } from "@/stores/preferences/preferences";
 import {
   ACTIONS,
@@ -26,6 +29,10 @@ import {
   formatForDisplay,
   parseSequence,
   userBindings,
+  parseKeybindingsFile,
+  serializeKeybindings,
+  ShortcutImportError,
+  SHORTCUTS_FILE_NAME,
   type ActionId,
   type ActionSpec,
   type Category,
@@ -96,6 +103,64 @@ export function ShortcutsSection() {
       spec.defaults.length === bindings.length &&
       spec.defaults.every((b, i) => b === bindings[i]);
     updateKeybindings({ [id]: isDefault ? undefined : bindings });
+  }
+
+  /** Write the overrides map to a file the user picks. Only overrides travel —
+   *  see `lib/keybindings/transfer.ts` for why exporting resolved bindings
+   *  would pin the importing machine to this version's defaults. */
+  async function handleExport() {
+    try {
+      const destPath = await saveFileDialog({
+        defaultPath: SHORTCUTS_FILE_NAME,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!destPath) return;
+      await api.writeTextFile(destPath, serializeKeybindings(keybindings));
+      notify.file(t("notifications.fileSaved.shortcuts"), { path: destPath });
+    } catch (e) {
+      notify.error(String(e));
+    }
+  }
+
+  /** Replace the overrides map wholesale. Merging would leave the user with a
+   *  mix of two machines' shortcuts and no way to tell which came from where;
+   *  "restore my shortcuts" is the only thing anyone means by importing them. */
+  async function handleImport() {
+    try {
+      const picked = await openFileDialog({
+        multiple: false,
+        directory: false,
+        title: t("settings.shortcuts.importTitle"),
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (typeof picked !== "string" || !picked) return;
+      const raw = await api.readTextFile(picked);
+      const result = parseKeybindingsFile(raw);
+      resetKeybindings();
+      updateKeybindings(result.keybindings);
+      if (result.unknownActions.length > 0) {
+        // Named rather than dropped in silence: it is how someone finds out
+        // the file came from a newer build.
+        notify.warning(
+          t("settings.shortcuts.importUnknown", {
+            count: result.unknownActions.length,
+            ids: result.unknownActions.join(", "),
+          }),
+        );
+      } else {
+        notify.success(
+          t("settings.shortcuts.importSuccess", {
+            count: Object.keys(result.keybindings).length,
+          }),
+        );
+      }
+    } catch (e) {
+      if (e instanceof ShortcutImportError) {
+        notify.error(t(`settings.shortcuts.importError.${e.message}`));
+      } else {
+        notify.error(String(e));
+      }
+    }
   }
 
   return (
@@ -209,14 +274,29 @@ export function ShortcutsSection() {
             modified: modifiedCount,
           })}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={modifiedCount === 0}
-          onClick={() => setConfirmReset(true)}
-        >
-          {t("settings.shortcuts.resetAll")}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => void handleImport()}>
+            <Upload className="mr-1.5 h-3.5 w-3.5" />
+            {t("common.import")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={modifiedCount === 0}
+            onClick={() => void handleExport()}
+          >
+            <Download className="mr-1.5 h-3.5 w-3.5" />
+            {t("common.export")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={modifiedCount === 0}
+            onClick={() => setConfirmReset(true)}
+          >
+            {t("settings.shortcuts.resetAll")}
+          </Button>
+        </div>
       </div>
 
       <CaptureShortcutDialog

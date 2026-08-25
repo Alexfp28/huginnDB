@@ -44,6 +44,14 @@ export { useKeybindingDispatcher } from "./useDispatcher";
 export { useShortcutLabel } from "./useShortcutLabel";
 
 export {
+  SHORTCUTS_FILE_NAME,
+  ShortcutImportError,
+  type ShortcutImportResult,
+  parseKeybindingsFile,
+  serializeKeybindings,
+} from "./transfer";
+
+export {
   type Binding,
   type Conflict,
   type Keybindings,

@@ -20,7 +20,9 @@
     "retry": "Reintentar",
     "copy": "Copiar",
     "errorPanelCrashed": "Algo falló al renderizar este panel.",
-    "add": "Añadir"
+    "add": "Añadir",
+    "import": "Importar",
+    "export": "Exportar"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -1262,6 +1264,13 @@
         "grid": "Solo con el foco en la rejilla de datos.",
         "tree": "Solo con el foco en el árbol de esquema.",
         "overlay": "Solo con una paleta o un diálogo abiertos."
+      },
+      "importTitle": "Importar atajos",
+      "importSuccess": "Importados {{count}} atajo(s) personalizados.",
+      "importUnknown": "Importado, pero este archivo trae {{count}} acción/es que esta versión no conoce: {{ids}}",
+      "importError": {
+        "notJson": "Ese archivo no es JSON válido.",
+        "notShortcuts": "Ese archivo no es una exportación de atajos de HuginnDB."
       }
     },
     "mcp": {
@@ -1413,7 +1422,8 @@
       "profiles": "Conexiones exportadas",
       "environments": "Entornos exportados",
       "jsonSchemas": "Esquemas JSON exportados",
-      "theme": "Tema exportado"
+      "theme": "Tema exportado",
+      "shortcuts": "Atajos exportados"
     },
     "center": {
       "open": "Notificaciones",
@@ -1776,6 +1786,10 @@
       "mcp": {
         "title": "Conector MCP",
         "description": "Conecta herramientas de IA a tus bases de datos"
+      },
+      "shortcuts": {
+        "title": "Atajos de teclado",
+        "description": "Reasignar cualquier cosa, secuencias, ámbitos y teclas reservadas."
       }
     }
   },

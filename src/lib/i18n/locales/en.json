@@ -20,7 +20,9 @@
     "retry": "Retry",
     "copy": "Copy",
     "errorPanelCrashed": "Something went wrong rendering this panel.",
-    "add": "Add"
+    "add": "Add",
+    "import": "Import",
+    "export": "Export"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -1262,6 +1264,13 @@
         "grid": "Only while the focus is in the data grid.",
         "tree": "Only while the focus is in the schema tree.",
         "overlay": "Only while a palette or dialog is open."
+      },
+      "importTitle": "Import shortcuts",
+      "importSuccess": "Imported {{count}} customised shortcut(s).",
+      "importUnknown": "Imported, but {{count}} action(s) in this file are unknown to this version: {{ids}}",
+      "importError": {
+        "notJson": "That file isn't valid JSON.",
+        "notShortcuts": "That file isn't a HuginnDB shortcuts export."
       }
     },
     "mcp": {
@@ -1413,7 +1422,8 @@
       "profiles": "Connections exported",
       "environments": "Environments exported",
       "jsonSchemas": "JSON Schemas exported",
-      "theme": "Theme exported"
+      "theme": "Theme exported",
+      "shortcuts": "Shortcuts exported"
     },
     "center": {
       "open": "Notifications",
@@ -1776,6 +1786,10 @@
       "mcp": {
         "title": "MCP connector",
         "description": "Connect AI tools to your databases"
+      },
+      "shortcuts": {
+        "title": "Keyboard shortcuts",
+        "description": "Rebind anything, chord sequences, scopes and reserved keys."
       }
     }
   },
