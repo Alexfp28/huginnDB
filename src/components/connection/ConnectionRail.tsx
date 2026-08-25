@@ -201,7 +201,10 @@ export function ConnectionRail({
 
   const scopeOptions = useMemo(
     () => [
-      { value: "all" as const, label: t("connections.scope.all") },
+      {
+        value: "all" as const,
+        label: `${t("connections.scope.all")} ${profiles.length}`,
+      },
       {
         value: "local" as const,
         label: `${t("connections.scope.local")} ${allLocal.length}`,
@@ -211,7 +214,7 @@ export function ConnectionRail({
         label: `${t("connections.scope.shared")} ${protectedIds.size}`,
       },
     ],
-    [t, allLocal.length, protectedIds.size],
+    [t, profiles.length, allLocal.length, protectedIds.size],
   );
 
   const allSelectableChecked =
@@ -231,6 +234,17 @@ export function ConnectionRail({
           {t("connectionDialog.newConnection")}
         </Button>
       </div>
+      {hasShared && (
+        <Segmented
+          size="sm"
+          variant="underline"
+          className="mt-2"
+          value={scope}
+          onValueChange={setScope}
+          options={scopeOptions}
+          aria-label={t("connections.scopeLabel")}
+        />
+      )}
       {profiles.length > 0 && (
         <div className="px-2 pt-2">
           <div className="relative">
@@ -252,18 +266,6 @@ export function ConnectionRail({
               </button>
             )}
           </div>
-        </div>
-      )}
-      {hasShared && (
-        <div className="px-2 pt-2">
-          <Segmented
-            size="sm"
-            className="w-full"
-            value={scope}
-            onValueChange={setScope}
-            options={scopeOptions}
-            aria-label={t("connections.scopeLabel")}
-          />
         </div>
       )}
       <div className="mt-1 flex items-center gap-1.5 px-3 py-1">
