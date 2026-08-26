@@ -174,11 +174,19 @@ export function MultiDbExplorer({
   const dbRows = useMemo(() => {
     const visible = (cs?.databases ?? [])
       .filter((db) => !visibleSet || visibleSet.has(db.name))
-      // The scope is applied here as well as inside the counter, so narrowing
-      // to one database hides its siblings even before anything is typed —
-      // "search here only" that still lists everywhere would be a strange
-      // thing to look at.
-      .filter((db) => scopeIncludesDatabase(scope, parentId, db.name));
+      // A database scope on *this* connection hides its siblings, even before
+      // anything is typed: "search here only" that still lists everywhere
+      // would be a strange thing to look at. A scope naming a *different*
+      // connection deliberately does not touch this list — narrowing the
+      // search elsewhere must not blank out an unrelated server's databases;
+      // that connection's own row already dims and folds while a search is
+      // running (`out-of-scope`).
+      .filter(
+        (db) =>
+          scope.kind !== "database" ||
+          scope.connectionId !== parentId ||
+          scopeIncludesDatabase(scope, parentId, db.name),
+      );
     if (!filterActive) {
       return visible.map((db) => ({ db, count: 0, cold: false, nameMatch: false }));
     }
