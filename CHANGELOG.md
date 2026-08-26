@@ -270,6 +270,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   "Search only the selected connection" ships unbound but is bindable and
   searchable in the command palette.
 
+- **"Disconnect all" no longer makes you wait.** It closed the connections one
+  after another, and a single disconnect is already several round trips —
+  the backend closes each of a server's per-database pools in turn, waiting up
+  to five seconds each on one that has stopped answering. So one unreachable
+  server made every healthy one behind it wait out its timeout first. They now
+  close at the same time, and the button shows that it is working. The same
+  command from the keyboard shortcut or the command palette was a separate,
+  faster implementation that left the tree stale and its tabs pointing at
+  closed pools; both paths are now the same one.
+
 - **Deleting connections now confirms in-app, and says what it takes with it.**
   There were two confirmations before: a bare OS `window.confirm` for a single
   connection and an in-app dialog for a multi-selection, and neither mentioned
