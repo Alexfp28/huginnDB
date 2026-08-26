@@ -51,6 +51,7 @@ import {
   Folder,
   FolderOpen,
   ListFilter,
+  DatabaseBackup,
   Loader2,
   Plug,
   PlugZap,
@@ -68,10 +69,14 @@ import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
 import { isServerWide } from "@/lib/connectionLabel";
 import { useTreeMatchCounts } from "@/lib/schema/useTreeMatchCounts";
 import { rowMatchState, totalMatches } from "@/lib/schema/treeMatches";
+import { warmForSearch } from "@/lib/schema/warmForSearch";
 import { scopeLabel } from "@/lib/schema/filterScope";
 import { TREE_SEARCH_DEBOUNCE_MS, useTreeSearch } from "@/stores/session/treeSearch";
 import { connectAndWarm, disconnectAndClean } from "@/lib/connection/connectFlow";
 import { persistLaunchState } from "@/stores/session/persistedTabs";
+import { isTooManyConnections } from "@/lib/db/driver";
+import { notify } from "@/lib/notify";
+import { api } from "@/lib/tauri";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -228,6 +233,62 @@ export function ConnectionsTree() {
     () => (scope.kind === "all" ? null : profiles.find((p) => p.id === scope.connectionId)),
     [profiles, scope],
   );
+
+  /**
+   * Reach the databases the search has not read.
+   *
+   * Typing does not do this and must not: every database view is a whole
+   * connection pool, and a fan-out driven by a keystroke is what made a
+   * nineteen-database server exhaust its own connection limit (1.13.0). So the
+   * cost is a button, and the button says how much it will cost.
+   *
+   * `warmForSearch` walks the connections one at a time and bounds each to
+   * `DB_VIEW_WARM_CONCURRENCY`; the counts fill in on their own as each child
+   * slice lands, because that is what invalidates the memo above.
+   */
+  const [warming, setWarming] = useState(false);
+  const limitReached = useTreeSearch((s) => s.limitReached);
+  const setLimitReached = useTreeSearch((s) => s.setLimitReached);
+  async function handleWarmForSearch() {
+    if (warming) return;
+    const targets = Array.from(matchCounts.values())
+      .filter((s) => s.coldDatabases.length > 0)
+      .map((s) => ({ parentId: s.connectionId, databases: s.coldDatabases }));
+    if (targets.length === 0) return;
+    setWarming(true);
+    try {
+      const result = await warmForSearch(targets);
+      if (result.limitError) {
+        // The one failure the user can act on. Everything still queued would be
+        // refused identically, so the offer to warm is withdrawn until they
+        // free something up — reusing the toast the explorer's own prefetch
+        // used to raise from inside a keystroke.
+        setLimitReached(true);
+        notify.error(String(result.limitError), {
+          actions: [
+            {
+              label: t("schema.releaseIdlePools"),
+              variant: "primary",
+              onClick: () => {
+                void api
+                  .releaseIdlePools()
+                  .then((closed) => {
+                    notify.success(t("schema.releasedIdlePools", { count: closed }));
+                    setLimitReached(false);
+                  })
+                  .catch((err) => notify.error(String(err)));
+              },
+            },
+          ],
+        });
+      }
+    } catch (e) {
+      if (isTooManyConnections(e)) setLimitReached(true);
+      notify.error(String(e));
+    } finally {
+      setWarming(false);
+    }
+  }
 
   /**
    * Connections the user re-opened by hand while the filter had folded them.
@@ -658,11 +719,35 @@ export function ConnectionsTree() {
               </span>
             )}
             {totals.cold > 0 && (
-              <div className="text-muted-foreground/70">
-                {t("connectionsTree.filter.partialCount", {
-                  count: totals.matches,
-                  cold: totals.cold,
-                })}
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <span className="text-muted-foreground/70">
+                  {t("connectionsTree.filter.partialCount", {
+                    count: totals.matches,
+                    cold: totals.cold,
+                  })}
+                </span>
+                {!limitReached && (
+                  <button
+                    type="button"
+                    disabled={warming}
+                    onClick={() => void handleWarmForSearch()}
+                    title={t("connectionsTree.filter.searchUnloadedHint")}
+                    className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                  >
+                    {warming ? (
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                    ) : (
+                      <DatabaseBackup className="h-3 w-3 shrink-0 text-brand" />
+                    )}
+                    <span className="truncate">
+                      {warming
+                        ? t("connectionsTree.filter.searchingUnloaded")
+                        : t("connectionsTree.filter.searchUnloaded", {
+                            count: totals.cold,
+                          })}
+                    </span>
+                  </button>
+                )}
               </div>
             )}
           </div>

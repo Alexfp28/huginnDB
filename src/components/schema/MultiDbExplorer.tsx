@@ -7,10 +7,9 @@
  *
  * Two things here are load-bearing and documented at the site as well:
  *
- * - **The cross-database search prefetch is bounded**, and its own comment
- *   explains why (each database view is a whole connection pool). See
- *   `DB_VIEW_WARM_CONCURRENCY` in `lib/schema/warmDatabases.ts`, which also
- *   records why the palette's warm stays a separate scheduler.
+ * - **Nothing here opens a connection pool on its own.** The cross-database
+ *   search prefetch that used to live in this file is gone; warming is an
+ *   explicit action on the filter box (`lib/schema/warmForSearch.ts`).
  * - **The `useMemo`s stay above the `if (!cs)` early return**, for the same
  *   hook-count reason `SingleDbExplorer`'s header spells out.
  *
@@ -22,7 +21,7 @@
  * (`patterns`) alongside this connection's `summary`.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -61,12 +60,10 @@ import { useVisibleDatabases } from "@/lib/connection/useVisibleDatabases";
 import { databaseViewId } from "@/lib/connectionLabel";
 import { scopeIncludesDatabase } from "@/lib/schema/filterScope";
 import {
-  isTooManyConnections,
   supportsCreateDatabase,
   supportsDdlEditing,
   supportsSqlDump,
 } from "@/lib/db/driver";
-import { DB_VIEW_WARM_CONCURRENCY } from "@/lib/schema/warmDatabases";
 import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { openSecurityTab } from "@/lib/tabs/openSecurityTab";
@@ -94,7 +91,6 @@ export function MultiDbExplorer({
 }) {
   const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[parentId]);
-  const refresh = useSchema((s) => s.refresh);
   const toggleNode = useSchema((s) => s.toggleNode);
   // CREATE DATABASE is server-level DDL, only meaningful for Postgres/MySQL —
   // SQLite never reaches multi-DB mode at all, and MongoDB creates databases
@@ -153,86 +149,14 @@ export function MultiDbExplorer({
   // common) precaching every child's table list made the initial load
   // noticeably slow, and the DataGrip-style visible-databases selector (#64)
   // plus lazy expand already give the user control over what actually loads.
-  // Databases now load only when expanded, or on demand while searching
-  // (below). The first cross-database search is therefore "cold" — an
-  // acceptable trade for an instant connect.
-
-  // On-demand prefetch while searching: walk the databases the tree reports as
-  // cold (`summary.coldDatabases` — already narrowed to the visible subset and
-  // the active scope, which is what the old local computation got wrong), open
-  // the synthetic child connection, and pull its table list into the store so
-  // the cross-database counts fill in. A db is marked "in-flight" the moment we
-  // start so concurrent renders don't schedule it twice.
   //
-  // **Bounded since 1.13.0.** This loop used to start every database at once.
-  // Each `openDatabaseView` opens a whole separate connection pool, so on a
-  // server with nineteen databases one keystroke fired nineteen simultaneous
-  // connection attempts — a burst large enough on its own to exhaust a shared
-  // server's connection limit, and the single most likely trigger behind the
-  // "too many connections" reports. It now runs at most
-  // `DB_VIEW_WARM_CONCURRENCY` at a time; `pumpTick` re-runs this effect as each
-  // one settles so the queue keeps draining. (The effect's dependency on
-  // `summary` covers the success path on its own, but not a failure, which
-  // touches no store — hence an explicit tick.)
-  const inFlightPrefetch = useRef<Set<string>>(new Set());
-  const [pumpTick, setPumpTick] = useState(0);
-  // Circuit breaker: once the server says it is full, stop. Without this the
-  // fan-out re-fires on the next keystroke against a server already refusing
-  // it, which turns one failure into a stream of them and delays recovery.
-  const [limitReached, setLimitReached] = useState(false);
-  useEffect(() => {
-    setLimitReached(false);
-  }, [parentId]);
-  const coldDatabases = summary?.coldDatabases;
-  useEffect(() => {
-    if (!filterActive || limitReached || !coldDatabases) return;
-    for (const name of coldDatabases) {
-      if (inFlightPrefetch.current.size >= DB_VIEW_WARM_CONCURRENCY) break;
-      const childId = databaseViewId(parentId, name);
-      if (inFlightPrefetch.current.has(childId)) continue;
-      inFlightPrefetch.current.add(childId);
-      api
-        .openDatabaseView(parentId, name)
-        .then((resolvedId) => refresh(resolvedId))
-        .catch((e) => {
-          // Silent, except for the one failure the user can act on: a
-          // connection-limit refusal means every remaining database in the
-          // queue would fail the same way.
-          if (isTooManyConnections(e)) {
-            setLimitReached(true);
-            notify.error(String(e), {
-              actions: [{
-                label: t("schema.releaseIdlePools"),
-                variant: "primary",
-                onClick: () => {
-                  void api
-                    .releaseIdlePools()
-                    .then((closed) => {
-                      notify.success(
-                        t("schema.releasedIdlePools", { count: closed }),
-                      );
-                      setLimitReached(false);
-                    })
-                    .catch((err) => notify.error(String(err)));
-                },
-              }],
-            });
-          }
-        })
-        .finally(() => {
-          inFlightPrefetch.current.delete(childId);
-          setPumpTick((n) => n + 1);
-        });
-    }
-  }, [
-    filterActive,
-    coldDatabases,
-    pumpTick,
-    limitReached,
-    t,
-    parentId,
-    refresh,
-  ]);
+  // Nor any warm while *typing*. This file used to run a bounded prefetch off
+  // the debounced needle, so a search reached databases nobody had opened —
+  // at the cost of a connection pool per database, driven by a keystroke.
+  // Searching now looks only at what is already in `useSchema`, and reaching
+  // further is an explicit action on the filter box (`warmForSearch`). A
+  // freshly connected server is therefore "cold" until asked, and the tree
+  // says so rather than reporting a `0` it cannot back up.
 
   /**
    * Which database rows to render, and what each one knows about itself.
