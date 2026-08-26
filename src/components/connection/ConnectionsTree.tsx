@@ -62,7 +62,6 @@ import {
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
 import { useSchema } from "@/stores/session/schema";
-import { useTabs } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
 import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups";
 import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
@@ -72,7 +71,11 @@ import { rowMatchState, totalMatches } from "@/lib/schema/treeMatches";
 import { warmForSearch } from "@/lib/schema/warmForSearch";
 import { scopeLabel } from "@/lib/schema/filterScope";
 import { TREE_SEARCH_DEBOUNCE_MS, useTreeSearch } from "@/stores/session/treeSearch";
-import { connectAndWarm, disconnectAndClean } from "@/lib/connection/connectFlow";
+import {
+  connectAndWarm,
+  disconnectAll,
+  disconnectAndClean,
+} from "@/lib/connection/connectFlow";
 import { persistLaunchState } from "@/stores/session/persistedTabs";
 import { isTooManyConnections } from "@/lib/db/driver";
 import { notify } from "@/lib/notify";
@@ -102,7 +105,6 @@ export function ConnectionsTree() {
   const { t } = useTranslation();
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
-  const disconnect = useConnections((s) => s.disconnect);
   const lostConnections = useConnectionHealth((s) => s.lost);
   // Whole map, so a row can show that its schema is being fetched. The explorer's
   // spinning refresh button carried that signal before its icon strip moved to
@@ -110,8 +112,6 @@ export function ConnectionsTree() {
   // collapsed. `MultiDbExplorer` already subscribes this broadly for the same
   // reason — the lookups are cheap and the map is replaced, not mutated.
   const schemaByConnection = useSchema((s) => s.byConnection);
-  const dropSchema = useSchema((s) => s.drop);
-  const closeTabsForConnection = useTabs((s) => s.closeForConnection);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
   // The folded set (see `useUi`): a row follows its pool unless the user said
@@ -415,18 +415,27 @@ export function ConnectionsTree() {
     // this comes back", never "open over a subtree that isn't there".
   }
 
-  /** Tear down every live pool and clear the selected connection. Lives here
-   *  (rather than the File menu, where it used to sit next to the now-removed
-   *  connection list) since it's a bulk action over exactly what this tree shows. */
+  /**
+   * Tear down every live pool and clear the selected connection. Lives here
+   * (rather than the File menu, where it used to sit next to the now-removed
+   * connection list) since it's a bulk action over exactly what this tree shows.
+   *
+   * The loop this used to run awaited one connection before starting the next,
+   * on top of a backend that already closes each connection's per-database
+   * pools one at a time — every one of them up to a 5s timeout on a server
+   * that has stopped answering. Four nested serial layers is what made the
+   * button feel like it had hung. `disconnectAll` runs the connections
+   * concurrently, and is shared with the keyboard shortcut, which used to be a
+   * second, faster, *lossier* implementation of the same command.
+   */
+  const [disconnectingAll, setDisconnectingAll] = useState(false);
   async function handleDisconnectAll() {
-    for (const id of Array.from(active)) {
-      try {
-        await disconnect(id);
-        dropSchema(id);
-        closeTabsForConnection(id);
-      } catch {
-        // Continue on partial failures so one bad pool doesn't block the rest.
-      }
+    if (disconnectingAll) return;
+    setDisconnectingAll(true);
+    try {
+      await disconnectAll();
+    } finally {
+      setDisconnectingAll(false);
     }
     setSelected(null);
   }
@@ -661,12 +670,19 @@ export function ConnectionsTree() {
           <SimpleTooltip label={t("menu.file.disconnectAll")}>
             <button
               type="button"
-              disabled={active.size === 0}
+              disabled={active.size === 0 || disconnectingAll}
               onClick={() => void handleDisconnectAll()}
               aria-label={t("menu.file.disconnectAll")}
               className="shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
             >
-              <PlugZap className="h-3.5 w-3.5" />
+              {/* Closing a pool through a tunnel or a pooler is a round trip
+                  per database, so this is not always instant — the button says
+                  it is working instead of looking ignored. */}
+              {disconnectingAll ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <PlugZap className="h-3.5 w-3.5" />
+              )}
             </button>
           </SimpleTooltip>
           {/* The "N of M connections" line folds into a brand dot on the icon

@@ -43,6 +43,7 @@ import { notify } from "@/lib/notify";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
 import { useJsonSchemaTransfer } from "@/stores/dialogs/jsonSchemaTransfer";
+import { disconnectAll } from "@/lib/connection/connectFlow";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useTreeSearch } from "@/stores/session/treeSearch";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
@@ -405,12 +406,11 @@ export default function App() {
         if (active) tabs.setPinned(active.id, !active.pinned);
       },
 
-      disconnectAll: () => {
-        const connections = useConnections.getState();
-        for (const id of Array.from(connections.active)) {
-          void connections.disconnect(id).catch((e) => notify.error(String(e)));
-        }
-      },
+      // Shared with the Schema panel's button. This used to be its own loop:
+      // concurrent (so fast) but it dropped neither the cached schema nor the
+      // tabs pointing at the closed pools, leaving the tree stale — the same
+      // command behaving differently depending on where it was invoked from.
+      disconnectAll: () => void disconnectAll(),
 
       togglePanelSchema: () => useSessionPanelLayout.getState().toggleSchema(),
       togglePanelSaved: () => useSessionPanelLayout.getState().toggleSaved(),
