@@ -74,6 +74,8 @@ interface TreeSearchState {
   narrowTo: (scope: FilterScope) => void;
   /** One level out: database → connection → all. */
   widen: () => void;
+  /** All the way out, keeping the needle — the scope chip's ✕. */
+  clearScope: () => void;
   /** Escape's layers: clear the text, else widen the scope, else nothing. */
   escape: () => EscapeOutcome;
   /** Drop the text AND the scope — the box's ✕. */
@@ -120,6 +122,9 @@ export const useTreeSearch = create<TreeSearchState>((set, get) => ({
       const next = widenScope(s.scope);
       return sameScope(s.scope, next) ? s : { scope: next, limitReached: false };
     }),
+
+  clearScope: () =>
+    set((s) => (s.scope.kind === "all" ? s : { scope: ALL_SCOPE, limitReached: false })),
 
   escape: () => {
     const s = get();

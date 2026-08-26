@@ -118,7 +118,11 @@
       "counting": "Contando…",
       "partialCount": "{{count}} coincidencia(s) en lo ya cargado — faltan {{cold}} base(s) por buscar",
       "connectToSearch": "Conecta para incluirla en la búsqueda",
-      "clear": "Limpiar filtro"
+      "clear": "Limpiar filtro",
+      "summaryScoped": "{{matches}} coincidencia(s) en {{name}}",
+      "scopeHere": "Buscar solo aquí",
+      "clearScope": "Volver a buscar en todas las conexiones",
+      "noMatchesInConnection": "Sin coincidencias aquí"
     }
   },
   "workspacePicker": {
@@ -459,7 +463,8 @@
       "confirm": "¿Insertar los documentos de este fichero en \"{{collection}}\"? Si existen documentos con el mismo _id la importación se detendrá.",
       "success": "Importación terminada — se insertaron {{count}} documento(s)."
     },
-    "security": "Seguridad"
+    "security": "Seguridad",
+    "filterScopedToConnection": "Buscando solo en {{name}}"
   },
   "security": {
     "title": "Seguridad",

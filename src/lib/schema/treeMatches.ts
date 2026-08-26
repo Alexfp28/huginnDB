@@ -31,7 +31,11 @@
 
 import { databaseViewId } from "@/lib/connectionLabel";
 import { matchesPatterns } from "@/lib/schema/matchesFilter";
-import { scopeIncludesDatabase, type FilterScope } from "@/lib/schema/filterScope";
+import {
+  scopeIncludes,
+  scopeIncludesDatabase,
+  type FilterScope,
+} from "@/lib/schema/filterScope";
 
 /** The parts of a `useSchema` slice this file reads. */
 export interface SchemaSliceLike {
@@ -62,6 +66,15 @@ export interface ConnectionMatchSummary {
   coldDatabases: string[];
   /** The connection's own list is still loading and has never completed. */
   pending: boolean;
+  /**
+   * The search is scoped somewhere else, so this connection was not searched
+   * at all.
+   *
+   * Kept apart from a `0` deliberately: "nothing here matched" and "this was
+   * not looked at" are different facts, and only one of them is a reason to
+   * try a different needle.
+   */
+  outOfScope: boolean;
 }
 
 /**
@@ -120,7 +133,15 @@ export function summarizeMatches(
       databaseNameMatches: [],
       coldDatabases: [],
       pending: !!slice?.loading && !slice.initialized,
+      outOfScope: !scopeIncludes(scope, c.connectionId),
     };
+
+    if (summary.outOfScope) {
+      // Nothing was read on this connection's behalf, so nothing is claimed
+      // about it — not even that it is still loading.
+      summary.pending = false;
+      return summary;
+    }
 
     if (!c.multiDb) {
       summary.count = countMatches(slice, patterns);
@@ -174,15 +195,22 @@ export function totalMatches(list: Iterable<ConnectionMatchSummary>): {
 }
 
 /**
- * The four states a connection row can be in under an active filter.
+ * The states a connection row can be in under an active filter.
  *
  * `unloaded` outranks `none` on purpose: a multi-DB server whose databases are
  * all cold has *no* evidence for a `0`, and a provisional `0` is what makes a
- * user abandon a search that would have worked.
+ * user abandon a search that would have worked. `out-of-scope` outranks
+ * everything for the same reason, one step further out.
  */
-export type RowMatchState = "pending" | "unloaded" | "none" | "matches";
+export type RowMatchState =
+  | "out-of-scope"
+  | "pending"
+  | "unloaded"
+  | "none"
+  | "matches";
 
 export function rowMatchState(summary: ConnectionMatchSummary): RowMatchState {
+  if (summary.outOfScope) return "out-of-scope";
   if (summary.pending) return "pending";
   if (summary.count > 0) return "matches";
   if (summary.coldDatabases.length > 0) return "unloaded";

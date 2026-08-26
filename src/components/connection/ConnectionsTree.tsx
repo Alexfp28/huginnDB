@@ -68,6 +68,7 @@ import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
 import { isServerWide } from "@/lib/connectionLabel";
 import { useTreeMatchCounts } from "@/lib/schema/useTreeMatchCounts";
 import { rowMatchState, totalMatches } from "@/lib/schema/treeMatches";
+import { scopeLabel } from "@/lib/schema/filterScope";
 import { TREE_SEARCH_DEBOUNCE_MS, useTreeSearch } from "@/stores/session/treeSearch";
 import { connectAndWarm, disconnectAndClean } from "@/lib/connection/connectFlow";
 import { persistLaunchState } from "@/stores/session/persistedTabs";
@@ -85,7 +86,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConnectionActionsMenu } from "@/components/connection/ConnectionActionsMenu";
-import { TreeFilterBox } from "@/components/connection/TreeFilterBox";
+import { ScopeChip, TreeFilterBox } from "@/components/connection/TreeFilterBox";
 import { SchemaExplorer } from "@/components/schema/SchemaExplorer";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import type { TreeConnectionInput } from "@/lib/schema/treeMatches";
@@ -122,6 +123,10 @@ export function ConnectionsTree() {
   const setRaw = useTreeSearch((s) => s.setRaw);
   const commitNeedle = useTreeSearch((s) => s.commit);
   const clearSearch = useTreeSearch((s) => s.clear);
+  const narrowTo = useTreeSearch((s) => s.narrowTo);
+  const clearScope = useTreeSearch((s) => s.clearScope);
+  const widenScopeOneLevel = useTreeSearch((s) => s.widen);
+  const requestFocus = useTreeSearch((s) => s.requestFocus);
   const focusRequest = useTreeSearch((s) => s.focusRequest);
   const groupCollapse = useConnectionGroupCollapse();
   const filterInputRef = useRef<HTMLInputElement>(null);
@@ -205,6 +210,26 @@ export function ConnectionsTree() {
   const totals = useMemo(() => totalMatches(matchCounts.values()), [matchCounts]);
 
   /**
+   * A scope whose connection left the tree is dropped automatically.
+   *
+   * Without this the box keeps a chip naming a connection that is no longer
+   * there and every search silently returns nothing — which is the implicit
+   * scope's original failure mode with a label stuck on it. "Left the tree"
+   * covers both disconnecting and being filtered out of the environment's
+   * visible subset.
+   */
+  useEffect(() => {
+    useTreeSearch
+      .getState()
+      .pruneScopeAgainst((id) => active.has(id) && (!visibleSet || visibleSet.has(id)));
+  }, [active, visibleSet]);
+
+  const scopeProfile = useMemo(
+    () => (scope.kind === "all" ? null : profiles.find((p) => p.id === scope.connectionId)),
+    [profiles, scope],
+  );
+
+  /**
    * Connections the user re-opened by hand while the filter had folded them.
    *
    * Deliberately component-local and not `collapsedConnections`: that set is
@@ -230,8 +255,7 @@ export function ConnectionsTree() {
    */
   function filterFolds(id: string): boolean {
     if (!filtering || foldOverrides.has(id)) return false;
-    const summary = matchCounts.get(id);
-    return !!summary && rowMatchState(summary) === "none";
+    return filterFoldsIgnoringOverride(id);
   }
 
   function toggleFoldOverride(id: string) {
@@ -290,7 +314,9 @@ export function ConnectionsTree() {
   /** `filterFolds`, blind to the override — "would the filter fold this?" */
   function filterFoldsIgnoringOverride(id: string): boolean {
     const summary = matchCounts.get(id);
-    return !!summary && rowMatchState(summary) === "none";
+    if (!summary) return false;
+    const state = rowMatchState(summary);
+    return state === "none" || state === "out-of-scope";
   }
 
   async function handleDisconnect(p: ConnectionProfile) {
@@ -340,7 +366,11 @@ export function ConnectionsTree() {
     // Dimmed, never hidden: a connection row is what the user needs in order to
     // connect it or to narrow the search to it, so the filter may quieten it
     // but must not take it away.
-    const dimmedByFilter = filtering && isActive && matchState === "none";
+    const dimmedByFilter =
+      filtering &&
+      isActive &&
+      (matchState === "none" || matchState === "out-of-scope");
+    const isScopeTarget = scope.kind !== "all" && scope.connectionId === p.id;
 
     return (
       <div key={p.id}>
@@ -407,6 +437,25 @@ export function ConnectionsTree() {
             >
               {p.name}
             </span>
+            {/* One of the three explicit ways into a scope (the others are this
+                row's context menu and a database row's). Offered only while
+                something is typed: narrowing an empty search would leave a chip
+                with nothing to modify. */}
+            {filtering && isActive && !isScopeTarget && (
+              <button
+                type="button"
+                title={t("connectionsTree.filter.scopeHere")}
+                aria-label={t("connectionsTree.filter.scopeHere")}
+                className="shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  narrowTo({ kind: "connection", connectionId: p.id });
+                  requestFocus();
+                }}
+              >
+                <ListFilter className="h-3 w-3" />
+              </button>
+            )}
             {filtering && (
               <MatchBadge
                 isActive={isActive}
@@ -533,7 +582,30 @@ export function ConnectionsTree() {
           value={raw}
           onChange={setRaw}
           onClear={clearSearch}
+          chip={
+            scope.kind !== "all" && scopeProfile ? (
+              <ScopeChip
+                driver={scopeProfile.driver}
+                label={scopeLabel(scope, scopeProfile.name)}
+                title={
+                  scope.kind === "database"
+                    ? t("schema.filterScopedTo", { db: scope.database })
+                    : t("schema.filterScopedToConnection", { name: scopeProfile.name })
+                }
+                onClear={clearScope}
+                clearLabel={t("connectionsTree.filter.clearScope")}
+              />
+            ) : undefined
+          }
           onKeyDown={(e) => {
+            // Backspace on an empty box peels one level off the scope, the way
+            // it removes the last chip in any tag input. Each press does
+            // something visible, which is what makes the layering learnable.
+            if (e.key === "Backspace" && raw.length === 0 && scope.kind !== "all") {
+              e.preventDefault();
+              widenScopeOneLevel();
+              return;
+            }
             if (e.key === "Enter") {
               // Commit now rather than waiting out the debounce. Deliberately
               // NOT "open the first match": with several connections searched at
@@ -574,10 +646,15 @@ export function ConnectionsTree() {
               </>
             ) : (
               <span>
-                {t("connectionsTree.filter.summary", {
-                  matches: totals.matches,
-                  connections: totals.connections,
-                })}
+                {scope.kind !== "all" && scopeProfile
+                  ? t("connectionsTree.filter.summaryScoped", {
+                      matches: totals.matches,
+                      name: scopeLabel(scope, scopeProfile.name),
+                    })
+                  : t("connectionsTree.filter.summary", {
+                      matches: totals.matches,
+                      connections: totals.connections,
+                    })}
               </span>
             )}
             {totals.cold > 0 && (
@@ -653,6 +730,18 @@ function MatchBadge({
     return (
       <span
         title={t("connectionsTree.filter.connectToSearch")}
+        className={cn(base, "bg-muted text-muted-foreground/60")}
+      >
+        —
+      </span>
+    );
+  }
+  if (state === "out-of-scope") {
+    // Not "0": this connection was never searched, and saying it found nothing
+    // would send the user off to fix a needle that is not the problem.
+    return (
+      <span
+        title={t("connectionsTree.filter.clearScope")}
         className={cn(base, "bg-muted text-muted-foreground/60")}
       >
         —

@@ -78,6 +78,24 @@ interface UiState {
     connectionId: string,
     value: string[] | null | undefined,
   ) => void;
+  /**
+   * The database each multi-DB connection was last opened into, keyed by
+   * connection id — a *navigation accent* (the brand dot on the row, the
+   * dimming of its siblings), nothing more.
+   *
+   * It used to be `MultiDbExplorer`'s local `activeDatabaseName`, where it also
+   * silently narrowed the filter to that database and collapsed the others.
+   * That second job is now `useTreeSearch`'s explicit `FilterScope`; what is
+   * left here is only what the accent needs. It lives in the store rather than
+   * in the component because the scope buttons and the tree both act on it, and
+   * it is deliberately **not** part of `LaunchView`: it is view state of a
+   * session, not of an environment, and adding it there would persist it.
+   *
+   * Read it as a primitive (`s.activeDatabaseByConnection[id]`), never as the
+   * whole map, so a selector stays reference-safe (gotcha #1).
+   */
+  activeDatabaseByConnection: Record<string, string | null>;
+  setActiveDatabase: (connectionId: string, database: string | null) => void;
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -119,6 +137,19 @@ export const useUi = create<UiState>((set) => ({
       else next[connectionId] = value;
       return { databaseVisibility: next };
     }),
+
+  activeDatabaseByConnection: {},
+  setActiveDatabase: (connectionId, database) =>
+    set((s) =>
+      s.activeDatabaseByConnection[connectionId] === database
+        ? s
+        : {
+            activeDatabaseByConnection: {
+              ...s.activeDatabaseByConnection,
+              [connectionId]: database,
+            },
+          },
+    ),
 }));
 
 /**

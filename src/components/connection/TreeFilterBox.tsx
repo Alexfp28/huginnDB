@@ -16,7 +16,9 @@
 
 import { forwardRef, type KeyboardEvent, type ReactNode } from "react";
 import { Search, X } from "lucide-react";
+import { DriverBadge } from "@/components/common/DriverBadge";
 import { cn } from "@/lib/utils";
+import type { Driver } from "@/types";
 
 export const TreeFilterBox = forwardRef<
   HTMLInputElement,
@@ -70,3 +72,47 @@ export const TreeFilterBox = forwardRef<
     </div>
   );
 });
+
+/**
+ * "This search is narrowed to here", inside the box and in front of the caret.
+ *
+ * It follows `ServerFilterChip`'s vocabulary (a pill, a value, a ✕ that
+ * removes it) shrunk to fit a 28px field, and carries the connection's
+ * `DriverBadge` because on a screen with a MySQL, a MongoDB and a sandbox open
+ * the driver mark identifies a connection faster than its truncated name does.
+ *
+ * Its ✕ drops the scope and keeps the needle — widening a search is the common
+ * next move. The box's own ✕ is the one that clears both.
+ */
+export function ScopeChip({
+  driver,
+  label,
+  title,
+  onClear,
+  clearLabel,
+}: {
+  driver: Driver | undefined;
+  label: string;
+  title: string;
+  onClear: () => void;
+  clearLabel: string;
+}) {
+  return (
+    <span
+      title={title}
+      className="flex min-w-0 shrink items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-1.5 py-px text-[10px] text-brand"
+    >
+      {driver && <DriverBadge driver={driver} />}
+      <span className="max-w-[8rem] truncate">{label}</span>
+      <button
+        type="button"
+        title={clearLabel}
+        aria-label={clearLabel}
+        className="shrink-0 text-brand/70 transition-colors hover:text-brand"
+        onClick={onClear}
+      >
+        <X className="h-2.5 w-2.5" />
+      </button>
+    </span>
+  );
+}

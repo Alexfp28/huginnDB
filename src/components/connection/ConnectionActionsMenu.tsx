@@ -31,6 +31,7 @@ import {
   ListFilter,
   Plug,
   RefreshCw,
+  Search,
   ShieldCheck,
   Unplug,
   Upload,
@@ -66,6 +67,7 @@ import { openSecurityTab } from "@/lib/tabs/openSecurityTab";
 import { cn } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
+import { useTreeSearch } from "@/stores/session/treeSearch";
 
 export function ConnectionActionsMenu({
   connectionId,
@@ -166,6 +168,21 @@ export function ConnectionActionsMenu({
                   onSelect={() => setDbPickerOpen(true)}
                 />
               )}
+              {/* Narrowing the tree's search to this connection. Deliberately
+                  next to "Databases to show": both answer "I only care about
+                  this much of the server right now", one for the search and one
+                  for the tree. The difference is that this one is a modifier on
+                  a needle and evaporates with it, while that one is a persisted
+                  per-environment filter. */}
+              <ContextMenuAction
+                icon={Search}
+                label={t("connectionsTree.filter.scopeHere")}
+                onSelect={() => {
+                  const search = useTreeSearch.getState();
+                  search.narrowTo({ kind: "connection", connectionId });
+                  search.requestFocus();
+                }}
+              />
               {canDumpSql && (
                 <>
                   <ContextMenuSeparator />

@@ -124,6 +124,35 @@ describe("summarizeMatches — multi-DB connections", () => {
   });
 });
 
+describe("summarizeMatches — a scope pointed somewhere else", () => {
+  it("does not search a connection outside the scope, and says so", () => {
+    const scope: FilterScope = { kind: "connection", connectionId: "other" };
+    const [s] = summarizeMatches(
+      [single("c1")],
+      { c1: slice({ tables: tables("users") }) },
+      parsePatterns("user"),
+      scope,
+    );
+    // A `0` here would read as "nothing matched", which is a reason to try a
+    // different needle. "Not searched" is not.
+    expect(s.outOfScope).toBe(true);
+    expect(s.count).toBe(0);
+    expect(rowMatchState(s)).toBe("out-of-scope");
+  });
+
+  it("claims nothing about a connection outside the scope, not even loading", () => {
+    const scope: FilterScope = { kind: "connection", connectionId: "other" };
+    const [s] = summarizeMatches(
+      [single("c1")],
+      { c1: slice({ loading: true, initialized: false }) },
+      parsePatterns("user"),
+      scope,
+    );
+    expect(s.pending).toBe(false);
+    expect(rowMatchState(s)).toBe("out-of-scope");
+  });
+});
+
 describe("totalMatches", () => {
   it("counts only connections that actually matched", () => {
     const summaries = summarizeMatches(

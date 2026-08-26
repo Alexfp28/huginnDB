@@ -32,6 +32,7 @@ import {
   Eye,
   FolderPlus,
   RefreshCw,
+  Search,
   ShieldCheck,
   SquareTerminal,
   Table2,
@@ -58,6 +59,7 @@ import {
 import { confirmDestructive } from "@/lib/confirmDestructive";
 import { useVisibleDatabases } from "@/lib/connection/useVisibleDatabases";
 import { databaseViewId } from "@/lib/connectionLabel";
+import { scopeIncludesDatabase } from "@/lib/schema/filterScope";
 import {
   isTooManyConnections,
   supportsCreateDatabase,
@@ -74,6 +76,7 @@ import { useConnections } from "@/stores/session/connections";
 import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
 import { useEnsureSchemaLoaded, useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
+import { useTreeSearch } from "@/stores/session/treeSearch";
 import { useUi } from "@/stores/session/ui";
 import type { ConnectionMatchSummary } from "@/lib/schema/treeMatches";
 import type { Driver } from "@/types";
@@ -126,12 +129,21 @@ export function MultiDbExplorer({
   /**
    * The database the user last looked at, as a *visual* accent only.
    *
-   * It used to double as a hidden second filter scope: expanding a database
-   * silently narrowed the search to it and collapsed its siblings, with nothing
-   * on screen saying so. The search no longer reads this at all — the scope is
-   * explicit and lives in `useTreeSearch`.
+   * It used to be local state that doubled as a hidden second filter scope:
+   * expanding a database silently narrowed the search to it and collapsed its
+   * siblings, with nothing on screen saying so. The search no longer reads it
+   * at all — the scope is explicit, visible and lives in `useTreeSearch` — and
+   * what is left of it moved to `useUi` so the scope affordances and the tree
+   * act on one value. Read as a primitive, so the selector is safe (gotcha #1).
    */
-  const [activeDatabaseName, setActiveDatabaseName] = useState<string | null>(null);
+  const activeDatabaseName =
+    useUi((s) => s.activeDatabaseByConnection[parentId]) ?? null;
+  const setActiveDatabase = useUi((s) => s.setActiveDatabase);
+
+  /** The explicit scope, so a narrowed search shows only what it searches. */
+  const scope = useTreeSearch((s) => s.scope);
+  const narrowTo = useTreeSearch((s) => s.narrowTo);
+  const requestSearchFocus = useTreeSearch((s) => s.requestFocus);
 
   useEnsureSchemaLoaded(parentId);
 
@@ -236,9 +248,13 @@ export function MultiDbExplorer({
    * whole multi-DB panel in 0.7.0 / 0.7.1 (no error UI, just an empty tree).
    */
   const dbRows = useMemo(() => {
-    const visible = (cs?.databases ?? []).filter(
-      (db) => !visibleSet || visibleSet.has(db.name),
-    );
+    const visible = (cs?.databases ?? [])
+      .filter((db) => !visibleSet || visibleSet.has(db.name))
+      // The scope is applied here as well as inside the counter, so narrowing
+      // to one database hides its siblings even before anything is typed —
+      // "search here only" that still lists everywhere would be a strange
+      // thing to look at.
+      .filter((db) => scopeIncludesDatabase(scope, parentId, db.name));
     if (!filterActive) {
       return visible.map((db) => ({ db, count: 0, cold: false, nameMatch: false }));
     }
@@ -251,7 +267,7 @@ export function MultiDbExplorer({
       if (count === 0 && !isCold && !nameMatch) return [];
       return [{ db, count, cold: isCold, nameMatch }];
     });
-  }, [cs?.databases, visibleSet, filterActive, summary]);
+  }, [cs?.databases, visibleSet, filterActive, summary, scope, parentId]);
 
   if (!cs) {
     return (
@@ -270,7 +286,7 @@ export function MultiDbExplorer({
    * are on screen at once — so the sibling collapse is skipped in that case.
    */
   const activateDb = (dbName: string) => {
-    setActiveDatabaseName(dbName);
+    setActiveDatabase(parentId, dbName);
     if (filterActive) return;
     for (const key of cs.expanded) {
       if (key.startsWith("db:") && key !== `db:${dbName}`) {
@@ -325,7 +341,10 @@ export function MultiDbExplorer({
             canDrop={canCreateDatabase}
             expanded={cs.expanded.has(`db:${db.name}`)}
             onToggle={() => toggleNode(parentId, `db:${db.name}`)}
-            onActivate={(name) => setActiveDatabaseName(name)}
+            onScopeHere={() => {
+              narrowTo({ kind: "database", connectionId: parentId, database: db.name });
+              requestSearchFocus();
+            }}
             onTableOpen={() => activateDb(db.name)}
             patterns={patterns}
             filterActive={filterActive}
@@ -359,7 +378,7 @@ function DatabaseRoot({
   canDrop,
   expanded,
   onToggle,
-  onActivate,
+  onScopeHere,
   onTableOpen,
   patterns,
   filterActive,
@@ -378,8 +397,8 @@ function DatabaseRoot({
   canDrop: boolean;
   expanded: boolean;
   onToggle: () => void;
-  /** Called when the user expands/collapses this DB via the chevron. */
-  onActivate: (dbName: string | null) => void;
+  /** Narrow the tree's search to this database (explicit, from the menu). */
+  onScopeHere: () => void;
   /** Called when the user opens a table inside this DB. */
   onTableOpen: () => void;
   /** The committed, parsed needle, forwarded to the nested explorer. */
@@ -581,13 +600,10 @@ function DatabaseRoot({
               dimmed && "opacity-50 hover:opacity-100",
               menuOpen && "ring-1 ring-inset ring-ring",
             )}
-            onClick={() => {
-              onToggle();
-              // `expanded` reflects the state *before* this click:
-              // true → user is collapsing → clear active scope.
-              // false → user is expanding → set this DB as active.
-              onActivate(expanded ? null : dbName);
-            }}
+            // Expanding a database used to *also* narrow the filter to it and
+            // collapse its siblings, invisibly. Now it only expands: the scope
+            // is a separate, deliberate gesture ("Search here only", below).
+            onClick={onToggle}
           >
             {effectiveExpanded ? (
               <ChevronDown className="h-3 w-3 shrink-0" />
@@ -658,6 +674,11 @@ function DatabaseRoot({
             icon={SquareTerminal}
             label={t("schema.context.newQueryHere")}
             onSelect={() => void openQueryHere()}
+          />
+          <ContextMenuAction
+            icon={Search}
+            label={t("connectionsTree.filter.scopeHere")}
+            onSelect={onScopeHere}
           />
           {driver === "mongodb" && (
             <ContextMenuAction

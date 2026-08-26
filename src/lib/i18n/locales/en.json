@@ -118,7 +118,11 @@
       "counting": "Counting…",
       "partialCount": "{{count}} match(es) in what is loaded — {{cold}} database(s) left to search",
       "connectToSearch": "Connect it to include it in the search",
-      "clear": "Clear filter"
+      "clear": "Clear filter",
+      "summaryScoped": "{{matches}} match(es) in {{name}}",
+      "scopeHere": "Search here only",
+      "clearScope": "Search every connection again",
+      "noMatchesInConnection": "No matches here"
     }
   },
   "workspacePicker": {
@@ -459,7 +463,8 @@
       "confirm": "Insert the documents from this file into \"{{collection}}\"? Existing documents with the same _id will cause the import to stop.",
       "success": "Import finished — {{count}} document(s) inserted."
     },
-    "security": "Security"
+    "security": "Security",
+    "filterScopedToConnection": "Searching in {{name}} only"
   },
   "security": {
     "title": "Security",
