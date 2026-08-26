@@ -23,9 +23,26 @@
  * default derived rather than persisted is what stops the tree from ever claiming
  * a row is open over a subtree that doesn't exist: a remembered fold can only
  * ever mean "show this folded when it comes back".
+ *
+ * **This file owns the search.** The filter box used to hand a raw string down
+ * to whichever connection happened to be selected and `""` to every other one,
+ * so with two connections open one filtered and the other did not, and nothing
+ * on screen said why — the only marker of "selected" is a hairline on the row,
+ * and the selection moves on its own when a tab opens. Now the needle is
+ * committed once (`useTreeSearch`), counted once against every live connection
+ * (`useTreeMatchCounts`), and what travels down to the explorers is the parsed
+ * `patterns` array plus that connection's already-computed summary. A row with
+ * no matches folds to one dimmed line with a `0` badge instead of silently
+ * showing its whole tree.
+ *
+ * The fold a filter causes is **visual and ephemeral**: it never touches
+ * `collapsedConnections`, because that set goes through `persistLaunchState`
+ * and a search would otherwise leave permanent folds the user never asked for.
+ * The chevron still works, as a session-local override for as long as the
+ * filter lasts.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -47,6 +64,11 @@ import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
 import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups";
+import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
+import { isServerWide } from "@/lib/connectionLabel";
+import { useTreeMatchCounts } from "@/lib/schema/useTreeMatchCounts";
+import { rowMatchState, totalMatches } from "@/lib/schema/treeMatches";
+import { TREE_SEARCH_DEBOUNCE_MS, useTreeSearch } from "@/stores/session/treeSearch";
 import { connectAndWarm, disconnectAndClean } from "@/lib/connection/connectFlow";
 import { persistLaunchState } from "@/stores/session/persistedTabs";
 import { bucketByGroup, cn } from "@/lib/utils";
@@ -66,6 +88,7 @@ import { ConnectionActionsMenu } from "@/components/connection/ConnectionActions
 import { TreeFilterBox } from "@/components/connection/TreeFilterBox";
 import { SchemaExplorer } from "@/components/schema/SchemaExplorer";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
+import type { TreeConnectionInput } from "@/lib/schema/treeMatches";
 import type { ConnectionProfile } from "@/types";
 
 export function ConnectionsTree() {
@@ -89,13 +112,49 @@ export function ConnectionsTree() {
   // since "expanded" is already the default for a live connection.
   const collapsed = useUi((s) => s.collapsedConnections);
   const setConnectionCollapsed = useUi((s) => s.setConnectionCollapsed);
-  // One filter box for the whole tree (previously duplicated inside every
-  // expanded connection). It only ever scopes to `selected` — see
-  // `renderConnection` — so browsing several connections at once never
-  // hides the ones you're not searching.
-  const treeFilter = useUi((s) => s.treeFilter);
-  const setTreeFilter = useUi((s) => s.setTreeFilter);
+  // One filter box for the whole tree, searching every live connection at once.
+  // `raw` is what the user is typing; `patterns` is the committed, parsed needle
+  // the subtrees below filter by (see `useTreeSearch`).
+  const raw = useTreeSearch((s) => s.raw);
+  const needle = useTreeSearch((s) => s.needle);
+  const patterns = useTreeSearch((s) => s.patterns);
+  const scope = useTreeSearch((s) => s.scope);
+  const setRaw = useTreeSearch((s) => s.setRaw);
+  const commitNeedle = useTreeSearch((s) => s.commit);
+  const clearSearch = useTreeSearch((s) => s.clear);
+  const focusRequest = useTreeSearch((s) => s.focusRequest);
   const groupCollapse = useConnectionGroupCollapse();
+  const filterInputRef = useRef<HTMLInputElement>(null);
+  const filtering = needle.length > 0;
+
+  /**
+   * The one debounce in the whole search path.
+   *
+   * It used to be per `MultiDbExplorer`, which is how the raw needle and the
+   * debounced one could disagree for 250 ms about which databases to show
+   * versus what to show inside them. With the string no longer travelling down
+   * as a prop, only one committed needle exists at any instant and that
+   * disagreement is unrepresentable.
+   *
+   * The empty case skips the wait, as it always has: clearing has to feel
+   * immediate.
+   */
+  useEffect(() => {
+    if (raw.trim().length === 0) {
+      commitNeedle("");
+      return;
+    }
+    const id = setTimeout(() => commitNeedle(), TREE_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [raw, commitNeedle]);
+
+  // A focus request (the keyboard shortcut, or a scope button that wants the
+  // caret back) selects what is there, so typing replaces the previous needle.
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    filterInputRef.current?.focus();
+    filterInputRef.current?.select();
+  }, [focusRequest]);
 
   // DataGrip-style subset of connections to show, one level up from the
   // per-connection database subset (`useVisibleDatabases`, SchemaExplorer.tsx).
@@ -121,11 +180,71 @@ export function ConnectionsTree() {
   );
   const buckets = useMemo(() => bucketByGroup(visibleProfiles), [visibleProfiles]);
 
+  // Inputs for the match counter: only *live* connections, since an idle one has
+  // nothing to search and its row says so instead of showing a misleading `0`.
+  // The visible-databases subset is resolved through the pure
+  // `resolveVisibleDatabases` rather than `useVisibleDatabases`, which cannot be
+  // called in a loop (Rules of Hooks) — that split is exactly why the pure
+  // function exists.
+  const databaseVisibility = useUi((s) => s.databaseVisibility);
+  const treeConnections = useMemo<TreeConnectionInput[]>(
+    () =>
+      visibleProfiles
+        .filter((p) => active.has(p.id))
+        .map((p) => ({
+          connectionId: p.id,
+          multiDb: isServerWide(p),
+          visibleDatabases: resolveVisibleDatabases(
+            databaseVisibility[p.id],
+            p.visible_databases,
+          ),
+        })),
+    [visibleProfiles, active, databaseVisibility],
+  );
+  const matchCounts = useTreeMatchCounts(treeConnections, patterns, scope);
+  const totals = useMemo(() => totalMatches(matchCounts.values()), [matchCounts]);
+
+  /**
+   * Connections the user re-opened by hand while the filter had folded them.
+   *
+   * Deliberately component-local and not `collapsedConnections`: that set is
+   * persisted through `persistLaunchState`, so recording a search's folds there
+   * would leave the user with permanent folds they never chose. Dropped as soon
+   * as the filter is gone, which is also when the automatic folds disappear.
+   */
+  const [foldOverrides, setFoldOverrides] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!filtering) setFoldOverrides((prev) => (prev.size === 0 ? prev : new Set()));
+  }, [filtering]);
+
   /** Id currently connecting, so its row can show a spinner and refuse clicks. */
   const [connecting, setConnecting] = useState<string | null>(null);
 
+  /**
+   * Has the filter folded this row to a single line?
+   *
+   * Only a *real* zero folds — a connection still loading, or a multi-DB server
+   * whose databases have never been read, has no evidence for one (see
+   * `rowMatchState`). Folding on a provisional zero is how a user concludes the
+   * search failed and gives up on it.
+   */
+  function filterFolds(id: string): boolean {
+    if (!filtering || foldOverrides.has(id)) return false;
+    const summary = matchCounts.get(id);
+    return !!summary && rowMatchState(summary) === "none";
+  }
+
+  function toggleFoldOverride(id: string) {
+    setFoldOverrides((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const isExpanded = (p: ConnectionProfile) =>
-    active.has(p.id) && !collapsed.includes(p.id);
+    active.has(p.id) && !collapsed.includes(p.id) && !filterFolds(p.id);
 
   /**
    * Fold or unfold, and persist it. `persistLaunchState` is otherwise only called
@@ -157,7 +276,21 @@ export function ConnectionsTree() {
       return;
     }
     setSelected(p.id);
+    // While the filter has this row folded for having nothing to show, the
+    // chevron toggles a session-local override instead of a persisted fold:
+    // the user is peeking inside a connection the search dismissed, which is
+    // not a statement about how they want the tree to look next launch.
+    if (filtering && filterFoldsIgnoringOverride(p.id)) {
+      toggleFoldOverride(p.id);
+      return;
+    }
     setCollapsed(p.id, isExpanded(p));
+  }
+
+  /** `filterFolds`, blind to the override — "would the filter fold this?" */
+  function filterFoldsIgnoringOverride(id: string): boolean {
+    const summary = matchCounts.get(id);
+    return !!summary && rowMatchState(summary) === "none";
   }
 
   async function handleDisconnect(p: ConnectionProfile) {
@@ -202,6 +335,12 @@ export function ConnectionsTree() {
     const isLost = !!lostError;
     const expanded = isExpanded(p);
     const isBusy = connecting === p.id || !!schemaByConnection[p.id]?.loading;
+    const summary = matchCounts.get(p.id);
+    const matchState = summary ? rowMatchState(summary) : null;
+    // Dimmed, never hidden: a connection row is what the user needs in order to
+    // connect it or to narrow the search to it, so the filter may quieten it
+    // but must not take it away.
+    const dimmedByFilter = filtering && isActive && matchState === "none";
 
     return (
       <div key={p.id}>
@@ -224,6 +363,7 @@ export function ConnectionsTree() {
             className={cn(
               "group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-brand/40",
               isLost && "bg-destructive/10",
+              dimmedByFilter && "opacity-55 hover:opacity-100",
               // Selected connection: the same brand rail the active table row
               // carries in `SchemaExplorer`, so "this is the one you're in"
               // reads identically at both levels of the tree, plus a hairline
@@ -267,6 +407,14 @@ export function ConnectionsTree() {
             >
               {p.name}
             </span>
+            {filtering && (
+              <MatchBadge
+                isActive={isActive}
+                count={summary?.count ?? 0}
+                cold={summary?.coldDatabases.length ?? 0}
+                state={matchState}
+              />
+            )}
             <VanishedOriginMark profileId={p.id} />
             {isLost ? (
               <button
@@ -314,7 +462,8 @@ export function ConnectionsTree() {
           <div className="ml-3 border-l border-border/35 pl-0.5">
             <SchemaExplorer
               connectionId={p.id}
-              filter={selected === p.id ? treeFilter : ""}
+              patterns={patterns}
+              summary={summary}
             />
           </div>
         )}
@@ -380,9 +529,20 @@ export function ConnectionsTree() {
           </Button>
         </div>
         <TreeFilterBox
-          value={treeFilter}
-          onChange={setTreeFilter}
-          onClear={() => setTreeFilter("")}
+          ref={filterInputRef}
+          value={raw}
+          onChange={setRaw}
+          onClear={clearSearch}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              // Commit now rather than waiting out the debounce. Deliberately
+              // NOT "open the first match": with several connections searched at
+              // once there is no single obvious first match, and guessing one is
+              // the ambiguity this redesign exists to remove.
+              e.preventDefault();
+              commitNeedle();
+            }
+          }}
           placeholder={t("schema.filterPlaceholder")}
           clearLabel={t("connectionsTree.filter.clear")}
         />
@@ -394,11 +554,40 @@ export function ConnectionsTree() {
             })}
           </div>
         )}
-        {/* Only meaningful once something is typed — an empty box needing no
-            selection at all would be a confusing thing to say up front. */}
-        {treeFilter && !selected && (
-          <div className="mt-1 text-[11px] text-muted-foreground">
-            {t("connectionsTree.filterNeedsSelection")}
+        {/* The count is the only signal that the search reached a connection
+            other than the one being looked at, so it is announced. */}
+        {filtering && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-1 text-[11px] text-muted-foreground"
+          >
+            {totals.matches === 0 && !totals.pending && totals.cold === 0 ? (
+              <>
+                <span>{t("connectionsTree.filter.noMatchesAnywhere")}</span>{" "}
+                {/* The honest confession of what this filter actually looks at.
+                    It has never searched columns, schemas or connection names,
+                    and nothing on screen has ever said so. */}
+                <span className="text-muted-foreground/70">
+                  {t("connectionsTree.filter.noMatchesHint")}
+                </span>
+              </>
+            ) : (
+              <span>
+                {t("connectionsTree.filter.summary", {
+                  matches: totals.matches,
+                  connections: totals.connections,
+                })}
+              </span>
+            )}
+            {totals.cold > 0 && (
+              <div className="text-muted-foreground/70">
+                {t("connectionsTree.filter.partialCount", {
+                  count: totals.matches,
+                  cold: totals.cold,
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -431,6 +620,81 @@ export function ConnectionsTree() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The per-connection match count, shown while something is typed.
+ *
+ * The four states it can render are the point of it. A connection that is not
+ * connected has not been searched at all; one still fetching its own list is
+ * counting; a multi-DB server whose databases have never been read has looked
+ * at *some* of itself and says so with a `+` (or a bare `—` when it has found
+ * nothing yet). Only the last case — everything visible loaded, nothing matched
+ * — earns a plain `0`. Saying `0` about something nobody has read is what makes
+ * a user abandon a search that would have worked.
+ */
+function MatchBadge({
+  isActive,
+  count,
+  cold,
+  state,
+}: {
+  isActive: boolean;
+  count: number;
+  cold: number;
+  state: ReturnType<typeof rowMatchState> | null;
+}) {
+  const { t } = useTranslation();
+  const base =
+    "shrink-0 rounded-sm px-1 text-[10px] leading-4 tabular-nums";
+
+  if (!isActive) {
+    return (
+      <span
+        title={t("connectionsTree.filter.connectToSearch")}
+        className={cn(base, "bg-muted text-muted-foreground/60")}
+      >
+        —
+      </span>
+    );
+  }
+  if (state === "pending") {
+    return (
+      <span
+        title={t("connectionsTree.filter.counting")}
+        className={cn(base, "bg-muted text-muted-foreground/60")}
+      >
+        …
+      </span>
+    );
+  }
+  if (state === "unloaded") {
+    return (
+      <span
+        title={t("connectionsTree.filter.partialCount", { count: 0, cold })}
+        className={cn(base, "bg-muted text-muted-foreground/60")}
+      >
+        —
+      </span>
+    );
+  }
+  const partial = cold > 0;
+  return (
+    <span
+      title={
+        partial
+          ? t("connectionsTree.filter.partialCount", { count, cold })
+          : undefined
+      }
+      className={cn(
+        base,
+        count > 0 ? "bg-brand/15 text-brand" : "bg-muted text-muted-foreground/60",
+      )}
+    >
+      {count}
+      {partial && "+"}
+    </span>
   );
 }
 

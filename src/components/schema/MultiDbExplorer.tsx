@@ -13,6 +13,13 @@
  *   records why the palette's warm stays a separate scheduler.
  * - **The `useMemo`s stay above the `if (!cs)` early return**, for the same
  *   hook-count reason `SingleDbExplorer`'s header spells out.
+ *
+ * **This file no longer owns any part of the search.** It used to debounce the
+ * needle itself, compute its own match set over a wide `byConnection`
+ * subscription, and keep a hidden second scope (`activeDatabaseName`, set as a
+ * side effect of expanding a database). All three now live in the tree: the
+ * needle is committed once, counted once, and arrives here already parsed
+ * (`patterns`) alongside this connection's `summary`.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -57,7 +64,6 @@ import {
   supportsDdlEditing,
   supportsSqlDump,
 } from "@/lib/db/driver";
-import { matchesFilter } from "@/lib/schema/matchesFilter";
 import { DB_VIEW_WARM_CONCURRENCY } from "@/lib/schema/warmDatabases";
 import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
@@ -69,15 +75,19 @@ import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
 import { useEnsureSchemaLoaded, useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
+import type { ConnectionMatchSummary } from "@/lib/schema/treeMatches";
 import type { Driver } from "@/types";
 
 export function MultiDbExplorer({
   parentId,
-  filter = "",
+  patterns,
+  summary,
 }: {
   parentId: string;
-  /** Needle from the tree-level filter box, forwarded by `SchemaExplorer`. */
-  filter?: string;
+  /** The committed, parsed needle, forwarded by `SchemaExplorer`. */
+  patterns: string[];
+  /** This connection's match counts, computed once by the tree. */
+  summary?: ConnectionMatchSummary;
 }) {
   const { t } = useTranslation();
   const cs = useSchema((s) => s.byConnection[parentId]);
@@ -113,34 +123,19 @@ export function MultiDbExplorer({
         : null,
     [visibleDatabases],
   );
-  // Subscribe to the whole map so `matchingDbs` reactively recomputes
-  // as each prefetch lands. The membership check is cheap (Map lookup
-  // per database) so the broader subscription is fine here.
-  const byConnection = useSchema((s) => s.byConnection);
-
-  // The database the user is currently focused on (last expanded or last
-  // table clicked). When set, the filter scopes to this DB only — same
-  // model as HeidiSQL. null → search across all DBs (retrocompat).
+  /**
+   * The database the user last looked at, as a *visual* accent only.
+   *
+   * It used to double as a hidden second filter scope: expanding a database
+   * silently narrowed the search to it and collapsed its siblings, with nothing
+   * on screen saying so. The search no longer reads this at all — the scope is
+   * explicit and lives in `useTreeSearch`.
+   */
   const [activeDatabaseName, setActiveDatabaseName] = useState<string | null>(null);
 
-  // Debounced needle drives the prefetch fan-out and the
-  // matching-database computation. Without the delay, every keystroke
-  // would queue an `openDatabaseView` + `list_tables` against every
-  // database on the server.
-  const [debouncedNeedle, setDebouncedNeedle] = useState("");
-  useEffect(() => {
-    const trimmed = filter.trim().toLowerCase();
-    // Skip debouncing the empty case — clearing the filter should feel
-    // instantaneous so the user immediately gets the full list back.
-    if (trimmed.length === 0) {
-      setDebouncedNeedle("");
-      return;
-    }
-    const id = setTimeout(() => setDebouncedNeedle(trimmed), 250);
-    return () => clearTimeout(id);
-  }, [filter]);
-
   useEnsureSchemaLoaded(parentId);
+
+  const filterActive = patterns.length > 0;
 
   // No eager warm on connect: with many databases (a server with 19+ is
   // common) precaching every child's table list made the initial load
@@ -150,13 +145,12 @@ export function MultiDbExplorer({
   // (below). The first cross-database search is therefore "cold" — an
   // acceptable trade for an instant connect.
 
-  // On-demand prefetch while searching: walk every database we haven't loaded
-  // yet, open the synthetic child connection, and pull its table list into the
-  // store so the cross-database match set fills in. We mark a db as
-  // "in-flight" the moment we start so concurrent renders don't schedule it
-  // twice. Failures are swallowed — the matching computation just won't include
-  // that DB until the user retries. Limit to needle length >= 2 to avoid a full
-  // fan-out on a single typed character, and scope to the active/visible set.
+  // On-demand prefetch while searching: walk the databases the tree reports as
+  // cold (`summary.coldDatabases` — already narrowed to the visible subset and
+  // the active scope, which is what the old local computation got wrong), open
+  // the synthetic child connection, and pull its table list into the store so
+  // the cross-database counts fill in. A db is marked "in-flight" the moment we
+  // start so concurrent renders don't schedule it twice.
   //
   // **Bounded since 1.13.0.** This loop used to start every database at once.
   // Each `openDatabaseView` opens a whole separate connection pool, so on a
@@ -164,13 +158,10 @@ export function MultiDbExplorer({
   // connection attempts — a burst large enough on its own to exhaust a shared
   // server's connection limit, and the single most likely trigger behind the
   // "too many connections" reports. It now runs at most
-  // `DB_VIEW_WARM_CONCURRENCY` at a time (shared with the palette's own warm —
-  // see `lib/schema/warmDatabases.ts`, which also records why that one stays a
-  // separate scheduler rather than being merged into this effect);
-  // `pumpTick` re-runs this effect as each
-  // one settles so the queue keeps draining. (The effect's `byConnection`
-  // dependency covers the success path on its own, but not a failure, which
-  // touches no store — hence an explicit tick rather than relying on it.)
+  // `DB_VIEW_WARM_CONCURRENCY` at a time; `pumpTick` re-runs this effect as each
+  // one settles so the queue keeps draining. (The effect's dependency on
+  // `summary` covers the success path on its own, but not a failure, which
+  // touches no store — hence an explicit tick.)
   const inFlightPrefetch = useRef<Set<string>>(new Set());
   const [pumpTick, setPumpTick] = useState(0);
   // Circuit breaker: once the server says it is full, stop. Without this the
@@ -180,24 +171,16 @@ export function MultiDbExplorer({
   useEffect(() => {
     setLimitReached(false);
   }, [parentId]);
+  const coldDatabases = summary?.coldDatabases;
   useEffect(() => {
-    if (debouncedNeedle.length < 2 || !cs || limitReached) return;
-    // When a database is active, only prefetch that one — avoids a full
-    // fan-out across every database on large servers during scoped searches.
-    const dbsToWarm = (
-      activeDatabaseName
-        ? cs.databases.filter((db) => db.name === activeDatabaseName)
-        : cs.databases
-    ).filter((db) => !visibleSet || visibleSet.has(db.name));
-    for (const db of dbsToWarm) {
+    if (!filterActive || limitReached || !coldDatabases) return;
+    for (const name of coldDatabases) {
       if (inFlightPrefetch.current.size >= DB_VIEW_WARM_CONCURRENCY) break;
-      const childId = databaseViewId(parentId, db.name);
-      const childCs = byConnection[childId];
-      if (childCs?.initialized || childCs?.loading) continue;
+      const childId = databaseViewId(parentId, name);
       if (inFlightPrefetch.current.has(childId)) continue;
       inFlightPrefetch.current.add(childId);
       api
-        .openDatabaseView(parentId, db.name)
+        .openDatabaseView(parentId, name)
         .then((resolvedId) => refresh(resolvedId))
         .catch((e) => {
           // Silent, except for the one failure the user can act on: a
@@ -230,52 +213,45 @@ export function MultiDbExplorer({
         });
     }
   }, [
-    debouncedNeedle,
-    cs,
-    byConnection,
+    filterActive,
+    coldDatabases,
     pumpTick,
     limitReached,
     t,
     parentId,
     refresh,
-    activeDatabaseName,
-    visibleSet,
   ]);
 
-  const filterActive = debouncedNeedle.length > 0;
-
-  // Decide which databases to render. With an active filter we surface
-  // (a) DBs whose own catalog name matches the needle (covers the case
-  // where the user is looking for a database by name), and (b) DBs that
-  // own at least one matching table — those auto-expand so the user
-  // sees the matches without an extra click.
-  //
-  // This memo MUST live above the early return below: React relies on
-  // hooks being called in the same order on every render, so a
-  // conditional `if (!cs) return …` above this useMemo would skip the
-  // hook on the first render and call it on subsequent ones — a Rules
-  // of Hooks violation that blanked the whole multi-DB panel in 0.7.0
-  // / 0.7.1 (no error UI, just an empty tree). See CLAUDE.md for the
-  // broader family of cases (selectors / refs / memos slipping below
-  // an early return).
-  const matchingDbs = useMemo(() => {
-    if (!filterActive || !cs) return null;
-    const m = new Map<string, { byName: boolean; byTable: boolean }>();
-    // Scope to the active database when one is set; otherwise search all.
-    const dbsToSearch = activeDatabaseName
-      ? cs.databases.filter((db) => db.name === activeDatabaseName)
-      : cs.databases;
-    for (const db of dbsToSearch) {
-      const childId = databaseViewId(parentId, db.name);
-      const tables = byConnection[childId]?.tables ?? [];
-      const byTable = tables.some((t) =>
-        matchesFilter(t.name, debouncedNeedle),
-      );
-      const byName = matchesFilter(db.name, debouncedNeedle);
-      if (byName || byTable) m.set(db.name, { byName, byTable });
+  /**
+   * Which database rows to render, and what each one knows about itself.
+   *
+   * With no filter that is simply the visible subset. With one, a database
+   * earns its row by containing a match, by its own name matching, or by being
+   * cold — we have not read it, so hiding it would be claiming it is empty.
+   *
+   * This memo MUST live above the early return below: React relies on hooks
+   * being called in the same order on every render, so a conditional
+   * `if (!cs) return …` above it would skip the hook on the first render and
+   * call it on subsequent ones — a Rules of Hooks violation that blanked the
+   * whole multi-DB panel in 0.7.0 / 0.7.1 (no error UI, just an empty tree).
+   */
+  const dbRows = useMemo(() => {
+    const visible = (cs?.databases ?? []).filter(
+      (db) => !visibleSet || visibleSet.has(db.name),
+    );
+    if (!filterActive) {
+      return visible.map((db) => ({ db, count: 0, cold: false, nameMatch: false }));
     }
-    return m;
-  }, [filterActive, debouncedNeedle, cs, byConnection, parentId, activeDatabaseName]);
+    const cold = new Set(summary?.coldDatabases ?? []);
+    const nameMatches = new Set(summary?.databaseNameMatches ?? []);
+    return visible.flatMap((db) => {
+      const count = summary?.byDatabase.get(db.name) ?? 0;
+      const isCold = cold.has(db.name);
+      const nameMatch = nameMatches.has(db.name);
+      if (count === 0 && !isCold && !nameMatch) return [];
+      return [{ db, count, cold: isCold, nameMatch }];
+    });
+  }, [cs?.databases, visibleSet, filterActive, summary]);
 
   if (!cs) {
     return (
@@ -285,10 +261,17 @@ export function MultiDbExplorer({
     );
   }
 
-  // Activating a DB from a table click: sets the active scope AND
-  // collapses any other expanded databases so only the target remains open.
+  /**
+   * Note the database a table was just opened from, for the brand accent.
+   *
+   * It used to also collapse every *other* expanded database, on the theory
+   * that the user was now working in this one. While a search is running that
+   * is exactly wrong — the whole point is that results from several databases
+   * are on screen at once — so the sibling collapse is skipped in that case.
+   */
   const activateDb = (dbName: string) => {
     setActiveDatabaseName(dbName);
+    if (filterActive) return;
     for (const key of cs.expanded) {
       if (key.startsWith("db:") && key !== `db:${dbName}`) {
         toggleNode(parentId, key);
@@ -296,26 +279,10 @@ export function MultiDbExplorer({
     }
   };
 
-  // While prefetches are in flight we want to tell the user something
-  // is happening — "no matches" would be misleading if the DBs simply
-  // haven't reported yet.
-  const prefetching =
-    filterActive &&
-    cs.databases.some((db) => {
-      const childId = databaseViewId(parentId, db.name);
-      const c = byConnection[childId];
-      return !c?.initialized;
-    });
-
   return (
     <div className="flex flex-col">
-      {(visibleSet || (activeDatabaseName && filterActive)) && (
+      {visibleSet && (
         <div className="px-3 pb-2">
-          {activeDatabaseName && filterActive && (
-            <div className="text-[11px] text-muted-foreground">
-              {t("schema.filterScopedTo", { db: activeDatabaseName })}
-            </div>
-          )}
           {/* The header's brand-tinted "select databases" icon used to be the only
               sign that a subset was hiding databases. With the actions moved to the
               connection's context menu that cue would have vanished silently, so it
@@ -339,43 +306,44 @@ export function MultiDbExplorer({
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
       <div className="pb-1 text-sm">
-        {filterActive && matchingDbs && matchingDbs.size === 0 && !prefetching && (
+        {/* Only ever said about databases we have actually read: a cold one
+            still gets a row, so `dbRows` being empty means every visible
+            database reported and none of them matched. This is the line the
+            old `prefetching` flag could never let through once a
+            visible-databases subset was active. */}
+        {filterActive && dbRows.length === 0 && (
           <div className="px-3 py-2 text-xs italic text-muted-foreground">
             {t("schema.noMatches")}
           </div>
         )}
-        {cs.databases
-          .filter((db) => !visibleSet || visibleSet.has(db.name))
-          .filter((db) => !matchingDbs || matchingDbs.has(db.name))
-          .map((db) => {
-            const match = matchingDbs?.get(db.name);
-            // Auto-expand DBs that contain a table match so the result
-            // is visible immediately. A name-only match keeps the DB
-            // collapsed — the user is presumably picking the database,
-            // not browsing inside it.
-            const autoExpand = !!match?.byTable;
-            return (
-              <DatabaseRoot
-                key={`${parentId}::${db.name}`}
-                parentId={parentId}
-                dbName={db.name}
-                driver={driver}
-                canDrop={canCreateDatabase}
-                expanded={cs.expanded.has(`db:${db.name}`)}
-                onToggle={() => toggleNode(parentId, `db:${db.name}`)}
-                onActivate={(name) => setActiveDatabaseName(name)}
-                onTableOpen={() => activateDb(db.name)}
-                filter={filter}
-                filterActive={filterActive}
-                autoExpand={autoExpand}
-                active={activeDatabaseName === db.name}
-                // Only dim siblings when a concrete DB is active. With no
-                // active DB the filter spans every database, so they're all
-                // equally "in play" — dimming would be misleading.
-                dimmed={activeDatabaseName != null && activeDatabaseName !== db.name}
-              />
-            );
-          })}
+        {dbRows.map(({ db, count, cold, nameMatch }) => (
+          <DatabaseRoot
+            key={`${parentId}::${db.name}`}
+            parentId={parentId}
+            dbName={db.name}
+            driver={driver}
+            canDrop={canCreateDatabase}
+            expanded={cs.expanded.has(`db:${db.name}`)}
+            onToggle={() => toggleNode(parentId, `db:${db.name}`)}
+            onActivate={(name) => setActiveDatabaseName(name)}
+            onTableOpen={() => activateDb(db.name)}
+            patterns={patterns}
+            filterActive={filterActive}
+            // Auto-expand databases that contain a table match so the result
+            // is visible immediately. A name-only match keeps the database
+            // collapsed — the user is presumably picking the database, not
+            // browsing inside it — and a cold one has nothing to show yet.
+            autoExpand={count > 0}
+            matchCount={filterActive && !cold ? count : null}
+            cold={cold}
+            nameMatch={nameMatch}
+            active={activeDatabaseName === db.name}
+            // Only dim siblings when a concrete database is the accent. With
+            // none, every database is equally in play and dimming would be
+            // misleading.
+            dimmed={activeDatabaseName != null && activeDatabaseName !== db.name}
+          />
+        ))}
       </div>
     </div>
   );
@@ -393,9 +361,12 @@ function DatabaseRoot({
   onToggle,
   onActivate,
   onTableOpen,
-  filter,
+  patterns,
   filterActive,
   autoExpand,
+  matchCount,
+  cold,
+  nameMatch,
   active,
   dimmed,
 }: {
@@ -411,14 +382,21 @@ function DatabaseRoot({
   onActivate: (dbName: string | null) => void;
   /** Called when the user opens a table inside this DB. */
   onTableOpen: () => void;
-  /** Shared connection-level filter, forwarded to the nested explorer. */
-  filter: string;
+  /** The committed, parsed needle, forwarded to the nested explorer. */
+  patterns: string[];
   /** True when the parent filter has any content; auto-expands already-opened
    *  databases so search results surface without an extra click. */
   filterActive: boolean;
   /** True when the parent has determined this DB contains a table match
    *  for the current filter — auto-opens the subtree (Compass-style). */
   autoExpand?: boolean;
+  /** Matches inside this database, or `null` when there is nothing to say
+   *  (no filter, or the database has never been read). */
+  matchCount: number | null;
+  /** True when this database's table list has never been fetched. */
+  cold: boolean;
+  /** True when the database's own name is what matched. */
+  nameMatch: boolean;
   /** True when this is the DB the filter is scoped to (brand marker). */
   active: boolean;
   /** True when *another* DB is the active scope — render this one dimmed. */
@@ -630,7 +608,31 @@ function DatabaseRoot({
                 active ? "text-brand" : "text-muted-foreground",
               )}
             />
-            <span className="truncate text-xs">{dbName}</span>
+            <span
+              className={cn(
+                "truncate text-xs",
+                nameMatch && "font-medium text-foreground",
+              )}
+            >
+              {dbName}
+            </span>
+            {filterActive && (
+              <span
+                className={cn(
+                  "ml-auto shrink-0 rounded-sm px-1 text-[10px] leading-4 tabular-nums",
+                  // A cold database says "—", never "0": nobody has read it,
+                  // and a provisional zero is what makes a search look failed.
+                  matchCount === null
+                    ? "bg-muted text-muted-foreground/60"
+                    : matchCount > 0
+                      ? "bg-brand/15 text-brand"
+                      : "bg-muted text-muted-foreground/60",
+                )}
+                title={cold ? t("connectionsTree.filter.counting") : undefined}
+              >
+                {matchCount ?? "—"}
+              </span>
+            )}
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent>
@@ -748,7 +750,7 @@ function DatabaseRoot({
             <SingleDbExplorer
               connectionId={childId}
               headerLevel="nested"
-              filter={filter}
+              patterns={patterns}
               onTableOpen={onTableOpen}
             />
           )}

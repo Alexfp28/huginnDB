@@ -34,19 +34,29 @@ import { MultiDbExplorer } from "@/components/schema/MultiDbExplorer";
 import { SingleDbExplorer } from "@/components/schema/SingleDbExplorer";
 import { isServerWide } from "@/lib/connectionLabel";
 import { useConnections } from "@/stores/session/connections";
+import type { ConnectionMatchSummary } from "@/lib/schema/treeMatches";
 
 export function SchemaExplorer({
   connectionId,
-  filter = "",
+  patterns,
+  summary,
 }: {
   connectionId: string;
   /**
-   * Needle from the tree-level filter box (`ConnectionsTree.tsx`). The
-   * caller decides scope — it passes the live filter only for the selected
-   * connection and `""` for every other one, so this component never has to
-   * know whether it's the active target.
+   * The committed, parsed needle from the tree-level filter box
+   * (`ConnectionsTree.tsx`). Every live connection gets the same array — the
+   * box searches all of them — and its identity is stable between commits, so
+   * the memos below can depend on it directly.
    */
-  filter?: string;
+  patterns: string[];
+  /**
+   * This connection's already-computed match counts. Passed down rather than
+   * recomputed because the tree holds the app's single subscription to
+   * `useSchema.byConnection` (see `useTreeMatchCounts`); a multi-DB explorer
+   * that re-derived them would be a second wide subscription per connection,
+   * which is what this replaces.
+   */
+  summary?: ConnectionMatchSummary;
 }) {
   // Multi-DB mode: the profile addresses a whole server rather than one
   // database, so the tree grows a database layer. See `isServerWide` for why
@@ -65,9 +75,13 @@ export function SchemaExplorer({
     <div className="flex flex-col" data-kb-scope="tree">
       <VanishedOriginNotice profileId={connectionId} />
       {isMultiDb ? (
-        <MultiDbExplorer parentId={connectionId} filter={filter} />
+        <MultiDbExplorer
+          parentId={connectionId}
+          patterns={patterns}
+          summary={summary}
+        />
       ) : (
-        <SingleDbExplorer connectionId={connectionId} filter={filter} />
+        <SingleDbExplorer connectionId={connectionId} patterns={patterns} />
       )}
     </div>
   );

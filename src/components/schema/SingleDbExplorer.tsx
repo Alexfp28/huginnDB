@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/context-menu";
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { supportsDdlEditing } from "@/lib/db/driver";
-import { matchesFilter } from "@/lib/schema/matchesFilter";
+import { matchesPatterns } from "@/lib/schema/matchesFilter";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -56,7 +56,7 @@ import type { TableInfo } from "@/types";
 export function SingleDbExplorer({
   connectionId,
   headerLevel = "root",
-  filter = "",
+  patterns,
   onTableOpen,
 }: {
   connectionId: string;
@@ -68,13 +68,13 @@ export function SingleDbExplorer({
    */
   headerLevel?: "root" | "nested";
   /**
-   * Filter needle. Always owned by an ancestor: the tree-level filter box
-   * in `ConnectionsTree.tsx` for a root explorer (via `SchemaExplorer`), or
-   * `MultiDbExplorer` for a nested one — propagated so every nested DB
-   * filters by the same needle, which was the whole point of the multi-DB
-   * unification.
+   * The committed, parsed needle. Always owned by the tree
+   * (`ConnectionsTree.tsx` → `useTreeSearch`), never re-derived here: the
+   * string used to come down raw and every level re-split it, which is how a
+   * database row could be decided by one needle while its contents were
+   * filtered by another for the length of a debounce.
    */
-  filter?: string;
+  patterns: string[];
   /**
    * Optional callback fired when the user opens a table (click or context
    * menu). Used by the multi-DB parent to activate this database's scope
@@ -129,14 +129,14 @@ export function SingleDbExplorer({
   // the hook count constant. Memoising also keeps the grouping object
   // reference-stable so the `TableSection` subtree doesn't thrash on every
   // render of the surviving explorers (CLAUDE.md gotcha #1).
-  const needle = filter.trim().toLowerCase();
+  const filtering = patterns.length > 0;
   const { bySchema, schemas } = useMemo(() => {
     const grouped: Record<
       string,
       { tables: TableInfo[]; views: TableInfo[] }
     > = {};
     for (const tbl of cs?.tables ?? []) {
-      if (needle && !matchesFilter(tbl.name, needle)) continue;
+      if (!matchesPatterns(tbl.name, patterns)) continue;
       grouped[tbl.schema] ??= { tables: [], views: [] };
       if (tbl.kind === "view") {
         grouped[tbl.schema].views.push(tbl);
@@ -145,7 +145,7 @@ export function SingleDbExplorer({
       }
     }
     return { bySchema: grouped, schemas: Object.keys(grouped).sort() };
-  }, [cs?.tables, needle]);
+  }, [cs?.tables, patterns]);
 
   if (!cs) {
     return (
@@ -194,7 +194,7 @@ export function SingleDbExplorer({
         <div className="px-3 py-2 text-xs text-destructive">{cs.error}</div>
       )}
       <div className="pb-1 text-sm">
-        {needle && schemas.length === 0 && (
+        {filtering && schemas.length === 0 && (
           <div className="px-3 py-2 text-xs italic text-muted-foreground">
             {t("schema.noMatches")}
           </div>
@@ -218,7 +218,7 @@ export function SingleDbExplorer({
             // Force-expand a schema when the filter is active so matching
             // tables under it are visible without the user having to click.
             const schemaOpen =
-              flattenSingleSchema || needle
+              flattenSingleSchema || filtering
                 ? true
                 : cs.expanded.has(schemaNodeKey);
             const { tables, views } = bySchema[schema];
@@ -318,7 +318,7 @@ export function SingleDbExplorer({
                       toggleNode={toggleNode}
                       loadColumns={loadColumns}
                       actions={tableActions}
-                      forceOpen={!!needle}
+                      forceOpen={filtering}
                     />
 
                     {/* Views section */}
@@ -333,7 +333,7 @@ export function SingleDbExplorer({
                         toggleNode={toggleNode}
                         loadColumns={loadColumns}
                         actions={tableActions}
-                        forceOpen={!!needle}
+                        forceOpen={filtering}
                       />
                     )}
 

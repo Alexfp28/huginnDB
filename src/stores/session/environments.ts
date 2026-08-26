@@ -27,6 +27,7 @@ import { create } from "zustand";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
 import { useTabs } from "@/stores/session/tabs";
+import { useTreeSearch } from "@/stores/session/treeSearch";
 import {
   applyLaunchView,
   clearLaunchView,
@@ -153,6 +154,12 @@ interface EnvironmentsState {
  */
 function applyLocalView(env: Environment | undefined): void {
   applyLaunchView(env?.launch);
+  // The tree's search is not one of the persisted view filters (it lives in
+  // `useTreeSearch`, deliberately outside `LaunchView` — see that store's
+  // header), but entering an environment is exactly when it stops making
+  // sense: the needle was typed against another environment's connections,
+  // and its scope may name one this environment does not even show.
+  useTreeSearch.getState().clear();
 }
 
 export const useEnvironments = create<EnvironmentsState>((set, get) => ({
@@ -184,6 +191,13 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
   },
 
   restoreSession: async () => {
+    // Entering an environment drops the tree's search, for the same reason
+    // `applyLocalView` does: the needle and its scope belong to the
+    // environment they were typed in. Done here rather than in `switchTo` so
+    // the launch path is covered too, and up front so no frame renders the
+    // incoming connections through the outgoing environment's filter.
+    useTreeSearch.getState().clear();
+
     // Apply the incoming environment's theme override (or clear it, for one
     // with none) before anything else — it's a pure visual affordance, not
     // gated on `reconnectOnLaunch` like the pool/tab restore below, and

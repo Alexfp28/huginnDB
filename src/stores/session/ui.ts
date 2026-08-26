@@ -31,16 +31,11 @@ interface UiState {
   setConnectionCollapsed: (id: string, collapsed: boolean) => void;
   /** Replace the whole set — restoring an environment, or clearing on the way out. */
   setCollapsedConnections: (ids: string[]) => void;
-  /**
-   * Free-text filter for the schema tree, owned at the tree level rather than
-   * duplicated inside every expanded connection. It only ever applies to
-   * `selectedConnectionId`'s subtree — `ConnectionsTree` passes an empty
-   * string to every other connection's `SchemaExplorer`, so the rest of the
-   * tree stays visible, unfiltered. Not persisted: a search is a momentary
-   * tool, not session state worth restoring.
-   */
-  treeFilter: string;
-  setTreeFilter: (value: string) => void;
+  // The schema tree's search needle used to live here (`treeFilter`). It moved
+  // to its own store, `stores/session/treeSearch.ts`: this store is the home of
+  // the three *persisted* view filters and their `LaunchView` contract, and an
+  // ephemeral search sitting among them is an invitation to persist it by
+  // accident. That store's header has the full reasoning.
   /**
    * DataGrip-style subset of saved connections to show in the connections
    * tree. `null` means "show all". Persisted per environment via
@@ -107,9 +102,6 @@ export const useUi = create<UiState>((set) => ({
       };
     }),
   setCollapsedConnections: (ids) => set({ collapsedConnections: ids }),
-
-  treeFilter: "",
-  setTreeFilter: (value) => set({ treeFilter: value }),
 
   visibleConnections: null,
   setVisibleConnections: (ids) => set({ visibleConnections: ids }),

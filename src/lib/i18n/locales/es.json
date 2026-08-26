@@ -99,7 +99,6 @@
   "connectionsTree": {
     "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
     "connect": "Conectar",
-    "filterNeedsSelection": "Selecciona una conexión para filtrar sus tablas.",
     "selectConnections": {
       "action": "Conexiones a mostrar",
       "title": "Conexiones a mostrar",
@@ -113,6 +112,12 @@
       "allHidden": "Todas las conexiones guardadas están ocultas — usa “Conexiones a mostrar” arriba para recuperar alguna."
     },
     "filter": {
+      "summary": "{{matches}} coincidencia(s) en {{connections}} conexión(es)",
+      "noMatchesAnywhere": "Sin coincidencias en ninguna conexión",
+      "noMatchesHint": "Solo se buscan nombres de tablas, vistas y bases de datos.",
+      "counting": "Contando…",
+      "partialCount": "{{count}} coincidencia(s) en lo ya cargado — faltan {{cold}} base(s) por buscar",
+      "connectToSearch": "Conecta para incluirla en la búsqueda",
       "clear": "Limpiar filtro"
     }
   },
