@@ -13,10 +13,13 @@
  * `pendingChord.ts` is the precedent for a tiny, deliberately unpersisted
  * session store.
  *
- * **Nothing here is persisted, and the scope is why that is safe.** A scope is
- * a modifier on a needle, not a setting: `clear()` drops both together, so
- * "narrowed to Producción" can never outlive the search that motivated it, and
- * there is no state to restore that would need explaining after a restart.
+ * **Nothing here is persisted.** A scope is a modifier on a needle, not a
+ * setting; `clear()` drops both together and is what entering an environment
+ * calls, so "narrowed to Producción" can never outlive the session that
+ * motivated it and there is no state to restore that would need explaining
+ * after a restart. Within a session the two are separable — the box's ✕ drops
+ * the needle, the chip's drops the scope — because they are two controls, and
+ * a control should clear the thing it sits next to.
  *
  * **`patterns` is the reference the tree passes down.** It is recomputed only
  * in `commit`, which the box calls at most once per debounce interval, so the
@@ -76,6 +79,8 @@ interface TreeSearchState {
   widen: () => void;
   /** All the way out, keeping the needle — the scope chip's ✕. */
   clearScope: () => void;
+  /** Drop the needle, keeping the scope — the filter box's own ✕. */
+  clearText: () => void;
   /** Escape's layers: clear the text, else widen the scope, else nothing. */
   escape: () => EscapeOutcome;
   /** Drop the text AND the scope — the box's ✕. */
@@ -126,13 +131,25 @@ export const useTreeSearch = create<TreeSearchState>((set, get) => ({
   clearScope: () =>
     set((s) => (s.scope.kind === "all" ? s : { scope: ALL_SCOPE, limitReached: false })),
 
+  // The two ✕ affordances each clear what they sit next to: this one is inside
+  // the input, the scope's is on the chip below it. They used to be one button
+  // that dropped both, which was defensible while the chip lived *inside* the
+  // box and there was only one ✕ to press — it is not once they are two
+  // separate controls a few pixels apart.
+  clearText: () =>
+    set((s) =>
+      s.raw === "" && s.needle === ""
+        ? s
+        : { raw: "", needle: "", patterns: NO_PATTERNS, limitReached: false },
+    ),
+
   escape: () => {
     const s = get();
     if (s.raw.length > 0) {
       // Layer 1 keeps the scope: the user narrowed it deliberately and is most
-      // likely about to type a different needle in the same place. The ✕ and
-      // `clear()` are what drop both.
-      set({ raw: "", needle: "", patterns: NO_PATTERNS, limitReached: false });
+      // likely about to type a different needle in the same place. Same thing
+      // the box's own ✕ does.
+      get().clearText();
       return "cleared-text";
     }
     if (s.scope.kind !== "all") {

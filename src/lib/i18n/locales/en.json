@@ -119,12 +119,12 @@
       "partialCount": "{{count}} match(es) in what is loaded — {{cold}} database(s) left to search",
       "connectToSearch": "Connect it to include it in the search",
       "clear": "Clear filter",
-      "summaryScoped": "{{matches}} match(es) in {{name}}",
       "scopeHere": "Search here only",
       "clearScope": "Search every connection again",
       "searchUnloaded": "Search {{count}} unloaded database(s)",
       "searchUnloadedHint": "Typing never opens a connection. This loads those databases' table lists so the search can reach them.",
-      "searchingUnloaded": "Loading databases…"
+      "searchingUnloaded": "Loading databases…",
+      "summaryCount": "{{matches}} match(es)"
     }
   },
   "workspacePicker": {

@@ -128,7 +128,7 @@ export function ConnectionsTree() {
   const scope = useTreeSearch((s) => s.scope);
   const setRaw = useTreeSearch((s) => s.setRaw);
   const commitNeedle = useTreeSearch((s) => s.commit);
-  const clearSearch = useTreeSearch((s) => s.clear);
+  const clearText = useTreeSearch((s) => s.clearText);
   const narrowTo = useTreeSearch((s) => s.narrowTo);
   const clearScope = useTreeSearch((s) => s.clearScope);
   const widenScopeOneLevel = useTreeSearch((s) => s.widen);
@@ -715,22 +715,7 @@ export function ConnectionsTree() {
           ref={filterInputRef}
           value={raw}
           onChange={setRaw}
-          onClear={clearSearch}
-          chip={
-            scope.kind !== "all" && scopeProfile ? (
-              <ScopeChip
-                driver={scopeProfile.driver}
-                label={scopeLabel(scope, scopeProfile.name)}
-                title={
-                  scope.kind === "database"
-                    ? t("schema.filterScopedTo", { db: scope.database })
-                    : t("schema.filterScopedToConnection", { name: scopeProfile.name })
-                }
-                onClear={clearScope}
-                clearLabel={t("connectionsTree.filter.clearScope")}
-              />
-            ) : undefined
-          }
+          onClear={clearText}
           onKeyDown={(e) => {
             // Backspace on an empty box peels one level off the scope, the way
             // it removes the last chip in any tag input. Each press does
@@ -757,68 +742,91 @@ export function ConnectionsTree() {
           placeholder={t("schema.filterPlaceholder")}
           clearLabel={t("connectionsTree.filter.clear")}
         />
-        {/* The count is the only signal that the search reached a connection
-            other than the one being looked at, so it is announced. */}
-        {filtering && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mt-1 text-[11px] text-muted-foreground"
-          >
-            {totals.matches === 0 && !totals.pending && totals.cold === 0 ? (
-              <>
-                <span>{t("connectionsTree.filter.noMatchesAnywhere")}</span>{" "}
-                {/* The honest confession of what this filter actually looks at.
-                    It has never searched columns, schemas or connection names,
-                    and nothing on screen has ever said so. */}
-                <span className="text-muted-foreground/70">
-                  {t("connectionsTree.filter.noMatchesHint")}
-                </span>
-              </>
-            ) : (
-              <span>
-                {scope.kind !== "all" && scopeProfile
-                  ? t("connectionsTree.filter.summaryScoped", {
-                      matches: totals.matches,
-                      name: scopeLabel(scope, scopeProfile.name),
-                    })
-                  : t("connectionsTree.filter.summary", {
-                      matches: totals.matches,
-                      connections: totals.connections,
-                    })}
+        {/* The scope chip and the match summary share one wrapping row under the
+            box. The chip used to sit *inside* the box, in front of the caret,
+            which in the width this panel is normally docked at left about eight
+            characters of input visible — see `TreeFilterBox`'s header. Out here
+            it can name a connection and a database, and on a narrow panel it
+            wraps onto its own line instead of taking the input's. */}
+        {(filtering || (scope.kind !== "all" && scopeProfile)) && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+            {scope.kind !== "all" && scopeProfile && (
+              <ScopeChip
+                driver={scopeProfile.driver}
+                label={scopeLabel(scope, scopeProfile.name)}
+                title={
+                  scope.kind === "database"
+                    ? t("schema.filterScopedTo", { db: scope.database })
+                    : t("schema.filterScopedToConnection", { name: scopeProfile.name })
+                }
+                onClear={clearScope}
+                clearLabel={t("connectionsTree.filter.clearScope")}
+              />
+            )}
+            {/* The count is the only signal that the search reached a connection
+                other than the one being looked at, so it is announced. The chip
+                stays outside the live region: it is a control, not a status,
+                and it would be read out on every keystroke. */}
+            {filtering && (
+              <span
+                role="status"
+                aria-live="polite"
+                className="min-w-0 text-muted-foreground"
+              >
+                {totals.matches === 0 && !totals.pending && totals.cold === 0 ? (
+                  <>
+                    <span>{t("connectionsTree.filter.noMatchesAnywhere")}</span>{" "}
+                    {/* The honest confession of what this filter actually looks
+                        at. It has never searched columns, schemas or connection
+                        names, and nothing on screen has ever said so. */}
+                    <span className="text-muted-foreground/70">
+                      {t("connectionsTree.filter.noMatchesHint")}
+                    </span>
+                  </>
+                ) : scope.kind !== "all" ? (
+                  // Scoped: the chip right next to this already names where, so
+                  // repeating it here would be the same sentence twice on a line
+                  // that has no width to spare.
+                  t("connectionsTree.filter.summaryCount", { matches: totals.matches })
+                ) : (
+                  t("connectionsTree.filter.summary", {
+                    matches: totals.matches,
+                    connections: totals.connections,
+                  })
+                )}
               </span>
             )}
-            {totals.cold > 0 && (
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                <span className="text-muted-foreground/70">
-                  {t("connectionsTree.filter.partialCount", {
-                    count: totals.matches,
-                    cold: totals.cold,
-                  })}
-                </span>
-                {!limitReached && (
-                  <button
-                    type="button"
-                    disabled={warming}
-                    onClick={() => void handleWarmForSearch()}
-                    title={t("connectionsTree.filter.searchUnloadedHint")}
-                    className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-                  >
-                    {warming ? (
-                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-                    ) : (
-                      <DatabaseBackup className="h-3 w-3 shrink-0 text-brand" />
-                    )}
-                    <span className="truncate">
-                      {warming
-                        ? t("connectionsTree.filter.searchingUnloaded")
-                        : t("connectionsTree.filter.searchUnloaded", {
-                            count: totals.cold,
-                          })}
-                    </span>
-                  </button>
+          </div>
+        )}
+        {filtering && totals.cold > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="text-muted-foreground/70">
+              {t("connectionsTree.filter.partialCount", {
+                count: totals.matches,
+                cold: totals.cold,
+              })}
+            </span>
+            {!limitReached && (
+              <button
+                type="button"
+                disabled={warming}
+                onClick={() => void handleWarmForSearch()}
+                title={t("connectionsTree.filter.searchUnloadedHint")}
+                className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+              >
+                {warming ? (
+                  <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                ) : (
+                  <DatabaseBackup className="h-3 w-3 shrink-0 text-brand" />
                 )}
-              </div>
+                <span className="truncate">
+                  {warming
+                    ? t("connectionsTree.filter.searchingUnloaded")
+                    : t("connectionsTree.filter.searchUnloaded", {
+                        count: totals.cold,
+                      })}
+                </span>
+              </button>
             )}
           </div>
         )}

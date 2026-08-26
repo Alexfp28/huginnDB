@@ -92,6 +92,29 @@ describe("scope", () => {
   });
 });
 
+describe("the two ✕ affordances clear what they sit next to", () => {
+  it("the box's ✕ drops the needle and keeps the scope", () => {
+    const s = useTreeSearch.getState();
+    s.narrowTo(db);
+    s.setRaw("users");
+    s.commit();
+    s.clearText();
+    expect(useTreeSearch.getState().raw).toBe("");
+    expect(useTreeSearch.getState().needle).toBe("");
+    expect(useTreeSearch.getState().scope).toEqual(db);
+  });
+
+  it("the chip's ✕ drops the scope and keeps the needle", () => {
+    const s = useTreeSearch.getState();
+    s.narrowTo(db);
+    s.setRaw("users");
+    s.commit();
+    s.clearScope();
+    expect(useTreeSearch.getState().scope).toEqual(ALL_SCOPE);
+    expect(useTreeSearch.getState().needle).toBe("users");
+  });
+});
+
 describe("clear", () => {
   it("drops the text AND the scope, so a scope can never outlive its search", () => {
     const s = useTreeSearch.getState();

@@ -237,7 +237,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
   **Narrowing is still possible — it is just visible now.** "Search here only"
   on a connection or a database (its right-click menu, or the button that
-  appears on a connection row while you are searching) puts a chip inside the
+  appears on a connection row while you are searching) puts a chip under the
   box naming what you narrowed to. Leave it with the chip's ✕, with Backspace
   on an empty box, or with Escape. This replaces a second invisible scope:
   expanding a database used to silently restrict the search to it *and*
