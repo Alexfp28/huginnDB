@@ -47,17 +47,16 @@ import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
+  DatabaseBackup,
   DatabaseZap,
   Folder,
   FolderOpen,
   ListFilter,
-  DatabaseBackup,
   Loader2,
   Plug,
   PlugZap,
   RotateCw,
   Search,
-  X,
 } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
@@ -408,8 +407,35 @@ export function ConnectionsTree() {
     return state === "none" || state === "out-of-scope";
   }
 
+  /**
+   * Ids currently being torn down, so their row can say so.
+   *
+   * A set rather than a single id: nothing stops the user from starting a
+   * second row's disconnect while the first is still closing, and closing a
+   * pool is not instant — the backend closes every per-database view under it
+   * in turn, each waiting up to five seconds on a server that has stopped
+   * answering. That is the same wait the "disconnect all" button now reports;
+   * one row's ✕ was the last affordance still silently ignoring the click.
+   */
+  const [disconnecting, setDisconnecting] = useState<Set<string>>(() => new Set());
+  function markDisconnecting(id: string, value: boolean) {
+    setDisconnecting((prev) => {
+      if (prev.has(id) === value) return prev;
+      const next = new Set(prev);
+      if (value) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
   async function handleDisconnect(p: ConnectionProfile) {
-    await disconnectAndClean(p.id);
+    if (disconnecting.has(p.id)) return;
+    markDisconnecting(p.id, true);
+    try {
+      await disconnectAndClean(p.id);
+    } finally {
+      markDisconnecting(p.id, false);
+    }
     if (selected === p.id) setSelected(null);
     // The fold is left in place deliberately: it can only mean "show folded when
     // this comes back", never "open over a subtree that isn't there".
@@ -469,6 +495,7 @@ export function ConnectionsTree() {
       isActive &&
       (matchState === "none" || matchState === "out-of-scope");
     const isScopeTarget = scope.kind !== "all" && scope.connectionId === p.id;
+    const isDisconnecting = disconnecting.has(p.id);
 
     return (
       <div key={p.id}>
@@ -587,18 +614,29 @@ export function ConnectionsTree() {
               <button
                 type="button"
                 title={t("statusBar.disconnect")}
+                disabled={isDisconnecting}
                 // Hidden until hover/focus so a long list of live connections
-                // isn't a wall of buttons, but always shown for the focused row.
+                // isn't a wall of buttons, but always shown for the focused row
+                // — and for one that is mid-teardown, which is the whole point
+                // of showing that state at all.
                 className={cn(
                   "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100",
-                  selected === p.id ? "opacity-100" : "opacity-0",
+                  selected === p.id || isDisconnecting ? "opacity-100" : "opacity-0",
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
                   void handleDisconnect(p);
                 }}
               >
-                <X className="h-3.5 w-3.5" />
+                {/* `PlugZap`, the same mark the header's "disconnect all"
+                    carries, not an ✕: an ✕ on a row reads as "remove this
+                    connection", which is a different and much worse action
+                    than closing its pool. */}
+                {isDisconnecting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <PlugZap className="h-3.5 w-3.5" />
+                )}
               </button>
             ) : (
               <Plug className="h-3 w-3 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100" />

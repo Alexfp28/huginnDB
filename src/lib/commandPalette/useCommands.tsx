@@ -43,6 +43,7 @@ import {
   Pin,
   PinOff,
   Plug,
+  PlugZap,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -51,7 +52,6 @@ import {
   SquareTerminal,
   Star,
   Table as TableIcon,
-  Unplug,
   KeyRound,
   Workflow,
   X,
@@ -357,7 +357,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         combo: combo("disconnectAll"),
         label: t("menu.file.disconnectAll"),
         keywords: "disconnect all close pools desconectar todo",
-        icon: <Unplug className="h-4 w-4" />,
+        icon: <PlugZap className="h-4 w-4" />,
         run: () => {
           for (const id of Array.from(active)) {
             void disconnect(id).catch((e) => notify.error(String(e)));

@@ -30,10 +30,10 @@ import {
   FolderPlus,
   ListFilter,
   Plug,
+  PlugZap,
   RefreshCw,
   Search,
   ShieldCheck,
-  Unplug,
   Upload,
 } from "lucide-react";
 import { notify } from "@/lib/notify";
@@ -212,7 +212,7 @@ export function ConnectionActionsMenu({
                 <>
                   <ContextMenuSeparator />
                   <ContextMenuAction
-                    icon={Unplug}
+                    icon={PlugZap}
                     label={t("statusBar.disconnect")}
                     onSelect={onDisconnect}
                   />

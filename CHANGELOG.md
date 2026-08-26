@@ -270,6 +270,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   "Search only the selected connection" ships unbound but is bindable and
   searchable in the command palette.
 
+- **Disconnecting one connection reports that it is working, and "disconnect"
+  has one icon everywhere.** The ✕ on a connection row (and in the status bar's
+  connection list) was wrong twice over: an ✕ on a row reads as "remove this
+  connection", which is a different and much worse action than closing its
+  pool, and it gave no sign at all while a teardown that can take seconds was
+  in progress. Both now show the same plug mark the "Disconnect all" button
+  carries, with a spinner while they work. The right-click menu and the command
+  palette used a third icon for the same command; they follow suit.
+
 - **"Disconnect all" no longer makes you wait.** It closed the connections one
   after another, and a single disconnect is already several round trips —
   the backend closes each of a server's per-database pools in turn, waiting up
