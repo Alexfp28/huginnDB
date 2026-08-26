@@ -111,6 +111,9 @@
       "filterPlaceholder": "Filtrar conexiones…",
       "noMatches": "Ninguna conexión coincide con “{{query}}”.",
       "allHidden": "Todas las conexiones guardadas están ocultas — usa “Conexiones a mostrar” arriba para recuperar alguna."
+    },
+    "filter": {
+      "clear": "Limpiar filtro"
     }
   },
   "workspacePicker": {

@@ -111,6 +111,9 @@
       "filterPlaceholder": "Filter connections…",
       "noMatches": "No connections match “{{query}}”.",
       "allHidden": "All saved connections are hidden — use “Connections to show” above to bring some back."
+    },
+    "filter": {
+      "clear": "Clear filter"
     }
   },
   "workspacePicker": {

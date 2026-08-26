@@ -63,6 +63,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConnectionActionsMenu } from "@/components/connection/ConnectionActionsMenu";
+import { TreeFilterBox } from "@/components/connection/TreeFilterBox";
 import { SchemaExplorer } from "@/components/schema/SchemaExplorer";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import type { ConnectionProfile } from "@/types";
@@ -378,11 +379,12 @@ export function ConnectionsTree() {
             <span className="truncate">{t("connectionsTree.selectConnections.action")}</span>
           </Button>
         </div>
-        <Input
+        <TreeFilterBox
           value={treeFilter}
-          onChange={(e) => setTreeFilter(e.target.value)}
+          onChange={setTreeFilter}
+          onClear={() => setTreeFilter("")}
           placeholder={t("schema.filterPlaceholder")}
-          className="h-7 text-xs"
+          clearLabel={t("connectionsTree.filter.clear")}
         />
         {visibleSet && (
           <div className="mt-1 text-[11px] text-muted-foreground">
