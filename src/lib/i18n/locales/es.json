@@ -99,7 +99,6 @@
   "connectionsTree": {
     "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
     "connect": "Conectar",
-    "filterNeedsSelection": "Selecciona una conexión para filtrar sus tablas.",
     "selectConnections": {
       "action": "Conexiones a mostrar",
       "title": "Conexiones a mostrar",
@@ -111,6 +110,21 @@
       "filterPlaceholder": "Filtrar conexiones…",
       "noMatches": "Ninguna conexión coincide con “{{query}}”.",
       "allHidden": "Todas las conexiones guardadas están ocultas — usa “Conexiones a mostrar” arriba para recuperar alguna."
+    },
+    "filter": {
+      "summary": "{{matches}} coincidencia(s) en {{connections}} conexión(es)",
+      "noMatchesAnywhere": "Sin coincidencias en ninguna conexión",
+      "noMatchesHint": "Solo se buscan nombres de tablas, vistas y bases de datos.",
+      "counting": "Contando…",
+      "partialCount": "{{count}} coincidencia(s) en lo ya cargado — faltan {{cold}} base(s) por buscar",
+      "connectToSearch": "Conecta para incluirla en la búsqueda",
+      "clear": "Limpiar filtro",
+      "scopeHere": "Buscar solo aquí",
+      "clearScope": "Volver a buscar en todas las conexiones",
+      "searchUnloaded": "Buscar en {{count}} base(s) sin cargar",
+      "searchUnloadedHint": "Al teclear no se abre ninguna conexión. Esto carga sus listas de tablas para que la búsqueda llegue a ellas.",
+      "searchingUnloaded": "Cargando bases de datos…",
+      "summaryCount": "{{matches}} coincidencia(s)"
     }
   },
   "workspacePicker": {
@@ -451,7 +465,8 @@
       "confirm": "¿Insertar los documentos de este fichero en \"{{collection}}\"? Si existen documentos con el mismo _id la importación se detendrá.",
       "success": "Importación terminada — se insertaron {{count}} documento(s)."
     },
-    "security": "Seguridad"
+    "security": "Seguridad",
+    "filterScopedToConnection": "Buscando solo en {{name}}"
   },
   "security": {
     "title": "Seguridad",
@@ -1273,7 +1288,12 @@
         "notJson": "Ese archivo no es JSON válido.",
         "notShortcuts": "Ese archivo no es una exportación de atajos de HuginnDB."
       },
-      "recordAgainHint": "Haz clic para grabar otra tecla"
+      "recordAgainHint": "Haz clic para grabar otra tecla",
+      "focusTreeFilter": "Buscar en el árbol de esquema",
+      "focusTreeFilterHint": "Abre el panel Esquema si está plegado, enfoca la caja de filtro y selecciona lo que haya en ella.",
+      "clearTreeFilter": "Limpiar la búsqueda del esquema",
+      "clearTreeFilterHint": "Por capas: primero el texto, luego el ámbito nivel a nivel y por último el foco pasa al árbol.",
+      "scopeFilterToConnection": "Buscar solo en la conexión seleccionada"
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",

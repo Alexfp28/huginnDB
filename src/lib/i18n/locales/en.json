@@ -99,7 +99,6 @@
   "connectionsTree": {
     "empty": "No saved connections yet. Add one from File → New connection.",
     "connect": "Connect",
-    "filterNeedsSelection": "Select a connection to filter its tables.",
     "selectConnections": {
       "action": "Connections to show",
       "title": "Connections to show",
@@ -111,6 +110,21 @@
       "filterPlaceholder": "Filter connections…",
       "noMatches": "No connections match “{{query}}”.",
       "allHidden": "All saved connections are hidden — use “Connections to show” above to bring some back."
+    },
+    "filter": {
+      "summary": "{{matches}} match(es) in {{connections}} connection(s)",
+      "noMatchesAnywhere": "No matches in any connection",
+      "noMatchesHint": "Only table, view and database names are searched.",
+      "counting": "Counting…",
+      "partialCount": "{{count}} match(es) in what is loaded — {{cold}} database(s) left to search",
+      "connectToSearch": "Connect it to include it in the search",
+      "clear": "Clear filter",
+      "scopeHere": "Search here only",
+      "clearScope": "Search every connection again",
+      "searchUnloaded": "Search {{count}} unloaded database(s)",
+      "searchUnloadedHint": "Typing never opens a connection. This loads those databases' table lists so the search can reach them.",
+      "searchingUnloaded": "Loading databases…",
+      "summaryCount": "{{matches}} match(es)"
     }
   },
   "workspacePicker": {
@@ -451,7 +465,8 @@
       "confirm": "Insert the documents from this file into \"{{collection}}\"? Existing documents with the same _id will cause the import to stop.",
       "success": "Import finished — {{count}} document(s) inserted."
     },
-    "security": "Security"
+    "security": "Security",
+    "filterScopedToConnection": "Searching in {{name}} only"
   },
   "security": {
     "title": "Security",
@@ -1273,7 +1288,12 @@
         "notJson": "That file isn't valid JSON.",
         "notShortcuts": "That file isn't a HuginnDB shortcuts export."
       },
-      "recordAgainHint": "Click to record a different key"
+      "recordAgainHint": "Click to record a different key",
+      "focusTreeFilter": "Search the schema tree",
+      "focusTreeFilterHint": "Opens the Schema panel if it is collapsed, then focuses the filter box and selects what is in it.",
+      "clearTreeFilter": "Clear the schema search",
+      "clearTreeFilterHint": "In layers: first the text, then the scope one level at a time, then focus moves to the tree.",
+      "scopeFilterToConnection": "Search only the selected connection"
     },
     "mcp": {
       "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",

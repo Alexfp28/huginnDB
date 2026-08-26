@@ -1,6 +1,7 @@
 /**
  * Bounded, on-demand loading of a multi-database server's table lists, so the
- * command palette can search tables the user has never expanded in the tree.
+ * command palette and the schema tree's filter can search tables the user has
+ * never expanded.
  *
  * The palette indexes `useSchema.byConnection`, which for a server-wide
  * connection (`profile.database === ""`) starts out holding only the *database*
@@ -13,10 +14,13 @@
  * connection pool**. The schema explorer learned this the hard way — its
  * cross-database search used to start every database at once, and a server with
  * nineteen databases turned one keystroke into nineteen simultaneous connection
- * attempts, which was itself enough to exhaust a shared server's limit (see the
- * prefetch note in `SchemaExplorer.tsx`). This mirrors that fix's shape —
+ * attempts, which was itself enough to exhaust a shared server's limit. It then
+ * learned it a second time: bounding that fan-out to three at a time made it
+ * survivable but left typing in charge of opening pools, which is the thing the
+ * connections-tree redesign finally removed. The shape of the fix is here —
  * `DB_VIEW_WARM_CONCURRENCY` at a time, and a hard stop the moment the server
- * says it is full, because every remaining database would fail identically.
+ * says it is full, because every remaining database would fail identically —
+ * and `warmForSearch` is the tree's entry point into it.
  */
 
 import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
@@ -35,14 +39,15 @@ import { databaseViewId } from "@/lib/connectionLabel";
  * responsive on a handful of databases while making that case a queue rather
  * than a burst.
  *
- * Exported because the schema explorer's cross-database search is bounded by the
- * same number for the same reason. The two remain **separate schedulers on
- * purpose**: this one is a one-shot walk over a fixed list, awaited by its
- * caller and reporting counts, while the explorer's is a re-entrant effect that
- * re-derives its queue on every pass so a keystroke, a newly active database or
- * a changed visible set changes what still gets warmed — and so the tree fills
- * in progressively rather than in one batch at the end. Collapsing them would
- * mean giving one of those two behaviours up.
+ * **There used to be two schedulers, and now there is one.** The schema
+ * explorer had its own: a re-entrant effect that re-derived its queue on every
+ * pass, so a keystroke, a newly active database or a changed visible set
+ * changed what still got warmed, and the tree filled in progressively. That
+ * behaviour was worth keeping only for as long as *typing* was what triggered
+ * the warm — which is precisely what the connections-tree redesign removed
+ * (`warmForSearch`). With the warm now a deliberate, one-shot action over a
+ * list the tree already computed, the re-entrant version has nothing left to
+ * re-derive, and the reason the two could not be merged went with it.
  */
 export const DB_VIEW_WARM_CONCURRENCY = 3;
 

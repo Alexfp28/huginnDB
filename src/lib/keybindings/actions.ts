@@ -58,6 +58,9 @@ export type ActionId =
   | "expandSelectedCell"
   // schema
   | "refreshSchema"
+  | "focusTreeFilter"
+  | "clearTreeFilter"
+  | "scopeFilterToConnection"
   | "disconnectAll"
   // panels
   | "togglePanelSchema"
@@ -139,6 +142,47 @@ export const ACTIONS: ActionSpec[] = [
     scope: "editor",
     defaults: ["Mod+Enter"],
     labelKey: "settings.shortcuts.runQuery",
+  },
+
+  // ── The schema tree's search ─────────────────────────────────────────────
+  //
+  // The first real inhabitants of the `tree` scope, which was declared with the
+  // catalogue and has been unused since.
+  //
+  // `focusTreeFilter` is `global`, not `tree`, and that is not an oversight: a
+  // `tree`-scoped binding is only audible once the focus is already inside the
+  // panel (see `scopesAt`), so the action whose entire job is to *take* you
+  // there could never fire. Mod+Shift+F is free (P, R and N are the taken
+  // Mod+Shift letters) and is the muscle memory for "search everything".
+  {
+    id: "focusTreeFilter",
+    category: "schema",
+    scope: "global",
+    defaults: ["Mod+Shift+F"],
+    labelKey: "settings.shortcuts.focusTreeFilter",
+    descKey: "settings.shortcuts.focusTreeFilterHint",
+  },
+  // Escape is a legal chord and `isTypeableChord("Escape")` is false, so it
+  // fires with the cursor inside the filter input — the same reasoning that
+  // keeps F5 working from the grid's search box. Radix menus portal to `body`,
+  // outside `[data-kb-scope="tree"]`, so an open context menu's Escape resolves
+  // at `global` and this never steals it.
+  {
+    id: "clearTreeFilter",
+    category: "schema",
+    scope: "tree",
+    defaults: ["Escape"],
+    labelKey: "settings.shortcuts.clearTreeFilter",
+    descKey: "settings.shortcuts.clearTreeFilterHint",
+  },
+  // Ships unbound, like most of the catalogue: being here already makes it
+  // searchable in the palette and bindable in Settings.
+  {
+    id: "scopeFilterToConnection",
+    category: "schema",
+    scope: "tree",
+    defaults: [],
+    labelKey: "settings.shortcuts.scopeFilterToConnection",
   },
   {
     id: "expandSelectedCell",

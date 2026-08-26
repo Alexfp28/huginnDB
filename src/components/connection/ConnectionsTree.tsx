@@ -23,13 +23,31 @@
  * default derived rather than persisted is what stops the tree from ever claiming
  * a row is open over a subtree that doesn't exist: a remembered fold can only
  * ever mean "show this folded when it comes back".
+ *
+ * **This file owns the search.** The filter box used to hand a raw string down
+ * to whichever connection happened to be selected and `""` to every other one,
+ * so with two connections open one filtered and the other did not, and nothing
+ * on screen said why — the only marker of "selected" is a hairline on the row,
+ * and the selection moves on its own when a tab opens. Now the needle is
+ * committed once (`useTreeSearch`), counted once against every live connection
+ * (`useTreeMatchCounts`), and what travels down to the explorers is the parsed
+ * `patterns` array plus that connection's already-computed summary. A row with
+ * no matches folds to one dimmed line with a `0` badge instead of silently
+ * showing its whole tree.
+ *
+ * The fold a filter causes is **visual and ephemeral**: it never touches
+ * `collapsedConnections`, because that set goes through `persistLaunchState`
+ * and a search would otherwise leave permanent folds the user never asked for.
+ * The chevron still works, as a session-local override for as long as the
+ * filter lasts.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
+  DatabaseBackup,
   DatabaseZap,
   Folder,
   FolderOpen,
@@ -39,21 +57,34 @@ import {
   PlugZap,
   RotateCw,
   Search,
-  X,
 } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
 import { useSchema } from "@/stores/session/schema";
-import { useTabs } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
 import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups";
-import { connectAndWarm, disconnectAndClean } from "@/lib/connection/connectFlow";
+import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
+import { isServerWide } from "@/lib/connectionLabel";
+import { useTreeMatchCounts } from "@/lib/schema/useTreeMatchCounts";
+import { rowMatchState, totalMatches } from "@/lib/schema/treeMatches";
+import { warmForSearch } from "@/lib/schema/warmForSearch";
+import { scopeLabel } from "@/lib/schema/filterScope";
+import { TREE_SEARCH_DEBOUNCE_MS, useTreeSearch } from "@/stores/session/treeSearch";
+import {
+  connectAndWarm,
+  disconnectAll,
+  disconnectAndClean,
+} from "@/lib/connection/connectFlow";
 import { persistLaunchState } from "@/stores/session/persistedTabs";
+import { isTooManyConnections } from "@/lib/db/driver";
+import { notify } from "@/lib/notify";
+import { api } from "@/lib/tauri";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -63,15 +94,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConnectionActionsMenu } from "@/components/connection/ConnectionActionsMenu";
+import { ScopeChip, TreeFilterBox } from "@/components/connection/TreeFilterBox";
 import { SchemaExplorer } from "@/components/schema/SchemaExplorer";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
+import type { TreeConnectionInput } from "@/lib/schema/treeMatches";
 import type { ConnectionProfile } from "@/types";
 
 export function ConnectionsTree() {
   const { t } = useTranslation();
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
-  const disconnect = useConnections((s) => s.disconnect);
   const lostConnections = useConnectionHealth((s) => s.lost);
   // Whole map, so a row can show that its schema is being fetched. The explorer's
   // spinning refresh button carried that signal before its icon strip moved to
@@ -79,8 +111,6 @@ export function ConnectionsTree() {
   // collapsed. `MultiDbExplorer` already subscribes this broadly for the same
   // reason — the lookups are cheap and the map is replaced, not mutated.
   const schemaByConnection = useSchema((s) => s.byConnection);
-  const dropSchema = useSchema((s) => s.drop);
-  const closeTabsForConnection = useTabs((s) => s.closeForConnection);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
   // The folded set (see `useUi`): a row follows its pool unless the user said
@@ -88,13 +118,80 @@ export function ConnectionsTree() {
   // since "expanded" is already the default for a live connection.
   const collapsed = useUi((s) => s.collapsedConnections);
   const setConnectionCollapsed = useUi((s) => s.setConnectionCollapsed);
-  // One filter box for the whole tree (previously duplicated inside every
-  // expanded connection). It only ever scopes to `selected` — see
-  // `renderConnection` — so browsing several connections at once never
-  // hides the ones you're not searching.
-  const treeFilter = useUi((s) => s.treeFilter);
-  const setTreeFilter = useUi((s) => s.setTreeFilter);
+  // One filter box for the whole tree, searching every live connection at once.
+  // `raw` is what the user is typing; `patterns` is the committed, parsed needle
+  // the subtrees below filter by (see `useTreeSearch`).
+  const raw = useTreeSearch((s) => s.raw);
+  const needle = useTreeSearch((s) => s.needle);
+  const patterns = useTreeSearch((s) => s.patterns);
+  const scope = useTreeSearch((s) => s.scope);
+  const setRaw = useTreeSearch((s) => s.setRaw);
+  const commitNeedle = useTreeSearch((s) => s.commit);
+  const clearText = useTreeSearch((s) => s.clearText);
+  const narrowTo = useTreeSearch((s) => s.narrowTo);
+  const clearScope = useTreeSearch((s) => s.clearScope);
+  const widenScopeOneLevel = useTreeSearch((s) => s.widen);
+  const requestFocus = useTreeSearch((s) => s.requestFocus);
+  const focusRequest = useTreeSearch((s) => s.focusRequest);
   const groupCollapse = useConnectionGroupCollapse();
+  const filterInputRef = useRef<HTMLInputElement>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const filtering = needle.length > 0;
+
+  /**
+   * Arrow-key movement between the box and the connection rows.
+   *
+   * Deliberately a local `onKeyDown` rather than three more catalogue actions:
+   * these are a widget's internal navigation, like the arrows inside a
+   * `<select>`, and putting them in Settings would invite someone to rebind
+   * "move down" globally. Rows are found in DOM order via `data-tree-row`, so
+   * folders and nesting need no bookkeeping here.
+   */
+  function moveRowFocus(from: HTMLElement | null, delta: 1 | -1): boolean {
+    const rows = Array.from(
+      rowsRef.current?.querySelectorAll<HTMLElement>("[data-tree-row]") ?? [],
+    );
+    if (rows.length === 0) return false;
+    const index = from ? rows.indexOf(from) : -1;
+    const next = index + delta;
+    if (next < 0) {
+      // Up from the first row goes back to where the search is typed.
+      filterInputRef.current?.focus();
+      return true;
+    }
+    if (next >= rows.length) return false;
+    rows[next]?.focus();
+    return true;
+  }
+
+  /**
+   * The one debounce in the whole search path.
+   *
+   * It used to be per `MultiDbExplorer`, which is how the raw needle and the
+   * debounced one could disagree for 250 ms about which databases to show
+   * versus what to show inside them. With the string no longer travelling down
+   * as a prop, only one committed needle exists at any instant and that
+   * disagreement is unrepresentable.
+   *
+   * The empty case skips the wait, as it always has: clearing has to feel
+   * immediate.
+   */
+  useEffect(() => {
+    if (raw.trim().length === 0) {
+      commitNeedle("");
+      return;
+    }
+    const id = setTimeout(() => commitNeedle(), TREE_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [raw, commitNeedle]);
+
+  // A focus request (the keyboard shortcut, or a scope button that wants the
+  // caret back) selects what is there, so typing replaces the previous needle.
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    filterInputRef.current?.focus();
+    filterInputRef.current?.select();
+  }, [focusRequest]);
 
   // DataGrip-style subset of connections to show, one level up from the
   // per-connection database subset (`useVisibleDatabases`, SchemaExplorer.tsx).
@@ -120,11 +217,146 @@ export function ConnectionsTree() {
   );
   const buckets = useMemo(() => bucketByGroup(visibleProfiles), [visibleProfiles]);
 
+  // Inputs for the match counter: only *live* connections, since an idle one has
+  // nothing to search and its row says so instead of showing a misleading `0`.
+  // The visible-databases subset is resolved through the pure
+  // `resolveVisibleDatabases` rather than `useVisibleDatabases`, which cannot be
+  // called in a loop (Rules of Hooks) — that split is exactly why the pure
+  // function exists.
+  const databaseVisibility = useUi((s) => s.databaseVisibility);
+  const treeConnections = useMemo<TreeConnectionInput[]>(
+    () =>
+      visibleProfiles
+        .filter((p) => active.has(p.id))
+        .map((p) => ({
+          connectionId: p.id,
+          multiDb: isServerWide(p),
+          visibleDatabases: resolveVisibleDatabases(
+            databaseVisibility[p.id],
+            p.visible_databases,
+          ),
+        })),
+    [visibleProfiles, active, databaseVisibility],
+  );
+  const matchCounts = useTreeMatchCounts(treeConnections, patterns, scope);
+  const totals = useMemo(() => totalMatches(matchCounts.values()), [matchCounts]);
+
+  /**
+   * A scope whose connection left the tree is dropped automatically.
+   *
+   * Without this the box keeps a chip naming a connection that is no longer
+   * there and every search silently returns nothing — which is the implicit
+   * scope's original failure mode with a label stuck on it. "Left the tree"
+   * covers both disconnecting and being filtered out of the environment's
+   * visible subset.
+   */
+  useEffect(() => {
+    useTreeSearch
+      .getState()
+      .pruneScopeAgainst((id) => active.has(id) && (!visibleSet || visibleSet.has(id)));
+  }, [active, visibleSet]);
+
+  const scopeProfile = useMemo(
+    () => (scope.kind === "all" ? null : profiles.find((p) => p.id === scope.connectionId)),
+    [profiles, scope],
+  );
+
+  /**
+   * Reach the databases the search has not read.
+   *
+   * Typing does not do this and must not: every database view is a whole
+   * connection pool, and a fan-out driven by a keystroke is what made a
+   * nineteen-database server exhaust its own connection limit (1.13.0). So the
+   * cost is a button, and the button says how much it will cost.
+   *
+   * `warmForSearch` walks the connections one at a time and bounds each to
+   * `DB_VIEW_WARM_CONCURRENCY`; the counts fill in on their own as each child
+   * slice lands, because that is what invalidates the memo above.
+   */
+  const [warming, setWarming] = useState(false);
+  const limitReached = useTreeSearch((s) => s.limitReached);
+  const setLimitReached = useTreeSearch((s) => s.setLimitReached);
+  async function handleWarmForSearch() {
+    if (warming) return;
+    const targets = Array.from(matchCounts.values())
+      .filter((s) => s.coldDatabases.length > 0)
+      .map((s) => ({ parentId: s.connectionId, databases: s.coldDatabases }));
+    if (targets.length === 0) return;
+    setWarming(true);
+    try {
+      const result = await warmForSearch(targets);
+      if (result.limitError) {
+        // The one failure the user can act on. Everything still queued would be
+        // refused identically, so the offer to warm is withdrawn until they
+        // free something up — reusing the toast the explorer's own prefetch
+        // used to raise from inside a keystroke.
+        setLimitReached(true);
+        notify.error(String(result.limitError), {
+          actions: [
+            {
+              label: t("schema.releaseIdlePools"),
+              variant: "primary",
+              onClick: () => {
+                void api
+                  .releaseIdlePools()
+                  .then((closed) => {
+                    notify.success(t("schema.releasedIdlePools", { count: closed }));
+                    setLimitReached(false);
+                  })
+                  .catch((err) => notify.error(String(err)));
+              },
+            },
+          ],
+        });
+      }
+    } catch (e) {
+      if (isTooManyConnections(e)) setLimitReached(true);
+      notify.error(String(e));
+    } finally {
+      setWarming(false);
+    }
+  }
+
+  /**
+   * Connections the user re-opened by hand while the filter had folded them.
+   *
+   * Deliberately component-local and not `collapsedConnections`: that set is
+   * persisted through `persistLaunchState`, so recording a search's folds there
+   * would leave the user with permanent folds they never chose. Dropped as soon
+   * as the filter is gone, which is also when the automatic folds disappear.
+   */
+  const [foldOverrides, setFoldOverrides] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!filtering) setFoldOverrides((prev) => (prev.size === 0 ? prev : new Set()));
+  }, [filtering]);
+
   /** Id currently connecting, so its row can show a spinner and refuse clicks. */
   const [connecting, setConnecting] = useState<string | null>(null);
 
+  /**
+   * Has the filter folded this row to a single line?
+   *
+   * Only a *real* zero folds — a connection still loading, or a multi-DB server
+   * whose databases have never been read, has no evidence for one (see
+   * `rowMatchState`). Folding on a provisional zero is how a user concludes the
+   * search failed and gives up on it.
+   */
+  function filterFolds(id: string): boolean {
+    if (!filtering || foldOverrides.has(id)) return false;
+    return filterFoldsIgnoringOverride(id);
+  }
+
+  function toggleFoldOverride(id: string) {
+    setFoldOverrides((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const isExpanded = (p: ConnectionProfile) =>
-    active.has(p.id) && !collapsed.includes(p.id);
+    active.has(p.id) && !collapsed.includes(p.id) && !filterFolds(p.id);
 
   /**
    * Fold or unfold, and persist it. `persistLaunchState` is otherwise only called
@@ -156,28 +388,80 @@ export function ConnectionsTree() {
       return;
     }
     setSelected(p.id);
+    // While the filter has this row folded for having nothing to show, the
+    // chevron toggles a session-local override instead of a persisted fold:
+    // the user is peeking inside a connection the search dismissed, which is
+    // not a statement about how they want the tree to look next launch.
+    if (filtering && filterFoldsIgnoringOverride(p.id)) {
+      toggleFoldOverride(p.id);
+      return;
+    }
     setCollapsed(p.id, isExpanded(p));
   }
 
+  /** `filterFolds`, blind to the override — "would the filter fold this?" */
+  function filterFoldsIgnoringOverride(id: string): boolean {
+    const summary = matchCounts.get(id);
+    if (!summary) return false;
+    const state = rowMatchState(summary);
+    return state === "none" || state === "out-of-scope";
+  }
+
+  /**
+   * Ids currently being torn down, so their row can say so.
+   *
+   * A set rather than a single id: nothing stops the user from starting a
+   * second row's disconnect while the first is still closing, and closing a
+   * pool is not instant — the backend closes every per-database view under it
+   * in turn, each waiting up to five seconds on a server that has stopped
+   * answering. That is the same wait the "disconnect all" button now reports;
+   * one row's ✕ was the last affordance still silently ignoring the click.
+   */
+  const [disconnecting, setDisconnecting] = useState<Set<string>>(() => new Set());
+  function markDisconnecting(id: string, value: boolean) {
+    setDisconnecting((prev) => {
+      if (prev.has(id) === value) return prev;
+      const next = new Set(prev);
+      if (value) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
   async function handleDisconnect(p: ConnectionProfile) {
-    await disconnectAndClean(p.id);
+    if (disconnecting.has(p.id)) return;
+    markDisconnecting(p.id, true);
+    try {
+      await disconnectAndClean(p.id);
+    } finally {
+      markDisconnecting(p.id, false);
+    }
     if (selected === p.id) setSelected(null);
     // The fold is left in place deliberately: it can only mean "show folded when
     // this comes back", never "open over a subtree that isn't there".
   }
 
-  /** Tear down every live pool and clear the selected connection. Lives here
-   *  (rather than the File menu, where it used to sit next to the now-removed
-   *  connection list) since it's a bulk action over exactly what this tree shows. */
+  /**
+   * Tear down every live pool and clear the selected connection. Lives here
+   * (rather than the File menu, where it used to sit next to the now-removed
+   * connection list) since it's a bulk action over exactly what this tree shows.
+   *
+   * The loop this used to run awaited one connection before starting the next,
+   * on top of a backend that already closes each connection's per-database
+   * pools one at a time — every one of them up to a 5s timeout on a server
+   * that has stopped answering. Four nested serial layers is what made the
+   * button feel like it had hung. `disconnectAll` runs the connections
+   * concurrently, and is shared with the keyboard shortcut, which used to be a
+   * second, faster, *lossier* implementation of the same command.
+   */
+  const [disconnectingAll, setDisconnectingAll] = useState(false);
   async function handleDisconnectAll() {
-    for (const id of Array.from(active)) {
-      try {
-        await disconnect(id);
-        dropSchema(id);
-        closeTabsForConnection(id);
-      } catch {
-        // Continue on partial failures so one bad pool doesn't block the rest.
-      }
+    if (disconnectingAll) return;
+    setDisconnectingAll(true);
+    try {
+      await disconnectAll();
+    } finally {
+      setDisconnectingAll(false);
     }
     setSelected(null);
   }
@@ -201,6 +485,17 @@ export function ConnectionsTree() {
     const isLost = !!lostError;
     const expanded = isExpanded(p);
     const isBusy = connecting === p.id || !!schemaByConnection[p.id]?.loading;
+    const summary = matchCounts.get(p.id);
+    const matchState = summary ? rowMatchState(summary) : null;
+    // Dimmed, never hidden: a connection row is what the user needs in order to
+    // connect it or to narrow the search to it, so the filter may quieten it
+    // but must not take it away.
+    const dimmedByFilter =
+      filtering &&
+      isActive &&
+      (matchState === "none" || matchState === "out-of-scope");
+    const isScopeTarget = scope.kind !== "all" && scope.connectionId === p.id;
+    const isDisconnecting = disconnecting.has(p.id);
 
     return (
       <div key={p.id}>
@@ -212,17 +507,25 @@ export function ConnectionsTree() {
           <div
             role="button"
             tabIndex={0}
+            data-tree-row
             onClick={() => void handleRowClick(p)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 void handleRowClick(p);
+                return;
+              }
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                if (moveRowFocus(e.currentTarget, e.key === "ArrowDown" ? 1 : -1)) {
+                  e.preventDefault();
+                }
               }
             }}
             title={isLost ? t("connections.lost", { message: lostError }) : p.name}
             className={cn(
               "group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-brand/40",
               isLost && "bg-destructive/10",
+              dimmedByFilter && "opacity-55 hover:opacity-100",
               // Selected connection: the same brand rail the active table row
               // carries in `SchemaExplorer`, so "this is the one you're in"
               // reads identically at both levels of the tree, plus a hairline
@@ -266,6 +569,33 @@ export function ConnectionsTree() {
             >
               {p.name}
             </span>
+            {/* One of the three explicit ways into a scope (the others are this
+                row's context menu and a database row's). Offered only while
+                something is typed: narrowing an empty search would leave a chip
+                with nothing to modify. */}
+            {filtering && isActive && !isScopeTarget && (
+              <button
+                type="button"
+                title={t("connectionsTree.filter.scopeHere")}
+                aria-label={t("connectionsTree.filter.scopeHere")}
+                className="shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  narrowTo({ kind: "connection", connectionId: p.id });
+                  requestFocus();
+                }}
+              >
+                <ListFilter className="h-3 w-3" />
+              </button>
+            )}
+            {filtering && (
+              <MatchBadge
+                isActive={isActive}
+                count={summary?.count ?? 0}
+                cold={summary?.coldDatabases.length ?? 0}
+                state={matchState}
+              />
+            )}
             <VanishedOriginMark profileId={p.id} />
             {isLost ? (
               <button
@@ -284,18 +614,29 @@ export function ConnectionsTree() {
               <button
                 type="button"
                 title={t("statusBar.disconnect")}
+                disabled={isDisconnecting}
                 // Hidden until hover/focus so a long list of live connections
-                // isn't a wall of buttons, but always shown for the focused row.
+                // isn't a wall of buttons, but always shown for the focused row
+                // — and for one that is mid-teardown, which is the whole point
+                // of showing that state at all.
                 className={cn(
                   "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100",
-                  selected === p.id ? "opacity-100" : "opacity-0",
+                  selected === p.id || isDisconnecting ? "opacity-100" : "opacity-0",
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
                   void handleDisconnect(p);
                 }}
               >
-                <X className="h-3.5 w-3.5" />
+                {/* `PlugZap`, the same mark the header's "disconnect all"
+                    carries, not an ✕: an ✕ on a row reads as "remove this
+                    connection", which is a different and much worse action
+                    than closing its pool. */}
+                {isDisconnecting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <PlugZap className="h-3.5 w-3.5" />
+                )}
               </button>
             ) : (
               <Plug className="h-3 w-3 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -313,7 +654,8 @@ export function ConnectionsTree() {
           <div className="ml-3 border-l border-border/35 pl-0.5">
             <SchemaExplorer
               connectionId={p.id}
-              filter={selected === p.id ? treeFilter : ""}
+              patterns={patterns}
+              summary={summary}
             />
           </div>
         )}
@@ -347,60 +689,187 @@ export function ConnectionsTree() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    // The whole panel is the `tree` keybinding scope — the filter box and the
+    // connection rows included. It used to be declared inside `SchemaExplorer`,
+    // which covered only an expanded connection's subtree, so Escape-to-clear
+    // could not fire from the box it clears.
+    <div className="flex h-full flex-col" data-kb-scope="tree">
       <div className="shrink-0 px-2 pb-1 pt-2">
-        {/* Tree-wide actions, above the filter box: bulk-disconnect on the
-            left, the visibility picker (which acts on the whole tree, not
-            one row, so it can't live in a per-connection context menu) on
-            the right. */}
-        <div className="mb-1.5 flex items-center justify-between gap-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={active.size === 0}
-            onClick={() => void handleDisconnectAll()}
-            title={t("menu.file.disconnectAll")}
-            className="h-6 min-w-0 gap-1 px-2 text-[11px]"
+        {/* The panel had no title and three stacked notice lines over a 28px
+            input. The title comes back as a header row and the two tree-wide
+            actions move into it as icons: they were labelled buttons that
+            truncated to unreadable stumps at the widths this panel is actually
+            dragged to, and the labels are now their tooltips. That pays for the
+            vertical space the scope chip and the search summary need. */}
+        <div className="mb-1.5 flex items-center gap-1">
+          <span className="flex-1 truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("panels.schema")}
+          </span>
+          <SimpleTooltip label={t("menu.file.disconnectAll")}>
+            <button
+              type="button"
+              disabled={active.size === 0 || disconnectingAll}
+              onClick={() => void handleDisconnectAll()}
+              aria-label={t("menu.file.disconnectAll")}
+              className="shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              {/* Closing a pool through a tunnel or a pooler is a round trip
+                  per database, so this is not always instant — the button says
+                  it is working instead of looking ignored. */}
+              {disconnectingAll ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <PlugZap className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </SimpleTooltip>
+          {/* The "N of M connections" line folds into a brand dot on the icon
+              that describes it — the subset is still announced, on the control
+              that changes it, and its count is in the tooltip. */}
+          <SimpleTooltip
+            label={
+              visibleSet
+                ? `${t("connectionsTree.selectConnections.action")} — ${t(
+                    "connectionsTree.selectConnections.subsetActive",
+                    { count: visibleSet.size, total: profiles.length },
+                  )}`
+                : t("connectionsTree.selectConnections.action")
+            }
           >
-            <PlugZap className="h-3 w-3 shrink-0" />
-            <span className="truncate">{t("menu.file.disconnectAll")}</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setVisibilityPickerOpen(true)}
-            title={t("connectionsTree.selectConnections.action")}
-            className="h-6 min-w-0 gap-1 px-2 text-[11px]"
-          >
-            <ListFilter className="h-3 w-3 shrink-0" />
-            <span className="truncate">{t("connectionsTree.selectConnections.action")}</span>
-          </Button>
+            <button
+              type="button"
+              onClick={() => setVisibilityPickerOpen(true)}
+              aria-label={t("connectionsTree.selectConnections.action")}
+              className="relative shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+            >
+              <ListFilter className={cn("h-3.5 w-3.5", visibleSet && "text-brand")} />
+              {visibleSet && (
+                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-brand ring-2 ring-background" />
+              )}
+            </button>
+          </SimpleTooltip>
         </div>
-        <Input
-          value={treeFilter}
-          onChange={(e) => setTreeFilter(e.target.value)}
+        <TreeFilterBox
+          ref={filterInputRef}
+          value={raw}
+          onChange={setRaw}
+          onClear={clearText}
+          onKeyDown={(e) => {
+            // Backspace on an empty box peels one level off the scope, the way
+            // it removes the last chip in any tag input. Each press does
+            // something visible, which is what makes the layering learnable.
+            if (e.key === "Backspace" && raw.length === 0 && scope.kind !== "all") {
+              e.preventDefault();
+              widenScopeOneLevel();
+              return;
+            }
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              moveRowFocus(null, 1);
+              return;
+            }
+            if (e.key === "Enter") {
+              // Commit now rather than waiting out the debounce. Deliberately
+              // NOT "open the first match": with several connections searched at
+              // once there is no single obvious first match, and guessing one is
+              // the ambiguity this redesign exists to remove.
+              e.preventDefault();
+              commitNeedle();
+            }
+          }}
           placeholder={t("schema.filterPlaceholder")}
-          className="h-7 text-xs"
+          clearLabel={t("connectionsTree.filter.clear")}
         />
-        {visibleSet && (
-          <div className="mt-1 text-[11px] text-muted-foreground">
-            {t("connectionsTree.selectConnections.subsetActive", {
-              count: visibleSet.size,
-              total: profiles.length,
-            })}
+        {/* The scope chip and the match summary share one wrapping row under the
+            box. The chip used to sit *inside* the box, in front of the caret,
+            which in the width this panel is normally docked at left about eight
+            characters of input visible — see `TreeFilterBox`'s header. Out here
+            it can name a connection and a database, and on a narrow panel it
+            wraps onto its own line instead of taking the input's. */}
+        {(filtering || (scope.kind !== "all" && scopeProfile)) && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+            {scope.kind !== "all" && scopeProfile && (
+              <ScopeChip
+                driver={scopeProfile.driver}
+                label={scopeLabel(scope, scopeProfile.name)}
+                title={
+                  scope.kind === "database"
+                    ? t("schema.filterScopedTo", { db: scope.database })
+                    : t("schema.filterScopedToConnection", { name: scopeProfile.name })
+                }
+                onClear={clearScope}
+                clearLabel={t("connectionsTree.filter.clearScope")}
+              />
+            )}
+            {/* The count is the only signal that the search reached a connection
+                other than the one being looked at, so it is announced. The chip
+                stays outside the live region: it is a control, not a status,
+                and it would be read out on every keystroke. */}
+            {filtering && (
+              <span
+                role="status"
+                aria-live="polite"
+                className="min-w-0 text-muted-foreground"
+              >
+                {totals.matches === 0 && !totals.pending && totals.cold === 0 ? (
+                  <>
+                    <span>{t("connectionsTree.filter.noMatchesAnywhere")}</span>{" "}
+                    {/* The honest confession of what this filter actually looks
+                        at. It has never searched columns, schemas or connection
+                        names, and nothing on screen has ever said so. */}
+                    <span className="text-muted-foreground/70">
+                      {t("connectionsTree.filter.noMatchesHint")}
+                    </span>
+                  </>
+                ) : scope.kind !== "all" ? (
+                  // Scoped: the chip right next to this already names where, so
+                  // repeating it here would be the same sentence twice on a line
+                  // that has no width to spare.
+                  t("connectionsTree.filter.summaryCount", { matches: totals.matches })
+                ) : (
+                  t("connectionsTree.filter.summary", {
+                    matches: totals.matches,
+                    connections: totals.connections,
+                  })
+                )}
+              </span>
+            )}
           </div>
         )}
-        {/* Only meaningful once something is typed — an empty box needing no
-            selection at all would be a confusing thing to say up front. */}
-        {treeFilter && !selected && (
-          <div className="mt-1 text-[11px] text-muted-foreground">
-            {t("connectionsTree.filterNeedsSelection")}
+        {filtering && totals.cold > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="text-muted-foreground/70">
+              {t("connectionsTree.filter.partialCount", {
+                count: totals.matches,
+                cold: totals.cold,
+              })}
+            </span>
+            {!limitReached && (
+              <button
+                type="button"
+                disabled={warming}
+                onClick={() => void handleWarmForSearch()}
+                title={t("connectionsTree.filter.searchUnloadedHint")}
+                className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+              >
+                {warming ? (
+                  <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                ) : (
+                  <DatabaseBackup className="h-3 w-3 shrink-0 text-brand" />
+                )}
+                <span className="truncate">
+                  {warming
+                    ? t("connectionsTree.filter.searchingUnloaded")
+                    : t("connectionsTree.filter.searchUnloaded", {
+                        count: totals.cold,
+                      })}
+                </span>
+              </button>
+            )}
           </div>
         )}
       </div>
-      <div className="flex-1 overflow-y-auto py-1.5 pr-1">
+      <div ref={rowsRef} className="flex-1 overflow-y-auto py-1.5 pr-1">
         {visibleProfiles.length === 0 && (
           <div className="px-3 py-2 text-xs text-muted-foreground">
             {t("connectionsTree.selectConnections.allHidden")}
@@ -429,6 +898,93 @@ export function ConnectionsTree() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The per-connection match count, shown while something is typed.
+ *
+ * The four states it can render are the point of it. A connection that is not
+ * connected has not been searched at all; one still fetching its own list is
+ * counting; a multi-DB server whose databases have never been read has looked
+ * at *some* of itself and says so with a `+` (or a bare `—` when it has found
+ * nothing yet). Only the last case — everything visible loaded, nothing matched
+ * — earns a plain `0`. Saying `0` about something nobody has read is what makes
+ * a user abandon a search that would have worked.
+ */
+function MatchBadge({
+  isActive,
+  count,
+  cold,
+  state,
+}: {
+  isActive: boolean;
+  count: number;
+  cold: number;
+  state: ReturnType<typeof rowMatchState> | null;
+}) {
+  const { t } = useTranslation();
+  const base =
+    "shrink-0 rounded-sm px-1 text-[10px] leading-4 tabular-nums";
+
+  if (!isActive) {
+    return (
+      <span
+        title={t("connectionsTree.filter.connectToSearch")}
+        className={cn(base, "bg-muted text-muted-foreground/60")}
+      >
+        —
+      </span>
+    );
+  }
+  if (state === "out-of-scope") {
+    // Not "0": this connection was never searched, and saying it found nothing
+    // would send the user off to fix a needle that is not the problem.
+    return (
+      <span
+        title={t("connectionsTree.filter.clearScope")}
+        className={cn(base, "bg-muted text-muted-foreground/60")}
+      >
+        —
+      </span>
+    );
+  }
+  if (state === "pending") {
+    return (
+      <span
+        title={t("connectionsTree.filter.counting")}
+        className={cn(base, "bg-muted text-muted-foreground/60")}
+      >
+        …
+      </span>
+    );
+  }
+  if (state === "unloaded") {
+    return (
+      <span
+        title={t("connectionsTree.filter.partialCount", { count: 0, cold })}
+        className={cn(base, "bg-muted text-muted-foreground/60")}
+      >
+        —
+      </span>
+    );
+  }
+  const partial = cold > 0;
+  return (
+    <span
+      title={
+        partial
+          ? t("connectionsTree.filter.partialCount", { count, cold })
+          : undefined
+      }
+      className={cn(
+        base,
+        count > 0 ? "bg-brand/15 text-brand" : "bg-muted text-muted-foreground/60",
+      )}
+    >
+      {count}
+      {partial && "+"}
+    </span>
   );
 }
 

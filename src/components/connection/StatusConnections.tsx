@@ -10,9 +10,9 @@
  * the two entry points behave identically.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronUp, RotateCw, X } from "lucide-react";
+import { Check, ChevronUp, Loader2, PlugZap, RotateCw } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
@@ -94,7 +94,23 @@ export function StatusConnections() {
     await handleConnect(p);
   }
 
+  /** Ids being torn down, so their row can say so — see the tree's own note:
+   *  closing a pool is several round trips, and a control that looks ignored
+   *  invites a second click. */
+  const [disconnecting, setDisconnecting] = useState<Set<string>>(() => new Set());
+  function markDisconnecting(id: string, value: boolean) {
+    setDisconnecting((prev) => {
+      if (prev.has(id) === value) return prev;
+      const next = new Set(prev);
+      if (value) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
   async function handleDisconnect(id: string) {
+    if (disconnecting.has(id)) return;
+    markDisconnecting(id, true);
     try {
       await disconnect(id);
       dropSchema(id);
@@ -102,6 +118,8 @@ export function StatusConnections() {
       if (selected === id) setSelected(null);
     } catch {
       // Non-fatal: leave the rest of the UI untouched on a teardown error.
+    } finally {
+      markDisconnecting(id, false);
     }
   }
 
@@ -175,6 +193,7 @@ export function StatusConnections() {
           <button
             type="button"
             title={t("statusBar.disconnect")}
+            disabled={disconnecting.has(p.id)}
             className="ml-0.5 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
             onClick={(e) => {
               // Don't let the click bubble to the row's onSelect (jump).
@@ -183,7 +202,11 @@ export function StatusConnections() {
               void handleDisconnect(p.id);
             }}
           >
-            <X className="h-3.5 w-3.5" />
+            {disconnecting.has(p.id) ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <PlugZap className="h-3.5 w-3.5" />
+            )}
           </button>
         )}
       </DropdownMenuItem>
