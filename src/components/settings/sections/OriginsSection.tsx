@@ -11,8 +11,22 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, FolderSync, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  Check,
+  Eye,
+  FilePlus2,
+  FolderOpen,
+  FolderSync,
+  Loader2,
+  PencilLine,
+  Plus,
+  RefreshCw,
+  SquarePen,
+  Trash2,
+} from "lucide-react";
 import { api } from "@/lib/tauri";
+import { pickJsonFile, pickJsonSavePath } from "@/lib/dialogs";
+import { useOriginEditor } from "@/stores/dialogs/originEditor";
 import { useOriginSync } from "@/stores/sync/originSync";
 import { useOrigins } from "@/stores/sync/origins";
 import { useConnections } from "@/stores/session/connections";
@@ -23,7 +37,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
-import type { Origin } from "@/types";
+import type { Origin, OriginRole } from "@/types";
 import { formatDateTime } from "@/lib/utils";
 
 export function OriginsSection() {
@@ -53,9 +67,27 @@ export function OriginsSection() {
   // "Sync now" below no longer has to remember to re-read `lastSyncedAt`.
   const origins = useOrigins((s) => s.origins);
   const loadOrigins = useOrigins((s) => s.load);
+  const openEditor = useOriginEditor((s) => s.open);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ name: "", path: "", passphrase: "" });
   const [busy, setBusy] = useState(false);
+  // `updateOrigin` shipped in 1.18 with **zero** call sites: an origin could be
+  // registered and removed but never renamed or repointed, so a moved share
+  // meant deleting the registration and re-adopting every connection it had
+  // published. This is that missing surface.
+  const [editing, setEditing] = useState<Origin | null>(null);
+  const [edit, setEdit] = useState({
+    name: "",
+    path: "",
+    passphrase: "",
+    role: "consumer" as OriginRole,
+  });
+  // Turning on write access is confirmed separately from saving the rest of the
+  // registration, because it is the one field that changes what the app is
+  // allowed to do to somebody else's file.
+  const [confirmPublisher, setConfirmPublisher] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newDoc, setNewDoc] = useState({ path: "", name: "", maintainer: "" });
   const [pendingRemove, setPendingRemove] = useState<Origin | null>(null);
   const [removing, setRemoving] = useState(false);
   const [bulkAdopting, setBulkAdopting] = useState(false);
@@ -119,6 +151,57 @@ export function OriginsSection() {
     }
   }
 
+  function beginEdit(o: Origin) {
+    setEditing(o);
+    setEdit({
+      name: o.name,
+      path: o.path,
+      // Empty means "leave the stored one alone" — `updateOrigin`'s tri-state
+      // passphrase. Prefilling it with anything would make a rename retype a
+      // secret the user already stored.
+      passphrase: "",
+      role: o.role ?? "consumer",
+    });
+  }
+
+  async function saveEdit() {
+    if (!editing || !edit.path.trim()) return;
+    setBusy(true);
+    try {
+      await api.updateOrigin({
+        id: editing.id,
+        name: edit.name.trim() || edit.path,
+        path: edit.path.trim(),
+        passphrase: edit.passphrase ? edit.passphrase : null,
+        role: edit.role,
+      });
+      setEditing(null);
+      await loadOrigins();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createDocument() {
+    if (!newDoc.path.trim()) return;
+    setBusy(true);
+    try {
+      const created = await api.createOriginDocument({
+        path: newDoc.path.trim(),
+        name: newDoc.name.trim() || newDoc.path.trim(),
+        maintainer: newDoc.maintainer.trim() || null,
+      });
+      setNewDoc({ path: "", name: "", maintainer: "" });
+      setCreating(false);
+      await loadOrigins();
+      // Straight into the editor: an empty document nobody is invited to fill
+      // in reads as a command that did nothing.
+      openEditor(created.id);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submit() {
     if (!draft.path.trim()) return;
     setBusy(true);
@@ -171,6 +254,10 @@ export function OriginsSection() {
           <Plus className="mr-1.5 h-3.5 w-3.5" />
           {t("origins.add")}
         </Button>
+        <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
+          <FilePlus2 className="mr-1.5 h-3.5 w-3.5" />
+          {t("origins.newDocument")}
+        </Button>
       </div>
 
       {origins.length === 0 && !adding && (
@@ -185,7 +272,31 @@ export function OriginsSection() {
             <div key={o.id} className="flex items-start gap-3 p-3">
               <FolderSync className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm">{o.name}</div>
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm">{o.name}</span>
+                  {/* Intention, not authority: the editor probes the path
+                      itself and opens read-only if the OS refuses a write, no
+                      matter what this says. */}
+                  <span
+                    className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] ${
+                      (o.role ?? "consumer") === "publisher"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {(o.role ?? "consumer") === "publisher" ? (
+                      <PencilLine className="h-3 w-3" />
+                    ) : (
+                      <Eye className="h-3 w-3" />
+                    )}
+                    {t(`origins.role.${o.role ?? "consumer"}`)}
+                  </span>
+                  {o.maintainer && (
+                    <span className="shrink-0 truncate text-[10px] text-muted-foreground">
+                      {t("origins.curatedBy", { who: o.maintainer })}
+                    </span>
+                  )}
+                </div>
                 {/* The path is the identifying detail when two origins share a
                     name, and it's what the user checks when a sync fails, so it
                     stays visible rather than living in a tooltip. */}
@@ -205,13 +316,29 @@ export function OriginsSection() {
                   </div>
                 )}
               </div>
-              <button
-                className="shrink-0 text-muted-foreground/60 hover:text-destructive"
-                title={t("origins.remove")}
-                onClick={() => setPendingRemove(o)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  className="text-muted-foreground/60 hover:text-foreground"
+                  title={t("origins.editContent")}
+                  onClick={() => openEditor(o.id)}
+                >
+                  <SquarePen className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  className="text-muted-foreground/60 hover:text-foreground"
+                  title={t("origins.editRegistration")}
+                  onClick={() => beginEdit(o)}
+                >
+                  <PencilLine className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  className="text-muted-foreground/60 hover:text-destructive"
+                  title={t("origins.remove")}
+                  onClick={() => setPendingRemove(o)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -280,12 +407,28 @@ export function OriginsSection() {
 
       {adding && (
         <div className="space-y-2 rounded-md border border-border p-3">
-          <Input
-            autoFocus
-            placeholder={t("origins.pathPlaceholder")}
-            value={draft.path}
-            onChange={(e) => setDraft((d) => ({ ...d, path: e.target.value }))}
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              autoFocus
+              placeholder={t("origins.pathPlaceholder")}
+              value={draft.path}
+              onChange={(e) => setDraft((d) => ({ ...d, path: e.target.value }))}
+            />
+            {/* Typing a UNC path by hand is how a registration ends up
+                pointing one character away from the share. */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void pickJsonFile(t("origins.browseTitle")).then(
+                  (picked) =>
+                    picked && setDraft((d) => ({ ...d, path: picked })),
+                )
+              }
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           <Input
             placeholder={t("origins.namePlaceholder")}
             value={draft.name}
@@ -311,6 +454,160 @@ export function OriginsSection() {
           </div>
         </div>
       )}
+
+      {editing && (
+        <div className="space-y-2 rounded-md border border-border p-3">
+          <div className="text-xs font-semibold">
+            {t("origins.editRegistrationTitle", { name: editing.name })}
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              autoFocus
+              placeholder={t("origins.pathPlaceholder")}
+              value={edit.path}
+              onChange={(e) => setEdit((d) => ({ ...d, path: e.target.value }))}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void pickJsonFile(t("origins.browseTitle")).then(
+                  (picked) => picked && setEdit((d) => ({ ...d, path: picked })),
+                )
+              }
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <Input
+            placeholder={t("origins.namePlaceholder")}
+            value={edit.name}
+            onChange={(e) => setEdit((d) => ({ ...d, name: e.target.value }))}
+          />
+          <PasswordInput
+            placeholder={t("origins.passphraseKeepPlaceholder")}
+            value={edit.passphrase}
+            onChange={(e) =>
+              setEdit((d) => ({ ...d, passphrase: e.target.value }))
+            }
+          />
+          <p className="text-[11px] text-muted-foreground">
+            {t("origins.passphraseKeepHint")}
+          </p>
+          <label className="flex items-start gap-2 text-[11px]">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-3.5 w-3.5 rounded accent-primary"
+              checked={edit.role === "publisher"}
+              onChange={(e) => {
+                // Reversible without ceremony, granted with it.
+                if (e.target.checked) setConfirmPublisher(true);
+                else setEdit((d) => ({ ...d, role: "consumer" }));
+              }}
+            />
+            <span>
+              {t("origins.role.publisherToggle")}
+              <span className="block text-muted-foreground">
+                {t("origins.role.publisherToggleHint")}
+              </span>
+            </span>
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setEditing(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              size="sm"
+              disabled={busy || !edit.path.trim()}
+              onClick={() => void saveEdit()}
+            >
+              {t("common.save")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {creating && (
+        <div className="space-y-2 rounded-md border border-border p-3">
+          <div className="text-xs font-semibold">
+            {t("origins.newDocumentTitle")}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {t("origins.newDocumentHint")}
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              autoFocus
+              placeholder={t("origins.pathPlaceholder")}
+              value={newDoc.path}
+              onChange={(e) =>
+                setNewDoc((d) => ({ ...d, path: e.target.value }))
+              }
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void pickJsonSavePath(
+                  t("origins.newDocumentBrowseTitle"),
+                  "huginndb-team.json",
+                ).then(
+                  (picked) =>
+                    picked && setNewDoc((d) => ({ ...d, path: picked })),
+                )
+              }
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <Input
+            placeholder={t("origins.namePlaceholder")}
+            value={newDoc.name}
+            onChange={(e) => setNewDoc((d) => ({ ...d, name: e.target.value }))}
+          />
+          <Input
+            placeholder={t("origins.maintainerPlaceholder")}
+            value={newDoc.maintainer}
+            onChange={(e) =>
+              setNewDoc((d) => ({ ...d, maintainer: e.target.value }))
+            }
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setCreating(false)}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              size="sm"
+              disabled={busy || !newDoc.path.trim()}
+              onClick={() => void createDocument()}
+            >
+              {t("origins.newDocumentCreate")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmPublisher}
+        onOpenChange={(open) => !open && setConfirmPublisher(false)}
+        title={t("origins.role.confirmTitle")}
+        description={
+          <div className="space-y-1">
+            <p>{t("origins.role.confirmBody")}</p>
+            <p className="break-all font-mono text-[11px]">{edit.path}</p>
+            <p>{t("origins.role.confirmReversible")}</p>
+          </div>
+        }
+        confirmLabel={t("origins.role.confirmAccept")}
+        onConfirm={() => {
+          setEdit((d) => ({ ...d, role: "publisher" }));
+          setConfirmPublisher(false);
+        }}
+      />
 
       <ConfirmDialog
         open={!!pendingRemove}

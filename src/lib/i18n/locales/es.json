@@ -270,7 +270,8 @@
     "searchPlaceholder": "Buscar conexiones…",
     "noMatches": "Ninguna conexión coincide con la búsqueda.",
     "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
-    "fromOriginNamed": "Esta conexión viene del origen compartido «{{origin}}», así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya."
+    "fromOriginNamed": "Esta conexión viene del origen compartido «{{origin}}», así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
+    "editAtOrigin": "Editar en el origen…"
   },
   "adhocDriver": {
     "title": "¿Qué driver de base de datos?",
@@ -2191,6 +2192,138 @@
       "retire": "Borrar",
       "retireConfirm": "¿Borrar el entorno «{{name}}»?\n\nSe pierden sus pestañas y su disposición. Las conexiones que agrupa no se borran.",
       "pending": "Entornos desaparecidos"
+    },
+    "newDocument": "Nuevo documento…",
+    "newDocumentTitle": "Crear un documento para publicar",
+    "newDocumentHint": "Crea un fichero vacío en el recurso compartido y lo registra como uno que publica este equipo. Para publicar un fichero que ya existe, regístralo y cambia su rol.",
+    "newDocumentBrowseTitle": "Dónde crear el documento",
+    "newDocumentCreate": "Crear",
+    "maintainerPlaceholder": "Responsable (opcional)",
+    "browseTitle": "Elige el fichero compartido",
+    "editContent": "Editar el documento…",
+    "editRegistration": "Editar el registro…",
+    "editRegistrationTitle": "{{name}} — registro",
+    "passphraseKeepPlaceholder": "Frase de paso (en blanco mantiene la guardada)",
+    "passphraseKeepHint": "En blanco mantiene la que haya en tu llavero.",
+    "curatedBy": "lo cura {{who}}",
+    "role": {
+      "consumer": "Solo lectura",
+      "publisher": "Publicador",
+      "publisherToggle": "Este equipo publica este fichero",
+      "publisherToggleHint": "Permite que HuginnDB escriba en esa ruta. Tu sistema operativo sigue teniendo la última palabra: sobre un recurso de solo lectura el editor se abre en modo lectura igualmente.",
+      "confirmTitle": "¿Publicar en este fichero?",
+      "confirmBody": "A partir de ahora HuginnDB podrá escribir en:",
+      "confirmReversible": "Puedes revertirlo cuando quieras, y no se escribe nada hasta que publiques una revisión.",
+      "confirmAccept": "Permitir escritura"
+    }
+  },
+  "originEditor": {
+    "filter": "Filtrar…",
+    "noMatches": "Nada coincide",
+    "revision": "rev. {{revision}}",
+    "unsaved": "Cambios sin publicar",
+    "save": "Publicar…",
+    "discard": "Descartar",
+    "reload": "Recargar",
+    "stale": "Alguien más publicó este fichero mientras lo tenías abierto.",
+    "notWritable": "Tu sistema no deja escribir aquí: {{reason}}",
+    "role": {
+      "publisher": "Publicador",
+      "readOnly": "Solo lectura"
+    },
+    "panes": {
+      "connections": {
+        "label": "Conexiones",
+        "desc": "Lo que publica el fichero"
+      },
+      "environments": {
+        "label": "Entornos",
+        "desc": "Aspecto y pertenencia"
+      },
+      "schemas": {
+        "label": "JSON Schemas",
+        "desc": "Biblioteca y reglas"
+      },
+      "publish": {
+        "label": "Publicación",
+        "desc": "Metadatos e impacto"
+      }
+    },
+    "secret": {
+      "keep": "Viaja cifrada, sin tocar",
+      "fromKeychain": "Cifrar desde mi llavero",
+      "clear": "La pedirá el otro lado"
+    },
+    "connections": {
+      "hint": "Nada de esto toca tus propias conexiones: pasar una a la derecha la copia al documento, y devolverla solo la quita del documento.",
+      "local": "En este equipo",
+      "inFile": "En el fichero",
+      "localEmpty": "Todas tus conexiones ya están en el fichero",
+      "inFileEmpty": "El fichero aún no publica ninguna conexión",
+      "unassigned": "Sin asignar"
+    },
+    "environments": {
+      "hint": "Un entorno agrupa conexiones que el fichero ya publica. Una que no esté en ninguno se publica igual: solo queda suelta.",
+      "add": "Nuevo entorno",
+      "remove": "Quitar",
+      "empty": "El fichero no publica entornos",
+      "pick": "Elige un entorno",
+      "name": "Nombre",
+      "color": "Color",
+      "icon": "Icono",
+      "theme": "Tema",
+      "cosmeticsHint": "Se guardan tal cual. Un tema que el otro lado no tenga cae a su tema por defecto.",
+      "members": "Conexiones de este entorno",
+      "membersHint": "Filtra lo que ven, no decide lo que reciben",
+      "noConnections": "Añade antes conexiones al documento"
+    },
+    "schemas": {
+      "hint": "Los schemas son globales, no pertenecen a un entorno: viajan aquí para que un solo fichero deje un equipo listo.",
+      "empty": "No hay JSON Schemas ni aquí ni en el fichero",
+      "pinned": "fijada",
+      "pinnedWarning": "Esta regla nombra una conexión que el documento no lleva, así que llega deshabilitada al otro lado."
+    },
+    "publish": {
+      "maintainer": "Responsable",
+      "maintainerPlaceholder": "Quién cura este fichero",
+      "note": "Nota de la revisión",
+      "notePlaceholder": "Qué ha cambiado",
+      "metadataHint": "Solo coordinación: los puede poner cualquiera que sepa escribir el fichero. Lo que de verdad evita que dos publicadores se pisen es la comprobación que se hace al guardar.",
+      "passphrase": "Frase de paso",
+      "passphraseStored": "La frase guardada cubre este documento. No hay que recifrar nada.",
+      "passphraseNotNeeded": "Este documento no publica contraseñas, así que no necesita frase de paso.",
+      "passphraseRequired": "Escribe la frase de paso antes de publicar.",
+      "rotate": "Cambiar la frase de paso",
+      "rotateFrom": "Frase de paso actual",
+      "rotateHint": "Recifra todas las contraseñas del fichero. Todos los que sincronicen volverán a derivar su clave en el siguiente pull; el coste está más abajo."
+    },
+    "impact": {
+      "forConsumers": "Para todo el que sincronice",
+      "nothing": "Para ellos no cambia nada.",
+      "connectionsAdded": "{{count}} conexión(es) nuevas",
+      "connectionsRefreshed": "{{count}} conexión(es) actualizadas",
+      "connectionsVanished": "{{count}} conexión(es) desaparecen",
+      "environmentsAdded": "{{count}} entorno(s) nuevos",
+      "environmentsRefreshed": "{{count}} entorno(s) actualizados",
+      "environmentsVanished": "{{count}} entorno(s) desaparecen",
+      "silent": "Tantas de golpe se tratan como una lectura defectuosa: nadie recibirá aviso y las conexiones se quedarán en sus equipos. Publícalo en dos veces si va en serio.",
+      "environmentsSilent": "Tantos de golpe se tratan como una lectura defectuosa: nadie recibirá aviso de los entornos que se van.",
+      "cost": "Coste",
+      "noReencryption": "No se recifra ninguna contraseña: todas viajan tal cual.",
+      "reencryption": "{{count}} contraseña(s) recifradas — {{rounds}} derivaciones de clave cada una, en el siguiente sync.",
+      "estimated": "(cota superior)",
+      "withoutPassword": "{{count}} conexión(es) viajan sin contraseña",
+      "bindingsDisabled": "{{count}} regla(s) de JSON Schema llegan deshabilitadas: nombran una conexión que el fichero no lleva.",
+      "unassigned": "{{count}} conexión(es) no pertenecen a ningún entorno",
+      "dangling": "{{count}} id(s) que lista un entorno ya no están en el fichero",
+      "freshMachine": "En un equipo nuevo",
+      "freshSummary": "{{connections}} conexiones, {{environments}} entornos, {{schemas}} JSON Schemas."
+    },
+    "confirm": {
+      "title": "¿Publicar la revisión {{revision}}?",
+      "publish": "Publicar",
+      "publishing": "Publicando…",
+      "silentWarning": "Algunas de estas bajas no llegarán a nadie. Lee el informe de abajo."
     }
   }
 }

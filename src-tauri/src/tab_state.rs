@@ -191,11 +191,13 @@ pub struct Environment {
 /// `export_profiles` already writes (`crate::transfer`, v1, with AES-256-GCM
 /// secrets when the publisher included passwords).
 ///
-/// Strictly pull-only. HuginnDB never writes to `path`: the file belongs to
-/// whoever curates it, and a concurrent write over SMB has no transaction to
-/// protect it. The passphrase lives in *this* user's keychain, keyed by the
-/// origin id — it is never stored here, so the on-disk state stays free of
-/// secrets exactly like `profiles.json`.
+/// Pull-only **unless the user marks it as one they publish** (`role`). The
+/// file belongs to whoever curates it, and a concurrent write over SMB has no
+/// transaction to protect it — which is why writing is opt-in per origin,
+/// atomic (`crate::state_file::write_atomic`), and refused outright when the
+/// OS says the path is read-only. The passphrase lives in *this* user's
+/// keychain, keyed by the origin id — it is never stored here, so the on-disk
+/// state stays free of secrets exactly like `profiles.json`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Origin {
@@ -225,6 +227,48 @@ pub struct Origin {
     /// means the next sync does the work again.
     #[serde(default)]
     pub landed_secrets: HashMap<String, String>,
+    /// Whether *this* machine is allowed to write the file back.
+    ///
+    /// The first of three layers, and the only one that records an
+    /// **intention**; see [`OriginRole`]. `#[serde(default)]` is doing real
+    /// work here: every origin registered before the editor existed
+    /// deserialises as a consumer, so nobody gains write access to a shared
+    /// file by installing an update.
+    #[serde(default)]
+    pub role: OriginRole,
+    /// `meta.maintainer` as of the last read of the file — who curates it.
+    ///
+    /// Cached so the Settings list can say "curated by Ana" without reading a
+    /// path that may be behind a VPN. Display only, and coordination rather
+    /// than permission: what actually stops two publishers clobbering each
+    /// other is the content hash the editor compares on save.
+    #[serde(default)]
+    pub maintainer: Option<String>,
+}
+
+/// What this machine is allowed to do with an origin's file.
+///
+/// Deliberately *not* the whole story. Two more layers sit on top, and the
+/// order matters:
+///
+/// 1. **This field — intention.** The user said "I curate this one". Reversible,
+///    confirmed, and defaulting to [`Self::Consumer`] for every origin that
+///    predates it.
+/// 2. **The OS — authority.** `commands::origin_doc::probe_origin_writable`
+///    actually tries to create a file next to the document, because a share's
+///    ACL is the real perimeter (`SECURITY.md`) and permission metadata on
+///    Windows routinely disagrees with what a write will do. A read-only share
+///    opens the editor read-only no matter what this says.
+/// 3. **`meta.maintainer` / `meta.revision` inside the file — coordination.**
+///    Never permission: any writer can set them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OriginRole {
+    /// Pull only. The 1.18 behaviour, and what every existing origin loads as.
+    #[default]
+    Consumer,
+    /// This machine may edit and publish the document.
+    Publisher,
 }
 
 /// The state needed to put a session back the way the user left it: which

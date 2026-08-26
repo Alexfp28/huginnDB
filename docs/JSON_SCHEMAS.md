@@ -195,12 +195,20 @@ opt-in switch. Schemas are global rather than owned by the environment, so this
 packs the whole library alongside it — convenient for setting up a new machine
 from a single file.
 
-**Not yet through a shared origin.** A shared origin pointed at an environment
-export syncs the environment and its connections continuously, but it ignores any
-schemas the same file carries: importing that file by hand brings them in, a
-background sync does not. So a shared origin is not a way to keep a team's schema
-library up to date yet — export/import the file for that. Continuous origin sync
-for schemas is planned.
+**Through a shared origin (1.19.0).** A shared origin pointed at an environment
+export now syncs the schemas that file carries along with its connections, so one
+file does keep a team's library up to date. The rules are the same ones the
+connections follow: an entry is matched by **id**, not by name, so re-syncing the
+same file every few hours refreshes it in place instead of accumulating
+`cfg (2)`, `cfg (3)`, …; only entries the origin already owns are ever
+overwritten, so a schema you wrote yourself is never touched, and one whose name
+collides with yours steps aside rather than renaming yours; and nothing is
+deleted — an entry that disappears from the file is reported, never removed, for
+the same reason a vanished connection is.
+
+If you are the one publishing, Settings → Shared origins → "Edit the document…"
+is where you choose which schemas and which bindings ride along; see
+`docs/ENVIRONMENTS.md`.
 
 **One caveat, in both directions.** A binding pinned to a *connection* references
 that connection by an identifier local to the machine that created it. On import

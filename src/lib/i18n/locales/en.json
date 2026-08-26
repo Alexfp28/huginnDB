@@ -270,7 +270,8 @@
     "searchPlaceholder": "Search connections…",
     "noMatches": "No connections match your search.",
     "fromOrigin": "This connection comes from a shared origin, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours.",
-    "fromOriginNamed": "This connection comes from the shared origin “{{origin}}”, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours."
+    "fromOriginNamed": "This connection comes from the shared origin “{{origin}}”, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours.",
+    "editAtOrigin": "Edit at the origin…"
   },
   "adhocDriver": {
     "title": "Which database driver?",
@@ -2191,6 +2192,138 @@
       "retire": "Delete",
       "retireConfirm": "Delete the environment \"{{name}}\"?\n\nIts tabs and layout are lost. The connections it groups are not deleted.",
       "pending": "Disappeared environments"
+    },
+    "newDocument": "New document…",
+    "newDocumentTitle": "Create a document to publish",
+    "newDocumentHint": "Creates an empty file on the share and registers it as one this machine publishes. To publish a file that already exists, register it and switch its role instead.",
+    "newDocumentBrowseTitle": "Where to create the document",
+    "newDocumentCreate": "Create",
+    "maintainerPlaceholder": "Maintainer (optional)",
+    "browseTitle": "Pick the shared file",
+    "editContent": "Edit the document…",
+    "editRegistration": "Edit the registration…",
+    "editRegistrationTitle": "{{name}} — registration",
+    "passphraseKeepPlaceholder": "Passphrase (leave blank to keep the stored one)",
+    "passphraseKeepHint": "Blank keeps whatever is in your keychain.",
+    "curatedBy": "curated by {{who}}",
+    "role": {
+      "consumer": "Read only",
+      "publisher": "Publisher",
+      "publisherToggle": "This machine publishes this file",
+      "publisherToggleHint": "Lets HuginnDB write to that path. Your OS still has the last word — a read-only share opens the editor read-only anyway.",
+      "confirmTitle": "Publish to this file?",
+      "confirmBody": "From now on HuginnDB may write to:",
+      "confirmReversible": "You can switch it back at any time, and nothing is written until you publish a revision.",
+      "confirmAccept": "Allow writing"
+    }
+  },
+  "originEditor": {
+    "filter": "Filter…",
+    "noMatches": "Nothing matches",
+    "revision": "rev. {{revision}}",
+    "unsaved": "Unsaved changes",
+    "save": "Publish…",
+    "discard": "Discard",
+    "reload": "Reload",
+    "stale": "Someone else published this file while you had it open.",
+    "notWritable": "Your OS refuses to write here: {{reason}}",
+    "role": {
+      "publisher": "Publisher",
+      "readOnly": "Read only"
+    },
+    "panes": {
+      "connections": {
+        "label": "Connections",
+        "desc": "What the file publishes"
+      },
+      "environments": {
+        "label": "Environments",
+        "desc": "Cosmetics and membership"
+      },
+      "schemas": {
+        "label": "JSON Schemas",
+        "desc": "Library and bindings"
+      },
+      "publish": {
+        "label": "Publish",
+        "desc": "Metadata and impact"
+      }
+    },
+    "secret": {
+      "keep": "Travels encrypted, unchanged",
+      "fromKeychain": "Encrypt from my keychain",
+      "clear": "The other end will ask for it"
+    },
+    "connections": {
+      "hint": "Nothing here touches your own connections: moving one across copies it into the document, and moving it back only removes it from the document.",
+      "local": "On this machine",
+      "inFile": "In the file",
+      "localEmpty": "Every connection is already in the file",
+      "inFileEmpty": "The file publishes no connections yet",
+      "unassigned": "Unassigned"
+    },
+    "environments": {
+      "hint": "An environment groups connections the file already publishes. One in none of them is still published — it is just loose.",
+      "add": "New environment",
+      "remove": "Remove",
+      "empty": "The file publishes no environments",
+      "pick": "Pick an environment",
+      "name": "Name",
+      "color": "Colour",
+      "icon": "Icon",
+      "theme": "Theme",
+      "cosmeticsHint": "Stored as typed. A theme the other end does not have falls back to their default.",
+      "members": "Connections in this environment",
+      "membersHint": "Filters what they see; it does not decide what they receive",
+      "noConnections": "Add connections to the document first"
+    },
+    "schemas": {
+      "hint": "Schemas are global, not owned by an environment: they ride along so one file can set up a whole machine.",
+      "empty": "No JSON Schemas here or in the file",
+      "pinned": "pinned",
+      "pinnedWarning": "This rule names a connection the document does not carry, so it arrives disabled on the other end."
+    },
+    "publish": {
+      "maintainer": "Maintainer",
+      "maintainerPlaceholder": "Who curates this file",
+      "note": "Revision note",
+      "notePlaceholder": "What changed",
+      "metadataHint": "Coordination only — anyone who can write the file can set these. What actually stops two publishers overwriting each other is the check made when saving.",
+      "passphrase": "Passphrase",
+      "passphraseStored": "The stored passphrase covers this document. Nothing has to be re-encrypted.",
+      "passphraseNotNeeded": "This document publishes no passwords, so it needs no passphrase.",
+      "passphraseRequired": "Enter the passphrase before publishing.",
+      "rotate": "Change the passphrase",
+      "rotateFrom": "Current passphrase",
+      "rotateHint": "Re-encrypts every password in the file. Everyone pulling from it re-derives its key on their next sync — the cost is below."
+    },
+    "impact": {
+      "forConsumers": "For everyone who pulls this",
+      "nothing": "Nothing changes for them.",
+      "connectionsAdded": "{{count}} connection(s) added",
+      "connectionsRefreshed": "{{count}} connection(s) refreshed",
+      "connectionsVanished": "{{count}} connection(s) disappear",
+      "environmentsAdded": "{{count}} environment(s) added",
+      "environmentsRefreshed": "{{count}} environment(s) refreshed",
+      "environmentsVanished": "{{count}} environment(s) disappear",
+      "silent": "That many at once is treated as a bad read: nobody will be warned, and the connections stay on their machines. Publish it in two goes if you mean it.",
+      "environmentsSilent": "That many at once is treated as a bad read: nobody will be warned about the environments that go.",
+      "cost": "Cost",
+      "noReencryption": "No password is re-encrypted: every one travels unchanged.",
+      "reencryption": "{{count}} password(s) re-encrypted — {{rounds}} key derivations each, on the next sync.",
+      "estimated": "(upper bound)",
+      "withoutPassword": "{{count}} connection(s) travel with no password",
+      "bindingsDisabled": "{{count}} JSON Schema rule(s) arrive disabled: they name a connection this file does not carry.",
+      "unassigned": "{{count}} connection(s) belong to no environment",
+      "dangling": "{{count}} id(s) listed by an environment are no longer in the file",
+      "freshMachine": "On a new machine",
+      "freshSummary": "{{connections}} connections, {{environments}} environments, {{schemas}} JSON Schemas."
+    },
+    "confirm": {
+      "title": "Publish revision {{revision}}?",
+      "publish": "Publish",
+      "publishing": "Publishing…",
+      "silentWarning": "Some of these disappearances will reach nobody. Read the report below."
     }
   }
 }

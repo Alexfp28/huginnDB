@@ -703,6 +703,11 @@ pub async fn import_environment(
                         path: eo.path,
                         last_synced_at: None,
                         landed_secrets: Default::default(),
+                        // An imported origin is a consumer, like any other
+                        // freshly registered one: a file cannot hand this
+                        // machine permission to write to a share.
+                        role: Default::default(),
+                        maintainer: None,
                     });
                 }
 

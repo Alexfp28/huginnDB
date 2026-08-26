@@ -59,13 +59,54 @@ included. The point is that somebody joining a team configures nothing by hand.
 Publishing one is just "Export profiles…" with a passphrase, dropped on the
 share. Consuming it is Settings → **Shared origins**: give it the path, enter the
 passphrase once, and the connections appear. The passphrase is kept in your own
-keychain, per origin, and never written to disk. Origins belong to the
-environment, so each one can pull from a different file.
+keychain, per origin, and never written to disk. The registry is **global**, not
+part of any one environment: an origin describes a file on a share, not a
+Producción/Staging axis, and what it produces — connections, whole mirrored
+environments — is global too.
 
-It only ever goes one way. HuginnDB reads that path and never writes to it, and a
+For everyone consuming one it only goes one way. HuginnDB reads that path, and a
 connection that came from an origin is read-only — the next sync would undo a
 local edit anyway. If you need a variant, duplicate it: the copy is yours, fully
 editable, and no longer tied to the origin.
+
+### Curating one (1.19.0)
+
+If you are the person who publishes the file, mark the origin as one **this
+machine publishes** (Settings → Shared origins → edit the registration). That is
+a deliberate, reversible switch, and it is the only thing that lets HuginnDB
+write to that path — every origin starts without it, so updating the app never
+grants it. Your OS still has the last word: the editor probes the path with a
+real write and opens read-only if the share refuses, rather than letting you
+compose a revision and failing at the last step.
+
+Then "Edit the document…" opens a full-screen editor for the file itself:
+
+* **Connections** — two columns, this machine on the left and the file on the
+  right. Nothing you do here touches your own connections; moving one across
+  copies it into the document. Each published row says how its password travels:
+  unchanged (the cheap default), encrypted from your keychain, or not at all, in
+  which case the other end is asked for it.
+* **Environments** — the cosmetics and the membership each one publishes. A
+  connection in no environment is still published; it is just loose.
+* **JSON Schemas** — the library slice and the bindings that ride along, so one
+  file can set up a whole machine.
+* **Publish** — who curates the file, a revision note, the passphrase, and the
+  report below.
+
+Before writing anything it tells you what publishing does to everyone pulling
+from it: what is added, what genuinely changes, what disappears — and, when it
+matters, that a batch of disappearances is large enough that **nobody will be
+warned about it** (see the "don't trust this read" rule further down; a publisher
+crossing that line silently leaves the whole team with connections that no longer
+exist). It also prices the passwords: a password that has not changed travels
+byte for byte, so renaming an environment costs the team nothing, while rotating
+the passphrase re-encrypts everything and makes everyone re-derive a key per
+password on their next sync.
+
+The file is written atomically, with the previous revision kept alongside it as
+`<name>.json.bak`, and the editor compares the file's contents when you publish:
+if somebody else published while you had it open, your revision is refused and
+you are shown theirs instead of overwriting them.
 
 Origins re-sync when you launch HuginnDB, every few hours, and whenever you press
 **Sync now**. A metadata change (a moved host or port) for a connection you

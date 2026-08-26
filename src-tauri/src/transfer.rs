@@ -79,6 +79,26 @@ pub struct ExportMetadata {
     /// with a clear error instead of silently importing half of it.
     #[serde(default)]
     pub kind: String,
+    /// Who curates the file, when it is a shared origin's *document* rather
+    /// than a one-shot export (`crate::origin_doc`). Display copy for the
+    /// humans pulling it — nothing in the sync path resolves against it, and
+    /// it grants no permission: what stops two publishers clobbering each
+    /// other is the content hash the editor compares on save.
+    ///
+    /// `skip_serializing_if` keeps a plain `export_profiles` /
+    /// `export_environments` file byte-identical to a pre-1.19 one, which is
+    /// also what makes the origin editor's round trip exact for a file it did
+    /// not write itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maintainer: Option<String>,
+    /// Monotonic revision the publisher bumps. `None` (a file written by an
+    /// export command, or before this field existed) is deliberately distinct
+    /// from `Some(0)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<u32>,
+    /// Free-text note about this revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// A profile bundle's `meta.kind` — also the default for a legacy file that
@@ -103,7 +123,11 @@ pub struct ExportedProfile {
 }
 
 /// Optional secret payload attached to an exported profile.
-#[derive(Debug, Serialize, Deserialize)]
+///
+/// `Clone` because `crate::origin_doc::SecretSlot::Keep` carries one and copies
+/// it into the file it builds byte for byte — re-encrypting would invalidate
+/// every consumer's `landed_secrets` cache.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportedSecret {
     /// DB password ciphertext, or `None` if the profile has no DB password.
     pub db_password: Option<String>,
@@ -467,6 +491,12 @@ pub fn metadata(kind: &str, encrypted: bool, exported_at: &str) -> ExportMetadat
         exported_at: exported_at.to_string(),
         encrypted,
         kind: kind.into(),
+        // The export commands publish no document metadata; the origin editor
+        // sets these itself after calling this (see
+        // `crate::origin_doc::build_origin_file`).
+        maintainer: None,
+        revision: None,
+        note: None,
     }
 }
 
@@ -723,7 +753,10 @@ pub fn secrets_fingerprint(secrets: &ExportedSecret) -> String {
     hex_lower(&h.finalize())
 }
 
-fn hex_lower(bytes: &[u8]) -> String {
+/// Lowercase hex, the spelling every fingerprint in this codebase uses.
+/// `pub(crate)` so the origin editor's content hash reads the same as the
+/// secret fingerprints beside it in the same file.
+pub(crate) fn hex_lower(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {
@@ -736,7 +769,10 @@ fn hex_lower(bytes: &[u8]) -> String {
 // Encryption helpers
 // ---------------------------------------------------------------------------
 
-const PBKDF2_ITERATIONS: u32 = 600_000;
+/// Public because `crate::origin_doc` quotes the cost of a re-encryption back
+/// to the publisher: the number only means something next to the count of slots
+/// it multiplies.
+pub const PBKDF2_ITERATIONS: u32 = 600_000;
 const SALT_LEN: usize = 16;
 const NONCE_LEN: usize = 12;
 const KEY_LEN: usize = 32; // AES-256
@@ -1084,13 +1120,7 @@ mod tests {
         // `skip_serializing_if` keeps a 1.17 export that did not opt in
         // byte-identical to a 1.16 one, so diffing two exports stays useful.
         let file = EnvironmentExportFile {
-            meta: ExportMetadata {
-                version: 1,
-                app: "huginndb".into(),
-                exported_at: "2026-08-19T00:00:00Z".into(),
-                encrypted: false,
-                kind: KIND_ENVIRONMENT.into(),
-            },
+            meta: metadata(KIND_ENVIRONMENT, false, "2026-08-19T00:00:00Z"),
             environments: vec![],
             profiles: vec![],
             json_schemas: JsonSchemaBundle::default(),
@@ -1102,13 +1132,7 @@ mod tests {
     #[test]
     fn a_json_schema_export_file_round_trips_its_flattened_bundle() {
         let file = JsonSchemaExportFile {
-            meta: ExportMetadata {
-                version: 1,
-                app: "huginndb".into(),
-                exported_at: "2026-08-19T00:00:00Z".into(),
-                encrypted: false,
-                kind: KIND_JSON_SCHEMAS.into(),
-            },
+            meta: metadata(KIND_JSON_SCHEMAS, false, "2026-08-19T00:00:00Z"),
             bundle: JsonSchemaBundle {
                 schemas: vec![JsonSchemaItem {
                     id: "s1".into(),

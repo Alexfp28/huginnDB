@@ -15,6 +15,7 @@ pub mod json_schemas;
 pub mod mcp;
 pub mod mongo;
 pub mod mongo_indexes;
+pub mod origin_doc;
 pub mod origins;
 pub mod prefs;
 pub mod query;

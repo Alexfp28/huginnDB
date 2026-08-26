@@ -64,6 +64,13 @@ import type {
   Environment,
   EnvironmentList,
   Origin,
+  OriginDocument,
+  OriginDraft,
+  OriginDraftBase,
+  OriginPublishImpact,
+  OriginRole,
+  OriginSaveOutcome,
+  OriginWritableProbe,
   OriginSyncReport,
   JsonSchemaLibrary,
   JsonSchemaEntry,
@@ -788,6 +795,10 @@ export const api = {
     name: string;
     path: string;
     passphrase?: string | null;
+    /** Omit to leave it alone. Switching to `"publisher"` is what lets this
+     *  machine write the file at all — confirm it, never do it as a side
+     *  effect of a rename. */
+    role?: OriginRole | null;
   }) => invoke<Origin>("update_origin", args),
 
   /** Unregister an origin. The connections it imported are left in place. */
@@ -796,6 +807,52 @@ export const api = {
   /** Pull an origin. Rejects (touching nothing) when the file can't be read or
    *  parsed; never deletes — disappearances come back in `vanished`. */
   syncOrigin: (id: string) => invoke<OriginSyncReport>("sync_origin", { id }),
+
+  // The origin's document (#155) -------------------------------------------
+
+  /** Can this machine actually write `path`? Tries a real write — permission
+   *  bits describe the local mount, not what a share will accept. Never
+   *  rejects: an offline share is a state to render, not a failed call. */
+  probeOriginWritable: (path: string) =>
+    invoke<OriginWritableProbe>("probe_origin_writable", { path }),
+
+  /** Open an origin's file as an editable document. Works for a consumer too —
+   *  the editor renders read-only and `role`/`writable` say why. */
+  openOriginDocument: (originId: string) =>
+    invoke<OriginDocument>("open_origin_document", { originId }),
+
+  /** What publishing this draft would do to everyone pulling from the origin,
+   *  computed against the file as it stands on disk. Neither decrypts nor
+   *  writes anything, so it is safe to call on a debounce. */
+  previewOriginPublish: (originId: string, draft: OriginDraft) =>
+    invoke<OriginPublishImpact>("preview_origin_publish", { originId, draft }),
+
+  /** Create an empty document at `path` and register it as an origin this
+   *  machine publishes. Refuses an existing file: adopting one is
+   *  `updateOrigin({ role: "publisher" })`. */
+  createOriginDocument: (args: {
+    path: string;
+    name: string;
+    maintainer?: string | null;
+  }) => invoke<Origin>("create_origin_document", args),
+
+  /**
+   * Publish a draft. `base` is what `openOriginDocument` returned; the file is
+   * re-hashed here and a mismatch comes back as `status: "conflict"` with the
+   * newer document, having written nothing.
+   *
+   * `passphrase` is only needed when a `fromKeychain` slot has to be resolved
+   * or `rotateFrom` is set. `rotateFrom` re-keys every envelope in the
+   * document — the one operation that deliberately invalidates the whole
+   * team's `landedSecrets` cache.
+   */
+  saveOriginDocument: (args: {
+    originId: string;
+    draft: OriginDraft;
+    base: OriginDraftBase;
+    passphrase?: string | null;
+    rotateFrom?: string | null;
+  }) => invoke<OriginSaveOutcome>("save_origin_document", args),
 
   // Multi-window -----------------------------------------------------------
 

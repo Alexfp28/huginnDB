@@ -62,6 +62,7 @@ import { CommandPalette } from "@/components/shell/CommandPalette";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { TabSwitcher, useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { SettingsDialog } from "@/components/settings/dialogs/SettingsDialog";
+import { OriginEditorOverlay } from "@/components/origins/OriginEditorOverlay";
 import { EnvironmentEditorDialog } from "@/components/connection/dialogs/EnvironmentEditorDialog";
 import { EnvironmentDeleteConfirmDialog } from "@/components/connection/dialogs/EnvironmentDeleteConfirmDialog";
 import { startLogBridge } from "@/lib/bridges/log-bridge";
@@ -512,6 +513,10 @@ export default function App() {
           </div>
         </header>
         <SettingsDialog />
+        {/* A sibling of Settings, not a child: the origin editor is a
+            full-screen surface, and `useOriginEditor.open` closes Settings on
+            the way in so focus is never trapped in two dialogs at once. */}
+        <OriginEditorOverlay />
         <EnvironmentEditorDialog />
         <EnvironmentDeleteConfirmDialog />
         <div className="flex-1 overflow-hidden">
