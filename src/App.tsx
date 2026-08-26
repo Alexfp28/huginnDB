@@ -44,6 +44,7 @@ import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
 import { useJsonSchemaTransfer } from "@/stores/dialogs/jsonSchemaTransfer";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
+import { useTreeSearch } from "@/stores/session/treeSearch";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useTranslation } from "react-i18next";
 import { setLanguage } from "@/lib/i18n";
@@ -345,6 +346,36 @@ export default function App() {
       refreshData: refreshActiveData,
       refreshSchema: () => {
         if (selected) void useSchema.getState().refreshTree(selected);
+      },
+
+      // The schema tree's search. Each reads `useTreeSearch` imperatively, so
+      // none of them widens this memo's dependency list — the same discipline
+      // the block below already follows.
+      focusTreeFilter: () => {
+        // A shortcut that focuses something invisible would do nothing at all,
+        // so open the panel first.
+        useSessionPanelLayout.getState().openSchema();
+        useTreeSearch.getState().requestFocus();
+      },
+      clearTreeFilter: () => {
+        // Layered: text, then the scope one level at a time. When there is
+        // nothing left to undo the keystroke still does something visible —
+        // it hands focus to the tree — which is what makes the layering
+        // learnable rather than a guess.
+        if (useTreeSearch.getState().escape() === "none") {
+          document
+            .querySelector<HTMLElement>("[data-tree-row]")
+            ?.focus();
+        }
+      },
+      scopeFilterToConnection: () => {
+        // `selectedConnectionId` is always a profile id (gotcha #32), which is
+        // exactly what a connection scope anchors to.
+        const connectionId = useUi.getState().selectedConnectionId;
+        if (!connectionId) return;
+        const search = useTreeSearch.getState();
+        search.narrowTo({ kind: "connection", connectionId });
+        search.requestFocus();
       },
 
       // Everything below was already a command the palette could run; giving

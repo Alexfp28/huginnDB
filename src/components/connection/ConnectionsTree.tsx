@@ -135,7 +135,34 @@ export function ConnectionsTree() {
   const focusRequest = useTreeSearch((s) => s.focusRequest);
   const groupCollapse = useConnectionGroupCollapse();
   const filterInputRef = useRef<HTMLInputElement>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
   const filtering = needle.length > 0;
+
+  /**
+   * Arrow-key movement between the box and the connection rows.
+   *
+   * Deliberately a local `onKeyDown` rather than three more catalogue actions:
+   * these are a widget's internal navigation, like the arrows inside a
+   * `<select>`, and putting them in Settings would invite someone to rebind
+   * "move down" globally. Rows are found in DOM order via `data-tree-row`, so
+   * folders and nesting need no bookkeeping here.
+   */
+  function moveRowFocus(from: HTMLElement | null, delta: 1 | -1): boolean {
+    const rows = Array.from(
+      rowsRef.current?.querySelectorAll<HTMLElement>("[data-tree-row]") ?? [],
+    );
+    if (rows.length === 0) return false;
+    const index = from ? rows.indexOf(from) : -1;
+    const next = index + delta;
+    if (next < 0) {
+      // Up from the first row goes back to where the search is typed.
+      filterInputRef.current?.focus();
+      return true;
+    }
+    if (next >= rows.length) return false;
+    rows[next]?.focus();
+    return true;
+  }
 
   /**
    * The one debounce in the whole search path.
@@ -443,11 +470,18 @@ export function ConnectionsTree() {
           <div
             role="button"
             tabIndex={0}
+            data-tree-row
             onClick={() => void handleRowClick(p)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 void handleRowClick(p);
+                return;
+              }
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                if (moveRowFocus(e.currentTarget, e.key === "ArrowDown" ? 1 : -1)) {
+                  e.preventDefault();
+                }
               }
             }}
             title={isLost ? t("connections.lost", { message: lostError }) : p.name}
@@ -607,7 +641,11 @@ export function ConnectionsTree() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    // The whole panel is the `tree` keybinding scope — the filter box and the
+    // connection rows included. It used to be declared inside `SchemaExplorer`,
+    // which covered only an expanded connection's subtree, so Escape-to-clear
+    // could not fire from the box it clears.
+    <div className="flex h-full flex-col" data-kb-scope="tree">
       <div className="shrink-0 px-2 pb-1 pt-2">
         {/* Tree-wide actions, above the filter box: bulk-disconnect on the
             left, the visibility picker (which acts on the whole tree, not
@@ -665,6 +703,11 @@ export function ConnectionsTree() {
             if (e.key === "Backspace" && raw.length === 0 && scope.kind !== "all") {
               e.preventDefault();
               widenScopeOneLevel();
+              return;
+            }
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              moveRowFocus(null, 1);
               return;
             }
             if (e.key === "Enter") {
@@ -753,7 +796,7 @@ export function ConnectionsTree() {
           </div>
         )}
       </div>
-      <div className="flex-1 overflow-y-auto py-1.5 pr-1">
+      <div ref={rowsRef} className="flex-1 overflow-y-auto py-1.5 pr-1">
         {visibleProfiles.length === 0 && (
           <div className="px-3 py-2 text-xs text-muted-foreground">
             {t("connectionsTree.selectConnections.allHidden")}

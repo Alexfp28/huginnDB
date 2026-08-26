@@ -1289,7 +1289,12 @@
         "notJson": "That file isn't valid JSON.",
         "notShortcuts": "That file isn't a HuginnDB shortcuts export."
       },
-      "recordAgainHint": "Click to record a different key"
+      "recordAgainHint": "Click to record a different key",
+      "focusTreeFilter": "Search the schema tree",
+      "focusTreeFilterHint": "Opens the Schema panel if it is collapsed, then focuses the filter box and selects what is in it.",
+      "clearTreeFilter": "Clear the schema search",
+      "clearTreeFilterHint": "In layers: first the text, then the scope one level at a time, then focus moves to the tree.",
+      "scopeFilterToConnection": "Search only the selected connection"
     },
     "mcp": {
       "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",

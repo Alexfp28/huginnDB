@@ -1289,7 +1289,12 @@
         "notJson": "Ese archivo no es JSON válido.",
         "notShortcuts": "Ese archivo no es una exportación de atajos de HuginnDB."
       },
-      "recordAgainHint": "Haz clic para grabar otra tecla"
+      "recordAgainHint": "Haz clic para grabar otra tecla",
+      "focusTreeFilter": "Buscar en el árbol de esquema",
+      "focusTreeFilterHint": "Abre el panel Esquema si está plegado, enfoca la caja de filtro y selecciona lo que haya en ella.",
+      "clearTreeFilter": "Limpiar la búsqueda del esquema",
+      "clearTreeFilterHint": "Por capas: primero el texto, luego el ámbito nivel a nivel y por último el foco pasa al árbol.",
+      "scopeFilterToConnection": "Buscar solo en la conexión seleccionada"
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",
