@@ -122,7 +122,6 @@
       "summaryScoped": "{{matches}} coincidencia(s) en {{name}}",
       "scopeHere": "Buscar solo aquí",
       "clearScope": "Volver a buscar en todas las conexiones",
-      "noMatchesInConnection": "Sin coincidencias aquí",
       "searchUnloaded": "Buscar en {{count}} base(s) sin cargar",
       "searchUnloadedHint": "Al teclear no se abre ninguna conexión. Esto carga sus listas de tablas para que la búsqueda llegue a ellas.",
       "searchingUnloaded": "Cargando bases de datos…"

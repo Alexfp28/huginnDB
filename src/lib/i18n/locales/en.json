@@ -122,7 +122,6 @@
       "summaryScoped": "{{matches}} match(es) in {{name}}",
       "scopeHere": "Search here only",
       "clearScope": "Search every connection again",
-      "noMatchesInConnection": "No matches here",
       "searchUnloaded": "Search {{count}} unloaded database(s)",
       "searchUnloadedHint": "Typing never opens a connection. This loads those databases' table lists so the search can reach them.",
       "searchingUnloaded": "Loading databases…"

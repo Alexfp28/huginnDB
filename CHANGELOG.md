@@ -217,6 +217,59 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The Schema panel's filter searches every open connection at once, and says
+  where it is looking.** There was one filter box, and it silently applied only
+  to whichever connection happened to be *selected* — every other one was
+  handed an empty needle and stayed unfiltered. The only marker of "selected"
+  is a 2px hairline on the row, and the selection moves on its own when you
+  open a tab or pick a table from the command palette. So with two connections
+  open you typed, one subtree filtered, the other did not, and nothing
+  explained it. Reported by several users.
+
+  Now every live connection is searched. Each connection row carries its own
+  match count; one with nothing to show folds to a single dimmed line instead
+  of quietly displaying its whole tree, and it is never hidden — that row is
+  what you need in order to connect it or to narrow the search to it. The fold
+  a search causes is visual and temporary: it is not written into the
+  environment's remembered folds, so a search can no longer leave you with
+  connections folded that you never folded. The needle is also dropped when you
+  switch environments, which it used to survive.
+
+  **Narrowing is still possible — it is just visible now.** "Search here only"
+  on a connection or a database (its right-click menu, or the button that
+  appears on a connection row while you are searching) puts a chip inside the
+  box naming what you narrowed to. Leave it with the chip's ✕, with Backspace
+  on an empty box, or with Escape. This replaces a second invisible scope:
+  expanding a database used to silently restrict the search to it *and*
+  collapse the others.
+
+- **Typing in that filter no longer opens database connections.** Every
+  debounced keystroke used to open a connection pool for each database it had
+  not read yet — bounded to three at a time since 1.13.0, which made it
+  survivable rather than right. Searching now looks at what is already loaded,
+  and reaching further is a button that says how many databases it will load.
+  On a server shared with your application or your IDE, that is the difference
+  between a search and a small burst of connections.
+
+- **A `0` next to a connection now means the search really found nothing
+  there.** The tree distinguishes "still loading", "never read" (`—`, or `N+`
+  when part of a server has been read), "not in the current scope" and a real
+  zero. A provisional zero is what makes you give up on a search that would
+  have worked.
+
+- **The Schema panel has a title again, and two fewer notice lines.** Its two
+  tree-wide actions ("Disconnect all", "Connections to show") were labelled
+  buttons that truncated to unreadable stumps at the widths this panel is
+  normally dragged to; they are icons with tooltips in the new header, and the
+  "showing N of M connections" line folds into a marker on the icon that
+  changes it.
+
+- **Three new shortcuts, under Settings → Shortcuts.** `Mod+Shift+F` opens the
+  Schema panel if it is collapsed and focuses the filter; `Escape` inside the
+  panel clears the search in layers (text, then scope, then focus); and
+  "Search only the selected connection" ships unbound but is bindable and
+  searchable in the command palette.
+
 - **Deleting connections now confirms in-app, and says what it takes with it.**
   There were two confirmations before: a bare OS `window.confirm` for a single
   connection and an in-app dialog for a multi-selection, and neither mentioned
@@ -245,6 +298,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   a driver badge and an origin mark, and names were truncating mid-word.
 
 ### Fixed
+
+- **A multi-database connection with a "databases to show" subset could show an
+  empty tree while searching, with no explanation.** The check for "are we
+  still loading databases?" walked every database on the server while the loop
+  that actually loaded them applied the subset — so with a subset active it
+  never finished, and the "no tables match the filter" line could never appear.
+
+- **Databases loaded by searching are remembered again.** The filter's own
+  prefetch opened them through the untracked path, so a tab opened against a
+  database you had reached by searching (rather than by expanding it) was never
+  restored — not on reconnect, not across an environment switch, not across a
+  restart.
+
+- **The tree no longer filters its contents by a different needle than the one
+  that chose what to show.** Each multi-database explorer debounced separately
+  while the inner subtree was handed the raw, undebounced needle, so for a
+  quarter of a second after every keystroke the two disagreed.
 
 - **Ctrl+V now works on `BIT` cells in the data grid.** It used to be a
   deliberate no-op (issue #79): pasted text was routed into `inlineEdit`,
