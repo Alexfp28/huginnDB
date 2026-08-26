@@ -88,3 +88,19 @@ export function formatBitValue(
   }
   return String(value);
 }
+
+/**
+ * Normalise any accepted representation of a BIT value to `"0"` / `"1"` /
+ * `""` (empty means null). Shared by `BitInput` (its `<select>`'s own
+ * mount-time reconciliation) and the grid's Ctrl+V paste handler, which has
+ * no `<select>` to defer to and must decide the committed value itself.
+ * Trimmed so pasted clipboard text with trailing whitespace/newlines still
+ * matches.
+ */
+export function normalizeBitValue(value: string | null | undefined): "0" | "1" | "" {
+  if (value === null || value === undefined) return "";
+  const v = value.trim();
+  if (v === "1" || v.toLowerCase() === "true") return "1";
+  if (v === "0" || v.toLowerCase() === "false") return "0";
+  return v === "" ? "" : "1";
+}

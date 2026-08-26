@@ -188,6 +188,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   a filter on, "all" is ambiguous, and guessing wrong deletes connections you
   never saw. Use the checkboxes for that case, where what will go is on screen.
 
+- **Pinned ("frozen") columns in the data grid, Excel-style.** A small pin
+  icon in each column header — visible on hover, always shown once pinned —
+  toggles a column between scrolling normally and sticking to the left edge.
+  Any number of columns can be pinned at once; they stack in the table's own
+  left-to-right order, not the order they were pinned in, and the row-number
+  / selection gutter is always pinned first as the anchor everything else
+  counts its offset from. Persisted per table (like column widths), keyed the
+  same way and skipped for ad-hoc query results, which pin in-session only.
+
+  The header side was straightforward — each `<th>` already paints its own
+  opaque background, so it just needed `position: sticky` and the right `left`
+  offset. The body side needed a real fix, not just the same treatment: a
+  row's background lives on its `<tr>`, and the translucent tints used for
+  selection/multi-selection/zebra stripes (`bg-brand/30`, `bg-brand/10`,
+  `bg-muted/30`) are translucent *on purpose* — a subtle wash over the page
+  background is the intended look for an ordinary row. A `position: sticky`
+  cell can't use that: once the browser promotes it to its own compositing
+  layer, a translucent background lets whatever's scrolling underneath show
+  straight through, so a pinned cell in a selected or zebra-striped row showed
+  its own text superimposed on the next column's. Pinned/gutter cells now get
+  a `color-mix()`-computed *solid* equivalent of the same tint via inline
+  style, so they read identically to their non-pinned neighbours while
+  actually hiding what scrolls behind them. The one accepted trade-off: a
+  pinned cell doesn't pick up the row's hover tint, since that would need the
+  same solid-color treatment to compete with a CSS `:hover` rule, which isn't
+  worth the added complexity for a transient state.
+
 ### Changed
 
 - **Deleting connections now confirms in-app, and says what it takes with it.**
@@ -218,6 +245,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   a driver badge and an origin mark, and names were truncating mid-word.
 
 ### Fixed
+
+- **Ctrl+V now works on `BIT` cells in the data grid.** It used to be a
+  deliberate no-op (issue #79): pasted text was routed into `inlineEdit`,
+  which a `BIT` column renders as `BitInput` — a fixed `<select>` with no
+  free-text control to receive it. Paste on a `BIT` cell now normalizes the
+  clipboard text the same way `BitInput` itself does (`"1"`/`"true"` → `"1"`,
+  `"0"`/`"false"` → `"0"`, anything else non-empty → `"1"`, empty → `NULL`)
+  and commits it directly, skipping the round trip if nothing would change —
+  the same pattern the FK combobox and `BitInput`'s own `onSelect` already
+  use. No backend change was needed: `update_cell` already resolves the MySQL
+  `BIT` `CAST` from the column's catalog type, not from the value it's handed.
 
 - **A MongoDB connection set to `read-only` could not be read over MCP while the
   desktop app was sharing its pools.** `run_query` decided which classifier to

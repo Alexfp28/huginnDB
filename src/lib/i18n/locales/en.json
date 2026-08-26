@@ -508,6 +508,8 @@
     "selectRow": "Select row",
     "expandEditor": "Open in full editor",
     "resizeHandleHint": "Drag to resize · double-click to fit the content (Ctrl: every column)",
+    "pinColumn": "Pin column",
+    "unpinColumn": "Unpin column",
     "fitColumns": "Fit all columns to their content",
     "moreActions": "More actions",
     "activeFilterCount": "{{count}} filters",

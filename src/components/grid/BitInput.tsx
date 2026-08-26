@@ -16,6 +16,7 @@
  */
 
 import { useEffect } from "react";
+import { normalizeBitValue } from "@/lib/grid/columnKinds";
 
 const NULL_OPT = "__null__";
 
@@ -36,14 +37,6 @@ interface BitInputProps {
   seedDefault?: boolean;
 }
 
-/** Normalise any accepted representation to `"0"` / `"1"` / `""` (null). */
-function normalize(value: string | null): "0" | "1" | "" {
-  if (value === null || value === undefined) return "";
-  if (value === "1" || value.toLowerCase() === "true") return "1";
-  if (value === "0" || value.toLowerCase() === "false") return "0";
-  return value === "" ? "" : "1";
-}
-
 export function BitInput({
   value,
   bitDisplay,
@@ -54,7 +47,7 @@ export function BitInput({
   onCancel,
   seedDefault,
 }: BitInputProps) {
-  const cur = normalize(value);
+  const cur = normalizeBitValue(value);
 
   // Reconcile the underlying draft cell with what this control displays, once
   // on mount. Two cases:

@@ -29,6 +29,15 @@ import { usePreferences, selectGridPrefs } from "@/stores/preferences/preference
 export const MIN_COLUMN_WIDTH = 40;
 
 /**
+ * Width of the leading gutter column (row number / selection checkbox).
+ * Lives here (rather than on `DataGrid` or `GridRow`) so both sides of the
+ * header/body split can import it without a runtime circular dependency
+ * between the two sibling components — it's where pinned columns' sticky
+ * `left` offsets start counting from.
+ */
+export const GRID_GUTTER_WIDTH = 40;
+
+/**
  * Ceiling for the auto-fit gesture. A column holding a long free-text value (a
  * serialised config, a description paragraph) would otherwise expand to several
  * thousand px and push every column after it off-screen, turning "let me read

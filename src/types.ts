@@ -892,6 +892,11 @@ export interface GridPrefs {
    *  column name (see `tableKey` in `stores/schema.ts`). Ad-hoc query result
    *  grids resize in-session only and never write here. */
   columnWidths: Record<string, Record<string, number>>;
+  /** Column names pinned to the left edge (freeze-panes style), keyed the same
+   *  way as `columnWidths`. Stacked in the columns' natural left-to-right
+   *  order, not the order they were pinned in. Ad-hoc query result grids pin
+   *  in-session only and never write here. */
+  pinnedColumns: Record<string, string[]>;
   /** How a browsed table/collection renders. A single global toggle (not
    *  per-relation), honoured by every driver — the list view started out
    *  MongoDB-only, which is all the `document` in the name still refers to

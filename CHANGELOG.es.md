@@ -103,6 +103,37 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   conexiones que no has visto. Para ese caso están las casillas, donde lo que va
   a caer está en pantalla.
 
+- **Columnas fijadas ("congeladas") en la cuadrícula de datos, al estilo
+  Excel.** Un pequeño icono de pin en la cabecera de cada columna — visible al
+  pasar el ratón, siempre mostrado una vez fijada — alterna una columna entre
+  desplazarse con normalidad y quedarse fija en el borde izquierdo. Se puede
+  fijar cualquier número de columnas a la vez; se apilan en el orden natural de
+  la tabla (izquierda a derecha), no en el orden en que se fijaron, y la
+  columna de selección/número de fila siempre queda fijada primero, como el
+  ancla sobre la que las demás calculan su desplazamiento. Se persiste por
+  tabla (igual que los anchos de columna), con la misma clave, y se salta en
+  resultados de consultas ad-hoc, que fijan solo durante la sesión.
+
+  El lado de la cabecera fue sencillo — cada `<th>` ya pinta su propio fondo
+  opaco, así que solo hacía falta `position: sticky` y el desplazamiento
+  `left` correcto. El lado del cuerpo necesitó una solución real, no el mismo
+  tratamiento: el fondo de una fila vive en su `<tr>`, y los tintes
+  translúcidos usados para selección/multiselección/rayado cebra
+  (`bg-brand/30`, `bg-brand/10`, `bg-muted/30`) son translúcidos *a
+  propósito* — un lavado sutil sobre el fondo de la página es el aspecto
+  buscado para una fila normal. Una celda `position: sticky` no puede usar
+  eso: en cuanto el navegador la promociona a su propia capa de composición,
+  un fondo translúcido deja pasar lo que se desplaza por debajo, así que una
+  celda fijada en una fila seleccionada o con rayado cebra mostraba su propio
+  texto superpuesto al de la siguiente columna. Las celdas fijadas/gutter
+  ahora reciben un equivalente *sólido* del mismo tinte, calculado con
+  `color-mix()` vía estilo en línea, de modo que se ven idénticas a sus
+  vecinas no fijadas mientras ocultan de verdad lo que se desplaza detrás. La
+  única concesión aceptada: una celda fijada no recibe el tinte de hover de
+  la fila, ya que eso necesitaría el mismo tratamiento de color sólido para
+  competir con una regla CSS `:hover`, algo que no compensa la complejidad
+  añadida para un estado transitorio.
+
 ### Cambiado
 
 - **Borrar conexiones se confirma dentro de la app y dice qué se lleva por
@@ -135,6 +166,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   cortaban a mitad de palabra.
 
 ### Corregido
+
+- **Ctrl+V ahora funciona en celdas `BIT` de la cuadrícula de datos.** Antes
+  era un no-op deliberado (issue #79): el texto pegado se enrutaba a
+  `inlineEdit`, que una columna `BIT` renderiza como `BitInput` — un
+  `<select>` fijo sin control de texto libre para recibirlo. Pegar sobre una
+  celda `BIT` ahora normaliza el texto del portapapeles igual que hace el
+  propio `BitInput` (`"1"`/`"true"` → `"1"`, `"0"`/`"false"` → `"0"`,
+  cualquier otra cosa no vacía → `"1"`, vacío → `NULL`) y lo confirma
+  directamente, saltándose el viaje de ida y vuelta si no cambia nada — el
+  mismo patrón que ya usan el combobox de FK y el propio `onSelect` de
+  `BitInput`. No hizo falta ningún cambio en el backend: `update_cell` ya
+  resuelve el `CAST` de `BIT` de MySQL a partir del tipo de catálogo de la
+  columna, no del valor que recibe.
 
 - **Una conexión de MongoDB en `read-only` no podía leerse por MCP mientras la
   app de escritorio compartía sus pools.** `run_query` decidía qué clasificador

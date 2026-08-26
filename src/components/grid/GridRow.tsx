@@ -52,6 +52,7 @@ import {
   sqlLiteral,
 } from "@/lib/grid/copyFormats";
 import { formatValue } from "@/lib/grid/formatValue";
+import { GRID_GUTTER_WIDTH } from "@/lib/grid/useColumnSizing";
 import { cn } from "@/lib/utils";
 import { isSideEditorOpen } from "@/stores/session/panelLayout";
 import type {
@@ -111,6 +112,10 @@ interface GridRowProps {
   selectedRows: CellValue[][];
   zebraStripes: boolean;
   cellStyle: React.CSSProperties;
+  /** Names of columns currently pinned (frozen) to the left edge. A new Set
+   *  reference on every toggle, which is what makes `React.memo` re-render
+   *  every row when the user pins/unpins a column — see `usePinnedColumns`. */
+  pinnedColumnSet: ReadonlySet<string>;
   resultColumns: ColumnMeta[];
   columnIndexByName: Map<string, number>;
   columnInfoByName: Map<string, ColumnInfo>;
@@ -180,6 +185,7 @@ export const GridRow = memo(function GridRow({
   selectedRows,
   zebraStripes,
   cellStyle,
+  pinnedColumnSet,
   resultColumns,
   columnIndexByName,
   columnInfoByName,
@@ -203,6 +209,42 @@ export const GridRow = memo(function GridRow({
 }: GridRowProps) {
   const { t } = useTranslation();
   const rowValues = row.original as CellValue[];
+  const stateBg = isMultiSelected
+    ? "bg-brand/30"
+    : isSelected
+      ? "bg-brand/10"
+      : zebraStripes && i % 2 === 1
+        ? "bg-muted/30"
+        : "bg-background";
+  const showsHover = !isMultiSelected && !isSelected;
+  /**
+   * Solid equivalent of `stateBg`, for pinned/gutter cells only. `bg-brand/30`,
+   * `bg-brand/10` and `bg-muted/30` are deliberately translucent — a subtle
+   * tint over the ambient page background is the intended look for a normal
+   * (non-sticky) row. A `position: sticky` cell can't use that: once the
+   * browser promotes it to its own compositing layer, a translucent
+   * background lets whatever's scrolling underneath show straight through —
+   * not a subtle tint but the next column's text superimposed on this one's.
+   * `color-mix()` bakes the same tint-over-background blend into one opaque
+   * colour instead, so a pinned cell reads identically to its non-pinned
+   * neighbours while still fully hiding the content behind it. Applied as an
+   * inline `style.backgroundColor` (not a class) because it has to win
+   * outright — no hover variant competes with it, so pinned/gutter cells
+   * don't pick up the row's `hover:bg-accent/40` tint; that's an accepted
+   * trade-off, not an oversight.
+   */
+  const pinnedBgColor = isMultiSelected
+    ? "color-mix(in srgb, hsl(var(--brand)) 30%, hsl(var(--background)))"
+    : isSelected
+      ? "color-mix(in srgb, hsl(var(--brand)) 10%, hsl(var(--background)))"
+      : zebraStripes && i % 2 === 1
+        ? "color-mix(in srgb, hsl(var(--muted)) 30%, hsl(var(--background)))"
+        : "hsl(var(--background))";
+  // Running left offset for pinned columns' sticky `<td>`s, mirroring the
+  // header's own accumulation in `DataGrid` — both start from the gutter's
+  // width and walk columns in the same (display) order, so they agree
+  // without needing to be computed in one shared place.
+  let pinnedLeftAcc = GRID_GUTTER_WIDTH;
   return (
     <tr
       className={cn(
@@ -214,13 +256,8 @@ export const GridRow = memo(function GridRow({
         // looked like it had done nothing (part of #113: the
         // selection was correct, only invisible). The stronger tint
         // pairs with the inset accent bar on the gutter cell below.
-        isMultiSelected
-          ? "bg-brand/30"
-          : isSelected
-            ? "bg-brand/10"
-            : zebraStripes && i % 2 === 1
-              ? "bg-muted/30 hover:bg-accent/40"
-              : "hover:bg-accent/40",
+        stateBg,
+        showsHover && "hover:bg-accent/40",
       )}
       onClick={(e) => {
         e.stopPropagation();
@@ -230,7 +267,7 @@ export const GridRow = memo(function GridRow({
     >
       <td
         className={cn(
-          "border-b border-border/50 border-r border-r-border/70 px-2 tabular-nums text-muted-foreground",
+          "sticky left-0 z-[1] border-b border-border/50 border-r border-r-border/70 px-2 tabular-nums text-muted-foreground",
           // Inset accent bar marking a selected row's left edge. It
           // lives on the gutter cell rather than the `<tr>` because
           // box-shadow on a table-row box is unreliable across
@@ -238,7 +275,11 @@ export const GridRow = memo(function GridRow({
           isMultiSelected &&
             "shadow-[inset_3px_0_0_0_hsl(var(--brand))]",
         )}
-        style={{ ...cellStyle, width: 40 }}
+        style={{
+          ...cellStyle,
+          width: GRID_GUTTER_WIDTH,
+          backgroundColor: pinnedBgColor,
+        }}
       >
         {selectionEnabled && rowKey !== null ? (
           <>
@@ -297,6 +338,9 @@ export const GridRow = memo(function GridRow({
           !!onNavigateFk &&
           !!columnInfoByName.get(meta.name)?.referenced_table;
         const isActiveCell = activeColIdx === cIdx;
+        const isPinned = pinnedColumnSet.has(colName);
+        const stickyLeft = isPinned ? pinnedLeftAcc : undefined;
+        if (isPinned) pinnedLeftAcc += cell.column.getSize();
         return (
           <ContextMenu key={cell.id}>
             <ContextMenuTrigger asChild>
@@ -306,15 +350,28 @@ export const GridRow = memo(function GridRow({
                   "cursor-pointer border-b border-border/50 border-r border-r-border/70 px-2",
                   isFkCell &&
                     "hover:underline hover:decoration-dotted hover:decoration-fk/70 hover:underline-offset-2",
-                  // Inset ring marks the keyboard-active cell.
-                  // `relative z-10` lifts it above neighbours so the
-                  // ring isn't clipped by adjacent cell borders. No
-                  // transition — the ring must track keys instantly.
-                  isActiveCell &&
-                    "relative z-10 ring-2 ring-inset ring-brand",
+                  // Pinned columns stick to the offset accumulated above,
+                  // one z-tier below the active-cell ring so the ring still
+                  // wins if the active cell happens to be pinned too. The
+                  // background comes from `style` below, not a class — see
+                  // `pinnedBgColor`'s comment.
+                  isPinned && "sticky z-[1]",
+                  // Inset ring marks the keyboard-active cell. `z-10` lifts
+                  // it above neighbours so the ring isn't clipped by
+                  // adjacent cell borders; `relative` is only needed when
+                  // the cell isn't already positioned via `sticky` above.
+                  // No transition — the ring must track keys instantly.
+                  isActiveCell && "z-10 ring-2 ring-inset ring-brand",
+                  isActiveCell && !isPinned && "relative",
                 )}
                 title={isFkCell ? t("dataGrid.fkNavHint") : undefined}
-                style={{ ...cellStyle, width: cell.column.getSize() }}
+                style={{
+                  ...cellStyle,
+                  width: cell.column.getSize(),
+                  ...(isPinned
+                    ? { left: stickyLeft, backgroundColor: pinnedBgColor }
+                    : {}),
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   // While this cell hosts its own inline editor

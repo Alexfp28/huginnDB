@@ -59,6 +59,7 @@ const DEFAULT_PREFS: Preferences = {
     cellPreview: true,
     bitDisplay: "true_false",
     columnWidths: {},
+    pinnedColumns: {},
     documentViewMode: "table",
     listExpandNested: false,
     listShowTypes: true,

@@ -138,6 +138,13 @@ pub struct GridPrefs {
     /// tiny (a `u16` each), so unlike `tab_state.json`'s query bodies this
     /// isn't pruned; even thousands of tables/columns stay a small blob.
     pub column_widths: HashMap<String, HashMap<String, u16>>,
+    /// Column names pinned to the left edge (freeze-panes style), keyed the
+    /// same way as `column_widths`. Stacked in the columns' natural
+    /// left-to-right order, not the order they were pinned in — the frontend
+    /// recomputes stacking order from its own column list, this is just the
+    /// membership set. Only populated for real browsed tables, like
+    /// `column_widths`.
+    pub pinned_columns: HashMap<String, Vec<String>>,
     /// How a browsed table/collection renders: one of "table" | "list". A
     /// single global toggle (not per-relation). Named after the *document*
     /// (row-as-document) layout it selects, not after MongoDB: the list view
@@ -381,6 +388,7 @@ impl Default for GridPrefs {
             cell_preview: true,
             bit_display: "true_false".into(),
             column_widths: HashMap::new(),
+            pinned_columns: HashMap::new(),
             document_view_mode: "table".into(),
             list_expand_nested: false,
             list_show_types: true,

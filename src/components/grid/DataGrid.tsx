@@ -28,7 +28,7 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { tableKey } from "@/stores/session/schema";
-import { Inbox, Loader2 } from "lucide-react";
+import { Inbox, Loader2, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/common/EmptyState";
 import { isBitType, isNumericType } from "@/lib/grid/columnKinds";
@@ -67,10 +67,12 @@ import {
   truncateForDisplay,
 } from "@/lib/grid/formatValue";
 import {
+  GRID_GUTTER_WIDTH,
   MAX_AUTOFIT_WIDTH,
   MIN_COLUMN_WIDTH,
   useColumnSizing,
 } from "@/lib/grid/useColumnSizing";
+import { usePinnedColumns } from "@/lib/grid/usePinnedColumns";
 import { useCtrlWheelZoom } from "@/lib/grid/useCtrlWheelZoom";
 import { useGridColumns } from "@/lib/grid/useGridColumns";
 import { useGridKeyboardNav } from "@/lib/grid/useGridKeyboardNav";
@@ -538,6 +540,16 @@ export function DataGrid({
   const persistKey = tableName ? tableKey(tableSchema, tableName) : null;
   const { columnSizing, commitWidths, resizingColId, startColumnResize } =
     useColumnSizing({ persistKey, updateGrid });
+  /** Pinned ("frozen") columns — see `usePinnedColumns` and `GRID_GUTTER_WIDTH`
+   *  below, used to compute each pinned column's sticky `left` offset. */
+  const { pinnedColumns, togglePin } = usePinnedColumns({
+    persistKey,
+    updateGrid,
+  });
+  const pinnedColumnSet = useMemo(
+    () => new Set(pinnedColumns),
+    [pinnedColumns],
+  );
   /** The header's dimmed type hint renders at the `text-3xs` token (10px). */
   const TYPE_HINT_FONT_SIZE = 10;
 
@@ -981,11 +993,23 @@ export function DataGrid({
               stickyHeader ? "sticky top-0 z-10 bg-card" : "bg-card"
             }
           >
-            {table.getHeaderGroups().map((hg) => (
+            {table.getHeaderGroups().map((hg) => {
+              // Left offset of each pinned column's sticky `<th>`, in the
+              // columns' own display order (not pin order) — the gutter is
+              // always pinned first, so every pinned data column starts
+              // counting from its width.
+              const pinnedLeftById = new Map<string, number>();
+              let pinnedLeftAcc = GRID_GUTTER_WIDTH;
+              for (const h of hg.headers) {
+                if (!pinnedColumnSet.has(h.column.id)) continue;
+                pinnedLeftById.set(h.column.id, pinnedLeftAcc);
+                pinnedLeftAcc += h.getSize();
+              }
+              return (
               <tr key={hg.id}>
                 <th
-                  className="border-b border-border border-r border-r-border bg-card px-2 py-1 font-semibold uppercase tracking-wider text-muted-foreground"
-                  style={{ ...headerStyle, width: 40 }}
+                  className="sticky left-0 z-20 border-b border-border border-r border-r-border bg-card px-2 py-1 font-semibold uppercase tracking-wider text-muted-foreground"
+                  style={{ ...headerStyle, width: GRID_GUTTER_WIDTH }}
                 >
                   {selectionEnabled ? (
                     <input
@@ -1014,7 +1038,9 @@ export function DataGrid({
                     "#"
                   )}
                 </th>
-                {hg.headers.map((h) => (
+                {hg.headers.map((h) => {
+                  const isPinned = pinnedColumnSet.has(h.column.id);
+                  return (
                   <th
                     key={h.id}
                     data-col-id={h.column.id}
@@ -1022,13 +1048,51 @@ export function DataGrid({
                       // Slightly elevated surface (`card` over the grid's
                       // `background`) + semibold, per the brand language: the
                       // header is a label strip, not another data row.
-                      "relative border-b border-border border-r border-r-border bg-card px-2 py-1 font-semibold uppercase tracking-wider text-muted-foreground transition-colors duration-150",
+                      "group/th relative border-b border-border border-r border-r-border bg-card px-2 py-1 font-semibold uppercase tracking-wider text-muted-foreground transition-colors duration-150",
                       resizingColId === h.column.id && "bg-brand/10",
+                      // Pinned columns stick to the offset accumulated above;
+                      // z-20 so their (already-opaque) bg-card paints over
+                      // whatever scrolls underneath, and over the plain
+                      // sticky <thead>'s own z-10.
+                      isPinned && "sticky z-20",
                     )}
-                    style={{ ...headerStyle, width: h.getSize() }}
+                    style={{
+                      ...headerStyle,
+                      width: h.getSize(),
+                      ...(isPinned
+                        ? { left: pinnedLeftById.get(h.column.id) }
+                        : {}),
+                    }}
                   >
-                    <div className="overflow-hidden">
-                      {flexRender(h.column.columnDef.header, h.getContext())}
+                    <div className="flex items-center gap-1 overflow-hidden">
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        {flexRender(h.column.columnDef.header, h.getContext())}
+                      </div>
+                      {/* Pin toggle — always visible once pinned (so it
+                          reads as a persistent state, not a hover-only
+                          affordance), otherwise revealed on hover like the
+                          resize handle below. */}
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePin(h.column.id);
+                        }}
+                        title={
+                          isPinned
+                            ? t("dataGrid.unpinColumn")
+                            : t("dataGrid.pinColumn")
+                        }
+                        className={cn(
+                          "shrink-0 rounded p-0.5 text-muted-foreground/70 hover:text-foreground",
+                          isPinned
+                            ? "inline-block text-brand"
+                            : "hidden group-hover/th:inline-block",
+                        )}
+                      >
+                        <Pin className={cn("h-3 w-3", isPinned && "fill-current")} />
+                      </button>
                     </div>
                     {/* Drag handle — thin strip on the column's trailing edge.
                         `select-none` stops text selection while dragging. */}
@@ -1060,7 +1124,8 @@ export function DataGrid({
                       )}
                     />
                   </th>
-                ))}
+                  );
+                })}
                 {/* Filler column: absorbs any leftover width itself, so
                     real columns never get proportionally stretched by the
                     browser's fixed-table-layout algorithm (which otherwise
@@ -1069,7 +1134,8 @@ export function DataGrid({
                     empty cell in every row below, not just here. */}
                 <th className="border-b border-border bg-card" />
               </tr>
-            ))}
+              );
+            })}
           </thead>
           <tbody>
             {draftRow && (
@@ -1137,6 +1203,7 @@ export function DataGrid({
                         selectedRows={selectedRows}
                         zebraStripes={zebraStripes}
                         cellStyle={cellStyle}
+                        pinnedColumnSet={pinnedColumnSet}
                         resultColumns={result.columns}
                         columnIndexByName={columnIndexByName}
                         columnInfoByName={columnInfoByName}
