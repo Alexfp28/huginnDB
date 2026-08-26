@@ -198,19 +198,31 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       launch = await api.getLaunchState();
     } catch (e) {
       console.error("[environments] failed to read launch state", e);
+      // `switchTo` deliberately leaves the outgoing environment's view
+      // filters in place through its own teardown (see its comment) and
+      // relies on `applyLaunchView` below to replace them. This is the one
+      // path that never reaches it, so it's the one place that has to clear
+      // them itself — otherwise the outgoing filter would stay pointed at an
+      // environment that isn't active anymore.
+      clearLaunchView();
       return;
     }
 
     // The three view filters are restored *before* the `reconnectOnLaunch` gate
     // below, unlike everything else here. They describe how this environment
     // looks, not what it reopens: nothing about them depends on a pool being
-    // live, `persistLaunchState` writes them regardless of the preference, and
-    // `switchTo` clears them on the way out — so leaving them behind the gate
-    // meant that with reconnect off, entering an environment showed the
-    // *previous* one's filters (or none at all after a restart), which is the
-    // leak this whole per-environment scoping exists to close. Restoring them
-    // before the tree renders the reconnected connections (rather than after) is
-    // `applyLaunchView`'s own invariant, documented there.
+    // live, and `persistLaunchState` writes them regardless of the preference —
+    // so leaving them behind the gate meant that with reconnect off, entering
+    // an environment showed the *previous* one's filters (or none at all after
+    // a restart), which is the leak this whole per-environment scoping exists
+    // to close. This unconditional call is also what lets `switchTo` leave the
+    // outgoing environment's filter in place through its own teardown instead
+    // of clearing it pre-emptively (see its comment): whatever's still applied
+    // when we get here is replaced by the real thing regardless of
+    // `reconnectOnLaunch`, so there's no window left where it could leak into
+    // the environment being entered. Restoring them before the tree renders
+    // the reconnected connections (rather than after) is `applyLaunchView`'s
+    // own invariant, documented there.
     applyLaunchView(launch);
 
     // Everything from here down brings pools back up, and the layout
@@ -322,15 +334,20 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       //    first removes the race instead of papering over its result.
       useUi.getState().setSelectedConnectionId(null);
       useTabs.getState().replaceAll([], null);
-      // Clear the three view filters here, not in `restoreSession`: with
-      // `reconnectOnLaunch` off that function returns before it reads anything,
-      // and the outgoing environment's filters would carry over into the
-      // incoming one — the leak the move to per-environment state fixes. A
-      // subset chosen for a test server inside "Producción" would otherwise
-      // still be filtering that same connection's tree after switching back to
-      // "Pruebas". `restoreSession` fills them back in from the incoming
-      // environment.
-      clearLaunchView();
+      // Deliberately do NOT clear the three view filters here. They stay
+      // pointed at the outgoing environment for the whole teardown below —
+      // that's still a valid filter for what `ConnectionsTree`/`WorkspacePicker`
+      // should show while that same environment's connections close one by
+      // one, so leaving it in place is what keeps the tree looking like "this
+      // environment's list, shrinking" instead of "every saved connection from
+      // every environment" for however long a slow SSH tunnel takes to close.
+      // `restoreSession` (step 6) applies the incoming environment's real
+      // filter unconditionally, before its own `reconnectOnLaunch` gate — see
+      // its comment — so there's no window left where the outgoing filter
+      // could leak into the incoming environment on the happy path. The one
+      // path where `restoreSession` never gets that far (its `getLaunchState`
+      // call failing) clears to empty itself, right there, instead of
+      // pre-emptively here.
 
       // Emptying the tab store above wakes the per-connection subscriptions,
       // but `suspendSaves()` already turned `scheduleSave` into a no-op, so

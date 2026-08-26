@@ -45,11 +45,14 @@ interface UiState {
    * DataGrip-style subset of saved connections to show in the connections
    * tree. `null` means "show all". Persisted per environment via
    * `LaunchState.visibleConnections` — restored on launch/switch by
-   * `useEnvironments.restoreSession`, cleared on the way out by `switchTo` —
-   * rather than in `usePreferences`, which is global: a filter tuned for one
-   * environment (e.g. "Pruebas") must not stay active after switching to
-   * another (e.g. "Predeterminado"), which is exactly what living in global
-   * prefs used to cause.
+   * `useEnvironments.restoreSession`, which is also what replaces the
+   * outgoing environment's filter with the incoming one on a `switchTo` (see
+   * its comment for why that filter is deliberately left in place, not
+   * cleared, through the switch's own teardown) — rather than in
+   * `usePreferences`, which is global: a filter tuned for one environment
+   * (e.g. "Pruebas") must not stay active after switching to another (e.g.
+   * "Predeterminado"), which is exactly what living in global prefs used to
+   * cause.
    */
   visibleConnections: string[] | null;
   setVisibleConnections: (ids: string[] | null) => void;
@@ -188,10 +191,15 @@ export function applyLaunchView(view: Partial<LaunchView> | null | undefined): v
 /**
  * Reset the filters to "nothing folded, everything shown, no overrides".
  *
- * Called on the way *out* of an environment rather than on the way in, because
- * `restoreSession` returns early when `reconnectOnLaunch` is off — leaving the
- * clear to the incoming side would carry the outgoing environment's filters
- * across the switch.
+ * NOT called on `switchTo`'s way out of an environment — that used to be this
+ * function's only caller, but it left `visibleConnections` at "show every
+ * saved connection from every environment" for the whole (potentially
+ * multi-second, SSH-tunnel-bound) teardown that follows, which is worse than
+ * just leaving the outgoing environment's own filter in place for that
+ * window. See `environments.ts`'s `switchTo` for the full reasoning. The one
+ * remaining caller is `restoreSession`'s `getLaunchState` failure path: the
+ * only case where nothing ever supplies a real filter to replace the
+ * outgoing one with.
  */
 export function clearLaunchView(): void {
   applyLaunchView(null);
