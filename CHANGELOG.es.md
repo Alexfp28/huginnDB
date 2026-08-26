@@ -136,6 +136,79 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **El filtro del panel Esquema busca en todas las conexiones abiertas a la vez,
+  y dice dónde está mirando.** Había una única caja de filtro que en silencio
+  solo se aplicaba a la conexión que estuviera *seleccionada* — a las demás se
+  les pasaba una aguja vacía y se quedaban sin filtrar. La única señal de
+  «seleccionada» es una línea de 2 px en la fila, y la selección se mueve sola
+  cuando abres una pestaña o eliges una tabla desde la paleta de comandos. Así
+  que con dos conexiones abiertas escribías, un subárbol se filtraba, el otro
+  no, y nada lo explicaba. Lo reportaron varios usuarios.
+
+  Ahora se busca en todas las conexiones vivas. Cada fila de conexión lleva su
+  propio contador de coincidencias; la que no tiene nada que enseñar se pliega a
+  una sola línea atenuada en vez de mostrar su árbol entero, y nunca se oculta —
+  esa fila es justo lo que necesitas para conectarla o para acotar la búsqueda a
+  ella. El pliegue que provoca una búsqueda es visual y temporal: no se escribe
+  en los pliegues recordados del entorno, así que una búsqueda ya no puede
+  dejarte conexiones plegadas que tú nunca plegaste. El filtro también se limpia
+  al cambiar de entorno, cosa que antes no pasaba.
+
+  **Acotar sigue siendo posible, solo que ahora se ve.** «Buscar solo aquí»
+  sobre una conexión o una base de datos (su menú contextual, o el botón que
+  aparece en la fila de conexión mientras buscas) pone un chip bajo la caja con
+  el nombre de aquello a lo que has acotado. Se sale con la ✕ del chip, con
+  Retroceso en una caja vacía o con Escape. Esto sustituye a un segundo ámbito
+  invisible: desplegar una base de datos restringía la búsqueda a ella *y*
+  colapsaba las demás, sin decirlo.
+
+- **Escribir en ese filtro ya no abre conexiones a la base de datos.** Cada
+  pulsación (con retardo) abría un pool de conexión por cada base que aún no
+  hubiera leído — acotado a tres a la vez desde la 1.13.0, lo que lo hacía
+  soportable, no correcto. Ahora la búsqueda mira lo que ya está cargado, y
+  llegar más lejos es un botón que dice cuántas bases va a cargar. En un
+  servidor que compartes con tu aplicación o con tu IDE, esa es la diferencia
+  entre una búsqueda y una pequeña ráfaga de conexiones.
+
+- **Un `0` junto a una conexión significa ya que la búsqueda no encontró nada
+  ahí de verdad.** El árbol distingue «aún cargando», «nunca leído» (`—`, o
+  `N+` cuando se ha leído parte del servidor), «fuera del ámbito actual» y un
+  cero real. Un cero provisional es lo que hace que abandones una búsqueda que
+  habría funcionado.
+
+- **El panel Esquema vuelve a tener título, y dos líneas de aviso menos.** Sus
+  dos acciones de árbol («Desconectar todas», «Conexiones a mostrar») eran
+  botones con etiqueta que se truncaban a muñones ilegibles en los anchos a los
+  que se suele arrastrar este panel; ahora son iconos con tooltip en la
+  cabecera nueva, y la línea «mostrando N de M conexiones» se pliega en una
+  marca sobre el icono que la cambia.
+
+- **Tres atajos nuevos, en Ajustes → Atajos.** `Mod+Mayús+F` abre el panel
+  Esquema si está plegado y enfoca el filtro; `Escape` dentro del panel limpia
+  la búsqueda por capas (texto, luego ámbito, luego foco); y «Buscar solo en la
+  conexión seleccionada» sale sin asignar, pero es asignable y se puede
+  encontrar desde la paleta de comandos.
+
+- **Desconectar una conexión avisa de que está trabajando, y «desconectar»
+  tiene un solo icono en todas partes.** La ✕ de una fila de conexión (y la de
+  la lista de la barra de estado) estaba mal por partida doble: una ✕ en una
+  fila se lee como «quitar esta conexión», que es una acción distinta y mucho
+  peor que cerrar su pool, y encima no daba ninguna señal mientras un cierre
+  que puede tardar segundos estaba en curso. Las dos muestran ahora la misma
+  marca de enchufe que lleva el botón «Desconectar todas», con un spinner
+  mientras trabajan. El menú contextual y la paleta de comandos usaban un
+  tercer icono para el mismo comando; se han igualado.
+
+- **«Desconectar todas» ya no te hace esperar.** Cerraba las conexiones una
+  detrás de otra, y una sola desconexión ya son varias idas y vueltas: el
+  backend cierra por turnos cada pool por base de datos del servidor, esperando
+  hasta cinco segundos en cada uno que haya dejado de responder. Así que un
+  servidor inalcanzable obligaba a todos los sanos que iban detrás a aguantar
+  su tiempo de espera primero. Ahora se cierran a la vez, y el botón enseña que
+  está trabajando. El mismo comando desde el atajo de teclado o la paleta era
+  una implementación aparte, más rápida, que dejaba el árbol obsoleto y sus
+  pestañas apuntando a pools cerrados; los dos caminos son ya el mismo.
+
 - **Borrar conexiones se confirma dentro de la app y dice qué se lleva por
   delante.** Antes había dos confirmaciones distintas: un `window.confirm` del
   sistema para una conexión y un diálogo propio para una multiselección, y
@@ -166,6 +239,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   cortaban a mitad de palabra.
 
 ### Corregido
+
+- **Una conexión multibase con un subconjunto de «bases de datos a mostrar»
+  podía enseñar un árbol vacío al buscar, sin explicación.** La comprobación de
+  «¿seguimos cargando bases?» recorría todas las bases del servidor mientras el
+  bucle que las cargaba de verdad aplicaba el subconjunto — así que con un
+  subconjunto activo no terminaba nunca, y la línea «ninguna tabla coincide con
+  el filtro» no podía aparecer.
+
+- **Las bases de datos cargadas al buscar se vuelven a recordar.** La precarga
+  del propio filtro las abría por la vía sin seguimiento, así que una pestaña
+  abierta contra una base a la que habías llegado buscando (en vez de
+  desplegándola) no se restauraba nunca: ni al reconectar, ni al cambiar de
+  entorno, ni al reiniciar.
+
+- **El árbol ya no filtra su contenido con una aguja distinta de la que decidió
+  qué mostrar.** Cada explorador multibase aplicaba su propio retardo mientras
+  al subárbol interior se le pasaba la aguja cruda, sin retardo, así que durante
+  un cuarto de segundo después de cada pulsación las dos no coincidían.
 
 - **Ctrl+V ahora funciona en celdas `BIT` de la cuadrícula de datos.** Antes
   era un no-op deliberado (issue #79): el texto pegado se enrutaba a
