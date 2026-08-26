@@ -102,7 +102,11 @@ pub async fn execute(
         } => serde_json::to_value(
             crate::error::with_timeout(
                 "list_indexes",
-                crate::commands::schema::list_indexes_inner(
+                // The detailed reader: this request is reached only by the MCP
+                // connector's `list_indexes` tool (the explorer calls the Tauri
+                // command directly), and a client that may *write* an index has
+                // to be able to read one back losslessly.
+                crate::commands::schema::list_indexes_detailed_inner(
                     state,
                     connection_id,
                     schema.clone(),
@@ -306,6 +310,40 @@ pub async fn execute(
             // A genuine success carrying no payload; `OkWrapper` is what keeps
             // this distinguishable from "empty reply" on the wire
             // (`PROTOCOL_VERSION: 2`).
+            Value::Null
+        }
+        CreateMongoIndex {
+            connection_id,
+            collection,
+            spec,
+            ..
+        } => {
+            crate::commands::mongo_indexes::create_mongo_index_inner(
+                sink,
+                state,
+                &crate::commands::mongo_indexes::CreateIndexArgs {
+                    connection_id: connection_id.clone(),
+                    collection: collection.clone(),
+                    spec: spec.clone(),
+                },
+            )
+            .await?;
+            Value::Null
+        }
+        DropMongoIndex {
+            connection_id,
+            collection,
+            name,
+            ..
+        } => {
+            crate::commands::mongo_indexes::drop_mongo_index_inner(
+                sink,
+                state,
+                connection_id,
+                collection,
+                name,
+            )
+            .await?;
             Value::Null
         }
     };

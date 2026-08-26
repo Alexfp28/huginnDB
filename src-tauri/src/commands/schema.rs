@@ -76,6 +76,27 @@ pub struct IndexInfo {
     pub unique: bool,
 }
 
+/// An [`IndexInfo`] plus, on MongoDB, the full index definition.
+///
+/// The MCP connector's read shape, and the reason it is not simply
+/// [`IndexInfo`]: that DTO carries a *field list*, so an AI client asked to
+/// recreate `{createdAt: -1}` reads back `["createdAt"]` and rebuilds it
+/// **ascending** — invisible in testing, permanent in the data. The same
+/// argument that made `db/mongo/indexes.rs` a second index reader alongside
+/// `db/mongo/schema.rs` applies to any caller that might write what it read.
+///
+/// Follows 1.18.0's `describe_table` + `view` shape: the same array, each entry
+/// gaining an object only where there is something to add. The explorer keeps
+/// calling [`list_indexes_inner`], so the `$collStats` / `$indexStats` cost of
+/// the rich reader is paid only here.
+#[derive(Debug, Serialize)]
+pub struct IndexDetail {
+    #[serde(flatten)]
+    pub base: IndexInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mongo: Option<crate::db::mongo::indexes::MongoIndexInfo>,
+}
+
 /// One server-side user/role, as surfaced by the "Security" panel.
 ///
 /// Field meaning is necessarily driver-specific:
@@ -428,6 +449,40 @@ pub async fn list_indexes_inner(
             crate::db::mssql::schema::list_indexes(&p, schema.as_deref(), &table).await
         }
     }
+}
+
+/// [`list_indexes_inner`] widened with MongoDB's full index definitions.
+///
+/// On MongoDB it reads the *rich* catalogue once and derives the SQL-shaped
+/// triple from it, rather than calling both readers — the field list is a
+/// projection of the key document, so a second round trip could only disagree
+/// with the first. Every other driver passes straight through, so the two
+/// readers `db/mongo/indexes.rs` deliberately keeps apart stay apart.
+pub async fn list_indexes_detailed_inner(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<Vec<IndexDetail>> {
+    if let DbPool::Mongo(conn) = state.pool_for(connection_id)? {
+        let rich = crate::db::mongo::indexes::list_indexes(&conn, &table).await?;
+        return Ok(rich
+            .into_iter()
+            .map(|m| IndexDetail {
+                base: IndexInfo {
+                    name: m.name.clone(),
+                    columns: m.keys.iter().map(|k| k.field.clone()).collect(),
+                    unique: m.unique,
+                },
+                mongo: Some(m),
+            })
+            .collect());
+    }
+    Ok(list_indexes_inner(state, connection_id, schema, table)
+        .await?
+        .into_iter()
+        .map(|base| IndexDetail { base, mongo: None })
+        .collect())
 }
 
 /// Drop a table. `schema` is optional — when omitted the driver applies

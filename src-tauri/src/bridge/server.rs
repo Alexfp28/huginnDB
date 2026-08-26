@@ -330,7 +330,9 @@ fn connection_id_of(request: &BridgeRequest) -> String {
         | GetViewDefinition { connection_id, .. }
         | PreviewViewChange { connection_id, .. }
         | ApplyViewChange { connection_id, .. }
-        | DropView { connection_id, .. } => connection_id.clone(),
+        | DropView { connection_id, .. }
+        | CreateMongoIndex { connection_id, .. }
+        | DropMongoIndex { connection_id, .. } => connection_id.clone(),
     }
 }
 
@@ -352,7 +354,9 @@ fn policy_id_of(request: &BridgeRequest) -> Option<&str> {
         | DeleteRows { policy_id, .. }
         | PreviewViewChange { policy_id, .. }
         | ApplyViewChange { policy_id, .. }
-        | DropView { policy_id, .. } => Some(policy_id),
+        | DropView { policy_id, .. }
+        | CreateMongoIndex { policy_id, .. }
+        | DropMongoIndex { policy_id, .. } => Some(policy_id),
         _ => None,
     }
 }
@@ -365,7 +369,14 @@ fn policy_id_of(request: &BridgeRequest) -> Option<&str> {
 /// compile error.
 fn class_of(request: &BridgeRequest) -> Option<StmtClass> {
     match request {
-        BridgeRequest::RunStatement { sql, .. } => Some(crate::db::sql::classify(sql)),
+        // Driver-aware on purpose: the SQL keyword heuristic alone reports
+        // every mongosh statement as `DataWrite`, which refused a `read-only`
+        // MongoDB connection its own reads and, once the grammar grew DDL,
+        // would have let a `data` one drop a collection. One classifier, shared
+        // with the sidecar's own check — see `crate::db::classify`.
+        BridgeRequest::RunStatement { sql, .. } => {
+            Some(crate::db::classify::classify_statement(sql))
+        }
         BridgeRequest::FetchTableData { .. } => Some(StmtClass::Read),
         BridgeRequest::InsertRow { .. }
         | BridgeRequest::UpdateCell { .. }
@@ -378,6 +389,14 @@ fn class_of(request: &BridgeRequest) -> Option<StmtClass> {
         // `run_query`. Anything lower would let a `data` connection reach
         // through these requests what `run_query` refuses it.
         BridgeRequest::ApplyViewChange { .. } | BridgeRequest::DropView { .. } => {
+            Some(StmtClass::Ddl)
+        }
+        // An index is schema. `db.c.createIndex(…)` through `run_query` is
+        // `Ddl` (see `MongoOp::class`), so anything lower here would hand a
+        // `data` connection through a tool exactly what the statement path
+        // denies it — the privilege escalation the view tools' tier argument
+        // was forced by.
+        BridgeRequest::CreateMongoIndex { .. } | BridgeRequest::DropMongoIndex { .. } => {
             Some(StmtClass::Ddl)
         }
         _ => None,
@@ -642,5 +661,81 @@ mod tests {
             );
         }
         assert!(McpWritePolicy::Full.allows(StmtClass::Ddl));
+    }
+
+    /// The app-side half of the escalation guard. `class_of` used to derive a
+    /// `RunStatement`'s tier with the SQL-only classifier, which reports *every*
+    /// mongosh statement as `DataWrite` — so `db.c.drop()` would have passed a
+    /// `data` connection's re-check even after the sidecar tiered it correctly.
+    #[test]
+    fn class_of_reads_mongo_statements_with_the_mongo_classifier() {
+        let run = |sql: &str| {
+            class_of(&BridgeRequest::RunStatement {
+                connection_id: "c".into(),
+                policy_id: "p".into(),
+                sql: sql.into(),
+            })
+        };
+        assert_eq!(run("db.users.find({})"), Some(StmtClass::Read));
+        assert_eq!(
+            run("db.users.insertOne({a: 1})"),
+            Some(StmtClass::DataWrite)
+        );
+        assert_eq!(run("db.users.drop()"), Some(StmtClass::Ddl));
+        assert_eq!(run("db.users.createIndex({a: 1})"), Some(StmtClass::Ddl));
+        assert_eq!(
+            run("db.users.renameCollection(\"clients\")"),
+            Some(StmtClass::Ddl)
+        );
+        // SQL is untouched.
+        assert_eq!(run("SELECT 1"), Some(StmtClass::Read));
+        assert_eq!(run("DROP TABLE t"), Some(StmtClass::Ddl));
+    }
+
+    /// The two index variants must be `Ddl` and must be policy-checked at all —
+    /// both of those live in `_ => None` matches, so neither is a compile error.
+    #[test]
+    fn index_management_is_policy_checked_ddl() {
+        let create = BridgeRequest::CreateMongoIndex {
+            connection_id: "c".into(),
+            policy_id: "p".into(),
+            collection: "users".into(),
+            spec: crate::db::mongo::indexes::NewMongoIndexSpec {
+                keys: "{a: 1}".into(),
+                name: None,
+                unique: false,
+                sparse: false,
+                hidden: false,
+                expire_after_seconds: None,
+                partial_filter_expression: None,
+                collation: None,
+                weights: None,
+                default_language: None,
+                extra_options: None,
+            },
+        };
+        let drop = BridgeRequest::DropMongoIndex {
+            connection_id: "c".into(),
+            policy_id: "p".into(),
+            collection: "users".into(),
+            name: "a_1".into(),
+        };
+        for request in [&create, &drop] {
+            assert_eq!(
+                class_of(request),
+                Some(StmtClass::Ddl),
+                "{} must be Ddl, or a `data` connection reaches it",
+                request.label()
+            );
+            assert_eq!(
+                policy_id_of(request),
+                Some("p"),
+                "{} must be policy-checked",
+                request.label()
+            );
+            assert!(request.is_mutating(), "{}", request.label());
+        }
+        // Distinct Console labels, like preview-vs-apply.
+        assert_ne!(create.label(), drop.label());
     }
 }

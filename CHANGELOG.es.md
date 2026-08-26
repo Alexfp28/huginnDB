@@ -10,6 +10,57 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **DDL de índices y colecciones de MongoDB, alcanzable desde el editor de
+  consultas y por MCP.** El aviso que originó esto venía del cliente de IA de
+  un compañero, y era correcto: el conector no tenía forma de crear un índice,
+  eliminarlo, eliminar una colección ni renombrarla — «ni por `run_query` ni
+  como herramienta aparte». `drop_view` rechaza una colección a propósito (en
+  MongoDB una vista y una colección comparten un mismo *namespace*, y un nombre
+  mal escrito no debe borrar documentos), así que tampoco había vía indirecta.
+
+  **El hueco estaba en la gramática, no en el conector.** La lista de
+  operaciones aceptadas es `build_op` en `db/mongo/shell.rs` — el parser que usa
+  el *editor de consultas de escritorio* — así que el editor tampoco podía crear
+  un índice. Ampliarla arregló las dos superficies de una vez:
+  `db.coll.createIndex({createdAt: -1})`, `dropIndex("nombre")`,
+  `hideIndex`/`unhideIndex`, `drop()` y `renameCollection("clientes")` ya se
+  parsean y ejecutan. Cada operación delega en el código que ya tenía sus
+  guardas en lugar de emitir su propio run-command, así que el rechazo de
+  `_id_`, el nombre por defecto de `createIndexes` y el `dropTarget: false`
+  siguen aplicando — y `dropTarget: true` lo rechaza el parser, porque de otro
+  modo la gramática sería la única vía para que un renombrado borrara en
+  silencio lo que ocupara el nombre destino.
+
+  `renameCollection` es solo dentro de la misma base de datos, igual que lo que
+  acepta `mongosh`. El movimiento entre bases se queda en el diálogo Renombrar
+  del explorador: un `"otraBd.coll"` cualificado parece la forma obvia, pero un
+  nombre de colección puede contener puntos legítimamente (`system.views`,
+  `logs.2024`), así que esa lectura convertiría un renombrado válido en un
+  movimiento silencioso.
+
+  **Dos herramientas MCP, solo para MongoDB: `create_index` y `drop_index`.**
+  Ambas en el nivel `full`, y eso fue forzado más que elegido — `createIndex`
+  por `run_query` se clasifica como DDL, así que una herramienta en `data`
+  habría devuelto justo lo que la vía de sentencias niega. No hay nada para los
+  drivers SQL a propósito: allí un índice se crea con `CREATE INDEX`, que
+  `run_query` ya alcanza en `full` y que es estrictamente más expresivo que
+  cualquier conjunto fijo de campos (`USING gin`, `INCLUDE`, un predicado
+  parcial). Y nada para reemplazar un índice, porque MongoDB no puede alterarlo
+  en sitio: es un borrado más una creación, y dos llamadas mantienen visible la
+  ventana en la que el índice no existe.
+
+  **`list_indexes` tuvo que crecer con ellas.** Por MCP devolvía la forma SQL
+  `{name, columns, unique}`, así que un modelo que leyera `["createdAt"]` y lo
+  reescribiera recrearía el índice *ascendente* — invisible en pruebas,
+  permanente en los datos. Su rama del bridge ahora responde desde el lector
+  rico en MongoDB y cada entrada lleva un objeto `mongo` con la definición real:
+  dirección y tipo de cada clave, `sparse`, TTL, filtro parcial, colación,
+  pesos, tamaño y uso. El explorador sigue usando el lector con pérdida, así que
+  las llamadas extra a `$collStats`/`$indexStats` solo se pagan en la vía MCP.
+
+  Las escrituras de índices ahora emiten entrada en la Consola, algo que nunca
+  hicieron — el mismo *seam* de `LogSink` que las lleva a `mcp-audit.log`.
+
 - **Ajustes → MCP es ahora un árbol, con botones de política en lote.** Recibe el
   mismo filtro Todas / Locales / Compartidas y las mismas secciones plegables por
   origen que el gestor de conexiones, más las carpetas de grupo, así que un
@@ -84,6 +135,36 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   cortaban a mitad de palabra.
 
 ### Corregido
+
+- **Una conexión de MongoDB en `read-only` no podía leerse por MCP mientras la
+  app de escritorio compartía sus pools.** `run_query` decidía qué clasificador
+  usar buscando la conexión en el mapa de pools *del propio conector* — y ese
+  mapa está vacío por diseño cuando la app es la dueña del pool (compartir
+  pools, 1.13.0). Así que toda sentencia de MongoDB pasada por el bridge caía en
+  la heurística de palabras clave SQL, donde `db.users.find({})` no coincide con
+  `select`/`with`/`show`/`explain`/`pragma` y por tanto volvía como escritura.
+  Un `find` normal se rechazaba en `read-only` y solo funcionaba desde `data`
+  hacia arriba. La re-comprobación independiente de la app coincidía, por el
+  mismo motivo equivocado.
+
+  Ahora ambas llaman a un único clasificador,
+  `db::classify::classify_statement`, que elige la gramática a partir del
+  *texto* de la sentencia — el único dato que ambos puntos de control tienen
+  siempre, y lo bastante puro para probarse sin servidor. Mientras la gramática
+  mongosh no tenía DDL esto era solo excesivamente estricto; se habría
+  convertido en una escalada de privilegios en cuanto existiera
+  `db.coll.drop()`, porque ambos lados lo habrían dejado en `data`. Hay tests
+  que fijan el nivel de cada operación en las dos capas.
+
+- **`updateMany({})` y `deleteMany({})` por MCP se rechazan, igual que sus
+  equivalentes SQL.** La guarda de relación entera exceptuaba a MongoDB, así que
+  una conexión en `data` podía vaciar una colección en una llamada mientras
+  `DELETE FROM users` se rechazaba en todos los niveles — mismo alcance,
+  respuestas opuestas. La forma de optar por ello es la de SQL con `WHERE 1=1`:
+  un predicado trivialmente cierto, p. ej.
+  `deleteMany({_id: {$exists: true}})`. `drop()` queda fuera, a propósito: su
+  alcance no es ambiguo y ya está detrás de `full`, exactamente como
+  `DROP TABLE`.
 
 - **La política de escritura MCP de una conexión compartida ya no se revierte en
   la siguiente sincronización.** La política es una decisión local sobre lo que un
