@@ -82,6 +82,7 @@ import { DriverBadge } from "@/components/common/DriverBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -647,34 +648,52 @@ export function ConnectionsTree() {
     // could not fire from the box it clears.
     <div className="flex h-full flex-col" data-kb-scope="tree">
       <div className="shrink-0 px-2 pb-1 pt-2">
-        {/* Tree-wide actions, above the filter box: bulk-disconnect on the
-            left, the visibility picker (which acts on the whole tree, not
-            one row, so it can't live in a per-connection context menu) on
-            the right. */}
-        <div className="mb-1.5 flex items-center justify-between gap-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={active.size === 0}
-            onClick={() => void handleDisconnectAll()}
-            title={t("menu.file.disconnectAll")}
-            className="h-6 min-w-0 gap-1 px-2 text-[11px]"
+        {/* The panel had no title and three stacked notice lines over a 28px
+            input. The title comes back as a header row and the two tree-wide
+            actions move into it as icons: they were labelled buttons that
+            truncated to unreadable stumps at the widths this panel is actually
+            dragged to, and the labels are now their tooltips. That pays for the
+            vertical space the scope chip and the search summary need. */}
+        <div className="mb-1.5 flex items-center gap-1">
+          <span className="flex-1 truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("panels.schema")}
+          </span>
+          <SimpleTooltip label={t("menu.file.disconnectAll")}>
+            <button
+              type="button"
+              disabled={active.size === 0}
+              onClick={() => void handleDisconnectAll()}
+              aria-label={t("menu.file.disconnectAll")}
+              className="shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <PlugZap className="h-3.5 w-3.5" />
+            </button>
+          </SimpleTooltip>
+          {/* The "N of M connections" line folds into a brand dot on the icon
+              that describes it — the subset is still announced, on the control
+              that changes it, and its count is in the tooltip. */}
+          <SimpleTooltip
+            label={
+              visibleSet
+                ? `${t("connectionsTree.selectConnections.action")} — ${t(
+                    "connectionsTree.selectConnections.subsetActive",
+                    { count: visibleSet.size, total: profiles.length },
+                  )}`
+                : t("connectionsTree.selectConnections.action")
+            }
           >
-            <PlugZap className="h-3 w-3 shrink-0" />
-            <span className="truncate">{t("menu.file.disconnectAll")}</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setVisibilityPickerOpen(true)}
-            title={t("connectionsTree.selectConnections.action")}
-            className="h-6 min-w-0 gap-1 px-2 text-[11px]"
-          >
-            <ListFilter className="h-3 w-3 shrink-0" />
-            <span className="truncate">{t("connectionsTree.selectConnections.action")}</span>
-          </Button>
+            <button
+              type="button"
+              onClick={() => setVisibilityPickerOpen(true)}
+              aria-label={t("connectionsTree.selectConnections.action")}
+              className="relative shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+            >
+              <ListFilter className={cn("h-3.5 w-3.5", visibleSet && "text-brand")} />
+              {visibleSet && (
+                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-brand ring-2 ring-background" />
+              )}
+            </button>
+          </SimpleTooltip>
         </div>
         <TreeFilterBox
           ref={filterInputRef}
@@ -722,14 +741,6 @@ export function ConnectionsTree() {
           placeholder={t("schema.filterPlaceholder")}
           clearLabel={t("connectionsTree.filter.clear")}
         />
-        {visibleSet && (
-          <div className="mt-1 text-[11px] text-muted-foreground">
-            {t("connectionsTree.selectConnections.subsetActive", {
-              count: visibleSet.size,
-              total: profiles.length,
-            })}
-          </div>
-        )}
         {/* The count is the only signal that the search reached a connection
             other than the one being looked at, so it is announced. */}
         {filtering && (
