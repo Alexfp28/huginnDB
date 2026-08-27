@@ -67,7 +67,8 @@ import {
 import { api } from "@/lib/tauri";
 import { DeleteConnectionsDialog } from "@/components/connection/dialogs/DeleteConnectionsDialog";
 import { isFromOrigin } from "@/lib/connection/origin";
-import { useOriginName } from "@/stores/sync/origins";
+import { useOriginEditor } from "@/stores/dialogs/originEditor";
+import { useOriginName, useOrigins } from "@/stores/sync/origins";
 import type {
   ConnectionProfile,
   Driver,
@@ -236,6 +237,19 @@ export function ConnectionDialog({
    *  been unregistered — the profile stays read-only (the tag is what gates
    *  that), so the banner falls back to the unnamed copy rather than lying. */
   const originName = useOriginName(stored?.origin_id);
+  /**
+   * Whether this machine publishes the origin behind this profile — in which
+   * case the read-only banner can offer the way *out* of it instead of just
+   * explaining the dead end. Read from the registry rather than from the
+   * profile, because the role is a property of this machine's registration and
+   * not of anything the file says.
+   */
+  const originIsPublished = useOrigins((s) =>
+    stored?.origin_id
+      ? s.byId[stored.origin_id]?.role === "publisher"
+      : false,
+  );
+  const openOriginEditor = useOriginEditor((state) => state.open);
 
   function buildProfile(): ConnectionProfile {
     // Start from the stored profile so fields this form doesn't edit survive a
@@ -573,6 +587,17 @@ export function ConnectionDialog({
                           origin: originName,
                         })
                       : t("connectionDialog.fromOrigin")}
+                    {/* Only for an origin this machine publishes: pointing a
+                        consumer at an editor that will open read-only is worse
+                        than saying nothing. */}
+                    {originIsPublished && stored?.origin_id && (
+                      <button
+                        className="ml-1 underline"
+                        onClick={() => openOriginEditor(stored.origin_id!)}
+                      >
+                        {t("connectionDialog.editAtOrigin")}
+                      </button>
+                    )}
                   </div>
                 )}
                 <TabsContent value="general" className="pt-3">

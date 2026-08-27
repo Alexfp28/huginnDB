@@ -39,7 +39,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ImportProgressBar } from "./ImportProgressBar";
+import { ProgressBar } from "@/components/common/ProgressBar";
 import { ConflictResolutionStep } from "./ConflictResolutionStep";
 import { useImportWizard } from "@/lib/transfer/useImportWizard";
 import type {
@@ -97,7 +97,16 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
           </DialogTitle>
         </DialogHeader>
 
-        {progress && <ImportProgressBar done={progress.done} total={progress.total} />}
+        {progress && (
+          <ProgressBar
+            done={progress.done}
+            total={progress.total}
+            label={t("transfer.import.progress", {
+              done: progress.done,
+              total: progress.total,
+            })}
+          />
+        )}
 
         {/* Step: pick */}
         {step === "pick" && (

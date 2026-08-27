@@ -205,13 +205,21 @@ entornos tiene un interruptor opcional. Los esquemas son globales, no propiedad 
 entorno, así que esto empaqueta la biblioteca completa junto a él: cómodo para
 preparar una máquina nueva con un solo archivo.
 
-**Aún no a través de un origen compartido.** Un origen apuntado a una exportación
-de entorno sincroniza el entorno y sus conexiones de forma continua, pero ignora
-los esquemas que lleve ese mismo archivo: importarlo a mano sí los trae, una
-sincronización en segundo plano no. Así que un origen compartido todavía no sirve
-para mantener al día la biblioteca de esquemas de un equipo — para eso, exporta e
-importa el archivo. La sincronización continua de esquemas vía origen está
-planificada.
+**A través de un origen compartido (1.19.0).** Un origen apuntado a una
+exportación de entorno ya sincroniza los esquemas que lleve ese archivo junto con
+sus conexiones, así que un solo archivo sí mantiene al día la biblioteca de un
+equipo. Las reglas son las mismas que siguen las conexiones: una entrada se
+empareja por **id**, no por nombre, así que volver a sincronizar el mismo archivo
+cada pocas horas la actualiza en su sitio en vez de acumular `cfg (2)`,
+`cfg (3)`, …; solo se sobrescriben las entradas que el origen ya posee, de modo
+que un esquema que hayas escrito tú no se toca nunca, y uno cuyo nombre choque con
+el tuyo se aparta en lugar de renombrar el tuyo; y no se borra nada: una entrada
+que desaparezca del archivo se reporta, nunca se elimina, por la misma razón que
+una conexión desaparecida.
+
+Si eres quien publica, en Ajustes → Orígenes compartidos → «Editar el
+documento…» eliges qué esquemas y qué vínculos viajan; ver
+`docs/ENVIRONMENTS.es.md`.
 
 **Una advertencia, en ambos casos.** Un vínculo fijado a una *conexión* la
 referencia con un identificador local a la máquina que la creó. Al importarlo en

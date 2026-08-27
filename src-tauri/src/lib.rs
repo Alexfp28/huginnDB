@@ -31,6 +31,9 @@ mod log_bus;
 /// data-path functions the desktop commands share.
 #[cfg(feature = "mcp")]
 pub mod mcp;
+/// The document a shared origin publishes, as an editable draft. Pure model
+/// only — no disk, no keychain; the I/O lives in `commands::origin_doc`.
+mod origin_doc;
 mod pool_reaper;
 mod prefs;
 mod ssh_known_hosts;
@@ -374,6 +377,12 @@ pub fn run() {
             commands::origins::update_origin,
             commands::origins::remove_origin,
             commands::origins::sync_origin,
+            commands::origin_doc::probe_origin_writable,
+            commands::origin_doc::open_origin_document,
+            commands::origin_doc::list_publishable_environments,
+            commands::origin_doc::preview_origin_publish,
+            commands::origin_doc::create_origin_document,
+            commands::origin_doc::save_origin_document,
             commands::feedback::get_diagnostics,
             commands::feedback::set_github_pat,
             commands::feedback::has_github_pat,

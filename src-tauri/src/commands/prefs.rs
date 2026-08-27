@@ -361,7 +361,12 @@ pub fn reorder_environments(state: State<'_, AppState>, ids: Vec<String>) -> App
 /// sweeps all of these (gotcha #27), so in practice every id here resolves to
 /// a real profile — but the export still filters defensively rather than
 /// assuming that.
-fn referenced_profile_ids(env: &Environment) -> std::collections::HashSet<String> {
+/// `pub(crate)` for a second caller with the same question: the origin
+/// editor offers this machine's environments as bundles to copy into a
+/// document, and "which connections does this environment mean" has to be
+/// answered the same way the export answers it, or the two disagree about what
+/// an environment *is*.
+pub(crate) fn referenced_profile_ids(env: &Environment) -> std::collections::HashSet<String> {
     let mut ids: std::collections::HashSet<String> = env.connections.keys().cloned().collect();
     ids.extend(env.launch.active_connections.iter().cloned());
     if let Some(sel) = &env.launch.selected_connection_id {
@@ -703,6 +708,11 @@ pub async fn import_environment(
                         path: eo.path,
                         last_synced_at: None,
                         landed_secrets: Default::default(),
+                        // An imported origin is a consumer, like any other
+                        // freshly registered one: a file cannot hand this
+                        // machine permission to write to a share.
+                        role: Default::default(),
+                        maintainer: None,
                     });
                 }
 

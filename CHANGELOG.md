@@ -8,6 +8,95 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **An editor for the document a shared origin publishes.** A shared origin
+  (#108) was strictly pull-only: `sync_origin` read the file and never wrote it,
+  so publishing meant running "Export environments…", picking a destination in
+  the native dialog and dropping the JSON on the share. Updating it meant
+  repeating that export from whatever the publisher happened to have mounted at
+  that moment — or editing the JSON by hand.
+
+  That cost three things in practice. The publisher could only publish what was
+  configured on their own machine right then. Any small change — renaming an
+  environment, dropping one connection — meant a full re-export, which
+  **re-encrypts every secret in the file** (`encrypt_secret` draws a fresh salt
+  and nonce per call), invalidating the `landed_secrets` cache of every consumer
+  and handing them tens of millions of PBKDF2 rounds on their next sync. And
+  there was no way to see what a publish would do to the team before doing it —
+  including the case that matters most, below.
+
+  Settings → Shared origins → "Edit the document…" now opens a full-screen
+  editor for the file: which connections it publishes and how each one's
+  password travels, the environments and their membership, the JSON Schema slice
+  and its bindings, and the publication metadata. Each pane offers what this
+  machine already has as its left-hand side — the connection list, the schema
+  library, and (via `list_publishable_environments`) this machine's own
+  environments, resolved by the same `referenced_profile_ids` the export uses, so
+  building a file from scratch is copying rather than retyping. Importing an
+  environment brings the connections it references with it, since an environment
+  whose membership names ids the document does not carry is a filter over
+  nothing. A *mirrored* environment is excluded on purpose: its identity for a
+  consumer is the publisher's `origin_source_id`, not the local
+  `Environment::id` it would have to be published under, so copying one in would
+  mint a second bundle for an environment the document may already carry. It is a **document** editor,
+  not a view onto this machine: nothing in it reads from or writes to
+  `profiles.json`, `tab_state.json` or `json_schemas.json`, and saving changes
+  nothing locally. The file it builds is the same
+  `transfer::EnvironmentExportFile` the export command already writes — one
+  format, one constructor (`origin_doc::build_origin_file`), so the two can
+  never drift.
+
+  **A password that has not changed travels verbatim.** Every secret loaded from
+  the file starts as a "keep" slot and is copied byte for byte, which is what
+  makes renaming an environment cost the team exactly zero key derivations
+  instead of 600 000 per slot per connection. Rotating the passphrase is the one
+  operation that re-encrypts everything, and it is an explicit switch with the
+  cost priced next to it.
+
+  **The publish preview says what nobody else can.** It simulates a consumer's
+  next sync by running the real `merge_into` against the file it is about to
+  replace — added, genuinely changed, disappeared, plus the re-encryption bill
+  and what a brand-new machine receives. The row that justifies the whole
+  feature is the silent one: past `commands::origins`'s suspicion threshold a
+  consumer's sync decides the read is broken and clears its own `vanished` list,
+  so publishing a file missing half the roster used to leave every consumer with
+  phantom connections and **no notice whatsoever**. There was no surface in the
+  product where that was discoverable; now the confirmation dialog says it and
+  suggests splitting the change in two.
+
+- **Origins have a role, and it is one of three layers.** `Origin.role`
+  (`consumer` by default, `#[serde(default)]`) records the *intention* — every
+  origin registered before this, and every newly registered one, is a consumer,
+  so nobody gains write access to a shared file by installing an update.
+  Switching it is explicit, confirmed and reversible. The *authority* is the OS:
+  `probe_origin_writable` creates and deletes a real file next to the document
+  before the editor offers to save, because permission bits on a Windows share
+  describe the local mount rather than what the server will accept — a
+  read-only share opens the editor read-only rather than failing at the last
+  step. `meta.maintainer` / `meta.revision` inside the file are the third layer
+  and are *coordination only*: what actually stops two publishers clobbering
+  each other is the content hash the save compares.
+
+- **The registration itself is finally editable.** `update_origin` shipped in
+  1.18 with zero call sites: an origin could be registered and removed but never
+  renamed or repointed, so a moved share meant deleting the registration and
+  re-adopting every connection it had published. Settings → Shared origins now
+  has that form, with a file picker instead of a bare text field for the path,
+  and a "New document…" action that creates an empty file on the share and
+  registers it as one this machine publishes.
+
+- **A shared origin now syncs the JSON Schemas its file carries.**
+  `docs/JSON_SCHEMAS.md` said this was not wired up, and it was not — the
+  plumbing (`origin_id` on both types, the bundle inside
+  `EnvironmentExportFile`) existed but nothing read it on the pull. It does now,
+  under the rules the connections already follow rather than the one-shot
+  importer's: entries are matched by **id**, not by name, so a four-hourly poll
+  refreshes in place instead of accumulating `cfg (2)`, `cfg (3)`, …; only
+  entries the origin already owns are overwritten, so a schema you wrote is
+  never touched and a published name that collides with yours steps aside; a
+  binding naming a connection this machine does not have arrives **disabled**,
+  keeping its pin; and nothing is deleted — a disappearance is reported, like a
+  vanished connection's.
+
 - **MongoDB index and collection DDL, reachable from the query editor and over
   MCP.** The report that started this was from a colleague's AI client, and it
   was accurate: the connector had no way to create an index, drop one, drop a
@@ -216,6 +305,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   worth the added complexity for a transient state.
 
 ### Changed
+
+- **`state_file::write_atomic` is extracted, and every origin-document write
+  goes through it.** `save_atomic` only ever accepted a name relative to the
+  config directory — by design, since gotcha #26's canary isolation depends on
+  that being the only way in — so it could not express a path on a share. A
+  plain `fs::write` there is exactly the truncated read
+  `disappearance_is_trustworthy` exists to paper over: a publisher mid-save
+  looks identical to an admin who deleted half the roster. The document is
+  written to a temp file **in the destination's own directory** (a `rename` is
+  only atomic within one filesystem, and a share is a different volume),
+  `fsync`ed, then renamed, with the previous revision kept alongside as
+  `<name>.json.bak`. The one-shot export commands are unchanged: they write to a
+  destination the user just picked in a save dialog, which nobody else is
+  reading concurrently.
+
+- `ExportMetadata` gained optional `maintainer` / `revision` / `note`. All three
+  are `skip_serializing_if`, so a plain "Export profiles…" or "Export
+  environments…" file stays byte-identical to a pre-1.19 one — which is also
+  what lets the editor rebuild a file it did not write itself byte for byte.
+
+- **`ImportProgressBar` is now `common/ProgressBar`, with its caption as a
+  prop.** It had exactly the shape the origin publish needed — a determinate bar,
+  because the work is one 600 000-iteration PBKDF2 derivation per secret and a
+  spinner is not enough feedback for a dozen of them — and a third call site
+  outside `connection/` is precisely the criterion gotcha #28 sets for `common/`.
+  Publishing feeds it from its own `huginndb://origin-publish-progress` event
+  rather than reusing the import one: an event whose name says "import", emitted
+  by a publish, is a wire contract that lies, and a window doing both at once
+  could never tell them apart. Nothing is emitted when every envelope travels
+  verbatim, which is the common case and the instant one.
 
 - **The Schema panel's filter searches every open connection at once, and says
   where it is looking.** There was one filter box, and it silently applied only

@@ -52,6 +52,9 @@
 
 pub mod import;
 pub mod infer;
+/// Merging the slice a shared origin publishes — ownership by id, not a
+/// one-shot import by name. See the module doc for why the two cannot be one.
+pub mod origin;
 
 #[cfg(test)]
 mod import_tests;

@@ -207,7 +207,7 @@ describe("useImportWizard failure and reset", () => {
 // The dialog's own close affordances (X, Escape, outside click) are never
 // disabled during `loading` — nothing stops the user closing it while the
 // backend is still mid-PBKDF2 for the rest of the file. This is the one case
-// that needs a toast at all: while the dialog is open, `ImportProgressBar`
+// that needs a toast at all: while the dialog is open, `ProgressBar`
 // already covers it.
 describe("useImportWizard progress handoff", () => {
   it("raises nothing when the dialog closes with no import in flight", () => {
