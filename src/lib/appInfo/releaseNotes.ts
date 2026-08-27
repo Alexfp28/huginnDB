@@ -86,6 +86,43 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.19.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_19_0.tagline",
+    highlights: [
+      {
+        icon: Share2,
+        titleKey: "whatsNew.releases.1_19_0.items.sharedOriginEditor.title",
+        bodyKey: "whatsNew.releases.1_19_0.items.sharedOriginEditor.body",
+      },
+      {
+        icon: Keyboard,
+        titleKey: "whatsNew.releases.1_19_0.items.keyboardShortcuts.title",
+        bodyKey: "whatsNew.releases.1_19_0.items.keyboardShortcuts.body",
+      },
+      {
+        icon: Database,
+        titleKey: "whatsNew.releases.1_19_0.items.mongoIndexDdl.title",
+        bodyKey: "whatsNew.releases.1_19_0.items.mongoIndexDdl.body",
+      },
+      {
+        icon: Table2,
+        titleKey: "whatsNew.releases.1_19_0.items.pinnedColumns.title",
+        bodyKey: "whatsNew.releases.1_19_0.items.pinnedColumns.body",
+      },
+      {
+        icon: ListFilter,
+        titleKey: "whatsNew.releases.1_19_0.items.schemaSearch.title",
+        bodyKey: "whatsNew.releases.1_19_0.items.schemaSearch.body",
+      },
+      {
+        icon: FolderTree,
+        titleKey: "whatsNew.releases.1_19_0.items.connectionProvenance.title",
+        bodyKey: "whatsNew.releases.1_19_0.items.connectionProvenance.body",
+      },
+    ],
+  },
+  {
     version: "1.18.0",
     major: true,
     taglineKey: "whatsNew.releases.1_18_0.tagline",

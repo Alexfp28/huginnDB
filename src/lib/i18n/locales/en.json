@@ -1826,6 +1826,35 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_19_0": {
+        "tagline": "A full editor for what a shared origin publishes, the keyboard-shortcut system rebuilt from the ground up, and MongoDB gets index and collection management.",
+        "items": {
+          "sharedOriginEditor": {
+            "title": "A full editor for what a shared origin publishes",
+            "body": "Edit which connections a shared origin publishes and how their passwords travel, its environments, and its JSON Schema library — all from one screen, with a preview that shows exactly what every consumer's next sync will see before you publish."
+          },
+          "keyboardShortcuts": {
+            "title": "Keyboard shortcuts, rebuilt from the ground up",
+            "body": "Bind more than one key to an action, chain chord sequences like Mod+K then Mod+S, and see exactly where a shortcut can fire (grid, editor, tree, or everywhere). The catalogue grew from 8 actions to 25, and Settings → Shortcuts now searches by action or by key."
+          },
+          "mongoIndexDdl": {
+            "title": "MongoDB gets index and collection management",
+            "body": "Create, hide and drop indexes, and drop or rename collections, straight from the query editor — and an AI client can now do the same over MCP with two new tools, at the same write-policy tier as any other schema change."
+          },
+          "pinnedColumns": {
+            "title": "Pin columns to the left edge of the grid",
+            "body": "Excel-style column pinning in the data browser — click the pin icon in any header to keep it in view while you scroll through a wide result set. Persisted per table, like column widths."
+          },
+          "schemaSearch": {
+            "title": "The schema search now looks at every open connection",
+            "body": "The filter used to silently search only whichever connection was selected — reported by several users. It now searches every live connection at once, shows a match count per connection, and never opens new database pools just because you typed a letter."
+          },
+          "connectionProvenance": {
+            "title": "Connections show where they came from",
+            "body": "The connection manager and the MCP panel both split into Local and Shared-by-origin, with a read-only section per origin — and the MCP panel adds bulk write-policy buttons so you can set Read-only/Data/Full for a whole list at once."
+          }
+        }
+      },
       "1_18_0": {
         "tagline": "A notification system built for the app, full view management over the MCP connector, and a project-wide performance and reliability pass.",
         "items": {

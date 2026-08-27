@@ -1826,6 +1826,35 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_19_0": {
+        "tagline": "Un editor completo para lo que publica un origen compartido, el sistema de atajos de teclado reconstruido desde cero, y MongoDB con gestión de índices y colecciones.",
+        "items": {
+          "sharedOriginEditor": {
+            "title": "Un editor completo para lo que publica un origen compartido",
+            "body": "Edita qué conexiones publica un origen compartido y cómo viajan sus contraseñas, sus entornos y su biblioteca de JSON Schema — todo desde una sola pantalla, con una vista previa que muestra exactamente qué verá cada consumidor en su próxima sincronización antes de publicar."
+          },
+          "keyboardShortcuts": {
+            "title": "Atajos de teclado, reconstruidos desde cero",
+            "body": "Asigna más de una tecla a una acción, encadena secuencias tipo Mod+K y luego Mod+S, y ve exactamente dónde puede actuar cada atajo (rejilla, editor, árbol o en toda la app). El catálogo pasa de 8 acciones a 25, y Ajustes → Atajos ahora busca por acción o por tecla."
+          },
+          "mongoIndexDdl": {
+            "title": "MongoDB gana gestión de índices y colecciones",
+            "body": "Crea, oculta y elimina índices, y elimina o renombra colecciones, directamente desde el editor de consultas — y un cliente de IA puede hacer lo mismo desde el conector MCP con dos herramientas nuevas, con la misma política de escritura que cualquier otro cambio de esquema."
+          },
+          "pinnedColumns": {
+            "title": "Fija columnas al borde izquierdo de la rejilla",
+            "body": "Fijado de columnas al estilo Excel en el explorador de datos — pulsa el icono de chincheta en cualquier cabecera para mantenerla visible mientras te desplazas por un resultado ancho. Se guarda por tabla, igual que el ancho de las columnas."
+          },
+          "schemaSearch": {
+            "title": "La búsqueda del esquema ya mira todas las conexiones abiertas",
+            "body": "El filtro solo buscaba, en silencio, en la conexión seleccionada — varios usuarios lo reportaron. Ahora busca en todas las conexiones activas a la vez, muestra cuántas coincidencias tiene cada una, y ya no abre nuevas conexiones a bases de datos solo porque escribas una letra."
+          },
+          "connectionProvenance": {
+            "title": "Las conexiones muestran de dónde vienen",
+            "body": "El gestor de conexiones y el panel MCP se dividen ahora en Locales y Compartidas por origen, con una sección de solo lectura por cada origen — y el panel MCP añade botones de política de escritura en bloque para poner Solo lectura/Datos/Completo a toda una lista de una vez."
+          }
+        }
+      },
       "1_18_0": {
         "tagline": "Un sistema de notificaciones propio de la app, gestión completa de vistas desde el conector MCP, y un repaso de rendimiento y fiabilidad a nivel de todo el proyecto.",
         "items": {
