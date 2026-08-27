@@ -18,7 +18,7 @@ import { useTabs } from "@/stores/session/tabs";
 import { useQueryHistory } from "@/stores/query/queryHistory";
 import { useGridSelection } from "@/stores/grid/gridSelection";
 import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
-import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
+import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useUi } from "@/stores/session/ui";
 import { usePendingChord } from "@/stores/session/pendingChord";
@@ -263,7 +263,7 @@ function ConsoleToggle() {
 /** Light/dark quick toggle, mirroring the header button. */
 function ThemeToggle() {
   const { t } = useTranslation();
-  const mode = useThemeStore((s) => selectActiveTheme(s).mode);
+  const mode = useThemeStore(selectActiveMode);
   const setMode = useThemeStore((s) => s.setActiveMode);
   return (
     <SimpleTooltip label={t("statusBar.toggleTheme")} side="top">

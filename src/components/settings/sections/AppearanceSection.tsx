@@ -15,7 +15,7 @@
  * preferences blob does not own theme state.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { save as saveFileDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { notify } from "@/lib/notify";
@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
+import { useThemeStore, selectActiveTheme, selectActiveMode } from "@/stores/preferences/theme";
 import {
   usePreferences,
   selectGridPrefs,
@@ -41,6 +41,7 @@ import {
   COLOR_GROUPS,
   COLOR_KEYS,
   type ThemeColors,
+  type ThemeMode,
 } from "@/lib/themes";
 import {
   parseThemeFile,
@@ -61,6 +62,7 @@ const COLOR_LABEL_KEYS = Object.fromEntries(
 export function AppearanceSection() {
   const customThemes = useThemeStore((s) => s.customThemes);
   const active = useThemeStore(selectActiveTheme);
+  const mode = useThemeStore(selectActiveMode);
   const setThemeId = useThemeStore((s) => s.setThemeId);
   const updateColor = useThemeStore((s) => s.updateActiveColor);
   const setMode = useThemeStore((s) => s.setActiveMode);
@@ -69,6 +71,17 @@ export function AppearanceSection() {
   const upsertCustom = useThemeStore((s) => s.upsertCustom);
   const [newName, setNewName] = useState("");
   const { t } = useTranslation();
+
+  // Which half of `active` (light/dark) the colour editor below shows —
+  // separate from `mode`, the app-wide toggle. Starts at the app's current
+  // mode and re-syncs whenever a different family is selected, so opening
+  // another theme always starts on its currently-active variant rather than
+  // whichever one was last being edited.
+  const [editingVariant, setEditingVariant] = useState<ThemeMode>(mode);
+  useEffect(() => {
+    setEditingVariant(mode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active.id]);
 
   const themes = useMemo(
     () => [...BUILT_IN_THEMES, ...customThemes],
@@ -148,7 +161,7 @@ export function AppearanceSection() {
                   : "border-transparent hover:bg-accent/30"
               }`}
             >
-              <ThemeSwatch colors={theme.colors} />
+              <ThemeSwatch colors={theme[mode]} />
               <span className="flex-1 truncate">{theme.name}</span>
               <span className="text-[9px] uppercase text-muted-foreground">
                 {theme.builtin
@@ -170,8 +183,8 @@ export function AppearanceSection() {
               </div>
             </div>
             <Select
-              value={active.mode}
-              onValueChange={(v) => setMode(v as "light" | "dark")}
+              value={mode}
+              onValueChange={(v) => setMode(v as ThemeMode)}
             >
               <SelectTrigger className="w-24">
                 <SelectValue />
@@ -222,7 +235,28 @@ export function AppearanceSection() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4">
-            <ThemePreview colors={active.colors} />
+            <div className="mb-3 flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground">
+                {t("settings.appearance.editingVariant")}
+              </Label>
+              <Select
+                value={editingVariant}
+                onValueChange={(v) => setEditingVariant(v as ThemeMode)}
+              >
+                <SelectTrigger className="h-7 w-24 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dark">
+                    {t("settings.appearance.modeDark")}
+                  </SelectItem>
+                  <SelectItem value="light">
+                    {t("settings.appearance.modeLight")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <ThemePreview colors={active[editingVariant]} />
             <div className="mt-5 flex flex-col gap-5">
               {COLOR_GROUPS.map((group) => (
                 <section key={group.id}>
@@ -234,8 +268,8 @@ export function AppearanceSection() {
                       <ColorRow
                         key={key}
                         label={t(COLOR_LABEL_KEYS[key])}
-                        value={active.colors[key]}
-                        onChange={(v) => updateColor(key, v)}
+                        value={active[editingVariant][key]}
+                        onChange={(v) => updateColor(key, v, editingVariant)}
                       />
                     ))}
                   </div>

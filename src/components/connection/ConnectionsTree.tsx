@@ -532,7 +532,7 @@ export function ConnectionsTree() {
               // blue edge as the card's quiet version of an active border.
               !isLost &&
                 selected === p.id &&
-                "bg-brand/10 ring-1 ring-inset ring-brand/25 shadow-[inset_2px_0_0_hsl(var(--brand))]",
+                "bg-brand/10 ring-1 ring-inset ring-brand/25 shadow-[inset_2px_0_0_var(--brand)]",
             )}
           >
             {isBusy ? (

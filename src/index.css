@@ -11,34 +11,41 @@ input[type="password"]::-ms-clear {
 }
 
 @layer base {
+  /* Every token is `light-dark(light, dark)` — one declaration covers both
+     modes, resolved by the `color-scheme` the app sets explicitly (never
+     `prefers-color-scheme`; the toggle in `applyTheme`/`applyColorScheme`,
+     src/lib/themes.ts, is manual). These are only the STYLESHEET defaults:
+     the active theme's real values are written inline on <html> by
+     `applyTheme`, and these apply only to a custom theme persisted before a
+     given token existed (or with an invalid hex on one side). */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 4%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 4%;
-    --primary: 240 6% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 240 5% 94%;
-    --accent-foreground: 240 6% 10%;
+    --background: light-dark(hsl(0 0% 100%), hsl(229 84% 5%));
+    --foreground: light-dark(hsl(240 10% 4%), hsl(210 40% 98%));
+    --card: light-dark(hsl(0 0% 100%), hsl(222 47% 8%));
+    --card-foreground: light-dark(hsl(240 10% 4%), hsl(210 40% 98%));
+    --popover: light-dark(hsl(0 0% 100%), hsl(221 39% 11%));
+    --popover-foreground: light-dark(hsl(240 10% 4%), hsl(210 40% 98%));
+    --primary: light-dark(hsl(240 6% 10%), hsl(210 40% 98%));
+    --primary-foreground: light-dark(hsl(0 0% 98%), hsl(222 47% 8%));
+    --secondary: light-dark(hsl(240 5% 96%), hsl(221 39% 11%));
+    --secondary-foreground: light-dark(hsl(240 6% 10%), hsl(210 40% 98%));
+    --muted: light-dark(hsl(240 5% 96%), hsl(221 39% 11%));
+    --muted-foreground: light-dark(hsl(240 4% 46%), hsl(215 20% 65%));
+    --accent: light-dark(hsl(240 5% 94%), hsl(217 33% 17%));
+    --accent-foreground: light-dark(hsl(240 6% 10%), hsl(210 40% 98%));
     /* Action/state accent. Per-theme via the theme store (themes.ts); this
        default only applies to custom themes persisted before `brand` existed,
        which inherit it rather than breaking. #0f83fd. */
-    --brand: 217 91% 53%;
-    --brand-foreground: 0 0% 100%;
+    --brand: light-dark(hsl(217 91% 53%), hsl(217 91% 53%));
+    --brand-foreground: light-dark(hsl(0 0% 100%), hsl(0 0% 100%));
     /* The brand surface under the pointer — a *colour*, not `brand/90`. Light
-       themes deepen it (#1d4ed8), dark themes lighten it (see `.dark`), which
-       is the opposite of what one shared transparency can do. Per-theme via
+       themes deepen it (#1d4ed8), dark themes lighten it (#3b82f6), which is
+       the opposite of what one shared transparency can do. Per-theme via
        themes.ts; this default only applies to custom themes persisted before
        the token existed. */
-    --brand-hover: 224 76% 48%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
+    --brand-hover: light-dark(hsl(224 76% 48%), hsl(217 91% 60%));
+    --destructive: light-dark(hsl(0 84% 60%), hsl(0 84% 60%));
+    --destructive-foreground: light-dark(hsl(0 0% 98%), hsl(0 0% 100%));
     /* Semantic state accents. Distinct from `brand` (the app's one "do this /
        this is live" colour) and `destructive` (errors / dangerous actions).
        `success` marks a healthy / confirmed state, `warning` a caution that
@@ -47,10 +54,10 @@ input[type="password"]::-ms-clear {
        them through tokens lets custom themes recolour them. Per-theme values
        live in the theme store (themes.ts); these defaults only apply to custom
        themes persisted before the tokens existed. */
-    --success: 142 71% 45%;
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 240 10% 4%;
+    --success: light-dark(hsl(142 71% 45%), hsl(142 71% 45%));
+    --success-foreground: light-dark(hsl(0 0% 100%), hsl(140 69% 5%));
+    --warning: light-dark(hsl(38 92% 50%), hsl(38 92% 50%));
+    --warning-foreground: light-dark(hsl(240 10% 4%), hsl(30 79% 6%));
     /* Data-semantic accent hues (text/icon only — no surface, so no
        foreground pair). `pk` = primary-key marker, `fk` = foreign-key marker,
        `numeric` = numeric cell values. These were hard-coded as
@@ -59,50 +66,19 @@ input[type="password"]::-ms-clear {
        them lets custom themes recolour type/key hints. Light defaults are
        darker so they stay legible on a white surface. Kept out of the
        Appearance colour editor (COLOR_KEYS) as niche system accents. */
-    --pk: 35 92% 33%;
-    --fk: 200 98% 39%;
-    --numeric: 35 92% 33%;
-    --border: 214 60% 90%;
-    --input: 214 60% 90%;
-    --ring: 217 91% 53%;
+    --pk: light-dark(hsl(35 92% 33%), hsl(43 96% 56%));
+    --fk: light-dark(hsl(200 98% 39%), hsl(213 94% 68%));
+    --numeric: light-dark(hsl(35 92% 33%), hsl(43 96% 56%));
+    --border: light-dark(hsl(214 60% 90%), hsl(217 33% 17%));
+    --input: light-dark(hsl(214 60% 90%), hsl(217 33% 17%));
+    --ring: light-dark(hsl(217 91% 53%), hsl(217 91% 53%));
     /* 10px. The brand language is built on rounded corners, but this is a
        dense desktop tool: `lg` (10px) covers panels/dialogs/buttons-at-rest,
        `md` (8px) inputs and chips, `sm` (6px) micro-tags. Controls that the
        brief pins at 12px (primary buttons) ask for `rounded-xl` explicitly —
-       Tailwind's own 0.75rem, deliberately outside this scale. */
+       Tailwind's own 0.75rem, deliberately outside this scale. Not a colour,
+       unaffected by light-dark(). */
     --radius: 0.625rem;
-  }
-
-  .dark {
-    --background: 229 84% 5%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
-    --popover: 221 39% 11%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222 47% 8%;
-    --secondary: 221 39% 11%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 221 39% 11%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    --brand: 217 91% 53%;
-    --brand-foreground: 0 0% 100%;
-    --brand-hover: 217 91% 60%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 142 71% 45%;
-    --success-foreground: 140 69% 5%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 30 79% 6%;
-    --pk: 43 96% 56%;
-    --fk: 213 94% 68%;
-    --numeric: 43 96% 56%;
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 217 91% 53%;
   }
 
   * {
@@ -122,11 +98,11 @@ input[type="password"]::-ms-clear {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted));
+    background: var(--muted);
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--accent));
+    background: var(--accent);
   }
 
   /* Honour the OS "reduce motion" setting. The UI leans on small
@@ -183,7 +159,7 @@ input[type="password"]::-ms-clear {
      the surface). `background-size` sets the dot pitch. */
   .halftone {
     background-image: radial-gradient(
-      hsl(var(--brand) / 0.62) 1px,
+      color-mix(in srgb, var(--brand) 62%, transparent) 1px,
       transparent 1.5px
     );
     /* Dot pitch. A large surface (the empty workspace) needs a coarser lattice
@@ -212,7 +188,7 @@ input[type="password"]::-ms-clear {
      are the only texture on the surface. */
   .halftone-centered {
     background-image: radial-gradient(
-      hsl(var(--brand) / 0.7) 1px,
+      color-mix(in srgb, var(--brand) 70%, transparent) 1px,
       transparent 1.5px
     );
     background-size: var(--halftone-pitch, 9px) var(--halftone-pitch, 9px);
@@ -236,10 +212,10 @@ input[type="password"]::-ms-clear {
      sticker-ish chips (the F11 badge, driver pills), not for every button. */
   .brand-sticker {
     border-width: 2px;
-    border-color: hsl(var(--foreground) / 0.14);
+    border-color: color-mix(in srgb, var(--foreground) 14%, transparent);
     box-shadow:
-      0 1px 0 hsl(var(--foreground) / 0.1),
-      0 2px 5px hsl(var(--foreground) / 0.08);
+      0 1px 0 color-mix(in srgb, var(--foreground) 10%, transparent),
+      0 2px 5px color-mix(in srgb, var(--foreground) 8%, transparent);
   }
 
   /* "Iluminación azul" — the hover/active glow. Subtle by design: a tight
@@ -247,14 +223,14 @@ input[type="password"]::-ms-clear {
      the brief). `brand-glow-strong` is for the splash mark only. */
   .brand-glow {
     box-shadow:
-      0 0 0 1px hsl(var(--brand) / 0.35),
-      0 2px 12px hsl(var(--brand) / 0.28);
+      0 0 0 1px color-mix(in srgb, var(--brand) 35%, transparent),
+      0 2px 12px color-mix(in srgb, var(--brand) 28%, transparent);
   }
   .brand-glow-strong {
     box-shadow:
-      0 0 0 1px hsl(var(--brand) / 0.5),
-      0 4px 24px hsl(var(--brand) / 0.4),
-      0 0 64px hsl(var(--brand) / 0.22);
+      0 0 0 1px color-mix(in srgb, var(--brand) 50%, transparent),
+      0 4px 24px color-mix(in srgb, var(--brand) 40%, transparent),
+      0 0 64px color-mix(in srgb, var(--brand) 22%, transparent);
   }
 }
 
@@ -288,26 +264,26 @@ input[type="password"]::-ms-clear {
   --dv-transition-duration: 0.15s;
 
   /* Background */
-  --dv-group-view-background-color: hsl(var(--background));
-  --dv-tabs-and-actions-container-background-color: hsl(var(--card) / 0.5);
+  --dv-group-view-background-color: var(--background);
+  --dv-tabs-and-actions-container-background-color: color-mix(in srgb, var(--card) 50%, transparent);
 
   /* Tabs — visible / hidden × active-group / inactive-group */
-  --dv-activegroup-visiblepanel-tab-background-color: hsl(var(--background));
-  --dv-activegroup-visiblepanel-tab-color: hsl(var(--foreground));
-  --dv-activegroup-hiddenpanel-tab-background-color: hsl(var(--card));
-  --dv-activegroup-hiddenpanel-tab-color: hsl(var(--muted-foreground));
-  --dv-inactivegroup-visiblepanel-tab-background-color: hsl(var(--background));
-  --dv-inactivegroup-visiblepanel-tab-color: hsl(var(--muted-foreground));
-  --dv-inactivegroup-hiddenpanel-tab-background-color: hsl(var(--card));
-  --dv-inactivegroup-hiddenpanel-tab-color: hsl(var(--muted-foreground) / 0.6);
-  --dv-tab-divider-color: hsl(var(--border));
+  --dv-activegroup-visiblepanel-tab-background-color: var(--background);
+  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--card);
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--background);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--muted-foreground);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--card);
+  --dv-inactivegroup-hiddenpanel-tab-color: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+  --dv-tab-divider-color: var(--border);
 
   /* Separators, sashes & active outline */
-  --dv-separator-border: 1px solid hsl(var(--border));
-  --dv-paneview-header-border-color: hsl(var(--border));
-  --dv-paneview-active-outline-color: hsl(var(--brand));
-  --dv-sash-color: hsl(var(--border));
-  --dv-active-sash-color: hsl(var(--brand));
+  --dv-separator-border: 1px solid var(--border);
+  --dv-paneview-header-border-color: var(--border);
+  --dv-paneview-active-outline-color: var(--brand);
+  --dv-sash-color: var(--border);
+  --dv-active-sash-color: var(--brand);
   --dv-active-sash-transition-duration: 0.1s;
   --dv-active-sash-transition-delay: 0s;
 
@@ -320,20 +296,20 @@ input[type="password"]::-ms-clear {
      `--primary` (a near-white in dark themes) until the brand pass: a drop
      target is an affordance, and affordances are the one thing allowed to
      spend the accent blue. */
-  --dv-drag-over-background-color: hsl(var(--brand) / 0.32);
-  --dv-drag-over-border-color: hsl(var(--brand));
-  --dv-drag-over-border: 3px dashed hsl(var(--brand));
+  --dv-drag-over-background-color: color-mix(in srgb, var(--brand) 32%, transparent);
+  --dv-drag-over-border-color: var(--brand);
+  --dv-drag-over-border: 3px dashed var(--brand);
 
   /* Misc */
-  --dv-icon-hover-background-color: hsl(var(--accent));
-  --dv-scrollbar-background-color: hsl(var(--muted));
-  --dv-context-menu-background-color: hsl(var(--popover));
-  --dv-context-menu-color: hsl(var(--popover-foreground));
+  --dv-icon-hover-background-color: var(--accent);
+  --dv-scrollbar-background-color: var(--muted);
+  --dv-context-menu-background-color: var(--popover);
+  --dv-context-menu-color: var(--popover-foreground);
   --dv-floating-box-shadow:
-    0 8px 32px hsl(var(--background) / 0.4),
-    0 2px 8px hsl(var(--background) / 0.25);
-  --dv-floating-border: 1px solid hsl(var(--border));
-  --dv-floating-group-border: 1px solid hsl(var(--border));
+    0 8px 32px color-mix(in srgb, var(--background) 40%, transparent),
+    0 2px 8px color-mix(in srgb, var(--background) 25%, transparent);
+  --dv-floating-border: 1px solid var(--border);
+  --dv-floating-group-border: 1px solid var(--border);
   --dv-floating-group-dragging-opacity: 0.5;
 }
 
@@ -348,13 +324,13 @@ input[type="password"]::-ms-clear {
   /* A clearly tinted divider rather than the near-invisible border colour —
      when two groups are stacked (vertical split) or side by side the user
      should be able to see exactly where one ends and the next begins. */
-  background-color: hsl(var(--border)) !important;
+  background-color: var(--border) !important;
 }
 
 /* Make the resize sash easier to grab. Default dockview sashes are 4 px;
    bump the hover/active state so users have a visible cue. */
 .dockview-theme-huginndb .dv-sash:hover {
-  background-color: hsl(var(--brand) / 0.55) !important;
+  background-color: color-mix(in srgb, var(--brand) 55%, transparent) !important;
 }
 
 /* Visible draggable affordance on tabs. The default cursor is `default`
@@ -406,17 +382,17 @@ input[type="password"]::-ms-clear {
 .inner-dock .dv-tabs-and-actions-container {
   /* Same recessed backdrop as the outer shell's dockview root (muted surface
      + a foreground veil) — the trench each tab chip floats above. */
-  background-color: hsl(var(--muted));
+  background-color: var(--muted);
   background-image: linear-gradient(
-    hsl(var(--foreground) / 0.05),
-    hsl(var(--foreground) / 0.05)
+    color-mix(in srgb, var(--foreground) 5%, transparent),
+    color-mix(in srgb, var(--foreground) 5%, transparent)
   );
-  border-bottom: 1px solid hsl(var(--border));
+  border-bottom: 1px solid var(--border);
 }
 .inner-dock .dv-tab {
   border-radius: var(--dv-tab-border-radius);
   border: 1px solid transparent;
-  background-color: hsl(var(--card) / 0.55);
+  background-color: color-mix(in srgb, var(--card) 55%, transparent);
   transition:
     background-color 0.12s ease,
     border-color 0.12s ease,
@@ -429,8 +405,8 @@ input[type="password"]::-ms-clear {
   content: none;
 }
 .inner-dock .dv-tab:not(.dv-active-tab):hover {
-  background-color: hsl(var(--accent));
-  border-color: hsl(var(--border) / 0.7);
+  background-color: var(--accent);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
 }
 /* Active tab merges into the content surface, is lifted with the same
  * elevation recipe as the outer islands' floating panels (via `filter`,
@@ -444,15 +420,15 @@ input[type="password"]::-ms-clear {
  * `filter` (not `box-shadow`) for the elevation keeps that override from
  * also erasing the lift. */
 .inner-dock .dv-tab.dv-active-tab {
-  background-color: hsl(var(--background));
-  border-color: hsl(var(--border));
-  box-shadow: inset 0 2px 0 0 hsl(var(--brand));
+  background-color: var(--background);
+  border-color: var(--border);
+  box-shadow: inset 0 2px 0 0 var(--brand);
   filter:
-    drop-shadow(0 1px 2px hsl(var(--foreground) / 0.06))
-    drop-shadow(0 2px 6px hsl(var(--foreground) / 0.08));
+    drop-shadow(0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent))
+    drop-shadow(0 2px 6px color-mix(in srgb, var(--foreground) 8%, transparent));
 }
 .inner-dock[data-tab-accent="rail"] .dv-tab.dv-active-tab {
-  box-shadow: inset 3px 0 0 0 hsl(var(--brand));
+  box-shadow: inset 3px 0 0 0 var(--brand);
 }
 /* "boxed" now means the plain elevated chip with no colour line — every
  * active tab already gets the lift above, so this style just omits the
@@ -508,19 +484,19 @@ input[type="password"]::-ms-clear {
   max-width: 24rem;
   padding: 4px;
   overflow-x: hidden !important;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   /* The trench, same recipe as the tab strip's backdrop — the chips below
      float over it exactly as they do up there. */
-  background-color: hsl(var(--muted));
+  background-color: var(--muted);
   background-image: linear-gradient(
-    hsl(var(--foreground) / 0.05),
-    hsl(var(--foreground) / 0.05)
+    color-mix(in srgb, var(--foreground) 5%, transparent),
+    color-mix(in srgb, var(--foreground) 5%, transparent)
   );
-  color: hsl(var(--popover-foreground));
+  color: var(--popover-foreground);
   box-shadow:
-    0 4px 12px hsl(var(--foreground) / 0.1),
-    0 12px 32px hsl(var(--foreground) / 0.12);
+    0 4px 12px color-mix(in srgb, var(--foreground) 10%, transparent),
+    0 12px 32px color-mix(in srgb, var(--foreground) 12%, transparent);
 }
 /* Geometry only — fill, radius, border and the active chip's elevation are
    inherited from the strip's `.dv-tab` rules on purpose. */
@@ -540,7 +516,7 @@ input[type="password"]::-ms-clear {
    would read as a border between chips instead of a marker. */
 .inner-dock .dv-tabs-overflow-container .dv-tab.dv-active-tab,
 .inner-dock[data-tab-accent="rail"] .dv-tabs-overflow-container .dv-tab.dv-active-tab {
-  box-shadow: inset 3px 0 0 0 hsl(var(--brand));
+  box-shadow: inset 3px 0 0 0 var(--brand);
 }
 .inner-dock[data-tab-accent="boxed"] .dv-tabs-overflow-container .dv-tab.dv-active-tab {
   box-shadow: none;
@@ -555,18 +531,18 @@ input[type="password"]::-ms-clear {
   align-self: center;
   margin: 0 2px;
   padding: 0 0.375rem;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid var(--border);
   border-radius: calc(var(--radius) - 2px);
-  background-color: hsl(var(--card));
-  color: hsl(var(--muted-foreground));
+  background-color: var(--card);
+  color: var(--muted-foreground);
 }
 .inner-dock .dv-tabs-overflow-dropdown-default > span {
   display: none;
 }
 .inner-dock .dv-tabs-overflow-dropdown-default:hover {
-  background-color: hsl(var(--accent));
-  border-color: hsl(var(--border));
-  color: hsl(var(--foreground));
+  background-color: var(--accent);
+  border-color: var(--border);
+  color: var(--foreground);
 }
 
 /* -------------------------------------------------------------------------
@@ -644,19 +620,19 @@ input[type="password"]::-ms-clear {
 .inner-dock .dv-drop-target-anchor.dv-drop-target-bottom {
   border: none;
   border-radius: var(--dv-border-radius);
-  background-color: hsl(var(--brand) / 0.42);
+  background-color: color-mix(in srgb, var(--brand) 42%, transparent);
 }
 .inner-dock .dv-drop-target-anchor.dv-drop-target-left {
-  border-right: 3px solid hsl(var(--brand));
+  border-right: 3px solid var(--brand);
 }
 .inner-dock .dv-drop-target-anchor.dv-drop-target-right {
-  border-left: 3px solid hsl(var(--brand));
+  border-left: 3px solid var(--brand);
 }
 .inner-dock .dv-drop-target-anchor.dv-drop-target-top {
-  border-bottom: 3px solid hsl(var(--brand));
+  border-bottom: 3px solid var(--brand);
 }
 .inner-dock .dv-drop-target-anchor.dv-drop-target-bottom {
-  border-top: 3px solid hsl(var(--brand));
+  border-top: 3px solid var(--brand);
 }
 
 /* Sibling panels resize instantly by default — dockview writes the new pixel

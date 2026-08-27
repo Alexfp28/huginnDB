@@ -86,7 +86,7 @@ export function EmptyState({
         />
         <span
           className={cn(
-            "relative block drop-shadow-[0_4px_16px_hsl(var(--brand)/0.35)]",
+            "relative block drop-shadow-[0_4px_16px_color-mix(in_srgb,var(--brand)_35%,transparent)]",
             compact ? "h-11 w-11" : "h-16 w-16",
           )}
         >

@@ -9,59 +9,69 @@ export default {
     },
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        // Every token is a full `light-dark(...)` colour now (see
+        // index.css/themes.ts), not a raw "H S% L%" triple — so `hsl(var(--x))`
+        // would double-wrap a colour into an invalid value. `<alpha-value>` is
+        // Tailwind's own placeholder for a colour modifier (`bg-brand/25`):
+        // Tailwind substitutes it directly (bypassing its `hsl(var(--x))`
+        // regex parser, which doesn't recognise `var(--x)` or `light-dark()`),
+        // so every token gets this treatment uniformly — including ones with
+        // no modifier today — rather than leaving a gap that fails silently
+        // (opaque instead of translucent, no build error) the day someone
+        // writes `pk/50`.
+        border: "color-mix(in srgb, var(--border) calc(<alpha-value> * 100%), transparent)",
+        input: "color-mix(in srgb, var(--input) calc(<alpha-value> * 100%), transparent)",
+        ring: "color-mix(in srgb, var(--ring) calc(<alpha-value> * 100%), transparent)",
+        background: "color-mix(in srgb, var(--background) calc(<alpha-value> * 100%), transparent)",
+        foreground: "color-mix(in srgb, var(--foreground) calc(<alpha-value> * 100%), transparent)",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: "color-mix(in srgb, var(--primary) calc(<alpha-value> * 100%), transparent)",
+          foreground: "color-mix(in srgb, var(--primary-foreground) calc(<alpha-value> * 100%), transparent)",
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: "color-mix(in srgb, var(--secondary) calc(<alpha-value> * 100%), transparent)",
+          foreground: "color-mix(in srgb, var(--secondary-foreground) calc(<alpha-value> * 100%), transparent)",
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
+          DEFAULT: "color-mix(in srgb, var(--destructive) calc(<alpha-value> * 100%), transparent)",
+          foreground: "color-mix(in srgb, var(--destructive-foreground) calc(<alpha-value> * 100%), transparent)",
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: "color-mix(in srgb, var(--muted) calc(<alpha-value> * 100%), transparent)",
+          foreground: "color-mix(in srgb, var(--muted-foreground) calc(<alpha-value> * 100%), transparent)",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: "color-mix(in srgb, var(--accent) calc(<alpha-value> * 100%), transparent)",
+          foreground: "color-mix(in srgb, var(--accent-foreground) calc(<alpha-value> * 100%), transparent)",
         },
         brand: {
-          DEFAULT: "hsl(var(--brand))",
-          foreground: "hsl(var(--brand-foreground))",
+          DEFAULT: "color-mix(in srgb, var(--brand) calc(<alpha-value> * 100%), transparent)",
+          foreground: "color-mix(in srgb, var(--brand-foreground) calc(<alpha-value> * 100%), transparent)",
           // The brand surface under the pointer. Enables `hover:bg-brand-hover`
           // instead of `hover:bg-brand/90` — a transparency fades the accent
           // into the surface on dark themes, which is backwards for a hover.
-          hover: "hsl(var(--brand-hover))",
+          hover: "color-mix(in srgb, var(--brand-hover) calc(<alpha-value> * 100%), transparent)",
         },
         success: {
-          DEFAULT: "hsl(var(--success))",
-          foreground: "hsl(var(--success-foreground))",
+          DEFAULT: "color-mix(in srgb, var(--success) calc(<alpha-value> * 100%), transparent)",
+          foreground: "color-mix(in srgb, var(--success-foreground) calc(<alpha-value> * 100%), transparent)",
         },
         warning: {
-          DEFAULT: "hsl(var(--warning))",
-          foreground: "hsl(var(--warning-foreground))",
+          DEFAULT: "color-mix(in srgb, var(--warning) calc(<alpha-value> * 100%), transparent)",
+          foreground: "color-mix(in srgb, var(--warning-foreground) calc(<alpha-value> * 100%), transparent)",
         },
         // Data-semantic accents (text/icon only). Enable `text-pk`, `text-fk`,
         // `text-numeric` and `decoration-fk` — see index.css for rationale.
-        pk: "hsl(var(--pk))",
-        fk: "hsl(var(--fk))",
-        numeric: "hsl(var(--numeric))",
+        pk: "color-mix(in srgb, var(--pk) calc(<alpha-value> * 100%), transparent)",
+        fk: "color-mix(in srgb, var(--fk) calc(<alpha-value> * 100%), transparent)",
+        numeric: "color-mix(in srgb, var(--numeric) calc(<alpha-value> * 100%), transparent)",
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+          DEFAULT: "color-mix(in srgb, var(--popover) calc(<alpha-value> * 100%), transparent)",
+          foreground: "color-mix(in srgb, var(--popover-foreground) calc(<alpha-value> * 100%), transparent)",
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: "color-mix(in srgb, var(--card) calc(<alpha-value> * 100%), transparent)",
+          foreground: "color-mix(in srgb, var(--card-foreground) calc(<alpha-value> * 100%), transparent)",
         },
       },
       borderRadius: {
@@ -103,15 +113,15 @@ export default {
         // treatment in index.css. Everything was previously flat (a single
         // radius, ad-hoc `shadow-lg/xl`); this gives popovers/dialogs/cards a
         // consistent depth ramp.
-        "elevation-1": "0 1px 2px hsl(var(--foreground) / 0.06), 0 1px 1px hsl(var(--foreground) / 0.04)",
-        "elevation-2": "0 2px 6px hsl(var(--foreground) / 0.08), 0 1px 2px hsl(var(--foreground) / 0.06)",
-        "elevation-3": "0 8px 24px hsl(var(--foreground) / 0.12), 0 2px 6px hsl(var(--foreground) / 0.08)",
-        "elevation-4": "0 16px 48px hsl(var(--foreground) / 0.18), 0 4px 12px hsl(var(--foreground) / 0.10)",
+        "elevation-1": "0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent), 0 1px 1px color-mix(in srgb, var(--foreground) 4%, transparent)",
+        "elevation-2": "0 2px 6px color-mix(in srgb, var(--foreground) 8%, transparent), 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent)",
+        "elevation-3": "0 8px 24px color-mix(in srgb, var(--foreground) 12%, transparent), 0 2px 6px color-mix(in srgb, var(--foreground) 8%, transparent)",
+        "elevation-4": "0 16px 48px color-mix(in srgb, var(--foreground) 18%, transparent), 0 4px 12px color-mix(in srgb, var(--foreground) 10%, transparent)",
         // Brand affordance glow — the hover/active state of anything that
         // spends the accent blue (primary buttons, the active connection card).
         // Deliberately short-range: the brief rules out neon halos.
-        brand: "0 2px 12px hsl(var(--brand) / 0.35)",
-        "brand-ring": "0 0 0 1px hsl(var(--brand) / 0.35), 0 2px 12px hsl(var(--brand) / 0.28)",
+        brand: "0 2px 12px color-mix(in srgb, var(--brand) 35%, transparent)",
+        "brand-ring": "0 0 0 1px color-mix(in srgb, var(--brand) 35%, transparent), 0 2px 12px color-mix(in srgb, var(--brand) 28%, transparent)",
       },
       transitionDuration: {
         // The brand motion band is 150–220ms; Tailwind ships 150/200/300, so
@@ -125,9 +135,9 @@ export default {
         // pulse on the element that just succeeded. Not a loop: it fires once
         // and leaves nothing behind.
         "brand-flash": {
-          "0%": { boxShadow: "0 0 0 0 hsl(var(--brand) / 0.55)" },
-          "70%": { boxShadow: "0 0 0 6px hsl(var(--brand) / 0)" },
-          "100%": { boxShadow: "0 0 0 0 hsl(var(--brand) / 0)" },
+          "0%": { boxShadow: "0 0 0 0 color-mix(in srgb, var(--brand) 55%, transparent)" },
+          "70%": { boxShadow: "0 0 0 6px color-mix(in srgb, var(--brand) 0%, transparent)" },
+          "100%": { boxShadow: "0 0 0 0 color-mix(in srgb, var(--brand) 0%, transparent)" },
         },
         // The shared open/appear motion: fade + 98→100% scale, per the brief.
         "pop-in": {

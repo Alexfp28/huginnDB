@@ -1167,6 +1167,7 @@
       "customInfo": "Custom theme — changes apply live.",
       "modeDark": "Dark",
       "modeLight": "Light",
+      "editingVariant": "Editing",
       "deleteTooltip": "Delete custom theme",
       "duplicateLabel": "Duplicate as custom",
       "exportTooltip": "Export theme…",

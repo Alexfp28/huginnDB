@@ -248,12 +248,12 @@ export const GridRow = memo(function GridRow({
    * trade-off, not an oversight.
    */
   const pinnedBgColor = isMultiSelected
-    ? "color-mix(in srgb, hsl(var(--brand)) 30%, hsl(var(--background)))"
+    ? "color-mix(in srgb, var(--brand) 30%, var(--background))"
     : isSelected
-      ? "color-mix(in srgb, hsl(var(--brand)) 10%, hsl(var(--background)))"
+      ? "color-mix(in srgb, var(--brand) 10%, var(--background))"
       : zebraStripes && i % 2 === 1
-        ? "color-mix(in srgb, hsl(var(--muted)) 30%, hsl(var(--background)))"
-        : "hsl(var(--background))";
+        ? "color-mix(in srgb, var(--muted) 30%, var(--background))"
+        : "var(--background)";
   // Running left offset for pinned columns' sticky `<td>`s, mirroring the
   // header's own accumulation in `DataGrid` — both start from the gutter's
   // width and walk columns in the same (display) order, so they agree
@@ -287,7 +287,7 @@ export const GridRow = memo(function GridRow({
           // box-shadow on a table-row box is unreliable across
           // engines, while a `<td>` is an ordinary box.
           isMultiSelected &&
-            "shadow-[inset_3px_0_0_0_hsl(var(--brand))]",
+            "shadow-[inset_3px_0_0_0_var(--brand)]",
         )}
         style={{
           ...cellStyle,

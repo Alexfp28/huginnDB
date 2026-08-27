@@ -155,7 +155,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
                   />
                   <span
                     className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: env.color || "hsl(var(--muted-foreground))" }}
+                    style={{ backgroundColor: env.color || "var(--muted-foreground)" }}
                   />
                   <span className="flex-1 truncate text-xs">
                     {environmentLabel(env, defaultName)}

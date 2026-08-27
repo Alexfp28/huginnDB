@@ -10,6 +10,53 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Las familias de tema se declaran una sola vez, con sus dos variantes
+  (clara y oscura) juntas, y la app las pinta ahora con la función CSS nativa
+  `light-dark()`.** Cada tema integrado eran antes dos registros `Theme`
+  independientes en `BUILT_IN_THEMES` (`claude-light`/`claude-dark`, …)
+  enlazados solo por un campo `pairId` cruzado, y el toggle claro/oscuro
+  (`setActiveMode`) reaplicaba las ~28 variables CSS en cada pulsación porque
+  conceptualmente cambiaba de un objeto `Theme` a otro. Las cinco familias
+  integradas (HuginnDB, Claude, Neon, Summer, High Contrast) declaran ahora
+  `{ light: ThemeColors, dark: ThemeColors }` una sola vez — `pairId`
+  desaparece — y `applyTheme` escribe `--x: light-dark(hsl(…), hsl(…))` por
+  variable en vez de un único valor resuelto. El toggle de modo
+  (`applyColorScheme`) ya no toca ninguna variable de color: solo cambia
+  `color-scheme` (más la clase `.dark` de Tailwind, que sigue haciendo falta
+  para la variante `dark:` que usan algunos componentes) y deja que el
+  navegador elija la mitad correcta de cada `light-dark()` — un toggle O(1)
+  en vez de reaplicar toda la paleta. `color-scheme` se fija siempre a un
+  único valor (`light` u `dark`), nunca `"light dark"`, para que resuelva
+  según la elección manual del usuario y no según `prefers-color-scheme`.
+
+  Los temas personalizados del usuario también declaran ahora ambas
+  variantes, en vez de ser una excepción de un solo modo — el editor de
+  Apariencia ganó un selector "editando: claro | oscuro" (independiente del
+  toggle global de modo) para editar cada variante de un tema personalizado
+  por separado, y duplicar/bifurcar un tema integrado clona ambas variantes
+  a la vez. El formato de exportación de `themeTransfer.ts` pasó a v2
+  (`{ name, light, dark }`); importar un archivo v1 anterior a este cambio
+  (`{ name, mode, colors }`) sigue funcionando — su única paleta se duplica
+  en ambas variantes como punto de partida. El estado ya persistido en
+  `localStorage` y el `theme_id` guardado/importado de un `Environment` (una
+  simple cadena opaca para el backend — Rust nunca la interpreta) migran de
+  forma transparente mediante una pequeña tabla de ids antiguos que mapea los
+  diez ids previos a las cinco familias nuevas.
+
+  Como `--x` pasó de ser un triple crudo `"H S% L%"` a un color completo
+  `light-dark()`, se revisó cada uso de `hsl(var(--x))`/`hsl(var(--x) / N)`
+  en el código (`tailwind.config.js`, `index.css` y una veintena de
+  componentes) hacia `var(--x)`/`color-mix(in srgb, var(--x) N%,
+  transparent)`. Los tokens de color de `tailwind.config.js` usan
+  específicamente el marcador `<alpha-value>` de Tailwind en vez de envolver
+  el modificador en un `color-mix()` literal — el propio parseo de
+  modificadores de opacidad de Tailwind (`bg-brand/25`) hace coincidencia de
+  texto sobre `hsl(var(--x))` y no reconoce `var(--x)` ni `light-dark(...)`,
+  así que todos los tokens de color necesitaban ese marcador de forma
+  uniforme para que los modificadores `/NN` siguieran funcionando (una
+  omisión ahí falla en silencio — el modificador simplemente se descarta, no
+  hay error — en vez de avisar).
+
 - **Un editor para el documento que publica un origen compartido.** Un origen
   compartido (#108) era estrictamente de solo lectura: `sync_origin` leía el
   fichero y nunca lo escribía, así que publicar significaba ejecutar «Exportar
@@ -333,6 +380,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   añadida para un estado transitorio.
 
 ### Cambiado
+
+- **El tema forzado de un environment ahora fija solo la familia de tema,
+  nunca el modo claro/oscuro.** Antes del cambio a `light-dark()` de arriba,
+  el id de tema forzado de un environment (p. ej. `claude-dark`) implicaba un
+  modo como efecto secundario de a cuál de los dos registros `Theme`
+  enlazados apuntaba — así que entrar en un environment con un tema forzado
+  podía cambiar en silencio la preferencia claro/oscuro actual del usuario.
+  Familia y modo son ahora ejes independientes en el store de temas
+  (`themeId` frente al nuevo `mode` global), y el override de un environment
+  solo resuelve ya una familia — la preferencia de modo del usuario se
+  mantiene sin cambios al cambiar de environment. Este es el comportamiento
+  deseado a partir de ahora (un environment describe identidad de
+  sesión/visual, no una preferencia ergonómica personal), no una regresión.
 
 - **`state_file::write_atomic` queda extraída, y cada escritura del documento
   de origen pasa por ella.** `save_atomic` solo aceptaba nunca un nombre

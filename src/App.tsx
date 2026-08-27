@@ -31,7 +31,7 @@ import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
-import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
+import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
 import { useAppFlavor } from "@/stores/preferences/appFlavor";
 import {
   selectNotificationPrefs,
@@ -98,7 +98,7 @@ export default function App() {
   const refreshConnections = useConnections((s) => s.refresh);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
-  const activeTheme = useThemeStore(selectActiveTheme);
+  const themeMode = useThemeStore(selectActiveMode);
   const canaryFlavor = useAppFlavor((s) => s.canary);
   const hydratePreferences = usePreferences((s) => s.hydrate);
   const language = usePreferences((s) => s.prefs.ui.language);
@@ -575,7 +575,7 @@ export default function App() {
         expand={notificationPrefs.expandOnHover}
         gap={10}
         offset={{ bottom: 32, top: 12, left: 16, right: 16 }}
-        theme={activeTheme.mode === "dark" ? "dark" : "light"}
+        theme={themeMode === "dark" ? "dark" : "light"}
       />
       <NotificationOverflowPill />
       {updateNotificationVisible && availableVersion && (

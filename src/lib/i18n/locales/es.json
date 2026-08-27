@@ -1167,6 +1167,7 @@
       "customInfo": "Tema personalizado — los cambios se aplican al instante.",
       "modeDark": "Oscuro",
       "modeLight": "Claro",
+      "editingVariant": "Editando",
       "deleteTooltip": "Eliminar tema personalizado",
       "duplicateLabel": "Duplicar como personalizado",
       "exportTooltip": "Exportar tema…",

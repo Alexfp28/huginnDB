@@ -185,7 +185,7 @@ export function TableRow({
               // Active-table "you are here" marker: soft brand wash + a 2px
               // inset brand rail (inset shadow, so it adds no layout shift).
               isActive &&
-                "bg-brand/10 shadow-[inset_2px_0_0_hsl(var(--brand))] hover:bg-brand/15",
+                "bg-brand/10 shadow-[inset_2px_0_0_var(--brand)] hover:bg-brand/15",
               // Right-clicked-and-menu-open marker — see the `menuOpen`
               // state's comment above.
               menuOpen && "ring-1 ring-inset ring-ring",

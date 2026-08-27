@@ -323,7 +323,7 @@ export function CommandPalette() {
                           className={cn(
                             "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors",
                             activeRow
-                              ? "bg-accent text-accent-foreground shadow-[inset_2px_0_0_hsl(var(--brand))]"
+                              ? "bg-accent text-accent-foreground shadow-[inset_2px_0_0_var(--brand)]"
                               : "text-foreground",
                           )}
                         >

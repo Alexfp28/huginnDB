@@ -147,11 +147,11 @@ export function StatusConnections() {
             halo of its own colour so a live connection reads as *lit* rather
             than merely coloured. */}
         {isLost ? (
-          <span className="h-2 w-2 shrink-0 rounded-full bg-destructive shadow-[0_0_0_3px_hsl(var(--destructive)/0.18)]" />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-destructive shadow-[0_0_0_3px_color-mix(in_srgb,var(--destructive)_18%,transparent)]" />
         ) : selected === p.id ? (
           <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
         ) : (
-          <span className="h-2 w-2 shrink-0 rounded-full bg-brand shadow-[0_0_0_3px_hsl(var(--brand)/0.18)]" />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-brand shadow-[0_0_0_3px_color-mix(in_srgb,var(--brand)_18%,transparent)]" />
         )}
         <span
           className={cn(

@@ -8,6 +8,50 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Theme families are declared once, with both light and dark variants
+  together, and the app now paints them with the native CSS `light-dark()`
+  function.** Every built-in theme used to be two independent `Theme`
+  records in `BUILT_IN_THEMES` (`claude-light`/`claude-dark`, …) linked only
+  by a cross-referencing `pairId`, with the light/dark toggle
+  (`setActiveMode`) reapplying all ~28 CSS variables on every press because
+  it conceptually switched from one `Theme` object to another. The five
+  built-in families (HuginnDB, Claude, Neon, Summer, High Contrast) now each
+  declare `{ light: ThemeColors, dark: ThemeColors }` once — `pairId` is
+  gone — and `applyTheme` writes `--x: light-dark(hsl(…), hsl(…))` per
+  variable instead of a single resolved value. The mode toggle
+  (`applyColorScheme`) no longer touches a single colour variable: it only
+  flips `color-scheme` (plus the Tailwind `.dark` class, still needed for
+  the `dark:` variant used in a handful of components) and lets the browser
+  pick the right half of each `light-dark()` — an O(1) toggle instead of
+  reapplying the whole palette. `color-scheme` is always set to a single
+  keyword (`light` or `dark`), never `"light dark"`, so it resolves to the
+  user's manual choice rather than `prefers-color-scheme`.
+
+  User-defined custom themes now declare both variants too, instead of being
+  a single-mode exception — the Appearance editor gained an "editing:
+  light | dark" toggle (independent from the app-wide mode toggle) to edit
+  each variant of a custom theme separately, and duplicating/auto-forking a
+  built-in clones both variants at once. `themeTransfer.ts`'s export format
+  bumped to v2 (`{ name, light, dark }`); importing a pre-refactor v1 file
+  (`{ name, mode, colors }`) still works — its single palette is duplicated
+  into both variants as a starting point. Existing `localStorage` state and
+  an `Environment`'s persisted/imported `theme_id` (a plain, backend-opaque
+  string — Rust never interprets it) both migrate transparently through a
+  small legacy-id table mapping the ten old ids to the five new family ids.
+
+  Since `--x` moved from a raw `"H S% L%"` triple to a full `light-dark()`
+  colour, every `hsl(var(--x))`/`hsl(var(--x) / N)` usage across the
+  codebase (`tailwind.config.js`, `index.css`, and about twenty component
+  files) was swept to `var(--x)`/`color-mix(in srgb, var(--x) N%,
+  transparent)`. `tailwind.config.js`'s colour tokens specifically use
+  Tailwind's `<alpha-value>` placeholder rather than a literal `color-mix()`
+  wrapped around the modifier — Tailwind's own opacity-modifier parsing
+  (`bg-brand/25`) does string-matching on `hsl(var(--x))` and doesn't
+  recognise `var(--x)` or `light-dark(...)`, so every colour token needed
+  that placeholder uniformly to keep `/NN` opacity modifiers working
+  (an omission there fails silently — the modifier is dropped, not an error
+  — rather than loudly).
+
 - **An editor for the document a shared origin publishes.** A shared origin
   (#108) was strictly pull-only: `sync_origin` read the file and never wrote it,
   so publishing meant running "Export environments…", picking a destination in
@@ -305,6 +349,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   worth the added complexity for a transient state.
 
 ### Changed
+
+- **An environment's theme override now fixes only the theme *family*, never
+  the light/dark mode.** Before the `light-dark()` refactor above, an
+  environment's forced theme id (e.g. `claude-dark`) implied a mode as a side
+  effect of which of the two linked `Theme` records it named — so switching
+  into an environment with a forced theme could silently flip the user's
+  current light/dark preference along with it. Family and mode are now
+  independent axes in the theme store (`themeId` vs. the new global `mode`),
+  and an environment override only ever resolves a family — the user's mode
+  preference carries across environment switches unchanged. This is the
+  intended behaviour going forward (an environment describes session/visual
+  identity, not a personal ergonomic preference), not a regression.
 
 - **`state_file::write_atomic` is extracted, and every origin-document write
   goes through it.** `save_atomic` only ever accepted a name relative to the

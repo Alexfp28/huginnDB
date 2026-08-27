@@ -478,18 +478,16 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     }
 
     // ── Appearance: app themes + UI language ─────────────────────────────────
+    // One entry per FAMILY (not per light/dark variant) — picking one keeps
+    // the user's current global mode (see useThemeStore.setThemeId); the
+    // light/dark toggle is a separate action, not encoded per theme anymore.
     for (const th of [...BUILT_IN_THEMES, ...customThemes]) {
       list.push({
         id: `theme:${th.id}`,
         group: "appearance",
         label: t("commandPalette.theme", { name: th.name }),
-        keywords: `theme colours tema colores ${th.mode} ${th.id}`,
+        keywords: `theme colours tema colores ${th.id}`,
         icon: <Palette className="h-4 w-4" />,
-        badge: t(
-          th.mode === "light"
-            ? "settings.appearance.modeLight"
-            : "settings.appearance.modeDark",
-        ),
         current: th.id === themeId,
         run: () => setThemeId(th.id),
       });
