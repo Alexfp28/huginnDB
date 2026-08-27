@@ -437,6 +437,58 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Double-clicking a foreign-key cell needed a second, unrelated click before
+  the combobox appeared.** `GridRow` is `React.memo`'d so a click only
+  re-renders the rows it actually affects — every fast-changing bit of state
+  that can change what a row shows gets narrowed to "does this concern THIS
+  row" before it reaches the component, the same way `inlineEditHere` already
+  worked. `fkEditCell` had no such prop: the `cell` renderer read it correctly
+  through a live ref, but that only mattered once React actually re-rendered
+  the row, and the second click of a double-click updates only `fkEditCell` —
+  the first click had already set `activeCell`/`selectedRowIndex`/
+  `selectedCell` — so no prop of that row's own changed and `React.memo`
+  skipped it outright. The combobox only appeared once an unrelated click on
+  another cell or row forced a re-render some other way. `GridRow` now takes
+  an `fkEditHere` prop, narrowed the same way, purely to give `React.memo`
+  something to compare.
+
+- **The cell editor opened in JSON mode for almost any column, even plain
+  text.** A JSON Schema binding (1.18's feature) was meant to force JSON mode
+  when a column has one, so the user gets validation instead of a heuristic
+  that only answers "json" when the text happens to parse. But `CellEditor`
+  and `SideEditorPanel` decided that from the mere presence of a
+  `CellBindingContext` — connection/schema/table/column coordinates — which is
+  truthy for nearly any cell of a real table, bound or not. `CellEditorBody`
+  already computed the right check a few lines below (whether a schema is
+  actually *resolved* for that column, from `useJsonSchemas`'s cache) to
+  decide whether to attach a schema to the Monaco model; the two callers above
+  it now use that same check to decide the initial language, instead of the
+  coordinates alone.
+
+- **The cell "expand" button could be scrolled out of view on a wide
+  column.** It sat at the end of the cell's flex row (`ml-auto`), so on a
+  column resized wider than the visible scroll area the button was off-screen
+  until the user scrolled that specific cell all the way over. Both places it
+  renders — the read-only "selected cell" affordance and the inline
+  `CellInput` editor — now make it `sticky` against the grid's own scroll
+  container, the same technique already used for pinned columns, with an
+  opaque background for the same reason: `sticky` promotes the button to its
+  own compositing layer, and a translucent one would let the cell's text show
+  through while scrolling.
+
+- **A wide active cell's content painted over the pinned gutter column while
+  scrolling, instead of disappearing behind it.** The keyboard-active cell's
+  `<td>` unconditionally got `z-10` for its ring, which beat a pinned
+  column's `z-[1]` even when they were two entirely different cells — so
+  scrolling a wide active cell horizontally slid its text and background
+  right over the top of the sticky row-number column instead of being hidden
+  behind it, the one thing `position: sticky` on a pinned column is supposed
+  to guarantee. A plain `position: relative` (no z-index) already paints
+  above *unpositioned* neighbours regardless of z-index, which is all the
+  ring ever needed there; `z-10` is now scoped to the one case that actually
+  has to beat a pinned column's own z-index — the active cell being pinned
+  itself, so its ring stays visible over its own solid background.
+
 - **A multi-database connection with a "databases to show" subset could show an
   empty tree while searching, with no explanation.** The check for "are we
   still loading databases?" walked every database on the server while the loop

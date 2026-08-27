@@ -229,6 +229,18 @@ export function CellEditor({
   const [editorKey, setEditorKey] = useState(0);
   const openInSide = useCellEditor((s) => s.open);
   const canSave = !readonly && !!onSave;
+  // Derive from raw state (gotcha #1), mirroring `CellEditorBody`'s own
+  // `resolved` — `binding` alone is just coordinates (connection/schema/
+  // table/column) and is truthy for almost any real-table cell, whether or
+  // not a schema is actually bound to this column.
+  const resolvedAll = useJsonSchemas((s) => s.resolved);
+  const revision = useJsonSchemas((s) => s.revision);
+  const hasResolvedSchema = useMemo(() => {
+    if (!binding) return false;
+    const key = relationKey(binding.connectionId, binding.dbSchema, binding.table);
+    return !!resolvedAll[key]?.[binding.column];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [binding, resolvedAll, revision]);
   // Modifier label for the save-shortcut chip (⌘ on macOS, Ctrl elsewhere).
   // Through `formatForDisplay`, which is the one place that decides how a
   // combo is spelled for the user.
@@ -256,9 +268,12 @@ export function CellEditor({
   useEffect(() => {
     if (open) {
       setValue(initialValue);
-      // A binding is the user asserting this column holds JSON, so it wins over
-      // the heuristic — see the same call in `SideEditorPanel.load`.
-      setLanguage(binding ? "json" : detectLanguage(initialValue ?? ""));
+      // A *resolved* schema binding is the signal that this column holds
+      // JSON, so it wins over the heuristic — see the same call in
+      // `SideEditorPanel.loadFresh`. The mere presence of `binding`
+      // (coordinates only, no confirmed schema) is not enough — that used to
+      // force JSON mode on almost every cell of a real table.
+      setLanguage(hasResolvedSchema ? "json" : detectLanguage(initialValue ?? ""));
       setSaveError(null);
       setEditorKey((k) => k + 1);
     }

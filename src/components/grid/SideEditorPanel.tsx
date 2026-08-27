@@ -49,6 +49,7 @@ import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useTabs } from "@/stores/session/tabs";
 import { detectLanguage, type ContentLanguage } from "@/lib/grid/detectContentType";
 import { useFullscreenToggle } from "@/lib/useFullscreenToggle";
+import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
 
 /** Key for a target with no owning tab (an ad-hoc grid with no tab identity)
  *  — at most one such session, matching the pre-existing single-slot
@@ -78,6 +79,11 @@ export function SideEditorPanel() {
   // closes, and the active id, so we know which tab's session to show.
   const tabs = useTabs((s) => s.tabs);
   const activeId = useTabs((s) => s.activeId);
+  // Derive from raw state (gotcha #1) — the same "is there a schema actually
+  // resolved for this column" check `CellEditorBody` does for its `resolved`,
+  // read here (not just there) so `loadFresh` can use it to decide the
+  // initial language instead of the mere presence of `binding` coordinates.
+  const resolvedAll = useJsonSchemas((s) => s.resolved);
 
   /** The session actually being displayed right now — a fresh `open()` or a
    *  restored park, never both sources at once. */
@@ -134,9 +140,21 @@ export function SideEditorPanel() {
     baselineRef.current = next.value;
     setTarget(next);
     setValue(next.value);
-    // A binding is the user asserting this column holds JSON, so it wins over
-    // the heuristic — see the same call in the modal `CellEditor`.
-    setLanguage(next.binding ? "json" : detectLanguage(next.value ?? ""));
+    // A *resolved* schema binding is the signal that this column holds JSON,
+    // so it wins over the heuristic — see the same call in the modal
+    // `CellEditor`. The mere presence of `next.binding` (coordinates only, no
+    // confirmed schema) is not enough — that used to force JSON mode on
+    // almost every cell of a real table.
+    const hasResolvedSchema = next.binding
+      ? !!resolvedAll[
+          relationKey(
+            next.binding.connectionId,
+            next.binding.dbSchema,
+            next.binding.table,
+          )
+        ]?.[next.binding.column]
+      : false;
+    setLanguage(hasResolvedSchema ? "json" : detectLanguage(next.value ?? ""));
     setEditorKey((k) => k + 1);
   }
 

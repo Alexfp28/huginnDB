@@ -1180,8 +1180,9 @@ export function DataGrid({
                       ? (getRowKey?.(rowValues) ?? null)
                       : null;
                     // Every prop below is narrowed to "does this concern THIS
-                    // row" (isSelected/isMultiSelected/activeColIdx/inlineEditHere)
-                    // or already stable across a plain click, so `GridRow`'s
+                    // row" (isSelected/isMultiSelected/activeColIdx/
+                    // inlineEditHere/fkEditHere) or already stable across a
+                    // plain click, so `GridRow`'s
                     // `React.memo` skips re-rendering every row except the (at
                     // most two) actually affected — see `GridRow`'s doc comment.
                     return (
@@ -1196,6 +1197,11 @@ export function DataGrid({
                         inlineEditHere={
                           inlineEdit && inlineEdit.rowValues === rowValues
                             ? inlineEdit
+                            : null
+                        }
+                        fkEditHere={
+                          fkEditCell && fkEditCell.rowValues === rowValues
+                            ? fkEditCell
                             : null
                         }
                         selectionEnabled={selectionEnabled}

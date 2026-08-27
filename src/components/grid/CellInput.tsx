@@ -99,10 +99,18 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
             tabIndex={-1}
             title={expandTitle}
             disabled={disabled}
+            // `sticky`, not just flow position, so a wide column doesn't
+            // push this button off the right edge of the scroll container
+            // — the input itself stretches to the cell's full (possibly
+            // very wide) width, and without this the button was only
+            // reachable by scrolling that specific cell all the way over.
+            // Opaque background because `sticky` promotes it to its own
+            // compositing layer, which would otherwise let the input
+            // underneath show through while scrolling.
             className={
               schemaBound
-                ? "shrink-0 rounded px-1 text-brand hover:text-brand/80"
-                : "shrink-0 rounded px-1 text-muted-foreground/80 hover:text-foreground"
+                ? "sticky right-1 z-[1] shrink-0 rounded bg-background px-1 text-brand hover:text-brand/80"
+                : "sticky right-1 z-[1] shrink-0 rounded bg-background px-1 text-muted-foreground/80 hover:text-foreground"
             }
             // Keep focus on the input so blur-commit doesn't fire before we
             // hand the current value off to the modal editor.

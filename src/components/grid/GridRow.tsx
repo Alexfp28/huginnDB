@@ -63,6 +63,7 @@ import type {
   Driver,
 } from "@/types";
 import type { SelectedCell } from "@/components/grid/DataGrid";
+import type { FkEdit } from "@/lib/grid/useCellEditing";
 
 /** Stable, ref-delivered slice of `DataGrid`'s own local helper functions —
  *  see the long comment on `GridRow` below for why these can't just be
@@ -107,6 +108,19 @@ interface GridRowProps {
    *  than passing the raw `inlineEdit` state) is what lets every row EXCEPT
    *  the one being edited see an unchanged (`null`) prop. */
   inlineEditHere: InlineEditState | null;
+  /** Same narrowing as `inlineEditHere`, for the FK combobox's own edit
+   *  state. The `cell` renderer in `useGridColumns` already reads the raw
+   *  `fkEditCell` correctly via `interactiveRef`, but that only matters once
+   *  React actually re-renders this row — and a double-click's second click
+   *  updates only `fkEditCell` (the first click already set `activeCell`/
+   *  `selectedRowIndex`/`selectedCell`), so with no prop of this row's own
+   *  changing, `React.memo` used to skip the render entirely and the
+   *  combobox wouldn't appear until an unrelated click on another cell/row
+   *  forced a re-render some other way. Deliberately left out of the
+   *  destructured params below — `React.memo`'s default shallow comparison
+   *  covers the whole props object, so it only needs to exist here to do
+   *  its job. */
+  fkEditHere: FkEdit | null;
   selectionEnabled: boolean;
   hasSelection: boolean;
   selectedRows: CellValue[][];
@@ -350,18 +364,28 @@ export const GridRow = memo(function GridRow({
                   "cursor-pointer border-b border-border/50 border-r border-r-border/70 px-2",
                   isFkCell &&
                     "hover:underline hover:decoration-dotted hover:decoration-fk/70 hover:underline-offset-2",
-                  // Pinned columns stick to the offset accumulated above,
-                  // one z-tier below the active-cell ring so the ring still
-                  // wins if the active cell happens to be pinned too. The
-                  // background comes from `style` below, not a class — see
-                  // `pinnedBgColor`'s comment.
+                  // Pinned columns stick to the offset accumulated above.
+                  // The background comes from `style` below, not a class —
+                  // see `pinnedBgColor`'s comment.
                   isPinned && "sticky z-[1]",
-                  // Inset ring marks the keyboard-active cell. `z-10` lifts
-                  // it above neighbours so the ring isn't clipped by
-                  // adjacent cell borders; `relative` is only needed when
-                  // the cell isn't already positioned via `sticky` above.
+                  // Inset ring marks the keyboard-active cell. `relative`
+                  // (with no z-index) is enough to lift a plain cell above
+                  // its *unpositioned* neighbours, so the ring isn't clipped
+                  // by adjacent cell borders — a positioned box always
+                  // paints after static ones, regardless of z-index. A
+                  // `z-10` used to be applied unconditionally here, which
+                  // beat every pinned column's `z-[1]` even when the active
+                  // cell was a plain (non-pinned) one: scrolling a wide
+                  // active cell under the pinned gutter painted its content
+                  // OVER the gutter instead of hiding it behind, exactly
+                  // what `position: sticky` on the gutter is supposed to
+                  // prevent. `z-10` is now scoped to the one case that
+                  // needs to beat a pinned column's own z-index — the active
+                  // cell being pinned itself, so its ring stays visible over
+                  // its own `pinnedBgColor` background.
                   // No transition — the ring must track keys instantly.
-                  isActiveCell && "z-10 ring-2 ring-inset ring-brand",
+                  isActiveCell && "ring-2 ring-inset ring-brand",
+                  isActiveCell && isPinned && "z-10",
                   isActiveCell && !isPinned && "relative",
                 )}
                 title={isFkCell ? t("dataGrid.fkNavHint") : undefined}

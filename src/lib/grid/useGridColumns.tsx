@@ -396,7 +396,14 @@ export function useGridColumns(
                   type="button"
                   tabIndex={-1}
                   title={`${t("dataGrid.expandEditor")} (${formatComboForDisplay(expandCellCombo)})`}
-                  className="ml-auto shrink-0 rounded px-1 text-muted-foreground/80 hover:text-foreground"
+                  // `sticky` (not just `ml-auto`) so a wide column doesn't
+                  // hide the button off the right edge of the scroll
+                  // container until the user scrolls that specific cell into
+                  // view — same fix as the pinned-column background below,
+                  // opaque for the same reason: `sticky` promotes this
+                  // button to its own compositing layer, and a translucent
+                  // background would let the row's own text show through.
+                  className="sticky right-1 z-[1] ml-auto shrink-0 rounded bg-background px-1 text-muted-foreground/80 hover:text-foreground"
                   onMouseDown={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
                   onClick={(e) => {
