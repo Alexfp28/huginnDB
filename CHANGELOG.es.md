@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.19.0] — 2026-08-27
+
 ### Añadido
 
 - **Las familias de tema se declaran una sola vez, con sus dos variantes
