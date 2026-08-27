@@ -7,10 +7,16 @@
  * reads read-only when the OS refused the write probe, because that is what will
  * happen when they press Save. Discovering it at the last step, after composing
  * a revision, is the failure this pill exists to prevent.
+ *
+ * There is deliberately **no close button here**. `DialogContent` already renders
+ * one, absolutely positioned at the top-right corner of the surface — adding a
+ * second put two X's side by side. The `pr-12` below is what keeps the primitive's
+ * from landing on top of Save, and it is the reason this header stops short of
+ * the right edge.
  */
 
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Eye, Loader2, PencilLine, RotateCcw, Save, X } from "lucide-react";
+import { AlertTriangle, Eye, Loader2, PencilLine, RotateCcw, Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { OriginDocument } from "@/types";
@@ -25,7 +31,6 @@ export function OriginEditorHeader({
   onSave,
   onDiscard,
   onReload,
-  onClose,
 }: {
   doc: OriginDocument;
   /** The effective answer: role *and* the OS's own verdict. */
@@ -38,13 +43,12 @@ export function OriginEditorHeader({
   onSave: () => void;
   onDiscard: () => void;
   onReload: () => void;
-  onClose: () => void;
 }) {
   const { t } = useTranslation();
   const RoleIcon = readOnly ? Eye : PencilLine;
 
   return (
-    <header className="flex items-start gap-3 border-b border-border px-5 py-3">
+    <header className="flex items-start gap-3 border-b border-border py-3 pl-5 pr-12">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h2 className="truncate text-base font-semibold">{doc.name}</h2>
@@ -120,9 +124,6 @@ export function OriginEditorHeader({
             {t("originEditor.save")}
           </Button>
         )}
-        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
       </div>
     </header>
   );

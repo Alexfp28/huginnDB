@@ -252,7 +252,6 @@ export function OriginEditorOverlay() {
                 setPassphrase(NO_PASSPHRASE);
               }}
               onReload={() => void load(doc.originId)}
-              onClose={close}
             />
 
             <div className="grid min-h-0 flex-1 grid-cols-[220px_1fr] overflow-hidden">
