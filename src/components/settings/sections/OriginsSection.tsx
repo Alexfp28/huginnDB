@@ -521,6 +521,7 @@ export function OriginsSection() {
               disabled={busy || !edit.path.trim()}
               onClick={() => void saveEdit()}
             >
+              {busy && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
               {t("common.save")}
             </Button>
           </div>
@@ -585,6 +586,7 @@ export function OriginsSection() {
               disabled={busy || !newDoc.path.trim()}
               onClick={() => void createDocument()}
             >
+              {busy && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
               {t("origins.newDocumentCreate")}
             </Button>
           </div>

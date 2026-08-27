@@ -15,7 +15,7 @@
  * conflicts, and it reports errors through toasts rather than inline state — a
  * different shape that would cost more in optionality than it saves.
  *
- * While the dialog is open, `ImportProgressBar` inside it is the right
+ * While the dialog is open, the `ProgressBar` inside it is the right
  * surface for progress — a toast saying the same thing next to it would be
  * noise. But nothing here stops the user closing the dialog (the X, Escape,
  * a click outside — none of them are disabled during `loading`) while the

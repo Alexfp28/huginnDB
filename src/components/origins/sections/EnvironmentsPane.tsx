@@ -18,19 +18,37 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2 } from "lucide-react";
+import { Download, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown";
 import { DriverBadge } from "@/components/common/DriverBadge";
-import type { OriginDraft, OriginDraftEnvironment } from "@/types";
+import type {
+  ConnectionProfile,
+  OriginDraft,
+  OriginDraftConnection,
+  OriginDraftEnvironment,
+} from "@/types";
 
 export function EnvironmentsPane({
   draft,
+  local,
+  profiles,
   readOnly,
   onChange,
 }: {
   draft: OriginDraft;
+  /** This machine's own environments, as bundles ready to be copied in. */
+  local: OriginDraftEnvironment[];
+  /** This machine's profiles, so importing an environment can bring the
+   *  connections it references along with it. */
+  profiles: ConnectionProfile[];
   readOnly: boolean;
   onChange: (next: OriginDraft) => void;
 }) {
@@ -53,6 +71,42 @@ export function EnvironmentsPane({
         e.sourceEnvironmentId === id ? { ...e, ...changes } : e,
       ),
     });
+  }
+
+  /** This machine's environments the document does not already carry. */
+  const importable = useMemo(() => {
+    const present = new Set(
+      draft.environments.map((e) => e.sourceEnvironmentId),
+    );
+    return local.filter((e) => !present.has(e.sourceEnvironmentId));
+  }, [local, draft.environments]);
+
+  /**
+   * Copy one of this machine's environments into the document, with the
+   * connections it references.
+   *
+   * Two details are load-bearing. Its `sourceEnvironmentId` is the local
+   * `Environment.id` the backend stamped, **not** a fresh uuid — that id is
+   * what a consumer's sync will match this bundle by from now on, so minting
+   * one here would make re-importing the same environment publish a second,
+   * unrelated one. And the connections come across too: an environment whose
+   * membership names ids the document does not carry is published as a filter
+   * over nothing.
+   */
+  function importEnvironment(env: OriginDraftEnvironment) {
+    if (readOnly) return;
+    const present = new Set(draft.connections.map((c) => c.id));
+    const additions: OriginDraftConnection[] = env.connectionIds
+      .filter((id) => !present.has(id))
+      .map((id) => profiles.find((p) => p.id === id))
+      .filter((p): p is ConnectionProfile => !!p)
+      .map((p) => ({ ...p, secret: { kind: "fromKeychain" } }));
+    onChange({
+      ...draft,
+      environments: [...draft.environments, env],
+      connections: [...draft.connections, ...additions],
+    });
+    setActiveId(env.sourceEnvironmentId);
   }
 
   function addEnvironment() {
@@ -106,22 +160,65 @@ export function EnvironmentsPane({
         <p className="text-[11px] text-muted-foreground">
           {t("originEditor.environments.hint")}
         </p>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={readOnly}
-          onClick={addEnvironment}
-        >
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
-          {t("originEditor.environments.add")}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={readOnly || importable.length === 0}
+                title={
+                  importable.length === 0
+                    ? t("originEditor.environments.importNone")
+                    : undefined
+                }
+              >
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                {t("originEditor.environments.import")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+              {importable.map((env) => (
+                <DropdownMenuItem
+                  key={env.sourceEnvironmentId}
+                  onSelect={() => importEnvironment(env)}
+                >
+                  <span
+                    aria-hidden
+                    className="mr-2 h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-border"
+                    style={{ background: env.color ?? "transparent" }}
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    {env.name || t("environments.defaultName")}
+                  </span>
+                  <span className="ml-2 shrink-0 text-[10px] text-muted-foreground">
+                    {t("originEditor.environments.importCount", {
+                      count: env.connectionIds.length,
+                    })}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={readOnly}
+            onClick={addEnvironment}
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            {t("originEditor.environments.add")}
+          </Button>
+        </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[220px_1fr] gap-2">
         <div className="min-h-0 overflow-y-auto rounded-md border border-border">
           {draft.environments.length === 0 ? (
             <p className="p-3 text-center text-[11px] text-muted-foreground">
-              {t("originEditor.environments.empty")}
+              {importable.length > 0
+                ? t("originEditor.environments.emptyWithLocal")
+                : t("originEditor.environments.empty")}
             </p>
           ) : (
             draft.environments.map((env) => {

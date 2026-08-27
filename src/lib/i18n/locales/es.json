@@ -2275,7 +2275,11 @@
       "cosmeticsHint": "Se guardan tal cual. Un tema que el otro lado no tenga cae a su tema por defecto.",
       "members": "Conexiones de este entorno",
       "membersHint": "Filtra lo que ven, no decide lo que reciben",
-      "noConnections": "Añade antes conexiones al documento"
+      "noConnections": "Añade antes conexiones al documento",
+      "import": "De los míos…",
+      "importNone": "Todos los entornos de este equipo ya están en el fichero",
+      "importCount": "{{count}} conexión(es)",
+      "emptyWithLocal": "El fichero no publica entornos. Copia uno de los tuyos con «De los míos…»."
     },
     "schemas": {
       "hint": "Los schemas son globales, no pertenecen a un entorno: viajan aquí para que un solo fichero deje un equipo listo.",
@@ -2322,8 +2326,8 @@
     "confirm": {
       "title": "¿Publicar la revisión {{revision}}?",
       "publish": "Publicar",
-      "publishing": "Publicando…",
-      "silentWarning": "Algunas de estas bajas no llegarán a nadie. Lee el informe de abajo."
+      "silentWarning": "Algunas de estas bajas no llegarán a nadie. Lee el informe de abajo.",
+      "progress": "Cifrando contraseñas… {{done}} de {{total}}"
     }
   }
 }

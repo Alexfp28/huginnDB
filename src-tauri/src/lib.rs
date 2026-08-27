@@ -379,6 +379,7 @@ pub fn run() {
             commands::origins::sync_origin,
             commands::origin_doc::probe_origin_writable,
             commands::origin_doc::open_origin_document,
+            commands::origin_doc::list_publishable_environments,
             commands::origin_doc::preview_origin_publish,
             commands::origin_doc::create_origin_document,
             commands::origin_doc::save_origin_document,

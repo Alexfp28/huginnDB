@@ -4,7 +4,7 @@
  * Byte-identical in `ImportProfilesDialog` and `ImportEnvironmentDialog` — the
  * bulk-action row, the scrolling list, the three-way per-item toggle and the
  * inline error, about 45 lines each. `ConflictBulkActions` and
- * `ImportProgressBar` were already extracted from the same pair; this is the
+ * `ProgressBar` were already extracted from the same pair; this is the
  * rest of it.
  */
 

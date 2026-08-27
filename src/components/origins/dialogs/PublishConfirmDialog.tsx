@@ -11,7 +11,9 @@
 import { useTranslation } from "react-i18next";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { ProgressBar } from "@/components/common/ProgressBar";
 import { ImpactReport } from "@/components/origins/ImpactReport";
+import type { PublishProgress } from "@/lib/bridges/origin-progress-bridge";
 import type { OriginPublishImpact } from "@/types";
 
 export function PublishConfirmDialog({
@@ -21,6 +23,7 @@ export function PublishConfirmDialog({
   path,
   revision,
   saving,
+  progress,
   error,
   onConfirm,
 }: {
@@ -31,6 +34,10 @@ export function PublishConfirmDialog({
   /** The revision about to be written — `base.revision + 1`. */
   revision: number;
   saving: boolean;
+  /** Per-secret progress, or `null` when nothing slow is running. `null` is the
+   *  common case: a document of verbatim envelopes publishes instantly, and the
+   *  button's own spinner is the whole feedback it needs. */
+  progress: PublishProgress | null;
   error: string | null;
   onConfirm: () => void;
 }) {
@@ -56,10 +63,22 @@ export function PublishConfirmDialog({
       }
       confirmLabel={t("originEditor.confirm.publish")}
       confirming={saving}
-      confirmingLabel={t("originEditor.confirm.publishing")}
+      // Deliberately no `confirmingLabel`: `ConfirmDialog` shows the spinner
+      // only when there is no label to put in its place, so passing one is what
+      // was leaving the button reading "Publishing…" with nothing moving.
       error={error}
       onConfirm={onConfirm}
     >
+      {progress && (
+        <ProgressBar
+          done={progress.done}
+          total={progress.total}
+          label={t("originEditor.confirm.progress", {
+            done: progress.done,
+            total: progress.total,
+          })}
+        />
+      )}
       {impact && (
         <div className="max-h-[45vh] overflow-y-auto rounded-md border border-border p-3">
           <ImpactReport impact={impact} />

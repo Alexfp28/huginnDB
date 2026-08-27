@@ -27,7 +27,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Settings → Shared origins → "Edit the document…" now opens a full-screen
   editor for the file: which connections it publishes and how each one's
   password travels, the environments and their membership, the JSON Schema slice
-  and its bindings, and the publication metadata. It is a **document** editor,
+  and its bindings, and the publication metadata. Each pane offers what this
+  machine already has as its left-hand side — the connection list, the schema
+  library, and (via `list_publishable_environments`) this machine's own
+  environments, resolved by the same `referenced_profile_ids` the export uses, so
+  building a file from scratch is copying rather than retyping. Importing an
+  environment brings the connections it references with it, since an environment
+  whose membership names ids the document does not carry is a filter over
+  nothing. A *mirrored* environment is excluded on purpose: its identity for a
+  consumer is the publisher's `origin_source_id`, not the local
+  `Environment::id` it would have to be published under, so copying one in would
+  mint a second bundle for an environment the document may already carry. It is a **document** editor,
   not a view onto this machine: nothing in it reads from or writes to
   `profiles.json`, `tab_state.json` or `json_schemas.json`, and saving changes
   nothing locally. The file it builds is the same
@@ -314,6 +324,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   are `skip_serializing_if`, so a plain "Export profiles…" or "Export
   environments…" file stays byte-identical to a pre-1.19 one — which is also
   what lets the editor rebuild a file it did not write itself byte for byte.
+
+- **`ImportProgressBar` is now `common/ProgressBar`, with its caption as a
+  prop.** It had exactly the shape the origin publish needed — a determinate bar,
+  because the work is one 600 000-iteration PBKDF2 derivation per secret and a
+  spinner is not enough feedback for a dozen of them — and a third call site
+  outside `connection/` is precisely the criterion gotcha #28 sets for `common/`.
+  Publishing feeds it from its own `huginndb://origin-publish-progress` event
+  rather than reusing the import one: an event whose name says "import", emitted
+  by a publish, is a wire contract that lies, and a window doing both at once
+  could never tell them apart. Nothing is emitted when every envelope travels
+  verbatim, which is the common case and the instant one.
 
 - **The Schema panel's filter searches every open connection at once, and says
   where it is looking.** There was one filter box, and it silently applied only

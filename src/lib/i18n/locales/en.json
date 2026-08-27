@@ -2275,7 +2275,11 @@
       "cosmeticsHint": "Stored as typed. A theme the other end does not have falls back to their default.",
       "members": "Connections in this environment",
       "membersHint": "Filters what they see; it does not decide what they receive",
-      "noConnections": "Add connections to the document first"
+      "noConnections": "Add connections to the document first",
+      "import": "From mine…",
+      "importNone": "Every environment on this machine is already in the file",
+      "importCount": "{{count}} connection(s)",
+      "emptyWithLocal": "The file publishes no environments. Copy one of yours in with “From mine…”."
     },
     "schemas": {
       "hint": "Schemas are global, not owned by an environment: they ride along so one file can set up a whole machine.",
@@ -2322,8 +2326,8 @@
     "confirm": {
       "title": "Publish revision {{revision}}?",
       "publish": "Publish",
-      "publishing": "Publishing…",
-      "silentWarning": "Some of these disappearances will reach nobody. Read the report below."
+      "silentWarning": "Some of these disappearances will reach nobody. Read the report below.",
+      "progress": "Encrypting passwords… {{done}} of {{total}}"
     }
   }
 }

@@ -33,6 +33,10 @@ import { Cable, FileJson, Layers, Loader2, Send } from "lucide-react";
 
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { api } from "@/lib/tauri";
+import {
+  withPublishProgress,
+  type PublishProgress,
+} from "@/lib/bridges/origin-progress-bridge";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
 import { useConnections } from "@/stores/session/connections";
 import { useJsonSchemas } from "@/stores/jsonSchemas";
@@ -51,6 +55,7 @@ import {
 import type {
   OriginDocument,
   OriginDraft,
+  OriginDraftEnvironment,
   OriginPublishImpact,
 } from "@/types";
 
@@ -80,6 +85,13 @@ export function OriginEditorOverlay() {
   const bindings = useJsonSchemas((s) => s.bindings);
 
   const [doc, setDoc] = useState<OriginDocument | null>(null);
+  // This machine's environments, offered as bundles to copy in. Fetched once
+  // per opened document rather than read from `useEnvironments`, because
+  // membership has to be resolved by the same helper the export uses — the
+  // frontend store holds no `launch` state for an environment it is not in.
+  const [localEnvironments, setLocalEnvironments] = useState<
+    OriginDraftEnvironment[]
+  >([]);
   const [draft, setDraft] = useState<OriginDraft | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -88,6 +100,7 @@ export function OriginEditorOverlay() {
   const [passphrase, setPassphrase] = useState<PassphraseState>(NO_PASSPHRASE);
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [progress, setProgress] = useState<PublishProgress | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
 
@@ -99,6 +112,12 @@ export function OriginEditorOverlay() {
     try {
       const loaded = await api.openOriginDocument(id);
       setDoc(loaded);
+      // Best effort: not being able to list them costs the import dropdown,
+      // not the document.
+      api
+        .listPublishableEnvironments()
+        .then(setLocalEnvironments)
+        .catch(() => setLocalEnvironments([]));
       setDraft(loaded.draft);
       setStale(false);
       setImpact(null);
@@ -155,14 +174,19 @@ export function OriginEditorOverlay() {
     if (!originId || !draft || !doc) return;
     setSaving(true);
     setSaveError(null);
-    void api
-      .saveOriginDocument({
+    // The bar only appears if the backend has something slow to report —
+    // resolving a secret from the keychain, or re-keying one during a rotation.
+    // A publish of verbatim envelopes emits nothing and finishes on the
+    // button's spinner alone.
+    void withPublishProgress(setProgress, () =>
+      api.saveOriginDocument({
         originId,
         draft,
         base: doc.base,
         passphrase: passphrase.value || null,
         rotateFrom: passphrase.rotating ? passphrase.rotateFrom : null,
-      })
+      }),
+    )
       .then(async (outcome) => {
         if (outcome.status === "conflict") {
           // Not an error: their revision is newer than ours. Show the document
@@ -191,9 +215,6 @@ export function OriginEditorOverlay() {
       .finally(() => setSaving(false));
   }
 
-  const canSave =
-    dirty && !stale && !readOnly && passphraseReady(passphrase, passphraseNeeded);
-
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent className="flex h-[92vh] max-w-[min(1400px,95vw)] flex-col gap-0 overflow-hidden p-0">
@@ -216,6 +237,14 @@ export function OriginEditorOverlay() {
               saving={saving}
               onSave={() => {
                 setSaveError(null);
+                // A missing passphrase is not something to discover inside the
+                // confirmation, where the only thing to do about it is cancel.
+                // Send the user to the pane that has the fields instead; it is
+                // the one that can explain what is wanted.
+                if (!passphraseReady(passphrase, passphraseNeeded)) {
+                  setPane("publish");
+                  return;
+                }
                 setConfirming(true);
               }}
               onDiscard={() => {
@@ -268,6 +297,8 @@ export function OriginEditorOverlay() {
                 {pane === "environments" && (
                   <EnvironmentsPane
                     draft={draft}
+                    local={localEnvironments}
+                    profiles={profiles}
                     readOnly={readOnly}
                     onChange={setDraft}
                   />
@@ -303,14 +334,8 @@ export function OriginEditorOverlay() {
               path={doc.path}
               revision={doc.base.revision + 1}
               saving={saving}
-              error={
-                saveError ??
-                (canSave
-                  ? null
-                  : passphraseReady(passphrase, passphraseNeeded)
-                    ? null
-                    : t("originEditor.publish.passphraseRequired"))
-              }
+              progress={progress}
+              error={saveError}
               onConfirm={performSave}
             />
           </>

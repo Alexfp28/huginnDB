@@ -171,6 +171,14 @@ export function PublishPane({
                 onPassphraseChange({ ...passphrase, confirm: v })
               }
             />
+            {/* Says what is being waited for. Publishing sends the user here
+                rather than into a confirmation whose only useful button would
+                be Cancel. */}
+            {!passphraseReady(passphrase, passphraseNeeded) && (
+              <p className="text-[11px] text-destructive">
+                {t("originEditor.publish.passphraseRequired")}
+              </p>
+            )}
           </div>
         )}
       </div>

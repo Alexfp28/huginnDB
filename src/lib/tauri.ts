@@ -67,6 +67,7 @@ import type {
   OriginDocument,
   OriginDraft,
   OriginDraftBase,
+  OriginDraftEnvironment,
   OriginPublishImpact,
   OriginRole,
   OriginSaveOutcome,
@@ -820,6 +821,14 @@ export const api = {
    *  the editor renders read-only and `role`/`writable` say why. */
   openOriginDocument: (originId: string) =>
     invoke<OriginDocument>("open_origin_document", { originId }),
+
+  /** This machine's own environments, shaped as bundles the editor can copy
+   *  into a document — the left-hand column of its environments pane.
+   *  Membership is resolved by the same helper the environment export uses, and
+   *  an environment that mirrors an origin is excluded (its identity for a
+   *  consumer is the publisher's source id, not this machine's). */
+  listPublishableEnvironments: () =>
+    invoke<OriginDraftEnvironment[]>("list_publishable_environments"),
 
   /** What publishing this draft would do to everyone pulling from the origin,
    *  computed against the file as it stands on disk. Neither decrypts nor

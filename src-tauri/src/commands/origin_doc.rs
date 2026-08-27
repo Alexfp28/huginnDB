@@ -45,6 +45,30 @@ use crate::state_file;
 use crate::tab_state::{self, Origin, OriginRole, PersistedTabState};
 use crate::transfer::{self, EnvironmentExportFile, ExportedSecret, KIND_ENVIRONMENT};
 
+/// Per-secret progress while a publish encrypts.
+///
+/// A *separate* event from `IMPORT_PROGRESS_EVENT` rather than a reuse of it,
+/// even though the payload is identical and the reason for both is the same
+/// (one 600 000-iteration PBKDF2 derivation per secret, deliberately slow). An
+/// event whose name says "import" emitted by a publish is a wire contract that
+/// lies, and the two can then never be told apart by a window that happens to
+/// be doing both.
+///
+/// Scoped with `emit_to` to the window that asked, like every other per-window
+/// event here (gotcha #25): a bare `emit` would drive a *different* window's
+/// progress bar.
+pub const ORIGIN_PUBLISH_PROGRESS_EVENT: &str = "huginndb://origin-publish-progress";
+
+/// Payload of [`ORIGIN_PUBLISH_PROGRESS_EVENT`]. `total` counts only the
+/// connections that actually need crypto work — a document of verbatim
+/// envelopes emits nothing at all, which is what the frontend reads as "there
+/// is no bar to show".
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct PublishProgress {
+    pub done: usize,
+    pub total: usize,
+}
+
 // ---------------------------------------------------------------------------
 // DTOs
 // ---------------------------------------------------------------------------
@@ -164,6 +188,59 @@ fn probe(path: &Path) -> WritableProbe {
     }
 }
 
+/// This machine's own environments, shaped as bundles the editor can copy into
+/// a document.
+///
+/// Not a read of the document and not a write of anything: it is the *left-hand
+/// column* of the environments pane, the same role `list_profiles` plays for the
+/// connections one. Without it a publisher composing a file from scratch could
+/// only build environments by hand, retyping what they already have configured.
+///
+/// Membership is resolved by [`crate::commands::prefs::referenced_profile_ids`],
+/// the same helper `export_environments` uses, so "which connections does this
+/// environment mean" cannot be answered two different ways.
+///
+/// **A mirrored environment is excluded**, and that is not tidiness. Its
+/// identity for every consumer is the publisher's `origin_source_id`, not the
+/// local `Environment::id` this would have to publish under — so copying one in
+/// would mint a *second* bundle for an environment the document may already
+/// carry, and every consumer would end up with two of it. An environment
+/// mirrored from a *different* origin is refused for the mirror image of the
+/// same reason: two origins claiming one source id is a conflict neither sync
+/// can resolve.
+#[tauri::command]
+pub fn list_publishable_environments(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<origin_doc::DraftEnvironment>> {
+    let guard = state.tab_state.read();
+    Ok(guard
+        .environments
+        .iter()
+        .filter(|env| env.origin_id.is_none())
+        .map(|env| {
+            let mut connection_ids: Vec<String> =
+                crate::commands::prefs::referenced_profile_ids(env)
+                    .into_iter()
+                    .collect();
+            // Sorted for the same reason the export sorts them: a stable order
+            // makes two documents built from the same environment diff cleanly.
+            connection_ids.sort();
+            origin_doc::DraftEnvironment {
+                // The publisher's own id, exactly as `export_environments`
+                // stamps it — and the identity a consumer's sync will match on
+                // for as long as this environment is published.
+                source_environment_id: env.id.clone(),
+                name: env.name.clone(),
+                color: env.color.clone(),
+                icon: env.icon.clone(),
+                theme_id: env.theme_id.clone(),
+                connection_ids,
+                origins: Vec::new(),
+            }
+        })
+        .collect())
+}
+
 /// Open a registered origin's document for editing.
 ///
 /// Works for a consumer too, and deliberately: reading the file you pull from is
@@ -274,9 +351,14 @@ pub fn create_origin_document(
 /// it is an explicit argument rather than something a save can drift into.
 ///
 /// `async fn` with the body on `spawn_blocking` — see the module doc.
+// A Tauri command's parameters *are* its wire shape — the frontend passes them
+// by name — so the count here is the IPC contract, not a signature that wants a
+// struct. Same reason the write paths in `commands::query` carry the allow.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn save_origin_document(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     origin_id: String,
     draft: OriginDraft,
@@ -285,6 +367,10 @@ pub async fn save_origin_document(
     rotate_from: Option<String>,
 ) -> AppResult<SaveOutcome> {
     let tab_state_lock = state.tab_state.clone();
+    // Cloned into the blocking task so it can report progress from there.
+    // `window` itself is only used for its label — see the event's doc.
+    let app_for_task = app.clone();
+    let window_label = window.label().to_string();
     let outcome = tauri::async_runtime::spawn_blocking(move || {
         save_inner(
             &tab_state_lock,
@@ -293,6 +379,13 @@ pub async fn save_origin_document(
             base,
             passphrase.as_deref(),
             rotate_from.as_deref(),
+            |done, total| {
+                let _ = app_for_task.emit_to(
+                    &window_label,
+                    ORIGIN_PUBLISH_PROGRESS_EVENT,
+                    PublishProgress { done, total },
+                );
+            },
         )
     })
     .await
@@ -312,6 +405,7 @@ fn save_inner(
     base: DraftBase,
     passphrase: Option<&str>,
     rotate_from: Option<&str>,
+    on_progress: impl Fn(usize, usize),
 ) -> AppResult<SaveOutcome> {
     let origin = find_origin(&tab_state_lock.read(), origin_id)?;
     if origin.role != OriginRole::Publisher {
@@ -349,7 +443,7 @@ fn save_inner(
         Some(p) => Some(p.to_string()),
         None => keychain::get_password(&crate::commands::origins::passphrase_account(origin_id))?,
     };
-    resolve_secrets(&mut draft, effective.as_deref(), rotate_from)?;
+    resolve_secrets(&mut draft, effective.as_deref(), rotate_from, on_progress)?;
 
     draft.meta.revision = Some(base.revision.saturating_add(1));
     let impact = origin_doc::publish_impact(&draft, &base_file);
@@ -416,12 +510,22 @@ fn resolve_secrets(
     draft: &mut OriginDraft,
     passphrase: Option<&str>,
     rotate_from: Option<&str>,
+    on_progress: impl Fn(usize, usize),
 ) -> AppResult<()> {
-    let needs_passphrase = draft.connections.iter().any(|c| {
-        matches!(c.secret, SecretSlot::FromKeychain)
-            || (rotate_from.is_some() && matches!(c.secret, SecretSlot::Keep { .. }))
-    });
-    if !needs_passphrase {
+    let needs_work = |slot: &SecretSlot| {
+        matches!(slot, SecretSlot::FromKeychain)
+            || (rotate_from.is_some() && matches!(slot, SecretSlot::Keep { .. }))
+    };
+    // Counted before the loop, and only over the slots that actually derive a
+    // key: a document of verbatim envelopes reports nothing, which is what
+    // makes "no bar" mean "there was nothing slow to wait for" rather than
+    // "progress was not wired up".
+    let total = draft
+        .connections
+        .iter()
+        .filter(|c| needs_work(&c.secret))
+        .count();
+    if total == 0 {
         return Ok(());
     }
     let Some(pass) = passphrase.filter(|p| !p.is_empty()) else {
@@ -431,7 +535,17 @@ fn resolve_secrets(
         ));
     };
 
+    let mut done = 0usize;
     for conn in &mut draft.connections {
+        // Reported *before* the derivation, not after: the first slot is as slow
+        // as the rest, so emitting afterwards would leave the bar unpainted for
+        // the whole of it — the one stretch the user most needs to see.
+        // Connections that need no work are skipped without a tick, so the
+        // denominator stays what it promised.
+        if needs_work(&conn.secret) {
+            on_progress(done, total);
+            done += 1;
+        }
         match &conn.secret {
             SecretSlot::FromKeychain => {
                 conn.secret = match from_keychain(&conn.profile, pass)? {
@@ -448,6 +562,7 @@ fn resolve_secrets(
             SecretSlot::Keep { .. } | SecretSlot::Clear => {}
         }
     }
+    on_progress(total, total);
     Ok(())
 }
 
