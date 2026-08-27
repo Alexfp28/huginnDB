@@ -1,27 +1,19 @@
 // Theme presets + helpers.
-// Each theme is a flat record of CSS variable values applied to <html>.
-// Values are hex (for the native color input). They are converted to
-// "H S% L%" at apply time because that's what the Tailwind config expects.
+// Each theme FAMILY declares both its light and dark variant together, and
+// both are written to <html> at once via CSS `light-dark()` — the browser
+// picks the right one based on `color-scheme`, set explicitly by the app
+// (never `prefers-color-scheme`, since the light/dark toggle is manual).
+// Values are hex (for the native color input); converted to full `hsl(...)`
+// colors at apply time.
 
 export type ThemeMode = "light" | "dark";
 
-export interface Theme {
+export interface ThemeFamily {
   id: string;
   name: string;
-  mode: ThemeMode;
   builtin?: boolean;
-  /**
-   * Id of this theme's light/dark counterpart within the same family (e.g.
-   * "summer" <-> "summer-dark"). Every built-in theme must set this — it's
-   * what `setActiveMode` (stores/preferences/theme.ts) uses to land the
-   * light/dark toggle on the right theme instead of resetting to the
-   * HuginnDB default (issue #132: the old logic looked up the built-in whose
-   * *id* literally equaled "dark"/"light", which only ever matched the
-   * HuginnDB pair). Undefined on custom themes, which flip `mode` in place
-   * instead of switching to another theme.
-   */
-  pairId?: string;
-  colors: ThemeColors;
+  light: ThemeColors;
+  dark: ThemeColors;
 }
 
 export interface ThemeColors {
@@ -175,22 +167,25 @@ export const COLOR_GROUPS: { id: string; titleKey: string; keys: (keyof ThemeCol
   },
 ];
 
-export const BUILT_IN_THEMES: Theme[] = [
+export const BUILT_IN_THEMES: ThemeFamily[] = [
   {
-    // The brand palette (see the visual-language brief): a slate/navy ramp
-    // under one electric blue. Four surface levels, in depth order —
-    // background #020617 (the deepest, what the editor and grid sit on),
-    // card #0b1220 (panels, cards, rails), popover/secondary #111827 (menus,
-    // dialogs, the tab-strip trench) and accent #1e293b (the pointer/selected
-    // surface, one step above elevated so hover stays visible inside a menu).
-    // `border` shares that last step: at this contrast a hairline that reads as
-    // a border and a hover fill that reads as a surface are the same value.
+    // The HuginnDB family. Dark: a slate/navy ramp under one electric blue —
+    // four surface levels in depth order, background #020617 (the deepest,
+    // what the editor and grid sit on), card #0b1220 (panels, cards, rails),
+    // popover/secondary #111827 (menus, dialogs, the tab-strip trench) and
+    // accent #1e293b (the pointer/selected surface). `border` shares that
+    // last step: at this contrast a hairline that reads as a border and a
+    // hover fill that reads as a surface are the same value. Light: `card`
+    // (#f8fafc) is deliberately *darker* than `background` (#ffffff) —
+    // surfaces recede from a white page instead of lifting off a grey one —
+    // and the pointer/selected surface is the blue-tinted #eef5ff rather
+    // than a neutral grey, which is what makes a selected grid row or menu
+    // item read as "azul muy suave" in light mode without spending the
+    // brand blue on it.
     id: "dark",
-    name: "HuginnDB Dark",
-    mode: "dark",
+    name: "HuginnDB",
     builtin: true,
-    pairId: "light",
-    colors: {
+    dark: {
       background: "#020617",
       foreground: "#f8fafc",
       card: "#0b1220",
@@ -224,20 +219,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       input: "#1e293b",
       ring: "#2563eb",
     },
-  },
-  {
-    // Light counterpart. `card` (#f8fafc) is deliberately *darker* than
-    // `background` (#ffffff) here — surfaces recede from a white page instead
-    // of lifting off a grey one — and the pointer/selected surface is the
-    // blue-tinted #eef5ff rather than a neutral grey, which is what makes a
-    // selected grid row or menu item read as "azul muy suave" in light mode
-    // without spending the brand blue on it.
-    id: "light",
-    name: "HuginnDB Light",
-    mode: "light",
-    builtin: true,
-    pairId: "dark",
-    colors: {
+    light: {
       background: "#ffffff",
       foreground: "#0f172a",
       card: "#f8fafc",
@@ -273,12 +255,10 @@ export const BUILT_IN_THEMES: Theme[] = [
     // Inspired by Anthropic's Claude product palette: warm paper-cream
     // background, terracotta-orange accent, soft sepia greys for text and
     // borders. Aims for the same calm, document-like feel as Claude.ai.
-    id: "claude-light",
-    name: "Claude Light",
-    mode: "light",
+    id: "claude",
+    name: "Claude",
     builtin: true,
-    pairId: "claude-dark",
-    colors: {
+    light: {
       background: "#f5f4ed",
       foreground: "#3d3929",
       card: "#fbfaf3",
@@ -309,14 +289,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       input: "#d9d5c1",
       ring: "#c96442",
     },
-  },
-  {
-    id: "claude-dark",
-    name: "Claude Dark",
-    mode: "dark",
-    builtin: true,
-    pairId: "claude-light",
-    colors: {
+    dark: {
       background: "#1f1e1b",
       foreground: "#e8e3d4",
       card: "#26241f",
@@ -354,13 +327,16 @@ export const BUILT_IN_THEMES: Theme[] = [
     // (which stay in muted/desaturated ranges), including the semantic
     // accents (fk/warning/destructive) picked as neon cyan/amber/pink so the
     // whole palette reads as one coherent "neon" family rather than a single
-    // green accent dropped into an otherwise ordinary dark theme.
+    // green accent dropped into an otherwise ordinary dark theme. Light: same
+    // lab-on-paper energy but on a bright mint-white surface, so the
+    // saturated hues have to deepen to stay legible (a raw #39ff14 on white
+    // has poor contrast) while keeping the family's signature — green
+    // primary/brand, cyan fk, yellow pk/numeric, hot-pink destructive —
+    // recognisable at a glance.
     id: "neon",
     name: "Neon",
-    mode: "dark",
     builtin: true,
-    pairId: "neon-light",
-    colors: {
+    dark: {
       background: "#05080a",
       foreground: "#e8fff2",
       card: "#0a1710",
@@ -391,19 +367,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       input: "#1b2a20",
       ring: "#39ff14",
     },
-  },
-  {
-    // Light counterpart to Neon: same lab-on-paper energy but on a bright
-    // mint-white surface, so the saturated hues have to deepen to stay
-    // legible as fills/text (a raw #39ff14 on white has poor contrast) while
-    // keeping the family's signature — green primary/brand, cyan fk, yellow
-    // pk/numeric, hot-pink destructive — recognisable at a glance.
-    id: "neon-light",
-    name: "Neon Light",
-    mode: "light",
-    builtin: true,
-    pairId: "neon",
-    colors: {
+    light: {
       background: "#f3fff8",
       foreground: "#04170d",
       card: "#ffffff",
@@ -436,17 +400,17 @@ export const BUILT_IN_THEMES: Theme[] = [
     },
   },
   {
-    // Warm, light "beach" palette: sun-bleached sand background, a single
+    // Warm "beach" palette. Light: sun-bleached sand background, a single
     // saturated ocean-teal brand/ring accent, and coral for destructive
-    // actions. Kept in the light-mode family (like "light"/"claude-light")
-    // rather than a separate saturated dark theme (contrast with "neon") —
-    // summer reads as bright daylight, not a night palette.
+    // actions — reads as bright daylight, not a night palette. Dark: a
+    // night-beach counterpart (deep ocean-teal surfaces, sand-cream text)
+    // keeping the same coral primary and teal brand hues, both brightened
+    // slightly to stay vivid against the dark background the way Claude Dark
+    // brightens Claude Light's terracotta.
     id: "summer",
     name: "Summer",
-    mode: "light",
     builtin: true,
-    pairId: "summer-dark",
-    colors: {
+    light: {
       background: "#fef9ef",
       foreground: "#22333b",
       card: "#fffdf6",
@@ -477,18 +441,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       input: "#f0e2c0",
       ring: "#00b8a9",
     },
-  },
-  {
-    // Dark counterpart to Summer: a night-beach palette (deep ocean-teal
-    // surfaces, sand-cream text) keeping the same coral primary and teal
-    // brand hues, both brightened slightly to stay vivid against the dark
-    // background the way Claude Dark brightens Claude Light's terracotta.
-    id: "summer-dark",
-    name: "Summer Dark",
-    mode: "dark",
-    builtin: true,
-    pairId: "summer",
-    colors: {
+    dark: {
       background: "#0b2027",
       foreground: "#fdf6e8",
       card: "#102a32",
@@ -521,12 +474,15 @@ export const BUILT_IN_THEMES: Theme[] = [
     },
   },
   {
+    // Maximum-contrast idiom: pure black/white inverted, solid black border
+    // and text (or the reverse), no greyscale softening, and the identical
+    // signal yellow for primary/brand/ring on both sides — a yellow chip
+    // with black text reads as "high contrast" regardless of which side is
+    // inverted.
     id: "high-contrast",
     name: "High Contrast",
-    mode: "dark",
     builtin: true,
-    pairId: "high-contrast-light",
-    colors: {
+    dark: {
       background: "#000000",
       foreground: "#ffffff",
       card: "#0a0a0a",
@@ -557,19 +513,7 @@ export const BUILT_IN_THEMES: Theme[] = [
       input: "#ffffff",
       ring: "#ffeb3b",
     },
-  },
-  {
-    // Light counterpart to High Contrast: pure white/black inverted, keeping
-    // the same maximum-contrast idiom (solid black border/text, no
-    // greyscale softening) and the identical signal yellow for
-    // primary/brand/ring — a yellow chip with black text reads as "high
-    // contrast" regardless of which side is inverted.
-    id: "high-contrast-light",
-    name: "High Contrast Light",
-    mode: "light",
-    builtin: true,
-    pairId: "high-contrast",
-    colors: {
+    light: {
       background: "#ffffff",
       foreground: "#000000",
       card: "#f5f5f5",
@@ -603,6 +547,46 @@ export const BUILT_IN_THEMES: Theme[] = [
   },
 ];
 
+/**
+ * Ids of the pre-consolidation themes (one per light/dark variant, linked by
+ * a `pairId` field that no longer exists) mapped to the family id that now
+ * covers them. Applied wherever a `themeId` arrives from outside the store
+ * (an environment's persisted/imported `theme_id`, a locally persisted
+ * `themeId`) — Rust never interprets this string (see `Environment.theme_id`
+ * in `src-tauri/src/tab_state.rs`), so the shim lives here only.
+ */
+export const LEGACY_THEME_ID_MAP: Record<string, string> = {
+  dark: "dark",
+  light: "dark",
+  "claude-light": "claude",
+  "claude-dark": "claude",
+  neon: "neon",
+  "neon-light": "neon",
+  summer: "summer",
+  "summer-dark": "summer",
+  "high-contrast": "high-contrast",
+  "high-contrast-light": "high-contrast",
+};
+
+/** The mode each pre-consolidation id implied — used only to derive the
+ *  initial global `mode` when migrating a persisted `themeId`. */
+export const LEGACY_THEME_MODE_MAP: Record<string, ThemeMode> = {
+  dark: "dark",
+  light: "light",
+  "claude-light": "light",
+  "claude-dark": "dark",
+  neon: "dark",
+  "neon-light": "light",
+  summer: "light",
+  "summer-dark": "dark",
+  "high-contrast": "dark",
+  "high-contrast-light": "light",
+};
+
+export function resolveLegacyThemeId(id: string): string {
+  return LEGACY_THEME_ID_MAP[id] ?? id;
+}
+
 const VAR_NAMES: Record<keyof ThemeColors, string> = {
   background: "--background",
   foreground: "--foreground",
@@ -635,23 +619,53 @@ const VAR_NAMES: Record<keyof ThemeColors, string> = {
   ring: "--ring",
 };
 
-export function applyTheme(theme: Theme) {
+/**
+ * Rewrites every CSS variable on <html> as `light-dark(light, dark)` — one
+ * write covers both modes. Call whenever the DATA of the active family
+ * changes (family switch, colour edit, fork, reset, environment override,
+ * rehydrate). For a pure mode toggle (family unchanged) use
+ * `applyColorScheme` instead — that's the whole point of storing both
+ * variants in one variable: the toggle becomes O(1) instead of reapplying
+ * all ~28 tokens.
+ */
+export function applyTheme(family: { light: ThemeColors; dark: ThemeColors }, mode: ThemeMode) {
   const root = document.documentElement;
-  if (theme.mode === "dark") root.classList.add("dark");
-  else root.classList.remove("dark");
-  // Iterate the FULL token set, not just the keys this theme happens to
-  // define. A custom theme persisted before a token existed (e.g. the
-  // success/warning accents added in the UI overhaul) is missing those keys;
-  // since `applyTheme` writes inline vars on <html> and never used to clear
-  // them, switching from a built-in to such a theme would leave the built-in's
-  // inline value stale. Removing the property for any missing/invalid key lets
-  // the stylesheet default in index.css take over instead.
   for (const key of Object.keys(VAR_NAMES) as (keyof ThemeColors)[]) {
-    const value = theme.colors[key];
-    const hsl = value ? hexToHslTriple(value) : null;
-    if (hsl) root.style.setProperty(VAR_NAMES[key], hsl);
-    else root.style.removeProperty(VAR_NAMES[key]);
+    const light = hexToHslColor(family.light[key]);
+    const dark = hexToHslColor(family.dark[key]);
+    // Both sides must resolve — a custom theme persisted before a token
+    // existed (or with an invalid hex) is missing it on at least one side,
+    // and a `light-dark()` with only one real argument makes no sense.
+    // Removing the property lets the index.css stylesheet default take over.
+    if (light && dark) {
+      root.style.setProperty(VAR_NAMES[key], `light-dark(${light}, ${dark})`);
+    } else {
+      root.style.removeProperty(VAR_NAMES[key]);
+    }
   }
+  applyColorScheme(mode);
+}
+
+/**
+ * The O(1) mode toggle: never touches a colour variable (each already
+ * contains both variants via `light-dark()`) — only decides which one the
+ * browser paints, plus the Tailwind `.dark` class hook (`darkMode:["class"]`,
+ * consumed by `dark:` variants in several components — independent of
+ * `color-scheme`, neither mechanism substitutes for the other).
+ */
+export function applyColorScheme(mode: ThemeMode) {
+  const root = document.documentElement;
+  // A single keyword, not "light dark" — the toggle is manual, so
+  // `light-dark()` must resolve to what the user picked, never to
+  // `prefers-color-scheme`.
+  root.style.setProperty("color-scheme", mode);
+  root.classList.toggle("dark", mode === "dark");
+}
+
+function hexToHslColor(hex: string | undefined): string | null {
+  if (!hex) return null;
+  const triple = hexToHslTriple(hex);
+  return triple ? `hsl(${triple})` : null;
 }
 
 export function hexToHslTriple(hex: string): string | null {

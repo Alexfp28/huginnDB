@@ -43,9 +43,22 @@ The editor takes shell syntax, not SQL:
 db.orders.find({ status: "open", total: { $gt: 100 } }).sort({ createdAt: -1 }).limit(50)
 ```
 
-- **Methods**: `find`, `findOne`, `aggregate`, `countDocuments` (`count`),
-  `distinct`, `insertOne`, `insertMany`, `updateOne`, `updateMany`,
+- **Read methods**: `find`, `findOne`, `aggregate`, `countDocuments` (`count`),
+  `distinct`.
+- **Write methods**: `insertOne`, `insertMany`, `updateOne`, `updateMany`,
   `replaceOne`, `deleteOne`, `deleteMany`.
+- **Schema methods** (since 1.19.0): `createIndex({field: -1}, {unique: true})`,
+  `dropIndex("name")`, `hideIndex("name")` / `unhideIndex("name")`, `drop()`,
+  and `renameCollection("newName")`. The rename stays **within the current
+  database** — the form `mongosh` accepts too; a cross-database *move* is the
+  explorer's Rename dialog (see below), deliberately not the grammar's, because
+  a collection name may itself contain dots (`system.views`, `logs.2024`) and
+  reading `renameCollection("logs.2024")` as "move to the database `logs`"
+  would be silently wrong. `renameCollection` never drops an existing
+  destination: a collision is an error, and passing `dropTarget: true` is
+  refused. Over MCP these need the connection's write policy at `full`; the same
+  operations are also available from the index manager and the explorer's
+  context menus.
 - **Chained modifiers**: `.sort({…})`, `.limit(n)`, `.skip(n)`,
   `.projection({…})`.
 - **Relaxed JSON**: unquoted keys, single quotes, trailing commas, `//` and
@@ -180,3 +193,10 @@ with the same `mongosh` grammar (reads are `find` / `aggregate` /
 per-connection write policy as the SQL drivers. On a connection with no
 database bound, pass `schema` — the database name — or the collection list comes
 back empty. See [`MCP.md`](MCP.md).
+
+`create_index` and `drop_index` are MongoDB-only tools — on the SQL drivers an
+index is created with `CREATE INDEX` through `run_query`, which is more
+expressive than any portable form. Read the existing indexes with
+`list_indexes` first: on MongoDB each entry carries a `mongo` object with the
+real definition, and the column list alone cannot tell `{createdAt: -1}` from
+`{createdAt: 1}`.

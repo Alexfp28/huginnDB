@@ -51,7 +51,7 @@ use crate::transfer::{
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 /// Keychain account for an origin's passphrase.
 ///
@@ -59,9 +59,26 @@ use tauri::State;
 /// connection's account, which is `<profile-id>::<username>`. A profile id is a
 /// UUID, so the prefix is what keeps the two spaces disjoint by construction
 /// rather than by luck.
-fn passphrase_account(origin_id: &str) -> String {
+pub(crate) fn passphrase_account(origin_id: &str) -> String {
     format!("origin::{origin_id}")
 }
+
+/// Emitted whenever the origin registry changes: one was added, renamed,
+/// repointed, removed, or synced (which stamps `last_synced_at`).
+///
+/// Broadcast with an unscoped `emit`, and the frontend listens **without a
+/// `target`**, which looks like gotcha #25's cross-window leak and is its
+/// deliberate opposite — same reasoning as
+/// [`crate::commands::json_schemas::JSON_SCHEMAS_CHANGED_EVENT`]. The registry
+/// is one global list in `tab_state.json`; a rename in the Settings window must
+/// reach the connection manager in the main window, and every window's cached
+/// id-to-name map goes stale at the same instant. Scoping it would leave one
+/// window rendering a name that no longer exists.
+///
+/// The payload is `()`: listeners re-run `list_origins`, which is a clone of a
+/// short `Vec`, and shipping the list would put `landed_secrets` fingerprints on
+/// an event bus for no reason.
+pub const ORIGINS_CHANGED_EVENT: &str = "huginndb://origins-changed";
 
 /// Every registered origin, global across all environments, in insertion
 /// order.
@@ -82,6 +99,7 @@ pub fn list_origins(state: State<'_, AppState>) -> AppResult<Vec<Origin>> {
 /// `None` for a plaintext export. It is never written to `tab_state.json`.
 #[tauri::command]
 pub fn add_origin(
+    app: AppHandle,
     state: State<'_, AppState>,
     name: String,
     path: String,
@@ -96,6 +114,11 @@ pub fn add_origin(
         path,
         last_synced_at: None,
         landed_secrets: HashMap::new(),
+        // A newly registered origin is always a consumer. Publishing is a
+        // separate, confirmed decision (`commands::origin_doc`) — pointing at
+        // a file must never be what grants write access to it.
+        role: tab_state::OriginRole::Consumer,
+        maintainer: None,
     };
 
     // Keychain first: a failure here must not leave a registered origin whose
@@ -110,6 +133,7 @@ pub fn add_origin(
         ts.origins.push(origin);
         Ok(())
     })?;
+    let _ = app.emit(ORIGINS_CHANGED_EVENT, ());
     Ok(created)
 }
 
@@ -120,13 +144,20 @@ pub fn add_origin(
 /// keychain untouched (so a plain rename does not require the user to retype a
 /// secret they already stored), while `Some("")` clears it — which is how an
 /// origin that used to be encrypted becomes a plaintext one.
+///
+/// `role` is `None`-means-unchanged for the same reason. Switching it to
+/// [`tab_state::OriginRole::Publisher`] is what lets this machine write the
+/// file at all (`commands::origin_doc`), so it is a deliberate, reversible act
+/// the UI confirms — never a side effect of a rename.
 #[tauri::command]
 pub fn update_origin(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     name: String,
     path: String,
     passphrase: Option<String>,
+    role: Option<tab_state::OriginRole>,
 ) -> AppResult<Origin> {
     if path.trim().is_empty() {
         return Err(AppError::InvalidInput("origin path is empty".into()));
@@ -137,7 +168,7 @@ pub fn update_origin(
         None => {}
     }
 
-    tab_state::mutate(&state.tab_state, |ts| {
+    let updated = tab_state::mutate(&state.tab_state, |ts| {
         let origin = ts
             .origins
             .iter_mut()
@@ -145,8 +176,13 @@ pub fn update_origin(
             .ok_or_else(|| AppError::InvalidInput(format!("no origin with id {id}")))?;
         origin.name = name;
         origin.path = path;
+        if let Some(role) = role {
+            origin.role = role;
+        }
         Ok(origin.clone())
-    })
+    })?;
+    let _ = app.emit(ORIGINS_CHANGED_EVENT, ());
+    Ok(updated)
 }
 
 /// Unregister an origin and forget its passphrase.
@@ -159,7 +195,7 @@ pub fn update_origin(
 /// `origin_id` is harmless — no sync resolves against it any more, and the
 /// frontend can offer to release those profiles into ordinary local ones.
 #[tauri::command]
-pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
+pub fn remove_origin(app: AppHandle, state: State<'_, AppState>, id: String) -> AppResult<()> {
     tab_state::mutate(&state.tab_state, |ts| {
         let before = ts.origins.len();
         ts.origins.retain(|o| o.id != id);
@@ -171,6 +207,7 @@ pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
     // Best-effort: a missing entry is the desired end state, and failing the
     // whole command over it would leave the origin registered.
     let _ = keychain::delete_password(&passphrase_account(&id));
+    let _ = app.emit(ORIGINS_CHANGED_EVENT, ());
     Ok(())
 }
 
@@ -206,15 +243,38 @@ pub fn remove_origin(state: State<'_, AppState>, id: String) -> AppResult<()> {
 /// of that work; running off the main thread is what stops whatever remains
 /// from being felt as a freeze.
 #[tauri::command]
-pub async fn sync_origin(state: State<'_, AppState>, id: String) -> AppResult<OriginSyncReport> {
+pub async fn sync_origin(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<OriginSyncReport> {
     let connections = state.connections.clone();
     let profiles = state.profiles.clone();
     let tab_state_lock = state.tab_state.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        sync_origin_inner(&connections, &profiles, &tab_state_lock, &id)
+    let schemas = state.json_schemas.clone();
+    let report = tauri::async_runtime::spawn_blocking(move || {
+        sync_origin_inner(&connections, &profiles, &tab_state_lock, &schemas, &id)
     })
     .await
-    .map_err(|e| AppError::Transfer(format!("origin sync task failed: {e}")))?
+    .map_err(|e| AppError::Transfer(format!("origin sync task failed: {e}")))?;
+    // Only on success: a failed pull writes nothing, `last_synced_at` included,
+    // so there is no registry change to announce (outcome 1 in the doc above).
+    // The emit stays out of `sync_origin_inner` so that body needs no
+    // `AppHandle` and stays callable off the main thread.
+    if let Ok(r) = &report {
+        let _ = app.emit(ORIGINS_CHANGED_EVENT, ());
+        // The library's own event, so every window drops its cached
+        // resolutions — the same broadcast a local edit raises. Only when the
+        // pull actually touched something: a no-op sync must not invalidate
+        // every open data tab's schema cache four times a day.
+        if r.touched_json_schemas() {
+            let _ = app.emit(
+                crate::commands::json_schemas::JSON_SCHEMAS_CHANGED_EVENT,
+                (),
+            );
+        }
+    }
+    report
 }
 
 /// The body of [`sync_origin`], off the main thread. Takes the three locks it
@@ -223,6 +283,7 @@ fn sync_origin_inner(
     connections: &Arc<RwLock<ActiveConnections>>,
     profiles_lock: &Arc<RwLock<Vec<ConnectionProfile>>>,
     tab_state_lock: &Arc<RwLock<tab_state::PersistedTabState>>,
+    schemas_lock: &Arc<RwLock<crate::json_schemas::JsonSchemaLibrary>>,
     id: &str,
 ) -> AppResult<OriginSyncReport> {
     let origin = {
@@ -265,9 +326,10 @@ fn sync_origin_inner(
     }
 
     let is_environment_kind = meta_peek.meta.kind == KIND_ENVIRONMENT;
-    let (incoming_profiles, environment_bundles): (
+    let (incoming_profiles, environment_bundles, json_schemas): (
         Vec<ExportedProfile>,
         Vec<ExportedEnvironmentBundle>,
+        crate::transfer::JsonSchemaBundle,
     ) = if is_environment_kind {
         let export: EnvironmentExportFile = serde_json::from_str(&data).map_err(|e| {
             AppError::InvalidInput(format!(
@@ -275,7 +337,7 @@ fn sync_origin_inner(
                 origin.path
             ))
         })?;
-        (export.profiles, export.environments)
+        (export.profiles, export.environments, export.json_schemas)
     } else {
         let export: crate::transfer::ExportFile = serde_json::from_str(&data).map_err(|e| {
             AppError::InvalidInput(format!(
@@ -283,8 +345,13 @@ fn sync_origin_inner(
                 origin.path
             ))
         })?;
-        (export.profiles, Vec::new())
+        (
+            export.profiles,
+            Vec::new(),
+            crate::transfer::JsonSchemaBundle::default(),
+        )
     };
+    let maintainer = meta_peek.meta.maintainer.clone();
 
     // Carried in and back out so the expensive keychain landing can recognise
     // ciphertext it has already dealt with; see `already_landed`.
@@ -298,6 +365,30 @@ fn sync_origin_inner(
         &mut landed,
     )?;
     report.synced_at = chrono::Utc::now().to_rfc3339();
+
+    // After the profiles, never before: a binding is disabled when it names a
+    // connection this machine does not have, and the connections this very pull
+    // just landed have to count as had.
+    if !json_schemas.is_empty() {
+        let known: std::collections::HashSet<String> =
+            profiles_lock.read().iter().map(|p| p.id.clone()).collect();
+        let mut lib = schemas_lock.write();
+        let merged = crate::json_schemas::origin::merge_origin_bundle(
+            &mut lib,
+            id,
+            &json_schemas,
+            &known,
+            &report.synced_at,
+        );
+        crate::json_schemas::save_library(&lib)?;
+        report.schemas_added = merged.schemas_added;
+        report.schemas_updated = merged.schemas_updated;
+        report.schemas_vanished = merged.schemas_vanished;
+        report.bindings_added = merged.bindings_added;
+        report.bindings_updated = merged.bindings_updated;
+        report.bindings_vanished = merged.bindings_vanished;
+        report.bindings_disabled = merged.bindings_disabled;
+    }
 
     tab_state::mutate(tab_state_lock, |ts| {
         // Run this whenever the file is environment-kind, even with zero
@@ -317,6 +408,10 @@ fn sync_origin_inner(
         if let Some(o) = ts.origins.iter_mut().find(|o| o.id == id) {
             o.last_synced_at = Some(report.synced_at.clone());
             o.landed_secrets = std::mem::take(&mut landed);
+            // Cached so the Settings list can say who curates the file without
+            // reading a path that may be behind a VPN. Display only — it grants
+            // nothing, and the role beside it is this machine's own decision.
+            o.maintainer = maintainer.clone();
         }
         Ok(())
     })?;
@@ -345,6 +440,92 @@ fn already_landed(
         && accounts.iter().all(|a| present(a))
 }
 
+/// Apply one origin's published list to `profiles` in memory, returning what
+/// changed. No I/O whatsoever: no disk, no keychain.
+///
+/// Split out of [`merge_profiles_bundle`] so the merge *rules* — ownership,
+/// deferral while a pool is live, vanished detection, which fields a refresh may
+/// overwrite — are testable without writing the real `profiles.json`. They were
+/// not, and the first test written against the combined function silently
+/// clobbered the developer's own saved connections. A rule this fiddly needs
+/// tests; tests this cheap must not need a disk.
+///
+/// `live` is the set of connection ids with an open pool, passed in for the same
+/// reason.
+///
+/// `pub(crate)` for a second caller with the same motivation: the shared-origin
+/// editor's publish preview (`crate::origin_doc::publish_impact`) simulates a
+/// consumer's next sync by running this against a pool built from the file it is
+/// about to overwrite. Re-deriving the rules there would make the preview
+/// confidently describe something other than what happens.
+pub(crate) fn merge_into(
+    profiles: &mut Vec<ConnectionProfile>,
+    origin_id: &str,
+    incoming: &[ExportedProfile],
+    live: &[String],
+) -> OriginSyncReport {
+    let incoming_ids: std::collections::HashSet<&str> =
+        incoming.iter().map(|p| p.profile.id.as_str()).collect();
+    let mut report = OriginSyncReport::default();
+
+    // Local profiles this origin owns, before the merge — the denominator for
+    // the suspicion check.
+    let owned: Vec<String> = profiles
+        .iter()
+        .filter(|p| p.origin_id.as_deref() == Some(origin_id))
+        .map(|p| p.id.clone())
+        .collect();
+    report.vanished = owned
+        .iter()
+        .filter(|pid| !incoming_ids.contains(pid.as_str()))
+        .cloned()
+        .collect();
+    report.suspicious = !disappearance_is_trustworthy(owned.len(), report.vanished.len());
+    if report.suspicious {
+        // Say nothing actionable about a read we don't trust.
+        report.vanished.clear();
+    }
+
+    for entry in incoming {
+        let mut profile = entry.profile.clone();
+        profile.origin_id = Some(origin_id.to_string());
+        // An origin never publishes session-only profiles.
+        profile.ephemeral = false;
+
+        match profiles.iter_mut().find(|p| p.id == profile.id) {
+            Some(existing) => {
+                // Only ever refresh a profile this origin already owns. A
+                // local profile that happens to share an id (an earlier
+                // import, later detached) is the user's, not the file's.
+                if existing.origin_id.as_deref() != Some(origin_id) {
+                    continue;
+                }
+                if live.iter().any(|c| c == &profile.id) {
+                    report.deferred.push(profile.id.clone());
+                    continue;
+                }
+                // The MCP write policy is a LOCAL trust decision and must
+                // survive the refresh. It is the one field on a published
+                // profile that says what an AI client is allowed to do on
+                // *this* machine, which the publisher cannot know; before
+                // this, setting a shared connection to "data" in Settings
+                // silently reverted on the next pull, so the whole panel was
+                // unusable for anyone whose connections all come from an
+                // origin. Everything else — host, port, credentials, the
+                // visible-database default — is the file's to dictate.
+                profile.mcp_write = existing.mcp_write;
+                *existing = profile.clone();
+                report.updated.push(profile.id);
+            }
+            None => {
+                report.added.push(profile.id.clone());
+                profiles.push(profile);
+            }
+        }
+    }
+    report
+}
+
 /// Merge one origin's published profile list into the global pool, and land
 /// any secrets it carries into this user's keychain. Shared by a plain
 /// `ExportFile` (`kind = "profiles"`, or the pre-`kind` legacy shape) and the
@@ -360,61 +541,12 @@ fn merge_profiles_bundle(
     incoming: &[ExportedProfile],
     landed: &mut HashMap<String, String>,
 ) -> AppResult<OriginSyncReport> {
-    let incoming_ids: std::collections::HashSet<&str> =
-        incoming.iter().map(|p| p.profile.id.as_str()).collect();
-
-    let mut report = OriginSyncReport::default();
+    let report;
     let live: Vec<String> = connections.read().ids();
 
     {
         let mut profiles = profiles_lock.write();
-
-        // Local profiles this origin owns, before the merge — the denominator for
-        // the suspicion check.
-        let owned: Vec<String> = profiles
-            .iter()
-            .filter(|p| p.origin_id.as_deref() == Some(origin_id))
-            .map(|p| p.id.clone())
-            .collect();
-        report.vanished = owned
-            .iter()
-            .filter(|pid| !incoming_ids.contains(pid.as_str()))
-            .cloned()
-            .collect();
-        report.suspicious = !disappearance_is_trustworthy(owned.len(), report.vanished.len());
-        if report.suspicious {
-            // Say nothing actionable about a read we don't trust.
-            report.vanished.clear();
-        }
-
-        for entry in incoming {
-            let mut profile = entry.profile.clone();
-            profile.origin_id = Some(origin_id.to_string());
-            // An origin never publishes session-only profiles.
-            profile.ephemeral = false;
-
-            match profiles.iter_mut().find(|p| p.id == profile.id) {
-                Some(existing) => {
-                    // Only ever refresh a profile this origin already owns. A
-                    // local profile that happens to share an id (an earlier
-                    // import, later detached) is the user's, not the file's.
-                    if existing.origin_id.as_deref() != Some(origin_id) {
-                        continue;
-                    }
-                    if live.iter().any(|c| c == &profile.id) {
-                        report.deferred.push(profile.id.clone());
-                        continue;
-                    }
-                    *existing = profile.clone();
-                    report.updated.push(profile.id);
-                }
-                None => {
-                    report.added.push(profile.id.clone());
-                    profiles.push(profile);
-                }
-            }
-        }
-
+        report = merge_into(&mut profiles, origin_id, incoming, &live);
         crate::store::save_profiles(&profiles)?;
     }
 
@@ -576,7 +708,11 @@ const SUSPICION_RATIO: f32 = 0.5;
 /// perfectly alive — and the recovery (re-adopting each one) is manual.
 ///
 /// Pure so the threshold is testable without a filesystem.
-fn disappearance_is_trustworthy(local_count: usize, vanished_count: usize) -> bool {
+///
+/// `pub(crate)` because the publish preview has to be able to say *"nobody will
+/// be told about this"* — the one thing a consumer's report can never reveal,
+/// since crossing the threshold is what clears `vanished`.
+pub(crate) fn disappearance_is_trustworthy(local_count: usize, vanished_count: usize) -> bool {
     if vanished_count == 0 {
         return true;
     }
@@ -627,11 +763,122 @@ pub struct OriginSyncReport {
     /// of the profile count.
     #[serde(default)]
     pub environments_suspicious: bool,
+    /// JSON Schemas this pull created / refreshed. Non-zero only for an
+    /// environment-kind file whose publisher included them.
+    #[serde(default)]
+    pub schemas_added: usize,
+    #[serde(default)]
+    pub schemas_updated: usize,
+    /// Owned by this origin locally and absent from the file. Reported only,
+    /// like every other disappearance here: another user's edit to a shared
+    /// file must not destroy what is on this machine.
+    #[serde(default)]
+    pub schemas_vanished: usize,
+    #[serde(default)]
+    pub bindings_added: usize,
+    #[serde(default)]
+    pub bindings_updated: usize,
+    #[serde(default)]
+    pub bindings_vanished: usize,
+    /// Landed with `enabled: false` because they name a connection this machine
+    /// does not have (`docs/JSON_SCHEMAS.md`).
+    #[serde(default)]
+    pub bindings_disabled: usize,
+}
+
+impl OriginSyncReport {
+    /// Did this pull change the JSON Schema library? Decides whether the
+    /// library's global invalidation event is worth raising — every window
+    /// drops its cached resolutions when it is, so a quiet sync must not.
+    fn touched_json_schemas(&self) -> bool {
+        self.schemas_added + self.schemas_updated + self.bindings_added + self.bindings_updated > 0
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::McpWritePolicy;
+    use crate::testkit;
+    use crate::transfer::ExportedProfile;
+
+    /// One published entry with no attached secrets, so the merge never touches
+    /// the keychain and the test needs no OS credential store.
+    fn published(profile: ConnectionProfile) -> ExportedProfile {
+        ExportedProfile {
+            profile,
+            secrets: None,
+        }
+    }
+
+    /// Runs the merge rules against `local` with no pools open.
+    ///
+    /// Deliberately `merge_into`, not `merge_profiles_bundle`: the latter writes
+    /// the real `profiles.json`, so calling it from a test both raced the other
+    /// tests and overwrote the developer's own saved connections.
+    fn merge(
+        mut local: Vec<ConnectionProfile>,
+        incoming: &[ExportedProfile],
+    ) -> Vec<ConnectionProfile> {
+        merge_into(&mut local, "o1", incoming, &[]);
+        local
+    }
+
+    /// The write policy says what an AI client may do on *this* machine, which
+    /// the publisher cannot know. Before it was preserved, setting a shared
+    /// connection to "data" reverted on the next pull — silently, so the MCP
+    /// panel was unusable for anyone whose connections all come from an origin.
+    #[test]
+    fn a_sync_preserves_the_local_mcp_write_policy() {
+        let local = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            mcp_write: McpWritePolicy::Data,
+            ..testkit::profile("shared")
+        };
+        let incoming = published(ConnectionProfile {
+            host: "newhost".into(),
+            mcp_write: McpWritePolicy::ReadOnly,
+            ..testkit::profile("shared")
+        });
+
+        let after = merge(vec![local], &[incoming]);
+
+        assert_eq!(after[0].mcp_write, McpWritePolicy::Data, "policy is local");
+        assert_eq!(after[0].host, "newhost", "everything else is the file's");
+    }
+
+    /// A profile arriving for the first time has no local decision to keep, so
+    /// it takes whatever the file published (which is the export's default,
+    /// read-only, unless the publisher changed it).
+    #[test]
+    fn a_newly_published_profile_takes_the_files_policy() {
+        let incoming = published(ConnectionProfile {
+            mcp_write: McpWritePolicy::Full,
+            ..testkit::profile("fresh")
+        });
+        let after = merge(vec![], &[incoming]);
+        assert_eq!(after[0].mcp_write, McpWritePolicy::Full);
+        assert_eq!(after[0].origin_id.as_deref(), Some("o1"));
+    }
+
+    /// A local profile that merely shares an id is the user's, not the file's —
+    /// the existing ownership guard, pinned here because the policy line sits
+    /// right next to it.
+    #[test]
+    fn a_sync_never_claims_a_profile_another_origin_owns() {
+        let local = ConnectionProfile {
+            origin_id: Some("other".into()),
+            host: "mine".into(),
+            ..testkit::profile("contested")
+        };
+        let incoming = published(ConnectionProfile {
+            host: "theirs".into(),
+            ..testkit::profile("contested")
+        });
+        let after = merge(vec![local], &[incoming]);
+        assert_eq!(after[0].host, "mine");
+        assert_eq!(after[0].origin_id.as_deref(), Some("other"));
+    }
 
     #[test]
     fn a_single_disappearance_is_trusted() {

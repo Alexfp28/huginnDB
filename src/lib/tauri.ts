@@ -21,6 +21,8 @@ import type {
   ConflictResolution,
   BatchResult,
   ConnectionProfile,
+  DeleteProfilesReport,
+  McpWritePolicy,
   ConnectionTabState,
   DatabaseInfo,
   DataMode,
@@ -62,6 +64,14 @@ import type {
   Environment,
   EnvironmentList,
   Origin,
+  OriginDocument,
+  OriginDraft,
+  OriginDraftBase,
+  OriginDraftEnvironment,
+  OriginPublishImpact,
+  OriginRole,
+  OriginSaveOutcome,
+  OriginWritableProbe,
   OriginSyncReport,
   JsonSchemaLibrary,
   JsonSchemaEntry,
@@ -99,6 +109,24 @@ export const api = {
 
   /** Delete a profile and its keychain entries (DB + optional SSH). */
   deleteProfile: (id: string) => invoke<void>("delete_profile", { id }),
+
+  /**
+   * Delete several profiles in one pass: one rewrite of `profiles.json`, one
+   * sweep of `tab_state.json`, one `profiles-changed` event — instead of N of
+   * each, which made every open window re-read and re-render N times.
+   *
+   * The backend refuses ids a shared origin publishes and hands them back in
+   * `skippedOrigin`; deleting one locally is a no-op the next sync undoes.
+   */
+  deleteProfiles: (ids: string[]) =>
+    invoke<DeleteProfilesReport>("delete_profiles", { ids }),
+
+  /**
+   * Set the MCP write policy on several profiles in one write. Returns how many
+   * actually changed, so a caller can tell "done" from "already like that".
+   */
+  setMcpWritePolicy: (ids: string[], level: McpWritePolicy) =>
+    invoke<number>("set_mcp_write_policy", { ids, level }),
 
   /**
    * Open a throwaway pool, run `SELECT 1`, then close it. `sshSecret` is
@@ -768,6 +796,10 @@ export const api = {
     name: string;
     path: string;
     passphrase?: string | null;
+    /** Omit to leave it alone. Switching to `"publisher"` is what lets this
+     *  machine write the file at all — confirm it, never do it as a side
+     *  effect of a rename. */
+    role?: OriginRole | null;
   }) => invoke<Origin>("update_origin", args),
 
   /** Unregister an origin. The connections it imported are left in place. */
@@ -776,6 +808,60 @@ export const api = {
   /** Pull an origin. Rejects (touching nothing) when the file can't be read or
    *  parsed; never deletes — disappearances come back in `vanished`. */
   syncOrigin: (id: string) => invoke<OriginSyncReport>("sync_origin", { id }),
+
+  // The origin's document (#155) -------------------------------------------
+
+  /** Can this machine actually write `path`? Tries a real write — permission
+   *  bits describe the local mount, not what a share will accept. Never
+   *  rejects: an offline share is a state to render, not a failed call. */
+  probeOriginWritable: (path: string) =>
+    invoke<OriginWritableProbe>("probe_origin_writable", { path }),
+
+  /** Open an origin's file as an editable document. Works for a consumer too —
+   *  the editor renders read-only and `role`/`writable` say why. */
+  openOriginDocument: (originId: string) =>
+    invoke<OriginDocument>("open_origin_document", { originId }),
+
+  /** This machine's own environments, shaped as bundles the editor can copy
+   *  into a document — the left-hand column of its environments pane.
+   *  Membership is resolved by the same helper the environment export uses, and
+   *  an environment that mirrors an origin is excluded (its identity for a
+   *  consumer is the publisher's source id, not this machine's). */
+  listPublishableEnvironments: () =>
+    invoke<OriginDraftEnvironment[]>("list_publishable_environments"),
+
+  /** What publishing this draft would do to everyone pulling from the origin,
+   *  computed against the file as it stands on disk. Neither decrypts nor
+   *  writes anything, so it is safe to call on a debounce. */
+  previewOriginPublish: (originId: string, draft: OriginDraft) =>
+    invoke<OriginPublishImpact>("preview_origin_publish", { originId, draft }),
+
+  /** Create an empty document at `path` and register it as an origin this
+   *  machine publishes. Refuses an existing file: adopting one is
+   *  `updateOrigin({ role: "publisher" })`. */
+  createOriginDocument: (args: {
+    path: string;
+    name: string;
+    maintainer?: string | null;
+  }) => invoke<Origin>("create_origin_document", args),
+
+  /**
+   * Publish a draft. `base` is what `openOriginDocument` returned; the file is
+   * re-hashed here and a mismatch comes back as `status: "conflict"` with the
+   * newer document, having written nothing.
+   *
+   * `passphrase` is only needed when a `fromKeychain` slot has to be resolved
+   * or `rotateFrom` is set. `rotateFrom` re-keys every envelope in the
+   * document — the one operation that deliberately invalidates the whole
+   * team's `landedSecrets` cache.
+   */
+  saveOriginDocument: (args: {
+    originId: string;
+    draft: OriginDraft;
+    base: OriginDraftBase;
+    passphrase?: string | null;
+    rotateFrom?: string | null;
+  }) => invoke<OriginSaveOutcome>("save_origin_document", args),
 
   // Multi-window -----------------------------------------------------------
 

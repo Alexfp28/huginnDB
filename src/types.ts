@@ -768,12 +768,22 @@ export interface Preferences {
   /** Connection-pool policy. See {@link ConnectionPrefs}. */
   connections: ConnectionPrefs;
   /**
-   * User-rebound keyboard shortcuts, keyed by action id to a combo string
-   * (e.g. `"Ctrl+K"`, `"Space"`). A missing entry means "use that action's
-   * default" — see `ACTIONS`/`getBinding` in `src/lib/keybindings.ts`, the
-   * single source of truth for default combos.
+   * User-rebound keyboard shortcuts, keyed by action id to an ordered list of
+   * bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is the
+   * primary one — what menus and tooltips display; the rest are aliases that
+   * fire just as well.
+   *
+   * Three states, all distinct and all meaningful:
+   * - key absent → use that action's defaults
+   * - `[]`       → the user deliberately unbound it
+   * - `[a, b]`   → primary plus aliases
+   *
+   * `ACTIONS` in `src/lib/keybindings/actions.ts` is the single source of truth
+   * for the defaults, so an empty map here is a fully functional state. The
+   * backend accepts a bare string per key too (the pre-1.19 shape) and folds it
+   * into a one-element list on read.
    */
-  keybindings: Record<string, string>;
+  keybindings: Record<string, string[]>;
 }
 
 /**
@@ -882,6 +892,11 @@ export interface GridPrefs {
    *  column name (see `tableKey` in `stores/schema.ts`). Ad-hoc query result
    *  grids resize in-session only and never write here. */
   columnWidths: Record<string, Record<string, number>>;
+  /** Column names pinned to the left edge (freeze-panes style), keyed the same
+   *  way as `columnWidths`. Stacked in the columns' natural left-to-right
+   *  order, not the order they were pinned in. Ad-hoc query result grids pin
+   *  in-session only and never write here. */
+  pinnedColumns: Record<string, string[]>;
   /** How a browsed table/collection renders. A single global toggle (not
    *  per-relation), honoured by every driver — the list view started out
    *  MongoDB-only, which is all the `document` in the name still refers to
@@ -1091,13 +1106,247 @@ export interface Environment {
  * sync is pull-only — HuginnDB never writes back to it — and the passphrase for
  * an encrypted file lives in this user's OS keychain, never here.
  */
+/**
+ * Outcome of `deleteProfiles`. Mirrors `DeleteProfilesReport` in
+ * `src-tauri/src/commands/connection.rs`.
+ *
+ * `skippedOrigin` is unreachable from the connection manager — a profile a
+ * shared origin publishes can never be checked there — and is reported anyway,
+ * because the refusal lives at the boundary where the CLI and the MCP connector
+ * also arrive.
+ */
+export interface DeleteProfilesReport {
+  deleted: string[];
+  skippedOrigin: string[];
+  missing: string[];
+  /** `[id, message]` pairs: the profile is gone, its keychain entry was not. */
+  failed: Array<[string, string]>;
+}
+
 export interface Origin {
   id: string;
   name: string;
   path: string;
   /** RFC 3339, or `null` if it has never synced. Display only. */
   lastSyncedAt: string | null;
+  /**
+   * Per-profile fingerprints of the encrypted secrets this machine has already
+   * decrypted and landed in its keychain, so an unchanged origin file doesn't
+   * re-derive a PBKDF2 key on every launch (`already_landed` in
+   * `commands/origins.rs`).
+   *
+   * Never read this to render anything. It is declared because `list_origins`
+   * serialises it and the type would otherwise lie about the payload: the day a
+   * command *saves* a whole `Origin` back, serde would drop the field and wipe
+   * the cache (gotcha #14, inverted).
+   */
+  landedSecrets?: Record<string, string>;
+  /**
+   * Whether *this* machine may write the file back (#155). Absent on an origin
+   * registered before the editor existed, which deserialises as `"consumer"`
+   * server-side — nobody gains write access to a shared file by updating.
+   */
+  role?: OriginRole;
+  /** `meta.maintainer` as of the last read of the file — who curates it.
+   *  Display only; coordination, never permission. */
+  maintainer?: string | null;
 }
+
+/**
+ * What this machine is allowed to do with an origin's file. Mirrors
+ * `OriginRole` in `src-tauri/src/tab_state.rs`.
+ *
+ * Only the first of three layers: the OS's own answer
+ * (`probeOriginWritable`) overrides it, and the file's `maintainer`/`revision`
+ * coordinate between publishers without granting anything.
+ */
+export type OriginRole = "consumer" | "publisher";
+
+// --- The document an origin publishes (#155) --------------------------------
+//
+// Mirrors `src-tauri/src/origin_doc`. The editor composes a *document*, never
+// this machine's own state: nothing in here is read from (or written to)
+// `profiles.json`, `tab_state.json` or `json_schemas.json`.
+
+/** Publication metadata. `revision` absent means the file predates the editor,
+ *  which is deliberately distinct from `0`. */
+export interface OriginDraftMeta {
+  maintainer?: string | null;
+  revision?: number | null;
+  note?: string | null;
+  /** What the loaded file's header said. The backend recomputes it from the
+   *  slots it actually writes, so never trust this to decide anything. */
+  encrypted: boolean;
+}
+
+/**
+ * Where a published connection's ciphertext comes from.
+ *
+ * `keep` is what everything loaded from the file gets, and it is copied byte
+ * for byte: re-encrypting draws a fresh salt and nonce, which invalidates every
+ * consumer's `landedSecrets` cache and costs them ~600 000 PBKDF2 rounds per
+ * slot on their next sync. `fromKeychain` is what a connection just added from
+ * the local list gets; `clear` publishes nothing and the consumer is asked for
+ * a password.
+ */
+export type OriginSecretSlot =
+  | { kind: "keep"; envelope: ExportedSecretEnvelope }
+  | { kind: "fromKeychain" }
+  | { kind: "clear" };
+
+/** Base64 `salt || nonce || AES-256-GCM(secret)`, one slot each. Opaque here —
+ *  the frontend never decrypts anything. */
+export interface ExportedSecretEnvelope {
+  db_password: string | null;
+  ssh_secret: string | null;
+}
+
+export interface OriginDraftEnvironment {
+  /**
+   * The publisher's own environment id, and the identity `sync_origin` matches
+   * a bundle against its local mirror with. **Never regenerate it for an
+   * environment that came out of the file**: every consumer would see that
+   * environment disappear and a different one arrive, losing the tabs, layout
+   * and filters they had in it.
+   */
+  sourceEnvironmentId: string;
+  name: string;
+  color?: string | null;
+  icon?: string | null;
+  themeId?: string | null;
+  connectionIds: string[];
+  origins: Array<{ name: string; path: string }>;
+}
+
+/** One connection as the document publishes it: a profile plus its secret
+ *  decision. The profile's `id` is preserved on purpose — it is what lets a
+ *  publisher consume their own origin without duplicating every server. */
+export type OriginDraftConnection = ConnectionProfile & {
+  secret: OriginSecretSlot;
+};
+
+export interface OriginDraft {
+  meta: OriginDraftMeta;
+  environments: OriginDraftEnvironment[];
+  connections: OriginDraftConnection[];
+  schemas: JsonSchemaEntry[];
+  bindings: JsonSchemaBinding[];
+}
+
+/** What the file looked like when the editor opened it. Handed back on save,
+ *  where the hash is recomputed from disk: a mismatch means somebody else
+ *  published and the save is refused rather than overwriting them. */
+export interface OriginDraftBase {
+  sha256: string;
+  mtime?: string | null;
+  revision: number;
+}
+
+/** Whether a real write succeeded, not whether the permission bits say it
+ *  would. On a share the bits describe the local mount. */
+export interface OriginWritableProbe {
+  exists: boolean;
+  writable: boolean;
+  reason?: string | null;
+}
+
+export interface OriginDocument {
+  originId: string;
+  name: string;
+  path: string;
+  role: OriginRole;
+  draft: OriginDraft;
+  base: OriginDraftBase;
+  writable: OriginWritableProbe;
+  /** Whether a passphrase for this origin is in this machine's keychain. The
+   *  value never crosses the boundary. */
+  hasPassphrase: boolean;
+}
+
+/** One entry in a publish preview. `id` is a profile id for a connection and a
+ *  `sourceEnvironmentId` for an environment; `name` rides along because a
+ *  vanished entry exists only in the file being replaced. */
+export interface OriginImpactEntity {
+  id: string;
+  name: string;
+}
+
+export interface OriginEntityImpact {
+  added: OriginImpactEntity[];
+  refreshed: OriginImpactEntity[];
+  unchanged: number;
+  vanished: OriginImpactEntity[];
+  owned: number;
+  /**
+   * **Nobody will be told.** Past `commands::origins`'s suspicion threshold the
+   * sync treats the read as broken and clears its `vanished` list, so a file
+   * missing half the roster leaves every consumer with phantom connections and
+   * zero notices. This flag is the reason the preview exists.
+   */
+  silentlyDropped: boolean;
+}
+
+export interface OriginReencryptionCost {
+  connections: OriginImpactEntity[];
+  slots: number;
+  pbkdf2Rounds: number;
+  /** True when a `fromKeychain` slot made the count an upper bound. */
+  estimated: boolean;
+}
+
+export interface OriginFreshMachineImpact {
+  connections: number;
+  environments: number;
+  schemas: number;
+  bindings: number;
+  slots: number;
+  pbkdf2Rounds: number;
+}
+
+export interface OriginDraftMembership {
+  byEnvironment: Array<{
+    sourceEnvironmentId: string;
+    name: string;
+    connectionIds: string[];
+  }>;
+  /** Connections no environment lists — the document's loose connections.
+   *  Publishable: every profile in the file lands in the consumer's global
+   *  pool, and only `visibleConnections` filters it per environment. */
+  unassigned: string[];
+  /** Ids an environment lists that the document no longer carries. */
+  dangling: string[];
+}
+
+export interface OriginPublishImpact {
+  connections: OriginEntityImpact;
+  environments: OriginEntityImpact;
+  freshMachine: OriginFreshMachineImpact;
+  reencryption: OriginReencryptionCost;
+  withoutPassword: OriginImpactEntity[];
+  bindingsPinned: number;
+  /** Bindings pinned to a connection the document does not carry: they arrive
+   *  **disabled** on every consumer. */
+  bindingsUnresolvable: number;
+  membership: OriginDraftMembership;
+}
+
+export interface OriginSaveReport {
+  base: OriginDraftBase;
+  revision: number;
+  /** Whether the previous revision was kept as `<file>.bak`. Best effort. */
+  backup: boolean;
+  /** What the write actually did, recomputed against the file that was on disk
+   *  — not the preview the confirmation dialog showed, which was computed
+   *  against a base that may have moved since. */
+  impact: OriginPublishImpact;
+}
+
+/** A save either landed or found the file changed underneath it. The conflict
+ *  carries the document as it now stands, so the editor can show what moved
+ *  instead of asking the user to guess. */
+export type OriginSaveOutcome =
+  | ({ status: "saved" } & OriginSaveReport)
+  | { status: "conflict"; document: OriginDocument };
 
 /**
  * Outcome of one `syncOrigin` run. Mirrors `OriginSyncReport` in
@@ -1135,6 +1384,19 @@ export interface OriginSyncReport {
   environmentsVanished: string[];
   /** Same purpose as `suspicious`, scoped to the environment count. */
   environmentsSuspicious: boolean;
+  /** JSON Schemas this pull created / refreshed. Non-zero only for an
+   *  environment-kind file whose publisher included them (1.19.0). */
+  schemasAdded?: number;
+  schemasUpdated?: number;
+  /** Owned by this origin locally and absent from the file. Reported only,
+   *  like every other disappearance here. */
+  schemasVanished?: number;
+  bindingsAdded?: number;
+  bindingsUpdated?: number;
+  bindingsVanished?: number;
+  /** Landed with `enabled: false` because they name a connection this machine
+   *  does not have. */
+  bindingsDisabled?: number;
 }
 
 /** What `listEnvironments` returns — the list and the active id together, so a

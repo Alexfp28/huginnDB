@@ -25,7 +25,7 @@ import { Moon, Save, Settings, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useUi } from "@/stores/session/ui";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
-import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
+import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
 import {
   selectUpdateNotificationVisible,
   useUpdateStore,
@@ -69,7 +69,7 @@ function SavedPanel() {
  */
 function ChromeFooter() {
   const { t } = useTranslation();
-  const mode = useThemeStore((s) => selectActiveTheme(s).mode);
+  const mode = useThemeStore(selectActiveMode);
   const setMode = useThemeStore((s) => s.setActiveMode);
   const openSettings = useSettingsDialog((s) => s.openAt);
   const updateNotificationVisible = useUpdateStore(
@@ -157,7 +157,7 @@ export function AppShell() {
         dragging={schemaDragging}
       >
         <div className="h-full overflow-hidden py-2 pl-2">
-          <div className="h-full overflow-hidden rounded-[var(--radius)] border border-border bg-background shadow-[0_1px_2px_hsl(var(--foreground)/0.04),0_6px_20px_hsl(var(--foreground)/0.05)]">
+          <div className="h-full overflow-hidden rounded-[var(--radius)] border border-border bg-background shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_4%,transparent),0_6px_20px_color-mix(in_srgb,var(--foreground)_5%,transparent)]">
             <SchemaPanel />
           </div>
         </div>
@@ -189,7 +189,7 @@ export function AppShell() {
         dragging={savedDragging}
       >
         <div className="h-full overflow-hidden py-2 pr-2">
-          <div className="h-full overflow-hidden rounded-[var(--radius)] border border-border bg-background shadow-[0_1px_2px_hsl(var(--foreground)/0.04),0_6px_20px_hsl(var(--foreground)/0.05)]">
+          <div className="h-full overflow-hidden rounded-[var(--radius)] border border-border bg-background shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_4%,transparent),0_6px_20px_color-mix(in_srgb,var(--foreground)_5%,transparent)]">
             <SavedPanel />
           </div>
         </div>

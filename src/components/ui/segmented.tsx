@@ -10,6 +10,14 @@ import { cn } from "@/lib/utils";
  *
  * Deliberately created at first adoption (not speculatively): the UI overhaul
  * has three call sites (feedback kind, console filters, structure sections).
+ *
+ * Two visual variants, same behaviour. `pill` is the default compact strip.
+ * `underline` spreads the segments edge to edge under a hairline and marks the
+ * active one with a 2px accent — for a segmented control that *is* the header of
+ * a panel (the connection rail's provenance filter) rather than a control sitting
+ * inside one. The distinction is where it lives, not how important it is: a pill
+ * floating at full width in a 320px rail reads as a button group that failed to
+ * size itself.
  */
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -26,6 +34,7 @@ export function Segmented<T extends string>({
   options,
   className,
   size = "default",
+  variant = "pill",
   "aria-label": ariaLabel,
 }: {
   value: T;
@@ -33,6 +42,8 @@ export function Segmented<T extends string>({
   options: SegmentedOption<T>[];
   className?: string;
   size?: "default" | "sm";
+  /** `pill` sits inside a panel; `underline` is a panel's header. */
+  variant?: "pill" | "underline";
   "aria-label"?: string;
 }) {
   // Left/Right arrows move the selection, matching a radiogroup/tablist.
@@ -54,7 +65,9 @@ export function Segmented<T extends string>({
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-md border border-input bg-muted/50 p-0.5",
+        variant === "pill"
+          ? "inline-flex items-center gap-0.5 rounded-md border border-input bg-muted/50 p-0.5"
+          : "flex items-stretch border-b border-border",
         className,
       )}
     >
@@ -72,11 +85,23 @@ export function Segmented<T extends string>({
             title={o.title}
             onClick={() => onValueChange(o.value)}
             className={cn(
-              "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[calc(var(--radius)-4px)] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "inline-flex items-center justify-center gap-1.5 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              variant === "pill"
+                ? "rounded-[calc(var(--radius)-4px)]"
+                : // `-mb-px` pulls the segment's own border over the strip's, so
+                  // the active accent replaces the hairline instead of stacking
+                  // a second line under it.
+                  "-mb-px flex-1 border-b-2",
               size === "sm" ? "px-2 py-0.5 text-2xs" : "px-2.5 py-1 text-xs",
+              variant === "underline" && (size === "sm" ? "py-1.5" : "py-2"),
               active
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
+                ? variant === "pill"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "border-brand text-foreground"
+                : cn(
+                    "text-muted-foreground hover:text-foreground",
+                    variant === "underline" && "border-transparent",
+                  ),
             )}
           >
             {o.icon}

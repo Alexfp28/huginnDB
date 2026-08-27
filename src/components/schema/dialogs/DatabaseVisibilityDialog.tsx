@@ -37,6 +37,7 @@ import {
 import { Segmented } from "@/components/ui/segmented";
 import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 import { useMultiSelect } from "@/lib/useMultiSelect";
+import { isFromOrigin } from "@/lib/connection/origin";
 import { useConnections } from "@/stores/session/connections";
 import { persistLaunchState } from "@/stores/session/persistedTabs";
 import { useUi } from "@/stores/session/ui";
@@ -59,7 +60,7 @@ export function DatabaseVisibilityDialog({
   const hasOverride = override !== undefined;
   const fromProfile = profile?.visible_databases ?? null;
   const selected = hasOverride ? override : fromProfile;
-  const fromOrigin = !!profile?.origin_id;
+  const fromOrigin = isFromOrigin(profile);
   const [scope, setScope] = useState<"environment" | "profile">(() => {
     // Editing happens where the value the user is looking at actually lives, so
     // tweaking an existing filter doesn't silently fork it into two layers. The

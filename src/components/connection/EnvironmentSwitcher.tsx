@@ -209,7 +209,7 @@ function EnvironmentMark({ env }: { env: Environment }) {
   return (
     <span
       className="h-2 w-2 shrink-0 rounded-full"
-      style={{ backgroundColor: env.color || "hsl(var(--muted-foreground))" }}
+      style={{ backgroundColor: env.color || "var(--muted-foreground)" }}
     />
   );
 }

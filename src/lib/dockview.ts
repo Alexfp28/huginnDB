@@ -30,7 +30,7 @@ export const huginnDockviewThemeInner: DockviewTheme = {
   dndPanelOverlay: "group",
   dndOverlayMounting: "absolute",
   dndTabIndicator: "fill",
-  dndOverlayBorder: "2px dashed hsl(var(--primary))",
+  dndOverlayBorder: "2px dashed var(--primary)",
   tabGroupIndicator: "none",
   gap: 0,
 };

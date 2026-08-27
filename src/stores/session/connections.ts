@@ -24,7 +24,7 @@ import { useConnectionHealth } from "@/stores/session/connectionHealth";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { clearProtectedPanelsForConnection } from "@/lib/dockview";
-import type { ConnectionProfile } from "@/types";
+import type { ConnectionProfile, DeleteProfilesReport } from "@/types";
 import { isDatabaseViewOf } from "@/lib/connectionLabel";
 
 interface ConnectionsState {
@@ -50,10 +50,28 @@ interface ConnectionsState {
   ) => Promise<ConnectionProfile>;
   /** Delete a profile and its keychain entries. */
   remove: (id: string) => Promise<void>;
+  /**
+   * Delete several profiles in one backend call, refreshing once at the end.
+   *
+   * `remove` stays as it is rather than delegating here: it is the path
+   * `useOriginSync.retire` takes, and that one legitimately deletes a profile a
+   * shared origin published — which `deleteProfiles` refuses by design.
+   */
+  removeMany: (ids: string[]) => Promise<DeleteProfilesReport>;
   /** Open a pool for `id`. Falls back to the stored secrets if omitted. */
   connect: (id: string, password?: string, sshSecret?: string) => Promise<void>;
   /** Close the pool for `id`. */
-  disconnect: (id: string) => Promise<void>;
+  /**
+   * Close one pool and forget everything hanging off it.
+   *
+   * `persistLaunch: false` suppresses this call's own launch-state write. Bulk
+   * teardowns (`disconnectAll`) pass it and write once at the end instead: the
+   * write is fire-and-forget and carries the active set *as of its own call*,
+   * so N of them racing means the last to resolve wins and it may well be a
+   * stale one — a list of connections the user just closed, restored on the
+   * next launch. `switchTo` fights the same race with `suspendSaves`.
+   */
+  disconnect: (id: string, opts?: { persistLaunch?: boolean }) => Promise<void>;
   /**
    * Local-only side effect of a connection becoming active — no backend
    * call. Used by `connect()` itself. Not driven cross-window: a window only
@@ -110,6 +128,11 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     await api.deleteProfile(id);
     await get().refresh();
   },
+  removeMany: async (ids) => {
+    const report = await api.deleteProfiles(ids);
+    await get().refresh();
+    return report;
+  },
   connect: async (id, password, sshSecret) => {
     await api.connect(id, password, sshSecret);
     get().markConnected(id);
@@ -146,7 +169,7 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
       return { active };
     });
   },
-  disconnect: async (id) => {
+  disconnect: async (id, opts) => {
     // Flush any pending workspace snapshot to disk and detach the
     // subscription before the pool is dropped. Doing this BEFORE the
     // backend disconnect means a save failure can't leave us with no
@@ -154,8 +177,11 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     await flushTabState(id);
     await api.disconnect(id);
     await get().markDisconnected(id);
-    // Keep the persisted launch state in sync (see `connect`).
-    void persistLaunchState(Array.from(get().active));
+    // Keep the persisted launch state in sync (see `connect`) — unless the
+    // caller is tearing several down and will write once at the end.
+    if (opts?.persistLaunch !== false) {
+      void persistLaunchState(Array.from(get().active));
+    }
   },
   markDisconnected: async (id) => {
     // An explicit disconnect isn't a "lost" connection — clear any stale

@@ -65,7 +65,10 @@ import {
   type SshAuthMethod,
 } from "@/lib/connection/useConnectionForm";
 import { api } from "@/lib/tauri";
-import { confirmIrreversible } from "@/lib/confirmDestructive";
+import { DeleteConnectionsDialog } from "@/components/connection/dialogs/DeleteConnectionsDialog";
+import { isFromOrigin } from "@/lib/connection/origin";
+import { useOriginEditor } from "@/stores/dialogs/originEditor";
+import { useOriginName, useOrigins } from "@/stores/sync/origins";
 import type {
   ConnectionProfile,
   Driver,
@@ -110,7 +113,6 @@ export function ConnectionDialog({
 }: Props) {
   const { t } = useTranslation();
   const save = useConnections((s) => s.save);
-  const remove = useConnections((s) => s.remove);
   const connect = useConnections((s) => s.connect);
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
@@ -174,6 +176,9 @@ export function ConnectionDialog({
   const [connecting, setConnecting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  /** Profiles queued for deletion. Non-empty is what mounts the confirmation —
+   *  see `DeleteConnectionsDialog` for why it has no `open` prop. */
+  const [deleteTargets, setDeleteTargets] = useState<ConnectionProfile[]>([]);
 
   /**
    * Stable id for the profile being edited. For existing profiles this is
@@ -226,9 +231,25 @@ export function ConnectionDialog({
    * the stored profile rather than from form state: the form is a draft, and a
    * draft can't be trusted to still carry `origin_id`.
    */
-  const isFromOrigin = !!(
-    editingId && profiles.find((p) => p.id === editingId)?.origin_id
+  const stored = editingId ? profiles.find((p) => p.id === editingId) : null;
+  const fromOrigin = isFromOrigin(stored);
+  /** Name of the publishing origin, for the banner. `null` when the origin has
+   *  been unregistered — the profile stays read-only (the tag is what gates
+   *  that), so the banner falls back to the unnamed copy rather than lying. */
+  const originName = useOriginName(stored?.origin_id);
+  /**
+   * Whether this machine publishes the origin behind this profile — in which
+   * case the read-only banner can offer the way *out* of it instead of just
+   * explaining the dead end. Read from the registry rather than from the
+   * profile, because the role is a property of this machine's registration and
+   * not of anything the file says.
+   */
+  const originIsPublished = useOrigins((s) =>
+    stored?.origin_id
+      ? s.byId[stored.origin_id]?.role === "publisher"
+      : false,
   );
+  const openOriginEditor = useOriginEditor((state) => state.open);
 
   function buildProfile(): ConnectionProfile {
     // Start from the stored profile so fields this form doesn't edit survive a
@@ -237,10 +258,9 @@ export function ConnectionDialog({
     // `visible_databases` every time a connection was edited. Spreading first
     // and overriding below fixes that for the existing fields as well as for
     // `max_connections`.
-    const stored = editingId ? profiles.find((p) => p.id === editingId) : undefined;
     const parsedMax = Number.parseInt(maxConnections, 10);
     return {
-      ...stored,
+      ...(stored ?? undefined),
       id: editingId ?? draftId,
       name,
       group: group.trim() || null,
@@ -293,7 +313,7 @@ export function ConnectionDialog({
     // not only by disabling the form, because Enter-to-save and any future call
     // site would otherwise slip past the UI guard (`origin_id`'s contract in
     // `state.rs` says read-only; until now only the docs said so).
-    if (isFromOrigin) return;
+    if (fromOrigin) return;
     setSaving(true);
     try {
       const saved = await save(
@@ -341,27 +361,14 @@ export function ConnectionDialog({
     }
   }
 
-  async function onDelete() {
-    if (!editingId) return;
+  function onDelete() {
+    if (!editingId || !stored) return;
     // Deleting an origin-published profile locally is pointless — the next sync
     // re-imports it — and destroys its keychain entry on the way. Retiring one
     // for good is offered where it makes sense: on the notice raised when the
     // origin itself stops publishing it (`useOriginSync.retire`).
-    if (isFromOrigin) return;
-    const target = profiles.find((p) => p.id === editingId);
-    if (
-      !confirmIrreversible(
-        t("connections.deleteConfirm", { name: target?.name ?? name }),
-      )
-    )
-      return;
-    try {
-      await remove(editingId);
-      // Fall back to a fresh draft; the load effect repopulates the form.
-      setEditingId(null);
-    } catch (e) {
-      setTestStatus({ kind: "saveError", message: String(e) });
-    }
+    if (fromOrigin) return;
+    setDeleteTargets([stored]);
   }
 
   /** Duplicate the profile currently in the editor (#38). Clones every
@@ -475,7 +482,7 @@ export function ConnectionDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[82vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="flex h-[85vh] max-w-6xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b border-border px-5 py-3">
           <div className="flex items-center justify-between gap-2">
             <DialogTitle className="flex items-center gap-2 text-base">
@@ -522,13 +529,18 @@ export function ConnectionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid flex-1 grid-cols-[240px_1fr] overflow-hidden">
+        {/* The rail is 320px, not the 240px it started at: the provenance filter
+            put a three-segment control above a list whose rows already carry a
+            name, a driver badge and a shared-origin mark, and at 240 the names
+            truncated mid-word. The dialog widened with it (4xl → 6xl) so the
+            editor beside it did not pay for the space. */}
+        <div className="grid flex-1 grid-cols-[320px_1fr] overflow-hidden">
           <ConnectionRail
             profiles={profiles}
             active={active}
             editingId={editingId}
             onEdit={setEditingId}
-            removeProfile={remove}
+            onDeleteRequest={setDeleteTargets}
           />
 
           {/* Right pane — editor */}
@@ -568,9 +580,24 @@ export function ConnectionDialog({
                     typing into a field and finding Save greyed out. Placed at the
                     top of the first tab rather than beside the button, since the
                     editing is what's blocked, not just the saving. */}
-                {isFromOrigin && (
+                {fromOrigin && (
                   <div className="mb-2 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-[11px] text-muted-foreground">
-                    {t("connectionDialog.fromOrigin")}
+                    {originName
+                      ? t("connectionDialog.fromOriginNamed", {
+                          origin: originName,
+                        })
+                      : t("connectionDialog.fromOrigin")}
+                    {/* Only for an origin this machine publishes: pointing a
+                        consumer at an editor that will open read-only is worse
+                        than saying nothing. */}
+                    {originIsPublished && stored?.origin_id && (
+                      <button
+                        className="ml-1 underline"
+                        onClick={() => openOriginEditor(stored.origin_id!)}
+                      >
+                        {t("connectionDialog.editAtOrigin")}
+                      </button>
+                    )}
                   </div>
                 )}
                 <TabsContent value="general" className="pt-3">
@@ -1113,7 +1140,7 @@ export function ConnectionDialog({
                     {t("connectionDialog.duplicate")}
                   </Button>
                 )}
-                {editingId && !isFromOrigin && (
+                {editingId && !fromOrigin && (
                   <Button
                     variant="ghost"
                     className="text-destructive hover:text-destructive"
@@ -1137,7 +1164,7 @@ export function ConnectionDialog({
                   </Button>
                   <Button
                     onClick={onSave}
-                    disabled={busy || !name || isFromOrigin}
+                    disabled={busy || !name || fromOrigin}
                   >
                     {saving
                       ? t("connectionDialog.saving")
@@ -1153,6 +1180,20 @@ export function ConnectionDialog({
 
       <ExportProfilesDialog open={exportOpen} onOpenChange={setExportOpen} />
       <ImportProfilesDialog open={importOpen} onOpenChange={setImportOpen} />
+      {deleteTargets.length > 0 && (
+        <DeleteConnectionsDialog
+          targets={deleteTargets}
+          onClose={() => setDeleteTargets([])}
+          onDeleted={(report) => {
+            setDeleteTargets([]);
+            // Fall back to a fresh draft if the editor was showing one of them;
+            // the load effect repopulates the form.
+            if (editingId && report.deleted.includes(editingId)) {
+              setEditingId(null);
+            }
+          }}
+        />
+      )}
     </>
   );
 }

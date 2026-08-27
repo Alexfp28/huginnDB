@@ -119,7 +119,7 @@ export function WhatsNewDialog() {
                 alt=""
                 width={256}
                 height={256}
-                className="h-12 w-12 shrink-0 select-none drop-shadow-[0_4px_16px_hsl(var(--brand)/0.35)]"
+                className="h-12 w-12 shrink-0 select-none drop-shadow-[0_4px_16px_color-mix(in_srgb,var(--brand)_35%,transparent)]"
                 draggable={false}
               />
               <div className="min-w-0">

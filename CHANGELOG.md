@@ -6,6 +6,618 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.19.0] — 2026-08-27
+
+### Added
+
+- **Theme families are declared once, with both light and dark variants
+  together, and the app now paints them with the native CSS `light-dark()`
+  function.** Every built-in theme used to be two independent `Theme`
+  records in `BUILT_IN_THEMES` (`claude-light`/`claude-dark`, …) linked only
+  by a cross-referencing `pairId`, with the light/dark toggle
+  (`setActiveMode`) reapplying all ~28 CSS variables on every press because
+  it conceptually switched from one `Theme` object to another. The five
+  built-in families (HuginnDB, Claude, Neon, Summer, High Contrast) now each
+  declare `{ light: ThemeColors, dark: ThemeColors }` once — `pairId` is
+  gone — and `applyTheme` writes `--x: light-dark(hsl(…), hsl(…))` per
+  variable instead of a single resolved value. The mode toggle
+  (`applyColorScheme`) no longer touches a single colour variable: it only
+  flips `color-scheme` (plus the Tailwind `.dark` class, still needed for
+  the `dark:` variant used in a handful of components) and lets the browser
+  pick the right half of each `light-dark()` — an O(1) toggle instead of
+  reapplying the whole palette. `color-scheme` is always set to a single
+  keyword (`light` or `dark`), never `"light dark"`, so it resolves to the
+  user's manual choice rather than `prefers-color-scheme`.
+
+  User-defined custom themes now declare both variants too, instead of being
+  a single-mode exception — the Appearance editor gained an "editing:
+  light | dark" toggle (independent from the app-wide mode toggle) to edit
+  each variant of a custom theme separately, and duplicating/auto-forking a
+  built-in clones both variants at once. `themeTransfer.ts`'s export format
+  bumped to v2 (`{ name, light, dark }`); importing a pre-refactor v1 file
+  (`{ name, mode, colors }`) still works — its single palette is duplicated
+  into both variants as a starting point. Existing `localStorage` state and
+  an `Environment`'s persisted/imported `theme_id` (a plain, backend-opaque
+  string — Rust never interprets it) both migrate transparently through a
+  small legacy-id table mapping the ten old ids to the five new family ids.
+
+  Since `--x` moved from a raw `"H S% L%"` triple to a full `light-dark()`
+  colour, every `hsl(var(--x))`/`hsl(var(--x) / N)` usage across the
+  codebase (`tailwind.config.js`, `index.css`, and about twenty component
+  files) was swept to `var(--x)`/`color-mix(in srgb, var(--x) N%,
+  transparent)`. `tailwind.config.js`'s colour tokens specifically use
+  Tailwind's `<alpha-value>` placeholder rather than a literal `color-mix()`
+  wrapped around the modifier — Tailwind's own opacity-modifier parsing
+  (`bg-brand/25`) does string-matching on `hsl(var(--x))` and doesn't
+  recognise `var(--x)` or `light-dark(...)`, so every colour token needed
+  that placeholder uniformly to keep `/NN` opacity modifiers working
+  (an omission there fails silently — the modifier is dropped, not an error
+  — rather than loudly).
+
+- **An editor for the document a shared origin publishes.** A shared origin
+  (#108) was strictly pull-only: `sync_origin` read the file and never wrote it,
+  so publishing meant running "Export environments…", picking a destination in
+  the native dialog and dropping the JSON on the share. Updating it meant
+  repeating that export from whatever the publisher happened to have mounted at
+  that moment — or editing the JSON by hand.
+
+  That cost three things in practice. The publisher could only publish what was
+  configured on their own machine right then. Any small change — renaming an
+  environment, dropping one connection — meant a full re-export, which
+  **re-encrypts every secret in the file** (`encrypt_secret` draws a fresh salt
+  and nonce per call), invalidating the `landed_secrets` cache of every consumer
+  and handing them tens of millions of PBKDF2 rounds on their next sync. And
+  there was no way to see what a publish would do to the team before doing it —
+  including the case that matters most, below.
+
+  Settings → Shared origins → "Edit the document…" now opens a full-screen
+  editor for the file: which connections it publishes and how each one's
+  password travels, the environments and their membership, the JSON Schema slice
+  and its bindings, and the publication metadata. Each pane offers what this
+  machine already has as its left-hand side — the connection list, the schema
+  library, and (via `list_publishable_environments`) this machine's own
+  environments, resolved by the same `referenced_profile_ids` the export uses, so
+  building a file from scratch is copying rather than retyping. Importing an
+  environment brings the connections it references with it, since an environment
+  whose membership names ids the document does not carry is a filter over
+  nothing. A *mirrored* environment is excluded on purpose: its identity for a
+  consumer is the publisher's `origin_source_id`, not the local
+  `Environment::id` it would have to be published under, so copying one in would
+  mint a second bundle for an environment the document may already carry. It is a **document** editor,
+  not a view onto this machine: nothing in it reads from or writes to
+  `profiles.json`, `tab_state.json` or `json_schemas.json`, and saving changes
+  nothing locally. The file it builds is the same
+  `transfer::EnvironmentExportFile` the export command already writes — one
+  format, one constructor (`origin_doc::build_origin_file`), so the two can
+  never drift.
+
+  **A password that has not changed travels verbatim.** Every secret loaded from
+  the file starts as a "keep" slot and is copied byte for byte, which is what
+  makes renaming an environment cost the team exactly zero key derivations
+  instead of 600 000 per slot per connection. Rotating the passphrase is the one
+  operation that re-encrypts everything, and it is an explicit switch with the
+  cost priced next to it.
+
+  **The publish preview says what nobody else can.** It simulates a consumer's
+  next sync by running the real `merge_into` against the file it is about to
+  replace — added, genuinely changed, disappeared, plus the re-encryption bill
+  and what a brand-new machine receives. The row that justifies the whole
+  feature is the silent one: past `commands::origins`'s suspicion threshold a
+  consumer's sync decides the read is broken and clears its own `vanished` list,
+  so publishing a file missing half the roster used to leave every consumer with
+  phantom connections and **no notice whatsoever**. There was no surface in the
+  product where that was discoverable; now the confirmation dialog says it and
+  suggests splitting the change in two.
+
+- **Origins have a role, and it is one of three layers.** `Origin.role`
+  (`consumer` by default, `#[serde(default)]`) records the *intention* — every
+  origin registered before this, and every newly registered one, is a consumer,
+  so nobody gains write access to a shared file by installing an update.
+  Switching it is explicit, confirmed and reversible. The *authority* is the OS:
+  `probe_origin_writable` creates and deletes a real file next to the document
+  before the editor offers to save, because permission bits on a Windows share
+  describe the local mount rather than what the server will accept — a
+  read-only share opens the editor read-only rather than failing at the last
+  step. `meta.maintainer` / `meta.revision` inside the file are the third layer
+  and are *coordination only*: what actually stops two publishers clobbering
+  each other is the content hash the save compares.
+
+- **The registration itself is finally editable.** `update_origin` shipped in
+  1.18 with zero call sites: an origin could be registered and removed but never
+  renamed or repointed, so a moved share meant deleting the registration and
+  re-adopting every connection it had published. Settings → Shared origins now
+  has that form, with a file picker instead of a bare text field for the path,
+  and a "New document…" action that creates an empty file on the share and
+  registers it as one this machine publishes.
+
+- **A shared origin now syncs the JSON Schemas its file carries.**
+  `docs/JSON_SCHEMAS.md` said this was not wired up, and it was not — the
+  plumbing (`origin_id` on both types, the bundle inside
+  `EnvironmentExportFile`) existed but nothing read it on the pull. It does now,
+  under the rules the connections already follow rather than the one-shot
+  importer's: entries are matched by **id**, not by name, so a four-hourly poll
+  refreshes in place instead of accumulating `cfg (2)`, `cfg (3)`, …; only
+  entries the origin already owns are overwritten, so a schema you wrote is
+  never touched and a published name that collides with yours steps aside; a
+  binding naming a connection this machine does not have arrives **disabled**,
+  keeping its pin; and nothing is deleted — a disappearance is reported, like a
+  vanished connection's.
+
+- **MongoDB index and collection DDL, reachable from the query editor and over
+  MCP.** The report that started this was from a colleague's AI client, and it
+  was accurate: the connector had no way to create an index, drop one, drop a
+  collection or rename one — "neither through `run_query` nor as a separate
+  tool". `drop_view` refuses a collection by design (a MongoDB view and a
+  collection share one namespace, and a mistyped name must not delete
+  documents), so there was no way round it either.
+
+  **The gap was in the grammar, not in the connector.** The list of accepted
+  operations is `build_op` in `db/mongo/shell.rs` — the parser the *desktop
+  query editor* uses — so the editor could not create an index either. Widening
+  it fixed both surfaces at once: `db.coll.createIndex({createdAt: -1})`,
+  `dropIndex("name")`, `hideIndex`/`unhideIndex`, `drop()` and
+  `renameCollection("clients")` all parse and run now. Each one delegates to
+  the code that already owned its guards rather than issuing its own
+  run-command, so the `_id_` refusal, the `createIndexes` name defaulting and
+  the `dropTarget: false` pin apply unchanged — and `dropTarget: true` is
+  refused by the parser, because otherwise the grammar would be the one way to
+  make a rename silently delete whatever held the destination name.
+
+  `renameCollection` is same-database only, matching what `mongosh` accepts. A
+  cross-database move stays in the explorer's Rename dialog: a qualified
+  `"otherDb.coll"` looks like the obvious spelling for it, but a collection name
+  may legitimately contain dots (`system.views`, `logs.2024`), so that reading
+  would turn a valid rename into a silent move.
+
+  **Two MCP tools, MongoDB-only: `create_index` and `drop_index`.** Both at the
+  `full` tier, which was forced rather than chosen — `createIndex` through
+  `run_query` is classified DDL, so a `data`-tier tool would have handed back
+  exactly what the statement path denies. There is deliberately nothing for the
+  SQL drivers: an index there is created with `CREATE INDEX`, which `run_query`
+  already reaches at `full` and which is strictly more expressive than any
+  portable set of fields (`USING gin`, `INCLUDE`, a partial predicate). And
+  nothing for replacing an index, because MongoDB cannot alter one in place —
+  it is a drop plus a create, and two calls keep the window where the index is
+  missing visible to the caller.
+
+  **`list_indexes` had to grow with them.** Over MCP it reported the SQL-shaped
+  `{name, columns, unique}`, so a model that read `["createdAt"]` and wrote it
+  back would recreate the index *ascending* — invisible in testing, permanent
+  in the data. Its bridge arm now answers from the rich reader on MongoDB and
+  each entry carries a `mongo` object with the real definition: per-key
+  direction and type, `sparse`, TTL, partial filter, collation, weights, size
+  and usage. The explorer still calls the lossy reader, so the extra
+  `$collStats`/`$indexStats` round trips are paid only on the MCP path.
+
+  Index writes also emit a Console entry now, which they never did — the same
+  `LogSink` seam that puts them in `mcp-audit.log`.
+
+- **The keyboard-shortcut system, rebuilt.** It shipped in 1.10.0 as the
+  smallest thing that could work — eight rebindable actions, one combo each,
+  and 127 lines holding the catalogue, the key lexicon and the matcher
+  together. What it could not express had accumulated: no secondary keys, no
+  chord sequences, no notion of *where* a shortcut applies, no way to unbind
+  anything, and no tests at all.
+
+  **A binding is now a list.** `prefs.json` stores `["Mod+Enter", "F9"]` rather
+  than one string: the first entry is the primary one (what menus, the palette
+  and tooltips display), the rest are aliases that fire just as well. Three
+  states stay distinct and all three mean something — a missing key is "use the
+  default", `[]` is "I unbound this on purpose", and a non-empty list is
+  primary plus aliases. `Preferences.keybindings` became
+  `HashMap<String, Vec<String>>` behind a deserializer that also accepts the
+  old bare string, so an existing `prefs.json` needs no migration and no
+  version bump. (A downgrade to a build predating this cannot parse the list
+  form, and since a bad `prefs.json` degrades to defaults, such a downgrade
+  loses every preference rather than just the shortcuts. Documented at the
+  deserializer.)
+
+  **Chord sequences work**, VS Code style: `Mod+K` then `Mod+S`. Nothing ships
+  as a sequence — they exist so there is somewhere to put the commands that no
+  longer fit in one combo. A half-typed prefix waits two seconds and shows
+  itself in the status bar, because a shortcut that silently swallows the next
+  keystroke reads as a broken keyboard.
+
+  **Actions now have a scope**, and it is resolved from the DOM: a surface
+  declares `data-kb-scope` and the nearest one to the focused element decides
+  what is audible, together with `global`. This is what lets `grid` and
+  `editor` hold the same key without ambiguity, and it replaces the ad-hoc
+  arrangements the four previous listeners had grown — `DataGrid`
+  hand-filtering modified chords, `SideEditorPanel` calling
+  `stopImmediatePropagation` to win a `Mod+S` race. One `createKeyDispatcher`
+  now serves the window listener and Monaco's `onKeyDown` alike (the editor
+  still needs its own redispatch — `addCommand` freezes a keybinding bitmask at
+  registration and cannot re-check a live one).
+
+  **The catalogue grew from 8 actions to 25, merged with the command
+  palette's.** The palette already knew how to run sixteen commands and the
+  menus another handful; none could be given a key, because the shortcut table
+  was a separate list that happened to describe some of the same actions. Each
+  new action reuses the label the palette or the menu already had, so there is
+  one name per command rather than a second wording for the shortcut list. Most
+  ship deliberately **unbound**: being in the catalogue is what makes an action
+  searchable, bindable and conflict-checked, and spending a default key on it
+  would take that key from whatever the user actually reaches for. Four get
+  one: `Mod+T` (new query), `Mod+W` (close tab), `Mod+B` (schema panel) and
+  `` Mod+` `` (console), plus `Mod+Shift+N` for a new window. The palette and
+  the menus now read the live binding instead of restating it, so a rebind
+  shows up in both without a reload.
+
+  **Settings → Shortcuts was rebuilt** around the three questions a list of
+  twenty-five is actually asked. *What fires this action* — each binding is its
+  own chip, click to re-record, `×` to drop, `+` to add; reserved keys sit
+  beside them dimmed. *What does this key do* — a "By key" chip turns the
+  search box into a capture field and filters to whoever uses the combo you
+  press. *What have I changed* — a "Modified" filter and a count, which is why
+  "Reset all" now **clears** the overrides map instead of writing every default
+  into it: an override equal to its default is not an override, and that filter
+  would be lying. Recording moved into a dialog, where capture is *armed rather
+  than permanent* — while armed it eats every key, so `Escape` and `Enter` are
+  bindable; the moment a chord lands it disarms and those two go back to
+  meaning Cancel and Save.
+
+  **Conflicts stopped being a wall.** A clash is only reported when the two
+  scopes can actually be heard together, so anything reported is a real
+  ambiguity — and the dialog offers to take the key off the other action, in
+  the same write, rather than just refusing. It now also sees the reserved
+  bindings and the normalized spelling, both of which the old check was blind
+  to: rebinding something onto `Mod+R` used to be accepted silently and then
+  never fire.
+
+  **Shortcuts export and import** as JSON, following `themeTransfer.ts`. Only
+  your overrides travel, never the resolved bindings — exporting what each
+  action currently does would bake this version's defaults into the file and
+  opt the importing machine out of every default added since. An action the
+  importing build does not recognise is named rather than dropped in silence.
+
+  Two long-standing defects went with the rewrite. **Nothing checked where the
+  focus was:** the old listener's only guard was `e.isComposing`, so binding an
+  action to a bare letter made that letter untypeable across the app — now a
+  chord indistinguishable from typing is suppressed inside a text field, while
+  `F5`, `Escape` and the arrows keep working there. And **`Ctrl+Enter` was
+  rebindable in only one of the three Monaco editors**; the view and pipeline
+  editors used a fixed `addCommand`. Both now go through the redispatch.
+
+  Also: `Ctrl` in a stored combo is renamed `Mod`, which is what it always
+  meant (`ctrlKey || metaKey`) — the old name was a lie on macOS and left no
+  way to bind the real Control key, which `Ctrl` and `Meta` now do as exact
+  tokens. Stored combos migrate on read, so nothing is rewritten on disk.
+  Documented in `docs/SHORTCUTS.md` (English and Spanish), and covered by 96
+  frontend tests plus two Rust contract tests where there were none.
+
+- **Settings → MCP is now a tree, with bulk write-policy buttons.** It gets the
+  same All / Local / Shared filter and the same collapsible sections per origin
+  as the connection manager, plus the group folders, so a server sits in the same
+  place in both surfaces — with less on each row, since a snippet is built from
+  ids and not endpoints. Below the list, one button per policy sets **every listed
+  connection** at once (the scope filter and the search decide what "listed"
+  means, and the count is on the button). "Full" asks first: it is the level that
+  lets an AI client change schema.
+
+  The buttons act on what is listed rather than on what is checked, because the
+  checkboxes already answer a different question — which connections to expose —
+  and one control cannot mean two things.
+
+- **The connection manager now tells local connections apart from the ones a
+  shared origin publishes.** A registered origin (#108) imports its connections
+  next to your own, and until now nothing in the manager said which was which.
+  Worse, the free-text group folders merged across the divide: a "Producción"
+  folder you made and a "Producción" folder IT publishes appeared under one
+  header. The rail now leads with an **All / Local / Shared** filter (with
+  counts), which hides itself entirely if you have no origins registered. The
+  Shared view splits into a collapsible section per origin, named after it and
+  marked read-only, plus a trailing section for connections whose origin has
+  since been unregistered. In the other two views a shared connection carries a
+  small badge whose tooltip names the publishing origin.
+
+  Settings → MCP gets the same sections. That is the point of the whole change:
+  a connection published by an origin keeps the **same id on every machine**, so
+  a connector snippet built from shared connections works for the whole team
+  as-is, while one built from a stale local copy works only on your laptop —
+  and picking ids out of a flat list gave you no way to tell them apart.
+
+- **"Delete all local connections"**, in the connection list's overflow menu.
+  The supported way to move a team onto a shared origin is to drop the local
+  copies and keep only what the origin publishes; doing that one connection at a
+  time was the only option before. It is disabled while a search is active: with
+  a filter on, "all" is ambiguous, and guessing wrong deletes connections you
+  never saw. Use the checkboxes for that case, where what will go is on screen.
+
+- **Pinned ("frozen") columns in the data grid, Excel-style.** A small pin
+  icon in each column header — visible on hover, always shown once pinned —
+  toggles a column between scrolling normally and sticking to the left edge.
+  Any number of columns can be pinned at once; they stack in the table's own
+  left-to-right order, not the order they were pinned in, and the row-number
+  / selection gutter is always pinned first as the anchor everything else
+  counts its offset from. Persisted per table (like column widths), keyed the
+  same way and skipped for ad-hoc query results, which pin in-session only.
+
+  The header side was straightforward — each `<th>` already paints its own
+  opaque background, so it just needed `position: sticky` and the right `left`
+  offset. The body side needed a real fix, not just the same treatment: a
+  row's background lives on its `<tr>`, and the translucent tints used for
+  selection/multi-selection/zebra stripes (`bg-brand/30`, `bg-brand/10`,
+  `bg-muted/30`) are translucent *on purpose* — a subtle wash over the page
+  background is the intended look for an ordinary row. A `position: sticky`
+  cell can't use that: once the browser promotes it to its own compositing
+  layer, a translucent background lets whatever's scrolling underneath show
+  straight through, so a pinned cell in a selected or zebra-striped row showed
+  its own text superimposed on the next column's. Pinned/gutter cells now get
+  a `color-mix()`-computed *solid* equivalent of the same tint via inline
+  style, so they read identically to their non-pinned neighbours while
+  actually hiding what scrolls behind them. The one accepted trade-off: a
+  pinned cell doesn't pick up the row's hover tint, since that would need the
+  same solid-color treatment to compete with a CSS `:hover` rule, which isn't
+  worth the added complexity for a transient state.
+
+### Changed
+
+- **An environment's theme override now fixes only the theme *family*, never
+  the light/dark mode.** Before the `light-dark()` refactor above, an
+  environment's forced theme id (e.g. `claude-dark`) implied a mode as a side
+  effect of which of the two linked `Theme` records it named — so switching
+  into an environment with a forced theme could silently flip the user's
+  current light/dark preference along with it. Family and mode are now
+  independent axes in the theme store (`themeId` vs. the new global `mode`),
+  and an environment override only ever resolves a family — the user's mode
+  preference carries across environment switches unchanged. This is the
+  intended behaviour going forward (an environment describes session/visual
+  identity, not a personal ergonomic preference), not a regression.
+
+- **`state_file::write_atomic` is extracted, and every origin-document write
+  goes through it.** `save_atomic` only ever accepted a name relative to the
+  config directory — by design, since gotcha #26's canary isolation depends on
+  that being the only way in — so it could not express a path on a share. A
+  plain `fs::write` there is exactly the truncated read
+  `disappearance_is_trustworthy` exists to paper over: a publisher mid-save
+  looks identical to an admin who deleted half the roster. The document is
+  written to a temp file **in the destination's own directory** (a `rename` is
+  only atomic within one filesystem, and a share is a different volume),
+  `fsync`ed, then renamed, with the previous revision kept alongside as
+  `<name>.json.bak`. The one-shot export commands are unchanged: they write to a
+  destination the user just picked in a save dialog, which nobody else is
+  reading concurrently.
+
+- `ExportMetadata` gained optional `maintainer` / `revision` / `note`. All three
+  are `skip_serializing_if`, so a plain "Export profiles…" or "Export
+  environments…" file stays byte-identical to a pre-1.19 one — which is also
+  what lets the editor rebuild a file it did not write itself byte for byte.
+
+- **`ImportProgressBar` is now `common/ProgressBar`, with its caption as a
+  prop.** It had exactly the shape the origin publish needed — a determinate bar,
+  because the work is one 600 000-iteration PBKDF2 derivation per secret and a
+  spinner is not enough feedback for a dozen of them — and a third call site
+  outside `connection/` is precisely the criterion gotcha #28 sets for `common/`.
+  Publishing feeds it from its own `huginndb://origin-publish-progress` event
+  rather than reusing the import one: an event whose name says "import", emitted
+  by a publish, is a wire contract that lies, and a window doing both at once
+  could never tell them apart. Nothing is emitted when every envelope travels
+  verbatim, which is the common case and the instant one.
+
+- **The Schema panel's filter searches every open connection at once, and says
+  where it is looking.** There was one filter box, and it silently applied only
+  to whichever connection happened to be *selected* — every other one was
+  handed an empty needle and stayed unfiltered. The only marker of "selected"
+  is a 2px hairline on the row, and the selection moves on its own when you
+  open a tab or pick a table from the command palette. So with two connections
+  open you typed, one subtree filtered, the other did not, and nothing
+  explained it. Reported by several users.
+
+  Now every live connection is searched. Each connection row carries its own
+  match count; one with nothing to show folds to a single dimmed line instead
+  of quietly displaying its whole tree, and it is never hidden — that row is
+  what you need in order to connect it or to narrow the search to it. The fold
+  a search causes is visual and temporary: it is not written into the
+  environment's remembered folds, so a search can no longer leave you with
+  connections folded that you never folded. The needle is also dropped when you
+  switch environments, which it used to survive.
+
+  **Narrowing is still possible — it is just visible now.** "Search here only"
+  on a connection or a database (its right-click menu, or the button that
+  appears on a connection row while you are searching) puts a chip under the
+  box naming what you narrowed to. Leave it with the chip's ✕, with Backspace
+  on an empty box, or with Escape. This replaces a second invisible scope:
+  expanding a database used to silently restrict the search to it *and*
+  collapse the others.
+
+- **Typing in that filter no longer opens database connections.** Every
+  debounced keystroke used to open a connection pool for each database it had
+  not read yet — bounded to three at a time since 1.13.0, which made it
+  survivable rather than right. Searching now looks at what is already loaded,
+  and reaching further is a button that says how many databases it will load.
+  On a server shared with your application or your IDE, that is the difference
+  between a search and a small burst of connections.
+
+- **A `0` next to a connection now means the search really found nothing
+  there.** The tree distinguishes "still loading", "never read" (`—`, or `N+`
+  when part of a server has been read), "not in the current scope" and a real
+  zero. A provisional zero is what makes you give up on a search that would
+  have worked.
+
+- **The Schema panel has a title again, and two fewer notice lines.** Its two
+  tree-wide actions ("Disconnect all", "Connections to show") were labelled
+  buttons that truncated to unreadable stumps at the widths this panel is
+  normally dragged to; they are icons with tooltips in the new header, and the
+  "showing N of M connections" line folds into a marker on the icon that
+  changes it.
+
+- **Three new shortcuts, under Settings → Shortcuts.** `Mod+Shift+F` opens the
+  Schema panel if it is collapsed and focuses the filter; `Escape` inside the
+  panel clears the search in layers (text, then scope, then focus); and
+  "Search only the selected connection" ships unbound but is bindable and
+  searchable in the command palette.
+
+- **Disconnecting one connection reports that it is working, and "disconnect"
+  has one icon everywhere.** The ✕ on a connection row (and in the status bar's
+  connection list) was wrong twice over: an ✕ on a row reads as "remove this
+  connection", which is a different and much worse action than closing its
+  pool, and it gave no sign at all while a teardown that can take seconds was
+  in progress. Both now show the same plug mark the "Disconnect all" button
+  carries, with a spinner while they work. The right-click menu and the command
+  palette used a third icon for the same command; they follow suit.
+
+- **"Disconnect all" no longer makes you wait.** It closed the connections one
+  after another, and a single disconnect is already several round trips —
+  the backend closes each of a server's per-database pools in turn, waiting up
+  to five seconds each on one that has stopped answering. So one unreachable
+  server made every healthy one behind it wait out its timeout first. They now
+  close at the same time, and the button shows that it is working. The same
+  command from the keyboard shortcut or the command palette was a separate,
+  faster implementation that left the tree stale and its tabs pointing at
+  closed pools; both paths are now the same one.
+
+- **Deleting connections now confirms in-app, and says what it takes with it.**
+  There were two confirmations before: a bare OS `window.confirm` for a single
+  connection and an in-app dialog for a multi-selection, and neither mentioned
+  that a delete also removes the password from the OS credential store, the
+  connection's tabs and "databases to show" filter **in every environment**, and
+  any JSON Schema bindings pinned to its columns. One dialog now serves all three
+  paths and lists exactly what applies to the connections you picked — a SQLite
+  file has no stored password, an untunnelled connection has no SSH secret.
+
+- **A connection a shared origin publishes can no longer be bulk-deleted.** It
+  used to be selectable, and deleting it was worse than useless: the id travels
+  in the published file, so the next sync recreated the connection identically —
+  after your local password entry was gone. Its checkbox is now disabled, with a
+  tooltip pointing at what actually works (removing the origin in Settings). The
+  backend refuses those ids too, so the CLI and the MCP connector cannot route
+  around it.
+
+- **Bulk deletes are one operation instead of N.** Deleting forty connections
+  used to rewrite `profiles.json` and `tab_state.json` forty times each and fire
+  forty change events, which made every open window re-read and re-render forty
+  times. It is now a single pass, and it reports what it skipped or could not
+  clean up instead of silently swallowing it.
+
+- The connection manager is wider (and its list 320px instead of 240px):
+  the provenance filter put three segments above rows that already carry a name,
+  a driver badge and an origin mark, and names were truncating mid-word.
+
+### Fixed
+
+- **Double-clicking a foreign-key cell needed a second, unrelated click before
+  the combobox appeared.** `GridRow` is `React.memo`'d so a click only
+  re-renders the rows it actually affects — every fast-changing bit of state
+  that can change what a row shows gets narrowed to "does this concern THIS
+  row" before it reaches the component, the same way `inlineEditHere` already
+  worked. `fkEditCell` had no such prop: the `cell` renderer read it correctly
+  through a live ref, but that only mattered once React actually re-rendered
+  the row, and the second click of a double-click updates only `fkEditCell` —
+  the first click had already set `activeCell`/`selectedRowIndex`/
+  `selectedCell` — so no prop of that row's own changed and `React.memo`
+  skipped it outright. The combobox only appeared once an unrelated click on
+  another cell or row forced a re-render some other way. `GridRow` now takes
+  an `fkEditHere` prop, narrowed the same way, purely to give `React.memo`
+  something to compare.
+
+- **The cell editor opened in JSON mode for almost any column, even plain
+  text.** A JSON Schema binding (1.18's feature) was meant to force JSON mode
+  when a column has one, so the user gets validation instead of a heuristic
+  that only answers "json" when the text happens to parse. But `CellEditor`
+  and `SideEditorPanel` decided that from the mere presence of a
+  `CellBindingContext` — connection/schema/table/column coordinates — which is
+  truthy for nearly any cell of a real table, bound or not. `CellEditorBody`
+  already computed the right check a few lines below (whether a schema is
+  actually *resolved* for that column, from `useJsonSchemas`'s cache) to
+  decide whether to attach a schema to the Monaco model; the two callers above
+  it now use that same check to decide the initial language, instead of the
+  coordinates alone.
+
+- **The cell "expand" button could be scrolled out of view on a wide
+  column.** It sat at the end of the cell's flex row (`ml-auto`), so on a
+  column resized wider than the visible scroll area the button was off-screen
+  until the user scrolled that specific cell all the way over. Both places it
+  renders — the read-only "selected cell" affordance and the inline
+  `CellInput` editor — now make it `sticky` against the grid's own scroll
+  container, the same technique already used for pinned columns, with an
+  opaque background for the same reason: `sticky` promotes the button to its
+  own compositing layer, and a translucent one would let the cell's text show
+  through while scrolling.
+
+- **A wide active cell's content painted over the pinned gutter column while
+  scrolling, instead of disappearing behind it.** The keyboard-active cell's
+  `<td>` unconditionally got `z-10` for its ring, which beat a pinned
+  column's `z-[1]` even when they were two entirely different cells — so
+  scrolling a wide active cell horizontally slid its text and background
+  right over the top of the sticky row-number column instead of being hidden
+  behind it, the one thing `position: sticky` on a pinned column is supposed
+  to guarantee. A plain `position: relative` (no z-index) already paints
+  above *unpositioned* neighbours regardless of z-index, which is all the
+  ring ever needed there; `z-10` is now scoped to the one case that actually
+  has to beat a pinned column's own z-index — the active cell being pinned
+  itself, so its ring stays visible over its own solid background.
+
+- **A multi-database connection with a "databases to show" subset could show an
+  empty tree while searching, with no explanation.** The check for "are we
+  still loading databases?" walked every database on the server while the loop
+  that actually loaded them applied the subset — so with a subset active it
+  never finished, and the "no tables match the filter" line could never appear.
+
+- **Databases loaded by searching are remembered again.** The filter's own
+  prefetch opened them through the untracked path, so a tab opened against a
+  database you had reached by searching (rather than by expanding it) was never
+  restored — not on reconnect, not across an environment switch, not across a
+  restart.
+
+- **The tree no longer filters its contents by a different needle than the one
+  that chose what to show.** Each multi-database explorer debounced separately
+  while the inner subtree was handed the raw, undebounced needle, so for a
+  quarter of a second after every keystroke the two disagreed.
+
+- **Ctrl+V now works on `BIT` cells in the data grid.** It used to be a
+  deliberate no-op (issue #79): pasted text was routed into `inlineEdit`,
+  which a `BIT` column renders as `BitInput` — a fixed `<select>` with no
+  free-text control to receive it. Paste on a `BIT` cell now normalizes the
+  clipboard text the same way `BitInput` itself does (`"1"`/`"true"` → `"1"`,
+  `"0"`/`"false"` → `"0"`, anything else non-empty → `"1"`, empty → `NULL`)
+  and commits it directly, skipping the round trip if nothing would change —
+  the same pattern the FK combobox and `BitInput`'s own `onSelect` already
+  use. No backend change was needed: `update_cell` already resolves the MySQL
+  `BIT` `CAST` from the column's catalog type, not from the value it's handed.
+
+- **A MongoDB connection set to `read-only` could not be read over MCP while the
+  desktop app was sharing its pools.** `run_query` decided which classifier to
+  use by looking the connection up in the *connector's own* pool map — and that
+  map is empty by design whenever the app owns the pool (pool sharing, 1.13.0).
+  So every bridged MongoDB statement fell through to the SQL keyword heuristic,
+  where `db.users.find({})` matches none of
+  `select`/`with`/`show`/`explain`/`pragma` and therefore came back as a write.
+  A plain `find` was refused at `read-only` and only worked from `data` upward.
+  The app's own independent re-check agreed, for the same wrong reason.
+
+  Both now call one classifier, `db::classify::classify_statement`, which picks
+  the grammar from the statement *text* — the one input both enforcement points
+  always have, and pure enough to test without a server. While the mongosh
+  grammar had no DDL this bug was merely too strict; it would have become a
+  privilege escalation the moment `db.coll.drop()` existed, since both sides
+  would have tiered it `data`. Tests now pin every operation's tier on both
+  layers.
+
+- **`updateMany({})` and `deleteMany({})` over MCP are refused, like their SQL
+  equivalents.** The whole-relation guard exempted MongoDB, so a `data`
+  connection could empty a collection in one call while `DELETE FROM users`
+  was refused at every tier — the same blast radius, opposite answers. The
+  opt-in mirrors SQL's `WHERE 1=1`: a predicate that is trivially true, e.g.
+  `deleteMany({_id: {$exists: true}})`. `drop()` is not covered, deliberately —
+  its scope is unambiguous and it already sits behind `full`, exactly like
+  `DROP TABLE`.
+
+- **A shared connection's MCP write policy no longer reverts on the next sync.**
+  The policy is a local decision about what an AI client may do on *this*
+  machine, which the publisher of a shared origin cannot know, but a sync
+  replaced the whole record and took it with it. Setting a shared connection to
+  "data" therefore worked until the next pull and then silently went back to
+  read-only — which made the MCP panel unusable for anyone whose connections all
+  come from an origin. Everything else on a published profile is still the
+  file's to dictate.
+
+- **Renaming a shared origin now reaches the rest of the app.** The origin
+  registry was read once, locally, by the Settings panel that owns it, so nothing
+  else could name the origin behind a connection — and "Sync now" never refreshed
+  its own "last synced" timestamp, which stayed stale until the panel was
+  reopened. It is now cached in one place and invalidated by a backend event, so
+  every window sees a rename or a sync immediately.
+
 ## [1.18.0] — 2026-08-24
 
 ### Added

@@ -8,7 +8,10 @@
  * once, so a call site can read `if (!path) return;`.
  */
 
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import {
+  open as openFileDialog,
+  save as saveFileDialog,
+} from "@tauri-apps/plugin-dialog";
 
 /**
  * Ask the user for one JSON file. `null` when they cancel.
@@ -25,6 +28,28 @@ export async function pickJsonFile(
     directory: false,
     title,
     filters: [{ name: "JSON", extensions }],
+  });
+  return typeof picked === "string" && picked ? picked : null;
+}
+
+/**
+ * Ask the user where to create one JSON file. `null` when they cancel.
+ *
+ * The counterpart of {@link pickJsonFile} for the one flow that needs a
+ * destination rather than a source: creating a shared origin's document. The
+ * export commands do this in Rust (`transfer::save_export`) because they write
+ * there themselves; this one only needs the path, since
+ * `create_origin_document` refuses an existing file and does its own atomic
+ * write.
+ */
+export async function pickJsonSavePath(
+  title: string,
+  suggestedName: string,
+): Promise<string | null> {
+  const picked = await saveFileDialog({
+    title,
+    defaultPath: suggestedName,
+    filters: [{ name: "JSON", extensions: ["json"] }],
   });
   return typeof picked === "string" && picked ? picked : null;
 }

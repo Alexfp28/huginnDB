@@ -59,6 +59,12 @@ export function OverlayPalette({
             className,
           )}
           onKeyDown={onKeyDown}
+          // Both palettes live here, so declaring the scope once covers the
+          // command palette and the tab switcher. While one is open the focus
+          // is inside it, which puts the grid's and the tree's bindings out of
+          // reach — `global` stays reachable on purpose, or the palette's own
+          // toggle could not close it again.
+          data-kb-scope="overlay"
         >
           <DialogPrimitive.Title className="sr-only">
             {title}

@@ -45,7 +45,7 @@ import { cellModelPath, bindSchemaToModel } from "@/lib/monaco/monacoJson";
 import { useJsonSchemas, relationKey, schemaUri } from "@/stores/jsonSchemas";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { cn, formatNumber } from "@/lib/utils";
-import { formatComboForDisplay } from "@/lib/keybindings";
+import { formatForDisplay } from "@/lib/keybindings";
 import { useFullscreenToggle } from "@/lib/useFullscreenToggle";
 import { Kbd } from "@/components/ui/kbd";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
@@ -177,7 +177,10 @@ export function CellEditorBody({
           className="ml-auto"
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border">
+      <div
+        className="min-h-0 flex-1 overflow-hidden rounded-md border border-border"
+        data-kb-scope="editor"
+      >
         <Editor
           key={editorKey}
           height="100%"
@@ -226,10 +229,27 @@ export function CellEditor({
   const [editorKey, setEditorKey] = useState(0);
   const openInSide = useCellEditor((s) => s.open);
   const canSave = !readonly && !!onSave;
+  // Derive from raw state (gotcha #1), mirroring `CellEditorBody`'s own
+  // `resolved` — `binding` alone is just coordinates (connection/schema/
+  // table/column) and is truthy for almost any real-table cell, whether or
+  // not a schema is actually bound to this column.
+  const resolvedAll = useJsonSchemas((s) => s.resolved);
+  const revision = useJsonSchemas((s) => s.revision);
+  const hasResolvedSchema = useMemo(() => {
+    if (!binding) return false;
+    const key = relationKey(binding.connectionId, binding.dbSchema, binding.table);
+    return !!resolvedAll[key]?.[binding.column];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [binding, resolvedAll, revision]);
   // Modifier label for the save-shortcut chip (⌘ on macOS, Ctrl elsewhere).
-  // Through `formatComboForDisplay`, which is the one place that decides how a
+  // Through `formatForDisplay`, which is the one place that decides how a
   // combo is spelled for the user.
-  const saveHint = formatComboForDisplay("Ctrl+S");
+  // Still a fixed `addCommand` above, so this is still a literal — but a
+  // literal in the catalogue's own spelling, rendered by the catalogue's own
+  // formatter. Making it a real bindable action means making that
+  // `addCommand` dynamic, which travels with `SideEditorPanel`'s Mod+S
+  // arbitration rather than alone.
+  const saveHint = formatForDisplay("Mod+S");
   // Content-type badge label: the auto-detected / selected language.
   const typeLabel = language === "plaintext" ? "TEXT" : language.toUpperCase();
   // …and its glyph. The brief allows a little more branding in this editor
@@ -248,9 +268,12 @@ export function CellEditor({
   useEffect(() => {
     if (open) {
       setValue(initialValue);
-      // A binding is the user asserting this column holds JSON, so it wins over
-      // the heuristic — see the same call in `SideEditorPanel.load`.
-      setLanguage(binding ? "json" : detectLanguage(initialValue ?? ""));
+      // A *resolved* schema binding is the signal that this column holds
+      // JSON, so it wins over the heuristic — see the same call in
+      // `SideEditorPanel.loadFresh`. The mere presence of `binding`
+      // (coordinates only, no confirmed schema) is not enough — that used to
+      // force JSON mode on almost every cell of a real table.
+      setLanguage(hasResolvedSchema ? "json" : detectLanguage(initialValue ?? ""));
       setSaveError(null);
       setEditorKey((k) => k + 1);
     }

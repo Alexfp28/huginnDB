@@ -1,11 +1,13 @@
 /**
  * Theme store — drives the look of the entire app.
  *
- * Conceptually there is exactly one "active" theme at any moment. The
- * store knows which one it is via `themeId` plus a list of any
- * user-defined custom themes. Built-in themes are referenced by id and
- * never mutated; editing one auto-forks into a new custom theme so the
- * presets stay pristine.
+ * Conceptually there is exactly one "active" theme FAMILY at any moment,
+ * plus a global light/dark MODE independent of it — the family is which
+ * palette (HuginnDB, Claude, …), the mode is which of its two variants
+ * `light-dark()` resolves to (see `applyTheme`/`applyColorScheme` in
+ * `lib/themes.ts`). Built-in families are referenced by id and never
+ * mutated; editing one auto-forks into a new custom family so the presets
+ * stay pristine.
  *
  * CSS variable updates are flushed eagerly inside each action so the
  * UI re-paints synchronously — the persisted localStorage write
@@ -19,16 +21,24 @@ import { customThemeId } from "@/lib/utils";
 import {
   BUILT_IN_THEMES,
   applyTheme,
-  type Theme,
+  applyColorScheme,
+  resolveLegacyThemeId,
+  LEGACY_THEME_MODE_MAP,
+  type ThemeFamily,
   type ThemeColors,
+  type ThemeMode,
 } from "@/lib/themes";
 
 interface ThemeState {
   themeId: string;
-  customThemes: Theme[];
+  mode: ThemeMode;
+  customThemes: ThemeFamily[];
   /**
    * Theme id the *active environment* wants applied instead of `themeId`, or
-   * `null` for "no override — use the default". Set by
+   * `null` for "no override — use the default". Only ever fixes the FAMILY,
+   * never the mode — the mode stays a personal preference independent of
+   * which environment is active (see gotcha #27: an environment describes
+   * session/visual identity, not user ergonomics). Set by
    * `useEnvironments.restoreSession`/`switchTo`/`update`, never persisted
    * here: it describes the current environment, not a user preference, and
    * environments already persist their own `themeId` on the backend
@@ -38,11 +48,13 @@ interface ThemeState {
    */
   environmentOverrideId: string | null;
   setThemeId: (id: string) => void;
-  upsertCustom: (theme: Theme) => void;
+  upsertCustom: (family: ThemeFamily) => void;
   deleteCustom: (id: string) => void;
   duplicateAsCustom: (sourceId: string, name: string) => string;
-  updateActiveColor: (key: keyof ThemeColors, value: string) => void;
-  setActiveMode: (mode: "light" | "dark") => void;
+  /** `variant` edits that specific light/dark half of the family; omitted,
+   *  it defaults to the currently active global mode. */
+  updateActiveColor: (key: keyof ThemeColors, value: string, variant?: ThemeMode) => void;
+  setActiveMode: (mode: ThemeMode) => void;
   resetActive: () => void;
   /** Apply (or clear) the active environment's theme override. Re-resolves
    *  and re-paints immediately; a `themeId` that no longer matches any theme
@@ -51,24 +63,65 @@ interface ThemeState {
   setEnvironmentOverride: (themeId: string | null) => void;
 }
 
-function allThemes(state: ThemeState): Theme[] {
+interface LegacyPersistedTheme {
+  id: string;
+  name: string;
+  mode: ThemeMode;
+  colors: ThemeColors;
+  builtin?: boolean;
+}
+interface LegacyPersistedState {
+  themeId?: string;
+  customThemes?: LegacyPersistedTheme[];
+}
+
+function allThemes(state: ThemeState): ThemeFamily[] {
   return [...BUILT_IN_THEMES, ...state.customThemes];
 }
 
-function resolveActive(state: ThemeState): Theme {
+/** The zustand/persist `migrate` logic, extracted so it's testable without
+ *  touching localStorage — the persist config below just wraps it. */
+export function migrateThemeState(persisted: unknown, version: number): ThemeState {
+  if (version === 1) return persisted as ThemeState;
+
+  const old = (persisted ?? {}) as LegacyPersistedState;
+  const oldThemeId = old.themeId ?? "dark";
+
+  // Duplicate each pre-refactor custom theme's single palette into both
+  // variants — best-effort, the user edits the missing one later.
+  const customThemes: ThemeFamily[] = (old.customThemes ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    builtin: false,
+    light: { ...t.colors },
+    dark: { ...t.colors },
+  }));
+
+  const legacyCustom = (old.customThemes ?? []).find((t) => t.id === oldThemeId);
+  const mode: ThemeMode =
+    legacyCustom?.mode ?? LEGACY_THEME_MODE_MAP[oldThemeId] ?? "dark";
+
+  return {
+    themeId: resolveLegacyThemeId(oldThemeId),
+    mode,
+    customThemes,
+    environmentOverrideId: null,
+  } as ThemeState;
+}
+
+function resolveActiveFamily(state: ThemeState): ThemeFamily {
   // The environment override wins over the persisted default whenever it
   // resolves to a real theme — this is what makes assigning a theme to an
   // environment stick even if the user later changes their default theme
   // elsewhere (Settings > Appearance) while that environment stays active.
   if (state.environmentOverrideId) {
     const overridden = allThemes(state).find(
-      (t) => t.id === state.environmentOverrideId,
+      (f) => f.id === state.environmentOverrideId,
     );
     if (overridden) return overridden;
   }
   return (
-    allThemes(state).find((t) => t.id === state.themeId) ??
-    BUILT_IN_THEMES[0]
+    allThemes(state).find((f) => f.id === state.themeId) ?? BUILT_IN_THEMES[0]
   );
 }
 
@@ -76,140 +129,137 @@ export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
       themeId: "dark",
+      mode: "dark",
       customThemes: [],
       environmentOverrideId: null,
       setEnvironmentOverride: (themeId) => {
-        set({ environmentOverrideId: themeId });
-        applyTheme(resolveActive(get()));
+        set({
+          environmentOverrideId: themeId ? resolveLegacyThemeId(themeId) : null,
+        });
+        applyTheme(resolveActiveFamily(get()), get().mode);
       },
       setThemeId: (id) => {
-        set({ themeId: id });
-        applyTheme(resolveActive(get()));
+        set({ themeId: resolveLegacyThemeId(id) });
+        applyTheme(resolveActiveFamily(get()), get().mode);
       },
-      upsertCustom: (theme) => {
+      upsertCustom: (family) => {
         set((s) => {
-          const customThemes = s.customThemes.some((t) => t.id === theme.id)
-            ? s.customThemes.map((t) => (t.id === theme.id ? theme : t))
-            : [...s.customThemes, theme];
+          const customThemes = s.customThemes.some((f) => f.id === family.id)
+            ? s.customThemes.map((f) => (f.id === family.id ? family : f))
+            : [...s.customThemes, family];
           return { customThemes };
         });
-        applyTheme(resolveActive(get()));
+        applyTheme(resolveActiveFamily(get()), get().mode);
       },
       deleteCustom: (id) => {
         set((s) => ({
-          customThemes: s.customThemes.filter((t) => t.id !== id),
+          customThemes: s.customThemes.filter((f) => f.id !== id),
           themeId: s.themeId === id ? "dark" : s.themeId,
         }));
-        applyTheme(resolveActive(get()));
+        applyTheme(resolveActiveFamily(get()), get().mode);
       },
       duplicateAsCustom: (sourceId, name) => {
         const source =
-          allThemes(get()).find((t) => t.id === sourceId) ?? BUILT_IN_THEMES[0];
+          allThemes(get()).find((f) => f.id === sourceId) ?? BUILT_IN_THEMES[0];
         const id = customThemeId();
-        const cloned: Theme = {
-          ...source,
+        const cloned: ThemeFamily = {
           id,
           name,
           builtin: false,
-          colors: { ...source.colors },
+          light: { ...source.light },
+          dark: { ...source.dark },
         };
         set((s) => ({
           customThemes: [...s.customThemes, cloned],
           themeId: id,
         }));
-        applyTheme(cloned);
+        applyTheme(cloned, get().mode);
         return id;
       },
-      updateActiveColor: (key, value) => {
-        const active = resolveActive(get());
-        if (active.builtin) {
-          // Auto-fork into a custom theme so built-ins stay pristine.
+      updateActiveColor: (key, value, variant) => {
+        const family = resolveActiveFamily(get());
+        const targetVariant = variant ?? get().mode;
+        if (family.builtin) {
+          // Auto-fork into a custom theme so built-ins stay pristine — both
+          // variants are cloned as-is, only the target one receives the edit.
           const id = customThemeId();
-          const cloned: Theme = {
-            ...active,
+          const cloned: ThemeFamily = {
             id,
-            name: `${active.name} (custom)`,
+            name: `${family.name} (custom)`,
             builtin: false,
-            colors: { ...active.colors, [key]: value },
+            light: { ...family.light },
+            dark: { ...family.dark },
           };
+          cloned[targetVariant] = { ...cloned[targetVariant], [key]: value };
           set((s) => ({
             customThemes: [...s.customThemes, cloned],
             themeId: id,
           }));
-          applyTheme(cloned);
+          applyTheme(cloned, get().mode);
           return;
         }
-        const updated: Theme = {
-          ...active,
-          colors: { ...active.colors, [key]: value },
+        const updated: ThemeFamily = {
+          ...family,
+          [targetVariant]: { ...family[targetVariant], [key]: value },
         };
         set((s) => ({
-          customThemes: s.customThemes.map((t) =>
-            t.id === active.id ? updated : t,
+          customThemes: s.customThemes.map((f) =>
+            f.id === family.id ? updated : f,
           ),
         }));
-        applyTheme(updated);
+        applyTheme(updated, get().mode);
       },
       setActiveMode: (mode) => {
-        const active = resolveActive(get());
-        if (active.mode === mode) return;
-        if (active.builtin) {
-          // Switch to this theme's own pair (see Theme.pairId in themes.ts),
-          // not just whichever built-in happens to have id "dark"/"light" —
-          // that literal match only ever hit the HuginnDB pair and reset
-          // every other preset to it on toggle (issue #132).
-          const target = BUILT_IN_THEMES.find((t) => t.id === active.pairId);
-          if (target) {
-            set({ themeId: target.id });
-            applyTheme(target);
-          }
-          return;
-        }
-        const updated: Theme = { ...active, mode };
-        set((s) => ({
-          customThemes: s.customThemes.map((t) =>
-            t.id === active.id ? updated : t,
-          ),
-        }));
-        applyTheme(updated);
+        // O(1): the active family's `light-dark()` variables already contain
+        // both variants — only which one the browser paints needs to change.
+        if (get().mode === mode) return;
+        set({ mode });
+        applyColorScheme(mode);
       },
       resetActive: () => {
-        // Reset the active custom theme to its name's matching built-in if any.
-        const active = resolveActive(get());
-        if (active.builtin) return;
+        const family = resolveActiveFamily(get());
+        if (family.builtin) return;
         const baseline = BUILT_IN_THEMES[0];
-        const reset: Theme = {
-          ...active,
-          colors: { ...baseline.colors },
-          mode: baseline.mode,
+        const reset: ThemeFamily = {
+          ...family,
+          light: { ...baseline.light },
+          dark: { ...baseline.dark },
         };
         set((s) => ({
-          customThemes: s.customThemes.map((t) =>
-            t.id === active.id ? reset : t,
+          customThemes: s.customThemes.map((f) =>
+            f.id === family.id ? reset : f,
           ),
         }));
-        applyTheme(reset);
+        applyTheme(reset, get().mode);
       },
     }),
     {
       name: STORAGE_KEYS.theme,
+      version: 1, // no `version` was configured before this refactor — zustand treats an unversioned blob as 0
+      migrate: migrateThemeState,
       partialize: (state) => ({
         themeId: state.themeId,
+        mode: state.mode,
         customThemes: state.customThemes,
       }),
       onRehydrateStorage: () => (state) => {
-        if (state) applyTheme(resolveActive(state as ThemeState));
+        if (state) applyTheme(resolveActiveFamily(state as ThemeState), (state as ThemeState).mode);
       },
     },
   ),
 );
 
-// Returns a reference-stable Theme object (an element of BUILT_IN_THEMES
+// Returns a reference-stable ThemeFamily object (an element of BUILT_IN_THEMES
 // or state.customThemes). Safe to use as a zustand selector.
-export function selectActiveTheme(state: ThemeState): Theme {
-  return resolveActive(state);
+export function selectActiveTheme(state: ThemeState): ThemeFamily {
+  return resolveActiveFamily(state);
+}
+// The global mode — a primitive, already reference-stable via Object.is.
+export function selectActiveMode(state: ThemeState): ThemeMode {
+  return state.mode;
 }
 // Note: do NOT add a selector that returns the concatenation of built-ins
-// + customThemes — that would return a fresh array every render and
-// trigger an infinite re-render loop. Concatenate at the component level
-// inside a useMemo over state.customThemes.
+// + customThemes, nor one that wraps family+mode in a fresh object — either
+// would return a new reference every render and trigger an infinite
+// re-render loop. Concatenate at the component level inside a useMemo over
+// state.customThemes; read family and mode as two separate selectors.

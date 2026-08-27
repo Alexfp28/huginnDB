@@ -49,9 +49,23 @@ El editor acepta sintaxis de shell, no SQL:
 db.orders.find({ status: "open", total: { $gt: 100 } }).sort({ createdAt: -1 }).limit(50)
 ```
 
-- **Métodos**: `find`, `findOne`, `aggregate`, `countDocuments` (`count`),
-  `distinct`, `insertOne`, `insertMany`, `updateOne`, `updateMany`,
-  `replaceOne`, `deleteOne`, `deleteMany`.
+- **Métodos de lectura**: `find`, `findOne`, `aggregate`, `countDocuments`
+  (`count`), `distinct`.
+- **Métodos de escritura**: `insertOne`, `insertMany`, `updateOne`,
+  `updateMany`, `replaceOne`, `deleteOne`, `deleteMany`.
+- **Métodos de esquema** (desde 1.19.0): `createIndex({campo: -1}, {unique: true})`,
+  `dropIndex("nombre")`, `hideIndex("nombre")` / `unhideIndex("nombre")`,
+  `drop()` y `renameCollection("nuevoNombre")`. El renombrado se queda **dentro
+  de la base de datos actual** — la forma que acepta también `mongosh`; el
+  *movimiento* entre bases es el diálogo Renombrar del explorador (ver más
+  abajo), a propósito y no la gramática, porque un nombre de colección puede
+  contener puntos (`system.views`, `logs.2024`) y leer
+  `renameCollection("logs.2024")` como «mover a la base `logs`» sería
+  silenciosamente incorrecto. `renameCollection` nunca elimina un destino
+  existente: una colisión es un error, y pasar `dropTarget: true` se rechaza.
+  Por MCP requieren el nivel de escritura de la conexión en `full`; las mismas
+  operaciones están además en el gestor de índices y en los menús contextuales
+  del explorador.
 - **Modificadores encadenados**: `.sort({…})`, `.limit(n)`, `.skip(n)`,
   `.projection({…})`.
 - **JSON relajado**: claves sin comillas, comillas simples, comas finales,
@@ -187,3 +201,10 @@ Todas las herramientas de lectura funcionan contra MongoDB: `list_databases`,
 mismo nivel de escritura por conexión que los drivers SQL. En una conexión sin
 base de datos fijada, pasa `schema` — el nombre de la base — o la lista de
 colecciones vuelve vacía. Ver [`MCP.es.md`](MCP.es.md).
+
+`create_index` y `drop_index` son herramientas solo de MongoDB — en los drivers
+SQL un índice se crea con `CREATE INDEX` por `run_query`, que es más expresivo
+que cualquier forma portable. Lee primero los índices existentes con
+`list_indexes`: en MongoDB cada entrada lleva un objeto `mongo` con la
+definición real, y la lista de columnas por sí sola no distingue
+`{createdAt: -1}` de `{createdAt: 1}`.

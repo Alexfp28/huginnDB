@@ -17,6 +17,7 @@
 //! references) is rejected with a clear [`AppError::InvalidInput`] rather than
 //! silently mis-parsed.
 
+use crate::db::sql::StmtClass;
 use crate::error::{AppError, AppResult};
 use mongodb::bson::{Bson, Document};
 use std::str::FromStr;
@@ -67,19 +68,101 @@ pub enum MongoOp {
     DeleteMany {
         filter: Document,
     },
+    /// `createIndex(keys, options?)`. Both halves stay plain `Document`s: the
+    /// entry that goes into `createIndexes` is assembled by
+    /// [`super::indexes::index_entry`], the same builder the index manager's
+    /// [`super::indexes::NewMongoIndexSpec`] delegates to once it has parsed
+    /// its own source-text fields.
+    CreateIndex {
+        keys: Document,
+        options: Document,
+    },
+    /// `dropIndex(name)`.
+    DropIndex {
+        name: String,
+    },
+    /// `hideIndex(name)` / `unhideIndex(name)` — the reversible rehearsal for a
+    /// drop (see `db/mongo/indexes.rs`), so both spellings share one variant.
+    SetIndexHidden {
+        name: String,
+        hidden: bool,
+    },
+    /// `drop()` — drops the whole collection (or view: on MongoDB the two share
+    /// one namespace, and `drop()` is the documented way to remove either).
+    DropCollection,
+    /// `renameCollection(to)`, within the same database — the form `mongosh`
+    /// itself accepts. A cross-database move is deliberately not expressible:
+    /// a collection name may contain dots (`system.views`, `logs.2024`), so
+    /// reading a qualified `"otherDb.coll"` as a move would make
+    /// `renameCollection("logs.2024")` silently mean something else. That
+    /// operation lives in the explorer's rename dialog.
+    RenameCollection {
+        to: String,
+    },
 }
 
 impl MongoOp {
+    /// The write tier this operation requires, in the same vocabulary
+    /// [`crate::db::sql::classify`] answers in for SQL.
+    ///
+    /// This is the *only* place a mongosh statement's tier is decided;
+    /// [`crate::db::classify::classify_statement`] is what routes to it, and
+    /// both MCP enforcement points go through that. The match is exhaustive on
+    /// purpose: adding an operation without saying which tier it needs must be
+    /// a build error, because the failure mode of guessing is a `data`
+    /// connection reaching DDL — a privilege escalation introduced by a new
+    /// grammar rule rather than by a permission change.
+    pub fn class(&self) -> StmtClass {
+        match self {
+            MongoOp::Find { .. }
+            | MongoOp::Aggregate { .. }
+            | MongoOp::Count { .. }
+            | MongoOp::Distinct { .. } => StmtClass::Read,
+            MongoOp::InsertOne { .. }
+            | MongoOp::InsertMany { .. }
+            | MongoOp::UpdateOne { .. }
+            | MongoOp::UpdateMany { .. }
+            | MongoOp::ReplaceOne { .. }
+            | MongoOp::DeleteOne { .. }
+            | MongoOp::DeleteMany { .. } => StmtClass::DataWrite,
+            // Indexes and namespaces are schema. `createIndex` is the one that
+            // looks like data at a glance and is not: it changes what the
+            // collection *is*, and it is the tier `CREATE INDEX` already gets
+            // from `db::sql::classify` on every SQL driver.
+            MongoOp::CreateIndex { .. }
+            | MongoOp::DropIndex { .. }
+            | MongoOp::SetIndexHidden { .. }
+            | MongoOp::DropCollection
+            | MongoOp::RenameCollection { .. } => StmtClass::Ddl,
+        }
+    }
+
     /// Whether this operation only reads (so the executor fetches a result set
     /// rather than reporting an affected-row count).
     pub fn is_read(&self) -> bool {
-        matches!(
-            self,
-            MongoOp::Find { .. }
-                | MongoOp::Aggregate { .. }
-                | MongoOp::Count { .. }
-                | MongoOp::Distinct { .. }
-        )
+        self.class() == StmtClass::Read
+    }
+
+    /// Whether this is an `updateMany` / `deleteMany` with an empty filter — a
+    /// whole-collection mutation.
+    ///
+    /// The MongoDB half of [`crate::db::sql::is_unfiltered_write`]'s guard-rail,
+    /// which the MCP connector refuses at every tier. `{}` is the only filter
+    /// that matches everything by accident: an AI client that means it can say
+    /// so with a predicate that is trivially true (`{_id: {$exists: true}}`),
+    /// the way the SQL side asks for `WHERE 1=1`.
+    ///
+    /// `drop()` is deliberately *not* included. It is unambiguous about its
+    /// scope — nobody writes `drop()` meaning "some documents" — and it is
+    /// already behind the strictest tier, exactly like `DROP TABLE`, which the
+    /// SQL guard doesn't touch either.
+    pub fn is_unfiltered_write(&self) -> bool {
+        match self {
+            MongoOp::UpdateMany { filter, .. } | MongoOp::DeleteMany { filter } => {
+                filter.is_empty()
+            }
+            _ => false,
+        }
     }
 }
 
@@ -137,6 +220,19 @@ pub fn parse_relaxed_value(input: &str) -> AppResult<Bson> {
         )));
     }
     Ok(value)
+}
+
+/// Whether `sql` is addressed to the mongosh grammar rather than to a SQL
+/// dialect.
+///
+/// The same `db.` prefix [`parse`] insists on below, exposed so a caller can
+/// pick a classifier without owning the pool. That matters: the MCP
+/// connector's own connection map is empty whenever the desktop app is serving
+/// the shared pool, so deriving "is this a Mongo statement?" from the *pool*
+/// silently answered "no" for every bridged call. The statement text is the one
+/// thing both sides always have.
+pub fn looks_like_mongo(sql: &str) -> bool {
+    sql.trim_start().starts_with("db.")
 }
 
 /// Parse one `mongosh`-style statement.
@@ -359,10 +455,59 @@ fn build_op(
         "deleteMany" => Ok(MongoOp::DeleteMany {
             filter: take_doc(&mut args, 0, "deleteMany")?,
         }),
+        "createIndex" => {
+            let keys = match args.first() {
+                Some(Bson::Document(d)) => d.clone(),
+                _ => {
+                    return Err(AppError::InvalidInput(
+                        "createIndex expects a keys document: createIndex({field: 1})".into(),
+                    ))
+                }
+            };
+            Ok(MongoOp::CreateIndex {
+                keys,
+                options: take_doc(&mut args, 1, "createIndex")?,
+            })
+        }
+        "dropIndex" => Ok(MongoOp::DropIndex {
+            name: take_name(&args, "dropIndex")?,
+        }),
+        "hideIndex" | "unhideIndex" => Ok(MongoOp::SetIndexHidden {
+            name: take_name(&args, method)?,
+            hidden: method == "hideIndex",
+        }),
+        "drop" => Ok(MongoOp::DropCollection),
+        "renameCollection" => {
+            let to = take_name(&args, "renameCollection")?;
+            // `dropTarget: true` would let a rename delete whatever already
+            // holds the destination name. `schema::rename_collection` pins it
+            // to `false` so that collision is an error; accepting the flag here
+            // would make the grammar the one way round that guarantee.
+            if matches!(args.get(1), Some(Bson::Boolean(true))) {
+                return Err(AppError::InvalidInput(
+                    "renameCollection: `dropTarget: true` is not supported — it would delete \
+                     whatever already holds the destination name. Drop it explicitly first."
+                        .into(),
+                ));
+            }
+            Ok(MongoOp::RenameCollection { to })
+        }
         other => Err(AppError::InvalidInput(format!(
             "unsupported MongoDB method `{other}` (supported: find, findOne, aggregate, \
              countDocuments, distinct, insertOne, insertMany, updateOne, updateMany, \
-             replaceOne, deleteOne, deleteMany)"
+             replaceOne, deleteOne, deleteMany, createIndex, dropIndex, hideIndex, \
+             unhideIndex, drop, renameCollection)"
+        ))),
+    }
+}
+
+/// The first argument as a non-empty string — an index name, or a rename
+/// destination.
+fn take_name(args: &[Bson], what: &str) -> AppResult<String> {
+    match args.first() {
+        Some(Bson::String(s)) if !s.trim().is_empty() => Ok(s.trim().to_string()),
+        _ => Err(AppError::InvalidInput(format!(
+            "{what} expects a name string: {what}(\"name\")"
         ))),
     }
 }
@@ -924,5 +1069,208 @@ mod tests {
     fn get_collection_form() {
         let cmd = parse("db.getCollection(\"weird name\").find({})").unwrap();
         assert_eq!(cmd.collection, "weird name");
+    }
+
+    #[test]
+    fn parses_create_index_with_and_without_options() {
+        let cmd = parse("db.users.createIndex({createdAt: -1})").unwrap();
+        assert_eq!(cmd.collection, "users");
+        assert_eq!(
+            cmd.op,
+            MongoOp::CreateIndex {
+                keys: doc! {"createdAt": -1},
+                options: Document::new(),
+            }
+        );
+
+        let cmd = parse("db.users.createIndex({email: 1}, {unique: true})").unwrap();
+        assert_eq!(
+            cmd.op,
+            MongoOp::CreateIndex {
+                keys: doc! {"email": 1},
+                options: doc! {"unique": true},
+            }
+        );
+    }
+
+    /// The direction is the whole point of carrying a parsed key document
+    /// rather than a field list: rebuilding `{createdAt: -1}` from
+    /// `["createdAt"]` recreates it ascending.
+    #[test]
+    fn create_index_keeps_the_key_direction() {
+        let cmd = parse("db.users.createIndex({a: 1, b: -1, c: \"text\"})").unwrap();
+        match cmd.op {
+            MongoOp::CreateIndex { keys, .. } => {
+                assert_eq!(keys, doc! {"a": 1, "b": -1, "c": "text"});
+                assert_eq!(keys.keys().collect::<Vec<_>>(), vec!["a", "b", "c"]);
+            }
+            other => panic!("expected CreateIndex, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn create_index_needs_a_keys_document() {
+        assert!(parse("db.users.createIndex()").is_err());
+        assert!(parse("db.users.createIndex(\"a\")").is_err());
+    }
+
+    #[test]
+    fn parses_drop_index_and_hide_index() {
+        assert_eq!(
+            parse("db.users.dropIndex(\"email_1\")").unwrap().op,
+            MongoOp::DropIndex {
+                name: "email_1".into()
+            }
+        );
+        assert_eq!(
+            parse("db.users.hideIndex(\"email_1\")").unwrap().op,
+            MongoOp::SetIndexHidden {
+                name: "email_1".into(),
+                hidden: true,
+            }
+        );
+        assert_eq!(
+            parse("db.users.unhideIndex(\"email_1\")").unwrap().op,
+            MongoOp::SetIndexHidden {
+                name: "email_1".into(),
+                hidden: false,
+            }
+        );
+        // A name is required and must not be blank — an empty string would
+        // reach `dropIndexes` as a name the server cannot match.
+        assert!(parse("db.users.dropIndex()").is_err());
+        assert!(parse("db.users.dropIndex(\"  \")").is_err());
+    }
+
+    #[test]
+    fn parses_drop_and_rename() {
+        assert_eq!(
+            parse("db.users.drop()").unwrap().op,
+            MongoOp::DropCollection
+        );
+        assert_eq!(
+            parse("db.users.renameCollection(\"clients\")").unwrap().op,
+            MongoOp::RenameCollection {
+                to: "clients".into()
+            }
+        );
+        // A dotted name is a *collection* name, never a database qualifier —
+        // see `MongoOp::RenameCollection`. It reaches `rename_collection`
+        // whole, so the rename stays inside the current database.
+        assert_eq!(
+            parse("db.users.renameCollection(\"logs.2024\")")
+                .unwrap()
+                .op,
+            MongoOp::RenameCollection {
+                to: "logs.2024".into()
+            }
+        );
+    }
+
+    /// `dropTarget: true` would let a rename delete whatever already holds the
+    /// destination name; `schema::rename_collection` pins it to `false`, and the
+    /// grammar must not be a way round that.
+    #[test]
+    fn rename_refuses_drop_target() {
+        assert!(parse("db.users.renameCollection(\"clients\", true)").is_err());
+        assert!(parse("db.users.renameCollection(\"clients\", false)").is_ok());
+    }
+
+    #[test]
+    fn class_puts_every_operation_in_one_tier() {
+        use crate::db::sql::StmtClass;
+
+        for sql in [
+            "db.t.find({})",
+            "db.t.findOne({})",
+            "db.t.aggregate([])",
+            "db.t.countDocuments({})",
+            "db.t.distinct(\"f\")",
+        ] {
+            assert_eq!(parse(sql).unwrap().op.class(), StmtClass::Read, "{sql}");
+            assert!(parse(sql).unwrap().op.is_read(), "{sql}");
+        }
+
+        for sql in [
+            "db.t.insertOne({})",
+            "db.t.insertMany([{a: 1}])",
+            "db.t.updateOne({}, {$set: {a: 1}})",
+            "db.t.updateMany({}, {$set: {a: 1}})",
+            "db.t.replaceOne({}, {})",
+            "db.t.deleteOne({})",
+            "db.t.deleteMany({})",
+        ] {
+            assert_eq!(
+                parse(sql).unwrap().op.class(),
+                StmtClass::DataWrite,
+                "{sql}"
+            );
+            assert!(!parse(sql).unwrap().op.is_read(), "{sql}");
+        }
+
+        for sql in [
+            "db.t.createIndex({a: 1})",
+            "db.t.dropIndex(\"a_1\")",
+            "db.t.hideIndex(\"a_1\")",
+            "db.t.drop()",
+            "db.t.renameCollection(\"u\")",
+        ] {
+            assert_eq!(parse(sql).unwrap().op.class(), StmtClass::Ddl, "{sql}");
+            assert!(!parse(sql).unwrap().op.is_read(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn unfiltered_write_is_the_empty_filter_only() {
+        assert!(parse("db.t.deleteMany({})")
+            .unwrap()
+            .op
+            .is_unfiltered_write());
+        assert!(parse("db.t.deleteMany()").unwrap().op.is_unfiltered_write());
+        assert!(parse("db.t.updateMany({}, {$set: {a: 1}})")
+            .unwrap()
+            .op
+            .is_unfiltered_write());
+
+        assert!(!parse("db.t.deleteMany({a: 1})")
+            .unwrap()
+            .op
+            .is_unfiltered_write());
+        assert!(!parse("db.t.deleteOne({})")
+            .unwrap()
+            .op
+            .is_unfiltered_write());
+        assert!(!parse("db.t.drop()").unwrap().op.is_unfiltered_write());
+    }
+
+    #[test]
+    fn looks_like_mongo_matches_what_parse_accepts() {
+        for sql in [
+            "db.t.find({})",
+            "  db.t.find({})",
+            "db.getCollection(\"t\").find({})",
+        ] {
+            assert!(looks_like_mongo(sql), "{sql}");
+        }
+        for sql in ["SELECT * FROM db.t", "select 1", "  DROP TABLE t"] {
+            assert!(!looks_like_mongo(sql), "{sql}");
+            assert!(parse(sql).is_err(), "{sql}");
+        }
+    }
+
+    /// The message is the only place a caller learns what the grammar covers,
+    /// so it must not drift from the arms above.
+    #[test]
+    fn unsupported_method_message_lists_the_new_operations() {
+        let err = parse("db.t.frobnicate({})").unwrap_err().to_string();
+        for method in [
+            "createIndex",
+            "dropIndex",
+            "hideIndex",
+            "drop",
+            "renameCollection",
+        ] {
+            assert!(err.contains(method), "{method} missing from: {err}");
+        }
     }
 }

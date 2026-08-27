@@ -570,7 +570,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
 
           {/* Monaco + optional history sidebar */}
           <div className="flex flex-1 overflow-hidden">
-            <div className="flex-1">
+            {/* Monaco redispatches `editor`-scoped bindings itself (gotcha #9);
+                the attribute is what tells the window listener that focus in
+                here is *not* in the grid or the tree. */}
+            <div className="flex-1" data-kb-scope="editor">
               <Editor
                 height="100%"
                 language="sql"

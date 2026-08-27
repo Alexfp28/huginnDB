@@ -265,6 +265,39 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
             let r = coll.delete_many(filter).await?;
             Ok(affected_result(r.deleted_count, ms()))
         }
+        // The DDL arms below deliberately delegate rather than issuing their own
+        // run-commands: `super::indexes` owns the `_id_` refusal and the
+        // `createIndexes` name defaulting, and `super::schema` owns the
+        // `dropTarget: false` pin and the view refusal. A second copy here
+        // would be a second set of guards to keep in step, and the index
+        // manager is where those guards were reasoned about.
+        MongoOp::CreateIndex { keys, options } => {
+            super::indexes::create_index_docs(conn, &parsed.collection, keys, options).await?;
+            Ok(affected_result(0, ms()))
+        }
+        MongoOp::DropIndex { name } => {
+            super::indexes::drop_index(conn, &parsed.collection, &name).await?;
+            Ok(affected_result(0, ms()))
+        }
+        MongoOp::SetIndexHidden { name, hidden } => {
+            super::indexes::set_index_hidden(conn, &parsed.collection, &name, hidden).await?;
+            Ok(affected_result(0, ms()))
+        }
+        MongoOp::DropCollection => {
+            coll.drop().await?;
+            Ok(affected_result(0, ms()))
+        }
+        // Same database only, which is what `mongosh` itself accepts here — a
+        // cross-database move is `db.adminCommand({renameCollection: …})`
+        // there, and the explorer's rename dialog is where it lives in this
+        // app. Reading a qualified `"otherDb.coll"` as a move was tempting and
+        // wrong: a collection name may legitimately contain dots
+        // (`system.views`, `logs.2024`), so `renameCollection("logs.2024")`
+        // would silently mean "move to the database `logs`" instead.
+        MongoOp::RenameCollection { to } => {
+            super::schema::rename_collection(conn, &parsed.collection, &to, None).await?;
+            Ok(affected_result(0, ms()))
+        }
     }
 }
 

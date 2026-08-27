@@ -15,15 +15,22 @@
 //!   mis-routed call fails with a sentence rather than a type error deep in a
 //!   driver.
 //!
-//! These are deliberately **not** exposed over the MCP bridge in this pass:
-//! they are writes, and which of them an AI client should reach is its own
-//! decision about the per-connection write policy, not a side effect of adding
-//! the UI.
+//! Creating and dropping an index **is** reachable over the MCP connector
+//! (`create_index` / `drop_index`, both at the `full` tier — an index is
+//! schema). Hiding and replacing are not: `collMod` reaches `hidden` and
+//! nothing else, and a replace is a drop plus a create, which an AI client can
+//! express as those two calls with the intermediate state visible to it. Both
+//! MCP-reachable verbs go through the `_inner` cores below so a write is logged
+//! whether it arrived from the UI, the bridge, or the connector's own pool —
+//! a write core that does not take a [`LogSink`] is invisible in
+//! `mcp-audit.log` (gotcha #49).
 
 use crate::db::mongo::indexes::{self, MongoIndexInfo, NewMongoIndexSpec};
 use crate::error::AppResult;
+use crate::log_bus::{log_sql_sink, LogSink};
 use crate::state::AppState;
 use serde::Deserialize;
+use std::time::Instant;
 use tauri::State;
 
 /// Message for the non-MongoDB case of [`AppState::mongo_for`]. Named here
@@ -62,9 +69,21 @@ pub async fn create_mongo_index(
     state: State<'_, AppState>,
     args: CreateIndexArgs,
 ) -> AppResult<()> {
-    crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &args.connection_id).await;
+    create_mongo_index_inner(&sink, state.inner(), &args).await
+}
+
+/// Sink-taking core of [`create_mongo_index`], shared with the MCP bridge.
+pub async fn create_mongo_index_inner(
+    sink: &dyn LogSink,
+    state: &AppState,
+    args: &CreateIndexArgs,
+) -> AppResult<()> {
     let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
-    indexes::create_index(&conn, &args.collection, &args.spec).await
+    let start = Instant::now();
+    let res = indexes::create_index(&conn, &args.collection, &args.spec).await;
+    log_index_write(sink, &args.connection_id, "create index", start, &res);
+    res
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,9 +119,47 @@ pub async fn drop_mongo_index(
     collection: String,
     name: String,
 ) -> AppResult<()> {
-    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
-    indexes::drop_index(&conn, &collection, &name).await
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    drop_mongo_index_inner(&sink, state.inner(), &connection_id, &collection, &name).await
+}
+
+/// Sink-taking core of [`drop_mongo_index`], shared with the MCP bridge.
+pub async fn drop_mongo_index_inner(
+    sink: &dyn LogSink,
+    state: &AppState,
+    connection_id: &str,
+    collection: &str,
+    name: &str,
+) -> AppResult<()> {
+    let conn = state.mongo_for(connection_id, MONGO_ONLY)?;
+    let start = Instant::now();
+    let res = indexes::drop_index(&conn, collection, name).await;
+    log_index_write(sink, connection_id, "drop index", start, &res);
+    res
+}
+
+/// One Console/audit line per index write.
+///
+/// The statement slot carries a `(mongo …)` label rather than a run-command
+/// document, matching what `drop_view_inner` does for its Mongo branch: there
+/// is no SQL text to show, and the audit log's job is to record that the write
+/// happened and whether it succeeded.
+fn log_index_write(
+    sink: &dyn LogSink,
+    connection_id: &str,
+    what: &str,
+    start: Instant,
+    res: &AppResult<()>,
+) {
+    log_sql_sink(
+        sink,
+        connection_id,
+        "mongodb",
+        &format!("(mongo {what})"),
+        start,
+        None,
+        res.as_ref().err().map(|e| e.to_string()).as_deref(),
+    );
 }
 
 /// Hide or unhide an index — the reversible rehearsal for dropping it.

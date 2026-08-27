@@ -74,8 +74,8 @@ export function EnvironmentAvatar({
         // this component — too small at status-bar scale for initials to
         // read cleanly.
         borderRadius: size * 0.28,
-        backgroundColor: color ?? "hsl(var(--muted))",
-        color: color ? pickReadableForeground(color) : "hsl(var(--muted-foreground))",
+        backgroundColor: color ?? "var(--muted)",
+        color: color ? pickReadableForeground(color) : "var(--muted-foreground)",
       }}
       className={cn("flex shrink-0 items-center justify-center font-semibold", className)}
     >

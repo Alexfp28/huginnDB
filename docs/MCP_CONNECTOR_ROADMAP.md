@@ -8,8 +8,15 @@ version, privileges) instead of guessing.
 
 This document records the intent, the chosen approach, the blast radius, and the
 technical hooks so a future session can pick it up without rediscovering the
-context. Nothing here is implemented yet — it is a **future** item, parked
-deliberately.
+context.
+
+**Phases 0-4 all shipped** (1.7.0 through 1.9.0), as did view management
+(1.18.0) and MongoDB index/DDL access (1.19.0). What keeps this file useful is
+the *why* — the judgements a later change would otherwise relitigate, above all
+which write surfaces earn a dedicated tool and which belong in `run_query`. The
+"Open decisions" section near the end is kept verbatim as a record of the calls
+that were made, not as questions still outstanding; the live open item is
+marketplace distribution, at the very bottom.
 
 See `CLAUDE.md` for the architecture (command layer, `db/` abstraction, security
 invariants) and `SECURITY.md` for the input-handling rules this design leans on.
@@ -227,6 +234,64 @@ as a single tool with a `preview` flag. A shared variant would make
 read-vs-DDL, and a later refactor dropping that binding would grant DDL at
 `read-only` with nothing failing to compile.
 
+## MongoDB indexes and DDL (shipped 1.19.0)
+
+The second application of the bar above, and the one that shows where the line
+actually falls. A colleague's AI client reported the gap plainly: no
+`createIndex`, no `dropIndex`, no collection `drop`, no `renameCollection` —
+"neither through `run_query` nor as a separate tool".
+
+**The report was right, and the cause was not in the MCP layer.** The allowlist
+was `build_op`'s `match method` in `db/mongo/shell.rs`, the parser the *desktop
+query editor* shares, so the desktop editor could not create an index either.
+Widening the grammar was therefore the primary fix, and it served both surfaces
+at once. Two things came with it:
+
+- **`MongoOp::class()` replaced `is_read()` as the tier source, and the choice
+  of grammar moved to `db/classify.rs`.** The old code decided "is this Mongo?"
+  by looking the resolved id up in the connector's *own* connection map — which
+  is empty whenever the desktop app serves the shared pool, so every bridged
+  Mongo statement fell through to the SQL keyword heuristic. `db.c.find({})`
+  matches none of `select`/`with`/`show`/`explain`/`pragma`, so a plain read came
+  back `DataWrite` and a `read-only` MongoDB connection was refused its own
+  reads; `bridge::server`'s `class_of` agreed for the same wrong reason. While
+  the grammar had no DDL that was merely too strict. It would have become a
+  privilege escalation the moment `drop()` existed. The discriminator is now the
+  statement *text*, which is the one input both enforcement points always have.
+- **The whole-relation guard stopped exempting MongoDB.** `deleteMany({})` was
+  accepted at `data` while `DELETE FROM users` was refused at every tier — same
+  blast radius, opposite answers. The opt-in is a trivially-true predicate, the
+  way SQL's is `WHERE 1=1`.
+
+**Only two tools were added, and only for MongoDB.** Applying the table above:
+
+| Capability | Reachable through `run_query`? |
+| --- | --- |
+| A MongoDB index, before 1.19.0 | **No.** Same gap as MongoDB views: no DDL vocabulary in the grammar. Closed on both routes now. |
+| A lossless read of an existing index | **No.** `list_indexes` reported `{name, columns, unique}`, so recreating `{createdAt: -1}` from `["createdAt"]` silently built it *ascending*. Its bridge arm now carries the full definition on MongoDB — the read had to grow with the write. |
+| A SQL index | **Yes, and better.** `CREATE INDEX … USING gin … WHERE …` beats any portable DTO. |
+
+So `create_index` / `drop_index` are MongoDB-only. The SQL side would have had
+to flatten every engine's index vocabulary into fixed fields, and HuginnDB's own
+`db::ddl::IndexDef` is `{name, columns, unique}` precisely because it exists to
+be *diffed* by the structure editor — it is not a description of what a server
+can build, and `db/ddl.rs`'s index create/drop are private to `build_ddl` for
+that reason. Exposing it would be the `TableStructure` mistake with a smaller
+struct.
+
+`drop()`, `renameCollection` and `hideIndex` got **no tool** — the grammar
+reaches them, and that matches the standing "table DDL goes through `run_query`"
+call. Nothing was added for replacing an index either: MongoDB cannot alter one
+in place, so a replacement is a drop plus a create, and leaving it as two calls
+keeps the interval where the index is missing visible to the caller instead of
+hidden inside one tool.
+
+`NewMongoIndexSpec` is what put indexes on the `save_view` side of the DTO line —
+a key document as source text plus a handful of flags. Note the one thing that
+did *not* transfer: the tool's argument struct is **flat**, not a nested `spec`
+object, because `schemars` renders a nested struct as a `$ref` into `$defs` and
+that is what made clients drop every tool in #83.
+
 ## Client configuration (target UX)
 
 ```json
@@ -260,7 +325,7 @@ read-vs-DDL, and a later refactor dropping that binding would grant DDL at
 **Read-only v1: ~3–4 days.** Clean history: a `refactor:` commit per Phase 0/1,
 a `feat:` for the binary.
 
-## Open decisions (resolve before writing code)
+## Open decisions (resolved — kept as a record of the calls made)
 
 1. **Add `rmcp`?** Only new dependency. Alternative is a hand-rolled
    JSON-RPC/stdio server. Recommendation: `rmcp`.

@@ -101,7 +101,7 @@ export function EmptyWatermark() {
               alt="HuginnDB"
               width={512}
               height={288}
-              className="h-auto w-60 select-none drop-shadow-[0_6px_24px_hsl(var(--brand)/0.35)]"
+              className="h-auto w-60 select-none drop-shadow-[0_6px_24px_color-mix(in_srgb,var(--brand)_35%,transparent)]"
               draggable={false}
             />
           </div>

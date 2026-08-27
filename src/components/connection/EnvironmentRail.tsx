@@ -272,7 +272,7 @@ function EnvironmentButton({
             // full-width button the bar lands outside the shell's
             // `overflow-hidden` and never paints at all.
             className="absolute left-0 top-1 bottom-1 w-1 rounded-full"
-            style={{ backgroundColor: env.color || "hsl(var(--brand))" }}
+            style={{ backgroundColor: env.color || "var(--brand)" }}
           />
         )}
         {switching && isActive ? (
@@ -374,7 +374,7 @@ function SortableEnvironmentButton({
                 // sliver outside the shell's `overflow-hidden` — invisible.
                 className="absolute left-0 top-1 bottom-1 w-1 rounded-full"
                 style={{
-                  backgroundColor: env.color || "hsl(var(--brand))",
+                  backgroundColor: env.color || "var(--brand)",
                 }}
               />
             )}

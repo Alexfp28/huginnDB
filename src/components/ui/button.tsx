@@ -18,7 +18,7 @@ const buttonVariants = cva(
         default:
           "border-2 border-brand bg-brand text-brand-foreground shadow-elevation-1 hover:border-brand-hover hover:bg-brand-hover hover:-translate-y-px hover:shadow-brand active:translate-y-0 active:shadow-none",
         destructive:
-          "border-2 border-destructive bg-destructive text-destructive-foreground shadow-elevation-1 hover:bg-destructive/90 hover:-translate-y-px hover:shadow-[0_2px_12px_hsl(var(--destructive)/0.35)] active:translate-y-0 active:shadow-none",
+          "border-2 border-destructive bg-destructive text-destructive-foreground shadow-elevation-1 hover:bg-destructive/90 hover:-translate-y-px hover:shadow-[0_2px_12px_color-mix(in_srgb,var(--destructive)_35%,transparent)] active:translate-y-0 active:shadow-none",
         // The secondary of the brief: transparent fill, grey edge, grey hover.
         outline:
           "border border-input bg-transparent hover:bg-accent hover:text-accent-foreground",

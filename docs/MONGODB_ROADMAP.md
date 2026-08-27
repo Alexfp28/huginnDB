@@ -168,10 +168,25 @@ Known limits, deliberate:
   drop, and a failure after it names the now-missing index explicitly.
 - **No index build progress.** A large `createIndexes` blocks the call rather
   than reporting progress. Hook: `currentOp` filtered to the index build.
-- **Not exposed over MCP.** These are writes; which of them an AI client should
-  reach is a per-connection write-policy decision, not a side effect of adding
-  the UI. Hook: `bridge/protocol.rs` + `mcp/mod.rs`, alongside the existing
-  read-only `list_indexes` tool.
+- **Creating and dropping are exposed over MCP (1.19.0); hiding and replacing
+  are not.** The write-policy decision this bullet used to defer resolved to
+  `full` — an index is schema — and it was *forced* rather than chosen:
+  `db.coll.createIndex(…)` through `run_query` is classified DDL, so a
+  `data`-tier tool would have handed back exactly what the statement path
+  denies. `create_index` / `drop_index` in `mcp/mod.rs`, `CreateMongoIndex` /
+  `DropMongoIndex` in `bridge/protocol.rs`, both through the new
+  `create_mongo_index_inner` / `drop_mongo_index_inner` cores so the write is
+  logged whoever owns the pool. Hiding stays UI-only (`collMod` reaches
+  `hidden` and nothing else, and `hideIndex` is reachable through `run_query`),
+  and replacing stays UI-only because it is a drop plus a create — two calls an
+  AI client can make itself, with the gap visible to it.
+- **`list_indexes` over MCP had to grow with them.** It reported the SQL-shaped
+  `{name, columns, unique}`, so a client that read `["createdAt"]` and wrote it
+  back recreated the index *ascending* — the same failure this item already
+  records for the shared `IndexDef` DTO. Its bridge arm now answers from the
+  rich reader on MongoDB (`list_indexes_detailed_inner`), adding a `mongo`
+  object per entry. The explorer still calls the lossy reader, so the two stay
+  two and the `$collStats`/`$indexStats` cost is paid only on the MCP path.
 
 ### 2. JSON Schema validator editor
 View and edit a collection's `$jsonSchema` validator.
@@ -311,6 +326,16 @@ Three rules worth keeping:
   afterwards — the destination lives behind a different `<parent>::db::<db>`
   connection id, so a retitled tab would keep querying the database the
   collection just left.
+
+Since 1.19.0 the same-database rename is also reachable from the query editor
+and over MCP as `db.coll.renameCollection("clients")`, delegating to the same
+function so all three rules above still apply — no dedicated tool was added, and
+`dropTarget: true` is refused by the grammar rather than passed through. The
+**cross-database move stays dialog-only**, and that is a decision rather than an
+omission: `mongosh` does not accept a qualified destination there either, and a
+collection name may contain dots (`system.views`, `logs.2024`), so treating
+`"a.b"` as `db=a, coll=b` would make a legitimate rename silently mean a move.
+The grammar passes the name through whole with `to_db: None`.
 
 ### 10. Proper editor language for MongoDB
 The editor reuses Monaco's `sql` language for syntax highlighting; mongosh would

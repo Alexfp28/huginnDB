@@ -328,6 +328,10 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
             <Editor
               height="100%"
               language="sql"
+              // Monaco redispatches `editor`-scoped bindings itself (gotcha
+              // #9); the attribute is what tells the window listener that
+              // focus in here is *not* in the grid or the tree.
+              wrapperProps={{ "data-kb-scope": "editor" }}
               theme={resolveMonacoTheme(editorPrefs.theme)}
               value={query}
               onChange={(v) => setQuery(v ?? "")}

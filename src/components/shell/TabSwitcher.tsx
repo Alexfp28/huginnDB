@@ -238,7 +238,7 @@ export function TabSwitcher() {
                       className={cn(
                         "group/row flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors",
                         activeRow
-                          ? "bg-accent text-accent-foreground shadow-[inset_2px_0_0_hsl(var(--brand))]"
+                          ? "bg-accent text-accent-foreground shadow-[inset_2px_0_0_var(--brand)]"
                           : "text-foreground",
                       )}
                     >

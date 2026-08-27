@@ -65,7 +65,7 @@ export function SplashScreen() {
         alt=""
         width={512}
         height={512}
-        className="relative h-40 w-40 select-none animate-pop-in drop-shadow-[0_8px_32px_hsl(var(--brand)/0.35)]"
+        className="relative h-40 w-40 select-none animate-pop-in drop-shadow-[0_8px_32px_color-mix(in_srgb,var(--brand)_35%,transparent)]"
         draggable={false}
       />
     </div>

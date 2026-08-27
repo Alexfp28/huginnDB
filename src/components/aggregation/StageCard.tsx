@@ -116,7 +116,7 @@ export function StageCard({
         dragging && "opacity-40",
         // Drop indicator: a brand rule on the edge the card would land above,
         // rather than moving anything mid-drag.
-        dropTarget && "shadow-[0_-2px_0_0_hsl(var(--brand))]",
+        dropTarget && "shadow-[0_-2px_0_0_var(--brand)]",
         preview?.error && "border-destructive/50",
       )}
     >

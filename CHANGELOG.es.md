@@ -8,6 +8,668 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.19.0] — 2026-08-27
+
+### Añadido
+
+- **Las familias de tema se declaran una sola vez, con sus dos variantes
+  (clara y oscura) juntas, y la app las pinta ahora con la función CSS nativa
+  `light-dark()`.** Cada tema integrado eran antes dos registros `Theme`
+  independientes en `BUILT_IN_THEMES` (`claude-light`/`claude-dark`, …)
+  enlazados solo por un campo `pairId` cruzado, y el toggle claro/oscuro
+  (`setActiveMode`) reaplicaba las ~28 variables CSS en cada pulsación porque
+  conceptualmente cambiaba de un objeto `Theme` a otro. Las cinco familias
+  integradas (HuginnDB, Claude, Neon, Summer, High Contrast) declaran ahora
+  `{ light: ThemeColors, dark: ThemeColors }` una sola vez — `pairId`
+  desaparece — y `applyTheme` escribe `--x: light-dark(hsl(…), hsl(…))` por
+  variable en vez de un único valor resuelto. El toggle de modo
+  (`applyColorScheme`) ya no toca ninguna variable de color: solo cambia
+  `color-scheme` (más la clase `.dark` de Tailwind, que sigue haciendo falta
+  para la variante `dark:` que usan algunos componentes) y deja que el
+  navegador elija la mitad correcta de cada `light-dark()` — un toggle O(1)
+  en vez de reaplicar toda la paleta. `color-scheme` se fija siempre a un
+  único valor (`light` u `dark`), nunca `"light dark"`, para que resuelva
+  según la elección manual del usuario y no según `prefers-color-scheme`.
+
+  Los temas personalizados del usuario también declaran ahora ambas
+  variantes, en vez de ser una excepción de un solo modo — el editor de
+  Apariencia ganó un selector "editando: claro | oscuro" (independiente del
+  toggle global de modo) para editar cada variante de un tema personalizado
+  por separado, y duplicar/bifurcar un tema integrado clona ambas variantes
+  a la vez. El formato de exportación de `themeTransfer.ts` pasó a v2
+  (`{ name, light, dark }`); importar un archivo v1 anterior a este cambio
+  (`{ name, mode, colors }`) sigue funcionando — su única paleta se duplica
+  en ambas variantes como punto de partida. El estado ya persistido en
+  `localStorage` y el `theme_id` guardado/importado de un `Environment` (una
+  simple cadena opaca para el backend — Rust nunca la interpreta) migran de
+  forma transparente mediante una pequeña tabla de ids antiguos que mapea los
+  diez ids previos a las cinco familias nuevas.
+
+  Como `--x` pasó de ser un triple crudo `"H S% L%"` a un color completo
+  `light-dark()`, se revisó cada uso de `hsl(var(--x))`/`hsl(var(--x) / N)`
+  en el código (`tailwind.config.js`, `index.css` y una veintena de
+  componentes) hacia `var(--x)`/`color-mix(in srgb, var(--x) N%,
+  transparent)`. Los tokens de color de `tailwind.config.js` usan
+  específicamente el marcador `<alpha-value>` de Tailwind en vez de envolver
+  el modificador en un `color-mix()` literal — el propio parseo de
+  modificadores de opacidad de Tailwind (`bg-brand/25`) hace coincidencia de
+  texto sobre `hsl(var(--x))` y no reconoce `var(--x)` ni `light-dark(...)`,
+  así que todos los tokens de color necesitaban ese marcador de forma
+  uniforme para que los modificadores `/NN` siguieran funcionando (una
+  omisión ahí falla en silencio — el modificador simplemente se descarta, no
+  hay error — en vez de avisar).
+
+- **Un editor para el documento que publica un origen compartido.** Un origen
+  compartido (#108) era estrictamente de solo lectura: `sync_origin` leía el
+  fichero y nunca lo escribía, así que publicar significaba ejecutar «Exportar
+  entornos…», elegir un destino en el diálogo nativo y soltar el JSON en el
+  recurso compartido. Actualizarlo significaba repetir esa exportación desde lo
+  que el publicador tuviera montado en ese momento — o editar el JSON a mano.
+
+  Eso costaba tres cosas en la práctica. El publicador solo podía publicar lo
+  que estuviera configurado en su propia máquina en ese instante. Cualquier
+  cambio pequeño — renombrar un entorno, quitar una conexión — exigía una
+  reexportación completa, que **vuelve a cifrar cada secreto del fichero**
+  (`encrypt_secret` genera una sal y un nonce nuevos en cada llamada), lo que
+  invalida la caché `landed_secrets` de cada consumidor y le impone decenas de
+  millones de rondas de PBKDF2 en su siguiente sincronización. Y no había forma
+  de ver qué le haría un publish al equipo antes de hacerlo — incluido el caso
+  que más importa, más abajo.
+
+  Ajustes → Orígenes compartidos → «Editar el documento…» abre ahora un editor
+  a pantalla completa para el fichero: qué conexiones publica y cómo viaja la
+  contraseña de cada una, los entornos y su composición, el subconjunto de JSON
+  Schemas y sus vínculos, y los metadatos de publicación. Cada panel ofrece
+  como lado izquierdo lo que esta máquina ya tiene — la lista de conexiones, la
+  biblioteca de esquemas y (vía `list_publishable_environments`) los propios
+  entornos de esta máquina, resueltos con el mismo `referenced_profile_ids` que
+  usa la exportación —, así que construir un fichero desde cero es copiar en
+  vez de volver a teclear. Importar un entorno trae consigo las conexiones que
+  referencia, ya que un entorno cuya composición nombra ids que el documento no
+  lleva es un filtro sobre nada. Un entorno *espejo* queda excluido a
+  propósito: su identidad para un consumidor es el `origin_source_id` del
+  publicador, no el `Environment::id` local bajo el que tendría que publicarse,
+  así que copiar uno crearía un segundo paquete para un entorno que el
+  documento puede ya llevar. Es un editor del **documento**, no una vista de
+  esta máquina: nada en él lee de `profiles.json`, `tab_state.json` o
+  `json_schemas.json` ni escribe en ellos, y guardar no cambia nada en local.
+  El fichero que construye es el mismo `transfer::EnvironmentExportFile` que ya
+  escribe el comando de exportación — un formato, un constructor
+  (`origin_doc::build_origin_file`), así que los dos nunca pueden divergir.
+
+  **Una contraseña que no ha cambiado viaja tal cual.** Todo secreto cargado
+  desde el fichero arranca como una ranura «mantener» y se copia byte a byte,
+  que es lo que hace que renombrar un entorno le cueste al equipo exactamente
+  cero derivaciones de clave en vez de 600 000 por ranura y conexión. Rotar la
+  frase de contraseña es la única operación que vuelve a cifrar todo, y es un
+  interruptor explícito con el coste anunciado justo al lado.
+
+  **La vista previa de publicación dice lo que nadie más puede.** Simula la
+  siguiente sincronización de un consumidor ejecutando el `merge_into` real
+  contra el fichero que está a punto de sustituir — añadidos, cambios
+  genuinos, desapariciones, más la factura de recifrado y lo que recibe una
+  máquina nueva. La fila que justifica toda la función es la silenciosa:
+  superado el umbral de sospecha de `commands::origins`, la sincronización de
+  un consumidor decide que la lectura está rota y vacía su propia lista
+  `vanished`, así que publicar un fichero al que le falta media plantilla
+  dejaba a cada consumidor con conexiones fantasma y **sin aviso alguno**. No
+  había superficie en el producto donde eso fuera detectable; ahora el diálogo
+  de confirmación lo dice y sugiere partir el cambio en dos.
+
+- **Los orígenes tienen un rol, y es una de tres capas.** `Origin.role`
+  (`consumer` por defecto, `#[serde(default)]`) registra la *intención* — todo
+  origen registrado antes de esto, y cualquiera nuevo, es un consumidor, así
+  que nadie gana acceso de escritura a un fichero compartido instalando una
+  actualización. Cambiarlo es explícito, se confirma y es reversible. La
+  *autoridad* es el sistema operativo: `probe_origin_writable` crea y borra un
+  fichero real junto al documento antes de que el editor ofrezca guardar,
+  porque los permisos de un recurso compartido de Windows describen el montaje
+  local y no lo que aceptará el servidor — un recurso de solo lectura abre el
+  editor en modo lectura en vez de fallar en el último paso. `meta.maintainer`
+  / `meta.revision`, dentro del fichero, son la tercera capa y son *solo
+  coordinación*: lo que de verdad impide que dos publicadores se pisen es el
+  hash del contenido que compara el guardado.
+
+- **El registro en sí ya se puede editar.** `update_origin` llegó en la 1.18
+  sin ningún punto de uso: un origen se podía registrar y eliminar, pero nunca
+  renombrar ni repuntar, así que un recurso compartido que cambiaba de sitio
+  significaba borrar el registro y volver a adoptar cada conexión que había
+  publicado. Ajustes → Orígenes compartidos tiene ahora ese formulario, con un
+  selector de fichero en vez de un simple campo de texto para la ruta, y una
+  acción «Nuevo documento…» que crea un fichero vacío en el recurso compartido
+  y lo registra como uno que esta máquina publica.
+
+- **Un origen compartido ya sincroniza los JSON Schemas que lleva su
+  fichero.** `docs/JSON_SCHEMAS.md` decía que esto no estaba conectado, y no lo
+  estaba — el cableado (`origin_id` en los dos tipos, el paquete dentro de
+  `EnvironmentExportFile`) existía, pero nada lo leía al sincronizar. Ahora sí,
+  con las mismas reglas que ya siguen las conexiones y no las del importador
+  puntual: las entradas se emparejan por **id**, no por nombre, así que un
+  sondeo cada cuatro horas refresca en el sitio en vez de acumular `cfg (2)`,
+  `cfg (3)`, …; solo se sobrescriben las entradas que el origen ya posee, así
+  que un esquema que has escrito tú nunca se toca y un nombre publicado que
+  coincide con el tuyo se aparta; un vínculo que nombra una conexión que esta
+  máquina no tiene llega **deshabilitado**, conservando su fijación; y nada se
+  borra — una desaparición se informa, igual que la de una conexión.
+
+- **DDL de índices y colecciones de MongoDB, alcanzable desde el editor de
+  consultas y por MCP.** El aviso que originó esto venía del cliente de IA de
+  un compañero, y era correcto: el conector no tenía forma de crear un índice,
+  eliminarlo, eliminar una colección ni renombrarla — «ni por `run_query` ni
+  como herramienta aparte». `drop_view` rechaza una colección a propósito (en
+  MongoDB una vista y una colección comparten un mismo *namespace*, y un nombre
+  mal escrito no debe borrar documentos), así que tampoco había vía indirecta.
+
+  **El hueco estaba en la gramática, no en el conector.** La lista de
+  operaciones aceptadas es `build_op` en `db/mongo/shell.rs` — el parser que usa
+  el *editor de consultas de escritorio* — así que el editor tampoco podía crear
+  un índice. Ampliarla arregló las dos superficies de una vez:
+  `db.coll.createIndex({createdAt: -1})`, `dropIndex("nombre")`,
+  `hideIndex`/`unhideIndex`, `drop()` y `renameCollection("clientes")` ya se
+  parsean y ejecutan. Cada operación delega en el código que ya tenía sus
+  guardas en lugar de emitir su propio run-command, así que el rechazo de
+  `_id_`, el nombre por defecto de `createIndexes` y el `dropTarget: false`
+  siguen aplicando — y `dropTarget: true` lo rechaza el parser, porque de otro
+  modo la gramática sería la única vía para que un renombrado borrara en
+  silencio lo que ocupara el nombre destino.
+
+  `renameCollection` es solo dentro de la misma base de datos, igual que lo que
+  acepta `mongosh`. El movimiento entre bases se queda en el diálogo Renombrar
+  del explorador: un `"otraBd.coll"` cualificado parece la forma obvia, pero un
+  nombre de colección puede contener puntos legítimamente (`system.views`,
+  `logs.2024`), así que esa lectura convertiría un renombrado válido en un
+  movimiento silencioso.
+
+  **Dos herramientas MCP, solo para MongoDB: `create_index` y `drop_index`.**
+  Ambas en el nivel `full`, y eso fue forzado más que elegido — `createIndex`
+  por `run_query` se clasifica como DDL, así que una herramienta en `data`
+  habría devuelto justo lo que la vía de sentencias niega. No hay nada para los
+  drivers SQL a propósito: allí un índice se crea con `CREATE INDEX`, que
+  `run_query` ya alcanza en `full` y que es estrictamente más expresivo que
+  cualquier conjunto fijo de campos (`USING gin`, `INCLUDE`, un predicado
+  parcial). Y nada para reemplazar un índice, porque MongoDB no puede alterarlo
+  en sitio: es un borrado más una creación, y dos llamadas mantienen visible la
+  ventana en la que el índice no existe.
+
+  **`list_indexes` tuvo que crecer con ellas.** Por MCP devolvía la forma SQL
+  `{name, columns, unique}`, así que un modelo que leyera `["createdAt"]` y lo
+  reescribiera recrearía el índice *ascendente* — invisible en pruebas,
+  permanente en los datos. Su rama del bridge ahora responde desde el lector
+  rico en MongoDB y cada entrada lleva un objeto `mongo` con la definición real:
+  dirección y tipo de cada clave, `sparse`, TTL, filtro parcial, colación,
+  pesos, tamaño y uso. El explorador sigue usando el lector con pérdida, así que
+  las llamadas extra a `$collStats`/`$indexStats` solo se pagan en la vía MCP.
+
+  Las escrituras de índices ahora emiten entrada en la Consola, algo que nunca
+  hicieron — el mismo *seam* de `LogSink` que las lleva a `mcp-audit.log`.
+
+- **El sistema de atajos de teclado, reconstruido.** Salió en la 1.10.0 como lo
+  más pequeño que podía funcionar — ocho acciones reasignables, una
+  combinación cada una, y 127 líneas sosteniendo juntos el catálogo, el léxico
+  de teclas y el comparador. Lo que no podía expresar se había ido
+  acumulando: sin teclas secundarias, sin secuencias de combinaciones, sin
+  noción de *dónde* se aplica un atajo, sin forma de desasignar nada, y sin
+  ningún test.
+
+  **Una asignación es ahora una lista.** `prefs.json` guarda
+  `["Mod+Enter", "F9"]` en vez de una sola cadena: la primera entrada es la
+  principal (lo que muestran los menús, la paleta y los tooltips), el resto
+  son alias que disparan la acción igual de bien. Tres estados se mantienen
+  distintos y los tres significan algo — una clave ausente es «usa el valor
+  por defecto», `[]` es «lo he desasignado a propósito», y una lista no vacía
+  es la principal más los alias. `Preferences.keybindings` pasó a ser
+  `HashMap<String, Vec<String>>` detrás de un deserializador que también
+  acepta la cadena suelta antigua, así que un `prefs.json` existente no
+  necesita migración ni subir de versión. (Un downgrade a una build anterior a
+  esto no puede parsear la forma en lista, y como un `prefs.json` inválido cae
+  a los valores por defecto, ese downgrade pierde todas las preferencias, no
+  solo los atajos. Documentado junto al deserializador.)
+
+  **Las secuencias de combinaciones funcionan**, al estilo VS Code: `Mod+K` y
+  luego `Mod+S`. Nada sale de fábrica como secuencia — existen para tener
+  dónde poner los comandos que ya no caben en una sola combinación. Un prefijo
+  a medio teclear espera dos segundos y se muestra en la barra de estado,
+  porque un atajo que se traga en silencio la siguiente pulsación se percibe
+  como un teclado roto.
+
+  **Las acciones tienen ahora un ámbito**, y se resuelve desde el DOM: una
+  superficie declara `data-kb-scope` y el más cercano al elemento con foco
+  decide qué se escucha, junto con `global`. Esto es lo que permite que
+  `grid` y `editor` compartan la misma tecla sin ambigüedad, y sustituye los
+  arreglos improvisados que habían acumulado los cuatro listeners anteriores —
+  `DataGrid` filtrando a mano las combinaciones con modificador,
+  `SideEditorPanel` llamando a `stopImmediatePropagation` para ganar una
+  carrera por `Mod+S`. Un único `createKeyDispatcher` sirve ahora tanto al
+  listener de la ventana como al `onKeyDown` de Monaco (el editor sigue
+  necesitando su propio reenvío — `addCommand` congela una máscara de bits de
+  la asignación al registrarse y no puede volver a comprobar una en vivo).
+
+  **El catálogo creció de 8 acciones a 25, fusionado con el de la paleta de
+  comandos.** La paleta ya sabía ejecutar dieciséis comandos y los menús unos
+  cuantos más; a ninguno se le podía dar una tecla, porque la tabla de atajos
+  era una lista aparte que describía por casualidad algunas de las mismas
+  acciones. Cada acción nueva reutiliza la etiqueta que ya tenía la paleta o
+  el menú, así que hay un nombre por comando en vez de una segunda redacción
+  para la lista de atajos. La mayoría sale a propósito **sin asignar**: estar
+  en el catálogo es lo que hace que una acción sea buscable, asignable y se
+  compruebe por conflictos, y gastar una tecla por defecto en ella le quitaría
+  esa tecla a lo que el usuario de verdad quiere usar. Cuatro sí la tienen:
+  `Mod+T` (consulta nueva), `Mod+W` (cerrar pestaña), `Mod+B` (panel de
+  esquema) y `` Mod+` `` (consola), más `Mod+Shift+N` para una ventana nueva.
+  La paleta y los menús leen ahora la asignación en vivo en vez de repetirla,
+  así que una reasignación aparece en los dos sin recargar.
+
+  **Ajustes → Atajos se reconstruyó** alrededor de las tres preguntas que en
+  realidad se le hacen a una lista de veinticinco. *Qué dispara esta acción* —
+  cada asignación es su propio chip, clic para volver a grabar, `×` para
+  quitarla, `+` para añadir; las teclas reservadas quedan al lado, atenuadas.
+  *Qué hace esta tecla* — un chip «Por tecla» convierte la caja de búsqueda en
+  un campo de captura y filtra a quien use la combinación que pulses. *Qué he
+  cambiado* — un filtro «Modificado» y un contador, que es por lo que
+  «Restablecer todo» ahora **vacía** el mapa de anulaciones en vez de escribir
+  en él cada valor por defecto: una anulación igual a su valor por defecto no
+  es una anulación, y ese filtro estaría mintiendo. La grabación se trasladó a
+  un diálogo, donde la captura está *armada, no permanente* — mientras está
+  armada se come cualquier tecla, así que `Escape` y `Enter` son asignables;
+  en cuanto aterriza una combinación se desarma y esas dos vuelven a
+  significar Cancelar y Guardar.
+
+  **Los conflictos dejaron de ser un muro.** Un choque solo se informa cuando
+  los dos ámbitos pueden de verdad escucharse a la vez, así que todo lo que se
+  informa es una ambigüedad real — y el diálogo ofrece quitarle la tecla a la
+  otra acción, en la misma operación, en vez de limitarse a rechazar. Ahora
+  también ve las asignaciones reservadas y la grafía normalizada, dos cosas
+  para las que la comprobación antigua era ciega: reasignar algo a `Mod+R`
+  se aceptaba antes en silencio y luego nunca disparaba.
+
+  **Los atajos se exportan e importan** como JSON, siguiendo
+  `themeTransfer.ts`. Solo viajan tus anulaciones, nunca las asignaciones ya
+  resueltas — exportar lo que hace cada acción ahora mismo grabaría a fuego
+  los valores por defecto de esta versión en el fichero e impediría a la
+  máquina que importa recibir cualquier valor por defecto añadido después. Una
+  acción que la build que importa no reconoce se nombra en vez de descartarse
+  en silencio.
+
+  Dos defectos de toda la vida se fueron con la reescritura. **Nada
+  comprobaba dónde estaba el foco:** la única guarda del listener antiguo era
+  `e.isComposing`, así que asignar una acción a una letra suelta volvía esa
+  letra intecleable en toda la app — ahora una combinación indistinguible de
+  escribir se suprime dentro de un campo de texto, mientras que `F5`,
+  `Escape` y las flechas siguen funcionando ahí. Y **`Ctrl+Enter` solo era
+  reasignable en uno de los tres editores Monaco**; los editores de vista y de
+  pipeline usaban un `addCommand` fijo. Los dos pasan ahora por el reenvío.
+
+  Además: `Ctrl` en una combinación guardada pasa a llamarse `Mod`, que es lo
+  que siempre significó (`ctrlKey || metaKey`) — el nombre antiguo era una
+  mentira en macOS y no dejaba forma de asignar la tecla Control real, que
+  `Ctrl` y `Meta` cubren ahora como tokens exactos. Las combinaciones
+  guardadas migran al leerlas, así que no se reescribe nada en disco.
+  Documentado en `docs/SHORTCUTS.md` (inglés y español), y cubierto por 96
+  tests de frontend más dos tests de contrato en Rust donde antes no había
+  ninguno.
+
+- **Ajustes → MCP es ahora un árbol, con botones de política en lote.** Recibe el
+  mismo filtro Todas / Locales / Compartidas y las mismas secciones plegables por
+  origen que el gestor de conexiones, más las carpetas de grupo, así que un
+  servidor está en el mismo sitio en las dos superficies — con menos información
+  por fila, porque un snippet se construye con ids, no con endpoints. Debajo de la
+  lista, un botón por política pone **todas las conexiones listadas** a la vez (el
+  filtro de procedencia y la búsqueda deciden qué es «listadas», y el contador
+  está en el propio botón). «Completo» pregunta antes: es el nivel que permite a
+  un cliente de IA cambiar el esquema.
+
+  Los botones actúan sobre lo listado y no sobre lo marcado, porque las casillas
+  ya responden a otra pregunta —qué conexiones exponer— y un mismo control no
+  puede significar dos cosas.
+
+- **El gestor de conexiones ya distingue las conexiones locales de las que
+  publica un origen compartido.** Un origen registrado (#108) importa sus
+  conexiones junto a las tuyas y, hasta ahora, nada en el gestor decía cuál era
+  cuál. Peor aún: las carpetas de grupo se fundían a través de esa frontera, así
+  que una carpeta "Producción" tuya y una "Producción" que publica IT aparecían
+  bajo la misma cabecera. La lista arranca ahora con un filtro **Todas /
+  Locales / Compartidas** (con contadores) que desaparece por completo si no
+  tienes ningún origen registrado. La vista Compartidas se divide en una sección
+  plegable por origen, con su nombre y marcada como de solo lectura, más una
+  sección final para las conexiones cuyo origen ya no está registrado. En las
+  otras dos vistas, una conexión compartida lleva un distintivo cuyo tooltip
+  nombra el origen que la publica.
+
+  Ajustes → MCP recibe las mismas secciones, y ahí está el motivo de todo el
+  cambio: una conexión publicada por un origen conserva **el mismo id en todas
+  las máquinas**, así que un snippet del conector hecho con conexiones
+  compartidas sirve tal cual para todo el equipo, mientras que uno hecho con una
+  copia local antigua solo funciona en tu portátil — y eligiendo ids de una lista
+  plana no había forma de distinguirlas.
+
+- **«Eliminar todas las locales»**, en el menú de la lista de conexiones. La
+  forma prevista de pasar un equipo a un origen compartido es borrar las copias
+  locales y quedarse solo con lo que publica el origen; antes eso había que
+  hacerlo conexión a conexión. Está deshabilitada mientras haya una búsqueda
+  activa: con un filtro puesto, «todas» es ambiguo, y equivocarse borra
+  conexiones que no has visto. Para ese caso están las casillas, donde lo que va
+  a caer está en pantalla.
+
+- **Columnas fijadas ("congeladas") en la cuadrícula de datos, al estilo
+  Excel.** Un pequeño icono de pin en la cabecera de cada columna — visible al
+  pasar el ratón, siempre mostrado una vez fijada — alterna una columna entre
+  desplazarse con normalidad y quedarse fija en el borde izquierdo. Se puede
+  fijar cualquier número de columnas a la vez; se apilan en el orden natural de
+  la tabla (izquierda a derecha), no en el orden en que se fijaron, y la
+  columna de selección/número de fila siempre queda fijada primero, como el
+  ancla sobre la que las demás calculan su desplazamiento. Se persiste por
+  tabla (igual que los anchos de columna), con la misma clave, y se salta en
+  resultados de consultas ad-hoc, que fijan solo durante la sesión.
+
+  El lado de la cabecera fue sencillo — cada `<th>` ya pinta su propio fondo
+  opaco, así que solo hacía falta `position: sticky` y el desplazamiento
+  `left` correcto. El lado del cuerpo necesitó una solución real, no el mismo
+  tratamiento: el fondo de una fila vive en su `<tr>`, y los tintes
+  translúcidos usados para selección/multiselección/rayado cebra
+  (`bg-brand/30`, `bg-brand/10`, `bg-muted/30`) son translúcidos *a
+  propósito* — un lavado sutil sobre el fondo de la página es el aspecto
+  buscado para una fila normal. Una celda `position: sticky` no puede usar
+  eso: en cuanto el navegador la promociona a su propia capa de composición,
+  un fondo translúcido deja pasar lo que se desplaza por debajo, así que una
+  celda fijada en una fila seleccionada o con rayado cebra mostraba su propio
+  texto superpuesto al de la siguiente columna. Las celdas fijadas/gutter
+  ahora reciben un equivalente *sólido* del mismo tinte, calculado con
+  `color-mix()` vía estilo en línea, de modo que se ven idénticas a sus
+  vecinas no fijadas mientras ocultan de verdad lo que se desplaza detrás. La
+  única concesión aceptada: una celda fijada no recibe el tinte de hover de
+  la fila, ya que eso necesitaría el mismo tratamiento de color sólido para
+  competir con una regla CSS `:hover`, algo que no compensa la complejidad
+  añadida para un estado transitorio.
+
+### Cambiado
+
+- **El tema forzado de un environment ahora fija solo la familia de tema,
+  nunca el modo claro/oscuro.** Antes del cambio a `light-dark()` de arriba,
+  el id de tema forzado de un environment (p. ej. `claude-dark`) implicaba un
+  modo como efecto secundario de a cuál de los dos registros `Theme`
+  enlazados apuntaba — así que entrar en un environment con un tema forzado
+  podía cambiar en silencio la preferencia claro/oscuro actual del usuario.
+  Familia y modo son ahora ejes independientes en el store de temas
+  (`themeId` frente al nuevo `mode` global), y el override de un environment
+  solo resuelve ya una familia — la preferencia de modo del usuario se
+  mantiene sin cambios al cambiar de environment. Este es el comportamiento
+  deseado a partir de ahora (un environment describe identidad de
+  sesión/visual, no una preferencia ergonómica personal), no una regresión.
+
+- **`state_file::write_atomic` queda extraída, y cada escritura del documento
+  de origen pasa por ella.** `save_atomic` solo aceptaba nunca un nombre
+  relativo al directorio de configuración — por diseño, ya que el aislamiento
+  del canal canary del gotcha #26 depende de que esa sea la única vía de
+  entrada —, así que no podía expresar una ruta en un recurso compartido. Un
+  `fs::write` a secas ahí es exactamente la lectura truncada que
+  `disappearance_is_trustworthy` existe para tapar: un publicador a mitad de
+  guardado se ve idéntico a un administrador que ha borrado media plantilla.
+  El documento se escribe en un fichero temporal **en el propio directorio del
+  destino** (un `rename` solo es atómico dentro de un mismo sistema de
+  ficheros, y un recurso compartido es otro volumen), se le hace `fsync`, y
+  luego se renombra, guardando la revisión anterior al lado como
+  `<nombre>.json.bak`. Los comandos de exportación puntual no cambian: escriben
+  en un destino que el usuario acaba de elegir en un diálogo de guardado, que
+  nadie más está leyendo a la vez.
+
+- `ExportMetadata` ganó los campos opcionales `maintainer` / `revision` /
+  `note`. Los tres son `skip_serializing_if`, así que un fichero de «Exportar
+  perfiles…» o «Exportar entornos…» normal sigue siendo idéntico byte a byte a
+  uno anterior a la 1.19 — lo mismo que le permite al editor reconstruir byte
+  a byte un fichero que él mismo no escribió.
+
+- **`ImportProgressBar` pasa a ser `common/ProgressBar`, con su leyenda como
+  prop.** Tenía exactamente la forma que necesitaba la publicación de
+  orígenes — una barra determinada, porque el trabajo es una derivación PBKDF2
+  de 600 000 iteraciones por secreto y un spinner no da suficiente
+  información para una docena de ellos —, y un tercer punto de uso fuera de
+  `connection/` es precisamente el criterio que fija el gotcha #28 para
+  `common/`. La publicación la alimenta desde su propio evento
+  `huginndb://origin-publish-progress` en vez de reutilizar el de
+  importación: un evento cuyo nombre dice «import», emitido por un publish, es
+  un contrato de datos que miente, y una ventana haciendo las dos cosas a la
+  vez nunca podría distinguirlas. No se emite nada cuando cada sobre viaja tal
+  cual, que es el caso común y el instantáneo.
+
+- **El filtro del panel Esquema busca en todas las conexiones abiertas a la vez,
+  y dice dónde está mirando.** Había una única caja de filtro que en silencio
+  solo se aplicaba a la conexión que estuviera *seleccionada* — a las demás se
+  les pasaba una aguja vacía y se quedaban sin filtrar. La única señal de
+  «seleccionada» es una línea de 2 px en la fila, y la selección se mueve sola
+  cuando abres una pestaña o eliges una tabla desde la paleta de comandos. Así
+  que con dos conexiones abiertas escribías, un subárbol se filtraba, el otro
+  no, y nada lo explicaba. Lo reportaron varios usuarios.
+
+  Ahora se busca en todas las conexiones vivas. Cada fila de conexión lleva su
+  propio contador de coincidencias; la que no tiene nada que enseñar se pliega a
+  una sola línea atenuada en vez de mostrar su árbol entero, y nunca se oculta —
+  esa fila es justo lo que necesitas para conectarla o para acotar la búsqueda a
+  ella. El pliegue que provoca una búsqueda es visual y temporal: no se escribe
+  en los pliegues recordados del entorno, así que una búsqueda ya no puede
+  dejarte conexiones plegadas que tú nunca plegaste. El filtro también se limpia
+  al cambiar de entorno, cosa que antes no pasaba.
+
+  **Acotar sigue siendo posible, solo que ahora se ve.** «Buscar solo aquí»
+  sobre una conexión o una base de datos (su menú contextual, o el botón que
+  aparece en la fila de conexión mientras buscas) pone un chip bajo la caja con
+  el nombre de aquello a lo que has acotado. Se sale con la ✕ del chip, con
+  Retroceso en una caja vacía o con Escape. Esto sustituye a un segundo ámbito
+  invisible: desplegar una base de datos restringía la búsqueda a ella *y*
+  colapsaba las demás, sin decirlo.
+
+- **Escribir en ese filtro ya no abre conexiones a la base de datos.** Cada
+  pulsación (con retardo) abría un pool de conexión por cada base que aún no
+  hubiera leído — acotado a tres a la vez desde la 1.13.0, lo que lo hacía
+  soportable, no correcto. Ahora la búsqueda mira lo que ya está cargado, y
+  llegar más lejos es un botón que dice cuántas bases va a cargar. En un
+  servidor que compartes con tu aplicación o con tu IDE, esa es la diferencia
+  entre una búsqueda y una pequeña ráfaga de conexiones.
+
+- **Un `0` junto a una conexión significa ya que la búsqueda no encontró nada
+  ahí de verdad.** El árbol distingue «aún cargando», «nunca leído» (`—`, o
+  `N+` cuando se ha leído parte del servidor), «fuera del ámbito actual» y un
+  cero real. Un cero provisional es lo que hace que abandones una búsqueda que
+  habría funcionado.
+
+- **El panel Esquema vuelve a tener título, y dos líneas de aviso menos.** Sus
+  dos acciones de árbol («Desconectar todas», «Conexiones a mostrar») eran
+  botones con etiqueta que se truncaban a muñones ilegibles en los anchos a los
+  que se suele arrastrar este panel; ahora son iconos con tooltip en la
+  cabecera nueva, y la línea «mostrando N de M conexiones» se pliega en una
+  marca sobre el icono que la cambia.
+
+- **Tres atajos nuevos, en Ajustes → Atajos.** `Mod+Mayús+F` abre el panel
+  Esquema si está plegado y enfoca el filtro; `Escape` dentro del panel limpia
+  la búsqueda por capas (texto, luego ámbito, luego foco); y «Buscar solo en la
+  conexión seleccionada» sale sin asignar, pero es asignable y se puede
+  encontrar desde la paleta de comandos.
+
+- **Desconectar una conexión avisa de que está trabajando, y «desconectar»
+  tiene un solo icono en todas partes.** La ✕ de una fila de conexión (y la de
+  la lista de la barra de estado) estaba mal por partida doble: una ✕ en una
+  fila se lee como «quitar esta conexión», que es una acción distinta y mucho
+  peor que cerrar su pool, y encima no daba ninguna señal mientras un cierre
+  que puede tardar segundos estaba en curso. Las dos muestran ahora la misma
+  marca de enchufe que lleva el botón «Desconectar todas», con un spinner
+  mientras trabajan. El menú contextual y la paleta de comandos usaban un
+  tercer icono para el mismo comando; se han igualado.
+
+- **«Desconectar todas» ya no te hace esperar.** Cerraba las conexiones una
+  detrás de otra, y una sola desconexión ya son varias idas y vueltas: el
+  backend cierra por turnos cada pool por base de datos del servidor, esperando
+  hasta cinco segundos en cada uno que haya dejado de responder. Así que un
+  servidor inalcanzable obligaba a todos los sanos que iban detrás a aguantar
+  su tiempo de espera primero. Ahora se cierran a la vez, y el botón enseña que
+  está trabajando. El mismo comando desde el atajo de teclado o la paleta era
+  una implementación aparte, más rápida, que dejaba el árbol obsoleto y sus
+  pestañas apuntando a pools cerrados; los dos caminos son ya el mismo.
+
+- **Borrar conexiones se confirma dentro de la app y dice qué se lleva por
+  delante.** Antes había dos confirmaciones distintas: un `window.confirm` del
+  sistema para una conexión y un diálogo propio para una multiselección, y
+  ninguna mencionaba que borrar también elimina la contraseña del almacén de
+  credenciales del sistema, las pestañas y el filtro de «bases de datos a
+  mostrar» **en todos los entornos**, y los vínculos de JSON Schema fijados a sus
+  columnas. Ahora un único diálogo sirve para los tres caminos y enumera
+  exactamente lo que aplica a las conexiones elegidas: un fichero SQLite no
+  guarda contraseña, una conexión sin túnel no tiene secreto SSH.
+
+- **Una conexión publicada por un origen compartido ya no se puede borrar en
+  lote.** Antes se podía seleccionar, y borrarla era peor que inútil: el id viaja
+  en el fichero publicado, así que la siguiente sincronización la recreaba
+  idéntica — después de haber eliminado tu contraseña local. Su casilla está
+  ahora deshabilitada, con un tooltip que apunta a lo que sí funciona (quitar el
+  origen en Ajustes). El backend también rechaza esos ids, así que ni la CLI ni
+  el conector MCP pueden saltárselo.
+
+- **Un borrado en lote es una sola operación en vez de N.** Borrar cuarenta
+  conexiones reescribía `profiles.json` y `tab_state.json` cuarenta veces cada
+  uno y emitía cuarenta eventos de cambio, con lo que cada ventana abierta releía
+  y repintaba cuarenta veces. Ahora es una única pasada, e informa de lo que se
+  ha saltado o no ha podido limpiar en lugar de tragárselo en silencio.
+
+- El gestor de conexiones es más ancho (y su lista mide 320px en vez de 240px):
+  el filtro de procedencia puso tres segmentos encima de filas que ya llevan un
+  nombre, un distintivo de driver y una marca de origen, y los nombres se
+  cortaban a mitad de palabra.
+
+### Corregido
+
+- **El doble clic sobre una celda de clave foránea necesitaba un segundo clic,
+  ajeno a la celda, antes de que apareciera el combobox.** `GridRow` está
+  envuelto en `React.memo` para que un clic solo vuelva a renderizar las filas
+  que de verdad le afectan — cada trozo de estado que cambia rápido y puede
+  alterar lo que muestra una fila se acota primero a «¿esto concierne a ESTA
+  fila?» antes de llegar al componente, igual que ya hacía `inlineEditHere`.
+  `fkEditCell` no tenía ese equivalente: el renderer de `cell` lo leía bien a
+  través de una ref siempre actualizada, pero eso solo importaba una vez que
+  React de verdad volvía a renderizar la fila, y el segundo clic de un doble
+  clic solo actualiza `fkEditCell` — el primer clic ya había fijado
+  `activeCell`/`selectedRowIndex`/`selectedCell` —, así que ninguna prop
+  propia de esa fila cambiaba y `React.memo` se la saltaba sin más. El
+  combobox solo aparecía cuando un clic ajeno, en otra celda o fila, forzaba
+  el re-render por otra vía. `GridRow` recibe ahora una prop `fkEditHere`,
+  acotada de la misma forma, solo para darle a `React.memo` algo que comparar.
+
+- **El editor de celda se abría en modo JSON para casi cualquier columna,
+  aunque fuera texto plano.** Un vínculo de JSON Schema (función de la 1.18)
+  debía forzar el modo JSON cuando una columna tiene uno, para que el usuario
+  obtenga validación en vez de una heurística que solo responde «json» cuando
+  el texto resulta parsear. Pero `CellEditor` y `SideEditorPanel` decidían eso
+  a partir de la mera presencia de un `CellBindingContext` — coordenadas de
+  conexión/esquema/tabla/columna —, que es cierto para casi cualquier celda de
+  una tabla real, tenga o no vínculo. `CellEditorBody` ya calculaba unas
+  líneas más abajo la comprobación correcta (si hay un esquema realmente
+  *resuelto* para esa columna, según la caché de `useJsonSchemas`) para
+  decidir si adjuntar un esquema al modelo de Monaco; los dos puntos que
+  deciden el lenguaje inicial usan ahora esa misma comprobación, en vez de
+  solo las coordenadas.
+
+- **El botón de «expandir» de una celda podía quedar fuera de la vista con el
+  scroll en una columna ancha.** Se colocaba al final de la fila flex de la
+  celda (`ml-auto`), así que en una columna redimensionada más ancha que el
+  área de scroll visible el botón quedaba fuera de pantalla hasta que el
+  usuario desplazaba esa celda concreta hasta el final. Los dos sitios donde
+  aparece — el botón de la celda seleccionada sin editar y el editor en línea
+  `CellInput` — lo hacen ahora `sticky` respecto al propio contenedor de
+  scroll de la cuadrícula, la misma técnica ya usada para las columnas
+  fijadas, con fondo opaco por el mismo motivo: `sticky` promociona el botón a
+  su propia capa de composición, y un fondo translúcido dejaría ver el texto
+  de la celda a través de él mientras se desplaza.
+
+- **El contenido de una celda activa ancha se pintaba por encima de la columna
+  del gutter fijada al hacer scroll, en vez de desaparecer detrás.** El `<td>`
+  de la celda activa por teclado recibía `z-10` de forma incondicional para su
+  anillo de foco, lo que ganaba al `z-[1]` de una columna fijada incluso
+  cuando eran dos celdas completamente distintas — así que hacer scroll
+  horizontal de una celda activa ancha deslizaba su texto y su fondo justo por
+  encima de la columna de número de fila fijada, en vez de quedar oculta
+  detrás, que es exactamente lo que `position: sticky` en una columna fijada
+  debería garantizar. Un `position: relative` a secas (sin z-index) ya pinta
+  por encima de los vecinos *no posicionados* sin importar el z-index, que era
+  todo lo que el anillo necesitaba ahí; `z-10` queda ahora acotado al único
+  caso que de verdad necesita ganarle al z-index propio de una columna
+  fijada — que la propia celda activa esté fijada, para que su anillo siga
+  visible sobre su propio fondo sólido.
+
+- **Una conexión multibase con un subconjunto de «bases de datos a mostrar»
+  podía enseñar un árbol vacío al buscar, sin explicación.** La comprobación de
+  «¿seguimos cargando bases?» recorría todas las bases del servidor mientras el
+  bucle que las cargaba de verdad aplicaba el subconjunto — así que con un
+  subconjunto activo no terminaba nunca, y la línea «ninguna tabla coincide con
+  el filtro» no podía aparecer.
+
+- **Las bases de datos cargadas al buscar se vuelven a recordar.** La precarga
+  del propio filtro las abría por la vía sin seguimiento, así que una pestaña
+  abierta contra una base a la que habías llegado buscando (en vez de
+  desplegándola) no se restauraba nunca: ni al reconectar, ni al cambiar de
+  entorno, ni al reiniciar.
+
+- **El árbol ya no filtra su contenido con una aguja distinta de la que decidió
+  qué mostrar.** Cada explorador multibase aplicaba su propio retardo mientras
+  al subárbol interior se le pasaba la aguja cruda, sin retardo, así que durante
+  un cuarto de segundo después de cada pulsación las dos no coincidían.
+
+- **Ctrl+V ahora funciona en celdas `BIT` de la cuadrícula de datos.** Antes
+  era un no-op deliberado (issue #79): el texto pegado se enrutaba a
+  `inlineEdit`, que una columna `BIT` renderiza como `BitInput` — un
+  `<select>` fijo sin control de texto libre para recibirlo. Pegar sobre una
+  celda `BIT` ahora normaliza el texto del portapapeles igual que hace el
+  propio `BitInput` (`"1"`/`"true"` → `"1"`, `"0"`/`"false"` → `"0"`,
+  cualquier otra cosa no vacía → `"1"`, vacío → `NULL`) y lo confirma
+  directamente, saltándose el viaje de ida y vuelta si no cambia nada — el
+  mismo patrón que ya usan el combobox de FK y el propio `onSelect` de
+  `BitInput`. No hizo falta ningún cambio en el backend: `update_cell` ya
+  resuelve el `CAST` de `BIT` de MySQL a partir del tipo de catálogo de la
+  columna, no del valor que recibe.
+
+- **Una conexión de MongoDB en `read-only` no podía leerse por MCP mientras la
+  app de escritorio compartía sus pools.** `run_query` decidía qué clasificador
+  usar buscando la conexión en el mapa de pools *del propio conector* — y ese
+  mapa está vacío por diseño cuando la app es la dueña del pool (compartir
+  pools, 1.13.0). Así que toda sentencia de MongoDB pasada por el bridge caía en
+  la heurística de palabras clave SQL, donde `db.users.find({})` no coincide con
+  `select`/`with`/`show`/`explain`/`pragma` y por tanto volvía como escritura.
+  Un `find` normal se rechazaba en `read-only` y solo funcionaba desde `data`
+  hacia arriba. La re-comprobación independiente de la app coincidía, por el
+  mismo motivo equivocado.
+
+  Ahora ambas llaman a un único clasificador,
+  `db::classify::classify_statement`, que elige la gramática a partir del
+  *texto* de la sentencia — el único dato que ambos puntos de control tienen
+  siempre, y lo bastante puro para probarse sin servidor. Mientras la gramática
+  mongosh no tenía DDL esto era solo excesivamente estricto; se habría
+  convertido en una escalada de privilegios en cuanto existiera
+  `db.coll.drop()`, porque ambos lados lo habrían dejado en `data`. Hay tests
+  que fijan el nivel de cada operación en las dos capas.
+
+- **`updateMany({})` y `deleteMany({})` por MCP se rechazan, igual que sus
+  equivalentes SQL.** La guarda de relación entera exceptuaba a MongoDB, así que
+  una conexión en `data` podía vaciar una colección en una llamada mientras
+  `DELETE FROM users` se rechazaba en todos los niveles — mismo alcance,
+  respuestas opuestas. La forma de optar por ello es la de SQL con `WHERE 1=1`:
+  un predicado trivialmente cierto, p. ej.
+  `deleteMany({_id: {$exists: true}})`. `drop()` queda fuera, a propósito: su
+  alcance no es ambiguo y ya está detrás de `full`, exactamente como
+  `DROP TABLE`.
+
+- **La política de escritura MCP de una conexión compartida ya no se revierte en
+  la siguiente sincronización.** La política es una decisión local sobre lo que un
+  cliente de IA puede hacer en *esta* máquina, algo que quien publica un origen
+  compartido no puede saber, pero la sincronización reemplazaba el registro
+  completo y se la llevaba por delante. Poner una conexión compartida en «datos»
+  funcionaba hasta el siguiente pull y volvía en silencio a solo lectura, lo que
+  dejaba el panel MCP inservible para quien tiene todas sus conexiones en un
+  origen. Todo lo demás de un perfil publicado lo sigue dictando el fichero.
+
+- **Renombrar un origen compartido llega ya al resto de la app.** El registro de
+  orígenes se leía una sola vez, en local, desde el panel de Ajustes que lo
+  gestiona, así que nada más podía nombrar el origen detrás de una conexión — y
+  «Sincronizar ahora» no refrescaba su propia marca de última sincronización, que
+  se quedaba obsoleta hasta reabrir el panel. Ahora se cachea en un solo sitio y
+  se invalida con un evento del backend, así que cualquier ventana ve un
+  renombrado o una sincronización al instante.
+
 ## [1.18.0] — 2026-08-24
 
 ### Añadido
@@ -798,6 +1460,70 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Un SELECT escrito a mano sin `LIMIT`/`TOP` sobre una tabla grande podía
+  tirar abajo toda la app con un fallo por falta de memoria, y el cronómetro
+  del botón «Ejecutar» seguía girando durante todo el tiempo que duraba
+  eso.** Reportado contra SQL Server (una consulta pegada directamente desde
+  SSMS sobre una tabla de varios millones de filas), pero la causa raíz la
+  compartían todos los drivers SQL: `execute_query`/`execute_batch`
+  (`src-tauri/src/commands/query.rs`) entregaban el SQL del editor
+  directamente a `sqlx::query(..).fetch_all(..)` para Postgres/MySQL/SQLite y
+  a `simple_query(..).into_results()` de `tiberius` para SQL Server, y los dos
+  almacenan en memoria el conjunto de resultados *entero* antes de devolver
+  una sola fila — y `DataGrid` luego renderizaba cada una de esas filas en el
+  DOM (ver el arreglo de virtualización más abajo). Tampoco nada de esto tenía
+  límite de tiempo: el cronómetro junto a «Ejecutar» es un `setInterval`
+  puramente cosmético, no un timeout real, así que nada en la cadena
+  cancelaba nunca la llamada al driver — la consulta corría hasta el final (o
+  hasta agotar la memoria antes) sin importar cuánto llevara la interfaz
+  esperando. Las sentencias `find`/`aggregate` de mongosh tenían la misma
+  forma de cursor sin límite.
+
+  Cada vía de lectura ad-hoc (`execute_query`, `execute_batch`, y
+  `find`/`aggregate` de MongoDB) conserva ahora como máximo
+  `MAX_ADHOC_QUERY_ROWS` (50 000) filas, mediante un nuevo helper genérico
+  `fetch_capped` que hace streaming de un SELECT con `fetch()` de sqlx en vez
+  de `fetch_all()`, un nuevo `simple_query_sets_capped` en el pool de SQL
+  Server que recorre el `QueryStream` de `tiberius` elemento a elemento, y un
+  `collect_capped` para los cursores de Mongo. Las filas que sobran del límite
+  se siguen drenando (SQL: para que la conexión/sesión del pool quede en un
+  punto limpio del protocolo en vez de a mitad de respuesta — cortar el
+  stream antes de tiempo corrompería la siguiente consulta de quien reutilice
+  esa misma conexión; Mongo: el cursor simplemente se descarta, una operación
+  soportada) — se descartan, no se aplazan, así que la memoria del backend se
+  mantiene acotada sin importar cuántas filas coincidan de verdad con la
+  consulta. `QueryResult.truncated` informa de cuándo ha pasado esto, y la
+  cuadrícula muestra ahora una insignia «truncado» en la barra de herramientas
+  (con una pista para añadir un `LIMIT`/`TOP`) en vez de devolver en silencio
+  un resultado parcial sin ninguna indicación de que se ha recortado algo.
+  `fetch_table_data`/`fetch_collection_data` (el navegador paginado de
+  tablas/colecciones) no se ven afectados — siempre aplican su propio
+  `LIMIT`/`OFFSET` y nunca truncan.
+
+  El renderizado de filas de `DataGrid.tsx` se apoya ahora en
+  `@tanstack/react-virtual` en vez de montar incondicionalmente un `<tr>` real
+  por fila — el propio comentario de cabecera del fichero afirmaba
+  (incorrectamente) que las filas se «virtualizaban gracias al
+  `overflow-auto` del contenedor padre», que no es cómo funciona
+  `overflow-auto`, y es exactamente lo que dejaba que un resultado ya acotado
+  a 50 000 filas siguiera atascando el renderizador incluso después de que el
+  backend dejara de quedarse sin memoria.
+
+- **Eliminar un origen compartido podía dejar sus conexiones atascadas para
+  siempre** si se pasaba por alto el aviso «quedármela / borrarla» de la app
+  antes de cerrarla — el aviso vivía solo en memoria (`useOriginSync.vanished`),
+  así que reiniciar la app lo perdía para siempre, y una conexión marcada con
+  un `origin_id` colgante es de solo lectura e imborrable en la interfaz, sin
+  ninguna otra forma de quitarle la marca. `syncAll()` ejecuta ahora también
+  un barrido de reconciliación en cada pasada (arranque, el sondeo cada cuatro
+  horas y «Sincronizar ahora») que atrapa cualquier perfil o entorno espejo
+  cuyo `origin_id` no coincida con ningún origen actualmente registrado y le
+  levanta el mismo aviso de adoptar/retirar, sin necesitar el nombre del
+  origen (se muestra como «un origen compartido que ya no existe»). El botón
+  «Sincronizar ahora» de Ajustes → Orígenes ya no se deshabilita cuando no hay
+  ningún origen registrado, ya que este barrido es útil precisamente en ese
+  estado — justo después de eliminar el último.
+
 - **Reimportar perfiles de conexión con «sobrescribir» ya no rompe en silencio nada
   indexado por el identificador del perfil.** `apply_profile_imports` acuña un uuid
   nuevo incluso al sobrescribir un perfil existente, algo de lo que antes no dependía
@@ -865,6 +1591,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   tab-state movidos a un cierre de `tauri::async_runtime::spawn_blocking`: se
   paga el mismo coste de CPU, pero fuera del hilo que bombea los mensajes de
   la ventana.
+
+- **El editor de estructura podía rechazar su propia vista previa de DDL por
+  una columna que nadie había tocado, específicamente en columnas `BIT` de
+  MySQL.** MySQL informa del valor por defecto de una columna `BIT` desde
+  `information_schema` en su forma literal nativa `b'0'`/`b'1'`, y el editor
+  de estructura la copia tal cual en el campo «Por defecto». `validate_structure`
+  validaba el valor por defecto de cada columna contra una lista blanca
+  conservadora (números, cadenas entre comillas, un puñado de palabras clave)
+  sin importar si el usuario lo había tocado, así que con solo abrir una tabla
+  con una columna `BIT` y editar una columna sin relación, la previsualización
+  o el apply entero fallaban con «unsupported default expression: "b'0'"» —
+  un comentario ya había señalado esta misma clase de problema para los
+  valores por defecto de Postgres con `cast` (`'foo'::text`) en la ruta de
+  volcado/reconstrucción de SQLite, pero la propia ruta `ALTER` del editor de
+  estructura nunca recibió el mismo tratamiento. El valor por defecto de una
+  columna ahora solo pasa por la lista blanca cuando de verdad difiere de lo
+  que hay en el catálogo en vivo; uno sin cambios — en la forma nativa del
+  dialecto que informe el servidor — se acepta tal cual.
 
 ## [1.16.2] — 2026-08-19
 
@@ -2339,6 +3083,59 @@ servidor` es toda la asignación que HuginnDB gastará contra un host,
   JS idéntico.
 
 ### Cambiado
+
+- **El conteo de filas ya no bloquea la aparición de las primeras, y un
+  conteo de la tabla entera es ahora una estimación instantánea.** Abrir una
+  tabla/colección solía calcular la página de datos _y_ un `COUNT(*)` exacto
+  (`count_documents` en MongoDB) en un mismo viaje de ida y vuelta, sin
+  devolver nada a la rejilla hasta que ambos terminaban. En una tabla de
+  varios millones de filas el conteo dominaba, así que el primer pintado
+  esperaba segundos por una consulta cuyas 100 filas ya estaban en la mano —
+  justo el reporte «Compass se siente más rápido» del issue #77. El conteo es
+  ahora una petición aparte (`count_table_rows`) disparada junto con la carga
+  de datos: las filas se renderizan en cuanto vuelve el `SELECT`/`find`, y el
+  rango de paginación rellena el total cuando llega el conteo (paginar sigue
+  funcionando mientras tanto). Para un recorrido de la tabla entera (sin
+  filtros, sin búsqueda) el total viene de las estadísticas O(1) del motor —
+  `pg_class.reltuples` en Postgres, `information_schema.TABLE_ROWS` en MySQL,
+  `estimatedDocumentCount` en MongoDB — y se muestra como un `~N` aproximado
+  (con tooltip al pasar el ratón). Una tabla nunca analizada (o SQLite, que no
+  tiene una estimación barata) cae a un conteo exacto. Cualquier filtro o
+  búsqueda activo fuerza un conteo exacto del subconjunto que coincide, pero
+  sigue corriendo fuera del camino crítico del render. La herramienta
+  `browse_table` del `huginndb-mcp` sin interfaz no cambia (conserva el
+  conteo exacto en línea).
+
+- **La barra de herramientas de la pestaña de tabla se consolida en una sola
+  barra (al estilo MongoDB Compass).** La barra superior de una pestaña de
+  tabla/colección amontonaba antes cuatro asuntos distintos en su borde
+  izquierdo — el botón de recargar, el botón de filtro avanzado, el selector
+  tabla/lista de MongoDB y una caja de búsqueda apretada de ancho fijo
+  (`w-56`) —, mientras una _segunda_ franja de estado inferior llevaba el zoom
+  de fila y los controles de paginación. Peor aún, el total de filas se
+  mostraba dos veces: «37 filas de 37» arriba a la derecha y «1–37 / 37» abajo
+  a la derecha. Todo vive ahora en una sola barra:
+  - **Izquierda (acciones):** refrescar · filtro avanzado · la caja de
+    búsqueda — que es ahora el ancla visual, creciendo para llenar el ancho
+    disponible (con tope, y un icono de lupa al principio) en vez del antiguo
+    tamaño fijo estrecho — y el botón **Insertar** justo al lado, ya que
+    insertar es la otra acción principal sobre el conjunto de filas.
+  - **Derecha (visualización), fijada con `ml-auto`:** un único rango de
+    paginación en formato humano (`1–100 de 19759`, sustituyendo al antiguo
+    conteo duplicado y a la forma con barra) · botones anterior/siguiente
+    página · el selector de tamaño de página · el par −/+ de zoom de fila
+    (subido desde la franja inferior eliminada) · el selector de vista de
+    MongoDB (solo Mongo) · el tiempo transcurrido.
+
+  La franja de estado inferior desaparece por completo, dando a la rejilla
+  más espacio vertical. Se conecta a través de un nuevo slot `toolbarTrailing`
+  en `DataGrid` (a juego con el `toolbarLeading` ya existente) más una prop
+  `showRowCount`: las pestañas de tabla pasan `false` porque el rango de
+  paginación sustituye al conteo, mientras que las pestañas de resultado de
+  consulta/vista — que no paginan — conservan el «N filas de M» incorporado
+  como su único indicador de total. Ningún comportamiento de datos cambia;
+  mismas acciones, mismos atajos de teclado, es puramente un pase de
+  disposición/affordance.
 
 - **La disposición del panel de trabajo ahora es de nivel de sesión, no por
   conexión.** La geometría de división/flotación del dockview interno (cómo

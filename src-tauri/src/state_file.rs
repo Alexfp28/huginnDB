@@ -30,7 +30,7 @@
 //! future-version file before accepting it.
 
 use serde::{de::DeserializeOwned, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::app_identity::APP_DIR;
 use crate::error::{AppError, AppResult};
@@ -97,10 +97,158 @@ pub fn load_or_default<T: DeserializeOwned + Default>(file: &str, tag: &str) -> 
 /// so being killed mid-save (or filling the disk) cannot destroy what was
 /// already there.
 pub fn save_atomic<T: Serialize + ?Sized>(file: &str, value: &T) -> AppResult<()> {
-    let path = path(file)?;
-    let tmp = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(value)?;
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, &path)?;
-    Ok(())
+    write_atomic(&path(file)?, &serde_json::to_vec_pretty(value)?)
+}
+
+/// [`save_atomic`]'s mechanism, for an **arbitrary** path.
+///
+/// Extracted because the shared-origin editor writes a file the app does not
+/// own: a document on a UNC share, which [`path`] cannot express — it only ever
+/// resolves names relative to the config directory, by design (gotcha #26's
+/// canary isolation depends on that being the only way in). The atomicity
+/// matters more there than it does here: consumers read that file with
+/// `std::fs::read` and no coordination whatsoever, so a plain
+/// [`std::fs::write`] over a share is precisely the truncated read that
+/// `commands::origins::disappearance_is_trustworthy` exists to paper over —
+/// a publisher mid-save looks exactly like an admin who deleted half the
+/// roster.
+///
+/// The temp file is created **in the destination's own directory**, not in a
+/// temp dir: `rename` is only atomic within a filesystem, and a share is a
+/// different volume from anything `std::env::temp_dir` would hand back. On
+/// Windows `rename` also refuses to clobber an existing file, so the previous
+/// revision is removed first — which is safe in this order because the temp
+/// file is already fully written and `fsync`ed by then, and unsafe in any
+/// other.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
+    let dir = path.parent().ok_or_else(|| {
+        AppError::InvalidInput(format!("{path:?} has no parent directory to write into"))
+    })?;
+    let tmp = dir.join(format!(
+        ".{}.tmp",
+        path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "huginndb".into())
+    ));
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        // Without this the rename can land while the data is still in the page
+        // cache, which on a network share means a reader can see an empty file
+        // under the final name.
+        f.sync_all()?;
+    }
+    if path.exists() {
+        // Best-effort: `rename` succeeds over an existing file on Unix, so a
+        // failure here is only fatal on Windows, where the rename below reports
+        // it anyway.
+        let _ = std::fs::remove_file(path);
+    }
+    match std::fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            // Leaving a stray `.name.tmp` next to a team's document would look
+            // like a corrupt publish to the next person who lists the folder.
+            let _ = std::fs::remove_file(&tmp);
+            Err(e.into())
+        }
+    }
+}
+
+/// Copy `path` to `path` + `.bak`, so the revision being replaced survives one
+/// generation.
+///
+/// A copy rather than a rename: the original has to stay in place until the
+/// [`write_atomic`] rename lands, or a failure between the two steps would
+/// leave the share with no current file at all.
+///
+/// Returns `false` when there was nothing to back up, and errors are the
+/// caller's to swallow: a `.bak` another user left read-only must not be what
+/// stops today's publish.
+pub fn backup_previous(path: &Path) -> AppResult<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let mut bak = path.as_os_str().to_os_string();
+    bak.push(".bak");
+    std::fs::copy(path, PathBuf::from(bak))?;
+    Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A scratch directory of our own. Deliberately **not** [`path`]: that
+    /// resolves through the developer's real config dir under `cargo test`, and
+    /// writing there is how three tests once overwrote a live `profiles.json`
+    /// (CLAUDE.md gotcha #52).
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("huginndb-state-file-{tag}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    /// The temp file has to be created next to the destination, not in a temp
+    /// dir: `rename` is only atomic within one filesystem, and an origin
+    /// document lives on a share, which is always a different volume.
+    #[test]
+    fn write_atomic_writes_beside_its_destination() {
+        let dir = scratch("beside");
+        let target = dir.join("team.json");
+        write_atomic(&target, b"{\"a\":1}").unwrap();
+        assert_eq!("{\"a\":1}", std::fs::read_to_string(&target).unwrap());
+
+        // Nothing left behind for the next person who lists the folder.
+        let stray: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n != "team.json")
+            .collect();
+        assert!(stray.is_empty(), "left {stray:?}");
+    }
+
+    /// Overwriting is the normal case for a published document, and on Windows
+    /// `rename` refuses to clobber — so this is the assertion that keeps the
+    /// remove-then-rename order in place.
+    #[test]
+    fn write_atomic_replaces_an_existing_file() {
+        let dir = scratch("replace");
+        let target = dir.join("team.json");
+        write_atomic(&target, b"old").unwrap();
+        write_atomic(&target, b"new").unwrap();
+        assert_eq!("new", std::fs::read_to_string(&target).unwrap());
+    }
+
+    /// The previous revision survives one generation, and the original stays in
+    /// place while it does — a rename would leave the share with no current file
+    /// at all if the write that follows failed.
+    #[test]
+    fn backup_previous_copies_rather_than_moves() {
+        let dir = scratch("backup");
+        let target = dir.join("team.json");
+
+        assert!(
+            !backup_previous(&target).unwrap(),
+            "nothing to back up on a first publish"
+        );
+
+        write_atomic(&target, b"rev-1").unwrap();
+        assert!(backup_previous(&target).unwrap());
+        assert_eq!("rev-1", std::fs::read_to_string(&target).unwrap());
+        assert_eq!(
+            "rev-1",
+            std::fs::read_to_string(dir.join("team.json.bak")).unwrap()
+        );
+
+        write_atomic(&target, b"rev-2").unwrap();
+        assert_eq!("rev-2", std::fs::read_to_string(&target).unwrap());
+        assert_eq!(
+            "rev-1",
+            std::fs::read_to_string(dir.join("team.json.bak")).unwrap()
+        );
+    }
 }

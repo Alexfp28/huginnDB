@@ -20,7 +20,9 @@
     "retry": "Reintentar",
     "copy": "Copiar",
     "errorPanelCrashed": "Algo falló al renderizar este panel.",
-    "add": "Añadir"
+    "add": "Añadir",
+    "import": "Importar",
+    "export": "Exportar"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -97,7 +99,6 @@
   "connectionsTree": {
     "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
     "connect": "Conectar",
-    "filterNeedsSelection": "Selecciona una conexión para filtrar sus tablas.",
     "selectConnections": {
       "action": "Conexiones a mostrar",
       "title": "Conexiones a mostrar",
@@ -109,6 +110,21 @@
       "filterPlaceholder": "Filtrar conexiones…",
       "noMatches": "Ninguna conexión coincide con “{{query}}”.",
       "allHidden": "Todas las conexiones guardadas están ocultas — usa “Conexiones a mostrar” arriba para recuperar alguna."
+    },
+    "filter": {
+      "summary": "{{matches}} coincidencia(s) en {{connections}} conexión(es)",
+      "noMatchesAnywhere": "Sin coincidencias en ninguna conexión",
+      "noMatchesHint": "Solo se buscan nombres de tablas, vistas y bases de datos.",
+      "counting": "Contando…",
+      "partialCount": "{{count}} coincidencia(s) en lo ya cargado — faltan {{cold}} base(s) por buscar",
+      "connectToSearch": "Conecta para incluirla en la búsqueda",
+      "clear": "Limpiar filtro",
+      "scopeHere": "Buscar solo aquí",
+      "clearScope": "Volver a buscar en todas las conexiones",
+      "searchUnloaded": "Buscar en {{count}} base(s) sin cargar",
+      "searchUnloadedHint": "Al teclear no se abre ninguna conexión. Esto carga sus listas de tablas para que la búsqueda llegue a ellas.",
+      "searchingUnloaded": "Cargando bases de datos…",
+      "summaryCount": "{{matches}} coincidencia(s)"
     }
   },
   "workspacePicker": {
@@ -117,13 +133,42 @@
     "searchEnvironments": "Buscar entornos…"
   },
   "connections": {
+    "scope": {
+      "all": "Todas",
+      "local": "Locales",
+      "shared": "Compartidas"
+    },
+    "scopeLabel": "Filtrar por procedencia",
+    "sharedSection": "Compartidas · {{origin}}",
+    "orphanedSection": "Compartidas · origen ya no registrado",
+    "sharedReadOnly": "solo lectura",
+    "sharedBadgeTooltip": "Publicada por el origen compartido «{{origin}}»",
+    "sharedBadgeTooltipUnknown": "Publicada por un origen compartido que ya no está registrado",
+    "originProtectedTooltip": "Publicada por «{{origin}}». Borrarla aquí no hace nada: la siguiente sincronización la trae de vuelta. Quita el origen en Ajustes → Orígenes compartidos para eliminarla definitivamente.",
+    "originProtectedTooltipUnknown": "Publicada por un origen compartido que ya no está registrado. Conviértela en conexión local desde el aviso de su fila para poder borrarla.",
+    "selectAll": "Seleccionar todas las conexiones locales",
+    "selectAllSection": "Seleccionar todas las conexiones de {{section}}",
+    "deleteAllLocal": "Eliminar todas las locales",
+    "deleteAllLocalNeedsClearSearch": "Borra primero la búsqueda: con un filtro activo, «todas» es ambiguo. Usa las casillas.",
+    "listActions": "Acciones de la lista de conexiones",
+    "deleteTitle": "¿Eliminar {{count}} conexión(es)?",
+    "deleteAction": "Eliminar {{count}}",
+    "deleting": "Eliminando…",
+    "deleteMoreNames": "y {{count}} más",
+    "deleteSweeps": {
+      "title": "También se elimina:",
+      "password": "sus contraseñas del almacén de credenciales del sistema",
+      "sshSecret": "sus secretos de túnel SSH del almacén de credenciales del sistema",
+      "tabs": "sus pestañas abiertas y su árbol de esquema, en todos los entornos",
+      "visibility": "su filtro de «bases de datos a mostrar», en todos los entornos",
+      "jsonSchemas": "los vínculos de JSON Schema fijados a sus columnas"
+    },
+    "deleteIrreversible": "Esta acción no se puede deshacer. Las bases de datos en sí no se tocan.",
+    "bulkDeleteOriginSkipped": "Se han conservado {{count}} conexión(es): las publica un origen compartido, así que borrarlas aquí no haría nada, la siguiente sincronización las trae de vuelta. Quita el origen en Ajustes para eliminarlas.",
+    "bulkDeleteFailed": "No se han podido eliminar {{count}} contraseña(s) del almacén de credenciales: {{names}}",
     "disconnectTooltip": "Desconectar",
-    "deleteConfirm": "¿Eliminar la conexión \"{{name}}\"?",
-    "bulkDeleteTitle": "Eliminar {{count}} conexiones",
-    "bulkDeleteConfirm": "¿Eliminar {{count}} conexiones? Esta acción no se puede deshacer.",
     "selectConnection": "Seleccionar {{name}}",
     "selectedCount": "{{count}} seleccionadas",
-    "manageTitle": "Gestionar conexiones",
     "reconnectTooltip": "Conexión perdida — reconectar",
     "reconnect": "Reconectar",
     "lost": "Conexión perdida: {{message}}"
@@ -224,7 +269,9 @@
     "emptyList": "Aún no hay conexiones guardadas.",
     "searchPlaceholder": "Buscar conexiones…",
     "noMatches": "Ninguna conexión coincide con la búsqueda.",
-    "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya."
+    "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
+    "fromOriginNamed": "Esta conexión viene del origen compartido «{{origin}}», así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
+    "editAtOrigin": "Editar en el origen…"
   },
   "adhocDriver": {
     "title": "¿Qué driver de base de datos?",
@@ -419,7 +466,8 @@
       "confirm": "¿Insertar los documentos de este fichero en \"{{collection}}\"? Si existen documentos con el mismo _id la importación se detendrá.",
       "success": "Importación terminada — se insertaron {{count}} documento(s)."
     },
-    "security": "Seguridad"
+    "security": "Seguridad",
+    "filterScopedToConnection": "Buscando solo en {{name}}"
   },
   "security": {
     "title": "Seguridad",
@@ -504,6 +552,8 @@
     "fieldsCount": "{{count}} campos",
     "expandEditor": "Abrir en el editor completo",
     "resizeHandleHint": "Arrastra para redimensionar · doble clic para ajustar al contenido (Ctrl: todas las columnas)",
+    "pinColumn": "Fijar columna",
+    "unpinColumn": "Dejar de fijar columna",
     "fitColumns": "Ajustar todas las columnas al contenido",
     "moreActions": "Más acciones",
     "activeFilterCount": "{{count}} filtros",
@@ -894,7 +944,8 @@
     "densityComfortable": "Cómoda",
     "toggleTheme": "Cambiar claro / oscuro",
     "commandPaletteHint": "Ctrl+K",
-    "commandPaletteTooltip": "Paleta de comandos (Ctrl+K)"
+    "commandPaletteTooltip": "Paleta de comandos (Ctrl+K)",
+    "chordPending": "esperando la siguiente tecla…"
   },
   "shell": {
     "console": {
@@ -1116,6 +1167,7 @@
       "customInfo": "Tema personalizado — los cambios se aplican al instante.",
       "modeDark": "Oscuro",
       "modeLight": "Claro",
+      "editingVariant": "Editando",
       "deleteTooltip": "Eliminar tema personalizado",
       "duplicateLabel": "Duplicar como personalizado",
       "exportTooltip": "Exportar tema…",
@@ -1188,16 +1240,75 @@
       "toggleTabSwitcher": "Cambiar entre pestañas abiertas",
       "refreshData": "Refrescar datos",
       "refreshSchema": "Recargar esquema",
-      "refreshHint": "Ctrl/Cmd+R también refresca siempre.",
+      "refreshHint": "Mod+R queda reservado además de este: interceptar la recarga del WebView es una necesidad de seguridad, no una preferencia.",
       "runQuery": "Ejecutar query en el editor activo",
       "expandSelectedCell": "Expandir celda seleccionada",
       "pressKey": "Pulsa una tecla…",
       "resetToDefault": "Restablecer por defecto",
       "resetAll": "Restablecer todos los atajos",
-      "conflict": "Ya usado por {{action}}. Elige otra tecla."
+      "conflict": "Ya usado por {{action}}. Elige otra tecla.",
+      "unassigned": "Sin asignar",
+      "fixedHint": "Reservado por la app: no se puede reasignar.",
+      "togglePanelSchema": "Mostrar u ocultar el panel Esquema",
+      "togglePanelSaved": "Mostrar u ocultar el panel Guardadas",
+      "togglePanelConsole": "Mostrar u ocultar el panel Consola",
+      "searchPlaceholder": "Buscar una acción…",
+      "searchByKey": "Por tecla",
+      "modifiedOnly": "Modificados ({{count}})",
+      "noMatches": "Ninguna acción coincide.",
+      "summary": "{{total}} acciones · {{modified}} modificadas",
+      "resetAllConfirm": "Se borrarán tus {{count}} atajo(s) personalizados y cada acción volverá a su valor por defecto.",
+      "captureHint": "Pulsa Guardar para conservarlo, o haz clic en la tecla para volver a grabar.",
+      "listening": "Esperando una tecla…",
+      "then": "luego",
+      "addChord": "Añadir acorde",
+      "reassign": "Reasignar",
+      "reserved": "Reservado por {{action}}; no se puede ocupar.",
+      "rebind": "Grabar otra tecla",
+      "addBinding": "Añadir otra tecla",
+      "removeBinding": "Quitar esta tecla",
+      "categories": {
+        "all": "Todas",
+        "general": "General",
+        "tabs": "Pestañas",
+        "query": "Consulta",
+        "grid": "Rejilla de datos",
+        "schema": "Esquema",
+        "panels": "Paneles y ventana"
+      },
+      "scopes": {
+        "global": "Se dispara en cualquier parte de la app.",
+        "editor": "Solo con el foco en un editor Monaco.",
+        "grid": "Solo con el foco en la rejilla de datos.",
+        "tree": "Solo con el foco en el árbol de esquema.",
+        "overlay": "Solo con una paleta o un diálogo abiertos."
+      },
+      "importTitle": "Importar atajos",
+      "importSuccess": "Importados {{count}} atajo(s) personalizados.",
+      "importUnknown": "Importado, pero este archivo trae {{count}} acción/es que esta versión no conoce: {{ids}}",
+      "importError": {
+        "notJson": "Ese archivo no es JSON válido.",
+        "notShortcuts": "Ese archivo no es una exportación de atajos de HuginnDB."
+      },
+      "recordAgainHint": "Haz clic para grabar otra tecla",
+      "focusTreeFilter": "Buscar en el árbol de esquema",
+      "focusTreeFilterHint": "Abre el panel Esquema si está plegado, enfoca la caja de filtro y selecciona lo que haya en ella.",
+      "clearTreeFilter": "Limpiar la búsqueda del esquema",
+      "clearTreeFilterHint": "Por capas: primero el texto, luego el ámbito nivel a nivel y por último el foco pasa al árbol.",
+      "scopeFilterToConnection": "Buscar solo en la conexión seleccionada"
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",
+      "sharedIdsHint": "Una conexión publicada por un origen compartido conserva el mismo id en todas las máquinas, así que un snippet hecho con conexiones compartidas sirve tal cual para todo el equipo.",
+      "selectAllInSection": "Seleccionar todas las conexiones de {{section}}",
+      "localSection": "Locales",
+      "scopeAll": "Todas",
+      "bulkPolicyLabel": "Poner todas las listadas en",
+      "bulkPolicyApplied": "{{count}} conexión(es) modificada(s)",
+      "bulkPolicyNoop": "Ya estaban todas así",
+      "bulkPolicyFullTitle": "¿Dar acceso completo a {{count}} conexión(es)?",
+      "bulkPolicyFullBody": "El acceso completo permite a un cliente de IA cambiar datos Y esquema en estas conexiones, incluido CREATE, ALTER y DROP. Cada escritura queda registrada en el log de auditoría MCP de la app, pero nadie vuelve a preguntar en el momento.",
+      "bulkPolicyFullConfirm": "Poner {{count}} en completo",
       "binaryLabel": "Binario del conector",
       "available": "Instalado y listo.",
       "unavailable": "No encontrado — esta build no viene de un release empaquetado, así que el conector no está incluido.",
@@ -1335,7 +1446,8 @@
       "profiles": "Conexiones exportadas",
       "environments": "Entornos exportados",
       "jsonSchemas": "Esquemas JSON exportados",
-      "theme": "Tema exportado"
+      "theme": "Tema exportado",
+      "shortcuts": "Atajos exportados"
     },
     "center": {
       "open": "Notificaciones",
@@ -1698,6 +1810,10 @@
       "mcp": {
         "title": "Conector MCP",
         "description": "Conecta herramientas de IA a tus bases de datos"
+      },
+      "shortcuts": {
+        "title": "Atajos de teclado",
+        "description": "Reasignar cualquier cosa, secuencias, ámbitos y teclas reservadas."
       }
     }
   },
@@ -1710,6 +1826,35 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_19_0": {
+        "tagline": "Un editor completo para lo que publica un origen compartido, el sistema de atajos de teclado reconstruido desde cero, y MongoDB con gestión de índices y colecciones.",
+        "items": {
+          "sharedOriginEditor": {
+            "title": "Un editor completo para lo que publica un origen compartido",
+            "body": "Edita qué conexiones publica un origen compartido y cómo viajan sus contraseñas, sus entornos y su biblioteca de JSON Schema — todo desde una sola pantalla, con una vista previa que muestra exactamente qué verá cada consumidor en su próxima sincronización antes de publicar."
+          },
+          "keyboardShortcuts": {
+            "title": "Atajos de teclado, reconstruidos desde cero",
+            "body": "Asigna más de una tecla a una acción, encadena secuencias tipo Mod+K y luego Mod+S, y ve exactamente dónde puede actuar cada atajo (rejilla, editor, árbol o en toda la app). El catálogo pasa de 8 acciones a 25, y Ajustes → Atajos ahora busca por acción o por tecla."
+          },
+          "mongoIndexDdl": {
+            "title": "MongoDB gana gestión de índices y colecciones",
+            "body": "Crea, oculta y elimina índices, y elimina o renombra colecciones, directamente desde el editor de consultas — y un cliente de IA puede hacer lo mismo desde el conector MCP con dos herramientas nuevas, con la misma política de escritura que cualquier otro cambio de esquema."
+          },
+          "pinnedColumns": {
+            "title": "Fija columnas al borde izquierdo de la rejilla",
+            "body": "Fijado de columnas al estilo Excel en el explorador de datos — pulsa el icono de chincheta en cualquier cabecera para mantenerla visible mientras te desplazas por un resultado ancho. Se guarda por tabla, igual que el ancho de las columnas."
+          },
+          "schemaSearch": {
+            "title": "La búsqueda del esquema ya mira todas las conexiones abiertas",
+            "body": "El filtro solo buscaba, en silencio, en la conexión seleccionada — varios usuarios lo reportaron. Ahora busca en todas las conexiones activas a la vez, muestra cuántas coincidencias tiene cada una, y ya no abre nuevas conexiones a bases de datos solo porque escribas una letra."
+          },
+          "connectionProvenance": {
+            "title": "Las conexiones muestran de dónde vienen",
+            "body": "El gestor de conexiones y el panel MCP se dividen ahora en Locales y Compartidas por origen, con una sección de solo lectura por cada origen — y el panel MCP añade botones de política de escritura en bloque para poner Solo lectura/Datos/Completo a toda una lista de una vez."
+          }
+        }
+      },
       "1_18_0": {
         "tagline": "Un sistema de notificaciones propio de la app, gestión completa de vistas desde el conector MCP, y un repaso de rendimiento y fiabilidad a nivel de todo el proyecto.",
         "items": {
@@ -2077,6 +2222,142 @@
       "retire": "Borrar",
       "retireConfirm": "¿Borrar el entorno «{{name}}»?\n\nSe pierden sus pestañas y su disposición. Las conexiones que agrupa no se borran.",
       "pending": "Entornos desaparecidos"
+    },
+    "newDocument": "Nuevo documento…",
+    "newDocumentTitle": "Crear un documento para publicar",
+    "newDocumentHint": "Crea un fichero vacío en el recurso compartido y lo registra como uno que publica este equipo. Para publicar un fichero que ya existe, regístralo y cambia su rol.",
+    "newDocumentBrowseTitle": "Dónde crear el documento",
+    "newDocumentCreate": "Crear",
+    "maintainerPlaceholder": "Responsable (opcional)",
+    "browseTitle": "Elige el fichero compartido",
+    "editContent": "Editar el documento…",
+    "editRegistration": "Editar el registro…",
+    "editRegistrationTitle": "{{name}} — registro",
+    "passphraseKeepPlaceholder": "Frase de paso (en blanco mantiene la guardada)",
+    "passphraseKeepHint": "En blanco mantiene la que haya en tu llavero.",
+    "curatedBy": "lo cura {{who}}",
+    "role": {
+      "consumer": "Solo lectura",
+      "publisher": "Publicador",
+      "publisherToggle": "Este equipo publica este fichero",
+      "publisherToggleHint": "Permite que HuginnDB escriba en esa ruta. Tu sistema operativo sigue teniendo la última palabra: sobre un recurso de solo lectura el editor se abre en modo lectura igualmente.",
+      "confirmTitle": "¿Publicar en este fichero?",
+      "confirmBody": "A partir de ahora HuginnDB podrá escribir en:",
+      "confirmReversible": "Puedes revertirlo cuando quieras, y no se escribe nada hasta que publiques una revisión.",
+      "confirmAccept": "Permitir escritura"
+    }
+  },
+  "originEditor": {
+    "filter": "Filtrar…",
+    "noMatches": "Nada coincide",
+    "revision": "rev. {{revision}}",
+    "unsaved": "Cambios sin publicar",
+    "save": "Publicar…",
+    "discard": "Descartar",
+    "reload": "Recargar",
+    "stale": "Alguien más publicó este fichero mientras lo tenías abierto.",
+    "notWritable": "Tu sistema no deja escribir aquí: {{reason}}",
+    "role": {
+      "publisher": "Publicador",
+      "readOnly": "Solo lectura"
+    },
+    "panes": {
+      "connections": {
+        "label": "Conexiones",
+        "desc": "Lo que publica el fichero"
+      },
+      "environments": {
+        "label": "Entornos",
+        "desc": "Aspecto y pertenencia"
+      },
+      "schemas": {
+        "label": "JSON Schemas",
+        "desc": "Biblioteca y reglas"
+      },
+      "publish": {
+        "label": "Publicación",
+        "desc": "Metadatos e impacto"
+      }
+    },
+    "secret": {
+      "keep": "Viaja cifrada, sin tocar",
+      "fromKeychain": "Cifrar desde mi llavero",
+      "clear": "La pedirá el otro lado"
+    },
+    "connections": {
+      "hint": "Nada de esto toca tus propias conexiones: pasar una a la derecha la copia al documento, y devolverla solo la quita del documento.",
+      "local": "En este equipo",
+      "inFile": "En el fichero",
+      "localEmpty": "Todas tus conexiones ya están en el fichero",
+      "inFileEmpty": "El fichero aún no publica ninguna conexión",
+      "unassigned": "Sin asignar"
+    },
+    "environments": {
+      "hint": "Un entorno agrupa conexiones que el fichero ya publica. Una que no esté en ninguno se publica igual: solo queda suelta.",
+      "add": "Nuevo entorno",
+      "remove": "Quitar",
+      "empty": "El fichero no publica entornos",
+      "pick": "Elige un entorno",
+      "name": "Nombre",
+      "color": "Color",
+      "icon": "Icono",
+      "theme": "Tema",
+      "cosmeticsHint": "Se guardan tal cual. Un tema que el otro lado no tenga cae a su tema por defecto.",
+      "members": "Conexiones de este entorno",
+      "membersHint": "Filtra lo que ven, no decide lo que reciben",
+      "noConnections": "Añade antes conexiones al documento",
+      "import": "De los míos…",
+      "importNone": "Todos los entornos de este equipo ya están en el fichero",
+      "importCount": "{{count}} conexión(es)",
+      "emptyWithLocal": "El fichero no publica entornos. Copia uno de los tuyos con «De los míos…»."
+    },
+    "schemas": {
+      "hint": "Los schemas son globales, no pertenecen a un entorno: viajan aquí para que un solo fichero deje un equipo listo.",
+      "empty": "No hay JSON Schemas ni aquí ni en el fichero",
+      "pinned": "fijada",
+      "pinnedWarning": "Esta regla nombra una conexión que el documento no lleva, así que llega deshabilitada al otro lado."
+    },
+    "publish": {
+      "maintainer": "Responsable",
+      "maintainerPlaceholder": "Quién cura este fichero",
+      "note": "Nota de la revisión",
+      "notePlaceholder": "Qué ha cambiado",
+      "metadataHint": "Solo coordinación: los puede poner cualquiera que sepa escribir el fichero. Lo que de verdad evita que dos publicadores se pisen es la comprobación que se hace al guardar.",
+      "passphrase": "Frase de paso",
+      "passphraseStored": "La frase guardada cubre este documento. No hay que recifrar nada.",
+      "passphraseNotNeeded": "Este documento no publica contraseñas, así que no necesita frase de paso.",
+      "passphraseRequired": "Escribe la frase de paso antes de publicar.",
+      "rotate": "Cambiar la frase de paso",
+      "rotateFrom": "Frase de paso actual",
+      "rotateHint": "Recifra todas las contraseñas del fichero. Todos los que sincronicen volverán a derivar su clave en el siguiente pull; el coste está más abajo."
+    },
+    "impact": {
+      "forConsumers": "Para todo el que sincronice",
+      "nothing": "Para ellos no cambia nada.",
+      "connectionsAdded": "{{count}} conexión(es) nuevas",
+      "connectionsRefreshed": "{{count}} conexión(es) actualizadas",
+      "connectionsVanished": "{{count}} conexión(es) desaparecen",
+      "environmentsAdded": "{{count}} entorno(s) nuevos",
+      "environmentsRefreshed": "{{count}} entorno(s) actualizados",
+      "environmentsVanished": "{{count}} entorno(s) desaparecen",
+      "silent": "Tantas de golpe se tratan como una lectura defectuosa: nadie recibirá aviso y las conexiones se quedarán en sus equipos. Publícalo en dos veces si va en serio.",
+      "environmentsSilent": "Tantos de golpe se tratan como una lectura defectuosa: nadie recibirá aviso de los entornos que se van.",
+      "cost": "Coste",
+      "noReencryption": "No se recifra ninguna contraseña: todas viajan tal cual.",
+      "reencryption": "{{count}} contraseña(s) recifradas — {{rounds}} derivaciones de clave cada una, en el siguiente sync.",
+      "estimated": "(cota superior)",
+      "withoutPassword": "{{count}} conexión(es) viajan sin contraseña",
+      "bindingsDisabled": "{{count}} regla(s) de JSON Schema llegan deshabilitadas: nombran una conexión que el fichero no lleva.",
+      "unassigned": "{{count}} conexión(es) no pertenecen a ningún entorno",
+      "dangling": "{{count}} id(s) que lista un entorno ya no están en el fichero",
+      "freshMachine": "En un equipo nuevo",
+      "freshSummary": "{{connections}} conexiones, {{environments}} entornos, {{schemas}} JSON Schemas."
+    },
+    "confirm": {
+      "title": "¿Publicar la revisión {{revision}}?",
+      "publish": "Publicar",
+      "silentWarning": "Algunas de estas bajas no llegarán a nadie. Lee el informe de abajo.",
+      "progress": "Cifrando contraseñas… {{done}} de {{total}}"
     }
   }
 }

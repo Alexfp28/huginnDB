@@ -260,11 +260,171 @@ pub fn save_profile(
     Ok(profile)
 }
 
+/// What a bulk delete will do, and what it will refuse.
+///
+/// A pure decision, split out from [`delete_profiles`] so the refusal rule is
+/// testable without a keychain or a disk — same criterion as `already_landed` in
+/// `commands::origins` and `spec_is_view` in `db::mongo`.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct BulkDeletePlan {
+    /// Ids that exist locally and are the user's to delete.
+    pub delete: Vec<String>,
+    /// Refused: a shared origin publishes these (#108). Deleting one locally is
+    /// a no-op the next sync undoes — the id travels in the published file, so
+    /// `merge_profiles_bundle` recreates it identically — and it destroys the
+    /// keychain entry on the way. Removing the origin is the way out, and that
+    /// has its own flow.
+    pub skipped_origin: Vec<String>,
+    /// Ids that were not in `profiles.json` to begin with.
+    pub missing: Vec<String>,
+}
+
+/// Sort `ids` into the three buckets above, preserving the requested order
+/// within each — the report is what the UI reads back to the user.
+pub(crate) fn plan_bulk_delete(profiles: &[ConnectionProfile], ids: &[String]) -> BulkDeletePlan {
+    let mut plan = BulkDeletePlan::default();
+    for id in ids {
+        match profiles.iter().find(|p| &p.id == id) {
+            None => plan.missing.push(id.clone()),
+            Some(p) if p.origin_id.is_some() => plan.skipped_origin.push(id.clone()),
+            Some(_) => plan.delete.push(id.clone()),
+        }
+    }
+    plan
+}
+
+/// Erase every trace of `ids` from the session state of **all** environments.
+///
+/// Extracted from [`delete_profile`] so the single and the batch path share one
+/// sweep, and so the sweep is testable against a bare
+/// [`crate::tab_state::PersistedTabState`] — which it had no test for at all,
+/// despite being the thing that stops a persisted tab pointing at a connection
+/// that no longer exists.
+pub(crate) fn sweep_tab_state_for_profiles(
+    ts: &mut crate::tab_state::PersistedTabState,
+    ids: &[String],
+) {
+    // Every environment, not just the active one: the profile is gone globally,
+    // so an entry surviving elsewhere would come back as a tab pointing at a
+    // connection that no longer exists.
+    for env in &mut ts.environments {
+        for id in ids {
+            env.connections.remove(id);
+            env.launch.active_connections.retain(|c| c != id);
+            if env.launch.selected_connection_id.as_deref() == Some(id.as_str()) {
+                env.launch.selected_connection_id = None;
+            }
+            // Unlike the id lists above (where a stale entry is inert and left
+            // alone on purpose), an override is a keyed payload: leaving it
+            // behind would grow the blob with dead keys and, if the id were ever
+            // reused, silently apply somebody else's subset.
+            env.launch.database_visibility.remove(id);
+        }
+    }
+}
+
+/// Drop the JSON Schema bindings pinned to `ids`, saving and announcing once.
+///
+/// Same reasoning as `database_visibility` in the tab-state sweep, one step
+/// further: a binding pinned to a deleted profile can never match again, because
+/// a profile id is a uuid that is never reused. The schema itself — the
+/// expensive artefact the user wrote — is deliberately untouched; only the rule
+/// goes.
+fn sweep_json_schema_bindings(app: &AppHandle, state: &AppState, ids: &[String]) -> AppResult<()> {
+    let swept = {
+        let mut lib = state.json_schemas.write();
+        let n: usize = ids
+            .iter()
+            .map(|id| crate::json_schemas::sweep_connection(&mut lib, id))
+            .sum();
+        if n == 0 {
+            None
+        } else {
+            Some((n, lib.clone()))
+        }
+    };
+    let Some((n, snapshot)) = swept else {
+        return Ok(());
+    };
+    crate::json_schemas::save_library(&snapshot)?;
+    let count = ids.len();
+    eprintln!("[json_schemas] dropped {n} binding(s) pinned to {count} deleted profile(s)");
+    let _ = app.emit(
+        crate::commands::json_schemas::JSON_SCHEMAS_CHANGED_EVENT,
+        (),
+    );
+    Ok(())
+}
+
+/// Outcome of [`delete_profiles`], so the confirmation dialog can say what it
+/// skipped and what failed instead of swallowing it.
+#[derive(Debug, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteProfilesReport {
+    pub deleted: Vec<String>,
+    pub skipped_origin: Vec<String>,
+    pub missing: Vec<String>,
+    /// `(id, message)` for a profile already out of `profiles.json` whose
+    /// keychain entry could not be removed. Best-effort on purpose: a locked or
+    /// unavailable keychain must not leave the rest of the batch undone. That
+    /// diverges from [`delete_profile`], where the error *does* propagate —
+    /// there is nothing else in flight to protect there.
+    pub failed: Vec<(String, String)>,
+}
+
+/// Set the MCP write policy on several profiles at once.
+///
+/// One write of `profiles.json` and one `profiles-changed` event, for the same
+/// reason [`delete_profiles`] exists: the Settings panel offers "set every
+/// connection to read-only", and looping `save_profile` over thirty connections
+/// means thirty atomic rewrites and thirty global events, each of which makes
+/// every open window re-read and re-render.
+///
+/// Touches keychain entries not at all — this is one enum field — which is what
+/// makes it safe to run over a profile a shared origin published. That policy is
+/// a local trust decision and `merge_profiles_bundle` preserves it across a
+/// sync; without that, this command would appear to work and quietly revert.
+///
+/// Returns how many profiles actually changed, so a caller can tell "done" from
+/// "they were already all like that".
+#[tauri::command]
+pub fn set_mcp_write_policy(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    level: crate::state::McpWritePolicy,
+) -> AppResult<usize> {
+    let changed = {
+        let mut profiles = state.profiles.write();
+        let wanted: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+        let mut changed = 0usize;
+        for p in profiles.iter_mut() {
+            if wanted.contains(p.id.as_str()) && p.mcp_write != level {
+                p.mcp_write = level;
+                changed += 1;
+            }
+        }
+        if changed > 0 {
+            store::save_profiles(&profiles)?;
+        }
+        changed
+    };
+    if changed > 0 {
+        let _ = app.emit(PROFILES_CHANGED_EVENT, ());
+    }
+    Ok(changed)
+}
+
 /// Delete the profile with `id` and its associated keychain entries.
 ///
 /// Also drops the persisted per-connection tab state (open tabs, schema-tree
 /// expansion) so we don't keep dangling entries pointing at a profile that
 /// no longer exists.
+///
+/// Deliberately does **not** refuse an origin-published profile, unlike
+/// [`delete_profiles`]. `useOriginSync.retire` / `retireAllVanished` come through
+/// here to retire a mirror whose origin stopped publishing it, which is the one
+/// sanctioned way to remove one for real; guarding here would break that flow.
 #[tauri::command]
 pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) -> AppResult<()> {
     let removed = {
@@ -284,49 +444,77 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
             keychain::delete_password(&ssh_account)?;
         }
     }
+    let ids = [id];
     crate::tab_state::mutate(&state.tab_state, |ts| {
-        // Sweep every environment, not just the active one: the profile is gone
-        // globally, so an entry surviving elsewhere would come back as a tab
-        // pointing at a connection that no longer exists.
-        for env in &mut ts.environments {
-            env.connections.remove(&id);
-            env.launch.active_connections.retain(|c| c != &id);
-            if env.launch.selected_connection_id.as_deref() == Some(id.as_str()) {
-                env.launch.selected_connection_id = None;
-            }
-            // Unlike the id lists above (where a stale entry is inert and left
-            // alone on purpose), an override is a keyed payload: leaving it
-            // behind would grow the blob with dead keys and, if the id were
-            // ever reused, silently apply somebody else's subset.
-            env.launch.database_visibility.remove(&id);
-        }
+        sweep_tab_state_for_profiles(ts, &ids);
         Ok(())
     })?;
-
-    // Same reasoning as `database_visibility` above, one step further: a
-    // binding pinned to this profile can never match again, because a profile
-    // id is a uuid that is never reused. The schema itself — the expensive
-    // artefact the user wrote — is deliberately untouched; only the rule goes.
-    let swept = {
-        let mut lib = state.json_schemas.write();
-        let n = crate::json_schemas::sweep_connection(&mut lib, &id);
-        if n == 0 {
-            None
-        } else {
-            Some((n, lib.clone()))
-        }
-    };
-    if let Some((n, snapshot)) = swept {
-        crate::json_schemas::save_library(&snapshot)?;
-        eprintln!("[json_schemas] dropped {n} binding(s) pinned to deleted profile {id}");
-        let _ = app.emit(
-            crate::commands::json_schemas::JSON_SCHEMAS_CHANGED_EVENT,
-            (),
-        );
-    }
-
+    sweep_json_schema_bindings(&app, state.inner(), &ids)?;
     let _ = app.emit(PROFILES_CHANGED_EVENT, ());
     Ok(())
+}
+
+/// Delete several profiles in one pass, refusing the ones a shared origin
+/// publishes.
+///
+/// The frontend used to loop over [`delete_profile`], which for forty
+/// connections meant forty atomic rewrites of `profiles.json`, forty of
+/// `tab_state.json`, and forty global `profiles-changed` events — each of which
+/// makes *every* open window re-read the profile list and re-render the tree,
+/// the status bar and the rail. Atomicity was never the argument
+/// (`save_profiles` is already atomic, so a crash mid-loop left a consistent
+/// partial delete); the arguments are O(1) writes, one event, one place to
+/// express the origin refusal where a future caller — the CLI, the MCP
+/// connector — cannot route around it, and a report instead of a silent
+/// swallowed error.
+#[tauri::command]
+pub fn delete_profiles(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> AppResult<DeleteProfilesReport> {
+    let mut report = DeleteProfilesReport::default();
+    let removed = {
+        let mut profiles = state.profiles.write();
+        let plan = plan_bulk_delete(&profiles, &ids);
+        report.skipped_origin = plan.skipped_origin;
+        report.missing = plan.missing;
+        if plan.delete.is_empty() {
+            return Ok(report);
+        }
+        let doomed: std::collections::HashSet<&str> =
+            plan.delete.iter().map(String::as_str).collect();
+        let removed: Vec<ConnectionProfile> = profiles
+            .iter()
+            .filter(|p| doomed.contains(p.id.as_str()))
+            .cloned()
+            .collect();
+        profiles.retain(|p| !doomed.contains(p.id.as_str()));
+        store::save_profiles(&profiles)?;
+        report.deleted = plan.delete;
+        removed
+    };
+
+    for p in &removed {
+        if !matches!(p.driver, Driver::Sqlite) {
+            if let Err(e) = keychain::delete_password(&p.keyring_account()) {
+                report.failed.push((p.id.clone(), e.to_string()));
+            }
+        }
+        if let Some(ssh_account) = p.ssh_keyring_account() {
+            if let Err(e) = keychain::delete_password(&ssh_account) {
+                report.failed.push((p.id.clone(), e.to_string()));
+            }
+        }
+    }
+
+    crate::tab_state::mutate(&state.tab_state, |ts| {
+        sweep_tab_state_for_profiles(ts, &report.deleted);
+        Ok(())
+    })?;
+    sweep_json_schema_bindings(&app, state.inner(), &report.deleted)?;
+    let _ = app.emit(PROFILES_CHANGED_EVENT, ());
+    Ok(report)
 }
 
 /// Try opening `profile` end-to-end and execute `SELECT 1` against it.
@@ -1615,6 +1803,127 @@ pub fn take_detached_tab_intent(
 mod tests {
     use super::*;
     use crate::state::MongoConn;
+    use crate::tab_state::{Environment, PersistedTabState};
+    use crate::testkit;
+
+    /// A profile a shared origin publishes.
+    fn shared(id: &str, origin: &str) -> ConnectionProfile {
+        ConnectionProfile {
+            origin_id: Some(origin.into()),
+            ..testkit::profile(id)
+        }
+    }
+
+    /// An environment holding `id` in all four places the sweep has to reach.
+    fn env_holding(env_id: &str, id: &str) -> Environment {
+        let mut env = Environment {
+            id: env_id.into(),
+            ..Environment::default()
+        };
+        env.connections
+            .insert(id.into(), crate::tab_state::ConnectionTabState::default());
+        env.launch.active_connections = vec![id.into(), "other".into()];
+        env.launch.selected_connection_id = Some(id.into());
+        env.launch
+            .database_visibility
+            .insert(id.into(), Some(vec!["one".into()]));
+        env
+    }
+
+    #[test]
+    fn plan_bulk_delete_refuses_origin_owned_profiles() {
+        let profiles = vec![testkit::profile("local"), shared("mirror", "o1")];
+        let plan = plan_bulk_delete(&profiles, &["local".to_string(), "mirror".to_string()]);
+        assert_eq!(plan.delete, vec!["local".to_string()]);
+        assert_eq!(plan.skipped_origin, vec!["mirror".to_string()]);
+        assert!(plan.missing.is_empty());
+    }
+
+    #[test]
+    fn plan_bulk_delete_reports_unknown_ids_as_missing() {
+        let profiles = vec![testkit::profile("local")];
+        let plan = plan_bulk_delete(&profiles, &["ghost".to_string()]);
+        assert!(plan.delete.is_empty());
+        assert_eq!(plan.missing, vec!["ghost".to_string()]);
+    }
+
+    /// The report is what the confirmation dialog reads back, so the order the
+    /// caller asked in is the order it has to keep.
+    #[test]
+    fn plan_bulk_delete_preserves_request_order() {
+        let profiles = vec![
+            testkit::profile("b"),
+            testkit::profile("a"),
+            testkit::profile("c"),
+        ];
+        let plan = plan_bulk_delete(
+            &profiles,
+            &["c".to_string(), "a".to_string(), "b".to_string()],
+        );
+        assert_eq!(
+            plan.delete,
+            vec!["c".to_string(), "a".to_string(), "b".to_string()]
+        );
+    }
+
+    #[test]
+    fn plan_bulk_delete_handles_an_empty_request() {
+        assert_eq!(plan_bulk_delete(&[], &[]), BulkDeletePlan::default());
+    }
+
+    /// The thing that stops a persisted tab pointing at a connection that no
+    /// longer exists — and it has to happen in *every* environment, not just the
+    /// active one, or the entry comes back when the user switches.
+    #[test]
+    fn sweep_tab_state_clears_every_environment() {
+        let mut ts = PersistedTabState {
+            environments: vec![env_holding("e1", "gone"), env_holding("e2", "gone")],
+            ..PersistedTabState::default()
+        };
+        sweep_tab_state_for_profiles(&mut ts, &["gone".to_string()]);
+        for env in &ts.environments {
+            assert!(!env.connections.contains_key("gone"), "{}", env.id);
+            assert_eq!(env.launch.active_connections, vec!["other".to_string()]);
+            assert!(env.launch.selected_connection_id.is_none());
+            assert!(env.launch.database_visibility.is_empty());
+        }
+    }
+
+    #[test]
+    fn sweep_tab_state_is_idempotent_and_ignores_unknown_ids() {
+        let mut ts = PersistedTabState {
+            environments: vec![env_holding("e1", "gone")],
+            ..PersistedTabState::default()
+        };
+        sweep_tab_state_for_profiles(&mut ts, &["gone".to_string()]);
+        let after_first = format!("{:?}", ts.environments[0].launch);
+        sweep_tab_state_for_profiles(&mut ts, &["gone".to_string(), "never-existed".to_string()]);
+        assert_eq!(after_first, format!("{:?}", ts.environments[0].launch));
+    }
+
+    /// Leaves another profile's state alone — the sweep is keyed, not a reset.
+    #[test]
+    fn sweep_tab_state_leaves_other_profiles_intact() {
+        let mut ts = PersistedTabState {
+            environments: vec![env_holding("e1", "keep")],
+            ..PersistedTabState::default()
+        };
+        sweep_tab_state_for_profiles(&mut ts, &["gone".to_string()]);
+        let env = &ts.environments[0];
+        assert!(env.connections.contains_key("keep"));
+        assert_eq!(env.launch.selected_connection_id.as_deref(), Some("keep"));
+        assert!(env.launch.database_visibility.contains_key("keep"));
+    }
+
+    /// Characterisation of the refactor: the batch of one has to decide exactly
+    /// what the single-id path used to decide on its own.
+    #[test]
+    fn deleting_one_profile_matches_the_batch_of_one() {
+        let profiles = vec![testkit::profile("local")];
+        let plan = plan_bulk_delete(&profiles, &["local".to_string()]);
+        assert_eq!(plan.delete, vec!["local".to_string()]);
+        assert!(plan.skipped_origin.is_empty() && plan.missing.is_empty());
+    }
 
     async fn mongo_client() -> mongodb::Client {
         // `ClientOptions::parse` + `Client::with_options` only parse/validate

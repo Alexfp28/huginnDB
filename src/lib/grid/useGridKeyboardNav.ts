@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent, type RefObject } from "react";
 import type { Table } from "@tanstack/react-table";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import { copyToClipboard } from "@/lib/grid/clipboard";
+import { normalizeBitValue } from "@/lib/grid/columnKinds";
 import { formatValue, rawCellText } from "@/lib/grid/formatValue";
 import { matchesBinding } from "@/lib/keybindings";
 import type { CellValue, ColumnInfo, ColumnMeta, GridPrefs } from "@/types";
@@ -64,7 +65,13 @@ export interface GridKeyboardNavOptions {
   /** User-rebindable combo for "expand selected cell". */
   expandCellCombo: string;
   editable: boolean | undefined;
-  onCellSave: unknown | undefined;
+  onCellSave:
+    | ((
+        rowValues: CellValue[],
+        columnName: string,
+        value: string | null,
+      ) => Promise<void>)
+    | undefined;
 }
 
 /**
@@ -138,8 +145,12 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
   /**
    * Ctrl+C copies the raw value (same as the context menu's "Copy"); Ctrl+V
    * seeds `inlineEdit` with the pasted text so it flows through the existing
-   * commit/cancel path unchanged. FK/BIT columns have no free-text control to
-   * paste into, so paste is a no-op there (issue #79).
+   * commit/cancel path unchanged. FK columns have no free-text control to
+   * paste into, so paste is a no-op there. BIT columns use a `<select>`
+   * (`BitInput`) instead of `inlineEdit`'s free-text `CellInput`, which has no
+   * way to "confirm" a pasted value — so BIT paste normalizes the text itself
+   * (same coercion `BitInput` applies) and commits directly via `onCellSave`,
+   * skipping the round trip if the normalized value is already what's there.
    */
   function handleCopyPasteChord(key: "c" | "v") {
     const cell = resolveTargetCell();
@@ -150,7 +161,8 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
     }
     if (!editable || !onCellSave) return;
     const info = columnInfoByName.get(cell.column.name);
-    if (info?.referenced_table || bitColNames.has(cell.column.name)) return;
+    if (info?.referenced_table) return;
+    const isBit = bitColNames.has(cell.column.name);
     navigator.clipboard
       .readText()
       .then((text) => {
@@ -158,6 +170,13 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
           cell.rowValues[grid.columnIndexByName.get(cell.column.name) ?? -1];
         const original =
           cur === null || cur === undefined ? null : formatValue(cur);
+        if (isBit) {
+          const normalized = normalizeBitValue(text);
+          const value = normalized === "" ? null : normalized;
+          if (value === original) return;
+          onCellSave(cell.rowValues, cell.column.name, value).catch(() => {});
+          return;
+        }
         editing.setInlineEdit({
           rowValues: cell.rowValues,
           column: cell.column,

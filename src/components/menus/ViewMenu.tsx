@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
 import { usePreferences } from "@/stores/preferences/preferences";
+import { ShortcutHint } from "@/components/menus/ShortcutHint";
 import type { SchemaTableMetric } from "@/types";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
@@ -68,6 +69,7 @@ export function ViewMenu() {
           }}
         >
           {t("panels.schema")}
+          <ShortcutHint action="togglePanelSchema" />
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={savedOpen}
@@ -77,6 +79,7 @@ export function ViewMenu() {
           }}
         >
           {t("panels.saved")}
+          <ShortcutHint action="togglePanelSaved" />
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={consoleOpen}
@@ -86,6 +89,7 @@ export function ViewMenu() {
           }}
         >
           {t("panels.console")}
+          <ShortcutHint action="togglePanelConsole" />
         </DropdownMenuCheckboxItem>
 
         <DropdownMenuSeparator />
@@ -114,6 +118,7 @@ export function ViewMenu() {
           }}
         >
           {t("menu.view.preferences")}
+          <ShortcutHint action="openSettings" />
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

@@ -44,7 +44,7 @@ import {
   usePreferences,
 } from "@/stores/preferences/preferences";
 import { useAppFlavor } from "@/stores/preferences/appFlavor";
-import { useThemeStore, selectActiveTheme } from "@/stores/preferences/theme";
+import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
 import { setLanguage } from "@/lib/i18n";
 import { api } from "@/lib/tauri";
 import type { AppTab } from "@/types";
@@ -110,7 +110,7 @@ function TabBody({ tab }: { tab: AppTab }) {
 export function DetachedTabWindow() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<AppTab | null | undefined>(undefined);
-  const activeTheme = useThemeStore(selectActiveTheme);
+  const themeMode = useThemeStore(selectActiveMode);
   const notificationPrefs = usePreferences(selectNotificationPrefs);
   const language = usePreferences((s) => s.prefs.ui.language);
 
@@ -157,7 +157,7 @@ export function DetachedTabWindow() {
           expand={notificationPrefs.expandOnHover}
           gap={10}
           offset={{ bottom: 32, top: 12, left: 16, right: 16 }}
-          theme={activeTheme.mode === "dark" ? "dark" : "light"}
+          theme={themeMode === "dark" ? "dark" : "light"}
         />
         <NotificationOverflowPill />
       </div>

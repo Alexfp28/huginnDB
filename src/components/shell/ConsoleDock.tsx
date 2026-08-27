@@ -36,7 +36,7 @@ export function ConsoleDock() {
         <div
           className={cn(
             "flex h-full flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-background",
-            "shadow-[0_1px_2px_hsl(var(--foreground)/0.04),0_6px_20px_hsl(var(--foreground)/0.05)]",
+            "shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_4%,transparent),0_6px_20px_color-mix(in_srgb,var(--foreground)_5%,transparent)]",
           )}
         >
           <div className="flex h-8 shrink-0 items-center justify-between border-b border-border px-2.5">

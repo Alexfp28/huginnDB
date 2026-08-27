@@ -60,13 +60,56 @@ Publicar uno es simplemente «Exportar perfiles…» con passphrase y dejar el
 resultado en la carpeta compartida. Consumirlo se hace en Ajustes → **Orígenes
 compartidos**: se le da la ruta, se escribe la passphrase una vez y las conexiones
 aparecen. La passphrase se queda en tu propio almacén de credenciales, una por
-origen, y nunca se escribe en disco. Los orígenes pertenecen al entorno, así que
-cada uno puede tirar de un fichero distinto.
+origen, y nunca se escribe en disco. El registro es **global**, no parte de un
+entorno concreto: un origen describe un fichero en un recurso compartido, no un
+eje Producción/Staging, y lo que produce — conexiones, entornos espejados
+enteros — también es global.
 
-Solo va en un sentido. HuginnDB lee esa ruta y nunca escribe en ella, y una
+Para todo el que lo consume solo va en un sentido. HuginnDB lee esa ruta, y una
 conexión que viene de un origen es de solo lectura: la siguiente sincronización
 desharía un cambio local de todas formas. Si necesitas una variante, duplícala; la
 copia es tuya, editable por completo y ya sin vínculo con el origen.
+
+### Curarlo (1.19.0)
+
+Si eres quien publica el fichero, marca el origen como uno que **publica este
+equipo** (Ajustes → Orígenes compartidos → editar el registro). Es un
+interruptor deliberado y reversible, y es lo único que permite a HuginnDB
+escribir en esa ruta: todos los orígenes empiezan sin él, así que actualizar la
+aplicación nunca lo concede. Tu sistema operativo sigue teniendo la última
+palabra: el editor prueba la ruta con una escritura real y se abre en modo
+lectura si el recurso la rechaza, en vez de dejarte componer una revisión y
+fallar en el último paso.
+
+A partir de ahí, «Editar el documento…» abre un editor a pantalla completa del
+propio fichero:
+
+* **Conexiones** — dos columnas: este equipo a la izquierda, el fichero a la
+  derecha. Nada de lo que hagas aquí toca tus propias conexiones; pasar una a la
+  derecha la copia al documento. Cada fila publicada dice cómo viaja su
+  contraseña: sin tocar (lo barato y lo normal), cifrada desde tu llavero, o sin
+  contraseña, en cuyo caso la pedirá el otro lado.
+* **Entornos** — el aspecto y la pertenencia que publica cada uno. Una conexión
+  que no esté en ningún entorno se publica igual: solo queda suelta.
+* **JSON Schemas** — el trozo de biblioteca y las reglas que viajan con él, para
+  que un solo fichero deje un equipo listo.
+* **Publicación** — quién cura el fichero, una nota de revisión, la frase de paso
+  y el informe de abajo.
+
+Antes de escribir nada te dice qué provoca publicar en todo el que sincroniza:
+qué se añade, qué cambia de verdad, qué desaparece — y, cuando toca, que un lote
+de bajas es lo bastante grande como para que **nadie reciba aviso** (ver la regla
+de «esta lectura no es de fiar» más abajo; un publicador que cruza esa línea deja
+en silencio a todo el equipo con conexiones que ya no existen). También pone
+precio a las contraseñas: una contraseña que no ha cambiado viaja byte a byte, así
+que renombrar un entorno no le cuesta nada al equipo, mientras que rotar la frase
+de paso lo recifra todo y obliga a todos a derivar una clave por contraseña en su
+siguiente sincronización.
+
+El fichero se escribe de forma atómica, dejando la revisión anterior al lado como
+`<nombre>.json.bak`, y el editor compara el contenido del fichero al publicar: si
+alguien ha publicado mientras lo tenías abierto, tu revisión se rechaza y se te
+enseña la suya en vez de pisarla.
 
 Los orígenes se sincronizan al arrancar HuginnDB, cada pocas horas y cuando pulses
 **Sincronizar ahora**. Un cambio de metadatos (un host o un puerto que se han
