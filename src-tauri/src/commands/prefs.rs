@@ -379,6 +379,37 @@ pub(crate) fn referenced_profile_ids(env: &Environment) -> std::collections::Has
     ids
 }
 
+/// Every environment in `environments` that references `profile_id`, by the
+/// same definition of "references" as [`referenced_profile_ids`] (tab state,
+/// last-open set, focus, visibility filters). Pure and separate from the
+/// command below so it's testable without a real `AppState`.
+fn environments_referencing(environments: &[Environment], profile_id: &str) -> Vec<String> {
+    environments
+        .iter()
+        .filter(|env| referenced_profile_ids(env).contains(profile_id))
+        .map(|env| env.id.clone())
+        .collect()
+}
+
+/// Every environment that references `profile_id` — see
+/// [`environments_referencing`].
+///
+/// Used by the CLI connect flow (`useCliIntents.ts`) to follow a connection
+/// into whichever environment it actually belongs to, rather than always
+/// landing in whatever happens to be active — `profiles.json` is global, so a
+/// profile's own environment isn't otherwise knowable from the frontend
+/// (`Environment.connections`, the strongest signal, is never sent over IPC
+/// except implicitly through this lookup). A profile referenced by more than
+/// one environment (or by none — e.g. a freshly saved profile never yet
+/// opened) is for the caller to resolve; this just reports the raw set.
+#[tauri::command]
+pub fn find_environments_for_connection(
+    state: State<'_, AppState>,
+    profile_id: String,
+) -> Vec<String> {
+    environments_referencing(&state.tab_state.read().environments, &profile_id)
+}
+
 /// Export one or more environments into a single bundle: each one's
 /// cosmetics and registered shared origins (name + path only — never the
 /// passphrase, which stays in this machine's keychain; see
@@ -797,5 +828,47 @@ mod tests {
     #[test]
     fn referenced_profile_ids_is_empty_for_a_fresh_environment() {
         assert!(referenced_profile_ids(&Environment::default()).is_empty());
+    }
+
+    #[test]
+    fn environments_referencing_finds_only_the_environments_that_hold_the_id() {
+        let mut a = Environment::default();
+        a.id = "env-a".into();
+        a.launch.active_connections = vec!["conn-1".into()];
+
+        let mut b = Environment::default();
+        b.id = "env-b".into();
+        b.launch.selected_connection_id = Some("conn-2".into());
+
+        let mut c = Environment::default();
+        c.id = "env-c".into();
+        // Doesn't reference either connection.
+
+        let environments = vec![a, b, c];
+        assert_eq!(
+            environments_referencing(&environments, "conn-1"),
+            vec!["env-a".to_string()]
+        );
+        assert_eq!(
+            environments_referencing(&environments, "conn-2"),
+            vec!["env-b".to_string()]
+        );
+        assert!(environments_referencing(&environments, "conn-missing").is_empty());
+    }
+
+    #[test]
+    fn environments_referencing_can_return_more_than_one_environment() {
+        let mut a = Environment::default();
+        a.id = "env-a".into();
+        a.launch.active_connections = vec!["shared".into()];
+
+        let mut b = Environment::default();
+        b.id = "env-b".into();
+        b.launch.visible_connections = Some(vec!["shared".into()]);
+
+        let environments = vec![a, b];
+        let mut found = environments_referencing(&environments, "shared");
+        found.sort();
+        assert_eq!(found, vec!["env-a".to_string(), "env-b".to_string()]);
     }
 }

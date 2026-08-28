@@ -33,6 +33,22 @@
  * - **A CLI `--password` never reaches the keychain.** It is passed straight to
  *   `connect`, and the ad-hoc profile it creates is `ephemeral`, so it is never
  *   written to `profiles.json`.
+ * - **A CLI connect follows its connection into the right environment,
+ *   instead of always landing wherever happens to be active.** `profiles.json`
+ *   is global, so `--connect-profile`/`--connect-profile-id` can name a
+ *   connection that belongs to any environment; `connectToProfile` asks the
+ *   backend which environment(s) reference it (`findEnvironmentsForConnection`)
+ *   and switches there first when the active one isn't among them. Same helper
+ *   backs an ad-hoc launch that turns out to match an already-saved profile
+ *   (see below), so both paths get the same environment-following behaviour.
+ * - **An ad-hoc launch (`--host`/`--uri`) reuses an existing saved profile with
+ *   the same driver/host/port/database/username (or, for a `--uri` launch,
+ *   the same connection string) instead of always minting a new ephemeral
+ *   one.** Otherwise every CLI launch against a server the user already has
+ *   saved piles up a fresh throwaway profile alongside it. Only non-ephemeral
+ *   profiles are candidates — matching against another launch's throwaway
+ *   would only ever match within the same still-running session, and never
+ *   after a restart.
  *
  * Failures surface as Console entries rather than toasts: a CLI launch is often
  * unattended, and the Console is where the user goes to find out what happened.
@@ -48,6 +64,7 @@ import { api } from "@/lib/tauri";
 import { isMainWindow, MAIN_WINDOW_LABEL } from "@/lib/window";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { useConnections } from "@/stores/session/connections";
+import { useEnvironments } from "@/stores/session/environments";
 import { useLogs } from "@/stores/query/logs";
 import { useSchema } from "@/stores/session/schema";
 import { useUi } from "@/stores/session/ui";
@@ -108,10 +125,83 @@ export function useCliIntents() {
     });
   }, []);
 
+  /** Connect an already-resolved profile — a saved one named via
+   *  `--connect-profile[-id]`, or one an ad-hoc launch matched by parameters
+   *  (see `findMatchingProfile`). Follows the connection into whichever
+   *  environment(s) actually reference it when the active one doesn't,
+   *  before connecting, so a CLI launch never silently lands in the wrong
+   *  environment (see the header comment). */
+  const connectToProfile = useCallback(
+    async (target: ConnectionProfile, password?: string) => {
+      try {
+        const envIds = await api.findEnvironmentsForConnection(target.id);
+        const { activeId, environments, switchTo } = useEnvironments.getState();
+        if (envIds.length > 0 && !envIds.includes(activeId ?? "")) {
+          const destination = environments
+            .filter((e) => envIds.includes(e.id))
+            .sort((a, b) => a.order - b.order)[0];
+          if (destination) await switchTo(destination.id);
+        }
+        // `switchTo`'s reconnect may have already brought this connection up
+        // (it can be live in the destination environment's own launch state);
+        // only connect it ourselves if it isn't already.
+        if (!useConnections.getState().active.has(target.id)) {
+          await connectProfile(target.id, password);
+        }
+        await refreshSchema(target.id);
+        setSelected(target.id);
+      } catch (e) {
+        const err = String(e);
+        const hint = driverMismatchHint(err);
+        cliLog(
+          `failed to connect profile "${target.name}"${hint ? ` — ${hint}` : ""}`,
+          err,
+        );
+      }
+    },
+    [cliLog, connectProfile, refreshSchema, setSelected],
+  );
+
+  /** Match an ad-hoc launch's parameters against an already-saved,
+   *  non-ephemeral profile, so a repeat CLI launch against a known server
+   *  reuses it instead of minting a fresh throwaway profile every time. A
+   *  `--uri`/`--connection-string` launch matches on the connection string
+   *  (the primary MongoDB identity); a discrete-fields launch matches on
+   *  driver/host/port/database/username. */
+  const findMatchingProfile = useCallback(
+    (p: PendingAdhoc, driver: Driver): ConnectionProfile | undefined => {
+      const candidates = useConnections
+        .getState()
+        .profiles.filter((c) => !c.ephemeral && c.driver === driver);
+      if (p.connectionString) {
+        const wanted = p.connectionString.trim();
+        return candidates.find(
+          (c) => (c.connection_string ?? "").trim() === wanted,
+        );
+      }
+      const port = p.port ?? DEFAULT_PORTS[driver];
+      return candidates.find(
+        (c) =>
+          c.host === p.host &&
+          c.port === port &&
+          c.database === p.database &&
+          c.username === p.username,
+      );
+    },
+    [],
+  );
+
   /** Create the ad-hoc profile with a now-known driver, then connect when a
    *  password was supplied. Shared by the CLI path and the driver picker. */
   const createAndConnectAdhoc = useCallback(
     async (p: PendingAdhoc, driver: Driver) => {
+      await refreshConnections();
+      const existing = findMatchingProfile(p, driver);
+      if (existing) {
+        await connectToProfile(existing, p.password);
+        return;
+      }
+
       const profile: ConnectionProfile = {
         id: "",
         name: p.name,
@@ -149,15 +239,25 @@ export function useCliIntents() {
         );
       }
     },
-    [cliLog, connectProfile, refreshConnections, refreshSchema, setSelected],
+    [
+      cliLog,
+      connectProfile,
+      connectToProfile,
+      findMatchingProfile,
+      refreshConnections,
+      refreshSchema,
+      setSelected,
+    ],
   );
 
   // Apply one parsed connection intent: connect a saved profile, or stage an
   // ad-hoc connection (prompting for a driver when one can't be resolved).
   // Shared by the cold-start path and the second-launch routing dialog, which
-  // both feed the exact same `StartupArgs`. Whatever workspace is active when
-  // this runs is where the connection lands (tab state is workspace-scoped),
-  // so the dialog switches workspaces BEFORE calling this. Failures surface in
+  // both feed the exact same `StartupArgs`. Resolving *which* profile to
+  // connect (a saved one, or an ad-hoc match) is this function's job; once
+  // resolved, `connectToProfile` decides the destination environment on its
+  // own (following the connection where it belongs — see the header comment),
+  // so this function itself never needs to switch one. Failures surface in
   // the Console panel instead of being swallowed.
   const applyConnectionIntent = useCallback(
     async (args: StartupArgs) => {
@@ -183,20 +283,7 @@ export function useCliIntents() {
           );
           return;
         }
-        try {
-          await connectProfile(target.id, cliPassword);
-          await refreshSchema(target.id);
-          setSelected(target.id);
-        } catch (e) {
-          const err = String(e);
-          const hint = driverMismatchHint(err);
-          cliLog(
-            `failed to connect profile "${target.name}"${
-              hint ? ` — ${hint}` : ""
-            }`,
-            err,
-          );
-        }
+        await connectToProfile(target, cliPassword);
         return;
       }
 
@@ -240,14 +327,7 @@ export function useCliIntents() {
         }
       }
     },
-    [
-      cliLog,
-      connectProfile,
-      createAndConnectAdhoc,
-      refreshConnections,
-      refreshSchema,
-      setSelected,
-    ],
+    [cliLog, connectToProfile, createAndConnectAdhoc, refreshConnections],
   );
 
   /** Open `args` in a brand new, blank window (the new window's boot effect

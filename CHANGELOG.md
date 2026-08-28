@@ -1583,6 +1583,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   command palette's scoring matcher, and the SQL Server `HOST\INSTANCE` split —
   whose authoritative Rust twin had tests all along.
 
+- **The CLI connect flow now follows environments instead of ignoring them.**
+  It predates environments entirely, so `--connect-profile[-id]` always
+  connected in whatever environment happened to be active, even when the named
+  profile actually belonged to a different one — silently landing the
+  connection somewhere the user wasn't looking. `useCliIntents`'s new
+  `connectToProfile` helper asks the backend which environment(s) reference the
+  target connection (a new `find_environments_for_connection` command, built on
+  the same `referenced_profile_ids` the environment exporter already used) and
+  switches there first when the active environment isn't among them.
+  Separately, an ad-hoc launch (`--host …` / `--uri …`) used to always mint a
+  brand-new `ephemeral` profile, even when an identical one was already saved —
+  it now reuses an existing non-ephemeral profile with the same
+  driver/host/port/database/username (or the same connection string, for a
+  `--uri` launch) through the same environment-following path, and only falls
+  back to creating a throwaway profile when nothing matches.
+
 ## [1.17.0] — 2026-08-20
 
 ### Added

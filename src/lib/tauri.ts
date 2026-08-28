@@ -679,6 +679,14 @@ export const api = {
   reorderEnvironments: (ids: string[]) =>
     invoke<void>("reorder_environments", { ids }),
 
+  /** Every environment that references this connection (tab state, last-open
+   *  set, focus, visibility filters) — `profiles.json` is global, so this is
+   *  the only way to learn which environment a profile actually belongs to.
+   *  Used by the CLI connect flow to follow a connection there instead of
+   *  always landing in whatever's active. */
+  findEnvironmentsForConnection: (profileId: string) =>
+    invoke<string[]>("find_environments_for_connection", { profileId }),
+
   // JSON Schemas ------------------------------------------------------------
   //
   // The cascade that decides which schema applies to a column lives only in

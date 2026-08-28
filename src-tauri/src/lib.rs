@@ -355,6 +355,7 @@ pub fn run() {
             commands::prefs::adopt_environment,
             commands::prefs::set_active_environment,
             commands::prefs::reorder_environments,
+            commands::prefs::find_environments_for_connection,
             commands::prefs::export_environments,
             commands::prefs::analyze_environment_import,
             commands::prefs::import_environment,
