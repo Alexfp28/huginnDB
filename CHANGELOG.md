@@ -139,6 +139,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `overflow-hidden`), and the outer wrapper gets `will-change` only while a
   drag is live, not permanently.
 
+- **Monaco's `options`/`onChange` are now stable references across renders,
+  on all seven surfaces that mount one.** `@monaco-editor/react`'s
+  `<Editor>` runs `editor.updateOptions(options)` in an effect keyed on
+  `[options]`, and its content-change wiring is a second effect keyed on
+  `[isEditorReady, onChange]` that does `dispose()` +
+  `onDidChangeModelContent(...)` on every change — but every one of the
+  seven call sites (the query editor, the Console detail pane, the cell
+  editor, the DDL preview, the pipeline/aggregation editor, the view
+  editor, the JSON Schema body editor) built `options` as a fresh object
+  literal and `onChange` as a fresh inline arrow directly in JSX, so Monaco
+  reconfigured itself — and tore down and re-registered its content
+  listener — on every render of the surrounding component, regardless of
+  whether any actual preference had changed. New
+  `src/lib/monaco/useEditorOptions.ts` is a thin, named `useMemo` wrapper
+  (the point isn't a new mechanism, it's that the memo lives in one place
+  other call sites can copy correctly instead of being hand-rolled seven
+  times with seven chances to get the dependency array wrong) paired with
+  `useCallback` on each `onChange`. Depends on the full `EditorPrefs`
+  object as returned by `usePreferences(selectEditorPrefs)`, which is
+  referentially stable by that selector's own contract, plus any
+  call-site-specific extra as a primitive (never an inline object, which
+  would be a fresh reference every render and defeat the memo the same way
+  the original bug did). `@monaco-editor/react`'s `Editor` component is
+  itself already `memo()`-wrapped by the package, so with both props
+  stable it now skips re-rendering entirely on an unrelated parent render.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

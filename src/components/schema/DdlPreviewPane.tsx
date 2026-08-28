@@ -18,6 +18,7 @@ import { RefreshCw } from "lucide-react";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import type { EditorPrefs } from "@/types";
 import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
+import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
 
 interface Props {
   /** Section label, e.g. "DDL preview". */
@@ -35,6 +36,8 @@ interface Props {
 }
 
 export function DdlPreviewPane({ title, ddl, error, warning, prefs }: Props) {
+  const editorOptions = useEditorOptions(() => readOnlyEditorOptions(prefs), [prefs]);
+
   return (
     <div className="flex h-48 flex-col border-t border-border">
       <div className="flex items-center gap-2 px-3 py-1 text-[11px] text-muted-foreground">
@@ -54,7 +57,7 @@ export function DdlPreviewPane({ title, ddl, error, warning, prefs }: Props) {
           value={ddl}
           language="sql"
           theme={resolveMonacoTheme(prefs.theme)}
-          options={readOnlyEditorOptions(prefs)}
+          options={editorOptions}
         />
       )}
     </div>

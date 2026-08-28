@@ -155,6 +155,35 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   exterior recibe `will-change` solo mientras el arrastre está en curso, no
   de forma permanente.
 
+- **Las `options`/`onChange` de Monaco son ahora referencias estables entre
+  renders, en las siete superficies que montan uno.** El `<Editor>` de
+  `@monaco-editor/react` ejecuta `editor.updateOptions(options)` en un
+  efecto con deps `[options]`, y su cableado de cambio de contenido es un
+  segundo efecto con deps `[isEditorReady, onChange]` que hace `dispose()`
+  + `onDidChangeModelContent(...)` en cada cambio — pero cada uno de los
+  siete call sites (el editor SQL, el panel de detalle de la Consola, el
+  editor de celda, la previsualización de DDL, el editor de pipeline de
+  agregación, el editor de vistas, el editor del cuerpo de JSON Schema)
+  construía `options` como un objeto literal nuevo y `onChange` como una
+  arrow inline nueva directamente en el JSX, así que Monaco se
+  reconfiguraba a sí mismo — y tiraba y volvía a registrar su listener de
+  contenido — en cada render del componente que lo rodea, sin importar si
+  había cambiado alguna preferencia real. El nuevo
+  `src/lib/monaco/useEditorOptions.ts` es un wrapper fino y con nombre
+  sobre `useMemo` (el punto no es un mecanismo nuevo, es que el memo viva
+  en un solo sitio que los demás call sites puedan copiar correctamente en
+  vez de reescribirse a mano siete veces con siete ocasiones de equivocar
+  el array de dependencias), emparejado con `useCallback` en cada
+  `onChange`. Depende del objeto `EditorPrefs` completo tal como lo
+  devuelve `usePreferences(selectEditorPrefs)`, referencialmente estable
+  por el propio contrato de ese selector, más cualquier extra específico
+  del call site como primitivo (nunca un objeto inline, que sería una
+  referencia nueva en cada render y rompería el memo por la misma razón
+  que el bug original). El componente `Editor` de `@monaco-editor/react`
+  ya viene envuelto en `memo()` por el propio paquete, así que con ambas
+  props estables ahora se salta el re-render por completo ante un render
+  no relacionado del padre.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido

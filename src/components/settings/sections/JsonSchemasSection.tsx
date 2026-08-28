@@ -27,7 +27,7 @@
  * committed deliberately.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Editor from "@monaco-editor/react";
 import {
@@ -62,6 +62,7 @@ import { cn } from "@/lib/utils";
 import type { JsonSchemaBinding, JsonSchemaMatch } from "@/types";
 import { pickJsonFile } from "@/lib/dialogs";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
+import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
 
 export function JsonSchemasSection() {
   const { t } = useTranslation();
@@ -252,6 +253,21 @@ export function JsonSchemasSection() {
         : t("jsonSchemas.toast.deleted", { name: selected.name }),
     );
   }
+
+  const handleBodyChange = useCallback((v: string | undefined) => {
+    setBody(v ?? "");
+    setBodyDirty(true);
+  }, []);
+  const bodyEditorOptions = useEditorOptions(
+    () => ({
+      ...editorOptionsFromPrefs(editorPrefs),
+      // A schema body is a document the user navigates, so folding is on;
+      // the pane is too narrow for a minimap.
+      minimap: { enabled: false },
+      folding: true,
+    }),
+    [editorPrefs],
+  );
 
   return (
     <div className="space-y-4">
@@ -459,17 +475,8 @@ export function JsonSchemasSection() {
                       language="json"
                       theme={resolveMonacoTheme(editorPrefs.theme)}
                       value={body}
-                      onChange={(v) => {
-                        setBody(v ?? "");
-                        setBodyDirty(true);
-                      }}
-                      options={{
-                        ...editorOptionsFromPrefs(editorPrefs),
-                        // A schema body is a document the user navigates, so
-                        // folding is on; the pane is too narrow for a minimap.
-                        minimap: { enabled: false },
-                        folding: true,
-                      }}
+                      onChange={handleBodyChange}
+                      options={bodyEditorOptions}
                     />
                   </div>
 

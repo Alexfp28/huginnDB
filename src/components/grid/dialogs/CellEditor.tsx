@@ -9,7 +9,14 @@
  * provided, the user's content is passed back to it as a string on save.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Braces,
   Code2,
@@ -49,6 +56,7 @@ import { formatForDisplay } from "@/lib/keybindings";
 import { useFullscreenToggle } from "@/lib/useFullscreenToggle";
 import { Kbd } from "@/components/ui/kbd";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
+import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
 
 interface Props {
   open: boolean;
@@ -145,6 +153,20 @@ export function CellEditorBody({
   const onSubmitRef = useRef(onSubmit);
   onSubmitRef.current = onSubmit;
 
+  const handleEditorChange = useCallback(
+    (v: string | undefined) => onChange(v ?? ""),
+    [onChange],
+  );
+  const editorOptions = useEditorOptions(
+    () => ({
+      ...editorOptionsFromPrefs(editorPrefs),
+      readOnly: !!readonly,
+      formatOnPaste: editorPrefs.formatOnPaste,
+      folding: true,
+    }),
+    [editorPrefs, readonly],
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -188,18 +210,13 @@ export function CellEditorBody({
           value={value}
           language={language}
           theme={resolveMonacoTheme(editorPrefs.theme)}
-          onChange={(v) => onChange(v ?? "")}
+          onChange={handleEditorChange}
           onMount={(editor, monacoNs) => {
             const save = () => onSubmitRef.current?.();
             editor.addCommand(monacoNs.KeyMod.CtrlCmd | monacoNs.KeyCode.KeyS, save);
             editor.addCommand(monacoNs.KeyMod.CtrlCmd | monacoNs.KeyCode.Enter, save);
           }}
-          options={{
-            ...editorOptionsFromPrefs(editorPrefs),
-            readOnly: !!readonly,
-            formatOnPaste: editorPrefs.formatOnPaste,
-            folding: true,
-          }}
+          options={editorOptions}
         />
       </div>
     </div>

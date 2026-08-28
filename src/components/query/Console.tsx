@@ -39,6 +39,7 @@ import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferen
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import type { LogEntry } from "@/types";
 import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
+import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
 
 /** `HH:MM:SS.mmm` — fixed-width clock used by every console row so the
  *  column stays vertically aligned. */
@@ -135,6 +136,17 @@ export function Console() {
 
   const selectedDetailValue =
     selected?.sql ?? selected?.message ?? selected?.error ?? "";
+
+  const detailEditorOptions = useEditorOptions(
+    () => ({
+      ...readOnlyEditorOptions(editorPrefs),
+      // A log entry is a single value, not a document: nothing to fold, and
+      // a highlighted "current line" implies a caret.
+      renderLineHighlight: "none" as const,
+      folding: false,
+    }),
+    [editorPrefs],
+  );
 
   // Esc closes the detail pane and returns to the full list — so inspecting a
   // record no longer requires clearing the console to get back (1.1.1 fix).
@@ -319,13 +331,7 @@ export function Console() {
               language={selected.kind === "sql" ? "sql" : "plaintext"}
               theme={resolveMonacoTheme(editorPrefs.theme)}
               value={selectedDetailValue}
-              options={{
-                ...readOnlyEditorOptions(editorPrefs),
-                // A log entry is a single value, not a document: nothing to
-                // fold, and a highlighted "current line" implies a caret.
-                renderLineHighlight: "none",
-                folding: false,
-              }}
+              options={detailEditorOptions}
             />
           </div>
         </div>

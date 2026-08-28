@@ -66,6 +66,7 @@ import { buildCompletions } from "@/lib/sql/sqlCompletions";
 import { cn, formatDuration, formatTime } from "@/lib/utils";
 import { supportsMultipleDatabases } from "@/lib/db/driver";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
+import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
 import {
   ensureSqlProviders,
   registerSqlEditor,
@@ -477,6 +478,18 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     }
   }
 
+  const handleEditorChange = useCallback(
+    (v: string | undefined) => updateQuery(tabId, v ?? ""),
+    [tabId, updateQuery],
+  );
+  const editorOptions = useEditorOptions(
+    () => ({
+      ...editorOptionsFromPrefs(editorPrefs),
+      formatOnPaste: editorPrefs.formatOnPaste,
+    }),
+    [editorPrefs],
+  );
+
   return (
     <PanelGroup
       direction="vertical"
@@ -585,12 +598,9 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 // `prefs.json` carries an unknown id.
                 theme={resolveMonacoTheme(editorPrefs.theme)}
                 value={sql}
-                onChange={(v) => updateQuery(tabId, v ?? "")}
+                onChange={handleEditorChange}
                 onMount={handleMount}
-                options={{
-                  ...editorOptionsFromPrefs(editorPrefs),
-                  formatOnPaste: editorPrefs.formatOnPaste,
-                }}
+                options={editorOptions}
               />
             </div>
             {showHistory && (
