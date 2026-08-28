@@ -224,6 +224,37 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   sigue seleccionando el contenido de la caja; Backspace en una caja vacía
   sigue pelando un nivel de scope.
 
+- **Una fila de conexión es ahora un componente real, y un arreglo real
+  para un bug de remonte del header de grupo.** `renderConnection(p)` de
+  `ConnectionsTree` era una función plana LLAMADA por fila (devolviendo
+  JSX directamente), nunca renderizada como `<renderConnection />` — así
+  que nunca fue una frontera de componente en absoluto, y el JSX de cada
+  fila se reconciliaba como parte del propio paso de render de
+  `ConnectionsTree`, sin nada de lo que React pudiera hacer bailout. Ahora
+  es `ConnectionTreeRow`, envuelta en `memo()`, en su propio archivo. Sus
+  cuatro callbacks (clic de fila, desconectar, reconectar, acotar el
+  scope) se pasan a través de una ref en vez de como props planas o
+  `useCallback`s — varios de ellos cierran sobre otros closures por
+  render de `ConnectionsTree` (`filterFolds`, `setCollapsed`,
+  `matchCounts`, …) que no están memoizados por sí mismos, así que un
+  `useCallback` aquí quedaría obsoleto (un array de dependencias
+  incompleto) o no ganaría ninguna estabilidad (uno exhaustivo, ya que la
+  mayoría de esas dependencias cambian a menudo); una ref esquiva la
+  pregunta de la misma forma que ya lo hacen el `rowCallbacksRef` de
+  `DataGrid` y el propio arreglo de `DocumentListView` de esta pasada.
+
+  Por separado, y este sí es un bug real y no una optimización perdida:
+  `GroupHeader` (el header colapsable de una carpeta) era una `function
+  GroupHeader(...)` DECLARADA DENTRO del propio cuerpo de render de
+  `ConnectionsTree` y usada como JSX. Una función declarada dentro de un
+  componente recibe una identidad nueva en cada render, y React lee un
+  *tipo* de elemento cambiado como "esto es un componente distinto" — así
+  que cada render de `ConnectionsTree` desmontaba y volvía a montar cada
+  header de grupo. Movida a su propio archivo a nivel de módulo, envuelta
+  en `memo()`, que es lo que hace que un componente sea seguro de
+  memoizar en primer lugar (una identidad que no cambia es el
+  prerrequisito que `memo()` necesita, no una optimización encima de él).
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido

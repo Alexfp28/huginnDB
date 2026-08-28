@@ -202,6 +202,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   pool; a focus request still selects the box's contents; Backspace on an
   empty box still peels one scope level.
 
+- **A connection row is now a real component, and a real fix for a group
+  header remount bug.** `ConnectionsTree`'s `renderConnection(p)` was a
+  plain function CALLED per row (returning JSX directly), never rendered as
+  `<renderConnection />` — so it was never a component boundary at all,
+  and every row's JSX was reconciled as part of `ConnectionsTree`'s own
+  render pass with nothing for React to bail out of. It's now
+  `ConnectionTreeRow`, `memo()`-wrapped, in its own file. Its four
+  callbacks (row click, disconnect, reconnect, narrow-to-scope) are handed
+  down through a ref rather than as plain props or `useCallback`s — several
+  of them close over other per-render closures in `ConnectionsTree`
+  (`filterFolds`, `setCollapsed`, `matchCounts`, …) that aren't themselves
+  memoized, so a `useCallback` here would either go stale (an incomplete
+  dependency array) or buy no stability at all (an exhaustive one, since
+  most of those deps change often); a ref sidesteps the question the same
+  way `DataGrid`'s `rowCallbacksRef` and this pass's own
+  `DocumentListView` fix already do.
+
+  Separately, and this one is a real bug rather than a missed
+  optimization: `GroupHeader` (a folder's collapsible header) was a
+  `function GroupHeader(...)` DECLARED INSIDE `ConnectionsTree`'s own
+  render body and used as JSX. A function declared inside a component gets
+  a brand-new identity every render, and React reads a changed element
+  *type* as "this is a different component" — so every render of
+  `ConnectionsTree` unmounted and remounted every group header. Moved to
+  its own module-scope, `memo()`-wrapped file, which is what makes a
+  component safe to memoize in the first place (an identity that doesn't
+  change is the precondition memo() needs, not an optimization on top of
+  it).
+
 ## [1.19.0] — 2026-08-27
 
 ### Added
