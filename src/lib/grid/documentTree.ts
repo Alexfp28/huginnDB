@@ -232,11 +232,19 @@ export function flattenDocument(
   ) => {
     const type = resolveType(value, tree);
     const container = containerOf(value, type);
-    const entries: [string, CellValue][] = !container
-      ? []
-      : Array.isArray(value)
-        ? value.map((v, i) => [String(i), v as CellValue])
-        : Object.entries(value as Record<string, CellValue>);
+    // `childCount` only needs the child *count* — a collapsed 10,000-element
+    // array used to pay for materialising 10,000 `[String(i), v]` tuples (via
+    // `.map`) or `Object.entries` pairs just to read `.length` off the
+    // result, on every render of the memo this feeds (DocumentCard, gotcha
+    // #55's Array.isArray branch below is the same distinction). Reading the
+    // count directly, and only walking children `if (container && open)`,
+    // makes a collapsed container O(1) instead of O(children).
+    const childCount =
+      container === null
+        ? 0
+        : Array.isArray(value)
+          ? value.length
+          : Object.keys(value as Record<string, CellValue>).length;
     const open = container !== null && isExpanded(pathKey(path));
     out.push({
       path,
@@ -245,20 +253,26 @@ export function flattenDocument(
       type,
       depth,
       container,
-      childCount: entries.length,
+      childCount,
       expanded: open,
       inArray,
       editable: !isOpaqueType(type),
     });
     if (container && open) {
-      for (const [k, v] of entries) {
-        walk(
-          [...path, k],
-          v,
-          childTree(tree, k),
-          depth + 1,
-          container === "array",
-        );
+      if (Array.isArray(value)) {
+        // Array keys are the `$set`/`$unset` path segment (gotcha #29), so
+        // they stay `String(i)` — an indexed loop just skips building the
+        // `[key, value]` tuple array `.map` would allocate.
+        for (let i = 0; i < value.length; i++) {
+          walk([...path, String(i)], value[i] as CellValue, childTree(tree, String(i)), depth + 1, true);
+        }
+      } else {
+        const obj = value as Record<string, CellValue>;
+        // `Object.keys` enumerates the same own, enumerable, insertion-order
+        // keys `Object.entries` did — only the pair-array allocation is gone.
+        for (const k of Object.keys(obj)) {
+          walk([...path, k], obj[k], childTree(tree, k), depth + 1, false);
+        }
       }
     }
   };
@@ -298,6 +312,28 @@ export function displayValue(field: DocField, nullDisplay: string): string {
     return `"${value}"`;
   }
   return String(value);
+}
+
+/**
+ * The type label shown in a field row's right gutter. A SQL top-level field
+ * shows its real catalog type (`varchar(255)`, `jsonb`) rather than the JSON
+ * shape it arrived as; a nested value inside a JSON column, and every
+ * MongoDB field, shows the BSON-style label instead.
+ *
+ * Resolved by column *name*, via a caller-supplied lookup map, rather than
+ * by the flattened display index — the index stops matching the column list
+ * the instant anything is expanded. The map is the caller's job to memoize
+ * (once per column list, not per field): a `columns.find()` per field here
+ * would be O(fields × columns) on every render — ~160,000 string
+ * comparisons on a page of 100 rows × 40 columns.
+ */
+export function typeTextFor(
+  field: DocField,
+  documentMode: boolean,
+  columnTypeByName: ReadonlyMap<string, string>,
+): string {
+  if (documentMode || field.depth > 0) return typeLabel(field.type);
+  return columnTypeByName.get(field.path[0]) ?? typeLabel(field.type);
 }
 
 /**

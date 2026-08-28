@@ -13,7 +13,7 @@
  * the memo says the same thing; both are load-bearing.
  */
 
-import { useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -44,6 +44,7 @@ import {
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { supportsDdlEditing } from "@/lib/db/driver";
 import { matchesPatterns } from "@/lib/schema/matchesFilter";
+import { useOpenTableKeys } from "@/lib/schema/useOpenTableKeys";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -53,7 +54,7 @@ import { useTabs } from "@/stores/session/tabs";
 import type { TableActions } from "@/components/schema/SchemaTableSection";
 import type { TableInfo } from "@/types";
 
-export function SingleDbExplorer({
+export const SingleDbExplorer = memo(function SingleDbExplorer({
   connectionId,
   headerLevel = "root",
   patterns,
@@ -92,6 +93,9 @@ export function SingleDbExplorer({
   // Needed by the context menu to compose a driver-correct "Copy SELECT"
   // snippet.
   const driver = useConnectionDriver(connectionId);
+  // One O(tabs) pass for every row's "you are here" state, instead of two
+  // per row (see the hook's own doc comment).
+  const { activeTableKey, openTableKeys } = useOpenTableKeys();
 
   // Which schema header (if any) currently has its right-click menu open —
   // there's one `ContextMenu` per schema rendered by the `schemas.map(...)`
@@ -147,6 +151,65 @@ export function SingleDbExplorer({
     return { bySchema: grouped, schemas: Object.keys(grouped).sort() };
   }, [cs?.tables, patterns]);
 
+  // Stable regardless of whether `onTableOpen` is given: it's read at CALL
+  // time, not baked into a branch chosen once — so this needs only its own
+  // (possibly still-unstable, if the caller doesn't memoize it) identity to
+  // settle, rather than recreating itself every render via a ternary.
+  const wrappedOpenTab = useCallback<typeof openTab>(
+    (config) => {
+      onTableOpen?.();
+      return openTab(config);
+    },
+    [onTableOpen, openTab],
+  );
+
+  /**
+   * `TableSection`/`TableRow` are `memo()`-wrapped (gotcha #28), which is
+   * worthless if their `actions` bundle is a fresh object every render —
+   * exactly what this was before the fix, rebuilt unconditionally on every
+   * `SingleDbExplorer` render regardless of whether any handler's
+   * dependencies had actually changed.
+   *
+   * Placed here, ABOVE the `if (!cs)` early return below — same load-bearing
+   * reason as the `bySchema`/`schemas` memo above: a `useMemo` placed after
+   * a conditional return would be skipped whenever `cs` is momentarily
+   * `undefined` (the 1.0.1 multi-DB blank-panel bug this file's header
+   * comment documents), and this hook is no exception to that rule just
+   * because it was added later.
+   */
+  const tableActions: TableActions = useMemo(
+    () => ({
+      openTab: wrappedOpenTab,
+      refresh: () => refresh(connectionId),
+      onRename: (tbl) => setRenameTarget(tbl),
+      onDrop: (tbl) => setDropTarget(tbl),
+      onEmpty: (tbl) => {
+        // "Don't ask again" (#69): when the user has silenced the prompt,
+        // empty straight away; otherwise route through the confirmation
+        // dialog. This is a dedicated preference, not the global
+        // `confirmDestructive`, so opting out here never weakens other
+        // destructive confirmations.
+        if (usePreferences.getState().prefs.ui.confirmEmptyTable) {
+          setEmptyTarget(tbl);
+          return;
+        }
+        void (async () => {
+          try {
+            await api.emptyTable(connectionId, tbl.schema, tbl.name);
+            notify.success(t("schema.empty.emptied", { name: tbl.name }));
+            refresh(connectionId);
+          } catch (e) {
+            notify.error(String(e));
+          }
+        })();
+      },
+      onRenameView: (tbl) => setRenameViewTarget(tbl),
+      onDropView: (tbl) => setDropViewTarget(tbl),
+      driver,
+    }),
+    [wrappedOpenTab, refresh, connectionId, t, driver],
+  );
+
   if (!cs) {
     return (
       <div className="px-3 py-3 text-xs text-muted-foreground">
@@ -154,39 +217,6 @@ export function SingleDbExplorer({
       </div>
     );
   }
-
-  const wrappedOpenTab: typeof openTab = onTableOpen
-    ? (config) => { onTableOpen(); return openTab(config); }
-    : openTab;
-
-  const tableActions: TableActions = {
-    openTab: wrappedOpenTab,
-    refresh: () => refresh(connectionId),
-    onRename: (tbl) => setRenameTarget(tbl),
-    onDrop: (tbl) => setDropTarget(tbl),
-    onEmpty: (tbl) => {
-      // "Don't ask again" (#69): when the user has silenced the prompt, empty
-      // straight away; otherwise route through the confirmation dialog. This
-      // is a dedicated preference, not the global `confirmDestructive`, so
-      // opting out here never weakens other destructive confirmations.
-      if (usePreferences.getState().prefs.ui.confirmEmptyTable) {
-        setEmptyTarget(tbl);
-        return;
-      }
-      void (async () => {
-        try {
-          await api.emptyTable(connectionId, tbl.schema, tbl.name);
-          notify.success(t("schema.empty.emptied", { name: tbl.name }));
-          refresh(connectionId);
-        } catch (e) {
-          notify.error(String(e));
-        }
-      })();
-    },
-    onRenameView: (tbl) => setRenameViewTarget(tbl),
-    onDropView: (tbl) => setDropViewTarget(tbl),
-    driver,
-  };
 
   return (
     <div className="flex flex-col">
@@ -319,6 +349,8 @@ export function SingleDbExplorer({
                       loadColumns={loadColumns}
                       actions={tableActions}
                       forceOpen={filtering}
+                      activeTableKey={activeTableKey}
+                      openTableKeys={openTableKeys}
                     />
 
                     {/* Views section */}
@@ -334,6 +366,8 @@ export function SingleDbExplorer({
                         loadColumns={loadColumns}
                         actions={tableActions}
                         forceOpen={filtering}
+                        activeTableKey={activeTableKey}
+                        openTableKeys={openTableKeys}
                       />
                     )}
 
@@ -418,4 +452,4 @@ export function SingleDbExplorer({
       )}
     </div>
   );
-}
+});

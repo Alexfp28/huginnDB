@@ -1,7 +1,53 @@
+/**
+ * Every color token below is a `light-dark(...)` value (see index.css /
+ * themes.ts), not a raw "H S% L%" triple, so `hsl(var(--x))` would
+ * double-wrap it into an invalid value — hence `color-mix()` to apply an
+ * alpha modifier (`bg-brand/25`). But Tailwind pays that `color-mix()` +
+ * `calc()` cost even when there is NO modifier (`bg-card`, `border-border`),
+ * and `border-border` in particular lands on `* { @apply border-border }`
+ * in index.css — i.e. every DOM node's border-color. `colorToken` skips the
+ * layer in that case by returning the bare `var(--x)`.
+ *
+ * Tailwind invokes a function-valued color token with `{opacityValue}` from
+ * three call sites (verified against the installed tailwindcss/lib):
+ *   - `toColorValue` (no modifier, e.g. `bg-card`) — calls `fn({})`, so
+ *     `opacityValue` is `undefined`.
+ *   - `withAlphaValue` (an explicit modifier, e.g. `bg-card/40`) — calls
+ *     `fn({opacityValue: "0.4"})`.
+ *   - The same path also feeds gradient stops (`from-brand`) with the
+ *     numeric literal `0` (`withAlphaValue(value, 0, ...)`), which is why
+ *     the guard below tests `=== undefined` rather than a falsy check: `!0`
+ *     is `true`, so a falsy guard would render `from-brand`'s "faded to
+ *     transparent" stop as fully opaque instead.
+ */
+function colorToken(cssVar) {
+  return ({ opacityValue }) => {
+    if (opacityValue === undefined || opacityValue === 1 || opacityValue === "1") {
+      return `var(${cssVar})`;
+    }
+    return `color-mix(in srgb, var(${cssVar}) calc(${opacityValue} * 100%), transparent)`;
+  };
+}
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ["class"],
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  // The legacy `bg-opacity-*`/`text-opacity-*`/... utilities (and their
+  // `--tw-*-opacity` custom properties) are what would otherwise route a
+  // *classless* `bg-card` through `withAlphaVariable` instead of
+  // `toColorValue`, which always calls the color function with a variable
+  // reference rather than `undefined` — defeating `colorToken`'s no-modifier
+  // branch. Verified zero uses of any of these utilities/variables in
+  // src/ and index.html.
+  corePlugins: {
+    backgroundOpacity: false,
+    borderOpacity: false,
+    divideOpacity: false,
+    placeholderOpacity: false,
+    ringOpacity: false,
+    textOpacity: false,
+  },
   theme: {
     container: {
       center: true,
@@ -9,69 +55,63 @@ export default {
     },
     extend: {
       colors: {
-        // Every token is a full `light-dark(...)` colour now (see
-        // index.css/themes.ts), not a raw "H S% L%" triple — so `hsl(var(--x))`
-        // would double-wrap a colour into an invalid value. `<alpha-value>` is
-        // Tailwind's own placeholder for a colour modifier (`bg-brand/25`):
-        // Tailwind substitutes it directly (bypassing its `hsl(var(--x))`
-        // regex parser, which doesn't recognise `var(--x)` or `light-dark()`),
-        // so every token gets this treatment uniformly — including ones with
-        // no modifier today — rather than leaving a gap that fails silently
-        // (opaque instead of translucent, no build error) the day someone
-        // writes `pk/50`.
-        border: "color-mix(in srgb, var(--border) calc(<alpha-value> * 100%), transparent)",
-        input: "color-mix(in srgb, var(--input) calc(<alpha-value> * 100%), transparent)",
-        ring: "color-mix(in srgb, var(--ring) calc(<alpha-value> * 100%), transparent)",
-        background: "color-mix(in srgb, var(--background) calc(<alpha-value> * 100%), transparent)",
-        foreground: "color-mix(in srgb, var(--foreground) calc(<alpha-value> * 100%), transparent)",
+        // See `colorToken` above for the mechanism. Every token below is
+        // wrapped uniformly — including ones with no `/modifier` use today —
+        // rather than leaving a gap that fails silently (opaque instead of
+        // translucent, no build error) the day someone writes `pk/50`.
+        border: colorToken("--border"),
+        input: colorToken("--input"),
+        ring: colorToken("--ring"),
+        background: colorToken("--background"),
+        foreground: colorToken("--foreground"),
         primary: {
-          DEFAULT: "color-mix(in srgb, var(--primary) calc(<alpha-value> * 100%), transparent)",
-          foreground: "color-mix(in srgb, var(--primary-foreground) calc(<alpha-value> * 100%), transparent)",
+          DEFAULT: colorToken("--primary"),
+          foreground: colorToken("--primary-foreground"),
         },
         secondary: {
-          DEFAULT: "color-mix(in srgb, var(--secondary) calc(<alpha-value> * 100%), transparent)",
-          foreground: "color-mix(in srgb, var(--secondary-foreground) calc(<alpha-value> * 100%), transparent)",
+          DEFAULT: colorToken("--secondary"),
+          foreground: colorToken("--secondary-foreground"),
         },
         destructive: {
-          DEFAULT: "color-mix(in srgb, var(--destructive) calc(<alpha-value> * 100%), transparent)",
-          foreground: "color-mix(in srgb, var(--destructive-foreground) calc(<alpha-value> * 100%), transparent)",
+          DEFAULT: colorToken("--destructive"),
+          foreground: colorToken("--destructive-foreground"),
         },
         muted: {
-          DEFAULT: "color-mix(in srgb, var(--muted) calc(<alpha-value> * 100%), transparent)",
-          foreground: "color-mix(in srgb, var(--muted-foreground) calc(<alpha-value> * 100%), transparent)",
+          DEFAULT: colorToken("--muted"),
+          foreground: colorToken("--muted-foreground"),
         },
         accent: {
-          DEFAULT: "color-mix(in srgb, var(--accent) calc(<alpha-value> * 100%), transparent)",
-          foreground: "color-mix(in srgb, var(--accent-foreground) calc(<alpha-value> * 100%), transparent)",
+          DEFAULT: colorToken("--accent"),
+          foreground: colorToken("--accent-foreground"),
         },
         brand: {
-          DEFAULT: "color-mix(in srgb, var(--brand) calc(<alpha-value> * 100%), transparent)",
-          foreground: "color-mix(in srgb, var(--brand-foreground) calc(<alpha-value> * 100%), transparent)",
+          DEFAULT: colorToken("--brand"),
+          foreground: colorToken("--brand-foreground"),
           // The brand surface under the pointer. Enables `hover:bg-brand-hover`
           // instead of `hover:bg-brand/90` — a transparency fades the accent
           // into the surface on dark themes, which is backwards for a hover.
-          hover: "color-mix(in srgb, var(--brand-hover) calc(<alpha-value> * 100%), transparent)",
+          hover: colorToken("--brand-hover"),
         },
         success: {
-          DEFAULT: "color-mix(in srgb, var(--success) calc(<alpha-value> * 100%), transparent)",
-          foreground: "color-mix(in srgb, var(--success-foreground) calc(<alpha-value> * 100%), transparent)",
+          DEFAULT: colorToken("--success"),
+          foreground: colorToken("--success-foreground"),
         },
         warning: {
-          DEFAULT: "color-mix(in srgb, var(--warning) calc(<alpha-value> * 100%), transparent)",
-          foreground: "color-mix(in srgb, var(--warning-foreground) calc(<alpha-value> * 100%), transparent)",
+          DEFAULT: colorToken("--warning"),
+          foreground: colorToken("--warning-foreground"),
         },
         // Data-semantic accents (text/icon only). Enable `text-pk`, `text-fk`,
         // `text-numeric` and `decoration-fk` — see index.css for rationale.
-        pk: "color-mix(in srgb, var(--pk) calc(<alpha-value> * 100%), transparent)",
-        fk: "color-mix(in srgb, var(--fk) calc(<alpha-value> * 100%), transparent)",
-        numeric: "color-mix(in srgb, var(--numeric) calc(<alpha-value> * 100%), transparent)",
+        pk: colorToken("--pk"),
+        fk: colorToken("--fk"),
+        numeric: colorToken("--numeric"),
         popover: {
-          DEFAULT: "color-mix(in srgb, var(--popover) calc(<alpha-value> * 100%), transparent)",
-          foreground: "color-mix(in srgb, var(--popover-foreground) calc(<alpha-value> * 100%), transparent)",
+          DEFAULT: colorToken("--popover"),
+          foreground: colorToken("--popover-foreground"),
         },
         card: {
-          DEFAULT: "color-mix(in srgb, var(--card) calc(<alpha-value> * 100%), transparent)",
-          foreground: "color-mix(in srgb, var(--card-foreground) calc(<alpha-value> * 100%), transparent)",
+          DEFAULT: colorToken("--card"),
+          foreground: colorToken("--card-foreground"),
         },
       },
       borderRadius: {

@@ -279,6 +279,17 @@ export function TabbedArea(_props: Props) {
     };
   }, [api]);
 
+  // `syncTabPanels` only adds/removes panels — it needs to run again when a
+  // tab opens or closes, never when an existing tab's own fields change
+  // (its SQL body, most often: `updateQuery` replaces the whole `tabs`
+  // array on every keystroke in the query editor). Depending on `tabs`
+  // itself re-ran this — and the ResizeObserver-teardown effect below it —
+  // on every keystroke; depending on the ids' identity instead means it
+  // only fires on an actual open/close, while still reading the live
+  // `tabs` array (via `getState()`, not the possibly-stale value this
+  // render closed over) for the diff itself.
+  const tabIdsSignature = tabs.map((t) => t.id).join("\0");
+
   // Reconcile the dockview panels with the store: add panels for new tabs,
   // remove panels for closed ones. This is the only place panels are
   // added/removed during ordinary use, so the flow is strictly store →
@@ -287,8 +298,8 @@ export function TabbedArea(_props: Props) {
   // for why that path can't just wait for this effect to converge.
   useEffect(() => {
     if (!api) return;
-    syncTabPanels(api, tabs);
-  }, [api, tabs]);
+    syncTabPanels(api, useTabs.getState().tabs);
+  }, [api, tabIdsSignature]);
 
   // Mirror the store's active tab into dockview (e.g. when a tab is opened
   // from the schema explorer). `setActive` on the already-active panel is a
@@ -333,9 +344,17 @@ export function TabbedArea(_props: Props) {
   // amount of label truncation can soften — the tab isn't truncated, it's
   // cropped by the scroll box around it — so the mask goes on the scroller
   // (`data-clip` → `index.css`). CSS can't see scroll offsets, hence this.
-  // Re-running on `tabs` catches opens and closes; the per-container
-  // ResizeObserver catches splits and window resizes; the capture-phase
-  // listener catches scrolling (a scroll event doesn't bubble).
+  // Re-running on tab opens/closes catches new/removed strips; the
+  // per-container ResizeObserver catches splits and window resizes; the
+  // capture-phase listener catches scrolling (a scroll event doesn't
+  // bubble).
+  //
+  // Split into two effects on purpose: the observer/listener setup below
+  // has no reason to ever tear down and rebuild itself on a keystroke, only
+  // the "re-scan for new/removed tab strips" step does. Keyed on `[tabs]`
+  // as one effect, this destroyed and recreated the ResizeObserver, redid
+  // the querySelectorAll, and re-registered the capture-phase scroll
+  // listener on every single `updateQuery` call.
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -368,7 +387,16 @@ export function TabbedArea(_props: Props) {
       observer.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [tabs]);
+  }, []);
+
+  // The re-scan: a new or closed tab can add/remove a `.dv-tabs-container`
+  // the observer above doesn't know about yet, so this asks it to look
+  // again — via the same `refreshEdgeFade` ref `onDidLayoutChange` already
+  // uses, not a second code path. Keyed on tab identity, not `tabs` itself,
+  // for the same reason `syncTabPanels`'s effect is above.
+  useEffect(() => {
+    refreshEdgeFade.current();
+  }, [tabIdsSignature]);
 
   return (
     // Explicit positioned, full-size wrapper. The nested DockviewReact root

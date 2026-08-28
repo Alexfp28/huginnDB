@@ -29,6 +29,7 @@
  * under them in `SchemaTableSection` / `SchemaTableRow`.
  */
 
+import { memo } from "react";
 import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
 import { MultiDbExplorer } from "@/components/schema/MultiDbExplorer";
 import { SingleDbExplorer } from "@/components/schema/SingleDbExplorer";
@@ -36,7 +37,7 @@ import { isServerWide } from "@/lib/connectionLabel";
 import { useConnections } from "@/stores/session/connections";
 import type { ConnectionMatchSummary } from "@/lib/schema/treeMatches";
 
-export function SchemaExplorer({
+export const SchemaExplorer = memo(function SchemaExplorer({
   connectionId,
   patterns,
   summary,
@@ -89,4 +90,4 @@ export function SchemaExplorer({
       )}
     </div>
   );
-}
+});

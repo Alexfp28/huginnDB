@@ -81,6 +81,15 @@ import { useCellEditing } from "@/lib/grid/useCellEditing";
 import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
 import type { Driver } from "@/types";
 
+/**
+ * Module-level so its identity never changes (gotcha #1, applied to a
+ * library prop rather than a store selector). In list mode the table's own
+ * `<tbody>` never renders, but `useReactTable`/`getCoreRowModel()` are still
+ * called unconditionally (hooks can't be conditional) — feeding them a
+ * fresh `[]` on every render would still build a `Row`/`Cell` tree for zero
+ * rows on every keystroke elsewhere in the grid, for no reason.
+ */
+const NO_ROWS: CellValue[][] = [];
 
 interface Props {
   result: QueryResult;
@@ -814,7 +823,11 @@ export function DataGrid({
   });
 
   const table = useReactTable({
-    data: visibleRows,
+    // List mode renders `DocumentListView`, not this table's `<tbody>` — feed
+    // it `NO_ROWS` there so `getCoreRowModel()` doesn't build a `Row`/`Cell`
+    // tree (one per row, ~40 `Cell` objects each on a wide table) that
+    // nothing reads.
+    data: viewMode === "list" ? NO_ROWS : visibleRows,
     columns,
     getCoreRowModel: getCoreRowModel(),
     // Column resizing is handled by our own `startColumnResize`, not
@@ -842,14 +855,34 @@ export function DataGrid({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => rowHeight,
     overscan: 8,
+    // In list mode `scrollRef` is the SAME scroll container, but it now
+    // hosts `DocumentListView` instead of this table — leaving the
+    // virtualizer enabled there means it keeps listening to that element's
+    // `scroll` events while its own virtual size (rowCount × rowHeight, a
+    // few thousand px) is wildly out of sync with what's actually scrolling
+    // (tens of thousands of px of list content), so its computed range
+    // changes on almost every scroll event, each one flushing a full
+    // `DataGrid` re-render synchronously (`flushSync`, see the adapter's
+    // `shouldRerender` — it's unconditional without `directDomUpdates`,
+    // which this grid doesn't pass). `enabled: false` runs `cleanup()`
+    // internally (drops the scroll/resize listeners, clears measurements),
+    // and it re-subscribes on its own the moment `viewMode` flips back —
+    // `getScrollElement` is left untouched on purpose so that happens
+    // without any extra wiring here. This looks like a redundant library
+    // option until you know that story, which is exactly how it gets
+    // deleted in a future cleanup — don't.
+    enabled: viewMode !== "list",
   });
   // `estimateSize` alone doesn't retroactively resize rows the virtualizer
   // already cached a size for — `measure()` clears that cache so a Ctrl+wheel
   // zoom (which changes `rowHeight` without touching row *count*) takes
-  // effect immediately instead of only on the next scroll.
+  // effect immediately instead of only on the next scroll. `viewMode` is a
+  // dependency for the same reason `rowHeight` is: returning to table mode
+  // must not replay a stale measurement cache from before the list-mode
+  // detour.
   useEffect(() => {
     rowVirtualizer.measure();
-  }, [rowHeight, rowVirtualizer]);
+  }, [rowHeight, viewMode, rowVirtualizer]);
 
   /**
    * The inset-ring active cell plus every key that moves or acts on it. Owns

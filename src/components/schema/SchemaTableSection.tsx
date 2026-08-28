@@ -8,6 +8,7 @@
  * added in one place rather than at every level it has to pass through.
  */
 
+import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -44,10 +45,23 @@ interface SectionProps {
   actions: TableActions;
   /** Force every section to render open (used by the filter). */
   forceOpen?: boolean;
+  /** "You are here" state for every row, derived once per explorer render
+   *  by `useOpenTableKeys` — see its own doc comment. */
+  activeTableKey: string | null;
+  openTableKeys: ReadonlySet<string>;
 }
 
-/** Expandable section listing a set of tables or views within a schema. */
-export function TableSection({
+/**
+ * Expandable section listing a set of tables or views within a schema.
+ *
+ * `memo()`-wrapped, and it's what computes `TableRow`'s three narrow props
+ * (`expanded`/`columns`/`columnError`) out of the wide `cs` slice this
+ * component still receives — see `TableRow`'s own doc comment for why that
+ * narrowing is the whole point: `cs.columns` gets a fresh reference on
+ * every column load anywhere in the connection, so a per-row `cs` prop
+ * invalidated every row's memo whenever ANY table's columns loaded.
+ */
+export const TableSection = memo(function TableSection({
   label,
   icon,
   items,
@@ -58,6 +72,8 @@ export function TableSection({
   loadColumns,
   actions,
   forceOpen,
+  activeTableKey,
+  openTableKeys,
 }: SectionProps) {
   // Inner i18n hook — the table loop shadows `t`, so we use the function
   // directly via `i18n.t` here is overkill; instead alias it.
@@ -85,20 +101,43 @@ export function TableSection({
         </span>
       </button>
 
-      {isOpen &&
-        items.map((t) => (
-          <TableRow
-            key={tableKey(t.schema, t.name)}
-            table={t}
-            connectionId={connectionId}
-            cs={cs}
-            toggleNode={toggleNode}
-            loadColumns={loadColumns}
-            actions={actions}
-            metric={metric}
-            loadingLabel={translate("schema.loadingColumns")}
-          />
-        ))}
+      {isOpen && (
+        <div
+          // `content-visibility: auto` skips style recalc/layout/paint for
+          // rows outside the tree's scroll viewport — with the filter active
+          // there can be thousands of these across every open connection.
+          // Safe here specifically because rows are fixed, known-height
+          // (~24px: `py-1` plus the `2xs` line-height), so `items.length *
+          // 24` is an exact estimate rather than a guess — not a
+          // virtualizer, so `moveRowFocus`'s `querySelectorAll` over
+          // `[data-tree-row]` still sees every row.
+          style={{
+            contentVisibility: "auto",
+            containIntrinsicSize: `auto ${items.length * 24}px`,
+          }}
+        >
+          {items.map((t) => {
+            const k = tableKey(t.schema, t.name);
+            return (
+              <TableRow
+                key={k}
+                table={t}
+                connectionId={connectionId}
+                expanded={cs.expanded.has(`table:${k}`)}
+                columns={cs.columns[k]}
+                columnError={cs.columnErrors?.[k]}
+                toggleNode={toggleNode}
+                loadColumns={loadColumns}
+                actions={actions}
+                metric={metric}
+                loadingLabel={translate("schema.loadingColumns")}
+                activeTableKey={activeTableKey}
+                openTableKeys={openTableKeys}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
-}
+});

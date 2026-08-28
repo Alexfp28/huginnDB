@@ -6,6 +6,435 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **Frontend performance pass (1.20.0), in progress.** A real regression
+  reported on modest hardware — a 10k-row table in list mode degrading to
+  unusable, and a broader shell choppiness — that turned out not to involve
+  the Rust backend at all: every entry below removes one concrete,
+  file-and-line-identified cost in the React/DOM layer. Landing incrementally
+  as its own series of commits; this section grows one bullet per commit.
+
+- **Color tokens skip the `color-mix()` layer entirely when no `/modifier` is
+  used.** `2ecaaf7` (1.19.0's `light-dark()` migration) moved every Tailwind
+  color token from `hsl(var(--x))` to
+  `color-mix(in srgb, var(--x) calc(<alpha-value> * 100%), transparent)`, so
+  that `bg-brand/25`-style alpha modifiers kept working once each token
+  became a full `light-dark(...)` value (which `hsl()` cannot wrap). That
+  was applied uniformly, on purpose, including to colors nobody ever uses
+  with a modifier — but it meant every opaque color paid a `color-mix()` +
+  `calc()` on every read, and `border-border` in particular backs
+  `* { @apply border-border }` in `index.css`, i.e. the `border-color` of
+  every DOM node in the app. `tailwind.config.js`'s new `colorToken()`
+  helper returns the bare `var(--x)` when Tailwind calls it with no alpha
+  modifier (or an explicit `/100`) and the same `color-mix()` formula
+  otherwise, and `corePlugins` now disables the legacy
+  `bg-opacity-*`/`border-opacity-*`/`text-opacity-*`/`divide-opacity-*`/
+  `ring-opacity-*`/`placeholder-opacity-*` utilities (unused in `src/`),
+  which is what routes a classless `bg-card` through Tailwind's plain
+  no-modifier call instead of the `--tw-bg-opacity` custom-property
+  indirection those utilities require. Visually identical in both color
+  modes and every built-in theme; verified by compiling real utility
+  classes through the installed `tailwindcss` engine and comparing the
+  emitted declarations byte-for-byte against the pre-`colorToken()` output
+  (`src/lib/tailwindColorTokens.test.ts`) for every class that actually uses
+  a `/modifier`, plus the `from-brand` gradient stop that exercises
+  `opacityValue: 0` — the one case where a falsy guard (`!opacityValue`
+  instead of `opacityValue === undefined`) would have silently rendered the
+  "fade to transparent" stop as fully opaque instead.
+
+- **List mode no longer keeps the table view's virtualizer and
+  `useReactTable` machinery running underneath it.** `DataGrid` uses one
+  `<div ref={scrollRef}>` for both `viewMode`s, and the table-mode
+  `useVirtualizer`/`useReactTable`/`getCoreRowModel()` pipeline used to run
+  unconditionally even while `DocumentListView` was the thing actually
+  rendered inside that scroll container. With the virtualizer's own virtual
+  size (row count × the fixed row height, a couple thousand px) wildly out
+  of sync with the list's real, much taller content, its computed visible
+  range changed on almost every scroll event — and each change flushed a
+  synchronous full-grid re-render (`flushSync`, via `@tanstack/react-virtual`'s
+  adapter, which re-renders unconditionally without the `directDomUpdates`
+  option this grid doesn't pass). `useVirtualizer` now takes
+  `enabled: viewMode !== "list"` (it cleans up its listeners internally and
+  re-subscribes on its own switching back to table mode) and
+  `useReactTable` is fed a stable, empty `data` array in list mode instead
+  of the real rows, so `getCoreRowModel()` stops building a full `Row`/`Cell`
+  tree for rows nothing renders. This is the direct fix for the reported
+  "100-row page, list mode, 10k-row table" degradation — the next entries in
+  this pass make the list itself cheap per row.
+
+- **List mode's per-row `memo()` now actually bails out, and a collapsed
+  container stops paying for its hidden children.** Three independent fixes
+  in `DocumentListView`/`documentTree`:
+  - `DocumentCard` was already wrapped in `memo()`, but never once bailed
+    out: `onFieldSave`/`onFieldDelete`/`onDeleteRow` arrive as plain function
+    declarations recreated by `TableDataTab` on every render, and
+    `onExpandField` as an inline arrow from `DataGrid` — a fresh identity on
+    every render of something several layers up, every time, regardless of
+    whether that particular row's own data had changed. Those four
+    callbacks are now mirrored through a ref (`callbacksRef`, the same
+    pattern `DataGrid`'s `interactiveRef`/`rowCallbacksRef` and `GridRow`'s
+    own `callbacksRef` already use) and read at call time instead of being
+    passed as props; `DocumentCard` receives only booleans
+    (`hasFieldSave`, `documentMode`, …) for which affordances are available,
+    which — being primitives — compare cheaply and correctly under `memo()`.
+  - `FieldRow` gets the identical treatment one level down: its ~13 inline
+    per-field callbacks (recreated for every field of every card, every
+    render — tens of thousands of closures on a wide page) are replaced by
+    one stable `actionsRef`, whose methods take the field they act on as an
+    argument, and `FieldRow` itself is now `memo()`-wrapped for the first
+    time.
+  - `flattenDocument` (`documentTree.ts`) used to materialise a `[key,
+    value]` tuple per child of a container — including a *collapsed* one —
+    just to read `.length` off the result. It now reads the count directly
+    (`.length` / `Object.keys().length`) and only walks into children when
+    the container is actually expanded, so a collapsed 10,000-element array
+    costs O(1) instead of O(children) on every render of the memo above.
+
+  Also removed: a `useTranslation()` subscription per `DocumentCard` and
+  per `FieldRow` (up to ~4,000 combined on a wide page — each a live
+  i18next subscription), replaced by one subscription in `DocumentListView`
+  and a `labels` object of precomputed strings (recomputed only on an
+  actual language change); and a `columns.find()` per field per render to
+  resolve a SQL column's catalog type (O(fields × columns), ~160,000 string
+  comparisons on 100 rows × 40 columns), replaced by a `Map` built once per
+  column list (`typeTextFor`, `documentTree.ts`).
+
+  Verified with a new regression test
+  (`src/components/grid/DocumentListView.test.tsx`) that would have caught
+  the original bug: it re-renders the list with a brand-new `onExpandField`
+  identity (exactly what `DataGrid` does today) and asserts `DocumentCard`'s
+  render body does not run a second time.
+
+- **A sash drag stopped writing to `localStorage` ~60 times a second and
+  stopped re-rendering the whole shell on every frame.** `Sash.tsx` called
+  `onResize(delta)` synchronously on every `pointermove` (~120Hz observed),
+  and each of the four call sites (`AppShell`'s Schema/Saved panels,
+  `ConsoleDock`, `IslandShell`'s cell-editor split) wired that straight into
+  `useSessionPanelLayout`'s `persist` middleware — which `JSON.stringify`s
+  the whole store and writes it to disk on every `set()`. The drag mechanics
+  now live in a new `useSashDrag` hook that coalesces `pointermove` into one
+  `onResize` call per animation frame (summing the deltas dropped in
+  between, never discarding them — dropping would make the panel edge trail
+  behind the cursor), and the four call sites share one new `nudgePanel(key,
+  delta)` store action instead of each computing `current + delta` in their
+  own render scope (which was also a latent bug: at the clamp boundary, the
+  callback's closed-over `current` could already be stale relative to the
+  store, letting the pointer visibly outrun the sash). The store's
+  `persist` storage is now trailing-edge throttled to 250ms with an
+  explicit `flush()` the four call sites invoke on `onDraggingChange(false)`,
+  so the on-disk value is never more than one frame behind at the moment
+  the user actually lets go.
+
+  Also: `AppShell` no longer subscribes to `schemaWidth`/`savedWidth`
+  directly — that subscription re-rendered its entire child tree
+  (`IslandShell`, `ConsoleDock`, the right activity bar) on every drag
+  frame. The two side panels are now `SchemaSidePanel`/`SavedSidePanel`,
+  each owning its own width subscription, and each renders its panel
+  content (`SchemaPanel`/`SavedPanel`) as a module-level, stable React
+  element — the same element reference every render — which is what lets
+  React bail out of reconciling that whole subtree even while the wrapper
+  itself re-renders for the width. `CollapsiblePanel`'s fixed-size inner div
+  gets `contain: layout style` (safe: fixed size, parent already clips with
+  `overflow-hidden`), and the outer wrapper gets `will-change` only while a
+  drag is live, not permanently.
+
+- **Monaco's `options`/`onChange` are now stable references across renders,
+  on all seven surfaces that mount one.** `@monaco-editor/react`'s
+  `<Editor>` runs `editor.updateOptions(options)` in an effect keyed on
+  `[options]`, and its content-change wiring is a second effect keyed on
+  `[isEditorReady, onChange]` that does `dispose()` +
+  `onDidChangeModelContent(...)` on every change — but every one of the
+  seven call sites (the query editor, the Console detail pane, the cell
+  editor, the DDL preview, the pipeline/aggregation editor, the view
+  editor, the JSON Schema body editor) built `options` as a fresh object
+  literal and `onChange` as a fresh inline arrow directly in JSX, so Monaco
+  reconfigured itself — and tore down and re-registered its content
+  listener — on every render of the surrounding component, regardless of
+  whether any actual preference had changed. New
+  `src/lib/monaco/useEditorOptions.ts` is a thin, named `useMemo` wrapper
+  (the point isn't a new mechanism, it's that the memo lives in one place
+  other call sites can copy correctly instead of being hand-rolled seven
+  times with seven chances to get the dependency array wrong) paired with
+  `useCallback` on each `onChange`. Depends on the full `EditorPrefs`
+  object as returned by `usePreferences(selectEditorPrefs)`, which is
+  referentially stable by that selector's own contract, plus any
+  call-site-specific extra as a primitive (never an inline object, which
+  would be a fresh reference every render and defeat the memo the same way
+  the original bug did). `@monaco-editor/react`'s `Editor` component is
+  itself already `memo()`-wrapped by the package, so with both props
+  stable it now skips re-rendering entirely on an unrelated parent render.
+
+- **`content-visibility: auto` on the schema tree's per-connection subtree
+  and per-section row list.** With the tree filter active there can be
+  thousands of rows across every open connection's expanded subtrees, all
+  of it real DOM (the tree isn't virtualized, see the "Deferred" section
+  below for why not yet). `content-visibility: auto` skips style
+  recalc/layout/paint entirely for whatever's outside the tree's scroll
+  viewport, without removing anything from the DOM — which matters because
+  `moveRowFocus`'s keyboard navigation walks `[data-tree-row]` via
+  `querySelectorAll` and would silently stop seeing off-screen rows if they
+  were actually virtualized away. `SchemaTableSection`'s row list gets an
+  exact `contain-intrinsic-size` (`items.length * 24px` — rows are a fixed,
+  known height) rather than a guess; the per-connection subtree wrapper in
+  `ConnectionsTree` gets an approximate one (`auto 300px`, self-correcting
+  once the browser has measured the real subtree once). Pure CSS, no
+  behavior change — verified manually with the filter active, watching
+  DevTools' Rendering panel.
+
+- **Typing in the schema tree's filter no longer re-renders the whole tree
+  before the debounce has done anything.** `ConnectionsTree` subscribed to
+  `useTreeSearch`'s raw text directly (to pass it down to `TreeFilterBox` as
+  a `value` prop) — the raw needle changes on every keystroke, and
+  `ConnectionsTree` sits above every connection row and its expanded
+  subtree, so every keystroke re-rendered all of it, 180ms before the
+  debounce (`TREE_SEARCH_DEBOUNCE_MS`) ever committed anything for the
+  subtrees to actually filter by. `TreeFilterBox` now reads and writes the
+  raw needle, owns the debounce effect, and handles every key the box reads
+  (`Backspace` to peel a scope level, `Enter` to commit immediately) itself
+  — `ConnectionsTree` keeps only `needle`/`patterns`/`scope`, which change
+  once per debounce fire, not once per keystroke. `ArrowDown` is the one
+  key that still needs to leave the box (moving focus into the row list
+  needs the tree's own DOM via `moveRowFocus`), so it's the one thing still
+  wired through a prop (`onArrowDown`). Preserves every documented
+  invariant of the search path: still exactly one debounce; clearing the
+  box still commits immediately; typing still never opens a connection
+  pool; a focus request still selects the box's contents; Backspace on an
+  empty box still peels one scope level.
+
+- **A connection row is now a real component, and a real fix for a group
+  header remount bug.** `ConnectionsTree`'s `renderConnection(p)` was a
+  plain function CALLED per row (returning JSX directly), never rendered as
+  `<renderConnection />` — so it was never a component boundary at all,
+  and every row's JSX was reconciled as part of `ConnectionsTree`'s own
+  render pass with nothing for React to bail out of. It's now
+  `ConnectionTreeRow`, `memo()`-wrapped, in its own file. Its four
+  callbacks (row click, disconnect, reconnect, narrow-to-scope) are handed
+  down through a ref rather than as plain props or `useCallback`s — several
+  of them close over other per-render closures in `ConnectionsTree`
+  (`filterFolds`, `setCollapsed`, `matchCounts`, …) that aren't themselves
+  memoized, so a `useCallback` here would either go stale (an incomplete
+  dependency array) or buy no stability at all (an exhaustive one, since
+  most of those deps change often); a ref sidesteps the question the same
+  way `DataGrid`'s `rowCallbacksRef` and this pass's own
+  `DocumentListView` fix already do.
+
+  Separately, and this one is a real bug rather than a missed
+  optimization: `GroupHeader` (a folder's collapsible header) was a
+  `function GroupHeader(...)` DECLARED INSIDE `ConnectionsTree`'s own
+  render body and used as JSX. A function declared inside a component gets
+  a brand-new identity every render, and React reads a changed element
+  *type* as "this is a different component" — so every render of
+  `ConnectionsTree` unmounted and remounted every group header. Moved to
+  its own module-scope, `memo()`-wrapped file, which is what makes a
+  component safe to memoize in the first place (an identity that doesn't
+  change is the precondition memo() needs, not an optimization on top of
+  it).
+
+- **`memo()` across the schema tree's explorer family, and — this is the
+  part that actually made it useful — a prop that used to invalidate every
+  row on the page whenever any one of them changed.** `SchemaExplorer`,
+  `SingleDbExplorer`, `MultiDbExplorer`, `TableSection` and `TableRow` are
+  now all `memo()`-wrapped, but wrapping `TableRow` alone would have done
+  nothing: it took the connection's WHOLE per-connection schema slice
+  (`cs`) as a prop and read three things out of it (whether its own node
+  was expanded, its own columns, its own column-load error) — and
+  `TableDataTab.tsx` already documents that loading any table's columns
+  writes a fresh `columns` map reference for the *whole connection*. So
+  expanding one table row invalidated the memo of every OTHER row on the
+  same page. `TableRow` now takes those three values as their own props
+  (`expanded`/`columns`/`columnError`), computed once per row by
+  `TableSection` — which is what turns "a toggle re-renders 500 rows" into
+  "a toggle re-renders 1".
+  - `SingleDbExplorer`'s `tableActions` bundle (the object `TableSection`/
+    `TableRow` receive for open/refresh/rename/drop/empty) was rebuilt as a
+    fresh object on every render, which alone would have defeated both
+    memo()s downstream regardless of the `cs` fix — wrapped in `useMemo`,
+    placed ABOVE the `if (!cs)` early return for the same load-bearing
+    reason the file's existing `bySchema`/`schemas` memo already has to be
+    (a hook after a conditional early return is a Rules-of-Hooks violation
+    the moment `cs` can flip to `undefined` between renders, which is
+    exactly the multi-DB "several nested explorers unmount while
+    `byConnection` settles" scenario this file's header comment already
+    warns about).
+  - `ConnectionsTree` had its own SECOND wide subscription to
+    `useSchema.byConnection` (`useTreeMatchCounts`'s already had the first),
+    used only for the row's loading spinner. New
+    `useLoadingConnectionIds` (next to `useTreeMatchCounts`, same file)
+    narrows that to a `Set<string>` of ids currently loading — restoring
+    that file's own doc comment's claim to be the app's one wide
+    subscription to that map.
+
+- **One derivation over open tabs instead of two per schema-tree row.**
+  `SchemaTableRow` ran `useTabs((s) => s.tabs.find(...))` and
+  `useTabs((s) => s.tabs.some(...))` itself, each an O(tabs) scan — both
+  return primitives, so neither breaks gotcha #1 or re-renders a row that
+  isn't affected, but neither avoids *running*, either. 500 rows × two
+  O(tabs) scans is 1,000 iterations on every `useTabs` write, and typing in
+  the SQL editor is exactly such a write, once per keystroke (fixed
+  properly one commit later, but this scan was real regardless). New
+  `useOpenTableKeys` (`src/lib/schema/useOpenTableKeys.ts`) computes both
+  answers — the active table's key and the set of every open table's key —
+  in one pass, called once per explorer render rather than once per row,
+  and hands the result down as two props (`activeTableKey`,
+  `openTableKeys: ReadonlySet<string>`) threaded through `TableSection`.
+  Each row's own membership check (`openTableKeys.has(...)`) is what
+  actually feeds its `isOpen`/`isActive` state, so as long as that row's own
+  membership hasn't flipped, its props stay the same primitives they were —
+  keeping the previous commit's `TableRow` memo bailout intact. The `\0`
+  key separator is written as the escape (`tableTabKey`), never a literal
+  NUL byte — a NUL byte made the whole file binary to git once already (no
+  diff, no review, no grep).
+
+- **A keystroke in the SQL editor no longer fans out into the window title,
+  dockview's tab-strip machinery, a stale-comment status-bar re-render, and
+  N separate disk-save subscriptions.** `updateQuery` (`useTabs`) replaces
+  the whole `tabs` array on every keystroke — correct, since the query text
+  lives on the tab object — but several unrelated listeners were keyed on
+  `tabs` itself rather than on whether anything they actually cared about
+  had changed:
+  - `WindowTitleSync` recomputed the OS window title AND made the
+    `setTitle` IPC call in one effect keyed on `[tabs, activeId, profiles,
+    selectedConnectionId, appName]`. The title text almost never changes
+    while typing (it depends on which connection/table is active, not the
+    SQL body), so the computation is now a separate `useMemo` and the IPC
+    call is gated on `[title]` — a string, so it only fires when the
+    *rendered* title actually changes.
+  - `TabbedArea`'s panel-sync effect (`syncTabPanels`) only adds/removes
+    dockview panels, so it only needs to know the tab *identity* changed,
+    not that some tab's own field changed — same for the edge-fade effect
+    just below it, which used to tear down and recreate its whole
+    `ResizeObserver` + scroll listener on every keystroke. Both are now
+    keyed on a `tabs.map(t => t.id).join("\0")` signature instead of `tabs`
+    itself, reading the live array via `getState()` where the actual diff
+    needs full tab data.
+  - `StatusBar` selected `s.tabs.find((t) => t.id === s.activeId)` for its
+    only use — `activeTab.connectionId` — but `.find()` returns a *new*
+    object reference after `updateQuery` replaces that exact tab, defeating
+    the Zustand selector optimization the file's own header comment
+    promises. Narrowed to select `connectionId` directly (a primitive), and
+    the stale "`.find()` is stable" comment is corrected in the same
+    change.
+  - `persistedTabs.ts` registered one `useTabs.subscribe(...)` PER tracked
+    connection, so N live connections meant N debounce-timer resets per
+    keystroke instead of one. Consolidated into a single shared
+    subscription that fans out to every id in the internal registry,
+    registered on the first connection and torn down once the registry is
+    empty — the per-connection lifecycle (`flushTabState`,
+    `subscribedConnectionIds`, the environment-switch `saveSuspended` gate)
+    is otherwise untouched, since none of it depended on *how* the
+    subscription was wired, only on the registry itself.
+
+  Deferred (would need the user's go-ahead first): moving the SQL draft
+  itself out of `useTabs` into its own store. That's the root fix — typing
+  would then touch nothing the tree, status bar, title sync or dockview
+  observe at all — but it changes the persisted tab shape and the
+  `persistedTabs.ts` hydration/`replaceAll` paths, which has the shape of a
+  schema migration rather than a render-path fix. The five fixes above
+  may already be enough on their own.
+
+- **A collapsed side/bottom panel now unmounts its content instead of
+  quietly running forever behind a zero-width wrapper.** `CollapsiblePanel`
+  (the shell's schema/saved/console/side-editor slots, since the move off
+  dockview) only ever animated `width`/`height` between 0 and the persisted
+  size — the children were always mounted, collapsed or not, which was
+  invisible for a plain tree/list but not for `SideEditorPanel`: it keeps a
+  live Monaco instance and its own effects running the entire session even
+  when the panel has never been opened. Children now unmount once the
+  *closing* transition finishes (`onTransitionEnd` on the wrapper itself,
+  ignoring anything bubbling up from inside `children`) — not the instant
+  `open` flips to `false`, which would pop the content out from under the
+  still-animating wrapper — and remount immediately on reopen; the inner box
+  also gets `content-visibility: hidden` while collapsed, for whatever stays
+  mounted anyway. Two call sites can't take the default: `SavedQueriesPanel`
+  (an unsaved search filter, an open rename dialog) and `SideEditorPanel`
+  (an in-progress edit, its dirty-tracking baseline, parked per-tab sessions)
+  both hold local component state a remount would silently discard, so both
+  pass the new `keepMounted` escape hatch instead of losing it. The schema
+  panel and the console dock take the new default — their state already
+  lives in stores, not in the component tree.
+
+- **`TableDataTab` was rebuilding `onCellSave` — and with it every column
+  definition in the grid — on every one of its own renders, remounting the
+  entire table body.** `useGridColumns`'s own header comment already spells
+  out why this is expensive: TanStack's `flexRender` treats `columnDef.cell`
+  as a component *type*, so a rebuilt `columns` array is a new element type
+  for every cell, and React unmounts/remounts the whole `<tbody>` — the
+  cursor-jumps-to-the-end bug, at table-body scale. `onCellSave` is a listed
+  dependency of that memo, but `TableDataTab` defined it (and the `saveField`
+  it wraps) as a plain function declaration, recreated fresh every render —
+  which for a table tab, given how often its own state changes (page, sort,
+  search-as-you-type), was often. Both are now `useCallback`s with an
+  exhaustive dependency list, so their identity — and `useGridColumns`'s
+  `columns` — only changes when something that actually affects the query
+  (pk columns, catalog types, connection/schema/table, `fetchData`) does.
+  `onNavigateFk` and the inline `onSelectionChange` had the same shape of
+  bug one level down: both are direct (non-ref) props on the already-memoized
+  `GridRow` (`components/grid/GridRow.tsx`), so an unstable identity there
+  defeated that memo on every row, every render, regardless of the column
+  fix above. `pkColumnNames` (`pkColumns.map(...)`) and the `searchHistory`
+  fallback (`filterHistory ?? []`) had the exact same problem one line each —
+  a fresh array on every render, the second one only when a connection has
+  no history yet, same trap `NO_ROWS` (this file's own `commit 1`) exists to
+  avoid — both fixed the same way: `useMemo`/a module-level empty-array
+  constant. The four toolbar/footer content blocks (`leadingToolbar`,
+  `insertExtraContent`, `trailingToolbar`, `footerContent`) are also now
+  memoized, which required stabilizing the export/import handlers they
+  close over (`exportFull`, `exportFiltered`, `importCollectionJsonForTab`)
+  the same way — without that, wrapping the JSX in `useMemo` while it still
+  captured a fresh closure every render would have been a no-op. `GridRow`'s
+  own header comment, which asserted these values "stay referentially
+  stable" without that actually being true, is corrected to say what makes
+  it true and to warn that the memo fails open (silently, not loudly) if a
+  future call site breaks the contract again. Added
+  `useGridColumns.test.tsx`, a characterization test pinning the dependency
+  array's actual behavior: stable input in → stable `columns` out, an
+  `onCellSave`/`resultColumns` identity change rebuilds it, and mutating
+  `interactiveRef`'s *contents* (a plain click) does not.
+
+- **The query editor's run timer ticked every 50ms in `QueryEditorTab`
+  itself, re-rendering the whole tab — Monaco included — twenty times a
+  second for every query that ran.** `elapsedMs` existed purely to feed the
+  small `QueryTimer` badge next to the Run button, but the `setInterval`
+  driving it lived in the parent as plain `useState`, so each tick was a
+  state update on the same component instance hosting the SQL editor.
+  Extracted `useElapsed` (`src/lib/useElapsed.ts`): a small hook owning the
+  ticking `elapsedMs`/frozen-outcome state and a stable `start`/`stop`
+  pair. `QueryTimer` now calls it itself and exposes `start`/`stop` through
+  `useImperativeHandle`, so `QueryEditorTab` drives the timer via a
+  `queryTimerRef` — `queryTimerRef.current?.start()` /
+  `.stop(ok)` — without ever subscribing to the value that changes on
+  every tick. `runQuery`/`runBatch` lost `startTimer`/`stopTimer` from
+  their own dependency arrays as a result: a ref read needs no entry.
+  Added `useElapsed.test.ts` with `vi.useFakeTimers()`, covering the tick
+  cadence, freezing on `stop()`, a second `start()` resetting and not
+  double-ticking, and the interval actually clearing on unmount.
+
+- **Investigated, and built the groundwork for, gating per-tab work while a
+  tab is in the background.** `TabbedArea`'s own header comment states the
+  design on purpose: every open tab keeps its own mounted React tree for
+  its whole life, specifically so switching tabs doesn't reset a table's
+  filter draft or a query editor's scroll position (gotcha #10 in
+  `CLAUDE.md`). That means a query's run timer, a grid's virtualizer, or
+  any other recurring per-tab work keeps running for tabs nobody is
+  currently looking at — not by a bug, by the same design that makes
+  switching tabs feel instant. Unmounting background tabs to stop that
+  work was considered and rejected: it would reintroduce exactly the state
+  loss `TabbedArea` exists to avoid, for a cost that (per the tick-scoping
+  fix two entries above) is now mostly confined to the one small component
+  actually doing the ticking rather than the whole tab. What's added
+  instead is `useIsPanelVisible` (`src/lib/tabs/useIsPanelVisible.ts`): a
+  small hook reading `DockviewPanelApi.isActive`/`isVisible` — both already
+  handed to every panel component as `props.api`, no group-level
+  bookkeeping needed — so a future consumer can ask "is anyone even seeing
+  this?" without unmounting anything. Not wired into `QueryTimer` or the
+  grid's virtualizer in this pass: doing that safely needs auditing each
+  consumer for what "paused while backgrounded" should actually mean (does
+  a backgrounded query's timer freeze or keep counting for when the user
+  switches back?), which wants its own scoped change and testing rather
+  than riding along here. Covered by `useIsPanelVisible.test.ts` against a
+  minimal fake of the two events it reads.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

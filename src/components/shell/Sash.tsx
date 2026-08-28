@@ -10,9 +10,12 @@
  * matches the existing `.inner-dock` convention in `index.css` where a
  * manual drag stays instant and only a completed drop/programmatic toggle
  * eases into place.
+ *
+ * The drag mechanics (pointer capture, rAF-coalesced `onResize`) live in
+ * `useSashDrag` — this component is a thin view over it.
  */
 
-import { useCallback, useRef } from "react";
+import { useSashDrag } from "@/lib/shell/useSashDrag";
 import { cn } from "@/lib/utils";
 
 interface SashProps {
@@ -26,50 +29,19 @@ interface SashProps {
 }
 
 export function Sash({ orientation, onResize, onDraggingChange, className }: SashProps) {
-  const lastPos = useRef(0);
-
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      const el = e.currentTarget;
-      el.setPointerCapture(e.pointerId);
-      lastPos.current = orientation === "vertical" ? e.clientX : e.clientY;
-      document.body.style.userSelect = "none";
-      document.body.style.cursor =
-        orientation === "vertical" ? "col-resize" : "row-resize";
-      onDraggingChange?.(true);
-    },
-    [orientation, onDraggingChange],
-  );
-
-  const handlePointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.buttons === 0) return;
-      const pos = orientation === "vertical" ? e.clientX : e.clientY;
-      const delta = pos - lastPos.current;
-      lastPos.current = pos;
-      if (delta !== 0) onResize(delta);
-    },
-    [orientation, onResize],
-  );
-
-  const handlePointerUp = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-      onDraggingChange?.(false);
-    },
-    [onDraggingChange],
-  );
+  const { onPointerDown, onPointerMove, onPointerUp } = useSashDrag({
+    orientation,
+    onResize,
+    onDraggingChange,
+  });
 
   return (
     <div
       role="separator"
       aria-orientation={orientation}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
       className={cn(
         "group shrink-0 select-none",
         orientation === "vertical"

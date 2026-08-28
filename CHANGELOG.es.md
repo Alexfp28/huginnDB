@@ -8,6 +8,481 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Cambiado
+
+- **Pasada de rendimiento de frontend (1.20.0), en curso.** Una regresión real
+  reportada en máquinas modestas — una tabla de 10k registros en modo lista
+  degradándose hasta ser inusable, y una imprecisión general del shell —
+  que resultó no implicar al backend Rust en absoluto: cada entrada de
+  abajo elimina un coste concreto, localizado por archivo y línea, en la
+  capa React/DOM. Se entrega de forma incremental como una serie de commits
+  propia; esta sección crece un punto por commit.
+
+- **Los tokens de color se saltan la capa `color-mix()` por completo cuando no
+  hay ningún `/modificador`.** `2ecaaf7` (la migración a `light-dark()` de
+  1.19.0) movió cada token de color de Tailwind de `hsl(var(--x))` a
+  `color-mix(in srgb, var(--x) calc(<alpha-value> * 100%), transparent)`,
+  para que los modificadores de alpha al estilo `bg-brand/25` siguieran
+  funcionando una vez que cada token pasó a ser un `light-dark(...)` completo
+  (que `hsl()` no puede envolver). Eso se aplicó uniformemente, a propósito,
+  incluso a colores que nadie usa nunca con modificador — pero significaba
+  que cada color opaco pagaba un `color-mix()` + `calc()` en cada lectura, y
+  `border-border` en particular sostiene `* { @apply border-border }` en
+  `index.css`, es decir, el `border-color` de cada nodo del DOM en la app. El
+  nuevo helper `colorToken()` de `tailwind.config.js` devuelve el `var(--x)`
+  desnudo cuando Tailwind lo invoca sin modificador de alpha (o con un
+  `/100` explícito) y la misma fórmula `color-mix()` en cualquier otro caso,
+  y `corePlugins` desactiva ahora las utilidades legacy de opacidad
+  (`bg-opacity-*`/`border-opacity-*`/`text-opacity-*`/`divide-opacity-*`/
+  `ring-opacity-*`/`placeholder-opacity-*`, sin uso en `src/`), que es lo que
+  encamina un `bg-card` sin clase de opacidad a través de la llamada sin
+  modificador de Tailwind en vez de la indirección vía la custom property
+  `--tw-bg-opacity` que esas utilidades exigen. Visualmente idéntico en
+  ambos modos de color y en todos los temas integrados; verificado
+  compilando clases de utilidad reales a través del motor `tailwindcss`
+  instalado y comparando las declaraciones emitidas byte a byte contra la
+  salida previa a `colorToken()` (`src/lib/tailwindColorTokens.test.ts`)
+  para cada clase que sí usa un `/modificador`, más el stop de degradado
+  `from-brand`, que ejercita `opacityValue: 0` — el único caso en el que un
+  guard "falsy" (`!opacityValue` en vez de `opacityValue === undefined`)
+  habría renderizado en silencio el stop "se desvanece a transparente" como
+  totalmente opaco.
+
+- **El modo lista ya no arrastra viva la maquinaria del virtualizador y de
+  `useReactTable` del modo tabla.** `DataGrid` usa un único
+  `<div ref={scrollRef}>` para ambos `viewMode`, y el pipeline
+  `useVirtualizer`/`useReactTable`/`getCoreRowModel()` del modo tabla se
+  ejecutaba de forma incondicional aunque `DocumentListView` fuera lo que de
+  verdad se renderizaba dentro de ese contenedor de scroll. Con el tamaño
+  virtual del propio virtualizador (número de filas × la altura de fila
+  fija, un par de miles de px) totalmente desincronizado del contenido real
+  de la lista, mucho más alto, su rango visible calculado cambiaba en casi
+  cada evento de scroll — y cada cambio disparaba un re-render síncrono del
+  grid completo (`flushSync`, vía el adaptador de `@tanstack/react-virtual`,
+  que re-renderiza de forma incondicional sin la opción `directDomUpdates`
+  que este grid no pasa). `useVirtualizer` recibe ahora
+  `enabled: viewMode !== "list"` (limpia sus listeners internamente y se
+  vuelve a suscribir por su cuenta al volver a modo tabla) y `useReactTable`
+  recibe un array `data` vacío y estable en modo lista en vez de las filas
+  reales, así que `getCoreRowModel()` deja de construir un árbol completo de
+  `Row`/`Cell` para filas que nadie renderiza. Es la corrección directa de
+  la degradación reportada ("página de 100 filas, modo lista, tabla de 10k
+  filas") — las siguientes entradas de esta pasada abaratan la propia lista
+  por fila.
+
+- **El `memo()` por fila del modo lista ahora sí hace bailout, y un
+  contenedor colegado deja de pagar por sus hijos ocultos.** Tres arreglos
+  independientes en `DocumentListView`/`documentTree`:
+  - `DocumentCard` ya estaba envuelta en `memo()`, pero nunca hacía bailout:
+    `onFieldSave`/`onFieldDelete`/`onDeleteRow` llegan como declaraciones de
+    función planas que `TableDataTab` recrea en cada render, y
+    `onExpandField` como una arrow inline de `DataGrid` — una identidad
+    nueva en cada render de algo varias capas por encima, siempre,
+    independientemente de si los datos de esa fila concreta habían
+    cambiado. Esos cuatro callbacks se reflejan ahora a través de una ref
+    (`callbacksRef`, el mismo patrón que `interactiveRef`/`rowCallbacksRef`
+    de `DataGrid` y el propio `callbacksRef` de `GridRow` ya usan) y se leen
+    en el momento de la llamada en vez de pasarse como props;
+    `DocumentCard` recibe solo booleanos (`hasFieldSave`, `documentMode`,
+    …) para saber qué affordances están disponibles, que al ser primitivos
+    se comparan barato y correctamente bajo `memo()`.
+  - `FieldRow` recibe el mismo tratamiento un nivel más abajo: sus ~13
+    callbacks inline por campo (recreados para cada campo de cada tarjeta,
+    en cada render — decenas de miles de closures en una página ancha) se
+    sustituyen por un único `actionsRef` estable, cuyos métodos reciben el
+    campo sobre el que actúan como argumento, y la propia `FieldRow` queda
+    envuelta en `memo()` por primera vez.
+  - `flattenDocument` (`documentTree.ts`) materializaba una tupla `[clave,
+    valor]` por cada hijo de un contenedor — incluido uno *colapsado* —
+    solo para leer `.length` del resultado. Ahora lee el recuento
+    directamente (`.length` / `Object.keys().length`) y solo recorre los
+    hijos cuando el contenedor está de verdad expandido, así que un array
+    colapsado de 10.000 elementos cuesta O(1) en vez de O(hijos) en cada
+    render del memo de arriba.
+
+  También eliminado: una suscripción `useTranslation()` por `DocumentCard`
+  y por `FieldRow` (hasta ~4.000 combinadas en una página ancha — cada una
+  una suscripción viva a i18next), sustituidas por una única suscripción en
+  `DocumentListView` y un objeto `labels` de cadenas precalculadas
+  (recalculado solo ante un cambio de idioma real); y un `columns.find()`
+  por campo y por render para resolver el tipo de catálogo de una columna
+  SQL (O(campos × columnas), ~160.000 comparaciones de string en 100 filas
+  × 40 columnas), sustituido por un `Map` construido una vez por lista de
+  columnas (`typeTextFor`, `documentTree.ts`).
+
+  Verificado con un nuevo test de regresión
+  (`src/components/grid/DocumentListView.test.tsx`) que habría detectado el
+  bug original: vuelve a renderizar la lista con una identidad de
+  `onExpandField` totalmente nueva (justo lo que hace `DataGrid` hoy) y
+  afirma que el cuerpo de render de `DocumentCard` no se ejecuta una
+  segunda vez.
+
+- **Un arrastre del sash dejó de escribir en `localStorage` ~60 veces por
+  segundo y dejó de re-renderizar el shell entero en cada frame.**
+  `Sash.tsx` llamaba a `onResize(delta)` de forma síncrona en cada
+  `pointermove` (~120 Hz observados), y cada uno de los cuatro call sites
+  (los paneles Schema/Saved de `AppShell`, `ConsoleDock`, el split del
+  editor de celda de `IslandShell`) lo conectaba directamente al middleware
+  `persist` de `useSessionPanelLayout` — que hace `JSON.stringify` de todo
+  el store y lo escribe a disco en cada `set()`. La mecánica del arrastre
+  vive ahora en un nuevo hook `useSashDrag` que agrupa los `pointermove` en
+  una sola llamada a `onResize` por frame de animación (sumando los deltas
+  que caen entre medias, nunca descartándolos — descartarlos haría que el
+  borde del panel se quedara rezagado respecto al cursor), y los cuatro
+  call sites comparten ahora una nueva acción del store,
+  `nudgePanel(key, delta)`, en vez de que cada uno calcule
+  `actual + delta` en su propio scope de render (lo cual era además un bug
+  latente: en el límite del clamp, el `actual` capturado por el callback
+  podía ya estar desfasado respecto al store, dejando que el puntero se
+  adelantara visiblemente al sash). El almacenamiento `persist` del store
+  ahora tiene throttle de flanco final a 250 ms con un `flush()` explícito
+  que los cuatro call sites invocan en `onDraggingChange(false)`, así que
+  el valor en disco nunca queda más de un frame por detrás en el momento en
+  que el usuario de verdad suelta.
+
+  Además: `AppShell` ya no se suscribe directamente a
+  `schemaWidth`/`savedWidth` — esa suscripción re-renderizaba todo su árbol
+  de hijos (`IslandShell`, `ConsoleDock`, la barra de actividad derecha) en
+  cada frame de arrastre. Los dos paneles laterales son ahora
+  `SchemaSidePanel`/`SavedSidePanel`, cada uno con su propia suscripción al
+  ancho, y cada uno renderiza el contenido de su panel
+  (`SchemaPanel`/`SavedPanel`) como un elemento de React estable a nivel de
+  módulo — la misma referencia de elemento en cada render — que es lo que
+  permite a React hacer bailout de reconciliar ese subárbol entero aunque
+  el propio wrapper se re-renderice por el ancho. El div interior de
+  tamaño fijo de `CollapsiblePanel` recibe `contain: layout style` (seguro:
+  tamaño fijo, el padre ya recorta con `overflow-hidden`), y el wrapper
+  exterior recibe `will-change` solo mientras el arrastre está en curso, no
+  de forma permanente.
+
+- **Las `options`/`onChange` de Monaco son ahora referencias estables entre
+  renders, en las siete superficies que montan uno.** El `<Editor>` de
+  `@monaco-editor/react` ejecuta `editor.updateOptions(options)` en un
+  efecto con deps `[options]`, y su cableado de cambio de contenido es un
+  segundo efecto con deps `[isEditorReady, onChange]` que hace `dispose()`
+  + `onDidChangeModelContent(...)` en cada cambio — pero cada uno de los
+  siete call sites (el editor SQL, el panel de detalle de la Consola, el
+  editor de celda, la previsualización de DDL, el editor de pipeline de
+  agregación, el editor de vistas, el editor del cuerpo de JSON Schema)
+  construía `options` como un objeto literal nuevo y `onChange` como una
+  arrow inline nueva directamente en el JSX, así que Monaco se
+  reconfiguraba a sí mismo — y tiraba y volvía a registrar su listener de
+  contenido — en cada render del componente que lo rodea, sin importar si
+  había cambiado alguna preferencia real. El nuevo
+  `src/lib/monaco/useEditorOptions.ts` es un wrapper fino y con nombre
+  sobre `useMemo` (el punto no es un mecanismo nuevo, es que el memo viva
+  en un solo sitio que los demás call sites puedan copiar correctamente en
+  vez de reescribirse a mano siete veces con siete ocasiones de equivocar
+  el array de dependencias), emparejado con `useCallback` en cada
+  `onChange`. Depende del objeto `EditorPrefs` completo tal como lo
+  devuelve `usePreferences(selectEditorPrefs)`, referencialmente estable
+  por el propio contrato de ese selector, más cualquier extra específico
+  del call site como primitivo (nunca un objeto inline, que sería una
+  referencia nueva en cada render y rompería el memo por la misma razón
+  que el bug original). El componente `Editor` de `@monaco-editor/react`
+  ya viene envuelto en `memo()` por el propio paquete, así que con ambas
+  props estables ahora se salta el re-render por completo ante un render
+  no relacionado del padre.
+
+- **`content-visibility: auto` en el subárbol por conexión y en la lista de
+  filas por sección del árbol de esquema.** Con el filtro del árbol activo
+  puede haber miles de filas en los subárboles expandidos de cada conexión
+  abierta, todo DOM real (el árbol no está virtualizado, ver la sección
+  "Diferido" más abajo para el porqué de momento). `content-visibility:
+  auto` se salta por completo el recálculo de estilos/layout/paint de lo
+  que queda fuera del viewport de scroll del árbol, sin quitar nada del
+  DOM — lo cual importa porque la navegación por teclado de `moveRowFocus`
+  recorre `[data-tree-row]` vía `querySelectorAll` y dejaría de ver en
+  silencio las filas fuera de pantalla si de verdad estuvieran
+  virtualizadas. La lista de filas de `SchemaTableSection` recibe un
+  `contain-intrinsic-size` exacto (`items.length * 24px` — las filas tienen
+  una altura fija y conocida) en vez de una estimación; el wrapper del
+  subárbol por conexión en `ConnectionsTree` recibe uno aproximado (`auto
+  300px`, que se autocorrige en cuanto el navegador mide el subárbol real
+  una vez). CSS puro, sin cambio de comportamiento — verificado a mano con
+  el filtro activo, observando el panel Rendering de DevTools.
+
+- **Teclear en el filtro del árbol de esquema ya no re-renderiza el árbol
+  entero antes de que el debounce haya hecho nada.** `ConnectionsTree` se
+  suscribía directamente al texto crudo de `useTreeSearch` (para pasarlo a
+  `TreeFilterBox` como prop `value`) — el needle crudo cambia en cada
+  tecla, y `ConnectionsTree` está por encima de cada fila de conexión y su
+  subárbol expandido, así que cada tecla re-renderizaba todo eso, 180 ms
+  antes de que el debounce (`TREE_SEARCH_DEBOUNCE_MS`) llegara siquiera a
+  confirmar algo por lo que los subárboles pudieran filtrar de verdad.
+  `TreeFilterBox` ahora lee y escribe el needle crudo, posee el efecto de
+  debounce, y gestiona ella misma cada tecla que la caja lee (`Backspace`
+  para pelar un nivel de scope, `Enter` para confirmar de inmediato) —
+  `ConnectionsTree` conserva solo `needle`/`patterns`/`scope`, que cambian
+  una vez por disparo del debounce, no una vez por tecla. `ArrowDown` es la
+  única tecla que aún tiene que salir de la caja (mover el foco a la lista
+  de filas necesita el propio DOM del árbol vía `moveRowFocus`), así que es
+  lo único que sigue viajando por prop (`onArrowDown`). Preserva todos los
+  invariantes documentados del camino de búsqueda: sigue habiendo
+  exactamente un debounce; vaciar la caja sigue confirmando de inmediato;
+  teclear sigue sin abrir ningún pool de conexión; una solicitud de foco
+  sigue seleccionando el contenido de la caja; Backspace en una caja vacía
+  sigue pelando un nivel de scope.
+
+- **Una fila de conexión es ahora un componente real, y un arreglo real
+  para un bug de remonte del header de grupo.** `renderConnection(p)` de
+  `ConnectionsTree` era una función plana LLAMADA por fila (devolviendo
+  JSX directamente), nunca renderizada como `<renderConnection />` — así
+  que nunca fue una frontera de componente en absoluto, y el JSX de cada
+  fila se reconciliaba como parte del propio paso de render de
+  `ConnectionsTree`, sin nada de lo que React pudiera hacer bailout. Ahora
+  es `ConnectionTreeRow`, envuelta en `memo()`, en su propio archivo. Sus
+  cuatro callbacks (clic de fila, desconectar, reconectar, acotar el
+  scope) se pasan a través de una ref en vez de como props planas o
+  `useCallback`s — varios de ellos cierran sobre otros closures por
+  render de `ConnectionsTree` (`filterFolds`, `setCollapsed`,
+  `matchCounts`, …) que no están memoizados por sí mismos, así que un
+  `useCallback` aquí quedaría obsoleto (un array de dependencias
+  incompleto) o no ganaría ninguna estabilidad (uno exhaustivo, ya que la
+  mayoría de esas dependencias cambian a menudo); una ref esquiva la
+  pregunta de la misma forma que ya lo hacen el `rowCallbacksRef` de
+  `DataGrid` y el propio arreglo de `DocumentListView` de esta pasada.
+
+  Por separado, y este sí es un bug real y no una optimización perdida:
+  `GroupHeader` (el header colapsable de una carpeta) era una `function
+  GroupHeader(...)` DECLARADA DENTRO del propio cuerpo de render de
+  `ConnectionsTree` y usada como JSX. Una función declarada dentro de un
+  componente recibe una identidad nueva en cada render, y React lee un
+  *tipo* de elemento cambiado como "esto es un componente distinto" — así
+  que cada render de `ConnectionsTree` desmontaba y volvía a montar cada
+  header de grupo. Movida a su propio archivo a nivel de módulo, envuelta
+  en `memo()`, que es lo que hace que un componente sea seguro de
+  memoizar en primer lugar (una identidad que no cambia es el
+  prerrequisito que `memo()` necesita, no una optimización encima de él).
+
+- **`memo()` en toda la familia de explorers del árbol de esquema, y —
+  esta es la parte que realmente lo hizo útil— una prop que invalidaba
+  cada fila de la página cada vez que cualquiera de ellas cambiaba.**
+  `SchemaExplorer`, `SingleDbExplorer`, `MultiDbExplorer`, `TableSection`
+  y `TableRow` están ahora todas envueltas en `memo()`, pero envolver solo
+  `TableRow` no habría servido de nada: recibía como prop el slice de
+  esquema COMPLETO por conexión (`cs`) y leía de él tres cosas (si su
+  propio nodo estaba expandido, sus propias columnas, su propio error de
+  carga de columnas) — y `TableDataTab.tsx` ya documenta que cargar las
+  columnas de cualquier tabla escribe una referencia de mapa `columns`
+  nueva para TODA la conexión. Así que expandir una fila de tabla
+  invalidaba el memo de todas las DEMÁS filas de la misma página.
+  `TableRow` recibe ahora esos tres valores como props propias
+  (`expanded`/`columns`/`columnError`), calculadas una vez por fila por
+  `TableSection` — que es lo que convierte "un toggle re-renderiza 500
+  filas" en "un toggle re-renderiza 1".
+  - El paquete `tableActions` de `SingleDbExplorer` (el objeto que
+    `TableSection`/`TableRow` reciben para abrir/refrescar/renombrar/
+    borrar/vaciar) se reconstruía como un objeto nuevo en cada render, lo
+    cual por sí solo habría anulado ambos `memo()` de más abajo
+    independientemente del arreglo de `cs` — envuelto en `useMemo`,
+    colocado POR ENCIMA del `if (!cs)` de retorno anticipado por la misma
+    razón de peso que ya obliga al `useMemo` existente de
+    `bySchema`/`schemas` del archivo a estar ahí (un hook después de un
+    retorno anticipado condicional es una violación de las Reglas de los
+    Hooks en cuanto `cs` puede pasar a `undefined` entre renders, que es
+    exactamente el escenario multi-DB de "varios explorers anidados se
+    desmontan mientras `byConnection` se estabiliza" que el comentario de
+    cabecera de este archivo ya advierte).
+  - `ConnectionsTree` tenía su propia SEGUNDA suscripción ancha a
+    `useSchema.byConnection` (`useTreeMatchCounts` ya tenía la primera),
+    usada solo para el spinner de carga de la fila. El nuevo
+    `useLoadingConnectionIds` (junto a `useTreeMatchCounts`, mismo
+    archivo) la estrecha a un `Set<string>` de ids en carga —
+    restaurando la afirmación del propio comentario de ese archivo de ser
+    la única suscripción ancha de la app a ese mapa.
+
+- **Una derivación sobre las tabs abiertas en vez de dos por fila del árbol
+  de esquema.** `SchemaTableRow` ejecutaba ella misma
+  `useTabs((s) => s.tabs.find(...))` y `useTabs((s) => s.tabs.some(...))`,
+  cada una un escaneo O(tabs) — ambas devuelven primitivos, así que ninguna
+  rompe la gotcha #1 ni re-renderiza una fila que no le afecta, pero
+  ninguna evita *ejecutarse* tampoco. 500 filas × dos escaneos O(tabs) son
+  1.000 iteraciones en cada escritura a `useTabs`, y teclear en el editor
+  SQL es exactamente una escritura así, una por tecla (arreglado de raíz un
+  commit más adelante, pero este escaneo era real de todas formas). El
+  nuevo `useOpenTableKeys` (`src/lib/schema/useOpenTableKeys.ts`) calcula
+  ambas respuestas — la clave de la tabla activa y el conjunto de claves de
+  cada tabla abierta — en una sola pasada, llamado una vez por render del
+  explorer en vez de una vez por fila, y entrega el resultado como dos
+  props (`activeTableKey`, `openTableKeys: ReadonlySet<string>`)
+  encadenadas a través de `TableSection`. La comprobación de pertenencia de
+  cada fila (`openTableKeys.has(...)`) es lo que alimenta de verdad su
+  estado `isOpen`/`isActive`, así que mientras esa pertenencia no cambie,
+  sus props siguen siendo los mismos primitivos que eran — manteniendo
+  intacto el bailout del memo de `TableRow` del commit anterior. El
+  separador de clave `\0` se escribe como escape (`tableTabKey`), nunca
+  como byte NUL literal — un byte NUL ya volvió el archivo entero binario
+  para git una vez (sin diff, sin revisión, sin grep).
+
+- **Una tecla en el editor SQL ya no se propaga al título de la ventana, a
+  la maquinaria de la tira de tabs de dockview, a un re-render de la status
+  bar por un comentario obsoleto, ni a N suscripciones de guardado en disco
+  separadas.** `updateQuery` (`useTabs`) reemplaza todo el array `tabs` en
+  cada tecla — correcto, ya que el texto de la query vive en el objeto tab
+  — pero varios listeners no relacionados estaban indexados sobre `tabs`
+  en sí en vez de sobre si algo que de verdad les importaba había
+  cambiado:
+  - `WindowTitleSync` recalculaba el título de la ventana del SO Y hacía
+    la llamada IPC `setTitle` en un único efecto con deps `[tabs, activeId,
+    profiles, selectedConnectionId, appName]`. El texto del título casi
+    nunca cambia mientras se teclea (depende de qué conexión/tabla está
+    activa, no del cuerpo SQL), así que el cálculo es ahora un `useMemo`
+    separado y la llamada IPC depende de `[title]` — un string, así que
+    solo se dispara cuando el título *renderizado* cambia de verdad.
+  - El efecto de sincronización de paneles de `TabbedArea`
+    (`syncTabPanels`) solo añade/quita paneles de dockview, así que solo
+    necesita saber que la *identidad* de las tabs cambió, no que algún
+    campo propio de una tab cambió — igual para el efecto de edge-fade
+    justo debajo, que destruía y recreaba todo su `ResizeObserver` +
+    listener de scroll en cada tecla. Ambos dependen ahora de una firma
+    `tabs.map(t => t.id).join("\0")` en vez de `tabs` en sí, leyendo el
+    array real vía `getState()` donde el diff de verdad necesita los datos
+    completos de cada tab.
+  - `StatusBar` seleccionaba `s.tabs.find((t) => t.id === s.activeId)`
+    para su único uso — `activeTab.connectionId` — pero `.find()` devuelve
+    una referencia de objeto *nueva* después de que `updateQuery`
+    reemplace justo esa tab, anulando la optimización de selector de
+    Zustand que el propio comentario de cabecera del archivo prometía.
+    Estrechado para seleccionar `connectionId` directamente (un
+    primitivo), y el comentario obsoleto de "`.find()` es estable" se
+    corrige en el mismo cambio.
+  - `persistedTabs.ts` registraba un `useTabs.subscribe(...)` POR CADA
+    conexión rastreada, así que N conexiones vivas significaban N reinicios
+    de temporizador de debounce por tecla en vez de uno. Consolidado en
+    una única suscripción compartida que reparte a cada id del registro
+    interno, registrada en la primera conexión y desmontada en cuanto el
+    registro queda vacío — el ciclo de vida por conexión (`flushTabState`,
+    `subscribedConnectionIds`, el guard `saveSuspended` del cambio de
+    entorno) queda intacto por lo demás, ya que nada de eso dependía de
+    *cómo* estaba cableada la suscripción, solo del propio registro.
+
+  Diferido (necesitaría el visto bueno del usuario antes): sacar el propio
+  borrador SQL de `useTabs` a su propio store. Ese es el arreglo de raíz —
+  teclear no tocaría entonces nada de lo que observan el árbol, la status
+  bar, el title sync o dockview — pero cambia la forma de la tab
+  persistida y los caminos de hidratación/`replaceAll` de
+  `persistedTabs.ts`, que tiene la forma de una migración de esquema y no
+  de un arreglo del camino de render. Los cinco arreglos de arriba puede
+  que ya basten por sí solos.
+
+- **Un panel lateral/inferior colapsado ahora desmonta su contenido en vez de
+  dejarlo corriendo indefinidamente detrás de un wrapper de ancho cero.**
+  `CollapsiblePanel` (los slots de esquema/guardadas/consola/editor lateral
+  del shell, desde el traslado fuera de dockview) solo animaba
+  `width`/`height` entre 0 y el tamaño persistido — los hijos siempre
+  estaban montados, colapsado o no, lo cual era invisible para un árbol o
+  lista sencillos, pero no para `SideEditorPanel`: mantiene una instancia
+  de Monaco viva y sus propios efectos corriendo toda la sesión aunque el
+  panel nunca se haya abierto. Los hijos ahora se desmontan cuando termina
+  la transición de *cierre* (`onTransitionEnd` en el propio wrapper,
+  ignorando lo que burbujee desde dentro de `children`) — no en el instante
+  en que `open` pasa a `false`, lo que haría que el contenido desapareciera
+  de golpe con el wrapper todavía animando — y se remontan de inmediato al
+  reabrir; la caja interior también recibe `content-visibility: hidden`
+  mientras está colapsada, para lo que sea que se mantenga montado igual.
+  Dos sitios de uso no pueden asumir el comportamiento por defecto:
+  `SavedQueriesPanel` (un filtro de búsqueda sin guardar, un diálogo de
+  renombrar abierto) y `SideEditorPanel` (una edición en curso, su línea
+  base de detección de cambios, sesiones por-tab aparcadas) tienen ambos
+  estado local de componente que un remonte descartaría en silencio, así
+  que ambos pasan el nuevo escape `keepMounted` en vez de perderlo. El
+  panel de esquema y la consola inferior usan el nuevo comportamiento por
+  defecto — su estado ya vive en stores, no en el árbol de componentes.
+
+- **`TableDataTab` reconstruía `onCellSave` — y con ello cada definición de
+  columna de la rejilla — en cada uno de sus propios renders, remontando la
+  `<tbody>` entera.** El propio comentario de cabecera de `useGridColumns`
+  ya explica por qué es caro: `flexRender` de TanStack trata `columnDef.cell`
+  como un TIPO de componente, así que un `columns` reconstruido es un tipo
+  de elemento nuevo para cada celda, y React desmonta/remonta la `<tbody>`
+  entera — el bug de "el cursor salta al final", a escala de toda la tabla.
+  `onCellSave` es una dependencia declarada de ese memo, pero `TableDataTab`
+  lo definía (junto con el `saveField` que envuelve) como una función
+  declarada a secas, recreada en cada render — lo cual, dado con qué
+  frecuencia cambia el propio estado de una tab de tabla (página, orden,
+  búsqueda mientras se teclea), era a menudo. Ambos son ahora `useCallback`
+  con una lista de dependencias exhaustiva, así que su identidad — y el
+  `columns` de `useGridColumns` — solo cambia cuando algo que de verdad
+  afecta a la consulta (columnas PK, tipos de catálogo, conexión/esquema/
+  tabla, `fetchData`) cambia. `onNavigateFk` y el `onSelectionChange` en
+  línea tenían el mismo tipo de bug un nivel más abajo: ambos son props
+  directas (no por ref) del ya memoizado `GridRow`
+  (`components/grid/GridRow.tsx`), así que una identidad inestable ahí
+  anulaba ese memo en cada fila, en cada render, sin importar el arreglo de
+  columnas de arriba. `pkColumnNames` (`pkColumns.map(...)`) y el respaldo de
+  `searchHistory` (`filterHistory ?? []`) tenían el mismo problema, línea a
+  línea — un array nuevo en cada render, el segundo solo cuando una conexión
+  aún no tiene historial, la misma trampa que `NO_ROWS` (de este mismo
+  archivo, del "commit 1") existe para evitar — ambos arreglados igual:
+  `useMemo`/una constante de array vacío a nivel de módulo. Los cuatro
+  bloques de contenido de toolbar/footer (`leadingToolbar`,
+  `insertExtraContent`, `trailingToolbar`, `footerContent`) también están
+  ahora memoizados, lo que requirió estabilizar los manejadores de
+  exportar/importar que envuelven (`exportFull`, `exportFiltered`,
+  `importCollectionJsonForTab`) de la misma forma — sin eso, envolver el JSX
+  en `useMemo` mientras seguía capturando un closure nuevo en cada render
+  habría sido un no-op. El comentario de cabecera de `GridRow`, que afirmaba
+  que estos valores "se mantienen referencialmente estables" sin que eso
+  fuera realmente cierto, se corrige para decir qué es lo que lo hace
+  cierto y para advertir que el memo falla en abierto (en silencio, no
+  ruidosamente) si un futuro punto de uso vuelve a romper el contrato. Se
+  añade `useGridColumns.test.tsx`, un test de caracterización que fija el
+  comportamiento real del array de dependencias: entrada estable → `columns`
+  estable de salida, un cambio de identidad en `onCellSave`/`resultColumns`
+  lo reconstruye, y mutar el CONTENIDO de `interactiveRef` (un simple clic)
+  no lo hace.
+
+- **El temporizador de ejecución del editor de consultas marcaba cada 50ms
+  en el propio `QueryEditorTab`, re-renderizando la tab entera — Monaco
+  incluido — veinte veces por segundo por cada consulta ejecutada.**
+  `elapsedMs` existía solo para alimentar la pequeña insignia `QueryTimer`
+  junto al botón de ejecutar, pero el `setInterval` que lo movía vivía en
+  el padre como `useState` normal, así que cada tick era una actualización
+  de estado en el mismo componente que aloja el editor SQL. Se extrae
+  `useElapsed` (`src/lib/useElapsed.ts`): un hook pequeño que posee el
+  estado de `elapsedMs` (marcando) y el resultado congelado, más un par
+  `start`/`stop` estable. `QueryTimer` ahora lo llama él mismo y expone
+  `start`/`stop` vía `useImperativeHandle`, así que `QueryEditorTab` mueve
+  el temporizador a través de un `queryTimerRef` —
+  `queryTimerRef.current?.start()` / `.stop(ok)` — sin suscribirse nunca al
+  valor que cambia en cada tick. `runQuery`/`runBatch` perdieron
+  `startTimer`/`stopTimer` de sus propios arrays de dependencias como
+  consecuencia: leer un ref no necesita entrada. Se añade
+  `useElapsed.test.ts` con `vi.useFakeTimers()`, cubriendo la cadencia de
+  los ticks, la congelación en `stop()`, que un segundo `start()` reinicia
+  sin duplicar ticks, y que el intervalo realmente se limpia al desmontar.
+
+- **Investigado, y sentada la base para, limitar el trabajo por-tab mientras
+  una tab está en segundo plano.** El propio comentario de cabecera de
+  `TabbedArea` explica el diseño a propósito: cada tab abierta mantiene su
+  propio árbol de React montado durante toda su vida, específicamente para
+  que cambiar de tab no reinicie el borrador de filtro de una tabla ni la
+  posición de scroll de un editor de consultas (gotcha #10 de `CLAUDE.md`).
+  Eso significa que el temporizador de ejecución de una consulta, el
+  virtualizador de una rejilla, o cualquier otro trabajo recurrente por-tab
+  sigue corriendo para tabs que nadie está mirando ahora mismo — no por un
+  bug, sino por el mismo diseño que hace que cambiar de tab se sienta
+  instantáneo. Desmontar las tabs en segundo plano para detener ese trabajo
+  se consideró y se descartó: reintroduciría exactamente la pérdida de
+  estado que `TabbedArea` existe para evitar, a cambio de un coste que (tras
+  el arreglo de aislar el tick, dos entradas más arriba) ya está confinado
+  sobre todo al pequeño componente que de verdad hace el tick, no a la tab
+  entera. Lo que se añade en su lugar es `useIsPanelVisible`
+  (`src/lib/tabs/useIsPanelVisible.ts`): un hook pequeño que lee
+  `DockviewPanelApi.isActive`/`isVisible` — ambos ya entregados a cada
+  componente de panel como `props.api`, sin necesitar contabilidad a nivel
+  de grupo — para que un futuro consumidor pueda preguntar "¿alguien está
+  viendo esto siquiera?" sin desmontar nada. No se conecta a `QueryTimer` ni
+  al virtualizador de la rejilla en esta pasada: hacerlo con seguridad
+  requiere auditar cada consumidor sobre qué debería significar realmente
+  "en pausa mientras está en segundo plano" (¿el temporizador de una
+  consulta en segundo plano se congela o sigue contando para cuando el
+  usuario vuelva?), lo cual pide su propio cambio acotado y sus propias
+  pruebas en vez de venir de paso aquí. Cubierto por
+  `useIsPanelVisible.test.ts` contra una réplica mínima de los dos eventos
+  que lee.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido

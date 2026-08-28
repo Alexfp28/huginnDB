@@ -10,7 +10,10 @@ import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Console } from "@/components/query/Console";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { useSessionPanelLayout } from "@/stores/session/panelLayout";
+import {
+  flushPanelLayoutStorage,
+  useSessionPanelLayout,
+} from "@/stores/session/panelLayout";
 import { Sash } from "@/components/shell/Sash";
 import { CollapsiblePanel } from "@/components/shell/CollapsiblePanel";
 import { cn } from "@/lib/utils";
@@ -20,7 +23,7 @@ export function ConsoleDock() {
   const open = useSessionPanelLayout((s) => s.consoleOpen);
   const height = useSessionPanelLayout((s) => s.consoleHeight);
   const toggleConsole = useSessionPanelLayout((s) => s.toggleConsole);
-  const setConsoleHeight = useSessionPanelLayout((s) => s.setConsoleHeight);
+  const nudgePanel = useSessionPanelLayout((s) => s.nudgePanel);
   const [dragging, setDragging] = useState(false);
 
   return (
@@ -28,8 +31,11 @@ export function ConsoleDock() {
       {open && (
         <Sash
           orientation="horizontal"
-          onResize={(delta) => setConsoleHeight(height - delta)}
-          onDraggingChange={setDragging}
+          onResize={(delta) => nudgePanel("consoleHeight", -delta)}
+          onDraggingChange={(d) => {
+            setDragging(d);
+            if (!d) flushPanelLayoutStorage();
+          }}
         />
       )}
       <CollapsiblePanel open={open} size={height} axis="height" dragging={dragging}>

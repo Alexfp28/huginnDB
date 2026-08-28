@@ -11,7 +11,7 @@
  * same reason. Getting that wrong in N stage cards would be N times as wrong.
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import {
   ensureMongoLanguage,
@@ -23,6 +23,7 @@ import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferen
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
+import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
 
 interface Props {
   value: string;
@@ -87,6 +88,33 @@ export function PipelineEditor({
     ]);
   }
 
+  const handleEditorChange = useCallback(
+    (v: string | undefined) => onChange(v ?? ""),
+    [onChange],
+  );
+  const editorOptions = useEditorOptions(
+    () => ({
+      readOnly,
+      ...editorOptionsFromPrefs(editorPrefs),
+      // A stage body is small and hand-written: no minimap, two-space indent
+      // regardless of the global tab size, and line numbers only when the
+      // caller wants them (the text-mode editor, not the per-stage cards).
+      minimap: { enabled: false },
+      tabSize: 2,
+      lineNumbers: (lineNumbers ? "on" : "off") as "on" | "off",
+      lineDecorationsWidth: lineNumbers ? undefined : 8,
+      lineNumbersMinChars: lineNumbers ? 3 : 0,
+      folding: true,
+      glyphMargin: false,
+      renderLineHighlight: "none" as const,
+      scrollBeyondLastLine: false,
+      automaticLayout: true,
+      padding: { top: 8, bottom: 8 },
+      scrollbar: { alwaysConsumeMouseWheel: false },
+    }),
+    [readOnly, editorPrefs, lineNumbers],
+  );
+
   return (
     <Editor
       height={height}
@@ -96,27 +124,9 @@ export function PipelineEditor({
       wrapperProps={{ "data-kb-scope": "editor" }}
       theme={resolveMonacoTheme(editorPrefs.theme)}
       value={value}
-      onChange={(v) => onChange(v ?? "")}
+      onChange={handleEditorChange}
       onMount={handleMount}
-      options={{
-        readOnly,
-        ...editorOptionsFromPrefs(editorPrefs),
-        // A stage body is small and hand-written: no minimap, two-space indent
-        // regardless of the global tab size, and line numbers only when the
-        // caller wants them (the text-mode editor, not the per-stage cards).
-        minimap: { enabled: false },
-        tabSize: 2,
-        lineNumbers: lineNumbers ? "on" : "off",
-        lineDecorationsWidth: lineNumbers ? undefined : 8,
-        lineNumbersMinChars: lineNumbers ? 3 : 0,
-        folding: true,
-        glyphMargin: false,
-        renderLineHighlight: "none",
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        padding: { top: 8, bottom: 8 },
-        scrollbar: { alwaysConsumeMouseWheel: false },
-      }}
+      options={editorOptions}
     />
   );
 }

@@ -48,6 +48,7 @@ import { useReloadable } from "@/lib/useReloadable";
 import { DdlPreviewPane } from "@/components/schema/DdlPreviewPane";
 import { joinStatements } from "@/lib/sql/formatStatements";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
+import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
 
 interface Props {
   tabId: string;
@@ -272,6 +273,18 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
     ]);
   }
 
+  const handleEditorChange = useCallback(
+    (v: string | undefined) => setQuery(v ?? ""),
+    [],
+  );
+  const editorOptions = useEditorOptions(
+    () => ({
+      ...editorOptionsFromPrefs(editorPrefs),
+      formatOnPaste: editorPrefs.formatOnPaste,
+    }),
+    [editorPrefs],
+  );
+
   if (loading) {
     return (
       <div className="p-4 text-xs text-muted-foreground">
@@ -334,12 +347,9 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
               wrapperProps={{ "data-kb-scope": "editor" }}
               theme={resolveMonacoTheme(editorPrefs.theme)}
               value={query}
-              onChange={(v) => setQuery(v ?? "")}
+              onChange={handleEditorChange}
               onMount={handleMount}
-              options={{
-                ...editorOptionsFromPrefs(editorPrefs),
-                formatOnPaste: editorPrefs.formatOnPaste,
-              }}
+              options={editorOptions}
             />
           </Panel>
           <PanelResizeHandle className="h-1 bg-border hover:bg-primary/30" />

@@ -20,7 +20,15 @@
  * current line/character count, and encoding.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import {
@@ -66,6 +74,8 @@ import { buildCompletions } from "@/lib/sql/sqlCompletions";
 import { cn, formatDuration, formatTime } from "@/lib/utils";
 import { supportsMultipleDatabases } from "@/lib/db/driver";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
+import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
+import { useElapsed } from "@/lib/useElapsed";
 import {
   ensureSqlProviders,
   registerSqlEditor,
@@ -141,42 +151,14 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const [editorStats, setEditorStats] = useState({ lines: 1, chars: 0 });
 
   /**
-   * Wall-clock run timer. `elapsedMs` ticks live while `running` and
-   * freezes at the measured round-trip time once the query settles —
-   * previously the only feedback was "running…" with no indication of
-   * how long that had actually been. `lastRunOk` drives the frozen
-   * badge's color (null = never run yet, so the badge stays hidden).
+   * Wall-clock run timer, isolated behind a ref on purpose. `elapsedMs`
+   * ticks every 50ms while a query is running — state that used to live
+   * here and re-render this whole tab (Monaco included) on every tick.
+   * `QueryTimer` now owns that state itself (via `useElapsed`); this ref
+   * is just the imperative start/stop handle, so `runQuery`/`runBatch`
+   * below can drive the badge without subscribing to its ticking value.
    */
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [lastRunOk, setLastRunOk] = useState<boolean | null>(null);
-  const runStartRef = useRef(0);
-  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const startTimer = useCallback(() => {
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    runStartRef.current = Date.now();
-    setElapsedMs(0);
-    setLastRunOk(null);
-    timerIntervalRef.current = setInterval(() => {
-      setElapsedMs(Date.now() - runStartRef.current);
-    }, 50);
-  }, []);
-
-  const stopTimer = useCallback((ok: boolean) => {
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
-    setElapsedMs(Date.now() - runStartRef.current);
-    setLastRunOk(ok);
-  }, []);
-
-  useEffect(
-    () => () => {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    },
-    [],
-  );
+  const queryTimerRef = useRef<QueryTimerHandle>(null);
 
   const filteredHistory = useMemo(() => {
     if (!historyFilter.trim()) return history;
@@ -298,7 +280,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       setRunning(true);
       setError(null);
       setBatchSummary(null);
-      startTimer();
+      queryTimerRef.current?.start();
       try {
         const r = await api.executeQuery(effectiveId, toRun);
         setResult(r);
@@ -308,7 +290,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           elapsedMs: r.elapsed_ms,
           rowsAffected: r.rows_affected,
         });
-        stopTimer(true);
+        queryTimerRef.current?.stop(true);
       } catch (e) {
         setError(String(e));
         addHistory({
@@ -318,12 +300,15 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           rowsAffected: 0,
           error: String(e),
         });
-        stopTimer(false);
+        queryTimerRef.current?.stop(false);
       } finally {
         setRunning(false);
       }
     },
-    [sql, effectiveId, parentId, running, addHistory, startTimer, stopTimer],
+    // `queryTimerRef` is a ref: reading `.current` at call time needs no
+    // dependency-array entry, which is the whole point of driving the
+    // timer this way instead of through `startTimer`/`stopTimer` callbacks.
+    [sql, effectiveId, parentId, running, addHistory],
   );
 
   /**
@@ -337,7 +322,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     if (running || statements.length === 0) return;
     setRunning(true);
     setError(null);
-    startTimer();
+    queryTimerRef.current?.start();
     try {
       const r = await api.executeBatch(
         effectiveId,
@@ -353,14 +338,14 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         rowsAffected: r.total_affected,
         error: failed?.error ?? undefined,
       });
-      stopTimer(!failed);
+      queryTimerRef.current?.stop(!failed);
     } catch (e) {
       setError(String(e));
-      stopTimer(false);
+      queryTimerRef.current?.stop(false);
     } finally {
       setRunning(false);
     }
-  }, [running, statements, effectiveId, parentId, addHistory, startTimer, stopTimer]);
+  }, [running, statements, effectiveId, parentId, addHistory]);
 
   /**
    * Ref pointing at the latest `runQuery`. Monaco's `addCommand` runs
@@ -477,6 +462,18 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     }
   }
 
+  const handleEditorChange = useCallback(
+    (v: string | undefined) => updateQuery(tabId, v ?? ""),
+    [tabId, updateQuery],
+  );
+  const editorOptions = useEditorOptions(
+    () => ({
+      ...editorOptionsFromPrefs(editorPrefs),
+      formatOnPaste: editorPrefs.formatOnPaste,
+    }),
+    [editorPrefs],
+  );
+
   return (
     <PanelGroup
       direction="vertical"
@@ -519,7 +516,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 </kbd>
               )}
             </Button>
-            <QueryTimer running={running} elapsedMs={elapsedMs} ok={lastRunOk} />
+            <QueryTimer ref={queryTimerRef} running={running} />
             <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
             <Button
               size="sm"
@@ -585,12 +582,9 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 // `prefs.json` carries an unknown id.
                 theme={resolveMonacoTheme(editorPrefs.theme)}
                 value={sql}
-                onChange={(v) => updateQuery(tabId, v ?? "")}
+                onChange={handleEditorChange}
                 onMount={handleMount}
-                options={{
-                  ...editorOptionsFromPrefs(editorPrefs),
-                  formatOnPaste: editorPrefs.formatOnPaste,
-                }}
+                options={editorOptions}
               />
             </div>
             {showHistory && (
@@ -749,41 +743,52 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   );
 }
 
+/** Imperative handle `QueryEditorTab` drives the timer through — see the
+ *  comment on `queryTimerRef` above for why this is a ref and not props. */
+export interface QueryTimerHandle {
+  start: () => void;
+  stop: (ok: boolean) => void;
+}
+
 /**
  * Live/frozen run-duration badge next to the Run button. Ticks in real time
  * (wall clock, not the driver's own `elapsed_ms`, so it reflects what the
  * user is actually waiting on — IPC included) while a query is in flight,
  * then freezes on the settled time, tinted by outcome. Renders nothing
  * before the first run — an idle "0 ms" badge would just be noise.
+ *
+ * Owns its own `elapsedMs`/`lastOk` state via `useElapsed` instead of
+ * receiving them as props from `QueryEditorTab`. That state ticks every
+ * 50ms while a query runs; if it lived in the parent (as it used to), every
+ * tick would re-render the entire query tab — Monaco editor included — just
+ * to update this one small badge. `start`/`stop` are exposed through
+ * `ref` so the parent can drive the timer without subscribing to the value
+ * that changes 20 times a second.
  */
-function QueryTimer({
-  running,
-  elapsedMs,
-  ok,
-}: {
-  running: boolean;
-  elapsedMs: number;
-  ok: boolean | null;
-}) {
-  const { t } = useTranslation();
-  if (!running && ok === null) return null;
-  return (
-    <div
-      className={cn(
-        "ml-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] tabular-nums transition-colors",
-        running
-          ? "bg-brand/10 text-brand"
-          : ok
-            ? "bg-muted text-muted-foreground"
-            : "bg-destructive/10 text-destructive",
-      )}
-      title={t("query.elapsedTitle")}
-    >
-      <Clock className={cn("h-3 w-3", running && "animate-pulse")} />
-      <span>{formatDuration(elapsedMs)}</span>
-    </div>
-  );
-}
+const QueryTimer = forwardRef<QueryTimerHandle, { running: boolean }>(
+  function QueryTimer({ running }, ref) {
+    const { t } = useTranslation();
+    const { elapsedMs, lastOk, start, stop } = useElapsed();
+    useImperativeHandle(ref, () => ({ start, stop }), [start, stop]);
+    if (!running && lastOk === null) return null;
+    return (
+      <div
+        className={cn(
+          "ml-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] tabular-nums transition-colors",
+          running
+            ? "bg-brand/10 text-brand"
+            : lastOk
+              ? "bg-muted text-muted-foreground"
+              : "bg-destructive/10 text-destructive",
+        )}
+        title={t("query.elapsedTitle")}
+      >
+        <Clock className={cn("h-3 w-3", running && "animate-pulse")} />
+        <span>{formatDuration(elapsedMs)}</span>
+      </div>
+    );
+  },
+);
 
 /**
  * Compact, scrollable summary of a multi-statement batch run. One row per

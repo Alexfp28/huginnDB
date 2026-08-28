@@ -9,7 +9,7 @@
  * grouping above it (gotcha #1), which is unchanged.
  */
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -40,10 +40,10 @@ import { supportsDdlEditing, supportsRenameTable } from "@/lib/db/driver";
 import { selectSnippet } from "@/lib/grid/copyFormats";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
-import { tableKey, useSchema } from "@/stores/session/schema";
-import { useTabs } from "@/stores/session/tabs";
+import { tableKey } from "@/stores/session/schema";
+import { tableTabKey } from "@/lib/schema/useOpenTableKeys";
 import type { TableActions } from "@/components/schema/SchemaTableSection";
-import type { SchemaTableMetric, TableInfo } from "@/types";
+import type { ColumnInfo, SchemaTableMetric, TableInfo } from "@/types";
 
 /**
  * Coarse colour for a column's data type, tying the tree's type labels to the
@@ -91,21 +91,39 @@ export function tableMetricLabel(t: TableInfo, metric: SchemaTableMetric): strin
   return null;
 }
 
-/** One table/view row + its expandable column list, wrapped in a context
- *  menu with the destructive (DROP) and renaming actions. */
-export function TableRow({
+/**
+ * One table/view row + its expandable column list, wrapped in a context menu
+ * with the destructive (DROP) and renaming actions.
+ *
+ * `memo()`-wrapped, which is only useful because of what it does NOT
+ * receive: earlier this took the connection's WHOLE per-connection schema
+ * slice (`cs`) and read three things out of it (`expanded`, `columns`,
+ * `columnError`) — but `TableDataTab.tsx` documents that `loadColumns`
+ * writes a fresh `columns` map reference on every load, so expanding ANY
+ * table on the page invalidated the `cs` prop for every OTHER row too.
+ * Taking the three derived values as their own props (computed once per row
+ * by `TableSection`, gotcha #28) is what turns "a toggle re-renders every
+ * row on the page" into "a toggle re-renders one".
+ */
+export const TableRow = memo(function TableRow({
   table,
   connectionId,
-  cs,
+  expanded,
+  columns: cols,
+  columnError: colError,
   toggleNode,
   loadColumns,
   actions,
   metric,
   loadingLabel,
+  activeTableKey,
+  openTableKeys,
 }: {
   table: TableInfo;
   connectionId: string;
-  cs: ReturnType<typeof useSchema.getState>["byConnection"][string];
+  expanded: boolean;
+  columns: ColumnInfo[] | undefined;
+  columnError: string | undefined;
   toggleNode: (connectionId: string, key: string) => void;
   loadColumns: (
     connectionId: string,
@@ -115,47 +133,29 @@ export function TableRow({
   actions: TableActions;
   metric: SchemaTableMetric;
   loadingLabel: string;
+  /** This row's "you are here" state, derived ONCE per explorer render by
+   *  `useOpenTableKeys` instead of two O(tabs) scans per row — see that
+   *  hook's own doc comment. */
+  activeTableKey: string | null;
+  openTableKeys: ReadonlySet<string>;
 }) {
   const { t: ct } = useTranslation();
   const t = table;
   const k = tableKey(t.schema, t.name);
   const tableNodeKey = `table:${k}`;
-  const tableOpen = cs.expanded.has(tableNodeKey);
-  const cols = cs.columns[k];
-  const colError = cs.columnErrors?.[k];
+  const tableOpen = expanded;
   const isView = t.kind === "view";
   // See `ConnectionActionsMenu`'s matching state/comment: keeps the row
   // looking targeted once the pointer has moved off it onto the open menu.
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const thisTableKey = tableTabKey(connectionId, t.schema, t.name);
   // Reflect the currently-open table tab so the tree shows "you are here".
-  // The selector returns a primitive string, so it's reference-stable and
-  // safe as a Zustand selector (stores gotcha #1). `\0` separators avoid any
-  // schema/table name colliding with the delimiter — written as the escape,
-  // not as a literal NUL byte, which made the whole file binary to git (no
-  // diff, no review, no grep).
-  const activeTableKey = useTabs((s) => {
-    const a = s.tabs.find((x) => x.id === s.activeId);
-    return a && a.kind === "table"
-      ? `${a.connectionId}\0${a.schema ?? ""}\0${a.table}`
-      : null;
-  });
-  const isActive =
-    activeTableKey === `${connectionId}\0${t.schema ?? ""}\0${t.name}`;
-
+  const isActive = activeTableKey === thisTableKey;
   // Whether this table is open in a tab *anywhere* (not just the active one),
   // so the tree can answer "do I have this open?" at a glance when many tabs
-  // are open. Returns a primitive boolean → reference-stable selector return
-  // (stores gotcha #1).
-  const isOpen = useTabs((s) =>
-    s.tabs.some(
-      (x) =>
-        x.kind === "table" &&
-        x.connectionId === connectionId &&
-        (x.schema ?? "") === (t.schema ?? "") &&
-        x.table === t.name,
-    ),
-  );
+  // are open.
+  const isOpen = openTableKeys.has(thisTableKey);
 
   const copyName = () => {
     void navigator.clipboard.writeText(t.name);
@@ -563,4 +563,4 @@ export function TableRow({
       </ContextMenuContent>
     </ContextMenu>
   );
-}
+});

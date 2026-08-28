@@ -182,9 +182,18 @@ interface GridRowProps {
  * Reading them through a ref that's refreshed each render (not compared by
  * `memo`) keeps `GridRow` seeing the latest closures without their identity
  * forcing a re-render. Everything else below (column metadata, `onCellSave`
- * and friends) comes from the parent tab and — verified against `columns`'s
- * own `useMemo` deps above — stays referentially stable across a plain grid
- * click, so it's passed straight through as ordinary props.
+ * and friends) comes from the parent tab as ordinary props instead, which
+ * only actually bails this memo out because `TableDataTab` itself keeps
+ * them referentially stable (`useCallback`/`useMemo`, matching the
+ * dependency list `useGridColumns` — in `lib/grid/useGridColumns.tsx`, not
+ * this file — already required of `onCellSave`). That used to be false for
+ * `onCellSave`/`onNavigateFk`/`pkColumnNames`: `TableDataTab` rebuilt all
+ * three on every render, which meant every row here re-rendered on every
+ * unrelated keystroke regardless of this memo, `useGridColumns` rebuilding
+ * its whole `columns` array along with it (see the "dependency array is
+ * load-bearing" note there for what THAT costs). If a value passed through
+ * as a plain prop here ever stops being stable at the call site, this memo
+ * silently stops paying for itself — it fails open, not loud.
  */
 export const GridRow = memo(function GridRow({
   row,
