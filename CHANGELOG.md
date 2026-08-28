@@ -333,6 +333,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   schema migration rather than a render-path fix. The five fixes above
   may already be enough on their own.
 
+- **A collapsed side/bottom panel now unmounts its content instead of
+  quietly running forever behind a zero-width wrapper.** `CollapsiblePanel`
+  (the shell's schema/saved/console/side-editor slots, since the move off
+  dockview) only ever animated `width`/`height` between 0 and the persisted
+  size — the children were always mounted, collapsed or not, which was
+  invisible for a plain tree/list but not for `SideEditorPanel`: it keeps a
+  live Monaco instance and its own effects running the entire session even
+  when the panel has never been opened. Children now unmount once the
+  *closing* transition finishes (`onTransitionEnd` on the wrapper itself,
+  ignoring anything bubbling up from inside `children`) — not the instant
+  `open` flips to `false`, which would pop the content out from under the
+  still-animating wrapper — and remount immediately on reopen; the inner box
+  also gets `content-visibility: hidden` while collapsed, for whatever stays
+  mounted anyway. Two call sites can't take the default: `SavedQueriesPanel`
+  (an unsaved search filter, an open rename dialog) and `SideEditorPanel`
+  (an in-progress edit, its dirty-tracking baseline, parked per-tab sessions)
+  both hold local component state a remount would silently discard, so both
+  pass the new `keepMounted` escape hatch instead of losing it. The schema
+  panel and the console dock take the new default — their state already
+  lives in stores, not in the component tree.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

@@ -59,6 +59,11 @@ export function IslandShell({ connectionId }: IslandShellProps) {
         axis="width"
         dragging={dragging}
         className={cn(sideEditorOpen && "border-l border-border")}
+        // `SideEditorPanel` owns an in-progress editing session per tab
+        // (dirty-tracking baseline, parked sessions, a live Monaco model) —
+        // unmounting it on collapse would drop unsaved edits and defeat its
+        // own session-parking logic.
+        keepMounted
       >
         <SideEditorPanel />
       </CollapsiblePanel>

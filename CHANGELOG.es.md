@@ -366,6 +366,30 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   de un arreglo del camino de render. Los cinco arreglos de arriba puede
   que ya basten por sí solos.
 
+- **Un panel lateral/inferior colapsado ahora desmonta su contenido en vez de
+  dejarlo corriendo indefinidamente detrás de un wrapper de ancho cero.**
+  `CollapsiblePanel` (los slots de esquema/guardadas/consola/editor lateral
+  del shell, desde el traslado fuera de dockview) solo animaba
+  `width`/`height` entre 0 y el tamaño persistido — los hijos siempre
+  estaban montados, colapsado o no, lo cual era invisible para un árbol o
+  lista sencillos, pero no para `SideEditorPanel`: mantiene una instancia
+  de Monaco viva y sus propios efectos corriendo toda la sesión aunque el
+  panel nunca se haya abierto. Los hijos ahora se desmontan cuando termina
+  la transición de *cierre* (`onTransitionEnd` en el propio wrapper,
+  ignorando lo que burbujee desde dentro de `children`) — no en el instante
+  en que `open` pasa a `false`, lo que haría que el contenido desapareciera
+  de golpe con el wrapper todavía animando — y se remontan de inmediato al
+  reabrir; la caja interior también recibe `content-visibility: hidden`
+  mientras está colapsada, para lo que sea que se mantenga montado igual.
+  Dos sitios de uso no pueden asumir el comportamiento por defecto:
+  `SavedQueriesPanel` (un filtro de búsqueda sin guardar, un diálogo de
+  renombrar abierto) y `SideEditorPanel` (una edición en curso, su línea
+  base de detección de cambios, sesiones por-tab aparcadas) tienen ambos
+  estado local de componente que un remonte descartaría en silencio, así
+  que ambos pasan el nuevo escape `keepMounted` en vez de perderlo. El
+  panel de esquema y la consola inferior usan el nuevo comportamiento por
+  defecto — su estado ya vive en stores, no en el árbol de componentes.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido

@@ -149,6 +149,10 @@ function SavedSidePanel() {
         size={savedWidth}
         axis="width"
         dragging={dragging}
+        // `SavedQueriesPanel` owns local, unpersisted state (search filter,
+        // the rename/edit dialog) — unmounting it on every collapse would
+        // silently discard whatever the user was mid-typing there.
+        keepMounted
       >
         <div className="h-full overflow-hidden py-2 pr-2">
           <div
