@@ -188,9 +188,18 @@ function nextSort(
   return [];
 }
 
+// A connection with no filter history yet reads `filterHistory` as
+// `undefined`; `?? []` at the DataGrid call site would otherwise hand it a
+// fresh array every render, same trap as `NO_ROWS` in `DataGrid.tsx`.
+const NO_HISTORY: string[] = [];
+
 export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const reportSelection = useGridSelection((s) => s.report);
   const clearSelection = useGridSelection((s) => s.clear);
+  const onSelectionChange = useCallback(
+    (count: number, total: number) => reportSelection(tabId, count, total),
+    [reportSelection, tabId],
+  );
   // Drop this tab's selection entry when the tab unmounts (close /
   // disconnect) so the status bar never reads a stale count.
   useEffect(() => () => clearSelection(tabId), [tabId, clearSelection]);
@@ -384,6 +393,13 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    *  the (legacy) `RETURNING <pk>` hint on inserts. Do NOT use this for
    *  any UPDATE/DELETE predicate — that needs the full `pkColumns`. */
   const pkColumn = pkColumns[0];
+  /** `DataGrid`'s `pkColumnNames` prop — a plain `.map()` on `pkColumns`
+   *  would otherwise hand it a new array (and, downstream, a defeated
+   *  `GridRow` memo — see that file's header comment) every render. */
+  const pkColumnNames = useMemo(
+    () => pkColumns.map((c) => c.name),
+    [pkColumns],
+  );
   /** Single-column FK columns, for the grid header key icon (presentational). */
   const fkColumnNames = useMemo(
     () => cols?.filter((c) => c.referenced_table).map((c) => c.name) ?? [],
@@ -603,41 +619,56 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * because a MongoDB result reports a generic `"bson"` per column while the
    * store carries the inferred per-field type.
    */
-  async function saveField(
-    rowValues: CellValue[],
-    path: string[],
-    value: string | null,
-    typeHint?: string,
-  ) {
-    if (pkColumns.length === 0) {
-      throw new Error("Cannot update: table has no primary key");
-    }
-    const pkValues = pkValuesFromRow(rowValues);
-    const column = path.join(".");
-    const catalogType =
-      cols?.find((c) => c.name === column)?.data_type ??
-      result?.columns.find((c) => c.name === column)?.data_type;
-    await api.updateCell({
-      connectionId,
-      schema,
-      table,
-      pkColumns: pkColumns.map((c) => c.name),
-      pkValues,
-      column,
-      value,
-      columnType: isMongo ? (typeHint ?? catalogType) : catalogType,
-    });
-    await fetchData();
-  }
+  const saveField = useCallback(
+    async (
+      rowValues: CellValue[],
+      path: string[],
+      value: string | null,
+      typeHint?: string,
+    ) => {
+      if (pkColumns.length === 0) {
+        throw new Error("Cannot update: table has no primary key");
+      }
+      const pkValues = pkValuesFromRow(rowValues);
+      const column = path.join(".");
+      const catalogType =
+        cols?.find((c) => c.name === column)?.data_type ??
+        result?.columns.find((c) => c.name === column)?.data_type;
+      await api.updateCell({
+        connectionId,
+        schema,
+        table,
+        pkColumns: pkColumns.map((c) => c.name),
+        pkValues,
+        column,
+        value,
+        columnType: isMongo ? (typeHint ?? catalogType) : catalogType,
+      });
+      await fetchData();
+    },
+    // `pkValuesFromRow` isn't listed: it's a plain function recreated every
+    // render, but it closes over `pkColumns`/`pkColumnIndices` from THIS
+    // same render, and both are already listed — so whenever either
+    // changes, this callback is rebuilt anyway and picks up a `pkValuesFromRow`
+    // that agrees with it. Listing it too would just make eslint happy.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pkColumns, cols, result, connectionId, schema, table, isMongo, fetchData],
+  );
 
-  /** Table-view cell commit: one column, no type hint of its own. */
-  function onCellSave(
-    rowValues: CellValue[],
-    columnName: string,
-    value: string | null,
-  ) {
-    return saveField(rowValues, [columnName], value);
-  }
+  /**
+   * Table-view cell commit: one column, no type hint of its own.
+   *
+   * This has to be as stable as `saveField` itself: it's the one that
+   * reaches `useGridColumns` as `onCellSave` (`GridColumnsOptions`), whose
+   * whole `columns` array is rebuilt — and the entire table body remounted,
+   * per that file's "dependency array is load-bearing" note — every time
+   * this identity changes.
+   */
+  const onCellSave = useCallback(
+    (rowValues: CellValue[], columnName: string, value: string | null) =>
+      saveField(rowValues, [columnName], value),
+    [saveField],
+  );
 
   /**
    * List-view field removal — MongoDB `$unset` on the document addressed by
@@ -663,22 +694,27 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * single-column FK reference. No-op for non-FK columns. The referenced table
    * lives in the same connection/database, so we reuse `connectionId`.
    */
-  function onNavigateFk(columnName: string, value: CellValue) {
-    const col = cols?.find((c) => c.name === columnName);
-    if (!col?.referenced_table || !col.referenced_column) return;
-    useTabs.getState().open({
-      kind: "table",
-      title: tableTabTitle(
-        useConnections.getState().profiles,
+  const onNavigateFk = useCallback(
+    (columnName: string, value: CellValue) => {
+      const col = cols?.find((c) => c.name === columnName);
+      if (!col?.referenced_table || !col.referenced_column) return;
+      // Both reads are `getState()` snapshots, not subscriptions — neither
+      // `profiles` nor the tab list needs to be a dependency here.
+      useTabs.getState().open({
+        kind: "table",
+        title: tableTabTitle(
+          useConnections.getState().profiles,
+          connectionId,
+          col.referenced_table,
+        ),
         connectionId,
-        col.referenced_table,
-      ),
-      connectionId,
-      schema: col.referenced_schema ?? undefined,
-      table: col.referenced_table,
-      initialFilters: [{ column: col.referenced_column, op: "eq", value }],
-    });
-  }
+        schema: col.referenced_schema ?? undefined,
+        table: col.referenced_table,
+        initialFilters: [{ column: col.referenced_column, op: "eq", value }],
+      });
+    },
+    [cols, connectionId],
+  );
 
   function onAddFilter(f: ColumnFilter) {
     setServerFilters((prev) => {
@@ -758,7 +794,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * MongoDB tree's per-collection JSON export (#65), now also available for
    * SQL tables via `exportTable`. A cancelled save dialog is a silent no-op.
    */
-  function exportFull() {
+  const exportFull = useCallback(() => {
     return runExport(
       () =>
         isMongo
@@ -773,14 +809,14 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         ),
       (message) => notify.error(message),
     );
-  }
+  }, [isMongo, connectionId, schema, table, t]);
 
   /**
    * "Export query results" — scoped to the grid's current advanced filter
    * (`serverFilters`) and committed search, without any pagination limit.
    * Identical to `exportFull` when no filter is active.
    */
-  function exportFiltered() {
+  const exportFiltered = useCallback(() => {
     return runExport(
       () =>
         isMongo
@@ -802,7 +838,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         ),
       (message) => notify.error(message),
     );
-  }
+  }, [
+    isMongo,
+    connectionId,
+    schema,
+    table,
+    serverFilters,
+    appliedFilter,
+    searchColumns,
+    t,
+  ]);
 
   /**
    * "Import JSON…" (Mongo only) — the same `import_collection` flow the
@@ -811,7 +856,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * sharing an `_id` stop the import, so it still goes through the
    * destructive-write confirmation like the tree version did.
    */
-  async function importCollectionJsonForTab() {
+  const importCollectionJsonForTab = useCallback(async () => {
     const picked = await pickJsonFile(
       t("schema.importCollection.pickTitle"),
     );
@@ -830,7 +875,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     } catch (e) {
       notify.error(String(e));
     }
-  }
+  }, [t, table, connectionId, fetchData]);
 
   function onInsertRow() {
     if (!cols || draft) return;
@@ -963,7 +1008,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // rather than wrapping onto a second row (see `GridToolbarItem`). The menu
   // form is a labelled row — which is also the chance to spell out what an
   // icon-only button only implies in a tooltip.
-  const leadingToolbar: GridToolbarItem[] = [
+  const leadingToolbar: GridToolbarItem[] = useMemo(
+    () => [
     {
       id: "refresh",
       bar: (
@@ -1025,12 +1071,15 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         </DropdownMenuItem>
       ),
     },
-  ];
+    ],
+    [fetchData, loading, t, serverFilters],
+  );
 
   // Rendered right beside DataGrid's own "Insert" button (via `insertExtra`),
   // so every action that adds, exports, or mass-edits data reads as one group
   // on the header's right side instead of being split across the toolbar.
-  const insertExtraContent: GridToolbarItem[] = [
+  const insertExtraContent: GridToolbarItem[] = useMemo(
+    () => [
     // MongoDB only: additive JSON import into this collection (#65), moved
     // here from the schema tree's right-click menu so the action lives with
     // the data it affects instead of the tree. SQL has no table-scoped import
@@ -1147,7 +1196,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           },
         ]
       : []),
-  ];
+    ],
+    [isMongo, hasPk, t, importCollectionJsonForTab, exportFull, exportFiltered],
+  );
 
   // Trailing (right-aligned) HEADER content, rendered after `insertExtra` —
   // just the table/list view toggle, a *display* control rather than a data
@@ -1156,7 +1207,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // table (or a row with a big JSONB column) has exactly the same problem it
   // solves. The choice is this tab's own `documentViewMode` state (#131), not
   // a global preference — see its declaration above.
-  const trailingToolbar: GridToolbarItem[] = [
+  const trailingToolbar: GridToolbarItem[] = useMemo(
+    () => [
     {
       id: "view-mode",
       // One segmented control, so one item — splitting it in two would put a
@@ -1209,7 +1261,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         </>
       ),
     },
-  ];
+    ],
+    [documentViewMode, t],
+  );
 
   // FOOTER content (a second, bottom toolbar row via DataGrid's `footer`) —
   // "how you're browsing", kept apart from the header's data actions. Two
@@ -1219,7 +1273,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // replacing the grid's redundant "N rows of M" count, hence
   // `showRowCount={false}` below), prev/next page buttons, and the page-size
   // selector.
-  const footerContent = (
+  const footerContent = useMemo(
+    () => (
     <>
       <div className="flex items-center">
         <Button
@@ -1295,6 +1350,22 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         </select>
       </div>
     </>
+    ),
+    [
+      zoomRows,
+      rowHeight,
+      t,
+      page.from,
+      page.to,
+      page.canPrev,
+      page.canNext,
+      totalEstimated,
+      total,
+      offset,
+      pageSize,
+      loading,
+      pageSizeOptions,
+    ],
   );
 
   return (
@@ -1314,7 +1385,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             tableName={table}
             tabId={tabId}
             driver={driver}
-            pkColumnNames={pkColumns.map((c) => c.name)}
+            pkColumnNames={pkColumnNames}
             fkColumnNames={fkColumnNames}
             onNavigateFk={onNavigateFk}
             onCellSave={onCellSave}
@@ -1334,7 +1405,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             filterInput={filter}
             onGlobalFilterChange={setFilter}
             onGlobalFilterSubmit={submitFilter}
-            searchHistory={filterHistory ?? []}
+            searchHistory={filterHistory ?? NO_HISTORY}
             serverFilters={serverFilters}
             onAddFilter={onAddFilter}
             onRemoveFilter={onRemoveFilter}
@@ -1343,9 +1414,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onDeleteRow={hasPk ? onDeleteRow : undefined}
             onBulkDelete={hasPk ? onBulkDelete : undefined}
             getRowKey={getRowKey}
-            onSelectionChange={(count, total) =>
-              reportSelection(tabId, count, total)
-            }
+            onSelectionChange={onSelectionChange}
             draftRow={draft}
             draftColumns={cols}
             onDraftCellChange={onDraftCellChange}

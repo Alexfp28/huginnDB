@@ -354,6 +354,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   panel and the console dock take the new default — their state already
   lives in stores, not in the component tree.
 
+- **`TableDataTab` was rebuilding `onCellSave` — and with it every column
+  definition in the grid — on every one of its own renders, remounting the
+  entire table body.** `useGridColumns`'s own header comment already spells
+  out why this is expensive: TanStack's `flexRender` treats `columnDef.cell`
+  as a component *type*, so a rebuilt `columns` array is a new element type
+  for every cell, and React unmounts/remounts the whole `<tbody>` — the
+  cursor-jumps-to-the-end bug, at table-body scale. `onCellSave` is a listed
+  dependency of that memo, but `TableDataTab` defined it (and the `saveField`
+  it wraps) as a plain function declaration, recreated fresh every render —
+  which for a table tab, given how often its own state changes (page, sort,
+  search-as-you-type), was often. Both are now `useCallback`s with an
+  exhaustive dependency list, so their identity — and `useGridColumns`'s
+  `columns` — only changes when something that actually affects the query
+  (pk columns, catalog types, connection/schema/table, `fetchData`) does.
+  `onNavigateFk` and the inline `onSelectionChange` had the same shape of
+  bug one level down: both are direct (non-ref) props on the already-memoized
+  `GridRow` (`components/grid/GridRow.tsx`), so an unstable identity there
+  defeated that memo on every row, every render, regardless of the column
+  fix above. `pkColumnNames` (`pkColumns.map(...)`) and the `searchHistory`
+  fallback (`filterHistory ?? []`) had the exact same problem one line each —
+  a fresh array on every render, the second one only when a connection has
+  no history yet, same trap `NO_ROWS` (this file's own `commit 1`) exists to
+  avoid — both fixed the same way: `useMemo`/a module-level empty-array
+  constant. The four toolbar/footer content blocks (`leadingToolbar`,
+  `insertExtraContent`, `trailingToolbar`, `footerContent`) are also now
+  memoized, which required stabilizing the export/import handlers they
+  close over (`exportFull`, `exportFiltered`, `importCollectionJsonForTab`)
+  the same way — without that, wrapping the JSX in `useMemo` while it still
+  captured a fresh closure every render would have been a no-op. `GridRow`'s
+  own header comment, which asserted these values "stay referentially
+  stable" without that actually being true, is corrected to say what makes
+  it true and to warn that the memo fails open (silently, not loudly) if a
+  future call site breaks the contract again. Added
+  `useGridColumns.test.tsx`, a characterization test pinning the dependency
+  array's actual behavior: stable input in → stable `columns` out, an
+  `onCellSave`/`resultColumns` identity change rebuilds it, and mutating
+  `interactiveRef`'s *contents* (a plain click) does not.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

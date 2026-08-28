@@ -390,6 +390,49 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   panel de esquema y la consola inferior usan el nuevo comportamiento por
   defecto — su estado ya vive en stores, no en el árbol de componentes.
 
+- **`TableDataTab` reconstruía `onCellSave` — y con ello cada definición de
+  columna de la rejilla — en cada uno de sus propios renders, remontando la
+  `<tbody>` entera.** El propio comentario de cabecera de `useGridColumns`
+  ya explica por qué es caro: `flexRender` de TanStack trata `columnDef.cell`
+  como un TIPO de componente, así que un `columns` reconstruido es un tipo
+  de elemento nuevo para cada celda, y React desmonta/remonta la `<tbody>`
+  entera — el bug de "el cursor salta al final", a escala de toda la tabla.
+  `onCellSave` es una dependencia declarada de ese memo, pero `TableDataTab`
+  lo definía (junto con el `saveField` que envuelve) como una función
+  declarada a secas, recreada en cada render — lo cual, dado con qué
+  frecuencia cambia el propio estado de una tab de tabla (página, orden,
+  búsqueda mientras se teclea), era a menudo. Ambos son ahora `useCallback`
+  con una lista de dependencias exhaustiva, así que su identidad — y el
+  `columns` de `useGridColumns` — solo cambia cuando algo que de verdad
+  afecta a la consulta (columnas PK, tipos de catálogo, conexión/esquema/
+  tabla, `fetchData`) cambia. `onNavigateFk` y el `onSelectionChange` en
+  línea tenían el mismo tipo de bug un nivel más abajo: ambos son props
+  directas (no por ref) del ya memoizado `GridRow`
+  (`components/grid/GridRow.tsx`), así que una identidad inestable ahí
+  anulaba ese memo en cada fila, en cada render, sin importar el arreglo de
+  columnas de arriba. `pkColumnNames` (`pkColumns.map(...)`) y el respaldo de
+  `searchHistory` (`filterHistory ?? []`) tenían el mismo problema, línea a
+  línea — un array nuevo en cada render, el segundo solo cuando una conexión
+  aún no tiene historial, la misma trampa que `NO_ROWS` (de este mismo
+  archivo, del "commit 1") existe para evitar — ambos arreglados igual:
+  `useMemo`/una constante de array vacío a nivel de módulo. Los cuatro
+  bloques de contenido de toolbar/footer (`leadingToolbar`,
+  `insertExtraContent`, `trailingToolbar`, `footerContent`) también están
+  ahora memoizados, lo que requirió estabilizar los manejadores de
+  exportar/importar que envuelven (`exportFull`, `exportFiltered`,
+  `importCollectionJsonForTab`) de la misma forma — sin eso, envolver el JSX
+  en `useMemo` mientras seguía capturando un closure nuevo en cada render
+  habría sido un no-op. El comentario de cabecera de `GridRow`, que afirmaba
+  que estos valores "se mantienen referencialmente estables" sin que eso
+  fuera realmente cierto, se corrige para decir qué es lo que lo hace
+  cierto y para advertir que el memo falla en abierto (en silencio, no
+  ruidosamente) si un futuro punto de uso vuelve a romper el contrato. Se
+  añade `useGridColumns.test.tsx`, un test de caracterización que fija el
+  comportamiento real del array de dependencias: entrada estable → `columns`
+  estable de salida, un cambio de identidad en `onCellSave`/`resultColumns`
+  lo reconstruye, y mutar el CONTENIDO de `interactiveRef` (un simple clic)
+  no lo hace.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido
