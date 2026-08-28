@@ -10,6 +10,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Pasada de rendimiento de frontend (1.20.0), en curso.** Una regresión real
+  reportada en máquinas modestas — una tabla de 10k registros en modo lista
+  degradándose hasta ser inusable, y una imprecisión general del shell —
+  que resultó no implicar al backend Rust en absoluto: cada entrada de
+  abajo elimina un coste concreto, localizado por archivo y línea, en la
+  capa React/DOM. Se entrega de forma incremental como una serie de commits
+  propia; esta sección crece un punto por commit.
+
 - **Los tokens de color se saltan la capa `color-mix()` por completo cuando no
   hay ningún `/modificador`.** `2ecaaf7` (la migración a `light-dark()` de
   1.19.0) movió cada token de color de Tailwind de `hsl(var(--x))` a
@@ -40,11 +48,27 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   habría renderizado en silencio el stop "se desvanece a transparente" como
   totalmente opaco.
 
-  Primer paso de la pasada de rendimiento de frontend de 1.20.0: la app iba
-  a tirones visibles incluso en máquinas modestas pese a que el backend
-  (Rust/`sqlx`) no interviene en nada de esto — esta entrada y las
-  siguientes eliminan, una a una, un coste concreto y localizado por
-  archivo y línea en la capa React/DOM.
+- **El modo lista ya no arrastra viva la maquinaria del virtualizador y de
+  `useReactTable` del modo tabla.** `DataGrid` usa un único
+  `<div ref={scrollRef}>` para ambos `viewMode`, y el pipeline
+  `useVirtualizer`/`useReactTable`/`getCoreRowModel()` del modo tabla se
+  ejecutaba de forma incondicional aunque `DocumentListView` fuera lo que de
+  verdad se renderizaba dentro de ese contenedor de scroll. Con el tamaño
+  virtual del propio virtualizador (número de filas × la altura de fila
+  fija, un par de miles de px) totalmente desincronizado del contenido real
+  de la lista, mucho más alto, su rango visible calculado cambiaba en casi
+  cada evento de scroll — y cada cambio disparaba un re-render síncrono del
+  grid completo (`flushSync`, vía el adaptador de `@tanstack/react-virtual`,
+  que re-renderiza de forma incondicional sin la opción `directDomUpdates`
+  que este grid no pasa). `useVirtualizer` recibe ahora
+  `enabled: viewMode !== "list"` (limpia sus listeners internamente y se
+  vuelve a suscribir por su cuenta al volver a modo tabla) y `useReactTable`
+  recibe un array `data` vacío y estable en modo lista en vez de las filas
+  reales, así que `getCoreRowModel()` deja de construir un árbol completo de
+  `Row`/`Cell` para filas que nadie renderiza. Es la corrección directa de
+  la degradación reportada ("página de 100 filas, modo lista, tabla de 10k
+  filas") — las siguientes entradas de esta pasada abaratan la propia lista
+  por fila.
 
 ## [1.19.0] — 2026-08-27
 

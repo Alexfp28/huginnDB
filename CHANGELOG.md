@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Frontend performance pass (1.20.0), in progress.** A real regression
+  reported on modest hardware — a 10k-row table in list mode degrading to
+  unusable, and a broader shell choppiness — that turned out not to involve
+  the Rust backend at all: every entry below removes one concrete,
+  file-and-line-identified cost in the React/DOM layer. Landing incrementally
+  as its own series of commits; this section grows one bullet per commit.
+
 - **Color tokens skip the `color-mix()` layer entirely when no `/modifier` is
   used.** `2ecaaf7` (1.19.0's `light-dark()` migration) moved every Tailwind
   color token from `hsl(var(--x))` to
@@ -36,10 +43,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   instead of `opacityValue === undefined`) would have silently rendered the
   "fade to transparent" stop as fully opaque instead.
 
-  First step of the 1.20.0 frontend performance pass: the app was going
-  visibly choppy on modest hardware even though the backend (Rust/`sqlx`)
-  isn't involved in any of it — this and the following entries each remove
-  one concrete, file-and-line-identified cost in the React/DOM layer.
+- **List mode no longer keeps the table view's virtualizer and
+  `useReactTable` machinery running underneath it.** `DataGrid` uses one
+  `<div ref={scrollRef}>` for both `viewMode`s, and the table-mode
+  `useVirtualizer`/`useReactTable`/`getCoreRowModel()` pipeline used to run
+  unconditionally even while `DocumentListView` was the thing actually
+  rendered inside that scroll container. With the virtualizer's own virtual
+  size (row count × the fixed row height, a couple thousand px) wildly out
+  of sync with the list's real, much taller content, its computed visible
+  range changed on almost every scroll event — and each change flushed a
+  synchronous full-grid re-render (`flushSync`, via `@tanstack/react-virtual`'s
+  adapter, which re-renders unconditionally without the `directDomUpdates`
+  option this grid doesn't pass). `useVirtualizer` now takes
+  `enabled: viewMode !== "list"` (it cleans up its listeners internally and
+  re-subscribes on its own switching back to table mode) and
+  `useReactTable` is fed a stable, empty `data` array in list mode instead
+  of the real rows, so `getCoreRowModel()` stops building a full `Row`/`Cell`
+  tree for rows nothing renders. This is the direct fix for the reported
+  "100-row page, list mode, 10k-row table" degradation — the next entries in
+  this pass make the list itself cheap per row.
 
 ## [1.19.0] — 2026-08-27
 
