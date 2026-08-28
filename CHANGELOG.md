@@ -410,6 +410,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   cadence, freezing on `stop()`, a second `start()` resetting and not
   double-ticking, and the interval actually clearing on unmount.
 
+- **Investigated, and built the groundwork for, gating per-tab work while a
+  tab is in the background.** `TabbedArea`'s own header comment states the
+  design on purpose: every open tab keeps its own mounted React tree for
+  its whole life, specifically so switching tabs doesn't reset a table's
+  filter draft or a query editor's scroll position (gotcha #10 in
+  `CLAUDE.md`). That means a query's run timer, a grid's virtualizer, or
+  any other recurring per-tab work keeps running for tabs nobody is
+  currently looking at — not by a bug, by the same design that makes
+  switching tabs feel instant. Unmounting background tabs to stop that
+  work was considered and rejected: it would reintroduce exactly the state
+  loss `TabbedArea` exists to avoid, for a cost that (per the tick-scoping
+  fix two entries above) is now mostly confined to the one small component
+  actually doing the ticking rather than the whole tab. What's added
+  instead is `useIsPanelVisible` (`src/lib/tabs/useIsPanelVisible.ts`): a
+  small hook reading `DockviewPanelApi.isActive`/`isVisible` — both already
+  handed to every panel component as `props.api`, no group-level
+  bookkeeping needed — so a future consumer can ask "is anyone even seeing
+  this?" without unmounting anything. Not wired into `QueryTimer` or the
+  grid's virtualizer in this pass: doing that safely needs auditing each
+  consumer for what "paused while backgrounded" should actually mean (does
+  a backgrounded query's timer freeze or keep counting for when the user
+  switches back?), which wants its own scoped change and testing rather
+  than riding along here. Covered by `useIsPanelVisible.test.ts` against a
+  minimal fake of the two events it reads.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

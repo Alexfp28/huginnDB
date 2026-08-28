@@ -453,6 +453,36 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   los ticks, la congelación en `stop()`, que un segundo `start()` reinicia
   sin duplicar ticks, y que el intervalo realmente se limpia al desmontar.
 
+- **Investigado, y sentada la base para, limitar el trabajo por-tab mientras
+  una tab está en segundo plano.** El propio comentario de cabecera de
+  `TabbedArea` explica el diseño a propósito: cada tab abierta mantiene su
+  propio árbol de React montado durante toda su vida, específicamente para
+  que cambiar de tab no reinicie el borrador de filtro de una tabla ni la
+  posición de scroll de un editor de consultas (gotcha #10 de `CLAUDE.md`).
+  Eso significa que el temporizador de ejecución de una consulta, el
+  virtualizador de una rejilla, o cualquier otro trabajo recurrente por-tab
+  sigue corriendo para tabs que nadie está mirando ahora mismo — no por un
+  bug, sino por el mismo diseño que hace que cambiar de tab se sienta
+  instantáneo. Desmontar las tabs en segundo plano para detener ese trabajo
+  se consideró y se descartó: reintroduciría exactamente la pérdida de
+  estado que `TabbedArea` existe para evitar, a cambio de un coste que (tras
+  el arreglo de aislar el tick, dos entradas más arriba) ya está confinado
+  sobre todo al pequeño componente que de verdad hace el tick, no a la tab
+  entera. Lo que se añade en su lugar es `useIsPanelVisible`
+  (`src/lib/tabs/useIsPanelVisible.ts`): un hook pequeño que lee
+  `DockviewPanelApi.isActive`/`isVisible` — ambos ya entregados a cada
+  componente de panel como `props.api`, sin necesitar contabilidad a nivel
+  de grupo — para que un futuro consumidor pueda preguntar "¿alguien está
+  viendo esto siquiera?" sin desmontar nada. No se conecta a `QueryTimer` ni
+  al virtualizador de la rejilla en esta pasada: hacerlo con seguridad
+  requiere auditar cada consumidor sobre qué debería significar realmente
+  "en pausa mientras está en segundo plano" (¿el temporizador de una
+  consulta en segundo plano se congela o sigue contando para cuando el
+  usuario vuelva?), lo cual pide su propio cambio acotado y sus propias
+  pruebas en vez de venir de paso aquí. Cubierto por
+  `useIsPanelVisible.test.ts` contra una réplica mínima de los dos eventos
+  que lee.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido
