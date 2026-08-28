@@ -117,6 +117,44 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   afirma que el cuerpo de render de `DocumentCard` no se ejecuta una
   segunda vez.
 
+- **Un arrastre del sash dejó de escribir en `localStorage` ~60 veces por
+  segundo y dejó de re-renderizar el shell entero en cada frame.**
+  `Sash.tsx` llamaba a `onResize(delta)` de forma síncrona en cada
+  `pointermove` (~120 Hz observados), y cada uno de los cuatro call sites
+  (los paneles Schema/Saved de `AppShell`, `ConsoleDock`, el split del
+  editor de celda de `IslandShell`) lo conectaba directamente al middleware
+  `persist` de `useSessionPanelLayout` — que hace `JSON.stringify` de todo
+  el store y lo escribe a disco en cada `set()`. La mecánica del arrastre
+  vive ahora en un nuevo hook `useSashDrag` que agrupa los `pointermove` en
+  una sola llamada a `onResize` por frame de animación (sumando los deltas
+  que caen entre medias, nunca descartándolos — descartarlos haría que el
+  borde del panel se quedara rezagado respecto al cursor), y los cuatro
+  call sites comparten ahora una nueva acción del store,
+  `nudgePanel(key, delta)`, en vez de que cada uno calcule
+  `actual + delta` en su propio scope de render (lo cual era además un bug
+  latente: en el límite del clamp, el `actual` capturado por el callback
+  podía ya estar desfasado respecto al store, dejando que el puntero se
+  adelantara visiblemente al sash). El almacenamiento `persist` del store
+  ahora tiene throttle de flanco final a 250 ms con un `flush()` explícito
+  que los cuatro call sites invocan en `onDraggingChange(false)`, así que
+  el valor en disco nunca queda más de un frame por detrás en el momento en
+  que el usuario de verdad suelta.
+
+  Además: `AppShell` ya no se suscribe directamente a
+  `schemaWidth`/`savedWidth` — esa suscripción re-renderizaba todo su árbol
+  de hijos (`IslandShell`, `ConsoleDock`, la barra de actividad derecha) en
+  cada frame de arrastre. Los dos paneles laterales son ahora
+  `SchemaSidePanel`/`SavedSidePanel`, cada uno con su propia suscripción al
+  ancho, y cada uno renderiza el contenido de su panel
+  (`SchemaPanel`/`SavedPanel`) como un elemento de React estable a nivel de
+  módulo — la misma referencia de elemento en cada render — que es lo que
+  permite a React hacer bailout de reconciliar ese subárbol entero aunque
+  el propio wrapper se re-renderice por el ancho. El div interior de
+  tamaño fijo de `CollapsiblePanel` recibe `contain: layout style` (seguro:
+  tamaño fijo, el padre ya recorta con `overflow-hidden`), y el wrapper
+  exterior recibe `will-change` solo mientras el arrastre está en curso, no
+  de forma permanente.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido

@@ -106,6 +106,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   identity (exactly what `DataGrid` does today) and asserts `DocumentCard`'s
   render body does not run a second time.
 
+- **A sash drag stopped writing to `localStorage` ~60 times a second and
+  stopped re-rendering the whole shell on every frame.** `Sash.tsx` called
+  `onResize(delta)` synchronously on every `pointermove` (~120Hz observed),
+  and each of the four call sites (`AppShell`'s Schema/Saved panels,
+  `ConsoleDock`, `IslandShell`'s cell-editor split) wired that straight into
+  `useSessionPanelLayout`'s `persist` middleware — which `JSON.stringify`s
+  the whole store and writes it to disk on every `set()`. The drag mechanics
+  now live in a new `useSashDrag` hook that coalesces `pointermove` into one
+  `onResize` call per animation frame (summing the deltas dropped in
+  between, never discarding them — dropping would make the panel edge trail
+  behind the cursor), and the four call sites share one new `nudgePanel(key,
+  delta)` store action instead of each computing `current + delta` in their
+  own render scope (which was also a latent bug: at the clamp boundary, the
+  callback's closed-over `current` could already be stale relative to the
+  store, letting the pointer visibly outrun the sash). The store's
+  `persist` storage is now trailing-edge throttled to 250ms with an
+  explicit `flush()` the four call sites invoke on `onDraggingChange(false)`,
+  so the on-disk value is never more than one frame behind at the moment
+  the user actually lets go.
+
+  Also: `AppShell` no longer subscribes to `schemaWidth`/`savedWidth`
+  directly — that subscription re-rendered its entire child tree
+  (`IslandShell`, `ConsoleDock`, the right activity bar) on every drag
+  frame. The two side panels are now `SchemaSidePanel`/`SavedSidePanel`,
+  each owning its own width subscription, and each renders its panel
+  content (`SchemaPanel`/`SavedPanel`) as a module-level, stable React
+  element — the same element reference every render — which is what lets
+  React bail out of reconciling that whole subtree even while the wrapper
+  itself re-renders for the width. `CollapsiblePanel`'s fixed-size inner div
+  gets `contain: layout style` (safe: fixed size, parent already clips with
+  `overflow-hidden`), and the outer wrapper gets `will-change` only while a
+  drag is live, not permanently.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

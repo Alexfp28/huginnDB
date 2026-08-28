@@ -24,7 +24,10 @@ import { useState } from "react";
 import { Moon, Save, Settings, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useUi } from "@/stores/session/ui";
-import { useSessionPanelLayout } from "@/stores/session/panelLayout";
+import {
+  flushPanelLayoutStorage,
+  useSessionPanelLayout,
+} from "@/stores/session/panelLayout";
 import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
 import {
   selectUpdateNotificationVisible,
@@ -58,6 +61,108 @@ function SchemaPanel() {
 function SavedPanel() {
   const id = useUi((s) => s.selectedConnectionId);
   return <SavedQueriesPanel connectionId={id} />;
+}
+
+// Module-level: `SchemaPanel`/`SavedPanel` take no props, so this element
+// can be created exactly once and reused forever. Passing the SAME element
+// reference down every render is what lets `SchemaSidePanel`/`SavedSidePanel`
+// re-render on a width change (many times a second, mid-drag) without React
+// ever reconciling this subtree — it sees the identical element and bails
+// out, same optimization a `useMemo(() => <SchemaPanel />, [])` would give,
+// without needing the memo at all since there are no props to depend on.
+const SCHEMA_PANEL_ELEMENT = <SchemaPanel />;
+const SAVED_PANEL_ELEMENT = <SavedPanel />;
+
+const PANEL_SHADOW =
+  "shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_4%,transparent),0_6px_20px_color-mix(in_srgb,var(--foreground)_5%,transparent)]";
+
+/**
+ * Owns the schema panel's width/dragging state so `AppShell` itself never
+ * subscribes to `schemaWidth` — that value changes on every animation frame
+ * of a sash drag (see `useSashDrag`), and `AppShell` re-rendering for it
+ * would re-render its whole child tree (`IslandShell`, `ConsoleDock`, the
+ * right activity bar, …) on every one of those frames. Confining the
+ * subscription here means only this wrapper (and `CollapsiblePanel`) pay
+ * for the drag; `SCHEMA_PANEL_ELEMENT`'s stable identity is what keeps
+ * `SchemaPanel`'s own subtree from re-rendering even for THIS wrapper.
+ */
+function SchemaSidePanel() {
+  const schemaOpen = useSessionPanelLayout((s) => s.schemaOpen);
+  const schemaWidth = useSessionPanelLayout((s) => s.schemaWidth);
+  const nudgePanel = useSessionPanelLayout((s) => s.nudgePanel);
+  const [dragging, setDragging] = useState(false);
+
+  return (
+    <>
+      <CollapsiblePanel
+        open={schemaOpen}
+        size={schemaWidth}
+        axis="width"
+        dragging={dragging}
+      >
+        <div className="h-full overflow-hidden py-2 pl-2">
+          <div
+            className={cn(
+              "h-full overflow-hidden rounded-[var(--radius)] border border-border bg-background",
+              PANEL_SHADOW,
+            )}
+          >
+            {SCHEMA_PANEL_ELEMENT}
+          </div>
+        </div>
+      </CollapsiblePanel>
+      {schemaOpen && (
+        <Sash
+          orientation="vertical"
+          onResize={(delta) => nudgePanel("schemaWidth", delta)}
+          onDraggingChange={(d) => {
+            setDragging(d);
+            if (!d) flushPanelLayoutStorage();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** Same reasoning as `SchemaSidePanel`, mirrored for `savedWidth`. */
+function SavedSidePanel() {
+  const savedOpen = useSessionPanelLayout((s) => s.savedOpen);
+  const savedWidth = useSessionPanelLayout((s) => s.savedWidth);
+  const nudgePanel = useSessionPanelLayout((s) => s.nudgePanel);
+  const [dragging, setDragging] = useState(false);
+
+  return (
+    <>
+      {savedOpen && (
+        <Sash
+          orientation="vertical"
+          onResize={(delta) => nudgePanel("savedWidth", -delta)}
+          onDraggingChange={(d) => {
+            setDragging(d);
+            if (!d) flushPanelLayoutStorage();
+          }}
+        />
+      )}
+      <CollapsiblePanel
+        open={savedOpen}
+        size={savedWidth}
+        axis="width"
+        dragging={dragging}
+      >
+        <div className="h-full overflow-hidden py-2 pr-2">
+          <div
+            className={cn(
+              "h-full overflow-hidden rounded-[var(--radius)] border border-border bg-background",
+              PANEL_SHADOW,
+            )}
+          >
+            {SAVED_PANEL_ELEMENT}
+          </div>
+        </div>
+      </CollapsiblePanel>
+    </>
+  );
 }
 
 /**
@@ -126,15 +231,12 @@ export function AppShell() {
   const { t } = useTranslation();
   const selectedConnectionId = useUi((s) => s.selectedConnectionId);
 
-  const schemaOpen = useSessionPanelLayout((s) => s.schemaOpen);
-  const schemaWidth = useSessionPanelLayout((s) => s.schemaWidth);
+  // Booleans only — low-frequency (a toggle click, not a drag frame), so
+  // subscribing to them here is harmless. `schemaWidth`/`savedWidth`
+  // themselves live inside `SchemaSidePanel`/`SavedSidePanel` (see their
+  // doc comments) precisely so a drag never reaches this component.
   const savedOpen = useSessionPanelLayout((s) => s.savedOpen);
-  const savedWidth = useSessionPanelLayout((s) => s.savedWidth);
   const toggleSaved = useSessionPanelLayout((s) => s.toggleSaved);
-  const setSchemaWidth = useSessionPanelLayout((s) => s.setSchemaWidth);
-  const setSavedWidth = useSessionPanelLayout((s) => s.setSavedWidth);
-  const [schemaDragging, setSchemaDragging] = useState(false);
-  const [savedDragging, setSavedDragging] = useState(false);
 
   const rightButtons: ActivityBarButton[] = [
     {
@@ -150,50 +252,14 @@ export function AppShell() {
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-muted/40">
       <EnvironmentRail footer={<ChromeFooter />} />
 
-      <CollapsiblePanel
-        open={schemaOpen}
-        size={schemaWidth}
-        axis="width"
-        dragging={schemaDragging}
-      >
-        <div className="h-full overflow-hidden py-2 pl-2">
-          <div className="h-full overflow-hidden rounded-[var(--radius)] border border-border bg-background shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_4%,transparent),0_6px_20px_color-mix(in_srgb,var(--foreground)_5%,transparent)]">
-            <SchemaPanel />
-          </div>
-        </div>
-      </CollapsiblePanel>
-      {schemaOpen && (
-        <Sash
-          orientation="vertical"
-          onResize={(delta) => setSchemaWidth(schemaWidth + delta)}
-          onDraggingChange={setSchemaDragging}
-        />
-      )}
+      <SchemaSidePanel />
 
       <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2">
         <IslandShell connectionId={selectedConnectionId} />
         <ConsoleDock />
       </div>
 
-      {savedOpen && (
-        <Sash
-          orientation="vertical"
-          onResize={(delta) => setSavedWidth(savedWidth - delta)}
-          onDraggingChange={setSavedDragging}
-        />
-      )}
-      <CollapsiblePanel
-        open={savedOpen}
-        size={savedWidth}
-        axis="width"
-        dragging={savedDragging}
-      >
-        <div className="h-full overflow-hidden py-2 pr-2">
-          <div className="h-full overflow-hidden rounded-[var(--radius)] border border-border bg-background shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_4%,transparent),0_6px_20px_color-mix(in_srgb,var(--foreground)_5%,transparent)]">
-            <SavedPanel />
-          </div>
-        </div>
-      </CollapsiblePanel>
+      <SavedSidePanel />
 
       <ActivityBar side="right" buttons={rightButtons} />
     </div>

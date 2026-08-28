@@ -19,7 +19,7 @@
  */
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { STORAGE_KEYS } from "@/lib/constants";
 
 const SCHEMA_WIDTH_DEFAULT = 280;
@@ -38,6 +38,66 @@ function clamp(value: number, { min, max }: { min: number; max: number }): numbe
   return Math.min(max, Math.max(min, value));
 }
 
+/**
+ * `localStorage.setItem` on every write, trailing-edge throttled to
+ * `delayMs`. A live sash drag calls the store's persisted `set()` on every
+ * animation frame (see `nudgePanel`'s doc comment), and `persist`'s default
+ * storage `JSON.stringify`s the whole state and writes it synchronously on
+ * every one of those — a drag was writing to disk roughly 60 times a
+ * second. `flush` forces the last pending write out immediately; the four
+ * `Sash` call sites use it on `onDraggingChange(false)` so the on-disk value
+ * never lags behind by up to `delayMs` after the user actually lets go.
+ */
+function createThrottledStorage(delayMs: number): {
+  storage: StateStorage;
+  flush: () => void;
+} {
+  let pendingKey: string | null = null;
+  let pendingValue: string | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  function flush() {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (pendingKey !== null && pendingValue !== null) {
+      localStorage.setItem(pendingKey, pendingValue);
+      pendingKey = null;
+      pendingValue = null;
+    }
+  }
+
+  return {
+    flush,
+    storage: {
+      getItem: (name) => localStorage.getItem(name),
+      setItem: (name, value) => {
+        pendingKey = name;
+        pendingValue = value;
+        if (timer === null) timer = setTimeout(flush, delayMs);
+      },
+      // A removal (e.g. clearing persisted state) is rare and should never
+      // be delayed behind a pending write.
+      removeItem: (name) => {
+        flush();
+        localStorage.removeItem(name);
+      },
+    },
+  };
+}
+
+const { storage: throttledStorage, flush: flushPanelLayoutStorage } =
+  createThrottledStorage(250);
+
+/** Force any pending (throttled) panel-layout write to disk immediately.
+ *  Called on `Sash`'s `onDraggingChange(false)` — see
+ *  `createThrottledStorage`'s doc comment. */
+export { flushPanelLayoutStorage };
+
+/** The four keys `nudgePanel` may adjust — exactly `PANEL_CLAMPS`'s keys. */
+export type PanelSizeKey = keyof typeof PANEL_CLAMPS;
+
 interface PanelLayoutState {
   schemaOpen: boolean;
   schemaWidth: number;
@@ -52,12 +112,17 @@ interface PanelLayoutState {
   openSchema: () => void;
   toggleSaved: () => void;
   toggleConsole: () => void;
-  setSchemaWidth: (width: number) => void;
-  setSavedWidth: (width: number) => void;
-  setConsoleHeight: (height: number) => void;
+  /** Adjust one panel's size by a delta, reading the CURRENT value from
+   *  inside the store update rather than from whatever the caller's render
+   *  closed over. `Sash`'s `onResize` fires many times per drag — a caller
+   *  reading its own `useSessionPanelLayout` selector and computing
+   *  `current + delta` in its own render scope is reading a value that may
+   *  already be stale by the time this runs, which is what let the panel
+   *  edge escape the cursor at the clamp boundary (the delta kept adding to
+   *  a value the store had already clamped past). */
+  nudgePanel: (key: PanelSizeKey, delta: number) => void;
   openSideEditor: () => void;
   closeSideEditor: () => void;
-  setSideEditorWidth: (width: number) => void;
   resetLayout: () => void;
 }
 
@@ -67,12 +132,9 @@ const DEFAULTS: Omit<
   | "openSchema"
   | "toggleSaved"
   | "toggleConsole"
-  | "setSchemaWidth"
-  | "setSavedWidth"
-  | "setConsoleHeight"
+  | "nudgePanel"
   | "openSideEditor"
   | "closeSideEditor"
-  | "setSideEditorWidth"
   | "resetLayout"
 > = {
   schemaOpen: true,
@@ -93,21 +155,16 @@ export const useSessionPanelLayout = create<PanelLayoutState>()(
       openSchema: () => set({ schemaOpen: true }),
       toggleSaved: () => set((s) => ({ savedOpen: !s.savedOpen })),
       toggleConsole: () => set((s) => ({ consoleOpen: !s.consoleOpen })),
-      setSchemaWidth: (width) =>
-        set({ schemaWidth: clamp(width, PANEL_CLAMPS.schemaWidth) }),
-      setSavedWidth: (width) =>
-        set({ savedWidth: clamp(width, PANEL_CLAMPS.savedWidth) }),
-      setConsoleHeight: (height) =>
-        set({ consoleHeight: clamp(height, PANEL_CLAMPS.consoleHeight) }),
+      nudgePanel: (key, delta) =>
+        set((s) => ({ [key]: clamp(s[key] + delta, PANEL_CLAMPS[key]) })),
       openSideEditor: () => set({ sideEditorOpen: true }),
       closeSideEditor: () => set({ sideEditorOpen: false }),
-      setSideEditorWidth: (width) =>
-        set({ sideEditorWidth: clamp(width, PANEL_CLAMPS.sideEditorWidth) }),
       resetLayout: () => set({ ...DEFAULTS }),
     }),
     {
       name: STORAGE_KEYS.panelLayout,
       version: 1,
+      storage: createJSONStorage(() => throttledStorage),
       migrate: (_persisted, version) => {
         if (version !== 1) return { ...DEFAULTS };
         return _persisted as PanelLayoutState;

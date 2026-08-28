@@ -17,7 +17,10 @@ import { TabbedArea } from "@/components/shell/TabbedArea";
 import { SideEditorPanel } from "@/components/grid/SideEditorPanel";
 import { Sash } from "@/components/shell/Sash";
 import { CollapsiblePanel } from "@/components/shell/CollapsiblePanel";
-import { useSessionPanelLayout } from "@/stores/session/panelLayout";
+import {
+  flushPanelLayoutStorage,
+  useSessionPanelLayout,
+} from "@/stores/session/panelLayout";
 import { cn } from "@/lib/utils";
 
 interface IslandShellProps {
@@ -27,7 +30,7 @@ interface IslandShellProps {
 export function IslandShell({ connectionId }: IslandShellProps) {
   const sideEditorOpen = useSessionPanelLayout((s) => s.sideEditorOpen);
   const sideEditorWidth = useSessionPanelLayout((s) => s.sideEditorWidth);
-  const setSideEditorWidth = useSessionPanelLayout((s) => s.setSideEditorWidth);
+  const nudgePanel = useSessionPanelLayout((s) => s.nudgePanel);
   const [dragging, setDragging] = useState(false);
 
   return (
@@ -43,8 +46,11 @@ export function IslandShell({ connectionId }: IslandShellProps) {
       {sideEditorOpen && (
         <Sash
           orientation="vertical"
-          onResize={(delta) => setSideEditorWidth(sideEditorWidth - delta)}
-          onDraggingChange={setDragging}
+          onResize={(delta) => nudgePanel("sideEditorWidth", -delta)}
+          onDraggingChange={(d) => {
+            setDragging(d);
+            if (!d) flushPanelLayoutStorage();
+          }}
         />
       )}
       <CollapsiblePanel

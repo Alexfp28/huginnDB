@@ -34,7 +34,15 @@ export function CollapsiblePanel({
 }: CollapsiblePanelProps) {
   return (
     <div
-      style={{ [axis]: open ? size : 0 }}
+      style={{
+        [axis]: open ? size : 0,
+        // Only while a drag is live — a permanent `will-change` pins a
+        // compositor layer for a panel that resizes maybe once a session.
+        // NOT `contain: paint` here: `AppShell`'s two-layer shadow on this
+        // panel's own border box paints outside it, and `paint` containment
+        // would clip that shadow.
+        willChange: dragging ? axis : undefined,
+      }}
       className={cn(
         "shrink-0 overflow-hidden",
         !dragging && "transition-[width,height] duration-200 ease-out",
@@ -43,9 +51,17 @@ export function CollapsiblePanel({
     >
       {/* Fixed to the panel's own size (not 100%) on the animated axis, so
           content doesn't reflow/squeeze while the wrapper eases through 0 —
-          it just slides offscreen. The cross axis fills the wrapper. */}
+          it just slides offscreen. The cross axis fills the wrapper.
+          `contain: layout style` is safe here specifically because the size
+          is fixed (not 100%) and the parent already clips with
+          `overflow-hidden`: a resize-driven reflow of this panel's own
+          content can't affect anything outside this box. */}
       <div
-        style={{ [axis]: size, [axis === "width" ? "height" : "width"]: "100%" }}
+        style={{
+          [axis]: size,
+          [axis === "width" ? "height" : "width"]: "100%",
+          contain: "layout style",
+        }}
       >
         {children}
       </div>
