@@ -433,6 +433,26 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   lo reconstruye, y mutar el CONTENIDO de `interactiveRef` (un simple clic)
   no lo hace.
 
+- **El temporizador de ejecución del editor de consultas marcaba cada 50ms
+  en el propio `QueryEditorTab`, re-renderizando la tab entera — Monaco
+  incluido — veinte veces por segundo por cada consulta ejecutada.**
+  `elapsedMs` existía solo para alimentar la pequeña insignia `QueryTimer`
+  junto al botón de ejecutar, pero el `setInterval` que lo movía vivía en
+  el padre como `useState` normal, así que cada tick era una actualización
+  de estado en el mismo componente que aloja el editor SQL. Se extrae
+  `useElapsed` (`src/lib/useElapsed.ts`): un hook pequeño que posee el
+  estado de `elapsedMs` (marcando) y el resultado congelado, más un par
+  `start`/`stop` estable. `QueryTimer` ahora lo llama él mismo y expone
+  `start`/`stop` vía `useImperativeHandle`, así que `QueryEditorTab` mueve
+  el temporizador a través de un `queryTimerRef` —
+  `queryTimerRef.current?.start()` / `.stop(ok)` — sin suscribirse nunca al
+  valor que cambia en cada tick. `runQuery`/`runBatch` perdieron
+  `startTimer`/`stopTimer` de sus propios arrays de dependencias como
+  consecuencia: leer un ref no necesita entrada. Se añade
+  `useElapsed.test.ts` con `vi.useFakeTimers()`, cubriendo la cadencia de
+  los ticks, la congelación en `stop()`, que un segundo `start()` reinicia
+  sin duplicar ticks, y que el intervalo realmente se limpia al desmontar.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido

@@ -392,6 +392,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `onCellSave`/`resultColumns` identity change rebuilds it, and mutating
   `interactiveRef`'s *contents* (a plain click) does not.
 
+- **The query editor's run timer ticked every 50ms in `QueryEditorTab`
+  itself, re-rendering the whole tab — Monaco included — twenty times a
+  second for every query that ran.** `elapsedMs` existed purely to feed the
+  small `QueryTimer` badge next to the Run button, but the `setInterval`
+  driving it lived in the parent as plain `useState`, so each tick was a
+  state update on the same component instance hosting the SQL editor.
+  Extracted `useElapsed` (`src/lib/useElapsed.ts`): a small hook owning the
+  ticking `elapsedMs`/frozen-outcome state and a stable `start`/`stop`
+  pair. `QueryTimer` now calls it itself and exposes `start`/`stop` through
+  `useImperativeHandle`, so `QueryEditorTab` drives the timer via a
+  `queryTimerRef` — `queryTimerRef.current?.start()` /
+  `.stop(ok)` — without ever subscribing to the value that changes on
+  every tick. `runQuery`/`runBatch` lost `startTimer`/`stopTimer` from
+  their own dependency arrays as a result: a ref read needs no entry.
+  Added `useElapsed.test.ts` with `vi.useFakeTimers()`, covering the tick
+  cadence, freezing on `stop()`, a second `start()` resetting and not
+  double-ticking, and the interval actually clearing on unmount.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added
