@@ -7,6 +7,15 @@
  * to the same map — `ConnectionsTree` had one, and each `MultiDbExplorer` added
  * another — all recomputing overlapping answers on every store write.
  *
+ * `ConnectionsTree` ALSO had a second wide subscription of its own
+ * (`useSchema((s) => s.byConnection)`), used for nothing but the row's
+ * loading spinner (`!!byConnection[p.id]?.loading`) — which meant ANY write
+ * to ANY connection's schema slice (a columns load, a table list refresh,
+ * anything) re-rendered the whole tree, badges included. `useLoadingConnectionIds`
+ * below narrows that to the one thing the spinner actually needs: a
+ * `Set<string>` of ids currently loading, so this file's own claim to be the
+ * app's one wide subscription is true again.
+ *
  * Reading the raw map in the selector is safe for the usual reason (gotcha #1):
  * `useSchema` *replaces* slices, never mutates them, so the reference only
  * changes when something really changed. Everything derived from it — the
@@ -28,6 +37,24 @@ import {
 import type { FilterScope } from "@/lib/schema/filterScope";
 
 const EMPTY = new Map<string, ConnectionMatchSummary>();
+const EMPTY_IDS: ReadonlySet<string> = new Set();
+
+/**
+ * Ids of connections whose schema slice is currently loading — the narrow
+ * fact `ConnectionsTree`'s row spinner needs, derived from the same
+ * `byConnection` map `useTreeMatchCounts` reads, so the two stay siblings
+ * instead of ConnectionsTree keeping its own second wide subscription.
+ */
+export function useLoadingConnectionIds(): ReadonlySet<string> {
+  const byConnection = useSchema((s) => s.byConnection);
+  return useMemo(() => {
+    const ids = new Set<string>();
+    for (const id in byConnection) {
+      if (byConnection[id]?.loading) ids.add(id);
+    }
+    return ids.size > 0 ? ids : EMPTY_IDS;
+  }, [byConnection]);
+}
 
 /**
  * Match counts per connection, keyed by profile id.

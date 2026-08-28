@@ -8,6 +8,7 @@
  * added in one place rather than at every level it has to pass through.
  */
 
+import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -46,8 +47,17 @@ interface SectionProps {
   forceOpen?: boolean;
 }
 
-/** Expandable section listing a set of tables or views within a schema. */
-export function TableSection({
+/**
+ * Expandable section listing a set of tables or views within a schema.
+ *
+ * `memo()`-wrapped, and it's what computes `TableRow`'s three narrow props
+ * (`expanded`/`columns`/`columnError`) out of the wide `cs` slice this
+ * component still receives — see `TableRow`'s own doc comment for why that
+ * narrowing is the whole point: `cs.columns` gets a fresh reference on
+ * every column load anywhere in the connection, so a per-row `cs` prop
+ * invalidated every row's memo whenever ANY table's columns loaded.
+ */
+export const TableSection = memo(function TableSection({
   label,
   icon,
   items,
@@ -100,21 +110,26 @@ export function TableSection({
             containIntrinsicSize: `auto ${items.length * 24}px`,
           }}
         >
-          {items.map((t) => (
-            <TableRow
-              key={tableKey(t.schema, t.name)}
-              table={t}
-              connectionId={connectionId}
-              cs={cs}
-              toggleNode={toggleNode}
-              loadColumns={loadColumns}
-              actions={actions}
-              metric={metric}
-              loadingLabel={translate("schema.loadingColumns")}
-            />
-          ))}
+          {items.map((t) => {
+            const k = tableKey(t.schema, t.name);
+            return (
+              <TableRow
+                key={k}
+                table={t}
+                connectionId={connectionId}
+                expanded={cs.expanded.has(`table:${k}`)}
+                columns={cs.columns[k]}
+                columnError={cs.columnErrors?.[k]}
+                toggleNode={toggleNode}
+                loadColumns={loadColumns}
+                actions={actions}
+                metric={metric}
+                loadingLabel={translate("schema.loadingColumns")}
+              />
+            );
+          })}
         </div>
       )}
     </div>
   );
-}
+});

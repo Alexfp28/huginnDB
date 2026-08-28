@@ -54,12 +54,14 @@ import {
 } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
-import { useSchema } from "@/stores/session/schema";
 import { useUi } from "@/stores/session/ui";
 import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups";
 import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
 import { isServerWide } from "@/lib/connectionLabel";
-import { useTreeMatchCounts } from "@/lib/schema/useTreeMatchCounts";
+import {
+  useLoadingConnectionIds,
+  useTreeMatchCounts,
+} from "@/lib/schema/useTreeMatchCounts";
 import { rowMatchState, totalMatches } from "@/lib/schema/treeMatches";
 import { warmForSearch } from "@/lib/schema/warmForSearch";
 import { scopeLabel } from "@/lib/schema/filterScope";
@@ -101,12 +103,15 @@ export function ConnectionsTree() {
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
   const lostConnections = useConnectionHealth((s) => s.lost);
-  // Whole map, so a row can show that its schema is being fetched. The explorer's
-  // spinning refresh button carried that signal before its icon strip moved to
-  // the context menu; on the row it's visible even while the connection is
-  // collapsed. `MultiDbExplorer` already subscribes this broadly for the same
-  // reason — the lookups are cheap and the map is replaced, not mutated.
-  const schemaByConnection = useSchema((s) => s.byConnection);
+  // Ids currently fetching their schema, so a row can show that even while
+  // collapsed — the explorer's spinning refresh button carried that signal
+  // before its icon strip moved to the context menu. Narrowed to a
+  // `Set<string>` (`useLoadingConnectionIds`, next to `useTreeMatchCounts`)
+  // rather than the raw `byConnection` map: reading the whole map here made
+  // this the tree's SECOND wide subscription to it (on top of
+  // `useTreeMatchCounts`'s own), so any schema write anywhere re-rendered
+  // every row regardless of whether its own loading state had changed.
+  const loadingConnectionIds = useLoadingConnectionIds();
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
   // The folded set (see `useUi`): a row follows its pool unless the user said
@@ -480,7 +485,7 @@ export function ConnectionsTree() {
         key={p.id}
         profile={p}
         isActive={isActive}
-        isBusy={connecting === p.id || !!schemaByConnection[p.id]?.loading}
+        isBusy={connecting === p.id || loadingConnectionIds.has(p.id)}
         isExpanded={isExpanded(p)}
         isDisconnecting={disconnecting.has(p.id)}
         isSelected={selected === p.id}

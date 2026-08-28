@@ -9,7 +9,7 @@
  * grouping above it (gotcha #1), which is unchanged.
  */
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -40,10 +40,10 @@ import { supportsDdlEditing, supportsRenameTable } from "@/lib/db/driver";
 import { selectSnippet } from "@/lib/grid/copyFormats";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
-import { tableKey, useSchema } from "@/stores/session/schema";
+import { tableKey } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import type { TableActions } from "@/components/schema/SchemaTableSection";
-import type { SchemaTableMetric, TableInfo } from "@/types";
+import type { ColumnInfo, SchemaTableMetric, TableInfo } from "@/types";
 
 /**
  * Coarse colour for a column's data type, tying the tree's type labels to the
@@ -91,12 +91,26 @@ export function tableMetricLabel(t: TableInfo, metric: SchemaTableMetric): strin
   return null;
 }
 
-/** One table/view row + its expandable column list, wrapped in a context
- *  menu with the destructive (DROP) and renaming actions. */
-export function TableRow({
+/**
+ * One table/view row + its expandable column list, wrapped in a context menu
+ * with the destructive (DROP) and renaming actions.
+ *
+ * `memo()`-wrapped, which is only useful because of what it does NOT
+ * receive: earlier this took the connection's WHOLE per-connection schema
+ * slice (`cs`) and read three things out of it (`expanded`, `columns`,
+ * `columnError`) — but `TableDataTab.tsx` documents that `loadColumns`
+ * writes a fresh `columns` map reference on every load, so expanding ANY
+ * table on the page invalidated the `cs` prop for every OTHER row too.
+ * Taking the three derived values as their own props (computed once per row
+ * by `TableSection`, gotcha #28) is what turns "a toggle re-renders every
+ * row on the page" into "a toggle re-renders one".
+ */
+export const TableRow = memo(function TableRow({
   table,
   connectionId,
-  cs,
+  expanded,
+  columns: cols,
+  columnError: colError,
   toggleNode,
   loadColumns,
   actions,
@@ -105,7 +119,9 @@ export function TableRow({
 }: {
   table: TableInfo;
   connectionId: string;
-  cs: ReturnType<typeof useSchema.getState>["byConnection"][string];
+  expanded: boolean;
+  columns: ColumnInfo[] | undefined;
+  columnError: string | undefined;
   toggleNode: (connectionId: string, key: string) => void;
   loadColumns: (
     connectionId: string,
@@ -120,9 +136,7 @@ export function TableRow({
   const t = table;
   const k = tableKey(t.schema, t.name);
   const tableNodeKey = `table:${k}`;
-  const tableOpen = cs.expanded.has(tableNodeKey);
-  const cols = cs.columns[k];
-  const colError = cs.columnErrors?.[k];
+  const tableOpen = expanded;
   const isView = t.kind === "view";
   // See `ConnectionActionsMenu`'s matching state/comment: keeps the row
   // looking targeted once the pointer has moved off it onto the open menu.
@@ -563,4 +577,4 @@ export function TableRow({
       </ContextMenuContent>
     </ContextMenu>
   );
-}
+});

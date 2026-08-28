@@ -21,7 +21,7 @@
  * (`patterns`) alongside this connection's `summary`.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -78,7 +78,7 @@ import { useUi } from "@/stores/session/ui";
 import type { ConnectionMatchSummary } from "@/lib/schema/treeMatches";
 import type { Driver } from "@/types";
 
-export function MultiDbExplorer({
+export const MultiDbExplorer = memo(function MultiDbExplorer({
   parentId,
   patterns,
   summary,
@@ -298,7 +298,7 @@ export function MultiDbExplorer({
       </div>
     </div>
   );
-}
+});
 
 /** One database row in the multi-DB explorer. Lazily opens the synthetic
  *  child pool the first time it is expanded; subsequent expansions reuse

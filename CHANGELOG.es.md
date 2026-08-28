@@ -255,6 +255,43 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   memoizar en primer lugar (una identidad que no cambia es el
   prerrequisito que `memo()` necesita, no una optimización encima de él).
 
+- **`memo()` en toda la familia de explorers del árbol de esquema, y —
+  esta es la parte que realmente lo hizo útil— una prop que invalidaba
+  cada fila de la página cada vez que cualquiera de ellas cambiaba.**
+  `SchemaExplorer`, `SingleDbExplorer`, `MultiDbExplorer`, `TableSection`
+  y `TableRow` están ahora todas envueltas en `memo()`, pero envolver solo
+  `TableRow` no habría servido de nada: recibía como prop el slice de
+  esquema COMPLETO por conexión (`cs`) y leía de él tres cosas (si su
+  propio nodo estaba expandido, sus propias columnas, su propio error de
+  carga de columnas) — y `TableDataTab.tsx` ya documenta que cargar las
+  columnas de cualquier tabla escribe una referencia de mapa `columns`
+  nueva para TODA la conexión. Así que expandir una fila de tabla
+  invalidaba el memo de todas las DEMÁS filas de la misma página.
+  `TableRow` recibe ahora esos tres valores como props propias
+  (`expanded`/`columns`/`columnError`), calculadas una vez por fila por
+  `TableSection` — que es lo que convierte "un toggle re-renderiza 500
+  filas" en "un toggle re-renderiza 1".
+  - El paquete `tableActions` de `SingleDbExplorer` (el objeto que
+    `TableSection`/`TableRow` reciben para abrir/refrescar/renombrar/
+    borrar/vaciar) se reconstruía como un objeto nuevo en cada render, lo
+    cual por sí solo habría anulado ambos `memo()` de más abajo
+    independientemente del arreglo de `cs` — envuelto en `useMemo`,
+    colocado POR ENCIMA del `if (!cs)` de retorno anticipado por la misma
+    razón de peso que ya obliga al `useMemo` existente de
+    `bySchema`/`schemas` del archivo a estar ahí (un hook después de un
+    retorno anticipado condicional es una violación de las Reglas de los
+    Hooks en cuanto `cs` puede pasar a `undefined` entre renders, que es
+    exactamente el escenario multi-DB de "varios explorers anidados se
+    desmontan mientras `byConnection` se estabiliza" que el comentario de
+    cabecera de este archivo ya advierte).
+  - `ConnectionsTree` tenía su propia SEGUNDA suscripción ancha a
+    `useSchema.byConnection` (`useTreeMatchCounts` ya tenía la primera),
+    usada solo para el spinner de carga de la fila. El nuevo
+    `useLoadingConnectionIds` (junto a `useTreeMatchCounts`, mismo
+    archivo) la estrecha a un `Set<string>` de ids en carga —
+    restaurando la afirmación del propio comentario de ese archivo de ser
+    la única suscripción ancha de la app a ese mapa.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido

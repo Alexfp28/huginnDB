@@ -231,6 +231,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   change is the precondition memo() needs, not an optimization on top of
   it).
 
+- **`memo()` across the schema tree's explorer family, and — this is the
+  part that actually made it useful — a prop that used to invalidate every
+  row on the page whenever any one of them changed.** `SchemaExplorer`,
+  `SingleDbExplorer`, `MultiDbExplorer`, `TableSection` and `TableRow` are
+  now all `memo()`-wrapped, but wrapping `TableRow` alone would have done
+  nothing: it took the connection's WHOLE per-connection schema slice
+  (`cs`) as a prop and read three things out of it (whether its own node
+  was expanded, its own columns, its own column-load error) — and
+  `TableDataTab.tsx` already documents that loading any table's columns
+  writes a fresh `columns` map reference for the *whole connection*. So
+  expanding one table row invalidated the memo of every OTHER row on the
+  same page. `TableRow` now takes those three values as their own props
+  (`expanded`/`columns`/`columnError`), computed once per row by
+  `TableSection` — which is what turns "a toggle re-renders 500 rows" into
+  "a toggle re-renders 1".
+  - `SingleDbExplorer`'s `tableActions` bundle (the object `TableSection`/
+    `TableRow` receive for open/refresh/rename/drop/empty) was rebuilt as a
+    fresh object on every render, which alone would have defeated both
+    memo()s downstream regardless of the `cs` fix — wrapped in `useMemo`,
+    placed ABOVE the `if (!cs)` early return for the same load-bearing
+    reason the file's existing `bySchema`/`schemas` memo already has to be
+    (a hook after a conditional early return is a Rules-of-Hooks violation
+    the moment `cs` can flip to `undefined` between renders, which is
+    exactly the multi-DB "several nested explorers unmount while
+    `byConnection` settles" scenario this file's header comment already
+    warns about).
+  - `ConnectionsTree` had its own SECOND wide subscription to
+    `useSchema.byConnection` (`useTreeMatchCounts`'s already had the first),
+    used only for the row's loading spinner. New
+    `useLoadingConnectionIds` (next to `useTreeMatchCounts`, same file)
+    narrows that to a `Set<string>` of ids currently loading — restoring
+    that file's own doc comment's claim to be the app's one wide
+    subscription to that map.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added
