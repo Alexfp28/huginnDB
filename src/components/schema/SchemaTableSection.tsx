@@ -85,20 +85,36 @@ export function TableSection({
         </span>
       </button>
 
-      {isOpen &&
-        items.map((t) => (
-          <TableRow
-            key={tableKey(t.schema, t.name)}
-            table={t}
-            connectionId={connectionId}
-            cs={cs}
-            toggleNode={toggleNode}
-            loadColumns={loadColumns}
-            actions={actions}
-            metric={metric}
-            loadingLabel={translate("schema.loadingColumns")}
-          />
-        ))}
+      {isOpen && (
+        <div
+          // `content-visibility: auto` skips style recalc/layout/paint for
+          // rows outside the tree's scroll viewport — with the filter active
+          // there can be thousands of these across every open connection.
+          // Safe here specifically because rows are fixed, known-height
+          // (~24px: `py-1` plus the `2xs` line-height), so `items.length *
+          // 24` is an exact estimate rather than a guess — not a
+          // virtualizer, so `moveRowFocus`'s `querySelectorAll` over
+          // `[data-tree-row]` still sees every row.
+          style={{
+            contentVisibility: "auto",
+            containIntrinsicSize: `auto ${items.length * 24}px`,
+          }}
+        >
+          {items.map((t) => (
+            <TableRow
+              key={tableKey(t.schema, t.name)}
+              table={t}
+              connectionId={connectionId}
+              cs={cs}
+              toggleNode={toggleNode}
+              loadColumns={loadColumns}
+              actions={actions}
+              metric={metric}
+              loadingLabel={translate("schema.loadingColumns")}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -165,6 +165,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   itself already `memo()`-wrapped by the package, so with both props
   stable it now skips re-rendering entirely on an unrelated parent render.
 
+- **`content-visibility: auto` on the schema tree's per-connection subtree
+  and per-section row list.** With the tree filter active there can be
+  thousands of rows across every open connection's expanded subtrees, all
+  of it real DOM (the tree isn't virtualized, see the "Deferred" section
+  below for why not yet). `content-visibility: auto` skips style
+  recalc/layout/paint entirely for whatever's outside the tree's scroll
+  viewport, without removing anything from the DOM — which matters because
+  `moveRowFocus`'s keyboard navigation walks `[data-tree-row]` via
+  `querySelectorAll` and would silently stop seeing off-screen rows if they
+  were actually virtualized away. `SchemaTableSection`'s row list gets an
+  exact `contain-intrinsic-size` (`items.length * 24px` — rows are a fixed,
+  known height) rather than a guess; the per-connection subtree wrapper in
+  `ConnectionsTree` gets an approximate one (`auto 300px`, self-correcting
+  once the browser has measured the real subtree once). Pure CSS, no
+  behavior change — verified manually with the filter active, watching
+  DevTools' Rendering panel.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

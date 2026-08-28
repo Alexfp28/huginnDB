@@ -184,6 +184,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   props estables ahora se salta el re-render por completo ante un render
   no relacionado del padre.
 
+- **`content-visibility: auto` en el subárbol por conexión y en la lista de
+  filas por sección del árbol de esquema.** Con el filtro del árbol activo
+  puede haber miles de filas en los subárboles expandidos de cada conexión
+  abierta, todo DOM real (el árbol no está virtualizado, ver la sección
+  "Diferido" más abajo para el porqué de momento). `content-visibility:
+  auto` se salta por completo el recálculo de estilos/layout/paint de lo
+  que queda fuera del viewport de scroll del árbol, sin quitar nada del
+  DOM — lo cual importa porque la navegación por teclado de `moveRowFocus`
+  recorre `[data-tree-row]` vía `querySelectorAll` y dejaría de ver en
+  silencio las filas fuera de pantalla si de verdad estuvieran
+  virtualizadas. La lista de filas de `SchemaTableSection` recibe un
+  `contain-intrinsic-size` exacto (`items.length * 24px` — las filas tienen
+  una altura fija y conocida) en vez de una estimación; el wrapper del
+  subárbol por conexión en `ConnectionsTree` recibe uno aproximado (`auto
+  300px`, que se autocorrige en cuanto el navegador mide el subárbol real
+  una vez). CSS puro, sin cambio de comportamiento — verificado a mano con
+  el filtro activo, observando el panel Rendering de DevTools.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido

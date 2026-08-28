@@ -651,7 +651,21 @@ export function ConnectionsTree() {
             continuous tree rather than a per-row accent: a connection inside a
             folder naturally sits one guide deeper than an ungrouped one. */}
         {expanded && isActive && (
-          <div className="ml-3 border-l border-border/35 pl-0.5">
+          <div
+            className="ml-3 border-l border-border/35 pl-0.5"
+            // With the filter active there can be thousands of rows across
+            // every open connection; `content-visibility: auto` skips style
+            // recalc/layout/paint for whatever's outside the scroll viewport
+            // (`rowsRef`'s `overflow-y-auto` below). Unlike virtualizing,
+            // this does NOT remove nodes from the DOM, so `moveRowFocus`
+            // (which walks `[data-tree-row]` via `querySelectorAll`) keeps
+            // working unchanged — that's the whole reason this is CSS and
+            // not a virtualizer. `contain-intrinsic-size`'s guess only
+            // matters before this subtree has ever been measured once; the
+            // browser remembers the real size afterward and re-estimates
+            // only if it goes offscreen again before ever being painted.
+            style={{ contentVisibility: "auto", containIntrinsicSize: "auto 300px" }}
+          >
             <SchemaExplorer
               connectionId={p.id}
               patterns={patterns}
