@@ -315,6 +315,57 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   como byte NUL literal — un byte NUL ya volvió el archivo entero binario
   para git una vez (sin diff, sin revisión, sin grep).
 
+- **Una tecla en el editor SQL ya no se propaga al título de la ventana, a
+  la maquinaria de la tira de tabs de dockview, a un re-render de la status
+  bar por un comentario obsoleto, ni a N suscripciones de guardado en disco
+  separadas.** `updateQuery` (`useTabs`) reemplaza todo el array `tabs` en
+  cada tecla — correcto, ya que el texto de la query vive en el objeto tab
+  — pero varios listeners no relacionados estaban indexados sobre `tabs`
+  en sí en vez de sobre si algo que de verdad les importaba había
+  cambiado:
+  - `WindowTitleSync` recalculaba el título de la ventana del SO Y hacía
+    la llamada IPC `setTitle` en un único efecto con deps `[tabs, activeId,
+    profiles, selectedConnectionId, appName]`. El texto del título casi
+    nunca cambia mientras se teclea (depende de qué conexión/tabla está
+    activa, no del cuerpo SQL), así que el cálculo es ahora un `useMemo`
+    separado y la llamada IPC depende de `[title]` — un string, así que
+    solo se dispara cuando el título *renderizado* cambia de verdad.
+  - El efecto de sincronización de paneles de `TabbedArea`
+    (`syncTabPanels`) solo añade/quita paneles de dockview, así que solo
+    necesita saber que la *identidad* de las tabs cambió, no que algún
+    campo propio de una tab cambió — igual para el efecto de edge-fade
+    justo debajo, que destruía y recreaba todo su `ResizeObserver` +
+    listener de scroll en cada tecla. Ambos dependen ahora de una firma
+    `tabs.map(t => t.id).join("\0")` en vez de `tabs` en sí, leyendo el
+    array real vía `getState()` donde el diff de verdad necesita los datos
+    completos de cada tab.
+  - `StatusBar` seleccionaba `s.tabs.find((t) => t.id === s.activeId)`
+    para su único uso — `activeTab.connectionId` — pero `.find()` devuelve
+    una referencia de objeto *nueva* después de que `updateQuery`
+    reemplace justo esa tab, anulando la optimización de selector de
+    Zustand que el propio comentario de cabecera del archivo prometía.
+    Estrechado para seleccionar `connectionId` directamente (un
+    primitivo), y el comentario obsoleto de "`.find()` es estable" se
+    corrige en el mismo cambio.
+  - `persistedTabs.ts` registraba un `useTabs.subscribe(...)` POR CADA
+    conexión rastreada, así que N conexiones vivas significaban N reinicios
+    de temporizador de debounce por tecla en vez de uno. Consolidado en
+    una única suscripción compartida que reparte a cada id del registro
+    interno, registrada en la primera conexión y desmontada en cuanto el
+    registro queda vacío — el ciclo de vida por conexión (`flushTabState`,
+    `subscribedConnectionIds`, el guard `saveSuspended` del cambio de
+    entorno) queda intacto por lo demás, ya que nada de eso dependía de
+    *cómo* estaba cableada la suscripción, solo del propio registro.
+
+  Diferido (necesitaría el visto bueno del usuario antes): sacar el propio
+  borrador SQL de `useTabs` a su propio store. Ese es el arreglo de raíz —
+  teclear no tocaría entonces nada de lo que observan el árbol, la status
+  bar, el title sync o dockview — pero cambia la forma de la tab
+  persistida y los caminos de hidratación/`replaceAll` de
+  `persistedTabs.ts`, que tiene la forma de una migración de esquema y no
+  de un arreglo del camino de render. Los cinco arreglos de arriba puede
+  que ya basten por sí solos.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido

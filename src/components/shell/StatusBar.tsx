@@ -52,8 +52,17 @@ export function StatusBar() {
   const { t } = useTranslation();
   const versions = useConnections((s) => s.versions);
 
-  // .find() returns a stable reference to an existing tab object.
-  const activeTab = useTabs((s) => s.tabs.find((t) => t.id === s.activeId));
+  // NOT `s.tabs.find((t) => t.id === s.activeId)` — `.find()` returning "a
+  // stable reference to an existing tab object" is true in general, but
+  // false right after `updateQuery`, which replaces the active tab's own
+  // object (`{...t, query}`) on every keystroke in the SQL editor. Selecting
+  // the one primitive this component actually reads (`connectionId`) keeps
+  // the selector reference-stable across a query edit, per the Zustand rule
+  // in this file's own header comment.
+  const activeConnectionId = useTabs((s) => {
+    const tab = s.tabs.find((t) => t.id === s.activeId);
+    return tab?.connectionId;
+  });
   const activeId = useTabs((s) => s.activeId);
 
   const historyCount = useQueryHistory((s) => s.entries.length);
@@ -63,7 +72,7 @@ export function StatusBar() {
     activeId ? s.byTab[activeId] : undefined,
   );
 
-  const serverVersion = activeTab ? versions[activeTab.connectionId] : undefined;
+  const serverVersion = activeConnectionId ? versions[activeConnectionId] : undefined;
 
   return (
     <div className="flex h-7 items-center justify-between border-t border-border bg-card/60 px-2 text-[11px] text-muted-foreground">

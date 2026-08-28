@@ -286,6 +286,53 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   NUL byte — a NUL byte made the whole file binary to git once already (no
   diff, no review, no grep).
 
+- **A keystroke in the SQL editor no longer fans out into the window title,
+  dockview's tab-strip machinery, a stale-comment status-bar re-render, and
+  N separate disk-save subscriptions.** `updateQuery` (`useTabs`) replaces
+  the whole `tabs` array on every keystroke — correct, since the query text
+  lives on the tab object — but several unrelated listeners were keyed on
+  `tabs` itself rather than on whether anything they actually cared about
+  had changed:
+  - `WindowTitleSync` recomputed the OS window title AND made the
+    `setTitle` IPC call in one effect keyed on `[tabs, activeId, profiles,
+    selectedConnectionId, appName]`. The title text almost never changes
+    while typing (it depends on which connection/table is active, not the
+    SQL body), so the computation is now a separate `useMemo` and the IPC
+    call is gated on `[title]` — a string, so it only fires when the
+    *rendered* title actually changes.
+  - `TabbedArea`'s panel-sync effect (`syncTabPanels`) only adds/removes
+    dockview panels, so it only needs to know the tab *identity* changed,
+    not that some tab's own field changed — same for the edge-fade effect
+    just below it, which used to tear down and recreate its whole
+    `ResizeObserver` + scroll listener on every keystroke. Both are now
+    keyed on a `tabs.map(t => t.id).join("\0")` signature instead of `tabs`
+    itself, reading the live array via `getState()` where the actual diff
+    needs full tab data.
+  - `StatusBar` selected `s.tabs.find((t) => t.id === s.activeId)` for its
+    only use — `activeTab.connectionId` — but `.find()` returns a *new*
+    object reference after `updateQuery` replaces that exact tab, defeating
+    the Zustand selector optimization the file's own header comment
+    promises. Narrowed to select `connectionId` directly (a primitive), and
+    the stale "`.find()` is stable" comment is corrected in the same
+    change.
+  - `persistedTabs.ts` registered one `useTabs.subscribe(...)` PER tracked
+    connection, so N live connections meant N debounce-timer resets per
+    keystroke instead of one. Consolidated into a single shared
+    subscription that fans out to every id in the internal registry,
+    registered on the first connection and torn down once the registry is
+    empty — the per-connection lifecycle (`flushTabState`,
+    `subscribedConnectionIds`, the environment-switch `saveSuspended` gate)
+    is otherwise untouched, since none of it depended on *how* the
+    subscription was wired, only on the registry itself.
+
+  Deferred (would need the user's go-ahead first): moving the SQL draft
+  itself out of `useTabs` into its own store. That's the root fix — typing
+  would then touch nothing the tree, status bar, title sync or dockview
+  observe at all — but it changes the persisted tab shape and the
+  `persistedTabs.ts` hydration/`replaceAll` paths, which has the shape of a
+  schema migration rather than a render-path fix. The five fixes above
+  may already be enough on their own.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

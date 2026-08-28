@@ -507,22 +507,49 @@ export async function hydrateWorkspaceLayout(): Promise<void> {
 }
 
 /**
+ * One `useTabs.subscribe` for every tracked connection, instead of one per
+ * connection. Each `attachSubscriptions` call used to register its own
+ * `useTabs.subscribe(() => scheduleSave(connectionId))` — harmless with one
+ * connection open, but with N live connections a single keystroke in the SQL
+ * editor (which replaces the whole `tabs` array via `updateQuery`) fired N
+ * separate subscription callbacks, each just to reset that one connection's
+ * own debounce timer. Registered lazily on the first `attachSubscriptions`
+ * call and torn down once `active` is empty (in `flushTabState`, the only
+ * place that removes an entry) — fanning out to `scheduleSave` for every id
+ * currently in `active` is exactly what each per-connection subscription did
+ * on its own, just counted once instead of N times per edit.
+ */
+let sharedTabsUnsub: (() => void) | null = null;
+function ensureSharedTabsSubscription() {
+  if (sharedTabsUnsub) return;
+  // We watch the full tabs array; filtering happens inside `snapshotFor`.
+  // Zustand's subscribe fires on every state change, which keeps the wiring
+  // simple — the cost is one shallow comparison per tab edit, now paid once
+  // rather than once per tracked connection.
+  sharedTabsUnsub = useTabs.subscribe(() => {
+    for (const connectionId of active.keys()) scheduleSave(connectionId);
+  });
+}
+
+/**
  * Subscribe to tab and schema-expansion changes for `connectionId`. The
  * subscription is idempotent — calling twice for the same id is a no-op.
  */
 function attachSubscriptions(connectionId: string) {
   if (active.has(connectionId)) return;
 
+  ensureSharedTabsSubscription();
+
   const entry: ActiveSubscription = {
     save: saveDebounceFor(connectionId),
+    // The tabs side is the shared subscription above; this entry's own
+    // `unsubTabs` has nothing left to do; kept as a no-op rather than
+    // removed from `ActiveSubscription` so `flushTabState`'s unconditional
+    // `entry.unsubTabs()` call needs no special-casing.
     unsubTabs: () => {},
     unsubSchema: () => {},
   };
 
-  // We watch the full tabs array; filtering happens inside `snapshotFor`.
-  // Zustand's subscribe fires on every state change, which keeps the
-  // wiring simple — the cost is one shallow comparison per tab edit.
-  entry.unsubTabs = useTabs.subscribe(() => scheduleSave(connectionId));
   entry.unsubSchema = useSchema.subscribe((state, prev) => {
     if (state.byConnection[connectionId] !== prev.byConnection[connectionId]) {
       scheduleSave(connectionId);
@@ -570,6 +597,14 @@ export async function flushTabState(connectionId: string): Promise<void> {
   entry.unsubTabs();
   entry.unsubSchema();
   active.delete(connectionId);
+  // Last tracked connection gone — nothing left for the shared subscription
+  // to fan out to, so drop it rather than leaking a listener that fires
+  // (and no-ops over an empty `active`) on every future `useTabs` write
+  // until some connection re-attaches.
+  if (active.size === 0 && sharedTabsUnsub) {
+    sharedTabsUnsub();
+    sharedTabsUnsub = null;
+  }
 }
 
 /**
