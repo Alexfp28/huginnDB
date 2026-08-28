@@ -4,10 +4,13 @@ import {
   BSON_TYPES,
   defaultText,
   draftTypeFor,
+  flattenDocument,
   isOpaqueType,
   isValidForType,
   nextArrayIndex,
   pathKey,
+  typeLabel,
+  typeTextFor,
   typeValue,
   type DocField,
 } from "./documentTree";
@@ -78,6 +81,75 @@ describe("nextArrayIndex", () => {
   it("matches on the whole path, not the leaf name", () => {
     const fields = [field(["a", "tags"], 2), field(["b", "tags"], 5)];
     expect(nextArrayIndex(fields, ["b", "tags"])).toBe(5);
+  });
+});
+
+describe("flattenDocument", () => {
+  // Characterization for the collapsed-container fix: reading `childCount`
+  // must not require walking (or allocating a tuple per element for) the
+  // container's children — a collapsed 10,000-element array is the case
+  // that used to pay for exactly that on every render of the memo this
+  // feeds (DocumentCard).
+  it("does not walk a collapsed container's children, only counts them", () => {
+    const bigArray = Array.from({ length: 10_000 }, (_, i) => i);
+    const out = flattenDocument([{ name: "items" }], [bigArray], undefined, () => false);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      path: ["items"],
+      container: "array",
+      childCount: 10_000,
+      expanded: false,
+    });
+  });
+
+  it("walks an expanded array's children, keyed by String(index) for $set/$unset", () => {
+    const out = flattenDocument([{ name: "items" }], [["a", "b", "c"]], undefined, (key) => key === "items");
+    expect(out.map((f) => f.path)).toEqual([["items"], ["items", "0"], ["items", "1"], ["items", "2"]]);
+    expect(out[0].childCount).toBe(3);
+    expect(out.slice(1).every((f) => f.inArray)).toBe(true);
+  });
+
+  it("walks an expanded object's children in key insertion order", () => {
+    const out = flattenDocument([{ name: "doc" }], [{ b: 1, a: 2 }], undefined, (key) => key === "doc");
+    expect(out.map((f) => f.key)).toEqual(["doc", "b", "a"]);
+    expect(out[0].childCount).toBe(2);
+    expect(out.slice(1).every((f) => f.inArray)).toBe(false);
+  });
+});
+
+describe("typeTextFor", () => {
+  const field = (overrides: Partial<DocField>): DocField =>
+    ({
+      path: ["name"],
+      key: "name",
+      value: "x",
+      type: "string",
+      depth: 0,
+      container: null,
+      childCount: 0,
+      expanded: false,
+      inArray: false,
+      editable: true,
+      ...overrides,
+    }) as DocField;
+
+  it("shows a top-level SQL field's real catalog type", () => {
+    const byName = new Map([["name", "varchar(255)"]]);
+    expect(typeTextFor(field({}), false, byName)).toBe("varchar(255)");
+  });
+
+  it("falls back to the BSON-style label when the column isn't in the map", () => {
+    expect(typeTextFor(field({}), false, new Map())).toBe(typeLabel("string"));
+  });
+
+  it("always shows the BSON-style label for a nested field, even in SQL mode", () => {
+    const byName = new Map([["name", "varchar(255)"]]);
+    expect(typeTextFor(field({ path: ["data", "name"], depth: 1 }), false, byName)).toBe(typeLabel("string"));
+  });
+
+  it("always shows the BSON-style label in document mode, even at depth 0", () => {
+    const byName = new Map([["name", "varchar(255)"]]);
+    expect(typeTextFor(field({}), true, byName)).toBe(typeLabel("string"));
   });
 });
 

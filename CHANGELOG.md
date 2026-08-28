@@ -63,6 +63,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   "100-row page, list mode, 10k-row table" degradation — the next entries in
   this pass make the list itself cheap per row.
 
+- **List mode's per-row `memo()` now actually bails out, and a collapsed
+  container stops paying for its hidden children.** Three independent fixes
+  in `DocumentListView`/`documentTree`:
+  - `DocumentCard` was already wrapped in `memo()`, but never once bailed
+    out: `onFieldSave`/`onFieldDelete`/`onDeleteRow` arrive as plain function
+    declarations recreated by `TableDataTab` on every render, and
+    `onExpandField` as an inline arrow from `DataGrid` — a fresh identity on
+    every render of something several layers up, every time, regardless of
+    whether that particular row's own data had changed. Those four
+    callbacks are now mirrored through a ref (`callbacksRef`, the same
+    pattern `DataGrid`'s `interactiveRef`/`rowCallbacksRef` and `GridRow`'s
+    own `callbacksRef` already use) and read at call time instead of being
+    passed as props; `DocumentCard` receives only booleans
+    (`hasFieldSave`, `documentMode`, …) for which affordances are available,
+    which — being primitives — compare cheaply and correctly under `memo()`.
+  - `FieldRow` gets the identical treatment one level down: its ~13 inline
+    per-field callbacks (recreated for every field of every card, every
+    render — tens of thousands of closures on a wide page) are replaced by
+    one stable `actionsRef`, whose methods take the field they act on as an
+    argument, and `FieldRow` itself is now `memo()`-wrapped for the first
+    time.
+  - `flattenDocument` (`documentTree.ts`) used to materialise a `[key,
+    value]` tuple per child of a container — including a *collapsed* one —
+    just to read `.length` off the result. It now reads the count directly
+    (`.length` / `Object.keys().length`) and only walks into children when
+    the container is actually expanded, so a collapsed 10,000-element array
+    costs O(1) instead of O(children) on every render of the memo above.
+
+  Also removed: a `useTranslation()` subscription per `DocumentCard` and
+  per `FieldRow` (up to ~4,000 combined on a wide page — each a live
+  i18next subscription), replaced by one subscription in `DocumentListView`
+  and a `labels` object of precomputed strings (recomputed only on an
+  actual language change); and a `columns.find()` per field per render to
+  resolve a SQL column's catalog type (O(fields × columns), ~160,000 string
+  comparisons on 100 rows × 40 columns), replaced by a `Map` built once per
+  column list (`typeTextFor`, `documentTree.ts`).
+
+  Verified with a new regression test
+  (`src/components/grid/DocumentListView.test.tsx`) that would have caught
+  the original bug: it re-renders the list with a brand-new `onExpandField`
+  identity (exactly what `DataGrid` does today) and asserts `DocumentCard`'s
+  render body does not run a second time.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

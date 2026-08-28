@@ -47,6 +47,7 @@ import {
   type MutableRefObject,
 } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { notify } from "@/lib/notify";
 import {
   ChevronDown,
@@ -85,6 +86,7 @@ import {
   nextArrayIndex,
   pathKey,
   typeLabel,
+  typeTextFor,
   typeValue,
   type BsonType,
   type DocField,
@@ -169,6 +171,48 @@ export interface ListDraft {
   onCancel: () => void;
 }
 
+/**
+ * The four callbacks `DocumentCard` needs from its caller, mirrored through
+ * `callbacksRef` (the same pattern as `DataGrid`'s `interactiveRef` /
+ * `rowCallbacksRef` and `GridRow`'s own `callbacksRef`). `DocumentCard` is
+ * `memo()`-wrapped, but `onFieldSave`/`onFieldDelete`/`onDeleteRow` arrive
+ * here as plain function declarations from `TableDataTab` and `onExpandField`
+ * as an inline arrow from `DataGrid` — all four get a fresh identity on every
+ * render of a component several layers up, which used to defeat the memo on
+ * every single card, every single render, regardless of whether that row's
+ * own data had changed. Reading them from a ref instead of a prop means the
+ * memo only compares `rowValues`/`columns`/`types` and the boolean
+ * capability flags below — the actual functions are always read fresh, at
+ * call time, without ever being part of the props diff.
+ */
+interface DocumentCardCallbacks {
+  onFieldSave?: FieldSave;
+  onFieldDelete?: (rowValues: CellValue[], path: string[]) => Promise<void>;
+  onDeleteRow?: (rowValues: CellValue[]) => void;
+  onExpandField?: (
+    rowValues: CellValue[],
+    path: string[],
+    value: string,
+    type: string,
+  ) => void;
+  copyToClipboard: (text: string) => void;
+}
+
+/** Field-row copy, precomputed once per language rather than once per field
+ *  row — see the `useTranslation()` call below for why. */
+interface DocFieldLabels {
+  addField: string;
+  ctxCopy: string;
+  ctxDeleteRow: string;
+  deleteField: string;
+  collapse: string;
+  expand: string;
+  setNull: string;
+  expandEditor: string;
+  opaqueType: string;
+  changeType: string;
+}
+
 export function DocumentListView({
   columns,
   rows,
@@ -187,6 +231,52 @@ export function DocumentListView({
   emptyLabel,
   draft,
 }: DocumentListViewProps) {
+  const { t, i18n } = useTranslation();
+  /**
+   * One `useTranslation()` subscription for the whole page of cards, instead
+   * of one per `DocumentCard` and one per `FieldRow` (up to ~100 + ~4,000 on
+   * a page of wide documents — each a live i18next subscription, each
+   * re-rendering on a language change). All ten strings here are static (no
+   * interpolation), so they're resolved once into plain strings and handed
+   * down as `labels`, which stays referentially stable across renders that
+   * don't actually change the language.
+   *
+   * Deliberately depends on `i18n.language`, not `t` — `t`'s own identity is
+   * stable in react-i18next, so keying off it would just re-run this memo on
+   * every render for no reason; keying off the language is what actually
+   * needs to invalidate these precomputed strings on a live language switch.
+   */
+  const labels: DocFieldLabels = useMemo(
+    () => ({
+      addField: t("dataGrid.list.addField"),
+      ctxCopy: t("dataGrid.ctxCopy"),
+      ctxDeleteRow: t("dataGrid.ctxDeleteRow"),
+      deleteField: t("dataGrid.list.deleteField"),
+      collapse: t("dataGrid.list.collapse"),
+      expand: t("dataGrid.list.expand"),
+      setNull: t("cellEditor.setNull"),
+      expandEditor: t("dataGrid.expandEditor"),
+      opaqueType: t("dataGrid.list.opaqueType"),
+      changeType: t("dataGrid.list.changeType"),
+    }),
+    [i18n.language],
+  );
+
+  const callbacksRef = useRef<DocumentCardCallbacks>({
+    onFieldSave,
+    onFieldDelete,
+    onDeleteRow,
+    onExpandField,
+    copyToClipboard,
+  });
+  callbacksRef.current = {
+    onFieldSave,
+    onFieldDelete,
+    onDeleteRow,
+    onExpandField,
+    copyToClipboard,
+  };
+
   // An empty relation gets the shared branded empty frame, the same one the
   // table view shows in place of its rows — an unadorned grey line here was the
   // one place the list view fell out of that family. Suppressed while a draft
@@ -217,11 +307,18 @@ export function DocumentListView({
           expandNested={expandNested}
           showTypes={showTypes}
           lineNumbers={lineNumbers}
-          onFieldSave={onFieldSave}
-          onFieldDelete={onFieldDelete}
-          onDeleteRow={onDeleteRow}
-          onExpandField={onExpandField}
-          copyToClipboard={copyToClipboard}
+          // Capabilities as booleans, not the functions themselves — see
+          // `DocumentCardCallbacks` above. Each `!!x` is recomputed on every
+          // render, but a boolean's IDENTITY is itself (`Object.is` on a
+          // primitive), so the memo still bails out whenever the capability
+          // hasn't actually changed.
+          documentMode={!!onFieldDelete}
+          hasFieldSave={!!onFieldSave}
+          hasDeleteRow={!!onDeleteRow}
+          hasExpandField={!!onExpandField}
+          t={t}
+          labels={labels}
+          callbacksRef={callbacksRef}
         />
       ))}
     </div>
@@ -412,16 +509,23 @@ interface DocumentCardProps {
   expandNested: boolean;
   showTypes: boolean;
   lineNumbers: boolean;
-  onFieldSave?: FieldSave;
-  onFieldDelete?: (rowValues: CellValue[], path: string[]) => Promise<void>;
-  onDeleteRow?: (rowValues: CellValue[]) => void;
-  onExpandField?: (
-    rowValues: CellValue[],
-    path: string[],
-    value: string,
-    type: string,
-  ) => void;
-  copyToClipboard: (text: string) => void;
+  /** Derived from which callbacks the caller supplied (see
+   *  `DocumentCardCallbacks`) — plain booleans instead of the functions
+   *  themselves, so this component's `memo()` reacts to a capability
+   *  actually changing rather than to a new function identity on every
+   *  render of something several layers up. The functions themselves are
+   *  read from `callbacksRef`. */
+  documentMode: boolean;
+  hasFieldSave: boolean;
+  hasDeleteRow: boolean;
+  hasExpandField: boolean;
+  /** `t`'s own identity is stable in react-i18next, so passing it through
+   *  props doesn't fight the memo — only needed here for the few strings
+   *  that interpolate a value computed per field (a count, a path, a type
+   *  name); everything static comes from `labels` instead. */
+  t: TFunction;
+  labels: DocFieldLabels;
+  callbacksRef: MutableRefObject<DocumentCardCallbacks>;
 }
 
 /** Inline edit in flight, narrowed to the one field it belongs to. */
@@ -443,6 +547,33 @@ interface DraftState {
   inArray: boolean;
 }
 
+/**
+ * The subset of `FieldRow`'s interaction surface that used to be ~13 inline
+ * arrow functions built fresh per field, per render (`~52k` closures on a
+ * page of 100 rows × 40 fields wide with the type menu open). `FieldRow` is
+ * `memo()`-wrapped, so those inline arrows — a new function identity every
+ * time regardless of whether that field actually changed — defeated it just
+ * as thoroughly as `DocumentCard`'s own unstable callback props did. Built
+ * once per `DocumentCard` render as a ref (the same `interactiveRef` /
+ * `rowCallbacksRef` pattern `DataGrid` and `GridRow` already use) rather
+ * than per field, and each method takes the field it acts on as an
+ * argument instead of closing over one particular field — that's what lets
+ * every `FieldRow` share the exact same, stable `actionsRef` object.
+ */
+interface FieldRowActions {
+  openTypeMenu: (key: string) => void;
+  closeTypeMenu: () => void;
+  toggleFold: (key: string) => void;
+  startEdit: (f: DocField) => void;
+  editChange: (value: string | null) => void;
+  commitEdit: (f: DocField) => void;
+  cancelEdit: () => void;
+  changeType: (f: DocField, next: BsonType) => void;
+  deleteField: (f: DocField) => void;
+  addAfter: (f: DocField) => void;
+  expandField: (f: DocField) => void;
+}
+
 const DocumentCard = memo(function DocumentCard({
   index,
   columns,
@@ -454,13 +585,14 @@ const DocumentCard = memo(function DocumentCard({
   expandNested,
   showTypes,
   lineNumbers,
-  onFieldSave,
-  onFieldDelete,
-  onDeleteRow,
-  onExpandField,
-  copyToClipboard,
+  documentMode,
+  hasFieldSave,
+  hasDeleteRow,
+  hasExpandField,
+  t,
+  labels,
+  callbacksRef,
 }: DocumentCardProps) {
-  const { t } = useTranslation();
   /**
    * Folds the user toggled, as a *diff* from the `listExpandNested`
    * preference rather than an absolute set: with the preference off a path in
@@ -481,10 +613,6 @@ const DocumentCard = memo(function DocumentCard({
   /** Guards against a blur-commit racing the Enter-commit of the same edit. */
   const committingRef = useRef(false);
 
-  /** MongoDB-only affordances (add / delete / retype a field) ride on the
-   *  presence of the `$unset` callback — only the Mongo tab supplies it. */
-  const documentMode = !!onFieldDelete;
-
   const isExpanded = useCallback(
     (key: string) => (toggled.has(key) ? !expandNested : expandNested),
     [toggled, expandNested],
@@ -493,6 +621,15 @@ const DocumentCard = memo(function DocumentCard({
   const fields = useMemo(
     () => flattenDocument(columns, rowValues, types, isExpanded),
     [columns, rowValues, types, isExpanded],
+  );
+
+  /** Column catalog type by name, for `typeTextFor` — memoized once per
+   *  column list instead of a `columns.find()` per field per render (O(fields
+   *  × columns), ~160,000 string comparisons on a page of 100 rows × 40
+   *  columns). */
+  const columnTypeByName = useMemo(
+    () => new Map(columns.map((c) => [c.name, c.data_type])),
+    [columns],
   );
 
   function toggleFold(key: string) {
@@ -522,14 +659,14 @@ const DocumentCard = memo(function DocumentCard({
 
   /** Whether this field's value may be edited inline. */
   function canEdit(f: DocField): boolean {
-    return !!onFieldSave && f.editable && isAddressable(f) && !isImmutableId(f);
+    return hasFieldSave && f.editable && isAddressable(f) && !isImmutableId(f);
   }
 
   /** Whether this field may be retyped, removed, or have a sibling added.
    *  Unlike {@link canEdit} this stays true for an opaque type — replacing it
    *  via the type picker is exactly how such a field is edited at all. */
   function canMutate(f: DocField): boolean {
-    return documentMode && !!onFieldSave && !isImmutableId(f);
+    return documentMode && hasFieldSave && !isImmutableId(f);
   }
 
   async function save(
@@ -537,6 +674,7 @@ const DocumentCard = memo(function DocumentCard({
     value: string | null,
     typeHint?: string,
   ): Promise<boolean> {
+    const onFieldSave = callbacksRef.current.onFieldSave;
     if (!onFieldSave) return false;
     try {
       await onFieldSave(rowValues, path, value, typeHint);
@@ -604,6 +742,7 @@ const DocumentCard = memo(function DocumentCard({
   }
 
   async function deleteField(f: DocField) {
+    const onFieldDelete = callbacksRef.current.onFieldDelete;
     if (!onFieldDelete) return;
     if (
       !confirmDestructive(
@@ -658,7 +797,60 @@ const DocumentCard = memo(function DocumentCard({
 
   /** Document-level affordance: "add a field to this document" (the root
    *  counterpart of the per-field `+`). */
-  const canAddRootField = documentMode && !!onFieldSave;
+  const canAddRootField = documentMode && hasFieldSave;
+
+  // Built fresh every `DocumentCard` render (mirroring `interactiveRef` /
+  // `rowCallbacksRef`), NOT memoized with an empty dependency array — its
+  // methods close over this render's `edit`/`toggled`/`typeMenu`/`draft`
+  // local state, same as `toggleFold`/`startEdit`/etc. themselves. What
+  // stays constant across renders is the `actionsRef` OBJECT's identity
+  // (it's a ref), which is all `memo(FieldRow)` ever sees as a prop.
+  const actionsRef = useRef<FieldRowActions>({
+    openTypeMenu: (key) => setTypeMenu(key),
+    closeTypeMenu: () => setTypeMenu(null),
+    toggleFold,
+    startEdit,
+    editChange: (value) =>
+      setEdit((prev) => (prev ? { ...prev, text: value } : prev)),
+    commitEdit: (f) => void commitEdit(f),
+    cancelEdit: () => setEdit(null),
+    changeType: (f, next) => void changeType(f, next),
+    deleteField: (f) => void deleteField(f),
+    addAfter: startDraft,
+    expandField: (f) => {
+      const onExpandField = callbacksRef.current.onExpandField;
+      if (!onExpandField || !isAddressable(f)) return;
+      onExpandField(
+        rowValues,
+        f.path,
+        f.value === null || f.value === undefined ? "" : editText(f.value, f.type),
+        f.type,
+      );
+    },
+  });
+  actionsRef.current = {
+    openTypeMenu: (key) => setTypeMenu(key),
+    closeTypeMenu: () => setTypeMenu(null),
+    toggleFold,
+    startEdit,
+    editChange: (value) =>
+      setEdit((prev) => (prev ? { ...prev, text: value } : prev)),
+    commitEdit: (f) => void commitEdit(f),
+    cancelEdit: () => setEdit(null),
+    changeType: (f, next) => void changeType(f, next),
+    deleteField: (f) => void deleteField(f),
+    addAfter: startDraft,
+    expandField: (f) => {
+      const onExpandField = callbacksRef.current.onExpandField;
+      if (!onExpandField || !isAddressable(f)) return;
+      onExpandField(
+        rowValues,
+        f.path,
+        f.value === null || f.value === undefined ? "" : editText(f.value, f.type),
+        f.type,
+      );
+    },
+  };
 
   return (
     <div className={cn("group/doc px-3 py-2", striped && "bg-muted/30")}>
@@ -674,7 +866,7 @@ const DocumentCard = memo(function DocumentCard({
             <button
               type="button"
               className="rounded p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-              title={t("dataGrid.list.addField")}
+              title={labels.addField}
               onClick={() =>
                 setDraft({
                   parent: [],
@@ -692,17 +884,19 @@ const DocumentCard = memo(function DocumentCard({
           <button
             type="button"
             className="rounded p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            title={t("dataGrid.ctxCopy")}
-            onClick={() => copyToClipboard(rowToJson(rowValues, columns))}
+            title={labels.ctxCopy}
+            onClick={() =>
+              callbacksRef.current.copyToClipboard(rowToJson(rowValues, columns))
+            }
           >
             <Copy className="h-3.5 w-3.5" />
           </button>
-          {onDeleteRow && (
+          {hasDeleteRow && (
             <button
               type="button"
               className="rounded p-1 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
-              title={t("dataGrid.ctxDeleteRow")}
-              onClick={() => onDeleteRow(rowValues)}
+              title={labels.ctxDeleteRow}
+              onClick={() => callbacksRef.current.onDeleteRow?.(rowValues)}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -730,49 +924,16 @@ const DocumentCard = memo(function DocumentCard({
                 line={i + 1}
                 lineNumbers={lineNumbers}
                 showTypes={showTypes}
-                // A SQL top-level field shows its real column type
-                // (`varchar(255)`, `jsonb`) rather than the JSON shape it
-                // arrived as; nested values inside a JSON column, and every
-                // MongoDB field, show the BSON-style label. Resolved by column
-                // *name*: `i` is the flattened display index, which stops
-                // matching the column list as soon as anything is expanded.
-                typeText={
-                  documentMode || f.depth > 0
-                    ? typeLabel(f.type)
-                    : (columns.find((c) => c.name === f.path[0])?.data_type ??
-                      typeLabel(f.type))
-                }
+                typeText={typeTextFor(f, documentMode, columnTypeByName)}
                 nullDisplay={nullDisplay}
                 editing={editing}
                 editText={edit?.text ?? null}
                 canEdit={canEdit(f)}
                 canMutate={canMutate(f)}
+                canExpand={hasExpandField && isAddressable(f)}
                 typeMenuOpen={typeMenu === key}
-                onOpenTypeMenu={() => setTypeMenu(key)}
-                onCloseTypeMenu={() => setTypeMenu(null)}
-                onToggleFold={() => toggleFold(key)}
-                onStartEdit={() => startEdit(f)}
-                onEditChange={(v) =>
-                  setEdit((prev) => (prev ? { ...prev, text: v } : prev))
-                }
-                onCommit={() => void commitEdit(f)}
-                onCancel={() => setEdit(null)}
-                onChangeType={(next) => void changeType(f, next)}
-                onDelete={() => void deleteField(f)}
-                onAdd={() => startDraft(f)}
-                onExpand={
-                  onExpandField && isAddressable(f)
-                    ? () =>
-                        onExpandField(
-                          rowValues,
-                          f.path,
-                          f.value === null || f.value === undefined
-                            ? ""
-                            : editText(f.value, f.type),
-                          f.type,
-                        )
-                    : undefined
-                }
+                labels={labels}
+                actionsRef={actionsRef}
               />
               {draft && draft.afterKey === key && (
                 <DraftRow
@@ -803,22 +964,18 @@ interface FieldRowProps {
   canEdit: boolean;
   /** MongoDB: the add/delete/retype gutter is available. */
   canMutate: boolean;
+  /** Whether the expand-to-Monaco button is shown for this field. */
+  canExpand: boolean;
   /** Whether this row's type picker is the one currently mounted. */
   typeMenuOpen: boolean;
-  onOpenTypeMenu: () => void;
-  onCloseTypeMenu: () => void;
-  onToggleFold: () => void;
-  onStartEdit: () => void;
-  onEditChange: (value: string | null) => void;
-  onCommit: () => void;
-  onCancel: () => void;
-  onChangeType: (type: BsonType) => void;
-  onDelete: () => void;
-  onAdd: () => void;
-  onExpand?: () => void;
+  labels: DocFieldLabels;
+  /** Stable across renders — see `FieldRowActions`. Every method takes the
+   *  field it acts on, so `FieldRow` never needs a field-specific callback
+   *  identity to stay memo-safe. */
+  actionsRef: MutableRefObject<FieldRowActions>;
 }
 
-function FieldRow({
+const FieldRow = memo(function FieldRow({
   field: f,
   line,
   lineNumbers,
@@ -829,20 +986,11 @@ function FieldRow({
   editText: text,
   canEdit,
   canMutate,
+  canExpand,
   typeMenuOpen,
-  onOpenTypeMenu,
-  onCloseTypeMenu,
-  onToggleFold,
-  onStartEdit,
-  onEditChange,
-  onCommit,
-  onCancel,
-  onChangeType,
-  onDelete,
-  onAdd,
-  onExpand,
+  labels,
+  actionsRef,
 }: FieldRowProps) {
-  const { t } = useTranslation();
   const isNull = f.value === null || f.value === undefined;
   return (
     <div className="group/field flex items-center gap-2 font-mono leading-relaxed hover:bg-accent/30">
@@ -854,16 +1002,16 @@ function FieldRow({
             <button
               type="button"
               className="rounded p-0.5 text-muted-foreground/60 opacity-0 hover:text-destructive group-hover/field:opacity-100"
-              title={t("dataGrid.list.deleteField")}
-              onClick={onDelete}
+              title={labels.deleteField}
+              onClick={() => actionsRef.current.deleteField(f)}
             >
               <Trash2 className="h-3 w-3" />
             </button>
             <button
               type="button"
               className="rounded border border-border p-0.5 text-muted-foreground/60 opacity-0 hover:text-foreground group-hover/field:opacity-100"
-              title={t("dataGrid.list.addField")}
-              onClick={onAdd}
+              title={labels.addField}
+              onClick={() => actionsRef.current.addAfter(f)}
             >
               <Plus className="h-2.5 w-2.5" />
             </button>
@@ -883,12 +1031,8 @@ function FieldRow({
           <button
             type="button"
             className="shrink-0 text-muted-foreground/70 hover:text-foreground"
-            onClick={onToggleFold}
-            title={
-              f.expanded
-                ? t("dataGrid.list.collapse")
-                : t("dataGrid.list.expand")
-            }
+            onClick={() => actionsRef.current.toggleFold(pathKey(f.path))}
+            title={f.expanded ? labels.collapse : labels.expand}
           >
             {f.expanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -910,27 +1054,27 @@ function FieldRow({
               className="h-5 w-full min-w-0 rounded-sm border border-input bg-background px-1 font-mono text-inherit focus:outline-none focus:ring-1 focus:ring-ring"
               placeholder={text === null ? nullDisplay : ""}
               value={text ?? ""}
-              onChange={(e) => onEditChange(e.target.value)}
+              onChange={(e) => actionsRef.current.editChange(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  onCommit();
+                  actionsRef.current.commitEdit(f);
                 } else if (e.key === "Escape") {
                   e.preventDefault();
-                  onCancel();
+                  actionsRef.current.cancelEdit();
                 }
               }}
-              onBlur={onCommit}
+              onBlur={() => actionsRef.current.commitEdit(f)}
             />
             <button
               type="button"
               tabIndex={-1}
-              title={t("cellEditor.setNull")}
+              title={labels.setNull}
               className="shrink-0 rounded px-1 text-3xs text-muted-foreground/60 hover:text-foreground"
               // Keep focus on the input: a blur here would commit the old
               // text before the NULL ever lands.
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => onEditChange(null)}
+              onClick={() => actionsRef.current.editChange(null)}
             >
               ∅
             </button>
@@ -946,20 +1090,24 @@ function FieldRow({
                   ? "text-muted-foreground"
                   : valueClass(f.type),
             )}
-            title={f.editable ? undefined : t("dataGrid.list.opaqueType")}
-            onDoubleClick={() => (f.container ? onToggleFold() : onStartEdit())}
+            title={f.editable ? undefined : labels.opaqueType}
+            onDoubleClick={() =>
+              f.container
+                ? actionsRef.current.toggleFold(pathKey(f.path))
+                : actionsRef.current.startEdit(f)
+            }
           >
             {displayValue(f, nullDisplay)}
           </span>
         )}
-        {onExpand && (
+        {canExpand && (
           <button
             type="button"
             tabIndex={-1}
             className="shrink-0 rounded px-1 text-muted-foreground/60 opacity-0 hover:text-foreground group-hover/field:opacity-100"
-            title={t("dataGrid.expandEditor")}
+            title={labels.expandEditor}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={onExpand}
+            onClick={() => actionsRef.current.expandField(f)}
           >
             <Maximize2 className="h-3 w-3" />
           </button>
@@ -970,10 +1118,10 @@ function FieldRow({
           <Select
             open
             value={typeValue(f.type)}
-            onOpenChange={(open) => !open && onCloseTypeMenu()}
+            onOpenChange={(open) => !open && actionsRef.current.closeTypeMenu()}
             onValueChange={(v) => {
-              onCloseTypeMenu();
-              onChangeType(v as BsonType);
+              actionsRef.current.closeTypeMenu();
+              actionsRef.current.changeType(f, v as BsonType);
             }}
           >
             <SelectTrigger className="h-5 w-32 shrink-0 border-0 bg-transparent px-1 text-3xs text-muted-foreground/70 focus:ring-0">
@@ -991,8 +1139,8 @@ function FieldRow({
           <button
             type="button"
             className="w-32 shrink-0 truncate px-1 text-right text-3xs text-muted-foreground/60 hover:text-foreground"
-            title={t("dataGrid.list.changeType")}
-            onClick={onOpenTypeMenu}
+            title={labels.changeType}
+            onClick={() => actionsRef.current.openTypeMenu(pathKey(f.path))}
           >
             {typeText}
           </button>
@@ -1003,7 +1151,7 @@ function FieldRow({
         ))}
     </div>
   );
-}
+});
 
 /** The "new field" form row: key, type and value, committed as one `$set`. */
 function DraftRow({
