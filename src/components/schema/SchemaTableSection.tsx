@@ -45,6 +45,10 @@ interface SectionProps {
   actions: TableActions;
   /** Force every section to render open (used by the filter). */
   forceOpen?: boolean;
+  /** "You are here" state for every row, derived once per explorer render
+   *  by `useOpenTableKeys` — see its own doc comment. */
+  activeTableKey: string | null;
+  openTableKeys: ReadonlySet<string>;
 }
 
 /**
@@ -68,6 +72,8 @@ export const TableSection = memo(function TableSection({
   loadColumns,
   actions,
   forceOpen,
+  activeTableKey,
+  openTableKeys,
 }: SectionProps) {
   // Inner i18n hook — the table loop shadows `t`, so we use the function
   // directly via `i18n.t` here is overkill; instead alias it.
@@ -125,6 +131,8 @@ export const TableSection = memo(function TableSection({
                 actions={actions}
                 metric={metric}
                 loadingLabel={translate("schema.loadingColumns")}
+                activeTableKey={activeTableKey}
+                openTableKeys={openTableKeys}
               />
             );
           })}

@@ -292,6 +292,29 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     restaurando la afirmación del propio comentario de ese archivo de ser
     la única suscripción ancha de la app a ese mapa.
 
+- **Una derivación sobre las tabs abiertas en vez de dos por fila del árbol
+  de esquema.** `SchemaTableRow` ejecutaba ella misma
+  `useTabs((s) => s.tabs.find(...))` y `useTabs((s) => s.tabs.some(...))`,
+  cada una un escaneo O(tabs) — ambas devuelven primitivos, así que ninguna
+  rompe la gotcha #1 ni re-renderiza una fila que no le afecta, pero
+  ninguna evita *ejecutarse* tampoco. 500 filas × dos escaneos O(tabs) son
+  1.000 iteraciones en cada escritura a `useTabs`, y teclear en el editor
+  SQL es exactamente una escritura así, una por tecla (arreglado de raíz un
+  commit más adelante, pero este escaneo era real de todas formas). El
+  nuevo `useOpenTableKeys` (`src/lib/schema/useOpenTableKeys.ts`) calcula
+  ambas respuestas — la clave de la tabla activa y el conjunto de claves de
+  cada tabla abierta — en una sola pasada, llamado una vez por render del
+  explorer en vez de una vez por fila, y entrega el resultado como dos
+  props (`activeTableKey`, `openTableKeys: ReadonlySet<string>`)
+  encadenadas a través de `TableSection`. La comprobación de pertenencia de
+  cada fila (`openTableKeys.has(...)`) es lo que alimenta de verdad su
+  estado `isOpen`/`isActive`, así que mientras esa pertenencia no cambie,
+  sus props siguen siendo los mismos primitivos que eran — manteniendo
+  intacto el bailout del memo de `TableRow` del commit anterior. El
+  separador de clave `\0` se escribe como escape (`tableTabKey`), nunca
+  como byte NUL literal — un byte NUL ya volvió el archivo entero binario
+  para git una vez (sin diff, sin revisión, sin grep).
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido

@@ -265,6 +265,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     that file's own doc comment's claim to be the app's one wide
     subscription to that map.
 
+- **One derivation over open tabs instead of two per schema-tree row.**
+  `SchemaTableRow` ran `useTabs((s) => s.tabs.find(...))` and
+  `useTabs((s) => s.tabs.some(...))` itself, each an O(tabs) scan — both
+  return primitives, so neither breaks gotcha #1 or re-renders a row that
+  isn't affected, but neither avoids *running*, either. 500 rows × two
+  O(tabs) scans is 1,000 iterations on every `useTabs` write, and typing in
+  the SQL editor is exactly such a write, once per keystroke (fixed
+  properly one commit later, but this scan was real regardless). New
+  `useOpenTableKeys` (`src/lib/schema/useOpenTableKeys.ts`) computes both
+  answers — the active table's key and the set of every open table's key —
+  in one pass, called once per explorer render rather than once per row,
+  and hands the result down as two props (`activeTableKey`,
+  `openTableKeys: ReadonlySet<string>`) threaded through `TableSection`.
+  Each row's own membership check (`openTableKeys.has(...)`) is what
+  actually feeds its `isOpen`/`isActive` state, so as long as that row's own
+  membership hasn't flipped, its props stay the same primitives they were —
+  keeping the previous commit's `TableRow` memo bailout intact. The `\0`
+  key separator is written as the escape (`tableTabKey`), never a literal
+  NUL byte — a NUL byte made the whole file binary to git once already (no
+  diff, no review, no grep).
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

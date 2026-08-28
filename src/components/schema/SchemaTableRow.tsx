@@ -41,7 +41,7 @@ import { selectSnippet } from "@/lib/grid/copyFormats";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
 import { tableKey } from "@/stores/session/schema";
-import { useTabs } from "@/stores/session/tabs";
+import { tableTabKey } from "@/lib/schema/useOpenTableKeys";
 import type { TableActions } from "@/components/schema/SchemaTableSection";
 import type { ColumnInfo, SchemaTableMetric, TableInfo } from "@/types";
 
@@ -116,6 +116,8 @@ export const TableRow = memo(function TableRow({
   actions,
   metric,
   loadingLabel,
+  activeTableKey,
+  openTableKeys,
 }: {
   table: TableInfo;
   connectionId: string;
@@ -131,6 +133,11 @@ export const TableRow = memo(function TableRow({
   actions: TableActions;
   metric: SchemaTableMetric;
   loadingLabel: string;
+  /** This row's "you are here" state, derived ONCE per explorer render by
+   *  `useOpenTableKeys` instead of two O(tabs) scans per row — see that
+   *  hook's own doc comment. */
+  activeTableKey: string | null;
+  openTableKeys: ReadonlySet<string>;
 }) {
   const { t: ct } = useTranslation();
   const t = table;
@@ -142,34 +149,13 @@ export const TableRow = memo(function TableRow({
   // looking targeted once the pointer has moved off it onto the open menu.
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const thisTableKey = tableTabKey(connectionId, t.schema, t.name);
   // Reflect the currently-open table tab so the tree shows "you are here".
-  // The selector returns a primitive string, so it's reference-stable and
-  // safe as a Zustand selector (stores gotcha #1). `\0` separators avoid any
-  // schema/table name colliding with the delimiter — written as the escape,
-  // not as a literal NUL byte, which made the whole file binary to git (no
-  // diff, no review, no grep).
-  const activeTableKey = useTabs((s) => {
-    const a = s.tabs.find((x) => x.id === s.activeId);
-    return a && a.kind === "table"
-      ? `${a.connectionId}\0${a.schema ?? ""}\0${a.table}`
-      : null;
-  });
-  const isActive =
-    activeTableKey === `${connectionId}\0${t.schema ?? ""}\0${t.name}`;
-
+  const isActive = activeTableKey === thisTableKey;
   // Whether this table is open in a tab *anywhere* (not just the active one),
   // so the tree can answer "do I have this open?" at a glance when many tabs
-  // are open. Returns a primitive boolean → reference-stable selector return
-  // (stores gotcha #1).
-  const isOpen = useTabs((s) =>
-    s.tabs.some(
-      (x) =>
-        x.kind === "table" &&
-        x.connectionId === connectionId &&
-        (x.schema ?? "") === (t.schema ?? "") &&
-        x.table === t.name,
-    ),
-  );
+  // are open.
+  const isOpen = openTableKeys.has(thisTableKey);
 
   const copyName = () => {
     void navigator.clipboard.writeText(t.name);

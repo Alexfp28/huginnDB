@@ -44,6 +44,7 @@ import {
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import { supportsDdlEditing } from "@/lib/db/driver";
 import { matchesPatterns } from "@/lib/schema/matchesFilter";
+import { useOpenTableKeys } from "@/lib/schema/useOpenTableKeys";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -92,6 +93,9 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
   // Needed by the context menu to compose a driver-correct "Copy SELECT"
   // snippet.
   const driver = useConnectionDriver(connectionId);
+  // One O(tabs) pass for every row's "you are here" state, instead of two
+  // per row (see the hook's own doc comment).
+  const { activeTableKey, openTableKeys } = useOpenTableKeys();
 
   // Which schema header (if any) currently has its right-click menu open —
   // there's one `ContextMenu` per schema rendered by the `schemas.map(...)`
@@ -345,6 +349,8 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                       loadColumns={loadColumns}
                       actions={tableActions}
                       forceOpen={filtering}
+                      activeTableKey={activeTableKey}
+                      openTableKeys={openTableKeys}
                     />
 
                     {/* Views section */}
@@ -360,6 +366,8 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                         loadColumns={loadColumns}
                         actions={tableActions}
                         forceOpen={filtering}
+                        activeTableKey={activeTableKey}
+                        openTableKeys={openTableKeys}
                       />
                     )}
 
