@@ -6,6 +6,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **Color tokens skip the `color-mix()` layer entirely when no `/modifier` is
+  used.** `2ecaaf7` (1.19.0's `light-dark()` migration) moved every Tailwind
+  color token from `hsl(var(--x))` to
+  `color-mix(in srgb, var(--x) calc(<alpha-value> * 100%), transparent)`, so
+  that `bg-brand/25`-style alpha modifiers kept working once each token
+  became a full `light-dark(...)` value (which `hsl()` cannot wrap). That
+  was applied uniformly, on purpose, including to colors nobody ever uses
+  with a modifier — but it meant every opaque color paid a `color-mix()` +
+  `calc()` on every read, and `border-border` in particular backs
+  `* { @apply border-border }` in `index.css`, i.e. the `border-color` of
+  every DOM node in the app. `tailwind.config.js`'s new `colorToken()`
+  helper returns the bare `var(--x)` when Tailwind calls it with no alpha
+  modifier (or an explicit `/100`) and the same `color-mix()` formula
+  otherwise, and `corePlugins` now disables the legacy
+  `bg-opacity-*`/`border-opacity-*`/`text-opacity-*`/`divide-opacity-*`/
+  `ring-opacity-*`/`placeholder-opacity-*` utilities (unused in `src/`),
+  which is what routes a classless `bg-card` through Tailwind's plain
+  no-modifier call instead of the `--tw-bg-opacity` custom-property
+  indirection those utilities require. Visually identical in both color
+  modes and every built-in theme; verified by compiling real utility
+  classes through the installed `tailwindcss` engine and comparing the
+  emitted declarations byte-for-byte against the pre-`colorToken()` output
+  (`src/lib/tailwindColorTokens.test.ts`) for every class that actually uses
+  a `/modifier`, plus the `from-brand` gradient stop that exercises
+  `opacityValue: 0` — the one case where a falsy guard (`!opacityValue`
+  instead of `opacityValue === undefined`) would have silently rendered the
+  "fade to transparent" stop as fully opaque instead.
+
+  First step of the 1.20.0 frontend performance pass: the app was going
+  visibly choppy on modest hardware even though the backend (Rust/`sqlx`)
+  isn't involved in any of it — this and the following entries each remove
+  one concrete, file-and-line-identified cost in the React/DOM layer.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

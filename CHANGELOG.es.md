@@ -8,6 +8,44 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Cambiado
+
+- **Los tokens de color se saltan la capa `color-mix()` por completo cuando no
+  hay ningún `/modificador`.** `2ecaaf7` (la migración a `light-dark()` de
+  1.19.0) movió cada token de color de Tailwind de `hsl(var(--x))` a
+  `color-mix(in srgb, var(--x) calc(<alpha-value> * 100%), transparent)`,
+  para que los modificadores de alpha al estilo `bg-brand/25` siguieran
+  funcionando una vez que cada token pasó a ser un `light-dark(...)` completo
+  (que `hsl()` no puede envolver). Eso se aplicó uniformemente, a propósito,
+  incluso a colores que nadie usa nunca con modificador — pero significaba
+  que cada color opaco pagaba un `color-mix()` + `calc()` en cada lectura, y
+  `border-border` en particular sostiene `* { @apply border-border }` en
+  `index.css`, es decir, el `border-color` de cada nodo del DOM en la app. El
+  nuevo helper `colorToken()` de `tailwind.config.js` devuelve el `var(--x)`
+  desnudo cuando Tailwind lo invoca sin modificador de alpha (o con un
+  `/100` explícito) y la misma fórmula `color-mix()` en cualquier otro caso,
+  y `corePlugins` desactiva ahora las utilidades legacy de opacidad
+  (`bg-opacity-*`/`border-opacity-*`/`text-opacity-*`/`divide-opacity-*`/
+  `ring-opacity-*`/`placeholder-opacity-*`, sin uso en `src/`), que es lo que
+  encamina un `bg-card` sin clase de opacidad a través de la llamada sin
+  modificador de Tailwind en vez de la indirección vía la custom property
+  `--tw-bg-opacity` que esas utilidades exigen. Visualmente idéntico en
+  ambos modos de color y en todos los temas integrados; verificado
+  compilando clases de utilidad reales a través del motor `tailwindcss`
+  instalado y comparando las declaraciones emitidas byte a byte contra la
+  salida previa a `colorToken()` (`src/lib/tailwindColorTokens.test.ts`)
+  para cada clase que sí usa un `/modificador`, más el stop de degradado
+  `from-brand`, que ejercita `opacityValue: 0` — el único caso en el que un
+  guard "falsy" (`!opacityValue` en vez de `opacityValue === undefined`)
+  habría renderizado en silencio el stop "se desvanece a transparente" como
+  totalmente opaco.
+
+  Primer paso de la pasada de rendimiento de frontend de 1.20.0: la app iba
+  a tirones visibles incluso en máquinas modestas pese a que el backend
+  (Rust/`sqlx`) no interviene en nada de esto — esta entrada y las
+  siguientes eliminan, una a una, un coste concreto y localizado por
+  archivo y línea en la capa React/DOM.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido
