@@ -182,6 +182,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   behavior change — verified manually with the filter active, watching
   DevTools' Rendering panel.
 
+- **Typing in the schema tree's filter no longer re-renders the whole tree
+  before the debounce has done anything.** `ConnectionsTree` subscribed to
+  `useTreeSearch`'s raw text directly (to pass it down to `TreeFilterBox` as
+  a `value` prop) — the raw needle changes on every keystroke, and
+  `ConnectionsTree` sits above every connection row and its expanded
+  subtree, so every keystroke re-rendered all of it, 180ms before the
+  debounce (`TREE_SEARCH_DEBOUNCE_MS`) ever committed anything for the
+  subtrees to actually filter by. `TreeFilterBox` now reads and writes the
+  raw needle, owns the debounce effect, and handles every key the box reads
+  (`Backspace` to peel a scope level, `Enter` to commit immediately) itself
+  — `ConnectionsTree` keeps only `needle`/`patterns`/`scope`, which change
+  once per debounce fire, not once per keystroke. `ArrowDown` is the one
+  key that still needs to leave the box (moving focus into the row list
+  needs the tree's own DOM via `moveRowFocus`), so it's the one thing still
+  wired through a prop (`onArrowDown`). Preserves every documented
+  invariant of the search path: still exactly one debounce; clearing the
+  box still commits immediately; typing still never opens a connection
+  pool; a focus request still selects the box's contents; Backspace on an
+  empty box still peels one scope level.
+
 ## [1.19.0] — 2026-08-27
 
 ### Added

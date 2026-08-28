@@ -69,7 +69,7 @@ import { useTreeMatchCounts } from "@/lib/schema/useTreeMatchCounts";
 import { rowMatchState, totalMatches } from "@/lib/schema/treeMatches";
 import { warmForSearch } from "@/lib/schema/warmForSearch";
 import { scopeLabel } from "@/lib/schema/filterScope";
-import { TREE_SEARCH_DEBOUNCE_MS, useTreeSearch } from "@/stores/session/treeSearch";
+import { useTreeSearch } from "@/stores/session/treeSearch";
 import {
   connectAndWarm,
   disconnectAll,
@@ -118,21 +118,18 @@ export function ConnectionsTree() {
   // since "expanded" is already the default for a live connection.
   const collapsed = useUi((s) => s.collapsedConnections);
   const setConnectionCollapsed = useUi((s) => s.setConnectionCollapsed);
-  // One filter box for the whole tree, searching every live connection at once.
-  // `raw` is what the user is typing; `patterns` is the committed, parsed needle
-  // the subtrees below filter by (see `useTreeSearch`).
-  const raw = useTreeSearch((s) => s.raw);
+  // One filter box for the whole tree, searching every live connection at
+  // once. `needle`/`patterns`/`scope` are the COMMITTED, debounced state the
+  // subtrees below filter by — the raw, per-keystroke text and its debounce
+  // now live entirely inside `TreeFilterBox` (see its own doc comment), so
+  // this component only re-renders once per debounce fire instead of once
+  // per keystroke.
   const needle = useTreeSearch((s) => s.needle);
   const patterns = useTreeSearch((s) => s.patterns);
   const scope = useTreeSearch((s) => s.scope);
-  const setRaw = useTreeSearch((s) => s.setRaw);
-  const commitNeedle = useTreeSearch((s) => s.commit);
-  const clearText = useTreeSearch((s) => s.clearText);
   const narrowTo = useTreeSearch((s) => s.narrowTo);
   const clearScope = useTreeSearch((s) => s.clearScope);
-  const widenScopeOneLevel = useTreeSearch((s) => s.widen);
   const requestFocus = useTreeSearch((s) => s.requestFocus);
-  const focusRequest = useTreeSearch((s) => s.focusRequest);
   const groupCollapse = useConnectionGroupCollapse();
   const filterInputRef = useRef<HTMLInputElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
@@ -163,35 +160,6 @@ export function ConnectionsTree() {
     rows[next]?.focus();
     return true;
   }
-
-  /**
-   * The one debounce in the whole search path.
-   *
-   * It used to be per `MultiDbExplorer`, which is how the raw needle and the
-   * debounced one could disagree for 250 ms about which databases to show
-   * versus what to show inside them. With the string no longer travelling down
-   * as a prop, only one committed needle exists at any instant and that
-   * disagreement is unrepresentable.
-   *
-   * The empty case skips the wait, as it always has: clearing has to feel
-   * immediate.
-   */
-  useEffect(() => {
-    if (raw.trim().length === 0) {
-      commitNeedle("");
-      return;
-    }
-    const id = setTimeout(() => commitNeedle(), TREE_SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(id);
-  }, [raw, commitNeedle]);
-
-  // A focus request (the keyboard shortcut, or a scope button that wants the
-  // caret back) selects what is there, so typing replaces the previous needle.
-  useEffect(() => {
-    if (focusRequest === 0) return;
-    filterInputRef.current?.focus();
-    filterInputRef.current?.select();
-  }, [focusRequest]);
 
   // DataGrip-style subset of connections to show, one level up from the
   // per-connection database subset (`useVisibleDatabases`, SchemaExplorer.tsx).
@@ -765,32 +733,7 @@ export function ConnectionsTree() {
         </div>
         <TreeFilterBox
           ref={filterInputRef}
-          value={raw}
-          onChange={setRaw}
-          onClear={clearText}
-          onKeyDown={(e) => {
-            // Backspace on an empty box peels one level off the scope, the way
-            // it removes the last chip in any tag input. Each press does
-            // something visible, which is what makes the layering learnable.
-            if (e.key === "Backspace" && raw.length === 0 && scope.kind !== "all") {
-              e.preventDefault();
-              widenScopeOneLevel();
-              return;
-            }
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              moveRowFocus(null, 1);
-              return;
-            }
-            if (e.key === "Enter") {
-              // Commit now rather than waiting out the debounce. Deliberately
-              // NOT "open the first match": with several connections searched at
-              // once there is no single obvious first match, and guessing one is
-              // the ambiguity this redesign exists to remove.
-              e.preventDefault();
-              commitNeedle();
-            }
-          }}
+          onArrowDown={() => moveRowFocus(null, 1)}
           placeholder={t("schema.filterPlaceholder")}
           clearLabel={t("connectionsTree.filter.clear")}
         />

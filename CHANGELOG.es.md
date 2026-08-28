@@ -202,6 +202,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   una vez). CSS puro, sin cambio de comportamiento — verificado a mano con
   el filtro activo, observando el panel Rendering de DevTools.
 
+- **Teclear en el filtro del árbol de esquema ya no re-renderiza el árbol
+  entero antes de que el debounce haya hecho nada.** `ConnectionsTree` se
+  suscribía directamente al texto crudo de `useTreeSearch` (para pasarlo a
+  `TreeFilterBox` como prop `value`) — el needle crudo cambia en cada
+  tecla, y `ConnectionsTree` está por encima de cada fila de conexión y su
+  subárbol expandido, así que cada tecla re-renderizaba todo eso, 180 ms
+  antes de que el debounce (`TREE_SEARCH_DEBOUNCE_MS`) llegara siquiera a
+  confirmar algo por lo que los subárboles pudieran filtrar de verdad.
+  `TreeFilterBox` ahora lee y escribe el needle crudo, posee el efecto de
+  debounce, y gestiona ella misma cada tecla que la caja lee (`Backspace`
+  para pelar un nivel de scope, `Enter` para confirmar de inmediato) —
+  `ConnectionsTree` conserva solo `needle`/`patterns`/`scope`, que cambian
+  una vez por disparo del debounce, no una vez por tecla. `ArrowDown` es la
+  única tecla que aún tiene que salir de la caja (mover el foco a la lista
+  de filas necesita el propio DOM del árbol vía `moveRowFocus`), así que es
+  lo único que sigue viajando por prop (`onArrowDown`). Preserva todos los
+  invariantes documentados del camino de búsqueda: sigue habiendo
+  exactamente un debounce; vaciar la caja sigue confirmando de inmediato;
+  teclear sigue sin abrir ningún pool de conexión; una solicitud de foco
+  sigue seleccionando el contenido de la caja; Backspace en una caja vacía
+  sigue pelando un nivel de scope.
+
 ## [1.19.0] — 2026-08-27
 
 ### Añadido
