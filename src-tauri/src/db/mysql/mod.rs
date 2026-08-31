@@ -1,5 +1,6 @@
 //! MySQL-specific logic. See [`crate::db::postgres`] for why this exists.
 
+pub mod pulse;
 pub mod schema;
 
 /// True when `type_name` names a MySQL `BIT` column.

@@ -8,6 +8,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **HuginnDB Pulse — the server's vital signs in the right dock.** HuginnDB
+  could say what is *in* a database and nothing about how the server holding
+  it is doing; answering "is this thing all right?" meant leaving the app.
+  Pulse is the first slice of that answer: a compact panel in the right dock
+  (selected from the activity bar, alongside Saved queries) showing four live
+  tiles — queries per second, connection pressure, threads running, buffer-pool
+  hit rate — with a sparkline each, plus the alerts derived from them. MySQL
+  only in this release; the other engines say so explicitly rather than
+  rendering a column of zeroes.
+
+  What it costs is the part that was designed first. The panel polls every five
+  seconds and **only while it is on screen**: switching the dock to Saved,
+  collapsing it, or minimising the window all stop the clock, and a connection
+  nobody has looked at is never sampled at all. One probe is one
+  `SHOW GLOBAL STATUS`; a sample still in flight when the next tick fires skips
+  that tick, so a struggling server never accumulates a queue of probes from
+  the thing measuring it. The live series lives in a store rather than in the
+  panel, so the expanded window (next release) will share one clock with it
+  instead of doubling the load.
+
+  Three decisions worth knowing. Counters cross the IPC boundary **raw**, as the
+  server reports them, and rates are derived on this side — which is what makes
+  a server restart detectable (a counter that goes *down*) instead of being
+  smoothed into a plausible dip. Metric names are normalised to an
+  engine-independent catalogue (`pulse::METRICS`), so MySQL's
+  `Threads_connected` and MongoDB's `connections.current` become one tile and
+  one future MCP argument; an engine with no equivalent for a metric omits it,
+  because a missing reading and a zero are different answers. And the
+  buffer-pool figure is computed over the **last interval**, never the server's
+  lifetime: a box up for six weeks has a flattering lifetime ratio no matter
+  how badly it is thrashing right now.
+
+  New: `src-tauri/src/pulse/`, `src-tauri/src/db/mysql/pulse.rs`,
+  `src-tauri/src/commands/pulse.rs`, `src/components/pulse/`,
+  `src/lib/pulse/`, `src/stores/session/pulse.ts`. The mapping table, the rate
+  arithmetic and the alert thresholds are all pure and tested — a wrong metric
+  mapping does not fail, it silently plots the wrong counter.
+
+### Added
+
 - **Compass-style autocomplete in the aggregation editor.** Typing `$` in a
   stage body now offers the source collection's field names alongside the
   existing operator/constructor suggestions, and a `$lookup` stage offers

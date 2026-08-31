@@ -1,0 +1,88 @@
+/**
+ * The live Pulse series, per connection.
+ *
+ * Kept in a store rather than in the panel's own state because the same
+ * connection can be on screen twice — the side panel and the expanded Pulse
+ * window — and two components each running their own five-second poll would
+ * double the load on the very server they are measuring. One store, one
+ * series, one clock; whoever is visible drives it (see `usePulseLive`).
+ *
+ * Nothing here is persisted. The series is a rolling half hour that only
+ * exists while Pulse is being watched; the durable history is the backend's
+ * job and lands with the sampler.
+ */
+
+import { create } from "zustand";
+import type { PulseHealth } from "@/types";
+
+/** Half an hour at the five-second live interval. Past that the oldest sample
+ *  falls off — the panel's charts cover the last 30 minutes and the expanded
+ *  window reads longer spans from the history store, not from here. */
+const MAX_SAMPLES = 360;
+
+/**
+ * A gap this long means nobody was watching (the panel was closed, the app was
+ * in the background, the connection went away and came back). Differencing
+ * across it would divide a large counter delta by a large interval and draw a
+ * plausible, wrong, very flat line right where the interesting thing happened.
+ * The series restarts instead, which shows up honestly as a chart that begins
+ * again.
+ */
+const STALE_GAP_MS = 60_000;
+
+interface PulseState {
+  /** Oldest first. A connection with no entry has never been sampled. */
+  samples: Record<string, PulseHealth[]>;
+  /** Last failure per connection, cleared by the next successful sample. Holds
+   *  the "driver not supported" rejection too, which is why the panel can tell
+   *  "cannot measure this" from "has not measured yet". */
+  errors: Record<string, string | undefined>;
+  /**
+   * The connection Pulse is pinned to, or `null` to follow the tree's
+   * selection. Pinning exists because the selection moves on its own — opening
+   * a tab or navigating from the command palette changes it — and a panel that
+   * silently switched servers mid-diagnosis is worse than no panel.
+   */
+  pinnedConnectionId: string | null;
+
+  push: (connectionId: string, health: PulseHealth) => void;
+  fail: (connectionId: string, message: string) => void;
+  drop: (connectionId: string) => void;
+  setPinned: (connectionId: string | null) => void;
+}
+
+export const usePulse = create<PulseState>()((set) => ({
+  samples: {},
+  errors: {},
+  pinnedConnectionId: null,
+
+  push: (connectionId, health) =>
+    set((s) => {
+      const previous = s.samples[connectionId] ?? [];
+      const last = previous[previous.length - 1];
+      const stale = last && health.sampledAtMs - last.sampledAtMs > STALE_GAP_MS;
+      const next = stale ? [health] : [...previous, health].slice(-MAX_SAMPLES);
+      return {
+        samples: { ...s.samples, [connectionId]: next },
+        errors: { ...s.errors, [connectionId]: undefined },
+      };
+    }),
+
+  fail: (connectionId, message) =>
+    set((s) => ({ errors: { ...s.errors, [connectionId]: message } })),
+
+  drop: (connectionId) =>
+    set((s) => {
+      const samples = { ...s.samples };
+      const errors = { ...s.errors };
+      delete samples[connectionId];
+      delete errors[connectionId];
+      return { samples, errors };
+    }),
+
+  setPinned: (connectionId) => set({ pinnedConnectionId: connectionId }),
+}));
+
+/** No samples yet, as a stable reference — returning a fresh `[]` from a
+ *  selector would be a new array every call and re-render forever (gotcha #1). */
+export const NO_SAMPLES: readonly PulseHealth[] = [];

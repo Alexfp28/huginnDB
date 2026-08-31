@@ -399,6 +399,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     }[] = [
       { id: "schema", actionId: "togglePanelSchema", i18nKey: "panels.schema", shown: schemaOpen, toggle: useSessionPanelLayout.getState().toggleSchema },
       { id: "saved", actionId: "togglePanelSaved", i18nKey: "panels.saved", shown: rightPanel === "saved", toggle: () => useSessionPanelLayout.getState().selectRightPanel("saved") },
+      { id: "pulse", actionId: "togglePanelPulse", i18nKey: "panels.pulse", shown: rightPanel === "pulse", toggle: () => useSessionPanelLayout.getState().selectRightPanel("pulse") },
       { id: "console", actionId: "togglePanelConsole", i18nKey: "panels.console", shown: consoleOpen, toggle: useSessionPanelLayout.getState().toggleConsole },
     ];
     for (const panel of PANEL_TOGGLES) {

@@ -57,6 +57,7 @@
   "panels": {
     "schema": "Esquema",
     "saved": "Guardadas",
+    "pulse": "Pulse",
     "rightDock": "Panel derecho",
     "console": "Consola",
     "cell": "Celda"
@@ -1252,6 +1253,7 @@
       "fixedHint": "Reservado por la app: no se puede reasignar.",
       "togglePanelSchema": "Mostrar u ocultar el panel Esquema",
       "togglePanelSaved": "Mostrar u ocultar el panel Guardadas",
+      "togglePanelPulse": "Mostrar el panel Pulse",
       "togglePanelConsole": "Mostrar u ocultar el panel Consola",
       "searchPlaceholder": "Buscar una acción…",
       "searchByKey": "Por tecla",
@@ -1705,6 +1707,37 @@
     "filterPlaceholder": "Filtrar SQL, error, driver…",
     "emptyNoActivity": "Aún no hay actividad del backend. Ejecuta una consulta o abre una conexión.",
     "emptyNoMatch": "Ninguna entrada coincide con el filtro actual."
+  },
+  "pulse": {
+    "title": "Pulse",
+    "pin": "Fijar a esta conexión",
+    "unpin": "Seguir la conexión seleccionada",
+    "following": "siguiendo la selección",
+    "noConnection": "Ninguna conexión seleccionada",
+    "collecting": "Leyendo el servidor…",
+    "failed": "No se ha podido leer el servidor",
+    "noAlerts": "Nada que señalar.",
+    "unsupported": {
+      "title": "Pulse aún no mide este motor",
+      "hint": "De momento solo MySQL y MongoDB. Los demás controladores no exponen estadísticas de servidor que Pulse pueda leer."
+    },
+    "section": {
+      "alerts": "Avisos"
+    },
+    "metric": {
+      "queriesPerSecond": "Consultas / s",
+      "connections": "Conexiones",
+      "running": "En ejecución",
+      "cacheHit": "Aciertos de caché"
+    },
+    "alert": {
+      "connectionsNearMax": "{{active}} de {{max}} conexiones en uso ({{percent}} %).",
+      "cacheHitLow": "El buffer pool solo ha servido desde memoria el {{percent}} % de sus lecturas.",
+      "tmpDiskTables": "{{perMinute}} tablas temporales por minuto van a disco.",
+      "slowQueries": "{{perMinute}} consultas lentas por minuto.",
+      "abortedConnects": "{{perMinute}} intentos de conexión por minuto están siendo rechazados.",
+      "performanceSchemaOff": "performance_schema está desactivado: no hay estadísticas por consulta."
+    }
   },
   "query": {
     "saveQuery": "Guardar consulta",

@@ -21,8 +21,8 @@
  * `IslandShell`; nothing in this file talks to dockview at all.
  */
 
-import { useState } from "react";
-import { Moon, Save, Settings, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Activity, Moon, Save, Settings, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useUi } from "@/stores/session/ui";
 import {
@@ -38,6 +38,7 @@ import {
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { ConnectionsTree } from "@/components/connection/ConnectionsTree";
 import { SavedQueriesPanel } from "@/components/query/SavedQueriesPanel";
+import { PulsePanel } from "@/components/pulse/PulsePanel";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { EnvironmentRail } from "@/components/connection/EnvironmentRail";
 import {
@@ -146,6 +147,17 @@ function RightSidePanel() {
   const nudgePanel = useSessionPanelLayout((s) => s.nudgePanel);
   const [dragging, setDragging] = useState(false);
 
+  // Pulse is mounted the first time it is selected and stays mounted after
+  // that, hidden rather than unmounted while Saved is showing — same reason
+  // Saved is `keepMounted` below (a pinned connection and a scroll position
+  // are worth keeping), and it costs nothing while hidden because its polling
+  // is gated on `active`, not on being mounted. Not mounted before that first
+  // selection, so a user who never opens Pulse never pays for it at all.
+  const [pulseMounted, setPulseMounted] = useState(rightPanel === "pulse");
+  useEffect(() => {
+    if (rightPanel === "pulse") setPulseMounted(true);
+  }, [rightPanel]);
+
   const docked = rightPanel ?? lastRightPanel;
   const open = rightPanel !== null;
   const width = docked === "pulse" ? pulseWidth : savedWidth;
@@ -179,7 +191,14 @@ function RightSidePanel() {
               PANEL_SHADOW,
             )}
           >
-            {SAVED_PANEL_ELEMENT}
+            <div className="h-full" hidden={docked !== "saved"}>
+              {SAVED_PANEL_ELEMENT}
+            </div>
+            {pulseMounted && (
+              <div className="h-full" hidden={docked !== "pulse"}>
+                <PulsePanel active={open && rightPanel === "pulse"} />
+              </div>
+            )}
           </div>
         </div>
       </CollapsiblePanel>
@@ -260,8 +279,8 @@ export function AppShell() {
   const rightPanel = useSessionPanelLayout((s) => s.rightPanel);
   const selectRightPanel = useSessionPanelLayout((s) => s.selectRightPanel);
 
-  // One entry today, but the rail is a *selector* over the dock's occupants,
-  // not a per-panel switch — see `panelLayout.ts`.
+  // A *selector* over the dock's occupants, not two independent switches —
+  // see `panelLayout.ts`.
   const rightButtons: ActivityBarButton[] = [
     {
       id: "saved",
@@ -269,6 +288,13 @@ export function AppShell() {
       label: t("panels.saved"),
       active: rightPanel === "saved",
       onClick: () => selectRightPanel("saved"),
+    },
+    {
+      id: "pulse",
+      icon: Activity,
+      label: t("panels.pulse"),
+      active: rightPanel === "pulse",
+      onClick: () => selectRightPanel("pulse"),
     },
   ];
 

@@ -416,6 +416,8 @@ export default function App() {
       togglePanelSchema: () => useSessionPanelLayout.getState().toggleSchema(),
       togglePanelSaved: () =>
         useSessionPanelLayout.getState().selectRightPanel("saved"),
+      togglePanelPulse: () =>
+        useSessionPanelLayout.getState().selectRightPanel("pulse"),
       togglePanelConsole: () => useSessionPanelLayout.getState().toggleConsole(),
       newWindow: () => {
         void api.openNewWindow().catch((e) => notify.error(String(e)));

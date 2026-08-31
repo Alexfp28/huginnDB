@@ -1801,3 +1801,51 @@ export interface JsonSchemaImportResult {
   bindings_dropped: number;
   bindings_duplicate: number;
 }
+
+// ── HuginnDB Pulse ────────────────────────────────────────────────────────
+
+/**
+ * Whether a reading accumulates since the server started or describes the
+ * instant. A consumer must difference a `"counter"` against the previous
+ * sample and must not difference a `"gauge"`. Mirrors `pulse::MetricKind`.
+ */
+export type PulseMetricKind = "counter" | "gauge";
+
+/** What a metric counts, so a value can be formatted without a lookup table.
+ *  Mirrors `pulse::MetricUnit`. */
+export type PulseMetricUnit = "count" | "bytes";
+
+/** One reading in a Pulse snapshot. `name` is a canonical, engine-independent
+ *  metric name from the backend's catalogue (`pulse::METRICS`) — never the
+ *  engine's own spelling. */
+export interface PulseMetricSample {
+  name: string;
+  value: number;
+  kind: PulseMetricKind;
+  unit: PulseMetricUnit;
+}
+
+/**
+ * A reading Pulse could *not* take — a capability the server does not grant, a
+ * feature switched off. `code` is machine-readable and translated on this side;
+ * the backend never picks display copy. There is no severity: every note reads
+ * as a caution (see `pulse::PulseNote`).
+ */
+export interface PulseNote {
+  code: string;
+}
+
+/** One read of a connection's vital signs, from the `pulse_health` command. */
+export interface PulseHealth {
+  /** `"mysql"` / `"mongodb"`. Redundant here (the profile already says), but
+   *  the same DTO serves MCP clients that have no profile. */
+  driver: string;
+  serverVersion: string;
+  /** Seconds since the server last restarted, when it reports one. */
+  uptimeSecs: number | null;
+  /** Stamped by the backend. Every rate divides by the gap between two of
+   *  these, so both ends come from the same clock. */
+  sampledAtMs: number;
+  metrics: PulseMetricSample[];
+  notes: PulseNote[];
+}

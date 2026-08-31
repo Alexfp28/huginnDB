@@ -57,6 +57,7 @@
   "panels": {
     "schema": "Schema",
     "saved": "Saved",
+    "pulse": "Pulse",
     "rightDock": "Right dock",
     "console": "Console",
     "cell": "Cell"
@@ -1252,6 +1253,7 @@
       "fixedHint": "Reserved by the app — cannot be rebound.",
       "togglePanelSchema": "Toggle the Schema panel",
       "togglePanelSaved": "Toggle the Saved queries panel",
+      "togglePanelPulse": "Show the Pulse panel",
       "togglePanelConsole": "Toggle the Console panel",
       "searchPlaceholder": "Search an action…",
       "searchByKey": "By key",
@@ -1705,6 +1707,37 @@
     "filterPlaceholder": "Filter SQL, error, driver…",
     "emptyNoActivity": "No backend activity yet. Run a query or open a connection.",
     "emptyNoMatch": "No entries match the current filter."
+  },
+  "pulse": {
+    "title": "Pulse",
+    "pin": "Pin to this connection",
+    "unpin": "Follow the selected connection",
+    "following": "following the selection",
+    "noConnection": "No connection selected",
+    "collecting": "Reading the server…",
+    "failed": "Could not read the server",
+    "noAlerts": "Nothing worth flagging.",
+    "unsupported": {
+      "title": "Pulse cannot measure this engine yet",
+      "hint": "MySQL and MongoDB only for now. The other drivers report no server statistics Pulse can read."
+    },
+    "section": {
+      "alerts": "Alerts"
+    },
+    "metric": {
+      "queriesPerSecond": "Queries / s",
+      "connections": "Connections",
+      "running": "Running",
+      "cacheHit": "Cache hit"
+    },
+    "alert": {
+      "connectionsNearMax": "{{active}} of {{max}} connections in use ({{percent}} %).",
+      "cacheHitLow": "Buffer pool served only {{percent}} % of its reads from memory.",
+      "tmpDiskTables": "{{perMinute}} temporary tables per minute are spilling to disk.",
+      "slowQueries": "{{perMinute}} slow queries per minute.",
+      "abortedConnects": "{{perMinute}} connection attempts per minute are being refused.",
+      "performanceSchemaOff": "performance_schema is off — no per-query statistics available."
+    }
   },
   "query": {
     "saveQuery": "Save query",

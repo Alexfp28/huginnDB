@@ -18,6 +18,7 @@ pub mod mongo_indexes;
 pub mod origin_doc;
 pub mod origins;
 pub mod prefs;
+pub mod pulse;
 pub mod query;
 pub mod schema;
 pub mod structure;

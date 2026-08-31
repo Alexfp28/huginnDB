@@ -10,6 +10,49 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **HuginnDB Pulse: las constantes vitales del servidor en el panel derecho.**
+  HuginnDB sabía decir qué hay *dentro* de una base de datos y nada sobre cómo
+  está el servidor que la sostiene; responder «¿esto va bien?» obligaba a salir
+  de la aplicación. Pulse es la primera parte de esa respuesta: un panel
+  compacto en el panel derecho (se elige desde la barra de actividad, junto a
+  Consultas guardadas) con cuatro tarjetas en vivo — consultas por segundo,
+  presión de conexiones, hilos en ejecución y aciertos del buffer pool — cada
+  una con su sparkline, más los avisos derivados de ellas. Solo MySQL en esta
+  entrega; el resto de motores lo dicen explícitamente en lugar de pintar una
+  columna de ceros.
+
+  Lo que cuesta es la parte que se diseñó primero. El panel consulta cada cinco
+  segundos y **solo mientras está en pantalla**: cambiar el panel derecho a
+  Guardadas, plegarlo o minimizar la ventana detienen el reloj, y una conexión
+  que nadie ha mirado no se muestrea nunca. Una sonda es un
+  `SHOW GLOBAL STATUS`; si la anterior sigue en vuelo cuando toca la siguiente,
+  se salta el tick, así que un servidor con problemas nunca acumula una cola de
+  sondas de aquello que lo está midiendo. La serie viva vive en un store y no
+  en el panel, de modo que la ventana ampliada (siguiente entrega) compartirá
+  un único reloj con él en vez de duplicar la carga.
+
+  Tres decisiones que conviene conocer. Los contadores cruzan el límite IPC
+  **en crudo**, tal como los reporta el servidor, y las tasas se derivan de
+  este lado, que es lo que permite detectar un reinicio del servidor (un
+  contador que *baja*) en lugar de suavizarlo hasta convertirlo en un bache
+  verosímil. Los nombres de métrica se normalizan a un catálogo independiente
+  del motor (`pulse::METRICS`), así que `Threads_connected` de MySQL y
+  `connections.current` de MongoDB son una sola tarjeta y un solo argumento MCP
+  futuro; un motor sin equivalente para una métrica la omite, porque una
+  lectura ausente y un cero son respuestas distintas. Y la cifra del buffer
+  pool se calcula sobre el **último intervalo**, nunca sobre la vida del
+  servidor: una máquina levantada seis semanas tiene un ratio histórico
+  halagador por mal que esté rindiendo ahora mismo.
+
+  Nuevos: `src-tauri/src/pulse/`, `src-tauri/src/db/mysql/pulse.rs`,
+  `src-tauri/src/commands/pulse.rs`, `src/components/pulse/`,
+  `src/lib/pulse/`, `src/stores/session/pulse.ts`. La tabla de correspondencias,
+  la aritmética de tasas y los umbrales de los avisos son puros y están
+  cubiertos por tests: una correspondencia de métrica equivocada no falla,
+  simplemente dibuja el contador que no es.
+
+### Añadido
+
 - **Autocompletado al estilo Compass en el editor de agregación.** Escribir
   `$` en el cuerpo de un stage ahora ofrece los nombres de campo reales de la
   colección de origen junto a las sugerencias de operadores/constructores ya

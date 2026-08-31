@@ -41,6 +41,7 @@ import type {
   PoolStats,
   Preferences,
   PrivilegeInfo,
+  PulseHealth,
   QueryResult,
   CountResult,
   RowValue,
@@ -1174,4 +1175,15 @@ export const api = {
    * Drives the sandbox indicator (see `stores/appFlavor.ts`).
    */
   getAppFlavor: () => invoke<AppFlavor>("get_app_flavor"),
+
+  // Pulse ------------------------------------------------------------------
+
+  /**
+   * One read of a connection's vital signs. Rejects with an
+   * `UnsupportedDriver` error for a driver Pulse cannot measure yet, which the
+   * panel renders as an explicit "not supported" state rather than a wall of
+   * zeroes.
+   */
+  pulseHealth: (connectionId: string) =>
+    invoke<PulseHealth>("pulse_health", { connectionId }),
 };

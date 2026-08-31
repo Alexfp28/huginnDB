@@ -36,6 +36,7 @@ pub mod mcp;
 mod origin_doc;
 mod pool_reaper;
 mod prefs;
+mod pulse;
 mod ssh_known_hosts;
 mod state;
 mod state_file;
@@ -303,6 +304,7 @@ pub fn run() {
             commands::schema::server_version,
             commands::schema::list_users,
             commands::schema::list_privileges,
+            commands::pulse::pulse_health,
             commands::structure::get_table_structure,
             commands::structure::preview_structure_change,
             commands::structure::apply_structure_change,
