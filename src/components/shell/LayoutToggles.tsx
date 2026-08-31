@@ -1,6 +1,9 @@
 /**
  * VSCode-style "toggle sidebar/panel" buttons — Schema (left), Console
- * (bottom), Saved (right). Lives in the header's top-right corner, the slot
+ * (bottom), right dock (right). Each one toggles an *edge*, not a specific
+ * panel: the right button shows or hides the dock and leaves the choice of
+ * which panel occupies it to the activity bar (see `panelLayout.ts`).
+ * Lives in the header's top-right corner, the slot
  * Theme/Settings vacated when they moved into the left rail's footer (see
  * `AppShell`'s `ChromeFooter`) — chrome-level display toggles belong with
  * the rest of the "what's visible" controls, not buried in a menu.
@@ -49,10 +52,10 @@ export function LayoutToggles() {
   const { t } = useTranslation();
   const schemaOpen = useSessionPanelLayout((s) => s.schemaOpen);
   const consoleOpen = useSessionPanelLayout((s) => s.consoleOpen);
-  const savedOpen = useSessionPanelLayout((s) => s.savedOpen);
+  const rightPanel = useSessionPanelLayout((s) => s.rightPanel);
   const toggleSchema = useSessionPanelLayout((s) => s.toggleSchema);
   const toggleConsole = useSessionPanelLayout((s) => s.toggleConsole);
-  const toggleSaved = useSessionPanelLayout((s) => s.toggleSaved);
+  const toggleRightDock = useSessionPanelLayout((s) => s.toggleRightDock);
 
   return (
     <div className="flex items-center gap-0.5">
@@ -70,9 +73,9 @@ export function LayoutToggles() {
       />
       <ToggleButton
         icon={PanelRight}
-        label={t("panels.saved")}
-        active={savedOpen}
-        onClick={toggleSaved}
+        label={t("panels.rightDock")}
+        active={rightPanel !== null}
+        onClick={toggleRightDock}
       />
     </div>
   );

@@ -57,6 +57,7 @@
   "panels": {
     "schema": "Schema",
     "saved": "Saved",
+    "rightDock": "Right dock",
     "console": "Console",
     "cell": "Cell"
   },

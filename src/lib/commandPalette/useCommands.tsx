@@ -173,7 +173,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   const openSettings = useSettingsDialog((s) => s.openAt);
   const openSettingsAtPref = useSettingsDialog((s) => s.openAtPref);
   const schemaOpen = useSessionPanelLayout((s) => s.schemaOpen);
-  const savedOpen = useSessionPanelLayout((s) => s.savedOpen);
+  const rightPanel = useSessionPanelLayout((s) => s.rightPanel);
   const consoleOpen = useSessionPanelLayout((s) => s.consoleOpen);
 
   return useMemo<PaletteCommand[]>(() => {
@@ -398,7 +398,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       toggle: () => void;
     }[] = [
       { id: "schema", actionId: "togglePanelSchema", i18nKey: "panels.schema", shown: schemaOpen, toggle: useSessionPanelLayout.getState().toggleSchema },
-      { id: "saved", actionId: "togglePanelSaved", i18nKey: "panels.saved", shown: savedOpen, toggle: useSessionPanelLayout.getState().toggleSaved },
+      { id: "saved", actionId: "togglePanelSaved", i18nKey: "panels.saved", shown: rightPanel === "saved", toggle: () => useSessionPanelLayout.getState().selectRightPanel("saved") },
       { id: "console", actionId: "togglePanelConsole", i18nKey: "panels.console", shown: consoleOpen, toggle: useSessionPanelLayout.getState().toggleConsole },
     ];
     for (const panel of PANEL_TOGGLES) {
@@ -844,7 +844,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     openSettings,
     openSettingsAtPref,
     schemaOpen,
-    savedOpen,
+    rightPanel,
     consoleOpen,
   ]);
 }

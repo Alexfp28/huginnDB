@@ -1,7 +1,7 @@
 /**
  * Root layout of the outer shell: the environment rail (left), two
- * collapsible side panels (Schema, Saved), the workspace island, and a
- * bottom console dock.
+ * collapsible side panels (Schema, and a right dock the activity bar
+ * selects into), the workspace island, and a bottom console dock.
  *
  * Replaces the old outer `DockviewReact` (5 equal-rank panels — see
  * `stores/session/panelLayout.ts` for why). Fixed roles instead of
@@ -13,8 +13,9 @@
  * not a generic `ActivityBar` — there is no separate "Schema" toggle
  * button; clicking the already-active environment's icon collapses/
  * expands the Schema panel instead. The right side keeps the generic
- * `ActivityBar` for Saved, since it isn't tied to any per-environment
- * identity.
+ * `ActivityBar`, since nothing docked there is tied to a per-environment
+ * identity; it selects which panel occupies the single right dock rather
+ * than toggling each one independently (see `panelLayout.ts`).
  *
  * `TabbedArea` (nested dockview, gotcha #10) lives untouched inside
  * `IslandShell`; nothing in this file talks to dockview at all.
@@ -26,6 +27,7 @@ import { useTranslation } from "react-i18next";
 import { useUi } from "@/stores/session/ui";
 import {
   flushPanelLayoutStorage,
+  rightPanelSizeKey,
   useSessionPanelLayout,
 } from "@/stores/session/panelLayout";
 import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
@@ -65,7 +67,7 @@ function SavedPanel() {
 
 // Module-level: `SchemaPanel`/`SavedPanel` take no props, so this element
 // can be created exactly once and reused forever. Passing the SAME element
-// reference down every render is what lets `SchemaSidePanel`/`SavedSidePanel`
+// reference down every render is what lets `SchemaSidePanel`/`RightSidePanel`
 // re-render on a width change (many times a second, mid-drag) without React
 // ever reconciling this subtree — it sees the identical element and bails
 // out, same optimization a `useMemo(() => <SchemaPanel />, [])` would give,
@@ -125,19 +127,35 @@ function SchemaSidePanel() {
   );
 }
 
-/** Same reasoning as `SchemaSidePanel`, mirrored for `savedWidth`. */
-function SavedSidePanel() {
-  const savedOpen = useSessionPanelLayout((s) => s.savedOpen);
+/**
+ * The right dock. Same width-subscription reasoning as `SchemaSidePanel`,
+ * but the size it reads depends on *which* panel is docked: each occupant
+ * keeps its own width (see `panelLayout.ts`), so the sash has to nudge the
+ * active one's key rather than a fixed `savedWidth`.
+ *
+ * When the dock is collapsed the sash still needs a key to aim at, hence the
+ * fall back to `lastRightPanel` — it is never actually dragged in that state,
+ * but reading `rightPanelSizeKey(null)` would mean widening the helper to
+ * accept a case that cannot happen.
+ */
+function RightSidePanel() {
+  const rightPanel = useSessionPanelLayout((s) => s.rightPanel);
+  const lastRightPanel = useSessionPanelLayout((s) => s.lastRightPanel);
   const savedWidth = useSessionPanelLayout((s) => s.savedWidth);
+  const pulseWidth = useSessionPanelLayout((s) => s.pulseWidth);
   const nudgePanel = useSessionPanelLayout((s) => s.nudgePanel);
   const [dragging, setDragging] = useState(false);
 
+  const docked = rightPanel ?? lastRightPanel;
+  const open = rightPanel !== null;
+  const width = docked === "pulse" ? pulseWidth : savedWidth;
+
   return (
     <>
-      {savedOpen && (
+      {open && (
         <Sash
           orientation="vertical"
-          onResize={(delta) => nudgePanel("savedWidth", -delta)}
+          onResize={(delta) => nudgePanel(rightPanelSizeKey(docked), -delta)}
           onDraggingChange={(d) => {
             setDragging(d);
             if (!d) flushPanelLayoutStorage();
@@ -145,8 +163,8 @@ function SavedSidePanel() {
         />
       )}
       <CollapsiblePanel
-        open={savedOpen}
-        size={savedWidth}
+        open={open}
+        size={width}
         axis="width"
         dragging={dragging}
         // `SavedQueriesPanel` owns local, unpersisted state (search filter,
@@ -235,20 +253,22 @@ export function AppShell() {
   const { t } = useTranslation();
   const selectedConnectionId = useUi((s) => s.selectedConnectionId);
 
-  // Booleans only — low-frequency (a toggle click, not a drag frame), so
-  // subscribing to them here is harmless. `schemaWidth`/`savedWidth`
-  // themselves live inside `SchemaSidePanel`/`SavedSidePanel` (see their
-  // doc comments) precisely so a drag never reaches this component.
-  const savedOpen = useSessionPanelLayout((s) => s.savedOpen);
-  const toggleSaved = useSessionPanelLayout((s) => s.toggleSaved);
+  // Low-frequency values only (a rail click, not a drag frame), so
+  // subscribing to them here is harmless. The widths themselves live inside
+  // `SchemaSidePanel`/`RightSidePanel` (see their doc comments) precisely so
+  // a drag never reaches this component.
+  const rightPanel = useSessionPanelLayout((s) => s.rightPanel);
+  const selectRightPanel = useSessionPanelLayout((s) => s.selectRightPanel);
 
+  // One entry today, but the rail is a *selector* over the dock's occupants,
+  // not a per-panel switch — see `panelLayout.ts`.
   const rightButtons: ActivityBarButton[] = [
     {
       id: "saved",
       icon: Save,
       label: t("panels.saved"),
-      active: savedOpen,
-      onClick: toggleSaved,
+      active: rightPanel === "saved",
+      onClick: () => selectRightPanel("saved"),
     },
   ];
 
@@ -263,7 +283,7 @@ export function AppShell() {
         <ConsoleDock />
       </div>
 
-      <SavedSidePanel />
+      <RightSidePanel />
 
       <ActivityBar side="right" buttons={rightButtons} />
     </div>

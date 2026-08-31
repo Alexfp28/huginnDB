@@ -22,6 +22,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The right dock is a selection, not a boolean — groundwork for HuginnDB
+  Pulse.** `useSessionPanelLayout` tracked the right side panel as
+  `savedOpen: boolean`, which was exactly right while Saved Queries was its
+  only occupant. Pulse (a per-connection performance panel, landing next)
+  docks in the same slot, and two independent booleans cannot express a
+  single slot: they let both be "open" at once with nothing deciding which
+  one the 260px of screen actually shows. The field is now
+  `rightPanel: "saved" | "pulse" | null`, and the right activity bar behaves
+  as a selector — clicking the active entry collapses the dock, clicking
+  another switches to it. Three consequences worth knowing: each occupant
+  keeps its **own** persisted width (`savedWidth`, `pulseWidth`), since the
+  comfortable width for a list of query names is not the one for a column of
+  metric tiles; `lastRightPanel` is what the header's `PanelRight` button
+  reopens, because that button toggles the *edge* and always did, so it now
+  reads `panels.rightDock` instead of naming one of the panels it might
+  bring back; and the persisted layout gained a real `version: 1 -> 2`
+  migration mapping `savedOpen: true` to `rightPanel: "saved"` rather than
+  the `return DEFAULTS` the previous `migrate` fell back to for any unknown
+  version — dropping someone's schema width and console height for a rename
+  is not a trade worth making. `src/stores/session/panelLayout.test.ts` is
+  new and covers both halves: the characterization cases (defaults, clamp
+  behaviour, rehydration) were written against the old store before any of
+  this changed, and the migration cases assert the carried-over fields
+  survive.
+
 - **Frontend performance pass (1.20.0), in progress.** A real regression
   reported on modest hardware — a 10k-row table in list mode degrading to
   unusable, and a broader shell choppiness — that turned out not to involve

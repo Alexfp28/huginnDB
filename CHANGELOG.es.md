@@ -26,6 +26,34 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **El panel derecho pasa a ser una selección, no un booleano — preparación
+  para HuginnDB Pulse.** `useSessionPanelLayout` guardaba el panel lateral
+  derecho como `savedOpen: boolean`, que era exactamente lo correcto
+  mientras Consultas guardadas era su único ocupante. Pulse (un panel de
+  rendimiento por conexión, que llega a continuación) se acopla en la misma
+  ranura, y dos booleanos independientes no pueden representar una sola
+  ranura: permiten que los dos estén «abiertos» a la vez sin que nada decida
+  cuál ocupa realmente los 260 px de pantalla. El campo es ahora
+  `rightPanel: "saved" | "pulse" | null`, y la barra de actividad derecha se
+  comporta como un selector: pulsar la entrada activa cierra el panel,
+  pulsar otra cambia a ella. Tres consecuencias que conviene conocer: cada
+  ocupante conserva su **propio** ancho persistido (`savedWidth`,
+  `pulseWidth`), porque el ancho cómodo para una lista de nombres de
+  consulta no es el de una columna de tarjetas de métricas;
+  `lastRightPanel` es lo que reabre el botón `PanelRight` de la cabecera,
+  porque ese botón siempre ha alternado el *borde* y no un panel concreto,
+  así que ahora se llama `panels.rightDock` en lugar de nombrar a uno de los
+  paneles que podría traer de vuelta; y el layout persistido gana una
+  migración real `version: 1 -> 2` que convierte `savedOpen: true` en
+  `rightPanel: "saved"`, en vez del `return DEFAULTS` al que recurría el
+  `migrate` anterior ante cualquier versión desconocida — perder el ancho
+  del esquema y la altura de la consola de alguien por un renombrado no es
+  un intercambio que merezca la pena. `src/stores/session/panelLayout.test.ts`
+  es nuevo y cubre las dos mitades: los casos de caracterización (valores por
+  defecto, recorte de tamaños, rehidratación) se escribieron contra el store
+  antiguo antes de tocar nada, y los de migración comprueban que los campos
+  arrastrados sobreviven.
+
 - **Pasada de rendimiento de frontend (1.20.0), en curso.** Una regresión real
   reportada en máquinas modestas — una tabla de 10k registros en modo lista
   degradándose hasta ser inusable, y una imprecisión general del shell —

@@ -57,6 +57,7 @@
   "panels": {
     "schema": "Esquema",
     "saved": "Guardadas",
+    "rightDock": "Panel derecho",
     "console": "Consola",
     "cell": "Celda"
   },

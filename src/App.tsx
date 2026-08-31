@@ -414,7 +414,8 @@ export default function App() {
       disconnectAll: () => void disconnectAll(),
 
       togglePanelSchema: () => useSessionPanelLayout.getState().toggleSchema(),
-      togglePanelSaved: () => useSessionPanelLayout.getState().toggleSaved(),
+      togglePanelSaved: () =>
+        useSessionPanelLayout.getState().selectRightPanel("saved"),
       togglePanelConsole: () => useSessionPanelLayout.getState().toggleConsole(),
       newWindow: () => {
         void api.openNewWindow().catch((e) => notify.error(String(e)));

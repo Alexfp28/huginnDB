@@ -38,10 +38,10 @@ export function ViewMenu() {
   const { t } = useTranslation();
 
   const schemaOpen = useSessionPanelLayout((s) => s.schemaOpen);
-  const savedOpen = useSessionPanelLayout((s) => s.savedOpen);
+  const rightPanel = useSessionPanelLayout((s) => s.rightPanel);
   const consoleOpen = useSessionPanelLayout((s) => s.consoleOpen);
   const toggleSchema = useSessionPanelLayout((s) => s.toggleSchema);
-  const toggleSaved = useSessionPanelLayout((s) => s.toggleSaved);
+  const selectRightPanel = useSessionPanelLayout((s) => s.selectRightPanel);
   const toggleConsole = useSessionPanelLayout((s) => s.toggleConsole);
 
   return (
@@ -72,10 +72,10 @@ export function ViewMenu() {
           <ShortcutHint action="togglePanelSchema" />
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
-          checked={savedOpen}
+          checked={rightPanel === "saved"}
           onSelect={(e) => {
             e.preventDefault();
-            toggleSaved();
+            selectRightPanel("saved");
           }}
         >
           {t("panels.saved")}

@@ -1,6 +1,6 @@
 /**
- * Outer shell layout — activity-bar-driven docked panels (Schema, Saved,
- * Console) plus the cell editor split inside the workspace island.
+ * Outer shell layout — activity-bar-driven docked panels (Schema, the right
+ * dock, Console) plus the cell editor split inside the workspace island.
  *
  * Replaces the old outer `DockviewReact` (5 equal-rank panels) with fixed
  * roles: two side panels toggled from an activity bar, a bottom console
@@ -14,8 +14,20 @@
  * `Sash.tsx`) sidestep that entirely: a closed panel is just `width: 0` in
  * CSS, no dockview involved.
  *
- * Every consumer reads primitive fields (booleans/numbers) as selectors —
- * reference-stable by construction, per the Zustand rule in CLAUDE.md.
+ * **The right dock holds more than one thing, so it is a selection, not a
+ * boolean.** It used to be `savedOpen: boolean` because Saved Queries was
+ * its only occupant. With Pulse joining it, the right activity bar became a
+ * selector — clicking the active entry closes the dock, clicking the other
+ * switches to it — which a per-panel boolean cannot express without letting
+ * both be "open" at once against a single slot. Hence `rightPanel:
+ * RightPanelId | null`. Each occupant keeps its **own** width (Saved reads
+ * fine at 260px, Pulse wants 320 for its two-up metric tiles), and
+ * `lastRightPanel` remembers which one the edge toggle in `LayoutToggles`
+ * should bring back — that button toggles the *dock*, not any one panel.
+ *
+ * Every consumer reads primitive fields (booleans/numbers/a string union) as
+ * selectors — reference-stable by construction, per the Zustand rule in
+ * CLAUDE.md.
  */
 
 import { create } from "zustand";
@@ -24,15 +36,27 @@ import { STORAGE_KEYS } from "@/lib/constants";
 
 const SCHEMA_WIDTH_DEFAULT = 280;
 const SAVED_WIDTH_DEFAULT = 260;
+const PULSE_WIDTH_DEFAULT = 320;
 const CONSOLE_HEIGHT_DEFAULT = 190;
 const SIDE_EDITOR_WIDTH_DEFAULT = 420;
+
+/** The panels that can occupy the right dock. One at a time. */
+export type RightPanelId = "saved" | "pulse";
 
 export const PANEL_CLAMPS = {
   schemaWidth: { min: 200, max: 600 },
   savedWidth: { min: 200, max: 600 },
+  pulseWidth: { min: 260, max: 640 },
   consoleHeight: { min: 120, max: 600 },
   sideEditorWidth: { min: 280, max: 720 },
 } as const;
+
+/** Which `PANEL_CLAMPS` key holds a given right-dock panel's width. Exported
+ *  so the shell can hand the right `nudgePanel` key to its sash without
+ *  spelling the mapping a second time. */
+export function rightPanelSizeKey(id: RightPanelId): "savedWidth" | "pulseWidth" {
+  return id === "saved" ? "savedWidth" : "pulseWidth";
+}
 
 function clamp(value: number, { min, max }: { min: number; max: number }): number {
   return Math.min(max, Math.max(min, value));
@@ -95,14 +119,18 @@ const { storage: throttledStorage, flush: flushPanelLayoutStorage } =
  *  `createThrottledStorage`'s doc comment. */
 export { flushPanelLayoutStorage };
 
-/** The four keys `nudgePanel` may adjust — exactly `PANEL_CLAMPS`'s keys. */
+/** The five keys `nudgePanel` may adjust — exactly `PANEL_CLAMPS`'s keys. */
 export type PanelSizeKey = keyof typeof PANEL_CLAMPS;
 
 interface PanelLayoutState {
   schemaOpen: boolean;
   schemaWidth: number;
-  savedOpen: boolean;
+  /** `null` = the right dock is collapsed. */
+  rightPanel: RightPanelId | null;
+  /** What `toggleRightDock` reopens. Survives a collapse, unlike `rightPanel`. */
+  lastRightPanel: RightPanelId;
   savedWidth: number;
+  pulseWidth: number;
   consoleOpen: boolean;
   consoleHeight: number;
   sideEditorOpen: boolean;
@@ -110,7 +138,12 @@ interface PanelLayoutState {
 
   toggleSchema: () => void;
   openSchema: () => void;
-  toggleSaved: () => void;
+  /** Activity-bar behaviour: the active entry collapses the dock, any other
+   *  switches to it. */
+  selectRightPanel: (id: RightPanelId) => void;
+  /** Edge-toggle behaviour (`LayoutToggles`): collapse, or reopen whichever
+   *  panel was last shown. */
+  toggleRightDock: () => void;
   toggleConsole: () => void;
   /** Adjust one panel's size by a delta, reading the CURRENT value from
    *  inside the store update rather than from whatever the caller's render
@@ -126,26 +159,66 @@ interface PanelLayoutState {
   resetLayout: () => void;
 }
 
-const DEFAULTS: Omit<
+type PanelLayoutData = Omit<
   PanelLayoutState,
   | "toggleSchema"
   | "openSchema"
-  | "toggleSaved"
+  | "selectRightPanel"
+  | "toggleRightDock"
   | "toggleConsole"
   | "nudgePanel"
   | "openSideEditor"
   | "closeSideEditor"
   | "resetLayout"
-> = {
+>;
+
+const DEFAULTS: PanelLayoutData = {
   schemaOpen: true,
   schemaWidth: SCHEMA_WIDTH_DEFAULT,
-  savedOpen: false,
+  rightPanel: null,
+  lastRightPanel: "saved",
   savedWidth: SAVED_WIDTH_DEFAULT,
+  pulseWidth: PULSE_WIDTH_DEFAULT,
   consoleOpen: false,
   consoleHeight: CONSOLE_HEIGHT_DEFAULT,
   sideEditorOpen: false,
   sideEditorWidth: SIDE_EDITOR_WIDTH_DEFAULT,
 };
+
+/** The v1 shape, kept only so `migrate` can read one. */
+interface PanelLayoutV1 {
+  schemaOpen?: boolean;
+  schemaWidth?: number;
+  savedOpen?: boolean;
+  savedWidth?: number;
+  consoleOpen?: boolean;
+  consoleHeight?: number;
+  sideEditorOpen?: boolean;
+  sideEditorWidth?: number;
+}
+
+/**
+ * v1 → v2: the right dock's boolean becomes a selection.
+ *
+ * Written out field by field rather than spread wholesale because the point
+ * of the migration is that a v1 blob has no `rightPanel` and *does* have a
+ * `savedOpen` that no longer means anything — a spread would carry the dead
+ * key across and leave the dock collapsed for everyone who had Saved open.
+ */
+function migrateV1(v1: PanelLayoutV1): PanelLayoutData {
+  return {
+    ...DEFAULTS,
+    schemaOpen: v1.schemaOpen ?? DEFAULTS.schemaOpen,
+    schemaWidth: v1.schemaWidth ?? DEFAULTS.schemaWidth,
+    savedWidth: v1.savedWidth ?? DEFAULTS.savedWidth,
+    consoleOpen: v1.consoleOpen ?? DEFAULTS.consoleOpen,
+    consoleHeight: v1.consoleHeight ?? DEFAULTS.consoleHeight,
+    sideEditorOpen: v1.sideEditorOpen ?? DEFAULTS.sideEditorOpen,
+    sideEditorWidth: v1.sideEditorWidth ?? DEFAULTS.sideEditorWidth,
+    rightPanel: v1.savedOpen ? "saved" : null,
+    lastRightPanel: "saved",
+  };
+}
 
 export const useSessionPanelLayout = create<PanelLayoutState>()(
   persist(
@@ -153,7 +226,18 @@ export const useSessionPanelLayout = create<PanelLayoutState>()(
       ...DEFAULTS,
       toggleSchema: () => set((s) => ({ schemaOpen: !s.schemaOpen })),
       openSchema: () => set({ schemaOpen: true }),
-      toggleSaved: () => set((s) => ({ savedOpen: !s.savedOpen })),
+      selectRightPanel: (id) =>
+        set((s) =>
+          s.rightPanel === id
+            ? { rightPanel: null }
+            : { rightPanel: id, lastRightPanel: id },
+        ),
+      toggleRightDock: () =>
+        set((s) =>
+          s.rightPanel === null
+            ? { rightPanel: s.lastRightPanel }
+            : { rightPanel: null },
+        ),
       toggleConsole: () => set((s) => ({ consoleOpen: !s.consoleOpen })),
       nudgePanel: (key, delta) =>
         set((s) => ({ [key]: clamp(s[key] + delta, PANEL_CLAMPS[key]) })),
@@ -163,11 +247,12 @@ export const useSessionPanelLayout = create<PanelLayoutState>()(
     }),
     {
       name: STORAGE_KEYS.panelLayout,
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => throttledStorage),
-      migrate: (_persisted, version) => {
-        if (version !== 1) return { ...DEFAULTS };
-        return _persisted as PanelLayoutState;
+      migrate: (persisted, version) => {
+        if (version === 2) return persisted as PanelLayoutState;
+        if (version === 1) return migrateV1((persisted ?? {}) as PanelLayoutV1);
+        return { ...DEFAULTS };
       },
     },
   ),
