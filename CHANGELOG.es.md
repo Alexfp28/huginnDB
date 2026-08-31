@@ -10,6 +10,72 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Pulse gana Sesiones e Índices — las dos entradas del panel lateral que le
+  faltaban a la ventana ampliada.** Las dos son lecturas a demanda y de
+  actualización manual: a diferencia de la tabla de digests y el ranking de
+  almacenamiento, una lista de sesiones con quince minutos de antigüedad no
+  es solo "algo desfasada", es activamente engañosa — así que ninguna de las
+  dos vistas se sondea sola: cada una tiene su propio botón de actualizar, y
+  la lectura se dispara una vez al abrir esa entrada del panel.
+
+  Sesiones lee `SHOW FULL PROCESSLIST` en MySQL — la misma sentencia que
+  ejecuta cualquier cliente `mysql`, y a diferencia de
+  `information_schema.PROCESSLIST` nunca queda desactivada por
+  `show_compatibility_56` en un servidor que ya ha dejado eso atrás — y la
+  forma en pipeline de agregación de `currentOp` en MongoDB. Los dos motores
+  mantienen su propio vocabulario en vez de traducirse a uno compartido: las
+  columnas `Command`/`State` de MySQL y el campo `op` de MongoDB junto con el
+  estado derivado `active`/`waiting for lock`/`idle` dicen lo que cada motor
+  realmente quiere decir, y forzar uno sobre el otro sería solo inventar una
+  correspondencia que ningún servidor tiene. La lectura de MongoDB es
+  deliberadamente más estrecha que la de MySQL — `idleConnections`/
+  `idleSessions` están las dos desactivadas, así que un pool de conexiones de
+  cliente inactivas nunca aparece aquí, porque MongoDB no tiene un
+  equivalente barato del estado "Sleep" de MySQL que merezca la pena mostrar,
+  y mostrar cada sesión inactiva enterraría las operaciones que alguien vino
+  a ver de verdad.
+
+  Las sesiones de MySQL también llevan una cadena de bloqueo a mejor
+  esfuerzo, leída de `performance_schema.data_lock_waits` cruzada con
+  `performance_schema.threads` — el `Id` de una sesión propia, cuando se sabe
+  que está esperando un bloqueo que otra sesión mantiene. Misma forma de
+  degradar sin fallar que el resto de Pulse: un rol sin el privilegio, o
+  `performance_schema` apagado, simplemente deja cada `blocked_by` vacío en
+  vez de hacer fallar toda la lectura. MongoDB no identifica al bloqueador en
+  este pase — `currentOp` no tiene un campo directo de "este opid espera a
+  aquel opid", solo `waitingForLock` más el estado de bloqueo por operación,
+  que necesitaría cruzar los recursos de bloqueo con los de cualquier otra
+  operación en marcha para resolverse correctamente, y eso es trabajo real,
+  sensible a la corrección, que se deja para más adelante en vez de
+  adivinarlo. Una sesión de Mongo bloqueada se sigue viendo a través de su
+  estado.
+
+  Índices clasifica el uso desde el último reinicio de los contadores, de
+  menos a más leído — el objetivo es señalar los índices que nadie toca.
+  MySQL lee `sys.schema_index_statistics` (instalado en todo servidor desde
+  la 5.7.7), que cubre cada tabla de la base de datos actual en un único
+  viaje de ida y vuelta. MongoDB no tiene una forma de `$indexStats` a nivel
+  de servidor como sí tiene `$collStats` para el almacenamiento, así que lee
+  colección a colección — acotado a las veinte colecciones más grandes según
+  el mismo ranking de tamaño que ya calcula `storage`, con el razonamiento de
+  que un índice muerto en una colección diminuta desperdicia poco, mientras
+  que las colecciones más grandes son donde uno cuesta más en disco y
+  sobrecarga de escritura. El *tamaño* por índice se omite a propósito en los
+  dos motores: MySQL lo guarda en `mysql.innodb_index_stats`, una tabla de
+  sistema que las cuentas normales a menudo no pueden leer, y MongoDB
+  necesitaría una segunda llamada a `$collStats` por colección junto a
+  `$indexStats`, duplicando los viajes de ida y vuelta que el límite de
+  veinte colecciones existe para evitar. Un índice realmente nunca leído
+  (`Some(0)`) se muestra como "sin usar"; un servidor al que no se le pudo
+  preguntar (`None`) se lee como un guion — son dos afirmaciones distintas, y
+  confundirlas inventaría una cifra de uso o escondería un cero real.
+
+  Nuevo: `pulse::{SessionRow, IndexUsage}`, `db::mysql::pulse::{sessions,
+  index_usage, blocking_chain}`, `db::mongo::pulse::{sessions, index_usage}`,
+  los comandos `pulse_sessions`/`pulse_index_usage`, y el hook compartido
+  `useOnDemandRead` sobre el que se construyen las dos vistas nuevas del
+  panel.
+
 - **Pulse ya puede lanzar EXPLAIN sobre una sentencia, en los dos motores,
   directamente desde la tabla de digests.** Cada fila de la vista Consultas en
   la ventana ampliada tiene ahora una acción Plan; al pulsarla, envuelve el

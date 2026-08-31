@@ -291,6 +291,55 @@ impl StorageItem {
     }
 }
 
+/// One active session on the server, from `pulse_sessions`.
+///
+/// MySQL's `SHOW FULL PROCESSLIST` and MongoDB's `currentOp` describe the same
+/// idea in different words — a running thread vs. a running operation — so
+/// `command`/`state` stay whichever vocabulary the engine reports rather than
+/// being translated into a shared one that neither engine actually speaks.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionRow {
+    /// MySQL's PROCESSLIST id; MongoDB's `opid`. Kept as text end-to-end — a
+    /// sharded MongoDB opid is not always a bare integer, and this id is never
+    /// arithmetic, only ever displayed or matched against `blocked_by`.
+    pub id: String,
+    pub user: Option<String>,
+    pub host: Option<String>,
+    pub db: Option<String>,
+    pub command: String,
+    pub state: Option<String>,
+    pub duration_secs: f64,
+    /// The statement text, truncated the same way a Consultas digest is —
+    /// [`truncate`], not a second cap invented for this DTO.
+    pub query: Option<String>,
+    /// This session's own id, when it is known to be waiting on a lock this
+    /// other session holds. MySQL derives it from
+    /// `performance_schema.data_lock_waits`, best-effort — absent when
+    /// `performance_schema` is off, same as [`TopQuery`]. MongoDB does not
+    /// identify the blocker in this release (see
+    /// `crate::db::mongo::pulse::sessions`'s doc comment for why) — a blocked
+    /// Mongo session still shows through `state`, it just cannot point at who
+    /// it is waiting for yet.
+    pub blocked_by: Option<String>,
+}
+
+/// One index's usage since its counters were last reset, from
+/// `pulse_index_usage`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexUsage {
+    pub schema: Option<String>,
+    pub table: String,
+    pub index_name: String,
+    /// Reads served since reset. `None` when the server could not be asked
+    /// (a role without the privilege) — distinct from `Some(0)`, an index
+    /// genuinely untouched since the counters last reset, which is the whole
+    /// signal this view exists to surface.
+    pub reads: Option<u64>,
+    pub size_bytes: Option<u64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

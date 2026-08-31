@@ -1880,6 +1880,37 @@ export interface PulseExplainPlan {
   raw: unknown;
 }
 
+/** One active session/operation, from `pulse_sessions`. MySQL's
+ *  `command`/`state` and MongoDB's `op`/state derived from `currentOp` keep
+ *  their own engine's vocabulary rather than being translated into a shared
+ *  one — see `pulse::SessionRow`. */
+export interface PulseSession {
+  id: string;
+  user: string | null;
+  host: string | null;
+  db: string | null;
+  command: string;
+  state: string | null;
+  durationSecs: number;
+  query: string | null;
+  /** This session's own `id`, when it is known to be waiting on a lock this
+   *  other session holds. MySQL only in this release — see the backend DTO's
+   *  doc comment for why MongoDB never sets it yet. */
+  blockedBy: string | null;
+}
+
+/** One index's usage since its counters were last reset, from
+ *  `pulse_index_usage`. `reads: null` means the server could not be asked (a
+ *  role without the privilege) — distinct from `0`, an index genuinely
+ *  untouched, which is the whole signal this view exists to surface. */
+export interface PulseIndexUsage {
+  schema: string | null;
+  table: string;
+  indexName: string;
+  reads: number | null;
+  sizeBytes: number | null;
+}
+
 /** One relation's footprint, from `pulse_storage`. */
 export interface PulseStorageItem {
   name: string;

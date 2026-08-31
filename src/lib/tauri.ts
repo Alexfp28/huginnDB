@@ -43,6 +43,8 @@ import type {
   PrivilegeInfo,
   PulseExplainPlan,
   PulseHealth,
+  PulseIndexUsage,
+  PulseSession,
   PulseStorageItem,
   PulseTopQuery,
   QueryResult,
@@ -1210,6 +1212,19 @@ export const api = {
    */
   pulseExplain: (connectionId: string, sample: string) =>
     invoke<PulseExplainPlan>("pulse_explain", { connectionId, sample }),
+
+  /**
+   * Every session or operation currently open on the server. On demand,
+   * never polled — a live snapshot is only meaningful the instant someone
+   * asks for it.
+   */
+  pulseSessions: (connectionId: string) =>
+    invoke<PulseSession[]>("pulse_sessions", { connectionId }),
+
+  /** Index usage across the connection's biggest relations, least-read
+   *  first. On demand. */
+  pulseIndexUsage: (connectionId: string) =>
+    invoke<PulseIndexUsage[]>("pulse_index_usage", { connectionId }),
 
   /**
    * Open Pulse's expanded view in its own OS window, measuring `connectionId`.

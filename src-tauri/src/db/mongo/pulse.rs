@@ -9,7 +9,8 @@ use crate::db::mongo::shell::{self, MongoOp};
 use crate::db::mongo::values::bson_to_shell_text;
 use crate::error::{AppError, AppResult};
 use crate::pulse::{
-    truncate, ExplainPlan, MetricSample, PulseHealth, PulseNote, StorageItem, TopQuery,
+    truncate, ExplainPlan, IndexUsage, MetricSample, PulseHealth, PulseNote, SessionRow,
+    StorageItem, TopQuery,
 };
 use crate::state::MongoConn;
 
@@ -455,6 +456,160 @@ pub async fn explain(conn: &MongoConn, sample: &str) -> AppResult<ExplainPlan> {
         raw: crate::db::mongo::values::bson_to_json(&Bson::Document(reply)),
     })
 }
+/// Operations MongoDB is actively running or lock-waiting on right now, from
+/// the aggregation-pipeline form of `currentOp` (3.6+, the documented
+/// replacement for the deprecated `db.currentOp()` command).
+///
+/// Deliberately narrower than MySQL's `SHOW FULL PROCESSLIST`: both
+/// `idleConnections` and `idleSessions` are left off, so a pool of client
+/// connections doing nothing never shows up here. MongoDB has no cheap
+/// equivalent of MySQL's "Sleep" state worth surfacing, and including every
+/// idle session would turn this into a list dominated by rows nobody came
+/// here to see — what remains is genuinely active or lock-waiting operations,
+/// which is also why there is no separate row cap: the filter itself bounds
+/// the result.
+pub async fn sessions(conn: &MongoConn) -> AppResult<Vec<SessionRow>> {
+    let admin = conn.client.database("admin");
+    let mut cursor = admin
+        .aggregate(vec![doc! {"$currentOp": {
+            "allUsers": true,
+            "idleConnections": false,
+            "idleSessions": false,
+        }}])
+        .await?;
+
+    let mut out = Vec::new();
+    while matches!(cursor.advance().await, Ok(true)) {
+        if let Ok(op) = cursor.deserialize_current() {
+            out.push(session_row(&op));
+        }
+    }
+    Ok(out)
+}
+
+/// One `$currentOp` reply document → one row.
+///
+/// `blocked_by` is always `None`: unlike MySQL's `data_lock_waits`, MongoDB
+/// gives no direct "this opid is waiting on that opid" mapping — `currentOp`
+/// exposes `lockStats`/`waitingForLock`, but naming the *holder* means
+/// matching lock resources across every other operation's own lock state, a
+/// correctness-sensitive piece of work this pass leaves for later rather than
+/// guessing at. A blocked Mongo session still shows through `state`.
+fn session_row(op: &Document) -> SessionRow {
+    let id = op
+        .get("opid")
+        .map(|v| match v {
+            Bson::String(s) => s.clone(),
+            other => bson_to_shell_text(other),
+        })
+        .unwrap_or_default();
+
+    let user = op
+        .get_array("effectiveUsers")
+        .ok()
+        .and_then(|arr| arr.first())
+        .and_then(Bson::as_document)
+        .and_then(|u| u.get_str("user").ok())
+        .map(str::to_string);
+
+    let db = op
+        .get_str("ns")
+        .ok()
+        .and_then(|ns| ns.split('.').next())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    let waiting = op.get_bool("waitingForLock").unwrap_or(false);
+    let active = op.get_bool("active").unwrap_or(false);
+    let state = Some(
+        if waiting {
+            "waiting for lock"
+        } else if active {
+            "active"
+        } else {
+            "idle"
+        }
+        .to_string(),
+    );
+
+    let query = op
+        .get_document("command")
+        .ok()
+        .map(|cmd| truncate(&bson_to_shell_text(&Bson::Document(cmd.clone()))));
+
+    SessionRow {
+        id,
+        user,
+        host: op.get_str("client").ok().map(str::to_string),
+        db,
+        command: op.get_str("op").unwrap_or("none").to_string(),
+        state,
+        duration_secs: num(op, &["secs_running"]).unwrap_or(0.0),
+        query,
+        blocked_by: None,
+    }
+}
+
+/// How many of the database's largest collections to check for index usage.
+///
+/// MongoDB has no server-wide form of `$indexStats` the way `$collStats` has
+/// for storage (see [`storage`]'s own doc comment) — the stage only runs
+/// per collection, so covering N collections costs N round trips. This bounds
+/// the read to whichever collections are worth the cost: a dead index on a
+/// tiny collection wastes little, and the biggest collections are where an
+/// unused one costs the most in both disk and write overhead.
+const INDEX_USAGE_SCAN_LIMIT: usize = 20;
+
+/// Per-index usage since the counters were last reset, across the database's
+/// largest collections, least-read first.
+///
+/// Ranks by [`storage`]'s own footprint read rather than a separate listing —
+/// one fewer round trip, and it means the ordering this view scans in agrees
+/// with what the Almacenamiento view already shows for "biggest". Per-index
+/// *size* is not read here: getting it needs a second `$collStats` per
+/// collection alongside the `$indexStats` one, doubling the round trips this
+/// bound exists to avoid, so `size_bytes` stays `None` — the same tradeoff
+/// [`crate::db::mysql::pulse::index_usage`] makes for `mysql.innodb_index_stats`.
+pub async fn index_usage(conn: &MongoConn, limit: usize) -> AppResult<Vec<IndexUsage>> {
+    let db = crate::db::mongo::schema::resolve_db(conn)?;
+    let db_name = db.name().to_string();
+    let ranked = storage(conn, INDEX_USAGE_SCAN_LIMIT).await?;
+
+    let mut items = Vec::new();
+    for item in &ranked {
+        let Ok(mut cursor) = db
+            .collection::<Document>(&item.name)
+            .aggregate(vec![doc! {"$indexStats": {}}])
+            .await
+        else {
+            continue;
+        };
+        while matches!(cursor.advance().await, Ok(true)) {
+            let Ok(stat) = cursor.deserialize_current() else {
+                continue;
+            };
+            let Ok(name) = stat.get_str("name") else {
+                continue;
+            };
+            let reads = stat
+                .get_document("accesses")
+                .ok()
+                .and_then(|a| num(a, &["ops"]))
+                .map(|v| v.max(0.0) as u64);
+            items.push(IndexUsage {
+                schema: Some(db_name.clone()),
+                table: item.name.clone(),
+                index_name: name.to_string(),
+                reads,
+                size_bytes: None,
+            });
+        }
+    }
+
+    items.sort_unstable_by_key(|i| i.reads.unwrap_or(0));
+    items.truncate(limit);
+    Ok(items)
+}
 
 #[cfg(test)]
 mod tests {
@@ -672,5 +827,62 @@ mod tests {
             .map(|i| find_entry(&format!("shop.coll{i}"), doc! {"n": i}, i as f64, 1, 1))
             .collect();
         assert_eq!(build_top_queries(&docs, 2).len(), 2);
+    }
+    fn current_op(extra: Document) -> Document {
+        let mut base = doc! {
+            "opid": 4217_i32,
+            "active": true,
+            "secs_running": 3_i64,
+            "op": "query",
+            "ns": "shop.orders",
+            "client": "127.0.0.1:54321",
+            "waitingForLock": false,
+            "effectiveUsers": [{"user": "app", "db": "admin"}],
+            "command": {"find": "orders", "filter": {"status": "A"}},
+        };
+        base.extend(extra);
+        base
+    }
+
+    #[test]
+    fn session_row_reads_the_common_fields() {
+        let row = session_row(&current_op(doc! {}));
+        assert_eq!(row.id, "4217");
+        assert_eq!(row.user.as_deref(), Some("app"));
+        assert_eq!(row.host.as_deref(), Some("127.0.0.1:54321"));
+        assert_eq!(row.db.as_deref(), Some("shop"));
+        assert_eq!(row.command, "query");
+        assert_eq!(row.state.as_deref(), Some("active"));
+        assert_eq!(row.duration_secs, 3.0);
+        assert!(row.query.as_deref().unwrap().contains("filter"));
+        // MongoDB does not identify the blocker in this release.
+        assert_eq!(row.blocked_by, None);
+    }
+
+    #[test]
+    fn session_row_flags_a_lock_wait_over_active() {
+        let row = session_row(&current_op(doc! {"waitingForLock": true}));
+        assert_eq!(row.state.as_deref(), Some("waiting for lock"));
+    }
+
+    #[test]
+    fn session_row_reports_idle_when_neither_active_nor_waiting() {
+        let row = session_row(&current_op(doc! {"active": false}));
+        assert_eq!(row.state.as_deref(), Some("idle"));
+    }
+
+    #[test]
+    fn session_row_tolerates_a_missing_effective_user() {
+        let mut op = current_op(doc! {});
+        op.remove("effectiveUsers");
+        let row = session_row(&op);
+        assert_eq!(row.user, None);
+    }
+
+    #[test]
+    fn session_row_keeps_a_string_opid_verbatim() {
+        // A sharded cluster's opid is `"shard1:12345"`, not a bare integer.
+        let row = session_row(&current_op(doc! {"opid": "shard1:12345"}));
+        assert_eq!(row.id, "shard1:12345");
     }
 }

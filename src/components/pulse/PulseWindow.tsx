@@ -31,10 +31,13 @@ import {
   AlertTriangle,
   ChevronRight,
   HardDrive,
+  Link2,
   ListOrdered,
+  ListTree,
   Loader2,
   RefreshCw,
   ServerCog,
+  Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -59,26 +62,34 @@ import {
   usePreferences,
 } from "@/stores/preferences/preferences";
 import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
-import type { PulseTopQuery } from "@/types";
+import { useOnDemandRead } from "@/lib/pulse/useOnDemandRead";
+import type { PulseIndexUsage, PulseSession, PulseTopQuery } from "@/types";
 
-/** The views this window can show today. Sessions, indexes and the history
- *  retrospective join the list as their reads land; a rail entry with nothing
+/** The views this window can show today. The history retrospective joins the
+ *  list once the disk-backed sampler lands — a rail entry with nothing
  *  behind it would be worse than an absent one. */
-type ViewId = "status" | "queries" | "storage";
+type ViewId = "status" | "queries" | "storage" | "sessions" | "indexes";
 
 const VIEWS: { id: ViewId; icon: LucideIcon; labelKey: string }[] = [
   { id: "status", icon: Activity, labelKey: "pulse.section.status" },
   { id: "queries", icon: ListOrdered, labelKey: "pulse.section.slowest" },
   { id: "storage", icon: HardDrive, labelKey: "pulse.section.storage" },
+  { id: "sessions", icon: Users, labelKey: "pulse.section.sessions" },
+  { id: "indexes", icon: ListTree, labelKey: "pulse.section.indexes" },
 ];
 
 function Panel({
   title,
   hint,
+  action,
   children,
 }: {
   title: string;
   hint?: string;
+  /** An interactive header control (a refresh button, say) — separate from
+   *  `hint` so a view with both (a manual-refresh table showing its own row
+   *  count) doesn't have to squeeze one string into the other. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -86,13 +97,30 @@ function Panel({
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
         <h2 className="text-xs font-semibold">{title}</h2>
         {hint && (
-          <span className="ml-auto font-mono text-3xs text-muted-foreground">
+          <span className={cn("font-mono text-3xs text-muted-foreground", !action && "ml-auto")}>
             {hint}
           </span>
         )}
+        {action && <span className="ml-auto flex items-center gap-1">{action}</span>}
       </header>
       <div className="p-3">{children}</div>
     </section>
+  );
+}
+
+function RefreshButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      title={t("pulse.refresh")}
+      aria-label={t("pulse.refresh")}
+      className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50"
+    >
+      <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+    </button>
   );
 }
 
@@ -390,6 +418,163 @@ function StorageView({ view }: { view: PulseView }) {
   );
 }
 
+function SessionsView({ connectionId }: { connectionId: string }) {
+  const { t } = useTranslation();
+  const { items, loading, error, refresh } = useOnDemandRead<PulseSession>(
+    connectionId,
+    api.pulseSessions,
+  );
+
+  if (loading && items.length === 0) {
+    return <EmptyState icon={Users} title={t("pulse.loading")} />;
+  }
+  if (error && items.length === 0) {
+    return (
+      <EmptyState icon={AlertTriangle} title={t("pulse.sessions.unavailable")} hint={error} />
+    );
+  }
+  if (items.length === 0) {
+    return <EmptyState icon={Users} title={t("pulse.sessions.empty")} />;
+  }
+
+  return (
+    <Panel
+      title={t("pulse.section.sessions")}
+      hint={t("pulse.showingOf", { shown: items.length, total: items.length })}
+      action={<RefreshButton onClick={refresh} loading={loading} />}
+    >
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="border-b border-border text-3xs uppercase tracking-wider text-muted-foreground">
+              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.id")}</th>
+              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.user")}</th>
+              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.command")}</th>
+              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.state")}</th>
+              <th className="px-2 py-1.5 text-right font-medium">{t("pulse.table.duration")}</th>
+              <th className="px-2 py-1.5 text-left font-medium">
+                {t("pulse.table.statement")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((s) => (
+              <tr key={s.id} className="border-b border-border last:border-b-0">
+                <td className="px-2 py-1.5 font-mono text-2xs text-muted-foreground">{s.id}</td>
+                <td className="px-2 py-1.5 align-top">
+                  <div className="font-mono text-2xs">{s.user ?? "—"}</div>
+                  {(s.host || s.db) && (
+                    <div className="truncate font-mono text-3xs text-muted-foreground">
+                      {[s.host, s.db].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </td>
+                <td className="px-2 py-1.5 font-mono text-2xs">{s.command}</td>
+                <td className="px-2 py-1.5">
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-2xs">{s.state ?? "—"}</span>
+                    {s.blockedBy && (
+                      <span
+                        title={t("pulse.sessions.blockedByTitle", { id: s.blockedBy })}
+                        className="flex items-center gap-0.5 rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-3xs text-destructive"
+                      >
+                        <Link2 className="h-2.5 w-2.5" />
+                        {s.blockedBy}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-2 py-1.5 text-right font-mono tabular-nums text-muted-foreground">
+                  {s.durationSecs < 1 ? "<1" : Math.round(s.durationSecs)} s
+                </td>
+                <td className="max-w-[46ch] px-2 py-1.5">
+                  <div className="line-clamp-2 font-mono text-2xs" title={s.query ?? undefined}>
+                    {s.query ?? "—"}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+function IndexesView({ connectionId }: { connectionId: string }) {
+  const { t } = useTranslation();
+  const { items, loading, error, refresh } = useOnDemandRead<PulseIndexUsage>(
+    connectionId,
+    api.pulseIndexUsage,
+  );
+
+  if (loading && items.length === 0) {
+    return <EmptyState icon={ListTree} title={t("pulse.loading")} />;
+  }
+  if (error && items.length === 0) {
+    return (
+      <EmptyState icon={AlertTriangle} title={t("pulse.indexes.unavailable")} hint={error} />
+    );
+  }
+  if (items.length === 0) {
+    return <EmptyState icon={ListTree} title={t("pulse.indexes.empty")} />;
+  }
+
+  return (
+    <Panel
+      title={t("pulse.section.indexes")}
+      hint={t("pulse.showingOf", { shown: items.length, total: items.length })}
+      action={<RefreshButton onClick={refresh} loading={loading} />}
+    >
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="border-b border-border text-3xs uppercase tracking-wider text-muted-foreground">
+              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.table")}</th>
+              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.index")}</th>
+              <th className="px-2 py-1.5 text-right font-medium">{t("pulse.table.reads")}</th>
+              <th className="px-2 py-1.5 text-right font-medium">{t("pulse.table.size")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((i) => (
+              <tr
+                key={`${i.schema}.${i.table}.${i.indexName}`}
+                className="border-b border-border last:border-b-0"
+              >
+                <td className="px-2 py-1.5 align-top">
+                  <div className="font-mono text-2xs">{i.table}</div>
+                  {i.schema && (
+                    <div className="font-mono text-3xs text-muted-foreground">{i.schema}</div>
+                  )}
+                </td>
+                <td className="px-2 py-1.5 font-mono text-2xs">{i.indexName}</td>
+                <td className="px-2 py-1.5 text-right">
+                  {i.reads === null ? (
+                    <span className="font-mono text-3xs text-muted-foreground">—</span>
+                  ) : i.reads === 0 ? (
+                    <span className="rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-3xs text-destructive">
+                      {t("pulse.indexes.unused")}
+                    </span>
+                  ) : (
+                    <span className="font-mono text-2xs tabular-nums">
+                      {formatCount(i.reads)}
+                    </span>
+                  )}
+                </td>
+                <td className="px-2 py-1.5 text-right font-mono text-2xs tabular-nums text-muted-foreground">
+                  {i.sizeBytes === null ? "—" : formatBytes(i.sizeBytes)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+
 function PulseBody({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
   const [viewId, setViewId] = useState<ViewId>("status");
@@ -474,6 +659,8 @@ function PulseBody({ connectionId }: { connectionId: string }) {
         {viewId === "status" && <StatusView view={view} />}
         {viewId === "queries" && <QueriesView view={view} connectionId={connectionId} />}
         {viewId === "storage" && <StorageView view={view} />}
+        {viewId === "sessions" && <SessionsView connectionId={connectionId} />}
+        {viewId === "indexes" && <IndexesView connectionId={connectionId} />}
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ use tauri::State;
 
 use crate::db::sql::StmtClass;
 use crate::error::{AppError, AppResult};
-use crate::pulse::{ExplainPlan, PulseHealth, StorageItem, TopQuery};
+use crate::pulse::{ExplainPlan, IndexUsage, PulseHealth, SessionRow, StorageItem, TopQuery};
 use crate::state::{AppState, DbPool};
 
 /// A driver Pulse does not read yet.
@@ -170,6 +170,70 @@ pub async fn pulse_storage(
     crate::error::with_timeout(
         "pulse_storage",
         pulse_storage_inner(state.inner(), &connection_id),
+    )
+    .await
+}
+pub async fn pulse_sessions_inner(
+    state: &AppState,
+    connection_id: &str,
+) -> AppResult<Vec<SessionRow>> {
+    match state.pool_for(connection_id)? {
+        DbPool::Mysql(p) => crate::db::mysql::pulse::sessions(&p).await,
+        DbPool::Mongo(conn) => crate::db::mongo::pulse::sessions(&conn).await,
+        DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
+        DbPool::Sqlite(_) => Err(unsupported("SQLite")),
+        DbPool::MsSql(_) => Err(unsupported("SQL Server")),
+    }
+}
+
+/// Every session or operation currently open on the server. On demand, never
+/// sampled — a live snapshot is only meaningful at the instant someone asks
+/// for it, unlike the digest table or the storage ranking, which are useful
+/// even fifteen minutes stale.
+#[tauri::command]
+pub async fn pulse_sessions(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<Vec<SessionRow>> {
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::error::with_timeout(
+        "pulse_sessions",
+        pulse_sessions_inner(state.inner(), &connection_id),
+    )
+    .await
+}
+
+pub async fn pulse_index_usage_inner(
+    state: &AppState,
+    connection_id: &str,
+) -> AppResult<Vec<IndexUsage>> {
+    match state.pool_for(connection_id)? {
+        DbPool::Mysql(p) => crate::db::mysql::pulse::index_usage(&p, DETAIL_LIMIT).await,
+        DbPool::Mongo(conn) => {
+            crate::db::mongo::pulse::index_usage(&conn, DETAIL_LIMIT as usize).await
+        }
+        DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
+        DbPool::Sqlite(_) => Err(unsupported("SQLite")),
+        DbPool::MsSql(_) => Err(unsupported("SQL Server")),
+    }
+}
+
+/// Index usage across the connection's biggest relations, least-read first.
+/// On demand, for the same reason as [`pulse_storage`] — it is a ranking, not
+/// a live rate, and reading it does not get cheaper by polling it.
+#[tauri::command]
+pub async fn pulse_index_usage(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<Vec<IndexUsage>> {
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::error::with_timeout(
+        "pulse_index_usage",
+        pulse_index_usage_inner(state.inner(), &connection_id),
     )
     .await
 }

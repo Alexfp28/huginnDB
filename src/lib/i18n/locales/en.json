@@ -1729,6 +1729,8 @@
       "status": "Status",
       "slowest": "Time spent",
       "storage": "Storage",
+      "sessions": "Sessions",
+      "indexes": "Indexes",
       "collapse": "Collapse section",
       "expand": "Expand section"
     },
@@ -1772,7 +1774,16 @@
       "max": "Slowest",
       "examinedSent": "Examined / sent",
       "signal": "Signal",
-      "plan": "Plan"
+      "plan": "Plan",
+      "id": "Id",
+      "user": "User",
+      "command": "Command",
+      "state": "State",
+      "duration": "Duration",
+      "table": "Table",
+      "index": "Index",
+      "reads": "Reads",
+      "size": "Size"
     },
     "explain": {
       "show": "Show the plan",
@@ -1780,6 +1791,16 @@
       "unavailable": "No runnable example kept for this statement.",
       "loading": "Reading the plan…",
       "error": "Could not read the plan."
+    },
+    "sessions": {
+      "empty": "No sessions right now.",
+      "unavailable": "Could not read the session list.",
+      "blockedByTitle": "Waiting on session {{id}}"
+    },
+    "indexes": {
+      "empty": "No indexes to rank yet.",
+      "unavailable": "Could not read index usage.",
+      "unused": "unused"
     }
   },
   "query": {

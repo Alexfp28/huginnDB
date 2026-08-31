@@ -1729,6 +1729,8 @@
       "status": "Estado",
       "slowest": "Dónde va el tiempo",
       "storage": "Almacenamiento",
+      "sessions": "Sesiones",
+      "indexes": "Índices",
       "collapse": "Plegar sección",
       "expand": "Desplegar sección"
     },
@@ -1772,7 +1774,16 @@
       "max": "Más lenta",
       "examinedSent": "Examinadas / devueltas",
       "signal": "Señal",
-      "plan": "Plan"
+      "plan": "Plan",
+      "id": "Id",
+      "user": "Usuario",
+      "command": "Comando",
+      "state": "Estado",
+      "duration": "Duración",
+      "table": "Tabla",
+      "index": "Índice",
+      "reads": "Lecturas",
+      "size": "Tamaño"
     },
     "explain": {
       "show": "Ver el plan",
@@ -1780,6 +1791,16 @@
       "unavailable": "No se guardó ningún ejemplo ejecutable de esta sentencia.",
       "loading": "Leyendo el plan…",
       "error": "No se ha podido leer el plan."
+    },
+    "sessions": {
+      "empty": "No hay sesiones ahora mismo.",
+      "unavailable": "No se ha podido leer la lista de sesiones.",
+      "blockedByTitle": "Esperando a la sesión {{id}}"
+    },
+    "indexes": {
+      "empty": "Todavía no hay índices que clasificar.",
+      "unavailable": "No se ha podido leer el uso de índices.",
+      "unused": "sin usar"
     }
   },
   "query": {

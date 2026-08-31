@@ -8,6 +8,63 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Pulse gains Sessions and Indexes — the last two rail entries the expanded
+  window was missing.** Both are on-demand, manual-refresh reads: unlike the
+  digest table and the storage ranking, a session list that is fifteen
+  minutes stale is actively misleading, not merely dated, so neither view
+  auto-polls — each has its own refresh button instead, and the read fires
+  once when the rail entry is opened.
+
+  Sessions reads `SHOW FULL PROCESSLIST` on MySQL — the same statement any
+  `mysql` client runs, and unlike `information_schema.PROCESSLIST` never
+  disabled by `show_compatibility_56` on a server that has moved past it —
+  and the aggregation-pipeline form of `currentOp` on MongoDB. The two engines
+  keep their own vocabulary rather than being translated into a shared one:
+  MySQL's `Command`/`State` columns and MongoDB's `op` field and derived
+  `active`/`waiting for lock`/`idle` state say what each engine actually
+  means, and forcing one onto the other would just be inventing a mapping
+  neither server has. MongoDB's read is deliberately narrower than MySQL's —
+  `idleConnections`/`idleSessions` are both off, so an idle pool of client
+  connections never shows up, since MongoDB has no cheap equivalent of
+  MySQL's "Sleep" state worth surfacing and including every idle session
+  would bury the operations someone actually came here to see.
+
+  MySQL sessions also carry a best-effort blocking chain, read from
+  `performance_schema.data_lock_waits` joined against `performance_schema.threads`
+  — a session's own `Id`, when it is known to be waiting on a lock another
+  session holds. Same degrade-not-fail shape as the rest of Pulse: a role
+  without the privilege, or `performance_schema` off, just leaves every
+  `blocked_by` unset rather than failing the whole read. MongoDB does not
+  identify the blocker in this pass — `currentOp` has no direct "this opid
+  waits on that opid" field, only `waitingForLock` plus per-operation lock
+  state that would need matching lock resources across every other running
+  operation to resolve correctly, and that is real, correctness-sensitive
+  work left for later rather than guessed at. A blocked Mongo session still
+  shows through its state.
+
+  Indexes ranks usage since the counters were last reset, least-read first —
+  the point is spotting the indexes nobody touches. MySQL reads
+  `sys.schema_index_statistics` (installed on every server since 5.7.7),
+  which covers every table in the current database in one round trip.
+  MongoDB has no server-wide form of `$indexStats` the way `$collStats` has
+  for storage, so it reads per collection instead — bounded to the twenty
+  largest collections by the same footprint ranking `storage` already
+  computes, on the reasoning that a dead index on a tiny collection wastes
+  little while the biggest collections are where one costs the most in disk
+  and write overhead. Per-index *size* is skipped on both engines on purpose:
+  MySQL keeps it in `mysql.innodb_index_stats`, a system table ordinary
+  accounts frequently cannot read, and MongoDB would need a second
+  `$collStats` call per collection alongside `$indexStats`, doubling the
+  round trips the twenty-collection bound exists to avoid. An index truly
+  never read (`Some(0)`) is shown as "unused"; a server that could not be
+  asked at all (`None`) reads as a dash — the two are different claims and
+  collapsing them would either invent a usage figure or hide a real zero.
+
+  New: `pulse::{SessionRow, IndexUsage}`, `db::mysql::pulse::{sessions,
+  index_usage, blocking_chain}`, `db::mongo::pulse::{sessions, index_usage}`,
+  the `pulse_sessions`/`pulse_index_usage` commands, and the shared
+  `useOnDemandRead` hook the two new rail views are built on.
+
 - **Pulse can EXPLAIN a statement, on both engines, straight from the digest
   table.** Every row in the expanded window's Consultas view now has a Plan
   action; clicking it wraps that row's own captured example in `EXPLAIN` and

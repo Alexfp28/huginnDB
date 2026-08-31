@@ -7,7 +7,8 @@ use sqlx::{MySqlPool, Row};
 
 use crate::error::AppResult;
 use crate::pulse::{
-    truncate, ExplainPlan, MetricSample, PulseHealth, PulseNote, StorageItem, TopQuery,
+    truncate, ExplainPlan, IndexUsage, MetricSample, PulseHealth, PulseNote, SessionRow,
+    StorageItem, TopQuery,
 };
 
 /// `SHOW GLOBAL STATUS` name → canonical metric name.
@@ -306,6 +307,119 @@ fn named_text(row: &sqlx::mysql::MySqlRow, col: &str) -> Option<String> {
         .ok()
         .flatten()
         .map(|b| String::from_utf8_lossy(&b).into_owned())
+}
+/// Sessions the server currently holds open, from `SHOW FULL PROCESSLIST` —
+/// the same statement any `mysql` client runs, and unlike
+/// `information_schema.PROCESSLIST` never disabled by
+/// `performance_schema_show_processlist`/`show_compatibility_56` on a server
+/// that has otherwise moved past it.
+pub async fn sessions(pool: &MySqlPool) -> AppResult<Vec<SessionRow>> {
+    let rows = sqlx::query("SHOW FULL PROCESSLIST").fetch_all(pool).await?;
+    let blockers = blocking_chain(pool).await;
+
+    Ok(rows
+        .iter()
+        .map(|r| {
+            let id = num_at(r, "Id").to_string();
+            SessionRow {
+                blocked_by: blockers.get(&id).cloned(),
+                id,
+                user: named_text(r, "User"),
+                host: named_text(r, "Host"),
+                db: named_text(r, "db"),
+                command: named_text(r, "Command").unwrap_or_default(),
+                state: named_text(r, "State"),
+                duration_secs: num_at(r, "Time") as f64,
+                query: named_text(r, "Info").map(|q| truncate(&q)),
+            }
+        })
+        .collect())
+}
+
+/// Waiting `PROCESSLIST` id → blocking `PROCESSLIST` id, from
+/// `performance_schema.data_lock_waits`.
+///
+/// Best-effort, like every other `performance_schema` read here: a role
+/// without the privilege, or the schema switched off, leaves every session's
+/// `blocked_by` unset rather than failing the whole sessions read — not
+/// *naming* a lock wait is a smaller loss than the session list vanishing
+/// because of it. A waiting thread stuck on several locks at once collapses
+/// to its first blocker; spotting *a* blockage is this ranking's job, not
+/// modelling the full wait graph.
+async fn blocking_chain(pool: &MySqlPool) -> HashMap<String, String> {
+    let Ok(rows) = sqlx::query(
+        "SELECT wt.PROCESSLIST_ID AS waiting_pid, bt.PROCESSLIST_ID AS blocking_pid \
+         FROM performance_schema.data_lock_waits dlw \
+         JOIN performance_schema.threads wt ON wt.THREAD_ID = dlw.REQUESTING_THREAD_ID \
+         JOIN performance_schema.threads bt ON bt.THREAD_ID = dlw.BLOCKING_THREAD_ID",
+    )
+    .fetch_all(pool)
+    .await
+    else {
+        return HashMap::new();
+    };
+
+    let mut out = HashMap::new();
+    for row in rows {
+        let Some(waiting) = row.try_get::<Option<i64>, _>("waiting_pid").ok().flatten() else {
+            continue;
+        };
+        let Some(blocking) = row.try_get::<Option<i64>, _>("blocking_pid").ok().flatten() else {
+            continue;
+        };
+        out.entry(waiting.to_string())
+            .or_insert_with(|| blocking.to_string());
+    }
+    out
+}
+
+/// Per-index usage since the counters were last reset, least-read first — from
+/// `sys.schema_index_statistics`, a view over `performance_schema` installed
+/// on every server since 5.7.7. One query covers every table in the
+/// connection's current database in one round trip; MongoDB has no such
+/// server-wide read and pays per collection instead (see
+/// `crate::db::mongo::pulse::index_usage`'s doc comment).
+///
+/// Sorted ascending on purpose: the whole point of this view is spotting the
+/// indexes nobody reads, so those belong at the top rather than requiring a
+/// scroll past the busy ones to find them.
+///
+/// Per-index *size* is deliberately not read here: MySQL keeps it in
+/// `mysql.innodb_index_stats`, a system table ordinary accounts frequently
+/// cannot `SELECT` from, and failing this whole read over one optional column
+/// would cost more than the column is worth. `size_bytes` stays `None`.
+pub async fn index_usage(pool: &MySqlPool, limit: u32) -> AppResult<Vec<IndexUsage>> {
+    let db: Option<String> = sqlx::query_scalar("SELECT DATABASE()")
+        .fetch_one(pool)
+        .await?;
+    // No default database on the connection: nothing to rank, the same empty
+    // answer `storage` gives (issue #52).
+    let Some(db) = db.filter(|d| !d.is_empty()) else {
+        return Ok(vec![]);
+    };
+
+    let rows = sqlx::query(
+        "SELECT table_schema, table_name, index_name, rows_selected \
+         FROM sys.schema_index_statistics \
+         WHERE table_schema = ? \
+         ORDER BY rows_selected ASC \
+         LIMIT ?",
+    )
+    .bind(&db)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| IndexUsage {
+            schema: named_text(&r, "table_schema"),
+            table: named_text(&r, "table_name").unwrap_or_default(),
+            index_name: named_text(&r, "index_name").unwrap_or_default(),
+            reads: r.try_get::<Option<u64>, _>("rows_selected").ok().flatten(),
+            size_bytes: None,
+        })
+        .collect())
 }
 
 #[cfg(test)]
