@@ -247,6 +247,13 @@ per-database ones on demand.
 | `browse_table` | Browse one page of rows without writing SQL. |
 | `server_version` | The connected engine and version. |
 | `list_users` / `list_privileges` | Server-side users/roles and their grants. |
+| `pulse_health` | Live vital signs — queries/s, connection pressure, cache hit rate — normalised to one metric catalogue regardless of engine. MySQL and MongoDB only. |
+| `pulse_metrics` | One metric's stored history from Pulse's on-disk sampler, oldest first. Empty unless the connection has Pulse's history sampler turned on in Settings. |
+| `pulse_top_queries` | Statements the server has spent the most time on, each carrying a runnable `sample` when one is available. |
+| `pulse_explain` | The plan the server would use for one statement — typically a `pulse_top_queries` row's own `sample` — without running it. Refuses anything that isn't read-only, single-statement, and not itself `EXPLAIN`/`ANALYZE`. |
+| `pulse_storage` | The connection's biggest relations, largest first, split into data / index / free space. |
+| `pulse_sessions` | Every session or operation currently open on the server, with a best-effort blocking chain on MySQL. |
+| `pulse_index_usage` | Index usage across the biggest relations, least-read first — the fastest way to spot an index nobody reads. |
 | `insert_row` *(write)* | Insert one row (values as text; database defaults for omitted columns). Requires `data` or `full`. |
 | `update_cell` *(write)* | Update one column of the single row addressed by its full primary key. Requires `data` or `full`. |
 | `delete_rows` *(write)* | Delete one or more rows, each addressed by its full primary key. Requires `data` or `full`. |
@@ -278,6 +285,26 @@ replacement is `drop_index` then `create_index`, and leaving it as two calls
 keeps the window where the index is missing visible to the caller. Hiding an
 index (`collMod`) is reachable through `run_query` as
 `db.coll.hideIndex("name")` — the reversible way to rehearse a drop.
+
+### Pulse: how `pulse_metrics` reaches the sampler's history
+
+`pulse_metrics` reads `pulse.db` — the SQLite file HuginnDB's own background
+sampler writes a tick to every 60 seconds for each connection with Pulse's
+history sampler turned on (Settings → Pulse). Reaching it needs no special
+handling for either way this connector runs:
+
+- **With the desktop app's bridge active**, this tool (like every other one)
+  is served by the app, so it reads the app's own `pulse.db` handle directly.
+- **In standalone sidecar mode**, the connector opens the *same* file at the
+  same path — `pulse.db` lives next to `profiles.json` in the platform config
+  dir, resolved identically by both processes — and only ever runs a `SELECT`
+  against it. It never runs the sampler itself (that loop only starts inside
+  the desktop app's own launch sequence), so there is no write path to guard
+  against; SQLite's WAL journal mode, which this file always uses, already
+  allows any number of concurrent readers alongside the app's one writer.
+
+Either way, an empty reply means Pulse's sampler has never run for that
+connection — turn it on in Settings, wait for a tick or two, and ask again.
 
 ## MongoDB: targeting a database on a multi-database connection
 

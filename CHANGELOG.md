@@ -8,6 +8,42 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Pulse reaches the MCP connector — seven read-only tools, closing out the
+  feature.** `pulse_health`, `pulse_metrics`, `pulse_top_queries`,
+  `pulse_explain`, `pulse_storage`, `pulse_sessions`, `pulse_index_usage`:
+  the same six views the desktop panel already showed, plus the on-disk
+  history, now answerable by an AI client against any connection it's
+  allowed to reach — none of the app's own UI needs to be open for a client
+  to ask "how's this server doing" or "what's this connection's slowest
+  statement."
+
+  Every tool dispatches straight to the same `_inner` function its Tauri
+  command already calls — `pulse_health` to `pulse_health_inner`,
+  `pulse_explain` to `pulse_explain_inner`, and so on — through the same
+  `BridgeRequest` fan-out every other read-only tool already uses, which is
+  what makes `pulse_explain`'s safety guard (read-only, single statement, not
+  itself `EXPLAIN`/`ANALYZE`) apply here with no new code: it already lived
+  in `commands::pulse::validate_explain_target`, written the first time this
+  tool's arrival was still "not yet" rather than duplicated now that it is.
+
+  `pulse_metrics` is the one tool with nothing to dispatch to on the Tauri
+  side under that name — it reads `pulse.db` directly, via a new
+  `pulse_metrics_inner` extracted from the existing `pulse_history` command
+  so the two names share one implementation. It needs no live pool at all,
+  which matters for how it behaves in standalone sidecar mode: with no
+  desktop app running, `pulse.db`'s own WAL journal mode is what lets the
+  sidecar open the exact same file the app would and run reads against it
+  concurrently with the app's sampler, rather than needing a protocol of its
+  own to ask the app for the answer.
+
+  All seven are exhaustively wired through every match `BridgeRequest`
+  drives — `is_mutating` (all `false`), `label`, `connection_id_of` — so the
+  compiler catches an omission rather than a request silently falling
+  through to a `None`/`_ =>` default the way a write variant risks (see
+  `CLAUDE.md` gotcha #49). None of the seven touch `bridged_connection_id` or
+  either policy match: reads carry no `policy_id` and need none, the same
+  shape every read-only tool before them already has.
+
 - **Pulse gets a memory: `pulse.db`, a 60-second sampler, retention, and a
   Settings → Pulse panel to turn it on.** Every earlier Pulse view answered
   "how is this server right now" and forgot the answer the moment the window

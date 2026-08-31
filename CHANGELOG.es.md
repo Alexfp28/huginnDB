@@ -10,6 +10,48 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Pulse llega al conector MCP — siete herramientas de solo lectura, que
+  cierran la funcionalidad.** `pulse_health`, `pulse_metrics`,
+  `pulse_top_queries`, `pulse_explain`, `pulse_storage`, `pulse_sessions`,
+  `pulse_index_usage`: las mismas seis vistas que el panel de escritorio ya
+  mostraba, más el histórico en disco, ahora responderibles por un cliente
+  de IA contra cualquier conexión a la que tenga permitido llegar — no hace
+  falta tener abierta ninguna interfaz de la propia app para que un cliente
+  pregunte "cómo está este servidor" o "cuál es la sentencia más lenta de
+  esta conexión".
+
+  Cada herramienta despacha directamente a la misma función `_inner` que ya
+  llama su comando de Tauri — `pulse_health` a `pulse_health_inner`,
+  `pulse_explain` a `pulse_explain_inner`, y así con el resto — a través del
+  mismo abanico de `BridgeRequest` que ya usa cualquier otra herramienta de
+  solo lectura, que es lo que hace que la protección de `pulse_explain`
+  (solo lectura, una única sentencia, que no sea ella misma
+  `EXPLAIN`/`ANALYZE`) se aplique aquí sin código nuevo: ya vivía en
+  `commands::pulse::validate_explain_target`, escrita la primera vez que la
+  llegada de esta herramienta era todavía "aún no" en vez de duplicada ahora
+  que ya lo es.
+
+  `pulse_metrics` es la única herramienta sin nada a lo que despachar en el
+  lado de Tauri bajo ese nombre — lee `pulse.db` directamente, a través de
+  un nuevo `pulse_metrics_inner` extraído del comando `pulse_history` ya
+  existente, de forma que los dos nombres comparten una sola
+  implementación. No necesita ningún pool en vivo, lo cual importa para
+  cómo se comporta en modo sidecar independiente: sin la app de escritorio
+  corriendo, el propio modo de journal WAL de `pulse.db` es lo que permite
+  al sidecar abrir el mismo fichero que abriría la app y ejecutar lecturas
+  contra él de forma concurrente con el muestreador de la app, en vez de
+  necesitar un protocolo propio para pedirle la respuesta a la app.
+
+  Las siete están conectadas de forma exhaustiva por cada match que
+  gobierna `BridgeRequest` — `is_mutating` (todas `false`), `label`,
+  `connection_id_of` — así que el compilador detecta un olvido en vez de
+  que una petición caiga en silencio en el `None`/`_ =>` por defecto que sí
+  arriesga una variante de escritura (ver la gotcha #49 del `CLAUDE.md`).
+  Ninguna de las siete toca `bridged_connection_id` ni ninguno de los dos
+  matches de policy: las lecturas no llevan `policy_id` y no lo necesitan,
+  la misma forma que ya tiene cualquier herramienta de solo lectura
+  anterior.
+
 - **Pulse tiene memoria: `pulse.db`, un muestreador de 60 segundos, retención,
   y un panel Settings → Pulse para activarlo.** Cada vista de Pulse anterior
   respondía "cómo está este servidor ahora mismo" y olvidaba la respuesta en

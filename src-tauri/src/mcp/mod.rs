@@ -291,6 +291,31 @@ mod args {
         pub user: String,
     }
 
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct PulseMetrics {
+        pub connection_id: String,
+        /// Canonical metric name from Pulse's catalogue (`pulse_health`'s
+        /// reply lists which ones this connection's engine reports), e.g.
+        /// `"queries"`, `"connections_active"`.
+        pub metric: String,
+        /// Only points at or after this epoch-millisecond timestamp.
+        pub since_ms: i64,
+    }
+
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct PulseExplain {
+        pub connection_id: String,
+        /// One runnable statement to EXPLAIN — a `pulse_top_queries` row's
+        /// own `sample` field in practice. Must be read-only and a single
+        /// statement; rejected otherwise, same as `run_query`.
+        pub sample: String,
+        /// MongoDB only: the database `sample`'s `db.<collection>...` should
+        /// target, when the connection has no database bound. Ignored for
+        /// SQL drivers. Same field `run_query` takes for the same reason.
+        #[serde(default)]
+        pub database: Option<String>,
+    }
+
     /// Hand-written schema for a PK scalar value: a JSON string, number,
     /// boolean or null. `serde_json::Value`'s derived schema is the bare
     /// boolean `true` ("matches anything") — valid JSON Schema, but some MCP
@@ -1208,6 +1233,141 @@ impl Huginn {
                 connection_id,
                 user,
             }
+        })
+        .await
+    }
+
+    #[tool(description = "Read a connection's live vital signs: queries/s, \
+                          connection pressure, cache hit rate and related \
+                          counters, normalised to an engine-independent \
+                          metric catalogue (name kept the same whether the \
+                          server is MySQL or MongoDB). MySQL and MongoDB \
+                          only; fails with an explicit 'unsupported driver' \
+                          on the others.")]
+    async fn pulse_health(
+        &self,
+        Parameters(a): Parameters<args::Connection>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.read_tool(&a.connection_id, None, |connection_id| {
+            BridgeRequest::PulseHealth { connection_id }
+        })
+        .await
+    }
+
+    #[tool(description = "Read one metric's stored history from Pulse's \
+                          on-disk sampler (pulse.db), oldest first. Empty \
+                          unless the connection has Pulse's history sampler \
+                          turned on in Settings; pulse_health's reply names \
+                          the metrics a given engine reports.")]
+    async fn pulse_metrics(
+        &self,
+        Parameters(a): Parameters<args::PulseMetrics>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let args::PulseMetrics {
+            connection_id,
+            metric,
+            since_ms,
+        } = a;
+        self.read_tool(&connection_id, None, |connection_id| {
+            BridgeRequest::PulseMetrics {
+                connection_id,
+                metric,
+                since_ms,
+            }
+        })
+        .await
+    }
+
+    #[tool(description = "Statements this server has spent the most time on, \
+                          ranked by total time, since the statistics were \
+                          last reset (MySQL) or over what the profiler \
+                          currently retains (MongoDB). Each row's 'sample' \
+                          field, when present, is a runnable example \
+                          pulse_explain accepts.")]
+    async fn pulse_top_queries(
+        &self,
+        Parameters(a): Parameters<args::Tables>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let args::Tables {
+            connection_id,
+            schema,
+        } = a;
+        self.read_tool(&connection_id, schema.as_deref(), |connection_id| {
+            BridgeRequest::PulseTopQueries { connection_id }
+        })
+        .await
+    }
+
+    #[tool(description = "Read the plan the server would use for one \
+                          statement, without running it — a pulse_top_queries \
+                          row's own 'sample' field in practice. Refuses a \
+                          statement that is not read-only, is itself \
+                          EXPLAIN/ANALYZE, or carries more than one \
+                          statement.")]
+    async fn pulse_explain(
+        &self,
+        Parameters(a): Parameters<args::PulseExplain>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let args::PulseExplain {
+            connection_id,
+            sample,
+            database,
+        } = a;
+        self.read_tool(&connection_id, database.as_deref(), |connection_id| {
+            BridgeRequest::PulseExplain {
+                connection_id,
+                sample,
+            }
+        })
+        .await
+    }
+
+    #[tool(description = "The connection's biggest relations, largest first, \
+                          split into data / index / free space.")]
+    async fn pulse_storage(
+        &self,
+        Parameters(a): Parameters<args::Tables>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let args::Tables {
+            connection_id,
+            schema,
+        } = a;
+        self.read_tool(&connection_id, schema.as_deref(), |connection_id| {
+            BridgeRequest::PulseStorage { connection_id }
+        })
+        .await
+    }
+
+    #[tool(description = "Every session or operation currently open on the \
+                          server (SHOW FULL PROCESSLIST on MySQL; active or \
+                          lock-waiting ops from currentOp on MongoDB), with a \
+                          best-effort blocking chain on MySQL.")]
+    async fn pulse_sessions(
+        &self,
+        Parameters(a): Parameters<args::Connection>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.read_tool(&a.connection_id, None, |connection_id| {
+            BridgeRequest::PulseSessions { connection_id }
+        })
+        .await
+    }
+
+    #[tool(description = "Index usage across the connection's biggest \
+                          relations, least-read first — the fastest way to \
+                          spot an index nobody reads. A reads count of 0 \
+                          means genuinely never used since the counters were \
+                          last reset, not unavailable; unavailable reads as \
+                          null.")]
+    async fn pulse_index_usage(
+        &self,
+        Parameters(a): Parameters<args::Tables>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let args::Tables {
+            connection_id,
+            schema,
+        } = a;
+        self.read_tool(&connection_id, schema.as_deref(), |connection_id| {
+            BridgeRequest::PulseIndexUsage { connection_id }
         })
         .await
     }
@@ -2352,6 +2512,45 @@ mod tests {
                 !raw.contains("\"additionalProperties\":true")
                     && !raw.contains("\"additionalProperties\": true"),
                 "{name}: schema must not have a bare-boolean additionalProperties: {raw}"
+            );
+        }
+    }
+
+    /// The seven Pulse tools are registered and advertise a sane schema.
+    /// Same shape as the write-tool regression test above, run over reads:
+    /// `PulseMetrics`/`PulseExplain` are the two new args structs this batch
+    /// added, and both are flat (`String`/`i64` fields only), so this pins
+    /// down that staying flat keeps schemars from reaching for `$ref`/`$defs`
+    /// the way a nested struct would (issue #83).
+    #[test]
+    fn pulse_tool_schemas_are_registered_and_stay_flat() {
+        let tools = Huginn::tool_router().list_all();
+        for name in [
+            "pulse_health",
+            "pulse_metrics",
+            "pulse_top_queries",
+            "pulse_explain",
+            "pulse_storage",
+            "pulse_sessions",
+            "pulse_index_usage",
+        ] {
+            let tool = tools
+                .iter()
+                .find(|t| t.name == name)
+                .unwrap_or_else(|| panic!("tool {name} missing from tool_router"));
+            assert_eq!(
+                tool.input_schema.get("type").and_then(|v| v.as_str()),
+                Some("object"),
+                "{name}: root schema must stay type:object"
+            );
+            let raw = serde_json::to_string(tool.input_schema.as_ref()).unwrap();
+            assert!(
+                !raw.contains("\"$ref\""),
+                "{name}: schema must not use $ref: {raw}"
+            );
+            assert!(
+                !raw.contains("\"$defs\""),
+                "{name}: schema must not use $defs: {raw}"
             );
         }
     }

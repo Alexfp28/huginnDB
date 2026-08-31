@@ -128,6 +128,43 @@ pub enum BridgeRequest {
         connection_id: String,
         user: String,
     },
+    /// One read of a connection's vital signs. See `crate::pulse`.
+    PulseHealth {
+        connection_id: String,
+    },
+    /// One metric's stored history from `pulse.db`, oldest first. Answered by
+    /// whoever owns `AppState.pulse_store` — the same host either way, since
+    /// unlike every other request here it needs no live pool at all.
+    PulseMetrics {
+        connection_id: String,
+        metric: String,
+        since_ms: i64,
+    },
+    /// Statements the server has spent the most time on.
+    PulseTopQueries {
+        connection_id: String,
+    },
+    /// The plan the server would use for one statement, without running it.
+    /// `sample` is validated read-only, single-statement, and not itself an
+    /// `EXPLAIN`/`ANALYZE` by `commands::pulse::validate_explain_target`
+    /// before either driver ever sees it.
+    PulseExplain {
+        connection_id: String,
+        sample: String,
+    },
+    /// The connection's biggest relations, largest first.
+    PulseStorage {
+        connection_id: String,
+    },
+    /// Every session or operation currently open on the server.
+    PulseSessions {
+        connection_id: String,
+    },
+    /// Index usage across the connection's biggest relations, least-read
+    /// first.
+    PulseIndexUsage {
+        connection_id: String,
+    },
     /// Read a view's definition. SQL drivers answer with the body; MongoDB with
     /// `viewOn` plus the stored pipeline as source text.
     GetViewDefinition {
@@ -284,6 +321,13 @@ impl BridgeRequest {
             | BridgeRequest::ServerVersion { .. }
             | BridgeRequest::ListUsers { .. }
             | BridgeRequest::ListPrivileges { .. }
+            | BridgeRequest::PulseHealth { .. }
+            | BridgeRequest::PulseMetrics { .. }
+            | BridgeRequest::PulseTopQueries { .. }
+            | BridgeRequest::PulseExplain { .. }
+            | BridgeRequest::PulseStorage { .. }
+            | BridgeRequest::PulseSessions { .. }
+            | BridgeRequest::PulseIndexUsage { .. }
             | BridgeRequest::FetchTableData { .. }
             | BridgeRequest::GetViewDefinition { .. }
             // A dry run executes nothing, so a lost reply costs at most a
@@ -305,6 +349,13 @@ impl BridgeRequest {
             BridgeRequest::ServerVersion { .. } => "server_version",
             BridgeRequest::ListUsers { .. } => "list_users",
             BridgeRequest::ListPrivileges { .. } => "list_privileges",
+            BridgeRequest::PulseHealth { .. } => "pulse_health",
+            BridgeRequest::PulseMetrics { .. } => "pulse_metrics",
+            BridgeRequest::PulseTopQueries { .. } => "pulse_top_queries",
+            BridgeRequest::PulseExplain { .. } => "pulse_explain",
+            BridgeRequest::PulseStorage { .. } => "pulse_storage",
+            BridgeRequest::PulseSessions { .. } => "pulse_sessions",
+            BridgeRequest::PulseIndexUsage { .. } => "pulse_index_usage",
             BridgeRequest::RunStatement { .. } => "run_query",
             BridgeRequest::FetchTableData { .. } => "browse_table",
             BridgeRequest::InsertRow { .. } => "insert_row",

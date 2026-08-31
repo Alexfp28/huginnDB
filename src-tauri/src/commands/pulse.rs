@@ -264,12 +264,34 @@ pub async fn pulse_explain(
 }
 
 /// One metric's stored history for `connection_id`, oldest first, from
-/// `pulse.db`.
+/// `pulse.db`. Named for what it reads (`pulse_metrics_inner`) rather than
+/// for the Tauri command below, so the MCP `pulse_metrics` tool (a
+/// different name, same read) dispatches straight to it — the same split
+/// `list_indexes_detailed_inner` already has from its own MCP tool name.
 ///
-/// The one Pulse command that does **not** call `ensure_view`/`pool_for`:
-/// history is exactly the thing that is still useful once a connection is
-/// closed, so requiring a live pool to read it back would defeat half the
-/// point of persisting it.
+/// Deliberately does **not** call `ensure_view`/`pool_for`: history is
+/// exactly the thing that is still useful once a connection is closed, so
+/// requiring a live pool to read it back would defeat half the point of
+/// persisting it.
+pub async fn pulse_metrics_inner(
+    state: &AppState,
+    connection_id: &str,
+    metric: &str,
+    since_ms: i64,
+) -> AppResult<PulseHistorySeries> {
+    let kind = crate::pulse::spec(metric)
+        .map(|s| s.kind)
+        .ok_or_else(|| AppError::InvalidInput(format!("unknown Pulse metric: {metric}")))?;
+    let points = state
+        .pulse_store
+        .range(connection_id, metric, since_ms)
+        .await?
+        .into_iter()
+        .map(|(ts_ms, value)| PulseHistoryPoint { ts_ms, value })
+        .collect();
+    Ok(PulseHistorySeries { kind, points })
+}
+
 #[tauri::command]
 pub async fn pulse_history(
     state: State<'_, AppState>,
@@ -277,17 +299,7 @@ pub async fn pulse_history(
     metric: String,
     since_ms: i64,
 ) -> AppResult<PulseHistorySeries> {
-    let kind = crate::pulse::spec(&metric)
-        .map(|s| s.kind)
-        .ok_or_else(|| AppError::InvalidInput(format!("unknown Pulse metric: {metric}")))?;
-    let points = state
-        .pulse_store
-        .range(&connection_id, &metric, since_ms)
-        .await?
-        .into_iter()
-        .map(|(ts_ms, value)| PulseHistoryPoint { ts_ms, value })
-        .collect();
-    Ok(PulseHistorySeries { kind, points })
+    pulse_metrics_inner(state.inner(), &connection_id, &metric, since_ms).await
 }
 
 #[cfg(test)]

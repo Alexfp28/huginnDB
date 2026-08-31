@@ -264,6 +264,13 @@ datos a demanda.
 | `browse_table` | Navega una página de filas sin escribir SQL. |
 | `server_version` | El motor y la versión conectados. |
 | `list_users` / `list_privileges` | Usuarios/roles del servidor y sus permisos. |
+| `pulse_health` | Constantes vitales en vivo — consultas/s, presión de conexiones, tasa de aciertos de caché — normalizadas a un único catálogo de métricas sea cual sea el motor. Solo MySQL y MongoDB. |
+| `pulse_metrics` | Histórico guardado de una métrica, leído del muestreador en disco de Pulse, de más antiguo a más reciente. Vacío salvo que la conexión tenga el muestreador de histórico de Pulse activado en Ajustes. |
+| `pulse_top_queries` | Sentencias en las que el servidor ha invertido más tiempo, cada una con un `sample` ejecutable cuando hay uno disponible. |
+| `pulse_explain` | El plan que usaría el servidor para una sentencia — típicamente el propio `sample` de una fila de `pulse_top_queries` — sin llegar a ejecutarla. Rechaza cualquier cosa que no sea de solo lectura, una única sentencia, y que no sea ella misma `EXPLAIN`/`ANALYZE`. |
+| `pulse_storage` | Las relaciones más grandes de la conexión, de mayor a menor, desglosadas en datos / índices / espacio libre. |
+| `pulse_sessions` | Cada sesión u operación abierta ahora mismo en el servidor, con una cadena de bloqueo a mejor esfuerzo en MySQL. |
+| `pulse_index_usage` | Uso de índices en las relaciones más grandes, de menos a más leído — la forma más rápida de detectar un índice que nadie lee. |
 | `insert_row` *(escritura)* | Inserta una fila (valores como texto; valores por defecto de la BD para columnas omitidas). Requiere `data` o `full`. |
 | `update_cell` *(escritura)* | Actualiza una columna de la única fila identificada por su clave primaria completa. Requiere `data` o `full`. |
 | `delete_rows` *(escritura)* | Borra una o más filas, cada una identificada por su clave primaria completa. Requiere `data` o `full`. |
@@ -297,6 +304,31 @@ sitio: reemplazarlo es `drop_index` y luego `create_index`, y dejarlo en dos
 llamadas mantiene visible para quien llama la ventana en la que el índice no
 existe. Ocultar un índice (`collMod`) se alcanza por `run_query` como
 `db.coll.hideIndex("nombre")` — la forma reversible de ensayar un borrado.
+
+### Pulse: cómo `pulse_metrics` llega al histórico del muestreador
+
+`pulse_metrics` lee `pulse.db` — el fichero SQLite en el que el propio
+muestreador en segundo plano de HuginnDB escribe una lectura cada 60 segundos
+por cada conexión con el muestreador de histórico de Pulse activado
+(Ajustes → Pulse). Llegar hasta él no necesita ningún tratamiento especial
+para ninguna de las dos formas en que corre este conector:
+
+- **Con el puente de la app de escritorio activo**, esta herramienta (como
+  cualquier otra) la sirve la app, así que lee directamente el propio
+  manejador de `pulse.db` de la app.
+- **En modo sidecar independiente**, el conector abre el *mismo* fichero en
+  la misma ruta — `pulse.db` vive junto a `profiles.json` en el directorio de
+  configuración de la plataforma, resuelto de forma idéntica por los dos
+  procesos — y solo llega a ejecutar un `SELECT` contra él. Nunca ejecuta el
+  muestreador él mismo (ese bucle solo arranca dentro de la secuencia de
+  lanzamiento de la propia app de escritorio), así que no hay ninguna vía de
+  escritura que proteger; el modo de journal WAL de este fichero, que usa
+  siempre, ya permite cualquier número de lectores concurrentes junto al
+  único escritor de la app.
+
+En cualquiera de los dos casos, una respuesta vacía significa que el
+muestreador de Pulse nunca se ha ejecutado para esa conexión — actívalo en
+Ajustes, espera una lectura o dos, y pregunta de nuevo.
 
 ## MongoDB: apuntar a una base de datos en una conexión multi-base
 

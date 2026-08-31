@@ -139,6 +139,67 @@ pub async fn execute(
             )
             .await?,
         )?,
+        PulseHealth { connection_id } => serde_json::to_value(
+            crate::error::with_timeout(
+                "pulse_health",
+                crate::commands::pulse::pulse_health_inner(state, connection_id),
+            )
+            .await?,
+        )?,
+        PulseMetrics {
+            connection_id,
+            metric,
+            since_ms,
+        } => serde_json::to_value(
+            crate::error::with_timeout(
+                "pulse_metrics",
+                crate::commands::pulse::pulse_metrics_inner(
+                    state,
+                    connection_id,
+                    metric,
+                    *since_ms,
+                ),
+            )
+            .await?,
+        )?,
+        PulseTopQueries { connection_id } => serde_json::to_value(
+            crate::error::with_timeout(
+                "pulse_top_queries",
+                crate::commands::pulse::pulse_top_queries_inner(state, connection_id),
+            )
+            .await?,
+        )?,
+        PulseExplain {
+            connection_id,
+            sample,
+        } => serde_json::to_value(
+            crate::error::with_timeout(
+                "pulse_explain",
+                crate::commands::pulse::pulse_explain_inner(state, connection_id, sample),
+            )
+            .await?,
+        )?,
+        PulseStorage { connection_id } => serde_json::to_value(
+            crate::error::with_timeout(
+                "pulse_storage",
+                crate::commands::pulse::pulse_storage_inner(state, connection_id),
+            )
+            .await?,
+        )?,
+        PulseSessions { connection_id } => serde_json::to_value(
+            crate::error::with_timeout(
+                "pulse_sessions",
+                crate::commands::pulse::pulse_sessions_inner(state, connection_id),
+            )
+            .await?,
+        )?,
+        PulseIndexUsage { connection_id } => serde_json::to_value(
+            crate::error::with_timeout(
+                "pulse_index_usage",
+                crate::commands::pulse::pulse_index_usage_inner(state, connection_id),
+            )
+            .await?,
+        )?,
         RunStatement {
             connection_id, sql, ..
         } => serde_json::to_value(

@@ -319,6 +319,13 @@ fn connection_id_of(request: &BridgeRequest) -> String {
         | ServerVersion { connection_id }
         | ListUsers { connection_id }
         | ListPrivileges { connection_id, .. }
+        | PulseHealth { connection_id }
+        | PulseMetrics { connection_id, .. }
+        | PulseTopQueries { connection_id }
+        | PulseExplain { connection_id, .. }
+        | PulseStorage { connection_id }
+        | PulseSessions { connection_id }
+        | PulseIndexUsage { connection_id }
         | ResolveMongoTarget { connection_id, .. }
         | GetTableStructure { connection_id, .. }
         | ListIndexes { connection_id, .. }
