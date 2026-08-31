@@ -537,7 +537,8 @@ pub struct PublishImpact {
 ///
 /// The refreshed/unchanged split is then read off the simulated pool by
 /// comparing each profile before and after, which means it needs no knowledge of
-/// *which* fields the merge preserves locally (`mcp_write`, today). Add one and
+/// *which* fields the merge preserves locally (`mcp_write`/`pulse_enabled`,
+/// today). Add one and
 /// this keeps telling the truth.
 ///
 /// Pure: no locks, no pools, no keychain. The `live` set handed to `merge_into`

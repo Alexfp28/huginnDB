@@ -41,5 +41,6 @@ pub fn profile(id: &str) -> ConnectionProfile {
         mcp_write: Default::default(),
         max_connections: None,
         origin_id: None,
+        pulse_enabled: false,
     }
 }

@@ -55,6 +55,19 @@ const VARIABLES: &[&str] = &[
     "version",
 ];
 
+/// `STATUS_METRICS`, applied. Split out of [`build_health`] so
+/// [`sample`] — the sampler's one-round-trip read — can share the exact same
+/// mapping without also pulling in `SHOW GLOBAL VARIABLES`.
+fn map_status(status: &HashMap<String, String>) -> Vec<MetricSample> {
+    STATUS_METRICS
+        .iter()
+        .filter_map(|(raw, canonical)| {
+            let value = status.get(*raw)?.trim().parse::<f64>().ok()?;
+            MetricSample::new(canonical, value)
+        })
+        .collect()
+}
+
 /// Parse the two `Variable_name`/`Value` result sets into a snapshot.
 ///
 /// Pure, so the mapping table above is testable without a server — which
@@ -65,13 +78,7 @@ pub fn build_health(
     variables: &HashMap<String, String>,
     sampled_at_ms: u64,
 ) -> PulseHealth {
-    let mut metrics: Vec<MetricSample> = STATUS_METRICS
-        .iter()
-        .filter_map(|(raw, canonical)| {
-            let value = status.get(*raw)?.trim().parse::<f64>().ok()?;
-            MetricSample::new(canonical, value)
-        })
-        .collect();
+    let mut metrics = map_status(status);
 
     if let Some(max) = variables
         .get("max_connections")
@@ -138,6 +145,17 @@ pub async fn health(pool: &MySqlPool) -> AppResult<PulseHealth> {
         &variables,
         crate::state::now_millis(),
     ))
+}
+
+/// The one-round-trip read `pulse::sampler` ticks every 60s: `SHOW GLOBAL
+/// STATUS` only, no `SHOW GLOBAL VARIABLES` — this is exactly the read
+/// [`health`]'s own doc comment says the sampler would skip. That drops
+/// `connections_max` (it lives in `max_connections`, a variable) from the
+/// stored history; the live panel still has it, since it calls [`health`],
+/// not this.
+pub async fn sample(pool: &MySqlPool) -> AppResult<Vec<MetricSample>> {
+    let status = name_value_rows(pool, "SHOW GLOBAL STATUS").await?;
+    Ok(map_status(&status))
 }
 
 /// Collect a `Variable_name` / `Value` result set into a map.

@@ -514,6 +514,11 @@ pub(crate) fn merge_into(
                 // origin. Everything else — host, port, credentials, the
                 // visible-database default — is the file's to dictate.
                 profile.mcp_write = existing.mcp_write;
+                // Same reasoning, one field down: whether this machine samples
+                // the connection into pulse.db is a local resource decision,
+                // not something a publisher two machines away should be able
+                // to flip back on with an unrelated refresh.
+                profile.pulse_enabled = existing.pulse_enabled;
                 *existing = profile.clone();
                 report.updated.push(profile.id);
             }
@@ -844,6 +849,28 @@ mod tests {
         let after = merge(vec![local], &[incoming]);
 
         assert_eq!(after[0].mcp_write, McpWritePolicy::Data, "policy is local");
+        assert_eq!(after[0].host, "newhost", "everything else is the file's");
+    }
+
+    /// Same guarantee, one field down: a local `pulse_enabled` opt-in must not
+    /// be silently reset (or silently granted) by a refresh from a shared
+    /// origin — see the comment on the preservation line in `merge_into`.
+    #[test]
+    fn a_sync_preserves_the_local_pulse_opt_in() {
+        let local = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            pulse_enabled: true,
+            ..testkit::profile("shared")
+        };
+        let incoming = published(ConnectionProfile {
+            host: "newhost".into(),
+            pulse_enabled: false,
+            ..testkit::profile("shared")
+        });
+
+        let after = merge(vec![local], &[incoming]);
+
+        assert!(after[0].pulse_enabled, "the opt-in is local");
         assert_eq!(after[0].host, "newhost", "everything else is the file's");
     }
 

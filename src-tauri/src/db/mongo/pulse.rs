@@ -155,6 +155,18 @@ pub async fn health(conn: &MongoConn) -> AppResult<PulseHealth> {
     Ok(build_health(&status, level))
 }
 
+/// The one-round-trip read `pulse::sampler` ticks every 60s: `serverStatus`
+/// only, skipping the profiling-level read — this is exactly the second
+/// round trip [`health`]'s own doc comment says the sampler would skip.
+/// `build_health` never needs the level to compute `metrics`, only to decide
+/// whether to raise `profilerOff`, so passing `None` here costs nothing but
+/// that note, which the stored history has no use for anyway.
+pub async fn sample(conn: &MongoConn) -> AppResult<Vec<MetricSample>> {
+    let admin = conn.client.database("admin");
+    let status = admin.run_command(doc! {"serverStatus": 1}).await?;
+    Ok(build_health(&status, None).metrics)
+}
+
 /// Per-collection footprint from one `$collStats` aggregation.
 ///
 /// One round trip for every collection at once, the same call

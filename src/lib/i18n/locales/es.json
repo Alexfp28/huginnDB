@@ -1050,6 +1050,10 @@
         "label": "MCP",
         "desc": "Conector para IA"
       },
+      "pulse": {
+        "label": "Pulse",
+        "desc": "Histórico del servidor"
+      },
       "about": {
         "label": "Acerca de",
         "desc": "Versión y rutas"
@@ -1335,6 +1339,31 @@
       "selectHint": "Selecciona al menos una conexión arriba.",
       "copied": "Copiado al portapapeles.",
       "fullGuide": "Guía completa de configuración (Codex, Claude Desktop, flags, herramientas)…"
+    },
+    "pulse": {
+      "intro": "Con qué frecuencia Pulse muestrea las constantes vitales de una conexión hacia su histórico en disco, cuánto se conserva ese histórico, y qué conexiones vigila — opt-in por conexión, desactivado por defecto.",
+      "historyIntervalSecs": {
+        "label": "Muestrear cada",
+        "desc": "Segundos entre cada lectura del histórico para cada conexión con Pulse activado. Esta es la lectura que realmente cuesta un viaje de ida y vuelta contra el servidor — la vista en vivo del panel lateral sondea aparte y no se ve afectada."
+      },
+      "retentionDays": {
+        "label": "Conservar histórico",
+        "desc": "Días que sobrevive un punto del histórico antes de podarse. Las muestras con más de 48 horas se reducen antes a un punto cada 5 minutos; ese paso no es ajustable."
+      },
+      "maxDiskMb": {
+        "label": "Presupuesto de disco",
+        "desc": "Límite blando sobre el tamaño de pulse.db, en megabytes. 0 lo desactiva. Una válvula de seguridad encima de la ventana de retención de arriba, no un sustituto de ajustarla."
+      },
+      "sampleWhenMinimized": {
+        "label": "Muestrear minimizada",
+        "desc": "Seguir muestreando mientras la ventana de HuginnDB está minimizada. Desactivarlo cambia un hueco en el histórico por coste cero en el servidor mientras la app no está en pantalla."
+      },
+      "connectionsLabel": "Conexiones a muestrear",
+      "enabledCount": "{{enabled}} de {{total}} activadas",
+      "noConnections": "Aún no hay conexiones guardadas — añade una primero.",
+      "enableAll": "Activar todas",
+      "disableAll": "Desactivar todas",
+      "enableAllInSection": "Alternar todas las conexiones de {{section}}"
     },
     "about": {
       "tagline": "Gestor de bases de datos de escritorio minimalista para PostgreSQL, MySQL y SQLite.",
@@ -1731,6 +1760,7 @@
       "storage": "Almacenamiento",
       "sessions": "Sesiones",
       "indexes": "Índices",
+      "retro": "Histórico",
       "collapse": "Plegar sección",
       "expand": "Desplegar sección"
     },
@@ -1801,6 +1831,15 @@
       "empty": "Todavía no hay índices que clasificar.",
       "unavailable": "No se ha podido leer el uso de índices.",
       "unused": "sin usar"
+    },
+    "retro": {
+      "unavailable": "No se ha podido leer el histórico de esta métrica.",
+      "empty": "Todavía no hay histórico para este rango.",
+      "range": {
+        "24h": "24h",
+        "7d": "7d",
+        "30d": "30d"
+      }
     }
   },
   "query": {

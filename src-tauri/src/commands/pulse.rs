@@ -9,7 +9,10 @@ use tauri::State;
 
 use crate::db::sql::StmtClass;
 use crate::error::{AppError, AppResult};
-use crate::pulse::{ExplainPlan, IndexUsage, PulseHealth, SessionRow, StorageItem, TopQuery};
+use crate::pulse::{
+    ExplainPlan, IndexUsage, PulseHealth, PulseHistoryPoint, PulseHistorySeries, SessionRow,
+    StorageItem, TopQuery,
+};
 use crate::state::{AppState, DbPool};
 
 /// A driver Pulse does not read yet.
@@ -258,6 +261,33 @@ pub async fn pulse_explain(
         pulse_explain_inner(state.inner(), &connection_id, &sample),
     )
     .await
+}
+
+/// One metric's stored history for `connection_id`, oldest first, from
+/// `pulse.db`.
+///
+/// The one Pulse command that does **not** call `ensure_view`/`pool_for`:
+/// history is exactly the thing that is still useful once a connection is
+/// closed, so requiring a live pool to read it back would defeat half the
+/// point of persisting it.
+#[tauri::command]
+pub async fn pulse_history(
+    state: State<'_, AppState>,
+    connection_id: String,
+    metric: String,
+    since_ms: i64,
+) -> AppResult<PulseHistorySeries> {
+    let kind = crate::pulse::spec(&metric)
+        .map(|s| s.kind)
+        .ok_or_else(|| AppError::InvalidInput(format!("unknown Pulse metric: {metric}")))?;
+    let points = state
+        .pulse_store
+        .range(&connection_id, &metric, since_ms)
+        .await?
+        .into_iter()
+        .map(|(ts_ms, value)| PulseHistoryPoint { ts_ms, value })
+        .collect();
+    Ok(PulseHistorySeries { kind, points })
 }
 
 #[cfg(test)]

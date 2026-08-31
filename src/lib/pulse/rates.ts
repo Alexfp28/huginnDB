@@ -12,7 +12,7 @@
  * testable without a database.
  */
 
-import type { PulseHealth, PulseMetricSample } from "@/types";
+import type { PulseHealth, PulseMetricKind, PulseMetricSample } from "@/types";
 
 /** A metric's reading in one snapshot, paired with when it was taken. */
 interface Point {
@@ -114,6 +114,38 @@ export function latestOf(series: readonly (number | null)[]): number | null {
  *  than a broken one. */
 export function compact(series: readonly (number | null)[]): number[] {
   return series.filter((v): v is number => v !== null && Number.isFinite(v));
+}
+
+/**
+ * The series to plot for one metric's *stored history* — `pulse_history`'s
+ * raw `{tsMs, value}` points rather than the live store's `PulseHealth`
+ * snapshots, so the Retrospectiva view can share this arithmetic with the
+ * live one without either side re-deriving it.
+ *
+ * Same rules as `seriesFor`: a gauge plots as read, a counter differences
+ * into a rate one point shorter than the input, and `rateBetween` already
+ * treats a restart or a stalled clock as `null` rather than inventing a
+ * slope. Points are not assumed to be evenly spaced in time — history can
+ * thin out from downsampling — so `rateBetween`'s real `dtMs` between each
+ * pair is what makes the rate correct regardless of the gap.
+ */
+export function seriesFromHistory(
+  points: readonly { tsMs: number; value: number }[],
+  kind: PulseMetricKind,
+): (number | null)[] {
+  if (kind === "gauge") {
+    return points.map((p) => p.value);
+  }
+  const out: (number | null)[] = [];
+  for (let i = 1; i < points.length; i++) {
+    out.push(
+      rateBetween(
+        { value: points[i - 1].value, atMs: points[i - 1].tsMs },
+        { value: points[i].value, atMs: points[i].tsMs },
+      ),
+    );
+  }
+  return out;
 }
 
 /**

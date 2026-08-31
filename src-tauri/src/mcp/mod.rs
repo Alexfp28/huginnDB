@@ -1815,6 +1815,7 @@ mod tests {
                 mcp_write: policy,
                 max_connections: None,
                 origin_id: None,
+                pulse_enabled: false,
             });
         let mut allowed = HashSet::new();
         allowed.insert(id.to_string());

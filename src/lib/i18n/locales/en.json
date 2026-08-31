@@ -1050,6 +1050,10 @@
         "label": "MCP",
         "desc": "AI tool connector"
       },
+      "pulse": {
+        "label": "Pulse",
+        "desc": "Server history sampler"
+      },
       "about": {
         "label": "About",
         "desc": "Version & paths"
@@ -1335,6 +1339,31 @@
       "selectHint": "Select at least one connection above.",
       "copied": "Copied to clipboard.",
       "fullGuide": "Full setup guide (Codex, Claude Desktop, flags, tools)…"
+    },
+    "pulse": {
+      "intro": "How often Pulse samples a connection's vital signs into its on-disk history, how long that history is kept, and which connections it watches — opt-in per connection, off by default.",
+      "historyIntervalSecs": {
+        "label": "Sample every",
+        "desc": "Seconds between history ticks for each connection with Pulse enabled. This is the read that actually costs a round trip against the server — the dock panel's live view polls independently and is not affected."
+      },
+      "retentionDays": {
+        "label": "Keep history for",
+        "desc": "Days a history point survives before it is pruned. Samples older than 48 hours are downsampled to one point per 5 minutes first; that step is not adjustable."
+      },
+      "maxDiskMb": {
+        "label": "Disk budget",
+        "desc": "Soft cap on pulse.db's size, in megabytes. 0 disables it. A safety valve on top of the retention window above, not a replacement for tuning it."
+      },
+      "sampleWhenMinimized": {
+        "label": "Sample while minimised",
+        "desc": "Keep ticking while HuginnDB's window is minimised. Off trades a gap in the history for zero server load whenever the app isn't on screen."
+      },
+      "connectionsLabel": "Connections to sample",
+      "enabledCount": "{{enabled}} of {{total}} enabled",
+      "noConnections": "No saved connections yet — add one first.",
+      "enableAll": "Enable all",
+      "disableAll": "Disable all",
+      "enableAllInSection": "Toggle every connection in {{section}}"
     },
     "about": {
       "tagline": "Minimal desktop database manager for PostgreSQL, MySQL and SQLite.",
@@ -1731,6 +1760,7 @@
       "storage": "Storage",
       "sessions": "Sessions",
       "indexes": "Indexes",
+      "retro": "History",
       "collapse": "Collapse section",
       "expand": "Expand section"
     },
@@ -1801,6 +1831,15 @@
       "empty": "No indexes to rank yet.",
       "unavailable": "Could not read index usage.",
       "unused": "unused"
+    },
+    "retro": {
+      "unavailable": "Could not read this metric's history.",
+      "empty": "No history recorded yet for this range.",
+      "range": {
+        "24h": "24h",
+        "7d": "7d",
+        "30d": "30d"
+      }
     }
   },
   "query": {

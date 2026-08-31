@@ -20,6 +20,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Activity,
   Bell,
   Cable,
   Network,
@@ -56,6 +57,7 @@ import { ConnectionsSection } from "@/components/settings/sections/ConnectionsSe
 import { AppearanceSection } from "@/components/settings/sections/AppearanceSection";
 import { ShortcutsSection } from "@/components/settings/sections/ShortcutsSection";
 import { McpSection } from "@/components/settings/sections/McpSection";
+import { PulseSection } from "@/components/settings/sections/PulseSection";
 import { JsonSchemasSection } from "@/components/settings/sections/JsonSchemasSection";
 import { OriginsSection } from "@/components/settings/sections/OriginsSection";
 import { AboutSection } from "@/components/settings/sections/AboutSection";
@@ -84,6 +86,7 @@ const SECTIONS: {
   { id: "jsonSchemas", icon: FileJson },
   { id: "origins", icon: FolderSync },
   { id: "mcp", icon: Cable },
+  { id: "pulse", icon: Activity },
   { id: "about", icon: Info },
 ];
 
@@ -176,6 +179,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             {section === "jsonSchemas" && <JsonSchemasSection />}
             {section === "origins" && <OriginsSection />}
             {section === "mcp" && <McpSection />}
+            {section === "pulse" && <PulseSection />}
             {section === "about" && <AboutSection />}
           </main>
         </div>

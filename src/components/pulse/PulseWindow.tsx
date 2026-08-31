@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   ChevronRight,
   HardDrive,
+  History,
   Link2,
   ListOrdered,
   ListTree,
@@ -46,6 +47,7 @@ import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
 import { NotificationOverflowPill } from "@/components/shell/NotificationOverflowPill";
 import { EmptyState } from "@/components/common/EmptyState";
 import { AlertList } from "@/components/pulse/sections/AlertList";
+import { Sparkline } from "@/components/pulse/charts/Sparkline";
 import { StatusTiles } from "@/components/pulse/sections/StatusTiles";
 import { StorageLegend } from "@/components/pulse/sections/StorageLegend";
 import { slowestHint } from "@/lib/pulse/hints";
@@ -63,12 +65,15 @@ import {
 } from "@/stores/preferences/preferences";
 import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
 import { useOnDemandRead } from "@/lib/pulse/useOnDemandRead";
-import type { PulseIndexUsage, PulseSession, PulseTopQuery } from "@/types";
+import { latestOf, seriesFromHistory } from "@/lib/pulse/rates";
+import type {
+  PulseHistorySeries,
+  PulseIndexUsage,
+  PulseSession,
+  PulseTopQuery,
+} from "@/types";
 
-/** The views this window can show today. The history retrospective joins the
- *  list once the disk-backed sampler lands — a rail entry with nothing
- *  behind it would be worse than an absent one. */
-type ViewId = "status" | "queries" | "storage" | "sessions" | "indexes";
+type ViewId = "status" | "queries" | "storage" | "sessions" | "indexes" | "retro";
 
 const VIEWS: { id: ViewId; icon: LucideIcon; labelKey: string }[] = [
   { id: "status", icon: Activity, labelKey: "pulse.section.status" },
@@ -76,6 +81,7 @@ const VIEWS: { id: ViewId; icon: LucideIcon; labelKey: string }[] = [
   { id: "storage", icon: HardDrive, labelKey: "pulse.section.storage" },
   { id: "sessions", icon: Users, labelKey: "pulse.section.sessions" },
   { id: "indexes", icon: ListTree, labelKey: "pulse.section.indexes" },
+  { id: "retro", icon: History, labelKey: "pulse.section.retro" },
 ];
 
 function Panel({
@@ -574,6 +580,143 @@ function IndexesView({ connectionId }: { connectionId: string }) {
   );
 }
 
+type RetroRange = "24h" | "7d" | "30d";
+
+const RETRO_RANGE_MS: Record<RetroRange, number> = {
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  "30d": 30 * 24 * 60 * 60 * 1000,
+};
+
+/** Two metrics, not the whole live tile set: cache-hit history would need
+ *  its two underlying counters lined up point-for-point, which downsampled
+ *  history has no guarantee of doing cleanly, and every other live tile is
+ *  a live-only concern (connection ceiling, index nobody enabled a
+ *  history for). Queries/s and connection pressure are the two figures
+ *  worth asking "what did this look like a week ago" about. */
+const RETRO_METRICS: { metric: string; labelKey: string; color: string }[] = [
+  { metric: "queries", labelKey: "pulse.metric.queriesPerSecond", color: "var(--brand)" },
+  {
+    metric: "connections_active",
+    labelKey: "pulse.metric.connections",
+    color: "var(--fk)",
+  },
+];
+
+function RetroChart({
+  connectionId,
+  metric,
+  labelKey,
+  color,
+  range,
+}: {
+  connectionId: string;
+  metric: string;
+  labelKey: string;
+  color: string;
+  range: RetroRange;
+}) {
+  const { t } = useTranslation();
+  const [series, setSeries] = useState<PulseHistorySeries | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>();
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(undefined);
+    api
+      .pulseHistory(connectionId, metric, Date.now() - RETRO_RANGE_MS[range])
+      .then((s) => {
+        if (!cancelled) {
+          setSeries(s);
+          setLoading(false);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setError(String(e));
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, metric, range]);
+
+  const values = series ? seriesFromHistory(series.points, series.kind) : [];
+  const latest = latestOf(values);
+
+  return (
+    <div className="rounded-md border border-border p-2">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-2xs text-muted-foreground">{t(labelKey)}</span>
+        <span className="font-mono text-xs tabular-nums">
+          {latest === null ? "—" : latest < 10 ? latest.toFixed(1) : Math.round(latest)}
+        </span>
+      </div>
+      {loading && values.length === 0 ? (
+        <div className="flex h-16 items-center justify-center text-2xs text-muted-foreground">
+          {t("pulse.loading")}
+        </div>
+      ) : error && values.length === 0 ? (
+        <div className="flex h-16 items-center justify-center text-2xs text-muted-foreground">
+          {t("pulse.retro.unavailable")}
+        </div>
+      ) : values.every((v) => v === null) ? (
+        <div className="flex h-16 items-center justify-center text-2xs text-muted-foreground">
+          {t("pulse.retro.empty")}
+        </div>
+      ) : (
+        <Sparkline values={values} color={color} width={480} height={64} className="w-full" />
+      )}
+    </div>
+  );
+}
+
+function RetroView({ connectionId }: { connectionId: string }) {
+  const { t } = useTranslation();
+  const [range, setRange] = useState<RetroRange>("24h");
+
+  return (
+    <Panel
+      title={t("pulse.section.retro")}
+      action={
+        <div className="flex gap-1">
+          {(["24h", "7d", "30d"] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setRange(r)}
+              aria-pressed={range === r}
+              className={cn(
+                "rounded-md px-2 py-0.5 font-mono text-3xs",
+                range === r
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+              )}
+            >
+              {t(`pulse.retro.range.${r}`)}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-2">
+        {RETRO_METRICS.map((m) => (
+          <RetroChart
+            key={m.metric}
+            connectionId={connectionId}
+            metric={m.metric}
+            labelKey={m.labelKey}
+            color={m.color}
+            range={range}
+          />
+        ))}
+      </div>
+    </Panel>
+  );
+}
 
 function PulseBody({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
@@ -661,6 +804,7 @@ function PulseBody({ connectionId }: { connectionId: string }) {
         {viewId === "storage" && <StorageView view={view} />}
         {viewId === "sessions" && <SessionsView connectionId={connectionId} />}
         {viewId === "indexes" && <IndexesView connectionId={connectionId} />}
+        {viewId === "retro" && <RetroView connectionId={connectionId} />}
       </div>
     </div>
   );

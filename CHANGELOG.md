@@ -8,6 +8,73 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Pulse gets a memory: `pulse.db`, a 60-second sampler, retention, and a
+  Settings → Pulse panel to turn it on.** Every earlier Pulse view answered
+  "how is this server right now" and forgot the answer the moment the window
+  closed. This is the last piece HuginnDB's own performance promise was
+  waiting on: Pulse can now be asked "how did this look last week", and
+  answering that honestly meant designing the disk cost first, not
+  retrofitting it.
+
+  Sampling is opt-in **per connection** (`pulse_enabled` on the profile,
+  off by default, preserved across a shared-origin sync the same way
+  `mcp_write` already is) and reads only what a 60-second tick needs in one
+  round trip — `SHOW GLOBAL STATUS` on MySQL, `serverStatus` on MongoDB —
+  never the second, almost-static read (`SHOW GLOBAL VARIABLES`; the
+  profiling level) the live panel's `health()` also makes. A tick for one
+  connection failing (a dropped server, a revoked privilege) costs that
+  connection a gap for the minute, never the rest of the fleet's sample.
+  `sampleWhenMinimized` (on by default) trades that promise for zero server
+  load whenever HuginnDB itself isn't on screen.
+
+  The store is the one state file in this app that isn't JSON. Rewriting a
+  whole blob atomically on every tick — `state_file.rs`'s pattern for
+  everything else — is exactly the write amplification a time series exists
+  to avoid, so `pulse.db` is a small SQLite database instead (WAL, one
+  `samples(connection_id, ts_ms, metric, value)` table), opened lazily on
+  first use so an install where nobody has turned Pulse on for any
+  connection never creates the file. `state_file::path` still resolves
+  *where* it lives — that function only ever resolved a path and made the
+  parent directory, it never assumed JSON — which is what keeps the canary
+  build's state isolation (gotcha #26) applying here for free. Counters are
+  stored raw, the same rule the live in-memory series already follows:
+  deriving a rate needs two samples and the gap between them, and a
+  pre-derived rate would make a server restart indistinguishable from a real
+  drop.
+
+  Retention is a staircase, run in the same tick right after the write: full
+  60-second resolution for 48 hours, downsampled to one point per 5-minute
+  bucket out to the retention window (30 days by default), then deleted
+  outright. A `maxDiskMb` soft cap (20 MB by default, `0` disables it) sheds
+  the oldest tenth of what remains if the file is still over budget after
+  that — a blunt safety valve for a fleet of connections nobody sized the
+  retention window for, not the thing that owns day-to-day disk usage.
+
+  The expanded window gains a sixth rail entry, Retrospectiva: two charts
+  (queries/s, connection pressure) over a 24h/7d/30d range, reusing the
+  panel's own hand-drawn `Sparkline` and a new `seriesFromHistory` that
+  shares `rateBetween`'s restart-safe, uneven-interval-safe arithmetic with
+  the live series rather than re-deriving it. Cache-hit history is
+  deliberately not one of the two: it needs its two underlying counters
+  lined up point-for-point, and downsampled history has no guarantee of
+  keeping that alignment clean.
+
+  Settings → Pulse is new: the sampler's own knobs (sample interval,
+  retention, disk cap, sample-when-minimized) above a connection picker
+  mirroring `Settings → MCP`'s tree — same provenance grouping via
+  `buildRailSections`, same reasoning for skipping the shared-origin
+  read-only carve-out (the opt-in is a local resource decision, not
+  something a publisher two machines away gets a say in). Unlike MCP's
+  picker, the checkbox *is* the persisted setting rather than an ephemeral
+  selection for building a snippet, so toggling one writes straight through
+  a new `set_pulse_enabled` command — the same "one field, not the whole
+  profile" shape `set_mcp_write_policy` already uses.
+
+  New: `pulse::store::PulseStore`, `pulse::sampler`, `prefs::PulsePrefs`,
+  `ConnectionProfile::pulse_enabled`, `db::{mysql,mongo}::pulse::sample`, the
+  `pulse_history`/`set_pulse_enabled` commands, `seriesFromHistory`, and the
+  `PulseSection`/`PulseConnectionTree` settings components.
+
 - **Pulse gains Sessions and Indexes — the last two rail entries the expanded
   window was missing.** Both are on-demand, manual-refresh reads: unlike the
   digest table and the storage ranking, a session list that is fifteen

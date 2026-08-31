@@ -43,6 +43,7 @@ import type {
   PrivilegeInfo,
   PulseExplainPlan,
   PulseHealth,
+  PulseHistorySeries,
   PulseIndexUsage,
   PulseSession,
   PulseStorageItem,
@@ -133,6 +134,13 @@ export const api = {
    */
   setMcpWritePolicy: (ids: string[], level: McpWritePolicy) =>
     invoke<number>("set_mcp_write_policy", { ids, level }),
+
+  /**
+   * Turn Pulse's history sampler on or off for several profiles in one
+   * write. Same "how many actually changed" return as `setMcpWritePolicy`.
+   */
+  setPulseEnabled: (ids: string[], enabled: boolean) =>
+    invoke<number>("set_pulse_enabled", { ids, enabled }),
 
   /**
    * Open a throwaway pool, run `SELECT 1`, then close it. `sshSecret` is
@@ -1225,6 +1233,18 @@ export const api = {
    *  first. On demand. */
   pulseIndexUsage: (connectionId: string) =>
     invoke<PulseIndexUsage[]>("pulse_index_usage", { connectionId }),
+
+  /**
+   * One metric's stored history for `connectionId` since `sinceMs` (epoch
+   * milliseconds), oldest first. Works even when the connection is not
+   * currently open — history outlives the pool it came from.
+   */
+  pulseHistory: (connectionId: string, metric: string, sinceMs: number) =>
+    invoke<PulseHistorySeries>("pulse_history", {
+      connectionId,
+      metric,
+      sinceMs,
+    }),
 
   /**
    * Open Pulse's expanded view in its own OS window, measuring `connectionId`.

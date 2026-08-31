@@ -273,6 +273,14 @@ pub struct ConnectionProfile {
     /// same split as `visible_databases`.
     #[serde(default)]
     pub origin_id: Option<String>,
+    /// Whether `pulse::sampler` persists this connection's vital signs into
+    /// the on-disk history every `PulsePrefs::history_interval_secs`. Opt-in,
+    /// off by default — same reasoning as `mcp_write`: an upgrade must never
+    /// silently start polling and storing data about a server the user
+    /// didn't ask to be tracked. Unlike `mcp_write`/`visible_databases`, the
+    /// backend itself reads this (the sampler, not just a headless sidecar).
+    #[serde(default)]
+    pub pulse_enabled: bool,
 }
 
 /// How the client decides whether to trust the SSH server's host key.
@@ -779,6 +787,10 @@ pub struct AppState {
     /// `open_pulse_window` and drained exactly once by
     /// `take_pulse_window_intent` when that window's frontend boots.
     pub pulse_window_intents: Arc<RwLock<HashMap<String, String>>>,
+    /// The `pulse.db` history — opened lazily on first use (a read or the
+    /// first sampler tick), not at startup, so an install with Pulse never
+    /// enabled never creates the file. See [`crate::pulse::store::PulseStore`].
+    pub pulse_store: crate::pulse::store::PulseStore,
 }
 
 impl AppState {
@@ -868,6 +880,7 @@ impl AppState {
             window_startup_intents: Arc::new(RwLock::new(HashMap::new())),
             detached_tab_intents: Arc::new(RwLock::new(HashMap::new())),
             pulse_window_intents: Arc::new(RwLock::new(HashMap::new())),
+            pulse_store: crate::pulse::store::PulseStore::new(),
         }
     }
 }

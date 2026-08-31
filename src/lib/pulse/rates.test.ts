@@ -7,6 +7,7 @@ import {
   latestOf,
   rateBetween,
   seriesFor,
+  seriesFromHistory,
   valueIn,
 } from "./rates";
 
@@ -112,6 +113,61 @@ describe("seriesFor", () => {
   it("returns nothing for a metric no sample reports", () => {
     expect(seriesFor([snap(0, { queries: 1 })], "lock_waits")).toEqual([]);
     expect(seriesFor([], "queries")).toEqual([]);
+  });
+});
+
+describe("seriesFromHistory", () => {
+  it("plots a gauge as read, one point per reading", () => {
+    const series = seriesFromHistory(
+      [
+        { tsMs: 0, value: 5 },
+        { tsMs: 5000, value: 9 },
+      ],
+      "gauge",
+    );
+    expect(series).toEqual([5, 9]);
+  });
+
+  it("plots a counter as a rate, one point shorter than the input", () => {
+    const series = seriesFromHistory(
+      [
+        { tsMs: 0, value: 100 },
+        { tsMs: 5000, value: 150 },
+        { tsMs: 10000, value: 250 },
+      ],
+      "counter",
+    );
+    expect(series).toEqual([10, 20]);
+  });
+
+  it("does not assume even spacing — a downsampled gap still divides by the real elapsed time", () => {
+    const series = seriesFromHistory(
+      [
+        { tsMs: 0, value: 0 },
+        // A gap much longer than the other interval, from the retention
+        // staircase thinning old history to one point per 5 minutes.
+        { tsMs: 300_000, value: 300 },
+      ],
+      "counter",
+    );
+    expect(series).toEqual([1]);
+  });
+
+  it("breaks the line at a restart instead of drawing through it", () => {
+    const series = seriesFromHistory(
+      [
+        { tsMs: 0, value: 900 },
+        { tsMs: 5000, value: 12 },
+      ],
+      "counter",
+    );
+    expect(series).toEqual([null]);
+  });
+
+  it("returns an empty series for zero or one points", () => {
+    expect(seriesFromHistory([], "counter")).toEqual([]);
+    expect(seriesFromHistory([{ tsMs: 0, value: 1 }], "counter")).toEqual([]);
+    expect(seriesFromHistory([], "gauge")).toEqual([]);
   });
 });
 

@@ -31,6 +31,9 @@
 //! backend never writes an environment's default name (gotcha #27): copy chosen
 //! in Rust would freeze one language into the user's screen.
 
+pub mod sampler;
+pub mod store;
+
 use serde::Serialize;
 
 /// Whether a reading accumulates since server start or describes the instant.
@@ -338,6 +341,30 @@ pub struct IndexUsage {
     /// signal this view exists to surface.
     pub reads: Option<u64>,
     pub size_bytes: Option<u64>,
+}
+
+/// One metric's stored history for a connection, from `pulse_history`.
+///
+/// `kind` travels with the points rather than being something the frontend
+/// hardcodes per metric name: it is what tells the Retrospectiva view
+/// whether to plot `points` as-is (a gauge) or difference consecutive points
+/// into a rate (a counter) — the same distinction [`MetricKind`] draws for
+/// the live series, applied to a store that has no `PulseHealth` snapshot to
+/// carry it on.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PulseHistorySeries {
+    pub kind: MetricKind,
+    pub points: Vec<PulseHistoryPoint>,
+}
+
+/// One raw reading, oldest-to-newest order guaranteed by
+/// [`store::PulseStore::range`].
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PulseHistoryPoint {
+    pub ts_ms: i64,
+    pub value: f64,
 }
 
 #[cfg(test)]

@@ -67,6 +67,8 @@ pub struct Preferences {
     /// How many database connections HuginnDB is allowed to hold, and for how
     /// long. See [`ConnectionPrefs`].
     pub connections: ConnectionPrefs,
+    /// How Pulse's background history sampler behaves. See [`PulsePrefs`].
+    pub pulse: PulsePrefs,
     /// User-rebound keyboard shortcuts, keyed by action id (e.g.
     /// `"openSettings"`, `"expandSelectedCell"`) to an ordered list of
     /// bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is
@@ -340,6 +342,57 @@ impl Default for ConnectionPrefs {
     }
 }
 
+/// Pulse's background history sampler — the one part of Pulse with a real,
+/// recurring cost, so every knob here exists to keep that cost bounded and
+/// visible rather than to add features. Nothing here has any effect on a
+/// connection unless `ConnectionProfile::pulse_enabled` is also set — a
+/// preference change alone can never start sampling a server the user hasn't
+/// opted in.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct PulsePrefs {
+    /// How often the dock panel / expanded window poll a connection's live
+    /// vital signs, in seconds, while that surface is on screen. Frontend-only
+    /// — the backend never schedules this tick, `usePulseLive` does — kept
+    /// here anyway so both clocks live in one place a user tuning "how much
+    /// does Pulse cost" can find.
+    pub live_interval_secs: u32,
+    /// How often `pulse::sampler` writes a tick to `pulse.db`, in seconds,
+    /// for every connection with `pulse_enabled` set. This is the number
+    /// that actually costs a round trip against someone's server.
+    pub history_interval_secs: u32,
+    /// How long a history point survives before it is pruned. Governs the
+    /// *outer* edge of the retention staircase — the 48h/5-minute downsample
+    /// step is not user-tunable, since exposing it would let someone dial a
+    /// month of history down to nothing and call it a bug.
+    pub retention_days: u32,
+    /// Whether the sampler keeps ticking while the main window is minimised.
+    /// **On** by default: a monitoring tool that stops watching the instant
+    /// you look away from it is not one you can trust for an incident that
+    /// started before you opened the app. Off trades that promise for zero
+    /// server load whenever HuginnDB itself isn't on screen.
+    pub sample_when_minimized: bool,
+    /// Soft cap on `pulse.db`'s size, in megabytes. `0` disables it — the
+    /// same "0 means unlimited" convention `ConnectionPrefs::max_child_pools`
+    /// uses. Past this, `PulseStore::prune` sheds the oldest tenth of what's
+    /// left on top of the normal retention pass; it exists as a blunt safety
+    /// valve for a fleet of connections nobody sized the retention window
+    /// for; the day-to-day owner of disk usage is `retention_days`.
+    pub max_disk_mb: u32,
+}
+
+impl Default for PulsePrefs {
+    fn default() -> Self {
+        Self {
+            live_interval_secs: 5,
+            history_interval_secs: 60,
+            retention_days: 30,
+            sample_when_minimized: true,
+            max_disk_mb: 20,
+        }
+    }
+}
+
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -349,6 +402,7 @@ impl Default for Preferences {
             ui: UiPrefs::default(),
             notifications: NotificationPrefs::default(),
             connections: ConnectionPrefs::default(),
+            pulse: PulsePrefs::default(),
             keybindings: HashMap::new(),
         }
     }
@@ -495,6 +549,20 @@ mod tests {
         assert!(parsed.notifications.errors_persist);
         assert_eq!(parsed.notifications.max_visible, 3);
         assert_eq!(parsed.notifications.history_limit, 50);
+    }
+
+    /// Same migration guarantee as the notifications test above, for the
+    /// block added after it: a `prefs.json` written before Pulse existed
+    /// must load with its defaults, not fail to parse.
+    #[test]
+    fn blob_without_pulse_gets_the_new_defaults() {
+        let before = r#"{ "version": 1, "ui": { "language": "es" } }"#;
+        let parsed: Preferences = serde_json::from_str(before).unwrap();
+        assert_eq!(parsed.pulse.live_interval_secs, 5);
+        assert_eq!(parsed.pulse.history_interval_secs, 60);
+        assert_eq!(parsed.pulse.retention_days, 30);
+        assert!(parsed.pulse.sample_when_minimized);
+        assert_eq!(parsed.pulse.max_disk_mb, 20);
     }
 
     /// The camelCase spelling is the IPC contract with `src/types.ts`; a rename

@@ -150,6 +150,11 @@ export interface ConnectionProfile {
    * struct's serde output, which is not camelCased for profiles.
    */
   origin_id?: string | null;
+  /** Whether Pulse's background history sampler persists this connection's
+   *  vital signs into `pulse.db`. Opt-in, `false`/absent by default — same
+   *  reasoning as `mcp_write`: an upgrade must never silently start polling
+   *  and storing data about a server the user didn't ask to be tracked. */
+  pulse_enabled?: boolean;
 }
 
 /** How far the MCP connector may write to a connection. Mirrors
@@ -767,6 +772,8 @@ export interface Preferences {
   notifications: NotificationPrefs;
   /** Connection-pool policy. See {@link ConnectionPrefs}. */
   connections: ConnectionPrefs;
+  /** Pulse's background history sampler. See {@link PulsePrefs}. */
+  pulse: PulsePrefs;
   /**
    * User-rebound keyboard shortcuts, keyed by action id to an ordered list of
    * bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is the
@@ -824,6 +831,32 @@ export interface ConnectionPrefs {
   mcpBridge: boolean;
   /** Keepalive ping interval in seconds. `0` disables the heartbeat. */
   keepaliveSecs: number;
+}
+
+/**
+ * Pulse's background history sampler — the one part of Pulse with a real,
+ * recurring cost, so every knob here exists to keep that cost bounded and
+ * visible. Nothing here has any effect on a connection unless that
+ * connection's own {@link ConnectionProfile.pulse_enabled} is also set.
+ *
+ * Mirrors `PulsePrefs` in `src-tauri/src/prefs.rs`.
+ */
+export interface PulsePrefs {
+  /** How often the dock panel / expanded window poll live vital signs, in
+   *  seconds, while on screen. Frontend-only (`usePulseLive` schedules this,
+   *  not the backend) — kept alongside `historyIntervalSecs` so both of
+   *  Pulse's clocks live in one place. */
+  liveIntervalSecs: number;
+  /** How often the sampler writes a tick to `pulse.db`, in seconds, for
+   *  every connection with `pulseEnabled` set. */
+  historyIntervalSecs: number;
+  /** How long a history point survives before it is pruned. */
+  retentionDays: number;
+  /** Whether the sampler keeps ticking while the main window is minimised.
+   *  On by default. */
+  sampleWhenMinimized: boolean;
+  /** Soft cap on `pulse.db`'s size, in megabytes. `0` disables it. */
+  maxDiskMb: number;
 }
 
 /** Live pool footprint, from the `connection_pool_stats` command. */
@@ -1909,6 +1942,22 @@ export interface PulseIndexUsage {
   indexName: string;
   reads: number | null;
   sizeBytes: number | null;
+}
+
+/** One metric's stored history for a connection, from `pulse_history`.
+ *  `kind` says whether `points` plots as-is (a gauge) or has to be
+ *  differenced into a rate first (a counter) — the same distinction
+ *  {@link PulseMetricSample.kind} carries for the live series, since a raw
+ *  history point has no `PulseHealth` snapshot to carry it on instead. */
+export interface PulseHistorySeries {
+  kind: PulseMetricKind;
+  points: PulseHistoryPoint[];
+}
+
+/** One raw reading, oldest-to-newest. */
+export interface PulseHistoryPoint {
+  tsMs: number;
+  value: number;
 }
 
 /** One relation's footprint, from `pulse_storage`. */

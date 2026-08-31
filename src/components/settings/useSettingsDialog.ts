@@ -21,6 +21,7 @@ export type SettingsSection =
   | "jsonSchemas"
   | "origins"
   | "mcp"
+  | "pulse"
   | "about";
 
 interface SettingsDialogState {

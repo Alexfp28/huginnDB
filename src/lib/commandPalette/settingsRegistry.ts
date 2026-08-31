@@ -35,6 +35,7 @@ export interface PrefsWriters {
   updateUi: (patch: Partial<Preferences["ui"]>) => void;
   updateNotifications: (patch: Partial<Preferences["notifications"]>) => void;
   updateConnections: (patch: Partial<Preferences["connections"]>) => void;
+  updatePulse: (patch: Partial<Preferences["pulse"]>) => void;
 }
 
 export interface SettingEntry {
@@ -517,5 +518,41 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "json schema hover tooltip documentation description esquema json descripcion ayuda contextual",
     value: onOff((p) => p.editor.jsonSchemaHover),
     toggle: (p, w) => w.updateEditor({ jsonSchemaHover: !p.editor.jsonSchemaHover }),
+  },
+
+  // ── Pulse ─────────────────────────────────────────────────────────────────
+  {
+    prefId: "pulse.historyIntervalSecs",
+    section: "pulse",
+    labelKey: "settings.pulse.historyIntervalSecs.label",
+    descKey: "settings.pulse.historyIntervalSecs.desc",
+    keywords: "pulse sampler history interval tick historial muestreo intervalo",
+    value: num((p) => p.pulse.historyIntervalSecs),
+  },
+  {
+    prefId: "pulse.retentionDays",
+    section: "pulse",
+    labelKey: "settings.pulse.retentionDays.label",
+    descKey: "settings.pulse.retentionDays.desc",
+    keywords: "pulse retention days history retención días historial",
+    value: num((p) => p.pulse.retentionDays),
+  },
+  {
+    prefId: "pulse.maxDiskMb",
+    section: "pulse",
+    labelKey: "settings.pulse.maxDiskMb.label",
+    descKey: "settings.pulse.maxDiskMb.desc",
+    keywords: "pulse disk size cap disco tamaño límite",
+    value: num((p) => p.pulse.maxDiskMb),
+  },
+  {
+    prefId: "pulse.sampleWhenMinimized",
+    section: "pulse",
+    labelKey: "settings.pulse.sampleWhenMinimized.label",
+    descKey: "settings.pulse.sampleWhenMinimized.desc",
+    keywords: "pulse minimized background minimizado segundo plano",
+    value: onOff((p) => p.pulse.sampleWhenMinimized),
+    toggle: (p, w) =>
+      w.updatePulse({ sampleWhenMinimized: !p.pulse.sampleWhenMinimized }),
   },
 ];

@@ -30,6 +30,7 @@ import type {
   GridPrefs,
   NotificationPrefs,
   Preferences,
+  PulsePrefs,
   SchemaTableMetric,
   UiPrefs,
 } from "@/types";
@@ -104,6 +105,14 @@ const DEFAULT_PREFS: Preferences = {
     mcpBridge: false,
     keepaliveSecs: 180,
   },
+  // Mirrors `PulsePrefs::default()` in `src-tauri/src/prefs.rs`.
+  pulse: {
+    liveIntervalSecs: 5,
+    historyIntervalSecs: 60,
+    retentionDays: 30,
+    sampleWhenMinimized: true,
+    maxDiskMb: 20,
+  },
   keybindings: {},
 };
 
@@ -116,6 +125,7 @@ interface PreferencesState {
   updateUi: (patch: Partial<UiPrefs>) => void;
   updateNotifications: (patch: Partial<NotificationPrefs>) => void;
   updateConnections: (patch: Partial<ConnectionPrefs>) => void;
+  updatePulse: (patch: Partial<PulsePrefs>) => void;
   /**
    * Merge shortcut overrides. A key mapped to `undefined` is **deleted**,
    * which is how "reset this row to its default" is expressed — writing the
@@ -268,6 +278,17 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     });
   },
 
+  updatePulse(patch) {
+    set((s) => {
+      const next: Preferences = {
+        ...s.prefs,
+        pulse: { ...s.prefs.pulse, ...patch },
+      };
+      save.schedule(next);
+      return { prefs: next };
+    });
+  },
+
   updateKeybindings(patch) {
     set((s) => {
       const keybindings: Record<string, string[]> = { ...s.prefs.keybindings };
@@ -307,4 +328,5 @@ export const selectGridPrefs = (s: PreferencesState) => s.prefs.grid;
 export const selectUiPrefs = (s: PreferencesState) => s.prefs.ui;
 export const selectNotificationPrefs = (s: PreferencesState) => s.prefs.notifications;
 export const selectConnectionPrefs = (s: PreferencesState) => s.prefs.connections;
+export const selectPulsePrefs = (s: PreferencesState) => s.prefs.pulse;
 export const selectKeybindings = (s: PreferencesState) => s.prefs.keybindings;

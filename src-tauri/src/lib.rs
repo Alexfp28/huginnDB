@@ -257,6 +257,9 @@ pub fn run() {
         // behind by a connection that was opened and closed again.
         .setup(|app| {
             pool_reaper::spawn(app.handle().clone());
+            // Off in effect (a no-op tick) unless some profile has
+            // `pulse_enabled` set, so this costs nothing on a fresh install.
+            pulse::sampler::spawn(app.handle().clone());
             // The MCP bridge is off unless the user turned it on; `reconcile`
             // is a no-op in that case. Spawned rather than awaited so a
             // filesystem hiccup writing the discovery file can't delay the
@@ -273,6 +276,7 @@ pub fn run() {
             commands::connection::delete_profile,
             commands::connection::delete_profiles,
             commands::connection::set_mcp_write_policy,
+            commands::connection::set_pulse_enabled,
             commands::connection::test_connection,
             commands::connection::connect,
             commands::connection::disconnect,
@@ -310,6 +314,7 @@ pub fn run() {
             commands::pulse::pulse_top_queries,
             commands::pulse::pulse_storage,
             commands::pulse::pulse_explain,
+            commands::pulse::pulse_history,
             commands::pulse::pulse_sessions,
             commands::pulse::pulse_index_usage,
             commands::structure::get_table_structure,

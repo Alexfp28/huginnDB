@@ -10,6 +10,79 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Pulse tiene memoria: `pulse.db`, un muestreador de 60 segundos, retención,
+  y un panel Settings → Pulse para activarlo.** Cada vista de Pulse anterior
+  respondía "cómo está este servidor ahora mismo" y olvidaba la respuesta en
+  cuanto se cerraba la ventana. Esta es la última pieza que le faltaba a la
+  promesa de rendimiento de HuginnDB: ahora se le puede preguntar a Pulse
+  "cómo se veía esto la semana pasada", y responder eso con honestidad
+  significó diseñar el coste en disco primero, no añadirlo después.
+
+  El muestreo es opt-in **por conexión** (`pulse_enabled` en el perfil,
+  desactivado por defecto, preservado a través de una sincronización de
+  origen compartido igual que ya hace `mcp_write`) y lee solo lo que un tick
+  de 60 segundos necesita en un único viaje de ida y vuelta — `SHOW GLOBAL
+  STATUS` en MySQL, `serverStatus` en MongoDB — nunca la segunda lectura,
+  casi estática (`SHOW GLOBAL VARIABLES`; el nivel de profiling), que
+  `health()` del panel en vivo sí hace. Que un tick falle para una conexión
+  (un servidor caído, un privilegio revocado) le cuesta a esa conexión un
+  hueco de un minuto, nunca la muestra del resto de la flota. `sampleWhenMinimized`
+  (activado por defecto) cambia esa promesa por coste cero en el servidor
+  siempre que HuginnDB mismo no está en pantalla.
+
+  El almacén es el único fichero de estado de esta app que no es JSON.
+  Reescribir un blob entero de forma atómica en cada tick — el patrón de
+  `state_file.rs` para todo lo demás — es exactamente la amplificación de
+  escritura que una serie temporal existe para evitar, así que `pulse.db` es
+  en su lugar una pequeña base de datos SQLite (WAL, una única tabla
+  `samples(connection_id, ts_ms, metric, value)`), abierta de forma perezosa
+  en el primer uso para que una instalación en la que nadie ha activado Pulse
+  en ninguna conexión nunca cree el fichero. `state_file::path` sigue
+  resolviendo *dónde* vive — esa función solo resolvía una ruta y creaba el
+  directorio padre, nunca asumió JSON — lo que hace que el aislamiento de
+  estado de la build canary (gotcha #26) se aplique aquí gratis. Los
+  contadores se guardan en crudo, la misma regla que ya sigue la serie en
+  memoria en vivo: derivar una tasa necesita dos muestras y el hueco entre
+  ellas, y una tasa pre-derivada haría indistinguible un reinicio del
+  servidor de una caída real.
+
+  La retención es una escalera, ejecutada en el mismo tick justo después de
+  escribir: resolución completa de 60 segundos durante 48 horas, reducida a
+  un punto cada 5 minutos hasta la ventana de retención (30 días por
+  defecto), y borrada del todo a partir de ahí. Un límite blando
+  `maxDiskMb` (20 MB por defecto, `0` lo desactiva) descarta la décima parte
+  más antigua de lo que queda si el fichero sigue por encima del
+  presupuesto después de eso — una válvula de seguridad tosca para una
+  flota de conexiones para la que nadie dimensionó la ventana de retención,
+  no lo que gobierna el uso de disco día a día.
+
+  La ventana ampliada gana una sexta entrada en el panel lateral,
+  Retrospectiva: dos gráficas (consultas/s, presión de conexiones) sobre un
+  rango de 24h/7d/30d, reutilizando el `Sparkline` dibujado a mano del panel
+  y un nuevo `seriesFromHistory` que comparte con la serie en vivo la
+  aritmética de `rateBetween` a prueba de reinicios e intervalos
+  irregulares, en vez de rederivarla. El histórico de aciertos de caché
+  deliberadamente no es una de las dos: necesita sus dos contadores
+  subyacentes alineados punto a punto, y el histórico reducido no garantiza
+  mantener esa alineación limpia.
+
+  Settings → Pulse es nuevo: los propios ajustes del muestreador (intervalo
+  de muestreo, retención, límite de disco, muestrear minimizada) encima de
+  un selector de conexiones que refleja el árbol de `Settings → MCP` — el
+  mismo agrupamiento por procedencia vía `buildRailSections`, el mismo
+  razonamiento para saltarse la excepción de solo-lectura de origen
+  compartido (el opt-in es una decisión local de recursos, no algo sobre lo
+  que un publicador a dos máquinas de distancia tenga voz). A diferencia del
+  selector de MCP, la casilla *es* el ajuste persistido en vez de una
+  selección efímera para construir un snippet, así que marcarla escribe
+  directamente a través de un nuevo comando `set_pulse_enabled` — la misma
+  forma de "un campo, no el perfil entero" que ya usa `set_mcp_write_policy`.
+
+  Nuevo: `pulse::store::PulseStore`, `pulse::sampler`, `prefs::PulsePrefs`,
+  `ConnectionProfile::pulse_enabled`, `db::{mysql,mongo}::pulse::sample`, los
+  comandos `pulse_history`/`set_pulse_enabled`, `seriesFromHistory`, y los
+  componentes de ajustes `PulseSection`/`PulseConnectionTree`.
+
 - **Pulse gana Sesiones e Índices — las dos entradas del panel lateral que le
   faltaban a la ventana ampliada.** Las dos son lecturas a demanda y de
   actualización manual: a diferencia de la tabla de digests y el ranking de
