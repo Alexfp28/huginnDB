@@ -22,7 +22,7 @@
  * "floatPanel" action), so there's nothing left to reconcile back.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
@@ -118,7 +118,16 @@ export function DetachedTabWindow() {
   // standalone, without the main window's launch-restore / reconnect flow
   // (this window never initiates a connection; the pool it needs is already
   // open in the shared backend `AppState`).
+  //
+  // `takeDetachedTabIntent` REMOVES the intent from the backend map, so it
+  // must run exactly once — the same trap `PulseWindow` has: under
+  // `<React.StrictMode>` this effect mounts, unmounts and remounts, and a
+  // second call finds nothing and resolves `null`, which without a guard
+  // always wins over the first call's real payload.
+  const intentHandled = useRef(false);
   useEffect(() => {
+    if (intentHandled.current) return;
+    intentHandled.current = true;
     void useAppFlavor.getState().load();
     void usePreferences.getState().hydrate();
     void useConnections.getState().refresh();

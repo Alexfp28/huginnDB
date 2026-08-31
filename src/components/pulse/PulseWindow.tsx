@@ -15,7 +15,7 @@
  * because the live series lives in a store rather than in either component.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
@@ -374,7 +374,18 @@ export function PulseWindow() {
 
   // Minimal bootstrap, mirroring `DetachedTabWindow`: enough state for the
   // views to run standalone, without the main window's launch-restore flow.
+  //
+  // `takePulseWindowIntent` REMOVES the intent from the backend map, so it
+  // must run exactly once. Under `<React.StrictMode>` (main.tsx) this effect
+  // mounts, unmounts and remounts in dev — a second call finds nothing and
+  // resolves `null`, and with no guard that second `setConnectionId` always
+  // wins, painting the "lost its connection" state even though the first
+  // call already had the real id. Same idiom as `App.tsx`'s
+  // `launchRestoreDone` and `useCliIntents`' `cliArgsHandled`.
+  const intentHandled = useRef(false);
   useEffect(() => {
+    if (intentHandled.current) return;
+    intentHandled.current = true;
     void useAppFlavor.getState().load();
     void usePreferences.getState().hydrate();
     void useConnections.getState().refresh();
