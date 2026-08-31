@@ -1118,17 +1118,33 @@ export interface Environment {
    * continuous environment sync). `null`/absent means an ordinary,
    * locally-owned environment.
    *
-   * A mirrored environment is read-only the same way an origin-owned
-   * `ConnectionProfile` is: `sync_origin` overwrites its cosmetics and
-   * connection membership on every pull, so renaming/recolouring/deleting it
-   * locally would just be discarded — released only via
-   * `useOriginSync`'s environment adopt/retire, never edited directly.
+   * A mirrored environment's connection membership is overwritten on every
+   * pull, so that stays read-only — released only via `useOriginSync`'s
+   * environment adopt/retire. Its cosmetics are not: see `localName` etc.
+   * below for the local-override escape hatch.
    */
   originId?: string | null;
   /** The publisher's own `Environment.id` for the mirrored bundle. Paired
    *  with `originId` to recognise "the same" environment across syncs —
    *  display/UI code never needs it directly, only `originId`. */
   originSourceId?: string | null;
+  /**
+   * This machine's local override of `name`/`color`/`icon`/`themeId`, one
+   * field each. `sync_origin` never touches these — they exist so a user who
+   * dislikes a colleague's icon/colour/name/theme choice for a mirrored
+   * environment can change it here without the next pull reverting it. Read
+   * the *effective* value via `environmentLabel`/`effectiveColor`/
+   * `effectiveIcon`/`effectiveThemeId` (`stores/session/environments.ts`),
+   * never these fields directly — `localX ?? x` is the resolution, and doing
+   * it ad hoc at each call site is how one of them gets missed.
+   *
+   * Only meaningful when `originId` is set; write via
+   * `setEnvironmentLocalOverrides`, never `saveEnvironment`.
+   */
+  localName?: string | null;
+  localColor?: string | null;
+  localIcon?: string | null;
+  localThemeId?: string | null;
 }
 
 /**

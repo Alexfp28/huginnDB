@@ -64,13 +64,33 @@ export function useOrderedEnvironments(): Environment[] {
 }
 
 /**
- * Display name for an environment. An empty `name` means the user never named
- * it — the backend deliberately refuses to write display copy, since a literal
- * stored there would freeze one language into the user's data (see the `name`
- * field in `src-tauri/src/tab_state.rs`). Callers pass the localised fallback.
+ * Display name for an environment. `localName` (this machine's own override,
+ * never touched by `sync_origin`) wins over the synced `name` when set; an
+ * empty resolved name means the user never named it — the backend
+ * deliberately refuses to write display copy, since a literal stored there
+ * would freeze one language into the user's data (see the `name` field in
+ * `src-tauri/src/tab_state.rs`). Callers pass the localised fallback.
  */
 export function environmentLabel(env: Environment, fallback: string): string {
-  return env.name.trim() || fallback;
+  return (env.localName ?? env.name).trim() || fallback;
+}
+
+/**
+ * Effective colour/icon/theme for an environment — this machine's local
+ * override if one is set, otherwise whatever the origin (or the user, for a
+ * plain local environment) published. Every render site that shows an
+ * environment's cosmetics goes through these three rather than reading
+ * `env.color`/`env.icon`/`env.themeId` directly, or the local-override
+ * feature is invisible everywhere but one.
+ */
+export function effectiveColor(env: Environment): string | null {
+  return env.localColor ?? env.color;
+}
+export function effectiveIcon(env: Environment): string | null {
+  return env.localIcon ?? env.icon;
+}
+export function effectiveThemeId(env: Environment): string | null {
+  return env.localThemeId ?? env.themeId;
 }
 
 /**
@@ -131,6 +151,17 @@ interface EnvironmentsState {
     color?: string | null;
     icon?: string | null;
     themeId?: string | null;
+  }) => Promise<void>;
+  /** Set (or clear) this machine's local cosmetic override for a mirrored
+   *  environment. See `setEnvironmentLocalOverrides` in `lib/tauri.ts` — the
+   *  counterpart to `update` for the four `local*` fields, never the synced
+   *  ones. */
+  setLocalOverrides: (override: {
+    id: string;
+    localName?: string | null;
+    localColor?: string | null;
+    localIcon?: string | null;
+    localThemeId?: string | null;
   }) => Promise<void>;
   remove: (id: string) => Promise<void>;
   reorder: (ids: string[]) => Promise<void>;
@@ -205,7 +236,9 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     // sets it before the launch effect calls this, and `switchTo` sets it
     // right before calling this too.
     const activeEnv = get().environments.find((e) => e.id === get().activeId);
-    useThemeStore.getState().setEnvironmentOverride(activeEnv?.themeId ?? null);
+    useThemeStore
+      .getState()
+      .setEnvironmentOverride(activeEnv ? effectiveThemeId(activeEnv) : null);
 
     let launch;
     try {
@@ -501,6 +534,18 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       // switch, and the dialog visually implies it takes effect on save.
       if (env.id === get().activeId) {
         useThemeStore.getState().setEnvironmentOverride(env.themeId ?? null);
+      }
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  setLocalOverrides: async (override) => {
+    try {
+      const env = await api.setEnvironmentLocalOverrides(override);
+      await get().load();
+      if (env.id === get().activeId) {
+        useThemeStore.getState().setEnvironmentOverride(effectiveThemeId(env));
       }
     } catch (e) {
       set({ error: String(e) });

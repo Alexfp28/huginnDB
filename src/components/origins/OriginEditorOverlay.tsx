@@ -42,6 +42,7 @@ import { useConnections } from "@/stores/session/connections";
 import { useJsonSchemas } from "@/stores/jsonSchemas";
 import { useOriginEditor } from "@/stores/dialogs/originEditor";
 import { useOrigins } from "@/stores/sync/origins";
+import { useOriginSync } from "@/stores/sync/originSync";
 import { OriginEditorHeader } from "@/components/origins/OriginEditorHeader";
 import { PublishConfirmDialog } from "@/components/origins/dialogs/PublishConfirmDialog";
 import { ConnectionsPane } from "@/components/origins/sections/ConnectionsPane";
@@ -80,6 +81,7 @@ export function OriginEditorOverlay() {
   const originId = useOriginEditor((s) => s.originId);
   const close = useOriginEditor((s) => s.close);
   const loadOrigins = useOrigins((s) => s.load);
+  const syncAllOrigins = useOriginSync((s) => s.syncAll);
   const profiles = useConnections((s) => s.profiles);
   const library = useJsonSchemas((s) => s.schemas);
   const bindings = useJsonSchemas((s) => s.bindings);
@@ -210,6 +212,14 @@ export function OriginEditorOverlay() {
         // The registry caches `maintainer`; the backend's event refreshes it
         // too, but awaiting it keeps the Settings row in step with the header.
         await loadOrigins();
+        // Publishing never touches local state on its own (invariant 1 in
+        // this module's doc) — without this, the publisher's own machine
+        // wouldn't see a newly-added connection turn origin-linked, or a
+        // removed one turn `vanished`, until the next launch or a manual
+        // "Sync now". Same entry point that button uses; every registered
+        // origin gets swept, not just this one, but a 4-hourly-interval sync
+        // is cheap enough that doing it here costs nothing extra.
+        await syncAllOrigins();
       })
       .catch((e: unknown) => setSaveError(String(e)))
       .finally(() => setSaving(false));

@@ -8,6 +8,48 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Shared origins: local cosmetic overrides for a mirrored environment, and
+  in-place editing for the publisher.** Two long-standing frictions in the
+  shared-origins workflow (#108), both reported after real use rather than
+  found by inspection.
+
+  A mirrored environment's `name`/`color`/`icon`/theme used to be
+  overwritten on every sync with no exception — the same "read-only, released
+  only via adopt/retire" treatment its connection membership genuinely needs,
+  applied to fields that only describe how the environment looks on *this*
+  screen. A user who disliked a colleague's icon choice had no way to change
+  it that survived the next pull. `Environment` now carries four local-only
+  companion fields (`local_name`/`local_color`/`local_icon`/`local_theme_id`,
+  `src-tauri/src/tab_state.rs`) that `sync_environment_bundles` never touches
+  and that never travel through export or the origin document — the same
+  "local decision the publisher cannot know" reasoning `merge_into` already
+  applies to a connection profile's `mcp_write`/`pulse_enabled` (gotcha #56),
+  extended one level up. `EnvironmentEditorDialog` writes to them (via the new
+  `set_environment_local_overrides` command) instead of the synced fields
+  whenever the environment being edited is mirrored, with a plain-language
+  note explaining the change is local, and a "follow the origin again" action
+  to drop the override. Detaching from the origin (`adopt_environment`) folds
+  a set override into the now-authoritative public field rather than leaving
+  two copies of the truth lying around.
+
+  Separately: fixing a wrong value (a stale password, most often) published
+  through a shared origin used to require duplicating the connection under a
+  fresh id, editing the copy, republishing it, and then manually cleaning up
+  the now-orphaned original once a later sync flagged it `vanished` — two app
+  restarts and a leftover row if any step was missed. It turned out the
+  backend never actually enforced read-only on an origin-linked profile —
+  `save_profile` has no `origin_id` check at all, and already writes the
+  keychain entry a republish's `fromKeychain` secret slot resolves from — the
+  block was purely `ConnectionDialog` refusing to call it. The one exception
+  now allowed is the origin's own publisher: `canEditInPlace` (`fromOrigin &&
+  originIsPublished`) lets them correct the profile — including its password
+  — in the same dialog and the same id, no duplicate, no orphan, and
+  republish it from the existing origin editor when ready. Publishing,
+  adopting, or retiring from that editor now also triggers a full
+  `useOriginSync.syncAll()` on the spot, so this machine's own `profiles.json`
+  and `vanished` state catch up immediately instead of waiting for the next
+  launch or a manually-clicked "Sync now."
+
 - **Pulse reaches the MCP connector — seven read-only tools, closing out the
   feature.** `pulse_health`, `pulse_metrics`, `pulse_top_queries`,
   `pulse_explain`, `pulse_storage`, `pulse_sessions`, `pulse_index_usage`:

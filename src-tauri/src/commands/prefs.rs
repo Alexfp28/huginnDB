@@ -259,6 +259,39 @@ pub fn save_environment(
     })
 }
 
+/// Set (or clear) this machine's local override of a mirrored environment's
+/// cosmetics — `local_name`/`local_color`/`local_icon`/`local_theme_id` on
+/// [`Environment`]. A separate command from `save_environment` on purpose:
+/// that one replaces the *synced* fields wholesale, and giving one signature
+/// two different semantics (synced value vs. local-only override) is exactly
+/// the "an omitted field silently reverts something else" trap CLAUDE.md's
+/// gotcha #14 already documents for a typed IPC boundary. `Some(None)` isn't
+/// representable per-field here — passing `None` for a field clears that
+/// override (falls back to the synced value); there is no "leave unchanged"
+/// state, so the frontend always sends the full effective draft.
+#[tauri::command]
+pub fn set_environment_local_overrides(
+    state: State<'_, AppState>,
+    id: String,
+    local_name: Option<String>,
+    local_color: Option<String>,
+    local_icon: Option<String>,
+    local_theme_id: Option<String>,
+) -> AppResult<Environment> {
+    tab_state::mutate(&state.tab_state, |ts| {
+        let env = ts
+            .environments
+            .iter_mut()
+            .find(|e| e.id == id)
+            .ok_or_else(|| AppError::InvalidInput(format!("no environment with id {id}")))?;
+        env.local_name = local_name;
+        env.local_color = local_color;
+        env.local_icon = local_icon;
+        env.local_theme_id = local_theme_id;
+        Ok(env.clone())
+    })
+}
+
 /// Delete an environment and everything it remembered.
 ///
 /// Refuses to delete the last one: the invariant every session-state command
@@ -295,10 +328,18 @@ pub fn delete_environment(state: State<'_, AppState>, id: String) -> AppResult<(
 /// environment sync's "adopt", the environment-level twin of clearing a
 /// connection profile's `origin_id`).
 ///
-/// Clears only `origin_id`/`origin_source_id`. Cosmetics, connections and
-/// session state are left exactly as they were at the moment of adoption —
-/// the next `sync_origin` run for that origin will no longer touch this
-/// environment, and it becomes an ordinary local one.
+/// Clears `origin_id`/`origin_source_id`. Connections and session state are
+/// left exactly as they were at the moment of adoption — the next
+/// `sync_origin` run for that origin will no longer touch this environment,
+/// and it becomes an ordinary local one.
+///
+/// Cosmetics fold rather than staying exactly as they were: any
+/// `local_name`/`local_color`/`local_icon`/`local_theme_id` override is
+/// promoted into the now-authoritative `name`/`color`/`icon`/`theme_id` and
+/// the `local_*` fields are cleared. Once detached there is no longer a
+/// synced value to override — leaving both set would be pure ambiguity, and
+/// wrong the moment the public fields diverged from what the override was
+/// shadowing.
 #[tauri::command]
 pub fn adopt_environment(state: State<'_, AppState>, id: String) -> AppResult<Environment> {
     tab_state::mutate(&state.tab_state, |ts| {
@@ -309,6 +350,7 @@ pub fn adopt_environment(state: State<'_, AppState>, id: String) -> AppResult<En
             .ok_or_else(|| AppError::InvalidInput(format!("no environment with id {id}")))?;
         env.origin_id = None;
         env.origin_source_id = None;
+        env.adopt_local_overrides();
         Ok(env.clone())
     })
 }

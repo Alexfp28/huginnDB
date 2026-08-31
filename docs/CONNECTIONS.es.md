@@ -209,7 +209,9 @@ sincronizada — y el resto lo registra como **origen** y tira de ahí.
 - Una conexión importada de un origen es **de solo lectura en la app**: es una
   copia de la entrada de otra persona, y editarla en local la deshacería la
   siguiente sincronización. Para variarla, duplícala: la copia es una conexión
-  local normal.
+  local normal. La única excepción es la máquina que publica ese origen: puede
+  corregir la conexión en el sitio (una contraseña mal puesta, sobre todo) y
+  volver a publicarla desde el editor del documento — sin duplicados, mismo id.
 - Los orígenes se registran por entorno, y HuginnDB solo los *lee*.
 - Cuando quien lo mantiene deja de publicar una conexión que ya te habías
   traído, no se borra a tus espaldas. Se marca y decides tú: **Conservar como

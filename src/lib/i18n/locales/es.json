@@ -52,7 +52,9 @@
     "replicateFrom": "Partir de «{{name}}»",
     "replicateConnections": "Reabrir las mismas conexiones y sus pestañas",
     "replicateLayout": "Reutilizar la distribución de paneles",
-    "export": "Exportar…"
+    "export": "Exportar…",
+    "mirroredCosmeticsHint": "Este entorno viene de un origen compartido — el nombre, color, icono y tema de abajo se guardan solo en este equipo y no se sobrescribirán en la próxima sincronización.",
+    "clearLocalOverride": "Volver a seguir al origen"
   },
   "panels": {
     "schema": "Esquema",
@@ -273,6 +275,7 @@
     "noMatches": "Ninguna conexión coincide con la búsqueda.",
     "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
     "fromOriginNamed": "Esta conexión viene del origen compartido «{{origin}}», así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
+    "fromOriginEditable": "Esta conexión viene del origen compartido «{{origin}}», que tú publicas — los cambios aquí se guardan en este equipo y llegan a los demás la próxima vez que publiques.",
     "editAtOrigin": "Editar en el origen…"
   },
   "adhocDriver": {

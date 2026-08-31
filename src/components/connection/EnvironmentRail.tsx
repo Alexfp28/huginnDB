@@ -55,6 +55,8 @@ import { cn } from "@/lib/utils";
 import { useEnvironmentEditor } from "@/stores/dialogs/environmentEditor";
 import { useEnvironmentDeleteConfirm } from "@/stores/dialogs/environmentDeleteConfirm";
 import {
+  effectiveColor,
+  effectiveIcon,
   environmentLabel,
   useEnvironments,
   useOrderedEnvironments,
@@ -164,16 +166,16 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
                   isActive={env.id === activeId}
                   schemaOpen={schemaOpen}
                   switching={switching}
-                  canRename={!env.originId}
                   canDelete={ordered.length > 1 && !env.originId}
                   onClick={() => handleClick(env.id)}
                   onRename={() =>
                     openEdit({
                       id: env.id,
-                      name: env.name,
-                      color: env.color,
-                      icon: env.icon,
-                      themeId: env.themeId,
+                      name: environmentLabel(env, ""),
+                      color: effectiveColor(env),
+                      icon: effectiveIcon(env),
+                      themeId: env.localThemeId ?? env.themeId ?? null,
+                      originId: env.originId ?? null,
                     })
                   }
                   onDelete={() =>
@@ -272,7 +274,7 @@ function EnvironmentButton({
             // full-width button the bar lands outside the shell's
             // `overflow-hidden` and never paints at all.
             className="absolute left-0 top-1 bottom-1 w-1 rounded-full"
-            style={{ backgroundColor: env.color || "var(--brand)" }}
+            style={{ backgroundColor: effectiveColor(env) || "var(--brand)" }}
           />
         )}
         {switching && isActive ? (
@@ -280,7 +282,12 @@ function EnvironmentButton({
             <Loader2 className="h-[18px] w-[18px] animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <EnvironmentAvatar name={label} color={env.color} icon={env.icon} size={36} />
+          <EnvironmentAvatar
+            name={label}
+            color={effectiveColor(env)}
+            icon={effectiveIcon(env)}
+            size={36}
+          />
         )}
         <span
           className={cn(
@@ -301,11 +308,13 @@ interface SortableEnvironmentButtonProps {
   isActive: boolean;
   schemaOpen: boolean;
   switching: boolean;
-  /** A mirrored environment (#108) is read-only: renaming/deleting it here
-   *  would just be discarded on the next sync from its origin, so both are
-   *  false whenever `env.originId` is set — released only via the
-   *  vanished-environment notice's adopt/retire. */
-  canRename: boolean;
+  /** A mirrored environment (#108) can't be deleted here — that would just be
+   *  reported vanished on the next sync and re-created, never destroy the
+   *  publisher's copy — so this is false whenever `env.originId` is set,
+   *  released only via the vanished-environment notice's adopt/retire.
+   *  Renaming/recolouring has no such restriction: `EnvironmentEditorDialog`
+   *  writes a local override instead of the synced field when the target is
+   *  mirrored, so it's always available. */
   canDelete: boolean;
   onClick: () => void;
   onRename: () => void;
@@ -320,7 +329,6 @@ function SortableEnvironmentButton({
   isActive,
   schemaOpen,
   switching,
-  canRename,
   canDelete,
   onClick,
   onRename,
@@ -374,7 +382,7 @@ function SortableEnvironmentButton({
                 // sliver outside the shell's `overflow-hidden` — invisible.
                 className="absolute left-0 top-1 bottom-1 w-1 rounded-full"
                 style={{
-                  backgroundColor: env.color || "var(--brand)",
+                  backgroundColor: effectiveColor(env) || "var(--brand)",
                 }}
               />
             )}
@@ -385,8 +393,8 @@ function SortableEnvironmentButton({
             ) : (
               <EnvironmentAvatar
                 name={label}
-                color={env.color}
-                icon={env.icon}
+                color={effectiveColor(env)}
+                icon={effectiveIcon(env)}
                 size={36}
               />
             )}
@@ -409,12 +417,10 @@ function SortableEnvironmentButton({
         </ContextMenuTrigger>
       </SimpleTooltip>
       <ContextMenuContent className="w-48 text-xs">
-        {canRename && (
-          <ContextMenuItem onSelect={onRename}>
-            <Pencil className="mr-2 h-3.5 w-3.5" />
-            {renameLabel}
-          </ContextMenuItem>
-        )}
+        <ContextMenuItem onSelect={onRename}>
+          <Pencil className="mr-2 h-3.5 w-3.5" />
+          {renameLabel}
+        </ContextMenuItem>
         {canDelete && (
           <ContextMenuItem
             className="text-destructive focus:text-destructive"

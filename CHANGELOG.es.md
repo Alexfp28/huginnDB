@@ -10,6 +10,54 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Orígenes compartidos: personalización cosmética local para un entorno
+  espejado, y edición en el sitio para el publicador.** Dos fricciones de
+  larga data en el flujo de orígenes compartidos (#108), ambas reportadas
+  tras un uso real y no encontradas por inspección.
+
+  El `name`/`color`/`icon`/tema de un entorno espejado se sobrescribían sin
+  excepción en cada sincronización — el mismo trato de "solo lectura,
+  liberado solo vía adopt/retire" que su membership de conexiones sí
+  necesita de verdad, aplicado a campos que solo describen cómo se ve el
+  entorno en *esta* pantalla. Un usuario a quien no le gustara el icono
+  elegido por un compañero no tenía forma de cambiarlo que sobreviviera a la
+  siguiente sincronización. `Environment` ahora lleva cuatro campos
+  acompañantes de solo esta máquina
+  (`local_name`/`local_color`/`local_icon`/`local_theme_id`,
+  `src-tauri/src/tab_state.rs`) que `sync_environment_bundles` nunca toca y
+  que nunca viajan por la exportación ni por el documento del origen — el
+  mismo razonamiento de "decisión local que el publicador no puede conocer"
+  que `merge_into` ya aplica al `mcp_write`/`pulse_enabled` de un perfil de
+  conexión (gotcha #56), extendido un nivel más arriba. `EnvironmentEditorDialog`
+  escribe en ellos (vía el nuevo comando `set_environment_local_overrides`)
+  en vez de en los campos sincronizados cuando el entorno que se edita está
+  espejado, con una nota en lenguaje llano explicando que el cambio es
+  local, y una acción "volver a seguir al origen" para descartar el
+  override. Al desvincularse del origen (`adopt_environment`) el override
+  fijado se pliega sobre el campo público, que pasa a ser la verdad, en vez
+  de dejar dos copias sueltas.
+
+  Por otro lado: corregir un valor mal publicado a través de un origen
+  compartido (una contraseña desactualizada, sobre todo) exigía duplicar la
+  conexión bajo un id nuevo, editar la copia, volver a publicarla, y luego
+  limpiar a mano el original ya huérfano una vez una sincronización
+  posterior lo marcaba `vanished` — dos reinicios de la app y una fila
+  suelta si se saltaba algún paso. Resultó que el backend nunca imponía de
+  verdad el solo-lectura en un perfil vinculado a un origen —
+  `save_profile` no comprueba `origin_id` en absoluto, y ya escribe la
+  entrada de keychain de la que el modo de secreto `fromKeychain` de una
+  republicación se resuelve — el bloqueo era puramente que
+  `ConnectionDialog` se negaba a llamarlo. La única excepción permitida
+  ahora es el propio publicador del origen: `canEditInPlace`
+  (`fromOrigin && originIsPublished`) le permite corregir el perfil —
+  contraseña incluida — en el mismo diálogo y el mismo id, sin duplicado ni
+  huérfano, y volver a publicarlo desde el editor de orígenes ya existente
+  cuando esté listo. Publicar, adoptar o retirar desde ese editor ahora
+  también dispara un `useOriginSync.syncAll()` completo en el acto, así que
+  el `profiles.json` y el estado `vanished` de esta misma máquina se ponen
+  al día de inmediato en vez de esperar al siguiente arranque o a un
+  "Sincronizar ahora" pulsado a mano.
+
 - **Pulse llega al conector MCP — siete herramientas de solo lectura, que
   cierran la funcionalidad.** `pulse_health`, `pulse_metrics`,
   `pulse_top_queries`, `pulse_explain`, `pulse_storage`, `pulse_sessions`,

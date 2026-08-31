@@ -365,6 +365,7 @@ pub fn run() {
             commands::prefs::save_launch_state,
             commands::prefs::list_environments,
             commands::prefs::save_environment,
+            commands::prefs::set_environment_local_overrides,
             commands::prefs::delete_environment,
             commands::prefs::adopt_environment,
             commands::prefs::set_active_environment,

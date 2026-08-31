@@ -26,6 +26,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import {
+  effectiveColor,
+  effectiveIcon,
   environmentLabel,
   useEnvironments,
   useOrderedEnvironments,
@@ -107,12 +109,11 @@ export function EnvironmentSwitcher() {
               <span className="min-w-0 flex-1 truncate">
                 {environmentLabel(env, defaultName)}
               </span>
-              {/* A mirrored environment (#108) is read-only: the next sync
-                  from its origin overwrites name/color/icon/theme anyway, so
-                  renaming it here would just be discarded. Released only via
-                  the vanished-environment notice's adopt/retire, same as an
-                  origin-owned connection profile. */}
-              {isMain && !env.originId && (
+              {/* A mirrored environment's connection membership is read-only
+                  (the next sync overwrites it), but its cosmetics are not —
+                  editing one here writes a local override instead of the
+                  synced field, see `EnvironmentEditorDialog`. */}
+              {isMain && (
                 <span
                   role="button"
                   tabIndex={-1}
@@ -124,10 +125,11 @@ export function EnvironmentSwitcher() {
                     e.stopPropagation();
                     openEdit({
                       id: env.id,
-                      name: env.name,
-                      color: env.color,
-                      icon: env.icon,
-                      themeId: env.themeId,
+                      name: environmentLabel(env, ""),
+                      color: effectiveColor(env),
+                      icon: effectiveIcon(env),
+                      themeId: env.localThemeId ?? env.themeId ?? null,
+                      originId: env.originId ?? null,
                     });
                   }}
                 >
@@ -195,10 +197,11 @@ export function EnvironmentSwitcher() {
  * environment the user gave a face.
  */
 function EnvironmentMark({ env }: { env: Environment }) {
-  if (isAvatarImage(env.icon)) {
+  const icon = effectiveIcon(env);
+  if (isAvatarImage(icon)) {
     return (
       <img
-        src={env.icon}
+        src={icon}
         alt=""
         aria-hidden
         draggable={false}
@@ -209,7 +212,7 @@ function EnvironmentMark({ env }: { env: Environment }) {
   return (
     <span
       className="h-2 w-2 shrink-0 rounded-full"
-      style={{ backgroundColor: env.color || "var(--muted-foreground)" }}
+      style={{ backgroundColor: effectiveColor(env) || "var(--muted-foreground)" }}
     />
   );
 }

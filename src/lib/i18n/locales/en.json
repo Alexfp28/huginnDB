@@ -52,7 +52,9 @@
     "replicateFrom": "Start from «{{name}}»",
     "replicateConnections": "Reopen the same connections and their tabs",
     "replicateLayout": "Reuse the pane layout",
-    "export": "Export…"
+    "export": "Export…",
+    "mirroredCosmeticsHint": "This environment comes from a shared origin — the name, colour, icon and theme below are saved only on this computer and won't be overwritten by the next sync.",
+    "clearLocalOverride": "Follow the origin again"
   },
   "panels": {
     "schema": "Schema",
@@ -273,6 +275,7 @@
     "noMatches": "No connections match your search.",
     "fromOrigin": "This connection comes from a shared origin, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours.",
     "fromOriginNamed": "This connection comes from the shared origin “{{origin}}”, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours.",
+    "fromOriginEditable": "This connection comes from the shared origin “{{origin}}”, which you publish — changes here are saved on this computer and reach everyone else the next time you publish.",
     "editAtOrigin": "Edit at the origin…"
   },
   "adhocDriver": {

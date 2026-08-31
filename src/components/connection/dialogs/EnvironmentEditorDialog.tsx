@@ -37,7 +37,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useEnvironments, environmentLabel } from "@/stores/session/environments";
+import {
+  useEnvironments,
+  environmentLabel,
+} from "@/stores/session/environments";
 import { useEnvironmentEditor } from "@/stores/dialogs/environmentEditor";
 import { useThemeStore } from "@/stores/preferences/theme";
 import { BUILT_IN_THEMES } from "@/lib/themes";
@@ -87,6 +90,10 @@ export function EnvironmentEditorDialog() {
   const setReplicate = useEnvironmentEditor((s) => s.setReplicate);
   const patchDraft = useEnvironmentEditor((s) => s.update);
   const close = useEnvironmentEditor((s) => s.close);
+  const setLocalOverrides = useEnvironments((s) => s.setLocalOverrides);
+  /** Editing a mirrored environment's cosmetics writes a local override
+   *  instead of the synced fields — see `EnvironmentDraft.originId`. */
+  const isMirrored = !!editing?.originId;
 
   /** Purely visual drop affordance on the preview tile. */
   const [dragOver, setDragOver] = useState(false);
@@ -118,7 +125,20 @@ export function EnvironmentEditorDialog() {
     const name = editing.name.trim();
     const { color, icon, themeId } = editing;
     if (editing.id) {
-      await update({ id: editing.id, name, color, icon, themeId });
+      if (isMirrored) {
+        // Never touches the synced name/color/icon/theme — those still
+        // follow the origin. This only records this machine's own
+        // preference over them.
+        await setLocalOverrides({
+          id: editing.id,
+          localName: name || null,
+          localColor: color,
+          localIcon: icon,
+          localThemeId: themeId,
+        });
+      } else {
+        await update({ id: editing.id, name, color, icon, themeId });
+      }
       close();
       return;
     }
@@ -127,6 +147,21 @@ export function EnvironmentEditorDialog() {
     // as long as connecting does. Leaving the dialog up over it looks hung.
     close();
     await createAndEnter({ name, color, icon, themeId }, replicate);
+  }
+
+  /** Drop every local override for the environment being edited, falling
+   *  back to whatever the origin publishes. Only offered for a mirrored
+   *  environment — a plain local one has no synced value to fall back to. */
+  async function clearLocalOverrides() {
+    if (!editing?.id) return;
+    await setLocalOverrides({
+      id: editing.id,
+      localName: null,
+      localColor: null,
+      localIcon: null,
+      localThemeId: null,
+    });
+    close();
   }
 
   return (
@@ -139,6 +174,11 @@ export function EnvironmentEditorDialog() {
               : t("environments.createTitle")}
           </DialogTitle>
         </DialogHeader>
+        {isMirrored && (
+          <p className="rounded-md border border-border bg-muted/40 px-2.5 py-2 text-[11px] text-muted-foreground">
+            {t("environments.mirroredCosmeticsHint")}
+          </p>
+        )}
         {/* Live avatar preview — reflects name/image/colour as they're picked,
             same rendering `EnvironmentRail`/`EnvironmentSwitcher` use. It is
             also the drop target for an image file: dropping on the thing that
@@ -315,6 +355,16 @@ export function EnvironmentEditorDialog() {
         )}
 
         <DialogFooter>
+          {isMirrored && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mr-auto text-muted-foreground"
+              onClick={() => void clearLocalOverrides()}
+            >
+              {t("environments.clearLocalOverride")}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={close}>
             {t("common.cancel")}
           </Button>

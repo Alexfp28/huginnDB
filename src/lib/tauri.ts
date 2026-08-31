@@ -673,6 +673,21 @@ export const api = {
     themeId?: string | null;
   }) => invoke<Environment>("save_environment", args),
 
+  /** Set (or clear) this machine's local override of a mirrored environment's
+   *  `name`/`color`/`icon`/`themeId` — never overwritten by `sync_origin`.
+   *  Passing `null` for a field clears that override, falling back to the
+   *  synced value; there is no "leave unchanged" state, so callers always
+   *  send the full effective draft. Separate from `saveEnvironment` on
+   *  purpose — the two commands write disjoint fields, and merging them would
+   *  reintroduce the "an omitted field silently reverts" trap. */
+  setEnvironmentLocalOverrides: (args: {
+    id: string;
+    localName?: string | null;
+    localColor?: string | null;
+    localIcon?: string | null;
+    localThemeId?: string | null;
+  }) => invoke<Environment>("set_environment_local_overrides", args),
+
   /** Delete an environment and the session state it remembered. Rejects the
    *  last remaining one; connection profiles are never touched. */
   deleteEnvironment: (id: string) =>
@@ -680,7 +695,9 @@ export const api = {
 
   /** Detach an environment from the origin that mirrors it (#108), so it
    *  becomes an ordinary local environment — the "keep as mine" action for a
-   *  vanished mirrored environment. Cosmetics/connections are left as-is. */
+   *  vanished mirrored environment. Connections/session state are left as-is;
+   *  a set local cosmetic override is promoted into the public field and
+   *  cleared (there's nothing left to shadow once detached). */
   adoptEnvironment: (id: string) =>
     invoke<Environment>("adopt_environment", { id }),
 

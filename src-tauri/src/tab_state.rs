@@ -180,6 +180,38 @@ pub struct Environment {
     /// `origin_id` is also set.
     #[serde(default)]
     pub origin_source_id: Option<String>,
+    /// Local override for `name`/`color`/`icon`/`theme_id`, one field each.
+    ///
+    /// A mirrored environment's cosmetics are overwritten on every sync (see
+    /// `sync_environment_bundles`'s doc), which is right for the fields that
+    /// describe *the shared resource* (which connections it groups) but wrong
+    /// for the fields that only describe *how it looks on this screen* — a
+    /// user who dislikes the icon a colleague picked has no way to change it
+    /// that survives the next pull. Same shape as `ConnectionProfile::mcp_write`
+    /// one level up (a local trust/display decision the publisher cannot know
+    /// and must not silently revert), except these four are genuinely optional
+    /// per-field overrides rather than always-preserved: `Some(x)` wins over
+    /// the synced value, `None` means "keep following the origin's choice".
+    ///
+    /// Only meaningful when `origin_id` is set — an ordinary local environment
+    /// has no synced value to override, its `name`/`color`/`icon`/`theme_id`
+    /// already *are* the local truth. Not enforced here (same call as
+    /// `LaunchState::database_visibility`, gotcha #27): the backend stores
+    /// whatever it's given, applicability is the frontend's job.
+    ///
+    /// Never touched by `sync_environment_bundles` and never exported —
+    /// `ExportedEnvironment`/`DraftEnvironment` carry no equivalent field, so
+    /// these can never leave this machine. `adopt_environment` folds a set
+    /// override into the now-authoritative public field and clears it, since
+    /// once detached from the origin there is nothing left to override.
+    #[serde(default)]
+    pub local_name: Option<String>,
+    #[serde(default)]
+    pub local_color: Option<String>,
+    #[serde(default)]
+    pub local_icon: Option<String>,
+    #[serde(default)]
+    pub local_theme_id: Option<String>,
 }
 
 /// A shared folder this environment imports connections from (#108).
@@ -736,6 +768,28 @@ impl Environment {
             self.connections.remove(&id);
         }
     }
+
+    /// Promote any local cosmetic override into the now-authoritative public
+    /// field and clear it. Called by `adopt_environment` (`commands::prefs`)
+    /// when detaching from the origin that mirrors this environment — once
+    /// there is no longer a synced value to shadow, keeping both set would
+    /// only drift out of sync with whatever the (now ignored) public field
+    /// says. A pure `Environment` method, not inlined in the command, so it's
+    /// testable without an `AppState` (see CLAUDE.md gotcha #52).
+    pub(crate) fn adopt_local_overrides(&mut self) {
+        if let Some(name) = self.local_name.take() {
+            self.name = name;
+        }
+        if let Some(color) = self.local_color.take() {
+            self.color = Some(color);
+        }
+        if let Some(icon) = self.local_icon.take() {
+            self.icon = Some(icon);
+        }
+        if let Some(theme_id) = self.local_theme_id.take() {
+            self.theme_id = Some(theme_id);
+        }
+    }
 }
 
 /// Truncate oversized query bodies before persisting. Command handlers call
@@ -857,6 +911,38 @@ mod tests {
         assert!(env
             .connections
             .contains_key(&format!("c{}", MAX_REMEMBERED_CONNECTIONS as i64 + 4)));
+    }
+
+    /// Detaching from the origin must not leave a personalised environment
+    /// looking like it reverted to whatever the publisher last chose — the
+    /// override the user picked becomes the real value, not a shadow of one.
+    #[test]
+    fn adopt_local_overrides_promotes_every_set_field() {
+        let mut env = Environment {
+            name: "Producción (EU)".into(),
+            color: Some("#ff0000".into()),
+            icon: Some("server".into()),
+            theme_id: Some("nord".into()),
+            local_name: Some("Mi Producción".into()),
+            local_color: Some("#123456".into()),
+            local_icon: None,
+            local_theme_id: Some("dracula".into()),
+            ..Environment::default()
+        };
+
+        env.adopt_local_overrides();
+
+        assert_eq!(env.name, "Mi Producción", "an overridden field is promoted");
+        assert_eq!(env.color.as_deref(), Some("#123456"));
+        assert_eq!(
+            env.icon.as_deref(),
+            Some("server"),
+            "no local override → the synced value is left as-is"
+        );
+        assert_eq!(env.theme_id.as_deref(), Some("dracula"));
+        assert!(env.local_name.is_none(), "the override is consumed");
+        assert!(env.local_color.is_none());
+        assert!(env.local_theme_id.is_none());
     }
 
     #[test]

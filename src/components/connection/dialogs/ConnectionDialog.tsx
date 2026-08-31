@@ -249,6 +249,17 @@ export function ConnectionDialog({
       ? s.byId[stored.origin_id]?.role === "publisher"
       : false,
   );
+  /**
+   * The one exception to `fromOrigin`'s read-only rule: the machine that
+   * publishes this profile's origin may correct it in place — save writes
+   * local `profiles.json` + this machine's own keychain (`save_profile` has
+   * no `origin_id` guard at all; only the frontend ever enforced read-only),
+   * exactly what the origin editor's `fromKeychain` secret mode resolves from
+   * at the next publish. Still `origin_id`-linked afterwards: this is a
+   * correction, not a detach — `adopt`/`onDuplicate` stay the way to make an
+   * independent local copy.
+   */
+  const canEditInPlace = fromOrigin && originIsPublished;
   const openOriginEditor = useOriginEditor((state) => state.open);
 
   function buildProfile(): ConnectionProfile {
@@ -312,8 +323,10 @@ export function ConnectionDialog({
     // edit would silently discard the user's work. Enforced at the boundary and
     // not only by disabling the form, because Enter-to-save and any future call
     // site would otherwise slip past the UI guard (`origin_id`'s contract in
-    // `state.rs` says read-only; until now only the docs said so).
-    if (fromOrigin) return;
+    // `state.rs` says read-only; until now only the docs said so). The one
+    // exception is `canEditInPlace`: this machine publishes the origin, so a
+    // correction here is exactly what the next publish is meant to pick up.
+    if (fromOrigin && !canEditInPlace) return;
     setSaving(true);
     try {
       const saved = await save(
@@ -338,16 +351,25 @@ export function ConnectionDialog({
     setTestStatus({ kind: "idle" });
     try {
       // Persist any edits + credentials first so the pool opens against the
-      // saved profile and the keychain has the secret it needs.
-      const saved = await save(
-        buildProfile(),
-        password || undefined,
-        sshSecret || undefined,
-      );
-      await connect(saved.id, password || undefined);
-      await refreshSchema(saved.id);
-      setEditingId(saved.id);
-      onConnected?.(saved.id);
+      // saved profile and the keychain has the secret it needs. A read-only
+      // origin-linked profile (and not `canEditInPlace`) skips this — the
+      // fields aren't individually disabled (only Save/Connect are gated), so
+      // whatever the user typed here must never reach `save_profile`, the
+      // same boundary `onSave` enforces.
+      const id =
+        fromOrigin && !canEditInPlace
+          ? stored!.id
+          : (
+              await save(
+                buildProfile(),
+                password || undefined,
+                sshSecret || undefined,
+              )
+            ).id;
+      await connect(id, password || undefined);
+      await refreshSchema(id);
+      setEditingId(id);
+      onConnected?.(id);
       onOpenChange(false);
     } catch (e) {
       const err = String(e);
@@ -576,21 +598,29 @@ export function ConnectionDialog({
                   </TabsTrigger>
                 </TabsList>
 
-                {/* Says why the form is inert before the user discovers it by
-                    typing into a field and finding Save greyed out. Placed at the
-                    top of the first tab rather than beside the button, since the
-                    editing is what's blocked, not just the saving. */}
+                {/* Explains the form's state before the user discovers it by
+                    typing into a field and finding Save greyed out (a plain
+                    consumer) or wonders why editing is even allowed (the
+                    publisher). Placed at the top of the first tab rather than
+                    beside the button, since it's the editing that's affected,
+                    not just the saving. */}
                 {fromOrigin && (
                   <div className="mb-2 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-[11px] text-muted-foreground">
-                    {originName
-                      ? t("connectionDialog.fromOriginNamed", {
-                          origin: originName,
+                    {canEditInPlace
+                      ? t("connectionDialog.fromOriginEditable", {
+                          origin: originName ?? "",
                         })
-                      : t("connectionDialog.fromOrigin")}
+                      : originName
+                        ? t("connectionDialog.fromOriginNamed", {
+                            origin: originName,
+                          })
+                        : t("connectionDialog.fromOrigin")}
                     {/* Only for an origin this machine publishes: pointing a
                         consumer at an editor that will open read-only is worse
-                        than saying nothing. */}
-                    {originIsPublished && stored?.origin_id && (
+                        than saying nothing. `canEditInPlace` already covers
+                        every case this could show for, since it implies
+                        `originIsPublished`. */}
+                    {canEditInPlace && stored?.origin_id && (
                       <button
                         className="ml-1 underline"
                         onClick={() => openOriginEditor(stored.origin_id!)}
@@ -1164,7 +1194,7 @@ export function ConnectionDialog({
                   </Button>
                   <Button
                     onClick={onSave}
-                    disabled={busy || !name || fromOrigin}
+                    disabled={busy || !name || (fromOrigin && !canEditInPlace)}
                   >
                     {saving
                       ? t("connectionDialog.saving")

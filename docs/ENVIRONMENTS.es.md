@@ -68,7 +68,18 @@ enteros — también es global.
 Para todo el que lo consume solo va en un sentido. HuginnDB lee esa ruta, y una
 conexión que viene de un origen es de solo lectura: la siguiente sincronización
 desharía un cambio local de todas formas. Si necesitas una variante, duplícala; la
-copia es tuya, editable por completo y ya sin vínculo con el origen.
+copia es tuya, editable por completo y ya sin vínculo con el origen. La única
+excepción es la máquina que publica el origen: puede corregir una conexión — una
+contraseña mal puesta, sobre todo — en el mismo diálogo, con el mismo id, y
+volver a publicarla desde el editor del documento cuando esté lista; sin
+duplicados ni nada que limpiar después.
+
+El color, el icono, el nombre y el tema de un entorno son distintos: siempre
+puedes personalizarlos localmente, incluso mientras el entorno sigue espejado —
+abre su diálogo de renombrar, elige lo que quieras, y se recuerda solo en este
+equipo. La siguiente sincronización mantiene todo lo demás del entorno (qué
+conexiones agrupa) al día con el origen, y un botón "volver a seguir al origen"
+descarta tu personalización si cambias de idea.
 
 ### Curarlo (1.19.0)
 

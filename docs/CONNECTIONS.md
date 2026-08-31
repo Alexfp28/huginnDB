@@ -201,6 +201,9 @@ else registers it as an **origin** and pulls from it.
 - A connection pulled from an origin is **read-only in the app** — it is a copy
   of somebody else's entry, and editing it locally would be undone by the next
   sync. To vary one, duplicate it: the copy is an ordinary local connection.
+  The one exception is the machine that publishes that origin: it can correct
+  the connection in place (a wrong password, most often) and republish it from
+  the origin document editor — no duplicate, same id.
 - Origins are registered per environment, and HuginnDB only ever *reads* them.
 - When the curator stops publishing a connection you already pulled, it isn't
   deleted behind your back. It is flagged, and you decide: **Keep as mine**

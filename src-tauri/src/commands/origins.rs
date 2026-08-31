@@ -666,6 +666,12 @@ fn sync_environment_bundles(
                 existing.icon = bundle.environment.icon.clone();
                 existing.theme_id = bundle.environment.theme_id.clone();
                 existing.launch.visible_connections = visible_connections;
+                // Deliberately not touched: `local_name`/`local_color`/
+                // `local_icon`/`local_theme_id` are this machine's own
+                // override of how the mirror displays, set only via
+                // `set_environment_local_overrides`. See their doc on
+                // `Environment` — the same "never revert a local decision"
+                // reasoning as `merge_into`'s `mcp_write`/`pulse_enabled`.
                 updated.push(existing.id.clone());
             }
             None => {
@@ -1034,6 +1040,52 @@ mod tests {
             env.launch.visible_connections,
             Some(vec!["conn-1".to_string(), "conn-2".to_string()])
         );
+    }
+
+    /// The same "local decision survives a refresh" guarantee `merge_into`
+    /// gives `mcp_write`/`pulse_enabled` (see those tests above), one level
+    /// up: a user who picked their own icon/colour/name/theme for a mirrored
+    /// environment must not have it silently reverted by the next sync just
+    /// because the publisher touched something else in the bundle.
+    #[test]
+    fn a_sync_never_touches_the_local_cosmetic_overrides() {
+        let mut state = tab_state::PersistedTabState::default();
+        let (added, ..) = sync_environment_bundles(
+            &mut state,
+            "origin-1",
+            &[bundle("src-a", "Producción", vec!["conn-1".into()])],
+        );
+        let env_id = added[0].clone();
+        {
+            let env = state
+                .environments
+                .iter_mut()
+                .find(|e| e.id == env_id)
+                .unwrap();
+            env.local_name = Some("Mi Producción".into());
+            env.local_color = Some("#123456".into());
+            env.local_icon = Some("star".into());
+            env.local_theme_id = Some("nord".into());
+        }
+
+        // The publisher renamed it and changed its colour — none of that
+        // should disturb the local overrides.
+        sync_environment_bundles(
+            &mut state,
+            "origin-1",
+            &[bundle(
+                "src-a",
+                "Producción (EU)",
+                vec!["conn-1".into(), "conn-2".into()],
+            )],
+        );
+
+        let env = state.environments.iter().find(|e| e.id == env_id).unwrap();
+        assert_eq!(env.name, "Producción (EU)", "the synced name still updates");
+        assert_eq!(env.local_name.as_deref(), Some("Mi Producción"));
+        assert_eq!(env.local_color.as_deref(), Some("#123456"));
+        assert_eq!(env.local_icon.as_deref(), Some("star"));
+        assert_eq!(env.local_theme_id.as_deref(), Some("nord"));
     }
 
     #[test]

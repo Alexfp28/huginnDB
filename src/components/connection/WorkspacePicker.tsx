@@ -29,6 +29,8 @@ import { isMainWindow } from "@/lib/window";
 import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
 import {
+  effectiveColor,
+  effectiveIcon,
   environmentLabel,
   useEnvironments,
   useOrderedEnvironments,
@@ -270,8 +272,8 @@ function EnvironmentsPane() {
                 ) : (
                   <EnvironmentAvatar
                     name={environmentLabel(env, defaultName)}
-                    color={env.color}
-                    icon={env.icon}
+                    color={effectiveColor(env)}
+                    icon={effectiveIcon(env)}
                     size={32}
                   />
                 )

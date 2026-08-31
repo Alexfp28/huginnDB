@@ -67,7 +67,17 @@ environments — is global too.
 For everyone consuming one it only goes one way. HuginnDB reads that path, and a
 connection that came from an origin is read-only — the next sync would undo a
 local edit anyway. If you need a variant, duplicate it: the copy is yours, fully
-editable, and no longer tied to the origin.
+editable, and no longer tied to the origin. The one exception is the machine that
+publishes the origin: it can correct a connection — a wrong password, most often
+— right there in the same dialog, under the same id, and republish it from the
+document editor when ready; no duplicate, nothing left behind to clean up.
+
+An environment's colour, icon, name and theme are different: those you can always
+personalise locally, even while the environment stays mirrored — open its rename
+dialog, pick what you like, and it's remembered on this machine only. The next
+sync keeps everything else about the environment (which connections it groups)
+in step with the origin, and a "follow the origin again" button drops your
+override if you change your mind.
 
 ### Curating one (1.19.0)
 

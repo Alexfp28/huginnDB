@@ -20,6 +20,14 @@ export interface EnvironmentDraft {
   /** Theme override for this environment. `null` = no override, keep the
    *  app's default theme. */
   themeId: string | null;
+  /**
+   * The mirrored environment's origin, when editing one — always `null` for
+   * a create, or for an ordinary local environment. Tells
+   * `EnvironmentEditorDialog` to write a local cosmetic override
+   * (`setEnvironmentLocalOverrides`) instead of the synced fields
+   * (`saveEnvironment`) on submit.
+   */
+  originId: string | null;
 }
 
 interface EnvironmentEditorState {
@@ -39,7 +47,14 @@ export const useEnvironmentEditor = create<EnvironmentEditorState>((set) => ({
   replicate: { connections: true, layout: true },
   openCreate: (replicate) =>
     set({
-      editing: { id: null, name: "", color: null, icon: null, themeId: null },
+      editing: {
+        id: null,
+        name: "",
+        color: null,
+        icon: null,
+        themeId: null,
+        originId: null,
+      },
       replicate,
     }),
   openEdit: (draft) => set({ editing: draft }),
