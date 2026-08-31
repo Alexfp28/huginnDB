@@ -10,6 +10,32 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Pulse se amplía a una ventana propia.** El botón ⤢ de la cabecera del
+  panel abre una ventana del sistema que mide esa conexión — con anchura
+  suficiente para la tabla completa de digests y la clasificación entera de
+  almacenamiento, y libre para quedarse en un segundo monitor mientras el
+  espacio de trabajo sigue donde estaba. Un rail a la izquierda lleva las
+  vistas que hoy tienen una lectura detrás (Estado, Dónde va el tiempo,
+  Almacenamiento); Sesiones, Índices y la retrospectiva del histórico se
+  incorporarán cuando lleguen las suyas, porque una entrada del rail sin nada
+  detrás es peor que una entrada ausente.
+
+  **No** es un tab del espacio de trabajo ni tampoco una ventana de tab
+  desacoplado. Pulse es contexto, no un documento: no tiene `TabKind`, no está
+  en `useTabs` ni en el estado persistido de tabs, así que la ventana lleva un
+  identificador de conexión y nada más (`open_pulse_window` /
+  `take_pulse_window_intent`, siguiendo el patrón de intents que ya existía).
+  El panel lateral sigue funcionando mientras está abierta y las dos
+  **comparten un solo reloj**: la serie viva vive en un store y no en ninguno
+  de los dos componentes, así que dos superficies sobre una conexión siguen
+  siendo una sonda cada cinco segundos.
+
+  Las tarjetas, la lista de avisos y la leyenda de almacenamiento son ahora
+  componentes compartidos parametrizados por densidad en vez de estar escritos
+  dos veces, y `usePulseView` deriva cada cifra en un único sitio. Dos
+  superficies calculando «consultas por segundo» por separado es la forma en
+  que acabarían discrepando sobre qué significa.
+
 - **Pulse ocupa el panel: dónde va el tiempo y dónde ha ido el disco.** La
   primera entrega mostraba cuatro tarjetas y los avisos, y dejaba vacía la
   mayor parte de un panel alto. Ahora las siguen dos secciones: las sentencias

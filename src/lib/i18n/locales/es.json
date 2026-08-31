@@ -1748,7 +1748,8 @@
       "meta": "{{count}} ejecuciones · {{examined}} filas examinadas",
       "noIndex": "sin índice",
       "empty": "El servidor todavía no ha registrado ninguna sentencia.",
-      "unavailable": "No disponible: performance_schema está desactivado o fuera de alcance."
+      "unavailable": "No disponible: performance_schema está desactivado o fuera de alcance.",
+      "noIndexCount": "{{count}} sin índice"
     },
     "storage": {
       "data": "Datos",
@@ -1756,6 +1757,16 @@
       "free": "Libre",
       "empty": "Esta conexión no tiene base de datos por defecto.",
       "unavailable": "No disponible: el servidor no ha informado del tamaño de las tablas."
+    },
+    "expand": "Abrir en su propia ventana",
+    "windowUnavailable": "Esta ventana de Pulse ha perdido su conexión.",
+    "table": {
+      "statement": "Sentencia",
+      "runs": "Ejecuciones",
+      "avg": "Media",
+      "max": "Más lenta",
+      "examinedSent": "Examinadas / devueltas",
+      "signal": "Señal"
     }
   },
   "query": {

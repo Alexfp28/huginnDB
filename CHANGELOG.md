@@ -8,6 +8,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Pulse expands into a window of its own.** The ⤢ button in the panel's
+  header opens a real OS window measuring that connection — wide enough for the
+  full digest table and the whole storage ranking, and free to sit on a second
+  monitor while the workspace stays where it is. A rail down the left carries
+  the views that have a read behind them today (Status, Time spent, Storage);
+  Sessions, Indexes and the history retrospective join it as theirs land,
+  because a rail entry with nothing behind it is worse than an absent one.
+
+  It is **not** a workspace tab and not a detached-tab window either. Pulse is
+  context, not a document: it has no `TabKind`, nothing in `useTabs`, and
+  nothing in the persisted tab state, so the window carries one connection id
+  and nothing else (`open_pulse_window` / `take_pulse_window_intent`, mirroring
+  the existing intent-stash pattern). The dock panel keeps working while it is
+  open and the two **share one clock** — the live series lives in a store, not
+  in either component, so two surfaces on one connection are still one probe
+  every five seconds.
+
+  The tiles, the alert list and the storage legend are now shared components
+  parameterised by density rather than written twice, and `usePulseView`
+  derives every figure in one place. Two surfaces computing "queries per
+  second" separately is how they would eventually disagree about what it means.
+
 - **Pulse fills the panel: where the time goes, and where the disk went.** The
   first cut showed four tiles and the alerts and then left most of a tall
   panel empty. Two sections now follow them: the statements the server has

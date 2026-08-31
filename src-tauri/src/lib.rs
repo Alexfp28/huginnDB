@@ -291,6 +291,8 @@ pub fn run() {
             commands::connection::take_window_startup_intent,
             commands::connection::open_tab_window,
             commands::connection::take_detached_tab_intent,
+            commands::connection::open_pulse_window,
+            commands::connection::take_pulse_window_intent,
             commands::schema::list_databases,
             commands::schema::create_database,
             commands::schema::drop_database,

@@ -772,6 +772,13 @@ pub struct AppState {
     /// fields). Populated by `open_tab_window` and drained exactly once by
     /// `take_detached_tab_intent` when that window's frontend boots.
     pub detached_tab_intents: Arc<RwLock<HashMap<String, serde_json::Value>>>,
+    /// Connection id a freshly-opened Pulse window should measure, keyed by its
+    /// Tauri window label. A plain `String` rather than a serialized tab
+    /// because Pulse is deliberately *not* a `TabKind` — it never appears in
+    /// the workspace, so there is no tab to carry. Populated by
+    /// `open_pulse_window` and drained exactly once by
+    /// `take_pulse_window_intent` when that window's frontend boots.
+    pub pulse_window_intents: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl AppState {
@@ -860,6 +867,7 @@ impl AppState {
             pending_cli_connect: Arc::new(RwLock::new(None)),
             window_startup_intents: Arc::new(RwLock::new(HashMap::new())),
             detached_tab_intents: Arc::new(RwLock::new(HashMap::new())),
+            pulse_window_intents: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }

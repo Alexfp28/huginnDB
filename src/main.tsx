@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
 import { DetachedTabWindow } from "./components/shell/DetachedTabWindow";
+import { PulseWindow } from "./components/pulse/PulseWindow";
 import "./lib/monaco/monaco-setup";
 import "./lib/i18n";
 import "./index.css";
@@ -35,13 +36,24 @@ for (const type of ["dragover", "drop"] as const) {
   });
 }
 
-// A "sacar como ventana flotante" window (see `open_tab_window` /
-// `TabbedArea`'s floatPanel action) is labeled "tabwin-<uuid>" and renders a
-// single bare tab instead of the full app shell.
-const isDetachedTabWindow = getCurrentWindow().label.startsWith("tabwin-");
+// Two window kinds render something other than the full app shell, both
+// identified by their Tauri label's prefix (the label is fixed at creation and
+// is the only thing a fresh JS runtime knows about why it was opened):
+//
+//   tabwin-*    a "sacar como ventana flotante" window (see `open_tab_window`
+//               / `TabbedArea`'s floatPanel action) — one bare workspace tab.
+//   pulsewin-*  Pulse's expanded view (see `open_pulse_window`) — measuring
+//               one connection. Deliberately not a detached tab: Pulse has no
+//               `TabKind` and never appears in the workspace.
+const label = getCurrentWindow().label;
+const Root = label.startsWith("tabwin-")
+  ? DetachedTabWindow
+  : label.startsWith("pulsewin-")
+    ? PulseWindow
+    : App;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {isDetachedTabWindow ? <DetachedTabWindow /> : <App />}
+    <Root />
   </React.StrictMode>,
 );

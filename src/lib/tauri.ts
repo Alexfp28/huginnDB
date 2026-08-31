@@ -1200,4 +1200,17 @@ export const api = {
   /** The connection's biggest relations, largest first. On demand. */
   pulseStorage: (connectionId: string) =>
     invoke<PulseStorageItem[]>("pulse_storage", { connectionId }),
+
+  /**
+   * Open Pulse's expanded view in its own OS window, measuring `connectionId`.
+   * Returns the new window's label. Not a detached tab — Pulse has no
+   * `TabKind` and never appears in the workspace.
+   */
+  openPulseWindow: (connectionId: string, title: string) =>
+    invoke<string>("open_pulse_window", { connectionId, title }),
+
+  /** Drain the connection id stashed for this Pulse window. Called once, on
+   *  boot, by `PulseWindow`. */
+  takePulseWindowIntent: (label: string) =>
+    invoke<string | null>("take_pulse_window_intent", { label }),
 };

@@ -1748,7 +1748,8 @@
       "meta": "{{count}} runs · {{examined}} rows examined",
       "noIndex": "no index",
       "empty": "The server has recorded no statements yet.",
-      "unavailable": "Not available — performance_schema is off or out of reach."
+      "unavailable": "Not available — performance_schema is off or out of reach.",
+      "noIndexCount": "{{count}} without an index"
     },
     "storage": {
       "data": "Data",
@@ -1756,6 +1757,16 @@
       "free": "Free",
       "empty": "This connection has no default database set.",
       "unavailable": "Not available — the server would not report table sizes."
+    },
+    "expand": "Open in its own window",
+    "windowUnavailable": "This Pulse window has lost its connection.",
+    "table": {
+      "statement": "Statement",
+      "runs": "Runs",
+      "avg": "Average",
+      "max": "Slowest",
+      "examinedSent": "Examined / sent",
+      "signal": "Signal"
     }
   },
   "query": {

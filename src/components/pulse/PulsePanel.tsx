@@ -1,10 +1,10 @@
 /**
  * Pulse in the right dock — the compact density.
  *
- * Four sections stacked down the panel's full height: the live tiles, the
- * alerts derived from them, the statements the server has spent its time on,
- * and where the disk went. Each one shows the top few and stops there; the
- * expanded window is where the full tables live, because three rows of a lock
+ * Four sections down the panel's full height: the live tiles, the alerts
+ * derived from them, the statements the server has spent its time on, and
+ * where the disk went. Each shows the top few and stops; the expanded window
+ * (the ⤢ button) is where the full tables live, because three rows of a lock
  * chain or an index list is a misleading answer rather than a small one.
  *
  * The panel owns neither of its clocks. `usePulseLive` runs one five-second
@@ -13,32 +13,36 @@
  * two.
  */
 
-import { useMemo, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Activity, Lock, LockOpen, RefreshCw, ServerCog } from "lucide-react";
+import {
+  Activity,
+  Lock,
+  LockOpen,
+  Maximize2,
+  RefreshCw,
+  ServerCog,
+} from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
-import { Sparkline } from "@/components/pulse/charts/Sparkline";
+import { AlertList } from "@/components/pulse/sections/AlertList";
+import { StatusTiles } from "@/components/pulse/sections/StatusTiles";
+import { StorageLegend } from "@/components/pulse/sections/StorageLegend";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { deriveAlerts, type PulseAlert } from "@/lib/pulse/alerts";
-import { cacheHitRatio, latestOf, seriesFor, valueIn } from "@/lib/pulse/rates";
 import { usePulseLive } from "@/lib/pulse/usePulseLive";
 import { usePulseDetail } from "@/lib/pulse/usePulseDetail";
-import { parentConnectionId } from "@/lib/connectionLabel";
+import { isUnsupported, usePulseView } from "@/lib/pulse/usePulseView";
+import { parentConnectionId, resolveConnectionLabel } from "@/lib/connectionLabel";
+import { api } from "@/lib/tauri";
+import { notify } from "@/lib/notify";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
-import { NO_SAMPLES, usePulse } from "@/stores/session/pulse";
+import { usePulse } from "@/stores/session/pulse";
+import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
 import type { PulseStorageItem, PulseTopQuery } from "@/types";
 
 /** How many rows of each on-demand read fit here. The backend returns twenty;
  *  the rest are the expanded window's to show. */
 const COMPACT_ROWS = 3;
-
-/** A driver Pulse cannot read yet answers with this, and the panel says so
- *  rather than showing a column of zeroes. Matched on the error the backend's
- *  `AppError::UnsupportedDriver` serialises to. */
-function isUnsupported(error: string | undefined): boolean {
-  return !!error && /unsupported driver/i.test(error);
-}
 
 function Section({
   title,
@@ -70,55 +74,6 @@ function Section({
       </h3>
       {children}
     </section>
-  );
-}
-
-function Tile({
-  label,
-  value,
-  suffix,
-  series,
-  color,
-}: {
-  label: string;
-  value: string;
-  suffix?: string;
-  series: readonly (number | null)[];
-  color: string;
-}) {
-  return (
-    <div className="overflow-hidden rounded-md border border-border bg-card px-2 pb-1 pt-1.5">
-      <div className="truncate text-3xs uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
-      <div className="font-mono text-base font-semibold tabular-nums leading-tight">
-        {value}
-        {suffix && (
-          <span className="ml-0.5 text-2xs font-medium text-muted-foreground">
-            {suffix}
-          </span>
-        )}
-      </div>
-      <Sparkline values={series} color={color} className="mt-0.5 h-4 w-full" />
-    </div>
-  );
-}
-
-function AlertRow({ alert }: { alert: PulseAlert }) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex items-start gap-2">
-      <span
-        aria-hidden
-        className={cn(
-          "mt-0.5 w-[3px] shrink-0 self-stretch rounded-full",
-          alert.level === "critical" ? "bg-destructive" : "bg-warning",
-        )}
-      />
-      <span className="text-xs leading-snug text-foreground">
-        {t(`pulse.alert.${alert.code}`, alert.params)}
-      </span>
-    </div>
   );
 }
 
@@ -189,6 +144,7 @@ export function PulsePanel({ active }: { active: boolean }) {
   const selected = useUi((s) => s.selectedConnectionId);
   const pinned = usePulse((s) => s.pinnedConnectionId);
   const setPinned = usePulse((s) => s.setPinned);
+  const profiles = useConnections((s) => s.profiles);
 
   // `selectedConnectionId` is always a profile id, but a pin could have been
   // set from anywhere; fold both through `parentConnectionId` so a synthetic
@@ -199,40 +155,25 @@ export function PulsePanel({ active }: { active: boolean }) {
 
   usePulseLive(connectionId, active);
   const { refresh } = usePulseDetail(connectionId, active);
+  const view = usePulseView(connectionId);
 
-  const samples = usePulse((s) =>
-    connectionId ? (s.samples[connectionId] ?? NO_SAMPLES) : NO_SAMPLES,
-  );
-  const error = usePulse((s) => (connectionId ? s.errors[connectionId] : undefined));
-  const queries = usePulse((s) => (connectionId ? s.topQueries[connectionId] : undefined));
-  const storage = usePulse((s) => (connectionId ? s.storage[connectionId] : undefined));
-
-  // Derived arrays must be memoized, never returned from a selector (gotcha #1).
-  const view = useMemo(() => {
-    const latest = samples[samples.length - 1];
-    return {
-      latest,
-      alerts: deriveAlerts(samples),
-      queries: seriesFor(samples, "queries"),
-      connections: seriesFor(samples, "connections_active"),
-      running: seriesFor(samples, "connections_running"),
-      hit: cacheHitRatio(samples),
-      max: latest ? valueIn(latest, "connections_max") : undefined,
-    };
-  }, [samples]);
-
-  const storageTotal = useMemo(
-    () =>
-      (storage?.items ?? []).reduce(
-        (sum, i) => sum + i.dataBytes + i.indexBytes + i.freeBytes,
-        0,
-      ),
-    [storage],
-  );
+  function expand() {
+    if (!connectionId) return;
+    const label = resolveConnectionLabel(profiles, connectionId);
+    void api
+      .openPulseWindow(connectionId, `${t("pulse.title")} · ${label}`)
+      .catch((e) => notify.error(String(e)));
+  }
 
   if (!connectionId) {
     return (
-      <PanelFrame pinned={false} onTogglePin={() => {}} onRefresh={null} subtitle="">
+      <PanelFrame
+        pinned={false}
+        onTogglePin={() => {}}
+        onRefresh={null}
+        onExpand={null}
+        subtitle=""
+      >
         <EmptyState icon={Activity} title={t("pulse.noConnection")} />
       </PanelFrame>
     );
@@ -241,12 +182,13 @@ export function PulsePanel({ active }: { active: boolean }) {
   const togglePin = () => setPinned(pinned ? null : connectionId);
   const { latest } = view;
 
-  if (isUnsupported(error) && !latest) {
+  if (isUnsupported(view.error) && !latest) {
     return (
       <PanelFrame
         pinned={!!pinned}
         onTogglePin={togglePin}
         onRefresh={null}
+        onExpand={null}
         subtitle=""
       >
         <EmptyState
@@ -264,26 +206,22 @@ export function PulsePanel({ active }: { active: boolean }) {
         pinned={!!pinned}
         onTogglePin={togglePin}
         onRefresh={null}
+        onExpand={null}
         subtitle={t("pulse.following")}
       >
         <EmptyState
           icon={Activity}
-          title={error ? t("pulse.failed") : t("pulse.collecting")}
-          hint={error}
+          title={view.error ? t("pulse.failed") : t("pulse.collecting")}
+          hint={view.error}
         />
       </PanelFrame>
     );
   }
 
-  const qps = latestOf(view.queries);
-  const conns = latestOf(view.connections);
-  const running = latestOf(view.running);
-  const topQueries = (queries?.items ?? []).slice(0, COMPACT_ROWS);
-  const topStorage = (storage?.items ?? []).slice(0, COMPACT_ROWS);
+  const topQueries = (view.topQueries?.items ?? []).slice(0, COMPACT_ROWS);
+  const topStorage = (view.storage?.items ?? []).slice(0, COMPACT_ROWS);
   const storageMax = topStorage.length
-    ? Math.max(
-        ...topStorage.map((i) => i.dataBytes + i.indexBytes + i.freeBytes),
-      )
+    ? Math.max(...topStorage.map((i) => i.dataBytes + i.indexBytes + i.freeBytes))
     : 0;
 
   return (
@@ -291,40 +229,12 @@ export function PulsePanel({ active }: { active: boolean }) {
       pinned={!!pinned}
       onTogglePin={togglePin}
       onRefresh={refresh}
+      onExpand={expand}
       subtitle={`${latest.driver} ${latest.serverVersion}`.trim()}
     >
       <div className="flex h-full flex-col overflow-y-auto">
         <Section title={t("pulse.section.status")}>
-          <div className="grid grid-cols-2 gap-1.5">
-            <Tile
-              label={t("pulse.metric.queriesPerSecond")}
-              value={qps === null ? "—" : formatCount(Math.round(qps))}
-              series={view.queries}
-              color="var(--brand)"
-            />
-            <Tile
-              label={t("pulse.metric.connections")}
-              value={conns === null ? "—" : formatCount(conns)}
-              suffix={view.max ? `/ ${formatCount(view.max)}` : undefined}
-              series={view.connections}
-              color="var(--fk)"
-            />
-            <Tile
-              label={t("pulse.metric.running")}
-              value={running === null ? "—" : formatCount(running)}
-              series={view.running}
-              color="var(--warning)"
-            />
-            <Tile
-              label={t("pulse.metric.cacheHit")}
-              // An idle interval has no hit ratio; "—" is the honest reading,
-              // where 0 % would look like a server in trouble.
-              value={view.hit === null ? "—" : (view.hit * 100).toFixed(1)}
-              suffix={view.hit === null ? undefined : "%"}
-              series={[]}
-              color="var(--success)"
-            />
-          </div>
+          <StatusTiles view={view} columns={2} />
         </Section>
 
         <Section
@@ -332,20 +242,16 @@ export function PulsePanel({ active }: { active: boolean }) {
           badge={view.alerts.length ? String(view.alerts.length) : undefined}
           badgeTone="warn"
         >
-          {view.alerts.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{t("pulse.noAlerts")}</p>
-          ) : (
-            view.alerts.map((a) => <AlertRow key={a.code} alert={a} />)
-          )}
+          <AlertList alerts={view.alerts} />
         </Section>
 
         <Section
           title={t("pulse.section.slowest")}
           badge={
-            queries?.items.length
+            view.topQueries?.items.length
               ? t("pulse.showingOf", {
                   shown: topQueries.length,
-                  total: queries.items.length,
+                  total: view.topQueries.items.length,
                 })
               : undefined
           }
@@ -354,9 +260,9 @@ export function PulsePanel({ active }: { active: boolean }) {
             topQueries.map((q) => <QueryRow key={q.digest} query={q} />)
           ) : (
             <p className="text-xs text-muted-foreground">
-              {queries?.error
+              {view.topQueries?.error
                 ? t("pulse.slowest.unavailable")
-                : queries
+                : view.topQueries
                   ? t("pulse.slowest.empty")
                   : t("pulse.loading")}
             </p>
@@ -365,24 +271,24 @@ export function PulsePanel({ active }: { active: boolean }) {
 
         <Section
           title={t("pulse.section.storage")}
-          badge={storageTotal > 0 ? formatBytes(storageTotal) : undefined}
+          badge={
+            view.storageTotalBytes > 0
+              ? formatBytes(view.storageTotalBytes)
+              : undefined
+          }
         >
           {topStorage.length > 0 ? (
             <>
               {topStorage.map((i) => (
                 <StorageRow key={`${i.schema}.${i.name}`} item={i} max={storageMax} />
               ))}
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5 text-3xs text-muted-foreground">
-                <Legend color="var(--brand)" label={t("pulse.storage.data")} />
-                <Legend color="var(--fk)" label={t("pulse.storage.indexes")} />
-                <Legend color="var(--warning)" label={t("pulse.storage.free")} />
-              </div>
+              <StorageLegend />
             </>
           ) : (
             <p className="text-xs text-muted-foreground">
-              {storage?.error
+              {view.storage?.error
                 ? t("pulse.storage.unavailable")
-                : storage
+                : view.storage
                   ? t("pulse.storage.empty")
                   : t("pulse.loading")}
             </p>
@@ -393,33 +299,22 @@ export function PulsePanel({ active }: { active: boolean }) {
   );
 }
 
-function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1">
-      <span
-        aria-hidden
-        className="h-2 w-2 rounded-[2px]"
-        style={{ background: color }}
-      />
-      {label}
-    </span>
-  );
-}
-
-/** Header + body chrome, shared by every state so the pin control stays put
- *  while the body swaps between "collecting", "not supported" and the sections. */
+/** Header + body chrome, shared by every state so the controls stay put while
+ *  the body swaps between "collecting", "not supported" and the sections. */
 function PanelFrame({
   pinned,
   onTogglePin,
   onRefresh,
+  onExpand,
   subtitle,
   children,
 }: {
   pinned: boolean;
   onTogglePin: () => void;
-  /** `null` while there is nothing to refresh, so the button is absent rather
-   *  than present and inert. */
+  /** `null` while there is nothing to refresh or expand, so the button is
+   *  absent rather than present and inert. */
   onRefresh: (() => void) | null;
+  onExpand: (() => void) | null;
   subtitle: string;
   children: ReactNode;
 }) {
@@ -438,37 +333,56 @@ function PanelFrame({
         )}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {onRefresh && (
-            <SimpleTooltip side="left" label={t("pulse.refresh")}>
-              <button
-                type="button"
-                onClick={onRefresh}
-                className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </button>
-            </SimpleTooltip>
+            <HeaderButton label={t("pulse.refresh")} onClick={onRefresh}>
+              <RefreshCw className="h-3.5 w-3.5" />
+            </HeaderButton>
           )}
-          <SimpleTooltip
-            side="left"
+          {onExpand && (
+            <HeaderButton label={t("pulse.expand")} onClick={onExpand}>
+              <Maximize2 className="h-3.5 w-3.5" />
+            </HeaderButton>
+          )}
+          <HeaderButton
             label={pinned ? t("pulse.unpin") : t("pulse.pin")}
+            onClick={onTogglePin}
+            pressed={pinned}
           >
-            <button
-              type="button"
-              onClick={onTogglePin}
-              aria-pressed={pinned}
-              className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground",
-                "transition-colors hover:bg-accent/60 hover:text-foreground",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
-                pinned && "bg-accent/70 text-brand",
-              )}
-            >
-              <PinIcon className="h-3.5 w-3.5" />
-            </button>
-          </SimpleTooltip>
+            <PinIcon className="h-3.5 w-3.5" />
+          </HeaderButton>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
     </div>
+  );
+}
+
+function HeaderButton({
+  label,
+  onClick,
+  pressed,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  pressed?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <SimpleTooltip side="left" label={label}>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={pressed}
+        aria-label={label}
+        className={cn(
+          "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground",
+          "transition-colors hover:bg-accent/60 hover:text-foreground",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
+          pressed && "bg-accent/70 text-brand",
+        )}
+      >
+        {children}
+      </button>
+    </SimpleTooltip>
   );
 }

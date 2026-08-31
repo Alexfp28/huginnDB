@@ -1799,6 +1799,52 @@ pub fn take_detached_tab_intent(
     Ok(state.detached_tab_intents.write().remove(&label))
 }
 
+/// Open Pulse's expanded view in a window of its own.
+///
+/// Deliberately not a workspace tab and not a detached *tab* window either:
+/// Pulse is context, not a document, so it has no `TabKind`, nothing in
+/// `useTabs` and nothing in the persisted tab state. What it needs carried
+/// across is one connection id, which is why this does not reuse
+/// [`open_tab_window`]'s opaque payload.
+///
+/// `async fn` for the same reason [`open_new_window`] is: a sync command that
+/// builds a `WebviewWindow` deadlocks WebView2 on Windows, and the symptom is
+/// not an error but a blank window Windows marks "Not Responding".
+#[tauri::command]
+pub async fn open_pulse_window(
+    app: AppHandle,
+    connection_id: String,
+    title: String,
+) -> AppResult<String> {
+    let label = format!("pulsewin-{}", Uuid::new_v4());
+    app.state::<AppState>()
+        .pulse_window_intents
+        .write()
+        .insert(label.clone(), connection_id);
+    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+        .title(title)
+        // Wider than the detached-tab window: the expanded Pulse is a rail plus
+        // tables of digests and sessions, and at 1000px those wrap into
+        // uselessness.
+        .inner_size(1180.0, 760.0)
+        .min_inner_size(720.0, 420.0)
+        // See `open_new_window`. No dockview here, but the same native
+        // drag-drop handler would swallow any HTML5 drag this window grows.
+        .disable_drag_drop_handler()
+        .build()?;
+    Ok(label)
+}
+
+/// Drain the connection id stashed for `label` by [`open_pulse_window`].
+/// Called once by the Pulse window's frontend on boot.
+#[tauri::command]
+pub fn take_pulse_window_intent(
+    state: State<'_, AppState>,
+    label: String,
+) -> AppResult<Option<String>> {
+    Ok(state.pulse_window_intents.write().remove(&label))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
