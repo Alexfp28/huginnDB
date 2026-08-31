@@ -148,6 +148,14 @@ export function PipelineEditor({
       automaticLayout: true,
       padding: { top: 8, bottom: 8 },
       scrollbar: { alwaysConsumeMouseWheel: false },
+      // A stage card sits inside `AggregationTab`'s scrollable stage list
+      // (`overflow-auto`), which clips the suggest widget's default
+      // absolutely-positioned popup the moment it would overflow the card —
+      // exactly what happens with a long $lookup collection/field list. This
+      // makes Monaco render the widget in a fixed-position overlay instead,
+      // so it floats above the card and the list below it rather than being
+      // cut off by either.
+      fixedOverflowWidgets: true,
     }),
     [readOnly, editorPrefs, lineNumbers],
   );
