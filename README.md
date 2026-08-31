@@ -20,6 +20,7 @@ HuginnDB gives every cell a full Monaco editor, a real schema-aware SQL/aggregat
 ## Features
 
 - **5 drivers, 1 app** — PostgreSQL, MySQL, SQLite, MongoDB, SQL Server — plus SSH tunnelling for remote hosts.
+- **HuginnDB Pulse** — live server health (MySQL/MongoDB): vital signs, slowest statements with `EXPLAIN`, storage, sessions, index usage, and an opt-in history sampler so you can ask "was this slow yesterday too?"
 - **Full Monaco editor on every cell** — JSON/XML/SQL auto-detected, live validation, `F11` fullscreen.
 - **Real SQL/aggregation workspace** — schema-aware autocomplete, `Ctrl+Enter` to run, per-statement CodeLens, history that survives restarts.
 - **Visual structure editor** — add/rename/drop columns, indexes, FKs — previewed as the exact DDL that will run.
@@ -60,6 +61,7 @@ claude mcp add huginndb -s user -- /absolute/path/to/huginndb-mcp --connections 
 - **Data browser** — paginated, sortable, filterable grid ([TanStack Table](https://tanstack.com/table)); inline edits routed through the backend with PK-based safety.
 - **View editor** — create, edit, rename, drop, with a live preview grid and read-only DDL pane.
 - **Server-side security panel** — read users/roles and privileges straight from the server, for every driver.
+- **[HuginnDB Pulse](docs/PULSE.md)** — dockable panel or its own window, six views (Status, Time spent, Storage, Sessions, Indexes, History), all seven metrics also reachable read-only over MCP.
 - **Saved queries** — a local library with name, description, tags.
 - **Multi-window** — pop a connection's workspace, or a single tab, into its own OS window.
 - **Ten themes** with a light/dark pair each, plus a visual colour editor grouped by surfaces/actions/status/borders.

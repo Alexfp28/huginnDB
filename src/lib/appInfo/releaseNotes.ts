@@ -22,6 +22,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import {
+  Activity,
   Bell,
   Bot,
   Braces,
@@ -85,6 +86,38 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.20.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_20_0.tagline",
+    highlights: [
+      {
+        icon: Activity,
+        titleKey: "whatsNew.releases.1_20_0.items.pulse.title",
+        bodyKey: "whatsNew.releases.1_20_0.items.pulse.body",
+      },
+      {
+        icon: Share2,
+        titleKey: "whatsNew.releases.1_20_0.items.originEditing.title",
+        bodyKey: "whatsNew.releases.1_20_0.items.originEditing.body",
+      },
+      {
+        icon: Layers,
+        titleKey: "whatsNew.releases.1_20_0.items.aggregationAutocomplete.title",
+        bodyKey: "whatsNew.releases.1_20_0.items.aggregationAutocomplete.body",
+      },
+      {
+        icon: Gauge,
+        titleKey: "whatsNew.releases.1_20_0.items.performance.title",
+        bodyKey: "whatsNew.releases.1_20_0.items.performance.body",
+      },
+      {
+        icon: SquareTerminal,
+        titleKey: "whatsNew.releases.1_20_0.items.cliEnvironments.title",
+        bodyKey: "whatsNew.releases.1_20_0.items.cliEnvironments.body",
+      },
+    ],
+  },
   {
     version: "1.19.0",
     major: true,

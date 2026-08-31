@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.20.0] — 2026-08-31
+
 ### Añadido
 
 - **Orígenes compartidos: personalización cosmética local para un entorno
@@ -416,6 +418,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   cubiertos por tests: una correspondencia de métrica equivocada no falla,
   simplemente dibuja el contador que no es.
 
+- **El flujo de conexión de la CLI ahora sigue los entornos en vez de
+  ignorarlos.** Es anterior a los entornos por completo, así que
+  `--connect-profile[-id]` conectaba siempre en el entorno que estuviera
+  activo en ese momento, aunque el perfil indicado perteneciera en realidad a
+  otro — dejando la conexión, en silencio, en un sitio donde el usuario no
+  estaba mirando. El nuevo helper `connectToProfile` de `useCliIntents`
+  pregunta al backend qué entorno(s) referencian la conexión objetivo (un
+  nuevo comando `find_environments_for_connection`, construido sobre el mismo
+  `referenced_profile_ids` que ya usa el exportador de entornos) y cambia a
+  ese entorno primero cuando el activo no está entre ellos. Por separado, un
+  lanzamiento ad-hoc (`--host …` / `--uri …`) creaba siempre un perfil
+  `ephemeral` nuevo, incluso cuando ya existía uno idéntico guardado — ahora
+  reutiliza un perfil ya guardado y no efímero con el mismo
+  driver/host/puerto/base de datos/usuario (o la misma cadena de conexión,
+  para un lanzamiento `--uri`) a través de la misma vía de seguimiento de
+  entorno, y solo recurre a crear un perfil desechable cuando no encuentra
+  ninguna coincidencia.
+
 ### Añadido
 
 - **Autocompletado al estilo Compass en el editor de agregación.** Escribir
@@ -462,13 +482,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   antiguo antes de tocar nada, y los de migración comprueban que los campos
   arrastrados sobreviven.
 
-- **Pasada de rendimiento de frontend (1.20.0), en curso.** Una regresión real
-  reportada en máquinas modestas — una tabla de 10k registros en modo lista
-  degradándose hasta ser inusable, y una imprecisión general del shell —
-  que resultó no implicar al backend Rust en absoluto: cada entrada de
-  abajo elimina un coste concreto, localizado por archivo y línea, en la
-  capa React/DOM. Se entrega de forma incremental como una serie de commits
-  propia; esta sección crece un punto por commit.
+- **Pasada de rendimiento de frontend.** Una regresión real reportada en
+  máquinas modestas — una tabla de 10k registros en modo lista degradándose
+  hasta ser inusable, y una imprecisión general del shell — que resultó no
+  implicar al backend Rust en absoluto: cada entrada de abajo elimina un
+  coste concreto, localizado por archivo y línea, en la capa React/DOM. Se
+  entregó de forma incremental como una serie de commits propia, un punto
+  por commit.
 
 - **Los tokens de color se saltan la capa `color-mix()` por completo cuando no
   hay ningún `/modificador`.** `2ecaaf7` (la migración a `light-dark()` de

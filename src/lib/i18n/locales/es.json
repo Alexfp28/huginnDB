@@ -1971,6 +1971,31 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_20_0": {
+        "tagline": "Llega HuginnDB Pulse — el estado del servidor en vivo para MySQL y MongoDB, junto a tu espacio de trabajo — además de edición en el sitio para orígenes compartidos, autocompletado de agregación y una pasada de rendimiento a nivel de todo el proyecto.",
+        "items": {
+          "pulse": {
+            "title": "Llega HuginnDB Pulse",
+            "body": "¿Cómo está el servidor ahora mismo, y cómo ha estado últimamente? Constantes vitales en vivo, las sentencias más lentas (con un plan EXPLAIN que puedes ejecutar), las tablas más grandes, sesiones activas e índices sin usar — para MySQL y MongoDB, acoplado junto a tu espacio de trabajo o ampliado en su propia ventana. Activa el muestreador de historial por conexión para responder «¿esto también iba lento ayer?» — todo es también accesible en modo solo lectura por MCP."
+          },
+          "originEditing": {
+            "title": "Corrige en el sitio la conexión de un origen compartido",
+            "body": "Corregir una contraseña obsoleta publicada por un origen compartido ya no exige duplicar la conexión, editar la copia, republicar y limpiar el original huérfano. El propio publicador del origen puede ahora editar una conexión publicada — contraseña incluida — en el mismo diálogo, con el mismo id, y republicarla cuando esté lista."
+          },
+          "aggregationAutocomplete": {
+            "title": "Autocompletado al estilo Compass en el editor de agregación",
+            "body": "Escribir $ en el cuerpo de un stage ahora sugiere los nombres de campo de la colección de origen junto a los operadores, y $lookup ofrece nombres de colección y de campo para from/localField/foreignField."
+          },
+          "performance": {
+            "title": "Una pasada de rendimiento a nivel de todo el proyecto",
+            "body": "Decenas de correcciones localizadas por archivo y línea en el árbol de esquema, la rejilla de datos, el editor SQL y el shell eliminan renderizados innecesarios y escrituras a disco redundantes — incluida la corrección de una tabla de 10k registros que se degradaba hasta ser inusable en modo lista."
+          },
+          "cliEnvironments": {
+            "title": "La CLI ahora sigue tus entornos",
+            "body": "Conectar con --connect-profile o con un lanzamiento ad-hoc --host/--uri cambia automáticamente al entorno correcto (o lo reutiliza), y reutiliza un perfil ya guardado en vez de crear siempre uno efímero nuevo."
+          }
+        }
+      },
       "1_19_0": {
         "tagline": "Un editor completo para lo que publica un origen compartido, el sistema de atajos de teclado reconstruido desde cero, y MongoDB con gestión de índices y colecciones.",
         "items": {

@@ -8,7 +8,7 @@ Only the latest tagged release is supported with security fixes.
 
 | Version         | Supported          |
 | ---------------- | ------------------ |
-| latest (`1.16.x`) | :white_check_mark: |
+| latest (`1.20.x`) | :white_check_mark: |
 | older             | :x:                |
 
 ## Reporting a vulnerability

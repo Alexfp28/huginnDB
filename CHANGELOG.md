@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.20.0] — 2026-08-31
+
 ### Added
 
 - **Shared origins: local cosmetic overrides for a mirrored environment, and
@@ -368,6 +370,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   arithmetic and the alert thresholds are all pure and tested — a wrong metric
   mapping does not fail, it silently plots the wrong counter.
 
+- **The CLI connect flow now follows environments instead of ignoring them.**
+  It predates environments entirely, so `--connect-profile[-id]` always
+  connected in whatever environment happened to be active, even when the named
+  profile actually belonged to a different one — silently landing the
+  connection somewhere the user wasn't looking. `useCliIntents`'s new
+  `connectToProfile` helper asks the backend which environment(s) reference the
+  target connection (a new `find_environments_for_connection` command, built on
+  the same `referenced_profile_ids` the environment exporter already used) and
+  switches there first when the active environment isn't among them.
+  Separately, an ad-hoc launch (`--host …` / `--uri …`) used to always mint a
+  brand-new `ephemeral` profile, even when an identical one was already saved —
+  it now reuses an existing non-ephemeral profile with the same
+  driver/host/port/database/username (or the same connection string, for a
+  `--uri` launch) through the same environment-following path, and only falls
+  back to creating a throwaway profile when nothing matches.
+
 ### Added
 
 - **Compass-style autocomplete in the aggregation editor.** Typing `$` in a
@@ -409,12 +427,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   this changed, and the migration cases assert the carried-over fields
   survive.
 
-- **Frontend performance pass (1.20.0), in progress.** A real regression
-  reported on modest hardware — a 10k-row table in list mode degrading to
-  unusable, and a broader shell choppiness — that turned out not to involve
-  the Rust backend at all: every entry below removes one concrete,
-  file-and-line-identified cost in the React/DOM layer. Landing incrementally
-  as its own series of commits; this section grows one bullet per commit.
+- **Frontend performance pass.** A real regression reported on modest
+  hardware — a 10k-row table in list mode degrading to unusable, and a
+  broader shell choppiness — that turned out not to involve the Rust backend
+  at all: every entry below removes one concrete, file-and-line-identified
+  cost in the React/DOM layer. Landed incrementally as its own series of
+  commits, one bullet per commit.
 
 - **Color tokens skip the `color-mix()` layer entirely when no `/modifier` is
   used.** `2ecaaf7` (1.19.0's `light-dark()` migration) moved every Tailwind
@@ -1983,22 +2001,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   SQL statement splitter (which the tests found two bugs in, above), the
   command palette's scoring matcher, and the SQL Server `HOST\INSTANCE` split —
   whose authoritative Rust twin had tests all along.
-
-- **The CLI connect flow now follows environments instead of ignoring them.**
-  It predates environments entirely, so `--connect-profile[-id]` always
-  connected in whatever environment happened to be active, even when the named
-  profile actually belonged to a different one — silently landing the
-  connection somewhere the user wasn't looking. `useCliIntents`'s new
-  `connectToProfile` helper asks the backend which environment(s) reference the
-  target connection (a new `find_environments_for_connection` command, built on
-  the same `referenced_profile_ids` the environment exporter already used) and
-  switches there first when the active environment isn't among them.
-  Separately, an ad-hoc launch (`--host …` / `--uri …`) used to always mint a
-  brand-new `ephemeral` profile, even when an identical one was already saved —
-  it now reuses an existing non-ephemeral profile with the same
-  driver/host/port/database/username (or the same connection string, for a
-  `--uri` launch) through the same environment-following path, and only falls
-  back to creating a throwaway profile when nothing matches.
 
 ## [1.17.0] — 2026-08-20
 

@@ -1971,6 +1971,31 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_20_0": {
+        "tagline": "Introducing HuginnDB Pulse — live server health for MySQL and MongoDB, right next to your workspace — plus in-place editing for shared origins, aggregation autocomplete, and a project-wide performance pass.",
+        "items": {
+          "pulse": {
+            "title": "Introducing HuginnDB Pulse",
+            "body": "How is the server doing right now, and how has it been doing lately? Live vital signs, the slowest statements (with a runnable EXPLAIN plan), biggest tables, active sessions, and unused indexes — for MySQL and MongoDB, docked next to your workspace or expanded into a window of its own. Turn on the history sampler per connection to answer \"was this slow yesterday too?\" — everything is also reachable read-only over MCP."
+          },
+          "originEditing": {
+            "title": "Fix a shared origin's connection in place",
+            "body": "Correcting a stale password published through a shared origin no longer means duplicating the connection, editing the copy, republishing, and cleaning up the orphaned original. The origin's own publisher can now edit a published connection — password included — in the same dialog, same id, and republish when ready."
+          },
+          "aggregationAutocomplete": {
+            "title": "Compass-style autocomplete in the aggregation editor",
+            "body": "Typing $ in a stage body now suggests the source collection's field names alongside operators, and $lookup offers collection and field names for from/localField/foreignField."
+          },
+          "performance": {
+            "title": "A project-wide performance pass",
+            "body": "Dozens of file-and-line-identified fixes across the schema tree, the data grid, the SQL editor and the shell remove unnecessary re-renders and redundant disk writes — including the fix for a 10k-row table degrading to unusable in list mode."
+          },
+          "cliEnvironments": {
+            "title": "The CLI now follows your environments",
+            "body": "Connecting via --connect-profile or an ad-hoc --host/--uri switches to (or reuses) the right environment automatically, and reuses an already-saved profile instead of always minting a new ephemeral one."
+          }
+        }
+      },
       "1_19_0": {
         "tagline": "A full editor for what a shared origin publishes, the keyboard-shortcut system rebuilt from the ground up, and MongoDB gets index and collection management.",
         "items": {
