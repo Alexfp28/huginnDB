@@ -74,7 +74,8 @@ import {
   type PipelineStage,
 } from "@/lib/mongo/pipeline";
 import { api } from "@/lib/tauri";
-import { useSchema } from "@/stores/session/schema";
+import type { MongoCompletionEntry } from "@/lib/monaco/monacoMongo";
+import { tableKey, useEnsureSchemaLoaded, useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { cn } from "@/lib/utils";
 import type { QueryResult, StagePreview, StructureMode } from "@/types";
@@ -149,6 +150,69 @@ export function AggregationTab({
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // ---------------------------------------------------------------------
+  // Live completion data (collection + field names for the pipeline editor)
+  //
+  // Nothing here is a new fetch path: `tables` is already loaded eagerly by
+  // `useEnsureSchemaLoaded`/`refresh` for the explorer tree, and `columns`
+  // (field names, `infer_columns`'s 100-document sample) is the same lazy,
+  // session-cached slice `TableRow` populates on expand — reused here, not
+  // duplicated. A collection is only ever sampled once per session unless the
+  // user refreshes the schema; `$lookup`-referenced collections stay purely
+  // on-demand, requested only once the completion provider actually asks.
+  // ---------------------------------------------------------------------
+
+  useEnsureSchemaLoaded(connectionId);
+  const schemaState = useSchema((s) => s.byConnection[connectionId]);
+  const loadColumns = useSchema((s) => s.loadColumns);
+
+  const collections = useMemo(
+    () => schemaState?.tables.map((t) => t.name) ?? [],
+    [schemaState],
+  );
+
+  /** Collections whose fields have already been requested this session, so a
+   *  burst of completion requests for the same still-loading collection (one
+   *  per keystroke) fires at most one `loadColumns` call — mirrors the guard
+   *  `TableRow` already uses (only fetch when the key is absent), plus an
+   *  in-flight marker `useSchema` itself doesn't track. */
+  const pendingFieldsRef = useRef<Set<string>>(new Set());
+
+  const requestFields = useCallback(
+    (name: string) => {
+      const key = tableKey(undefined, name);
+      if (schemaState?.columns[key] || schemaState?.columnErrors[key]) return;
+      if (pendingFieldsRef.current.has(name)) return;
+      pendingFieldsRef.current.add(name);
+      void loadColumns(connectionId, undefined, name).finally(() => {
+        pendingFieldsRef.current.delete(name);
+      });
+    },
+    [connectionId, loadColumns, schemaState],
+  );
+
+  const getFields = useCallback(
+    (name: string): string[] | undefined =>
+      schemaState?.columns[tableKey(undefined, name)]?.map((c) => c.name),
+    [schemaState],
+  );
+
+  // The source collection is needed almost everywhere in the editor, so it's
+  // preloaded as soon as it's known.
+  useEffect(() => {
+    if (source) requestFields(source);
+  }, [source, requestFields]);
+
+  const completion: MongoCompletionEntry = useMemo(
+    () => ({
+      getCollections: () => collections,
+      sourceCollection: () => source,
+      getFields,
+      requestFields,
+    }),
+    [collections, source, getFields, requestFields],
+  );
 
   // ---------------------------------------------------------------------
   // Load an existing view
@@ -631,6 +695,7 @@ export function AggregationTab({
                   setDragIndex(null);
                   setDropIndex(null);
                 }}
+                completion={completion}
               />
             </div>
           ))}
@@ -669,6 +734,7 @@ export function AggregationTab({
               onRun={runPreview}
               height="100%"
               lineNumbers
+              completion={completion}
             />
           </Panel>
           {showPreview && (

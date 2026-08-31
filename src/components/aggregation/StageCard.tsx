@@ -44,6 +44,7 @@ import { STAGE_CATALOG } from "@/lib/mongo/stages";
 import { operatorOf, withOperator, type PipelineStage } from "@/lib/mongo/pipeline";
 import { cn } from "@/lib/utils";
 import type { StagePreview } from "@/types";
+import type { MongoCompletionEntry } from "@/lib/monaco/monacoMongo";
 
 interface Props {
   stage: PipelineStage;
@@ -65,6 +66,8 @@ interface Props {
   onDragStart: () => void;
   onDragOver: () => void;
   onDragEnd: () => void;
+  /** Live collection/field data for this stage's completion suggestions. */
+  completion?: MongoCompletionEntry;
 }
 
 /** Editor height from the body's own length: a three-line `$limit` shouldn't
@@ -92,6 +95,7 @@ export function StageCard({
   onDragStart,
   onDragOver,
   onDragEnd,
+  completion,
 }: Props) {
   const { t } = useTranslation();
   const operator = operatorOf(stage.body);
@@ -220,6 +224,7 @@ export function StageCard({
                 onChange={onChange}
                 onRun={onRun}
                 height="100%"
+                completion={completion}
               />
             </Panel>
             {showPreview && (

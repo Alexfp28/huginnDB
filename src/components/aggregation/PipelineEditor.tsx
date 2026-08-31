@@ -9,6 +9,13 @@
  * the editor's focus area (gotcha #9), and the user-rebindable global shortcuts
  * have to be re-dispatched out of it (`registerEditorActionRedispatch`) for the
  * same reason. Getting that wrong in N stage cards would be N times as wrong.
+ *
+ * The optional `completion` prop registers this model's live collection/field
+ * data with the shared Mongo completion provider (`registerMongoEditor` —
+ * same per-model registry pattern as `monacoSql.ts`, gotcha #9). It's read
+ * through a ref for the same reason `onRun` is: the registered entry's
+ * closures live as long as the model does and must never freeze on the first
+ * render's data.
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -16,6 +23,8 @@ import Editor, { type Monaco } from "@monaco-editor/react";
 import {
   ensureMongoLanguage,
   MONGO_PIPELINE_LANGUAGE,
+  registerMongoEditor,
+  type MongoCompletionEntry,
 } from "@/lib/monaco/monacoMongo";
 import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
@@ -35,6 +44,10 @@ interface Props {
   /** Line numbers are noise on a six-line stage body and useful on a
    *  200-line pipeline, so the caller decides. */
   lineNumbers?: boolean;
+  /** Live collection/field data for this model's completion suggestions.
+   *  Omitted entirely, the editor still works — it just falls back to the
+   *  static operator/constructor suggestions `monacoMongo.ts` always offers. */
+  completion?: MongoCompletionEntry;
 }
 
 export function PipelineEditor({
@@ -44,6 +57,7 @@ export function PipelineEditor({
   height,
   readOnly,
   lineNumbers = false,
+  completion,
 }: Props) {
   const editorPrefs = usePreferences(selectEditorPrefs);
 
@@ -55,11 +69,22 @@ export function PipelineEditor({
     onRunRef.current = onRun;
   }, [onRun]);
 
+  // Same reasoning, for the completion entry registered with Monaco: the
+  // provider calls these closures for as long as the model lives, well past
+  // this render.
+  const completionRef = useRef(completion);
+  useEffect(() => {
+    completionRef.current = completion;
+  }, [completion]);
+
   const shortcutsDisposeRef = useRef<(() => void) | null>(null);
+  const completionDisposeRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     return () => {
       shortcutsDisposeRef.current?.();
       shortcutsDisposeRef.current = null;
+      completionDisposeRef.current?.();
+      completionDisposeRef.current = null;
     };
   }, []);
 
@@ -69,6 +94,7 @@ export function PipelineEditor({
       onKeyDown: (
         fn: (e: { browserEvent: KeyboardEvent }) => void,
       ) => { dispose: () => void };
+      getModel: () => { uri: { toString: () => string } } | null;
     };
     ensureMongoLanguage(monaco);
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
@@ -86,6 +112,17 @@ export function PipelineEditor({
       },
       { id: "toggleTabSwitcher", run: () => useTabSwitcher.getState().toggle() },
     ]);
+
+    const model = editor.getModel();
+    if (model) {
+      completionDisposeRef.current?.();
+      completionDisposeRef.current = registerMongoEditor(model.uri.toString(), {
+        getCollections: () => completionRef.current?.getCollections() ?? [],
+        sourceCollection: () => completionRef.current?.sourceCollection() ?? "",
+        getFields: (collection) => completionRef.current?.getFields(collection),
+        requestFields: (collection) => completionRef.current?.requestFields(collection),
+      });
+    }
   }
 
   const handleEditorChange = useCallback(
