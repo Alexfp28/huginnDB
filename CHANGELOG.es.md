@@ -10,6 +10,37 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Pulse también lee MongoDB.** `serverStatus` rellena las mismas cuatro
+  tarjetas y las mismas reglas de aviso que MySQL, y `$collStats` rellena la
+  clasificación de almacenamiento — la única llamada `$collStats` que ya hace
+  el explorador de esquema, no un `collStats` por colección. El catálogo
+  canónico de métricas es lo que convierte esto en una tabla de
+  correspondencias en vez de un segundo panel: `connections.current` pasa a ser
+  `connections_active`, la contabilidad de caché de WiredTiger pasa a ser el
+  mismo par de aciertos, y las métricas para las que MongoDB simplemente no
+  tiene equivalente (tablas temporales yendo a disco, el contador de consultas
+  lentas) están **ausentes** en lugar de a cero, así que sus tarjetas muestran
+  una raya en vez de un cero de aspecto saludable.
+
+  Tres correspondencias que no son obvias y que se equivocan de forma invisible
+  si se hacen deprisa. `queries` suma todas las entradas de `opcounters` en vez
+  de leer una: `query` por sí solo se deja fuera los `getmore` de los que se
+  compone casi entera una carga con muchos cursores. `connections_max` es
+  `current + available`, porque MongoDB informa del margen y no del techo —
+  informar de `available` mostraría un servidor al 43 % como casi ocioso. Y
+  cada número se lee con la anchura BSON que el servidor haya elegido (el mismo
+  contador es `Int32` en un servidor tranquilo, `Int64` cuando crece y `Double`
+  dentro del bloque de WiredTiger), porque una lectura tipada perdería la
+  métrica en silencio justo en los servidores que merece la pena medir.
+
+  El almacenamiento encaja limpiamente: `storageSize`, `totalIndexSize` y
+  `freeStorageSize` en el mismo reparto datos / índices / libre que ya
+  significaba el `Data_free` de MySQL. Las estadísticas por sentencia son la
+  única lectura que sigue faltando en MongoDB — su equivalente es el
+  `system.profile` del profiler, con otra forma y su propia activación — y la
+  sección dice ahora qué interruptor del servidor la rellenaría, en vez de
+  enseñarle a un usuario de Mongo la redacción de MySQL.
+
 - **Pulse se amplía a una ventana propia.** El botón ⤢ de la cabecera del
   panel abre una ventana del sistema que mide esa conexión — con anchura
   suficiente para la tabla completa de digests y la clasificación entera de

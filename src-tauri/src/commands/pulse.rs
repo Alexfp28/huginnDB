@@ -27,9 +27,9 @@ fn unsupported(driver: &str) -> AppError {
 pub async fn pulse_health_inner(state: &AppState, connection_id: &str) -> AppResult<PulseHealth> {
     match state.pool_for(connection_id)? {
         DbPool::Mysql(p) => crate::db::mysql::pulse::health(&p).await,
+        DbPool::Mongo(conn) => crate::db::mongo::pulse::health(&conn).await,
         DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
         DbPool::Sqlite(_) => Err(unsupported("SQLite")),
-        DbPool::Mongo(_) => Err(unsupported("MongoDB")),
         DbPool::MsSql(_) => Err(unsupported("SQL Server")),
     }
 }
@@ -63,9 +63,13 @@ pub async fn pulse_top_queries_inner(
 ) -> AppResult<Vec<TopQuery>> {
     match state.pool_for(connection_id)? {
         DbPool::Mysql(p) => crate::db::mysql::pulse::top_queries(&p, DETAIL_LIMIT).await,
+        // MongoDB keeps no digest table: the equivalent is the profiler's
+        // `system.profile` collection, whose shape and opt-in are different
+        // enough to be their own piece of work. Health and storage answer for
+        // Mongo already, so this is the one read still missing there.
+        DbPool::Mongo(_) => Err(unsupported("MongoDB")),
         DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
         DbPool::Sqlite(_) => Err(unsupported("SQLite")),
-        DbPool::Mongo(_) => Err(unsupported("MongoDB")),
         DbPool::MsSql(_) => Err(unsupported("SQL Server")),
     }
 }
@@ -76,9 +80,9 @@ pub async fn pulse_storage_inner(
 ) -> AppResult<Vec<StorageItem>> {
     match state.pool_for(connection_id)? {
         DbPool::Mysql(p) => crate::db::mysql::pulse::storage(&p, DETAIL_LIMIT as usize).await,
+        DbPool::Mongo(conn) => crate::db::mongo::pulse::storage(&conn, DETAIL_LIMIT as usize).await,
         DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
         DbPool::Sqlite(_) => Err(unsupported("SQLite")),
-        DbPool::Mongo(_) => Err(unsupported("MongoDB")),
         DbPool::MsSql(_) => Err(unsupported("SQL Server")),
     }
 }

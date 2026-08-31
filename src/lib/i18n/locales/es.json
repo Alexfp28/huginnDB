@@ -1742,14 +1742,17 @@
       "tmpDiskTables": "{{perMinute}} tablas temporales por minuto van a disco.",
       "slowQueries": "{{perMinute}} consultas lentas por minuto.",
       "abortedConnects": "{{perMinute}} intentos de conexión por minuto están siendo rechazados.",
-      "performanceSchemaOff": "performance_schema está desactivado: no hay estadísticas por consulta."
+      "performanceSchemaOff": "performance_schema está desactivado: no hay estadísticas por consulta.",
+      "profilerOff": "El profiler de la base de datos está desactivado: no hay estadísticas por operación."
     },
     "slowest": {
       "meta": "{{count}} ejecuciones · {{examined}} filas examinadas",
       "noIndex": "sin índice",
       "empty": "El servidor todavía no ha registrado ninguna sentencia.",
-      "unavailable": "No disponible: performance_schema está desactivado o fuera de alcance.",
-      "noIndexCount": "{{count}} sin índice"
+      "unavailable": "No disponible en este servidor.",
+      "noIndexCount": "{{count}} sin índice",
+      "hintMysql": "Las estadísticas por sentencia salen de performance_schema.",
+      "hintMongo": "MongoDB solo las registra con el profiler de la base de datos activo."
     },
     "storage": {
       "data": "Datos",

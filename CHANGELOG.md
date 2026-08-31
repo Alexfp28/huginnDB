@@ -8,6 +8,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Pulse reads MongoDB too.** `serverStatus` fills the same four tiles and the
+  same alert rules as MySQL, and `$collStats` fills the storage ranking — the
+  one `$collStats` call the schema explorer already makes, not a `collStats` per
+  collection. The canonical metric catalogue is what makes this a mapping table
+  rather than a second panel: `connections.current` becomes
+  `connections_active`, WiredTiger's cache accounting becomes the same hit-rate
+  pair, and metrics MongoDB simply has no equivalent for (temporary tables
+  spilling to disk, the slow-query counter) are **absent** rather than zero, so
+  their tiles read as an em dash instead of a healthy nought.
+
+  Three mappings that are not obvious and are wrong in an invisible way if
+  rushed. `queries` sums every `opcounters` entry rather than reading one:
+  `query` alone omits the `getmore`s a cursor-heavy workload is mostly made of.
+  `connections_max` is `current + available`, because MongoDB reports headroom
+  and not a ceiling — reporting `available` would show a server at 43 % as
+  nearly idle. And every number is read as whichever BSON width the server
+  chose (the same counter is `Int32` on a quiet server, `Int64` once it grows,
+  `Double` inside the WiredTiger block), because a typed read would silently
+  miss the metric on exactly the servers worth measuring.
+
+  Storage maps cleanly: `storageSize`, `totalIndexSize`, and `freeStorageSize`
+  into the same data / indexes / free split MySQL's `Data_free` already meant.
+  Statement statistics are the one read still missing on MongoDB — its
+  equivalent is the profiler's `system.profile`, a different shape and an
+  opt-in of its own — and the section now says which server-side switch would
+  fill it rather than showing MySQL's wording to a Mongo user.
+
 - **Pulse expands into a window of its own.** The ⤢ button in the panel's
   header opens a real OS window measuring that connection — wide enough for the
   full digest table and the whole storage ranking, and free to sit on a second

@@ -25,6 +25,7 @@
 
 pub mod aggregation;
 pub mod indexes;
+pub mod pulse;
 pub mod query;
 pub mod schema;
 pub mod shell;

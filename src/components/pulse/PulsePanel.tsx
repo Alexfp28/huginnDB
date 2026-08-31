@@ -40,6 +40,17 @@ import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
 import type { PulseStorageItem, PulseTopQuery } from "@/types";
 
+/**
+ * Why this engine has no statement statistics. Each answer names something the
+ * user can act on, which is the whole reason the neutral "not available" line
+ * is not the end of the message.
+ */
+export function slowestHint(driver: string, t: (k: string) => string): string {
+  if (driver === "mongodb") return t("pulse.slowest.hintMongo");
+  if (driver === "mysql") return t("pulse.slowest.hintMysql");
+  return "";
+}
+
 /** How many rows of each on-demand read fit here. The backend returns twenty;
  *  the rest are the expanded window's to show. */
 const COMPACT_ROWS = 3;
@@ -261,7 +272,7 @@ export function PulsePanel({ active }: { active: boolean }) {
           ) : (
             <p className="text-xs text-muted-foreground">
               {view.topQueries?.error
-                ? t("pulse.slowest.unavailable")
+                ? `${t("pulse.slowest.unavailable")} ${slowestHint(latest.driver, t)}`
                 : view.topQueries
                   ? t("pulse.slowest.empty")
                   : t("pulse.loading")}
