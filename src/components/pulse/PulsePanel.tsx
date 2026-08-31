@@ -31,6 +31,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { usePulseLive } from "@/lib/pulse/usePulseLive";
 import { usePulseDetail } from "@/lib/pulse/usePulseDetail";
 import { isUnsupported, usePulseView } from "@/lib/pulse/usePulseView";
+import { slowestHint } from "@/lib/pulse/hints";
 import { parentConnectionId, resolveConnectionLabel } from "@/lib/connectionLabel";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
@@ -39,17 +40,6 @@ import { usePulse } from "@/stores/session/pulse";
 import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
 import type { PulseStorageItem, PulseTopQuery } from "@/types";
-
-/**
- * Why this engine has no statement statistics. Each answer names something the
- * user can act on, which is the whole reason the neutral "not available" line
- * is not the end of the message.
- */
-export function slowestHint(driver: string, t: (k: string) => string): string {
-  if (driver === "mongodb") return t("pulse.slowest.hintMongo");
-  if (driver === "mysql") return t("pulse.slowest.hintMysql");
-  return "";
-}
 
 /** How many rows of each on-demand read fit here. The backend returns twenty;
  *  the rest are the expanded window's to show. */

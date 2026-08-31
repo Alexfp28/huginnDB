@@ -36,7 +36,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { AlertList } from "@/components/pulse/sections/AlertList";
 import { StatusTiles } from "@/components/pulse/sections/StatusTiles";
 import { StorageLegend } from "@/components/pulse/sections/StorageLegend";
-import { slowestHint } from "@/components/pulse/PulsePanel";
+import { slowestHint } from "@/lib/pulse/hints";
 import { usePulseLive } from "@/lib/pulse/usePulseLive";
 import { usePulseDetail } from "@/lib/pulse/usePulseDetail";
 import { isUnsupported, usePulseView, type PulseView } from "@/lib/pulse/usePulseView";
