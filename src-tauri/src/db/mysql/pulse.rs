@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use sqlx::{MySqlPool, Row};
 
 use crate::error::AppResult;
-use crate::pulse::{MetricSample, PulseHealth, PulseNote, StorageItem, TopQuery};
+use crate::pulse::{
+    truncate, ExplainPlan, MetricSample, PulseHealth, PulseNote, StorageItem, TopQuery,
+};
 
 /// `SHOW GLOBAL STATUS` name → canonical metric name.
 ///
@@ -166,14 +168,6 @@ fn text_at(row: &sqlx::mysql::MySqlRow, idx: usize) -> Option<String> {
         .map(|b| String::from_utf8_lossy(&b).into_owned())
 }
 
-/// How much of a normalised statement to keep.
-///
-/// A digest can be tens of kilobytes (a generated `IN (?, ?, ?, …)` list runs
-/// long) and neither the panel row nor the expanded table can show more than a
-/// couple of lines. Truncating in the reader keeps that off the IPC boundary
-/// entirely rather than shipping it and letting CSS hide it.
-const DIGEST_MAX_CHARS: usize = 300;
-
 /// Statements the server has spent the most time on.
 ///
 /// Reads `performance_schema`, so it fails outright when that is off — the
@@ -184,9 +178,12 @@ const DIGEST_MAX_CHARS: usize = 300;
 pub async fn top_queries(pool: &MySqlPool, limit: u32) -> AppResult<Vec<TopQuery>> {
     // `SUM_TIMER_WAIT` and friends are picoseconds. Divided in Rust rather
     // than in SQL so the raw counters stay legible in the query itself.
+    // `QUERY_SAMPLE_TEXT` exists since 5.7.7 and is a literal, runnable
+    // example of the digest — unlike `DIGEST_TEXT`, which is normalised to
+    // `?` placeholders and cannot be handed to `EXPLAIN`.
     let rows = sqlx::query(
-        "SELECT SCHEMA_NAME, DIGEST_TEXT, COUNT_STAR, SUM_TIMER_WAIT, MAX_TIMER_WAIT, \
-                SUM_ROWS_EXAMINED, SUM_ROWS_SENT, SUM_NO_INDEX_USED \
+        "SELECT SCHEMA_NAME, DIGEST_TEXT, QUERY_SAMPLE_TEXT, COUNT_STAR, SUM_TIMER_WAIT, \
+                MAX_TIMER_WAIT, SUM_ROWS_EXAMINED, SUM_ROWS_SENT, SUM_NO_INDEX_USED \
          FROM performance_schema.events_statements_summary_by_digest \
          WHERE DIGEST_TEXT IS NOT NULL AND COUNT_STAR > 0 \
            AND (SCHEMA_NAME IS NULL OR SCHEMA_NAME NOT IN \
@@ -212,9 +209,25 @@ pub async fn top_queries(pool: &MySqlPool, limit: u32) -> AppResult<Vec<TopQuery
                 rows_examined: num_at(&r, "SUM_ROWS_EXAMINED"),
                 rows_sent: num_at(&r, "SUM_ROWS_SENT"),
                 full_scans: num_at(&r, "SUM_NO_INDEX_USED"),
+                sample: named_text(&r, "QUERY_SAMPLE_TEXT")
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
             }
         })
         .collect())
+}
+
+/// Read the plan MySQL would use for one statement, without running it.
+///
+/// `sql` must already be validated read-only and single —
+/// [`crate::commands::pulse::pulse_explain_inner`] is where that is enforced,
+/// once, for both engines, rather than here where it would be easy to forget
+/// on a second call site.
+pub async fn explain(pool: &MySqlPool, sql: &str) -> AppResult<ExplainPlan> {
+    let wrapped = format!("EXPLAIN FORMAT=JSON {sql}");
+    let text: String = sqlx::query_scalar(&wrapped).fetch_one(pool).await?;
+    let raw: serde_json::Value = serde_json::from_str(&text)?;
+    Ok(ExplainPlan { raw })
 }
 
 /// The connection's biggest relations, largest first.
@@ -265,16 +278,6 @@ pub async fn storage(pool: &MySqlPool, limit: usize) -> AppResult<Vec<StorageIte
     items.sort_unstable_by_key(|i| std::cmp::Reverse(i.total()));
     items.truncate(limit);
     Ok(items)
-}
-
-/// Truncate a digest on a character boundary, marking that it was cut.
-pub fn truncate(digest: &str) -> String {
-    let trimmed = digest.trim();
-    if trimmed.chars().count() <= DIGEST_MAX_CHARS {
-        return trimmed.to_string();
-    }
-    let cut: String = trimmed.chars().take(DIGEST_MAX_CHARS).collect();
-    format!("{cut}…")
 }
 
 /// Read an unsigned counter column whose width and signedness vary by server.
@@ -398,28 +401,6 @@ mod tests {
             0,
         );
         assert_eq!(h.server_version, "8.0.36");
-    }
-
-    #[test]
-    fn truncate_keeps_a_short_digest_verbatim() {
-        assert_eq!(truncate("  SELECT ? FROM t  "), "SELECT ? FROM t");
-    }
-
-    #[test]
-    fn truncate_cuts_a_long_digest_and_says_so() {
-        let long = "a".repeat(DIGEST_MAX_CHARS + 50);
-        let cut = truncate(&long);
-        assert_eq!(cut.chars().count(), DIGEST_MAX_CHARS + 1);
-        assert!(cut.ends_with('…'));
-    }
-
-    #[test]
-    fn truncate_cuts_on_a_character_boundary() {
-        // A multi-byte digest must not be sliced mid-codepoint — a byte-wise
-        // truncation here would panic on a table named in Japanese.
-        let long = "た".repeat(DIGEST_MAX_CHARS + 10);
-        let cut = truncate(&long);
-        assert_eq!(cut.chars().count(), DIGEST_MAX_CHARS + 1);
     }
 
     #[test]

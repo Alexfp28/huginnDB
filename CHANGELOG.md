@@ -8,6 +8,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Pulse can EXPLAIN a statement, on both engines, straight from the digest
+  table.** Every row in the expanded window's Consultas view now has a Plan
+  action; clicking it wraps that row's own captured example in `EXPLAIN` and
+  renders the server's read-only plan, without ever running the statement for
+  real. Two pieces had to land together to make that safe rather than merely
+  convenient.
+
+  First, a runnable example. `DIGEST_TEXT` is normalised to `?` placeholders
+  precisely so unrelated executions fold into one row — which also means it
+  cannot be hand to `EXPLAIN`. MySQL's `QUERY_SAMPLE_TEXT` (5.7.7+) is the
+  literal statement behind one of those executions, captured alongside the
+  digest at no extra cost, and now travels as `TopQuery.sample`. A row with no
+  sample (an ancient server, or a statement shape `explain` cannot preview)
+  disables the action instead of sending a request known to fail.
+
+  Second, MongoDB's Consultas view existing at all: `system.profile` is now
+  read and grouped into the same `TopQuery` shape MySQL's digest table
+  produces — by the server's own `queryHash` where the entry carries one,
+  falling back to namespace + command on older servers. A `find`'s filter
+  becomes both the row's label and its `sample`, rendered as the same
+  `db.coll.find({…})` shell syntax the query editor speaks — reusing that one
+  parser (rather than inventing a second) is also what lets `pulse_explain`
+  replay it: parse the sample back into a filter, wrap it in MongoDB's own
+  `explain` command at `"queryPlanner"` verbosity (never a level that would
+  execute the statement), and hand back the reply as-is. `update`/`delete`/
+  `insert` entries still group and rank normally — they say where the time
+  went — they simply carry no `sample`, since nothing here replays a write.
+
+  The guard the two engines share lives in one place
+  (`commands::pulse::validate_explain_target`), ahead of any future MCP tool
+  that reaches the same `pulse_explain_inner`: read-only only, refuses a
+  statement that is itself `EXPLAIN`/`ANALYZE` (the latter actually *runs*
+  the target, defeating the point of a preview), and refuses a stray `;` that
+  could smuggle a second statement past the first check. New:
+  `pulse::ExplainPlan`, `db::mysql::pulse::explain`,
+  `db::mongo::pulse::{top_queries, explain}`, the `pulse_explain` command.
+
 - **Pulse reads MongoDB too.** `serverStatus` fills the same four tiles and the
   same alert rules as MySQL, and `$collStats` fills the storage ranking — the
   one `$collStats` call the schema explorer already makes, not a `collStats` per

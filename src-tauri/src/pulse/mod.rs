@@ -198,7 +198,10 @@ pub struct PulseHealth {
 /// unlike the health counters there is no cheap way to difference these (the
 /// digest table is keyed by a hash whose rows come and go as it fills), so the
 /// honest framing is "what this server has spent its time on", and the view
-/// says so rather than implying a live rate.
+/// says so rather than implying a live rate. On MongoDB the framing is closer
+/// to "whatever the profiler currently retains" — `system.profile` is a
+/// capped collection, not a since-flush accumulator — but the same caution
+/// applies either way: this is a shape of recent activity, not a live rate.
 ///
 /// Latency is the **average**, not a percentile. MySQL 8.0 does expose
 /// `QUANTILE_95` here, but 5.7 does not have the column at all and a query
@@ -220,6 +223,52 @@ pub struct TopQuery {
     /// useful column here: a statement can be fast and still be the reason the
     /// server is busy, and this is what says which.
     pub full_scans: u64,
+    /// One runnable example of this statement, source text in the engine's
+    /// own grammar (a literal MySQL statement; a `db.coll.find({…})` shell
+    /// call for MongoDB) — what [`crate::commands::pulse::pulse_explain`]
+    /// wraps in `EXPLAIN`. `None` when the server kept no example (an old
+    /// MySQL without `QUERY_SAMPLE_TEXT`) or the statement shape has no
+    /// well-defined plan to preview (MongoDB `update`/`delete`/`insert`
+    /// entries group here too, since they still tell the user *where* time
+    /// went, but nothing here replays one) — the frontend disables the
+    /// Explain action rather than sending a request it knows will fail.
+    pub sample: Option<String>,
+}
+
+/// One EXPLAIN read, engine-native.
+///
+/// The two engines' plan shapes have nothing in common beyond both being a
+/// tree — MySQL's `EXPLAIN FORMAT=JSON` and MongoDB's `explain` command reply
+/// share no field — so this stays a single opaque `raw` value rather than a
+/// modelled DTO. Inventing a shared shape would either lose fields or force
+/// one engine to answer questions the other cannot ask, the same call this
+/// module's doc comment makes for [`PulseNote`]'s machine-readable `code`.
+/// The frontend renders it as read-only JSON; it never inspects a field by
+/// name.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplainPlan {
+    pub raw: serde_json::Value,
+}
+
+/// How much of a normalised statement to keep.
+///
+/// A digest can be tens of kilobytes (a generated `IN (?, ?, ?, …)` list runs
+/// long) and neither the panel row nor the expanded table can show more than a
+/// couple of lines. Truncating in the reader keeps that off the IPC boundary
+/// entirely rather than shipping it and letting CSS hide it. Shared by every
+/// driver's reader — MySQL's digest and MongoDB's synthesised label both go
+/// through this, so the panel never has to know which engine drew a row long.
+pub const DIGEST_MAX_CHARS: usize = 300;
+
+/// Truncate a digest on a character boundary, marking that it was cut.
+pub fn truncate(digest: &str) -> String {
+    let trimmed = digest.trim();
+    if trimmed.chars().count() <= DIGEST_MAX_CHARS {
+        return trimmed.to_string();
+    }
+    let cut: String = trimmed.chars().take(DIGEST_MAX_CHARS).collect();
+    format!("{cut}…")
 }
 
 /// One relation's footprint on disk.
@@ -272,5 +321,27 @@ mod tests {
         let g = MetricSample::new("connections_active", 7.0).expect("catalogued");
         assert_eq!(g.kind, MetricKind::Gauge);
         assert_eq!(g.unit, MetricUnit::Count);
+    }
+
+    #[test]
+    fn truncate_keeps_a_short_digest_verbatim() {
+        assert_eq!(truncate("  SELECT ? FROM t  "), "SELECT ? FROM t");
+    }
+
+    #[test]
+    fn truncate_cuts_a_long_digest_and_says_so() {
+        let long = "a".repeat(DIGEST_MAX_CHARS + 50);
+        let cut = truncate(&long);
+        assert_eq!(cut.chars().count(), DIGEST_MAX_CHARS + 1);
+        assert!(cut.ends_with('…'));
+    }
+
+    #[test]
+    fn truncate_cuts_on_a_character_boundary() {
+        // A multi-byte digest must not be sliced mid-codepoint — a byte-wise
+        // truncation here would panic on a table named in Japanese.
+        let long = "た".repeat(DIGEST_MAX_CHARS + 10);
+        let cut = truncate(&long);
+        assert_eq!(cut.chars().count(), DIGEST_MAX_CHARS + 1);
     }
 }

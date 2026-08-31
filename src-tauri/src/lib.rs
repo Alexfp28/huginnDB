@@ -309,6 +309,7 @@ pub fn run() {
             commands::pulse::pulse_health,
             commands::pulse::pulse_top_queries,
             commands::pulse::pulse_storage,
+            commands::pulse::pulse_explain,
             commands::structure::get_table_structure,
             commands::structure::preview_structure_change,
             commands::structure::apply_structure_change,

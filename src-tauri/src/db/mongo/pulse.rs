@@ -1,10 +1,16 @@
 //! MongoDB vital signs for Pulse. See [`crate::pulse`] for the contract these
 //! readings are normalised into.
 
+use std::collections::HashMap;
+
 use mongodb::bson::{doc, Bson, Document};
 
-use crate::error::AppResult;
-use crate::pulse::{MetricSample, PulseHealth, PulseNote, StorageItem};
+use crate::db::mongo::shell::{self, MongoOp};
+use crate::db::mongo::values::bson_to_shell_text;
+use crate::error::{AppError, AppResult};
+use crate::pulse::{
+    truncate, ExplainPlan, MetricSample, PulseHealth, PulseNote, StorageItem, TopQuery,
+};
 use crate::state::MongoConn;
 
 /// Read a nested numeric field by path, coercing whatever BSON number the
@@ -197,6 +203,259 @@ pub async fn storage(conn: &MongoConn, limit: usize) -> AppResult<Vec<StorageIte
     Ok(items)
 }
 
+/// How many of the profiler's most recent entries to scan when grouping.
+///
+/// `system.profile` is a capped collection (1 MiB by default), so this is
+/// generous headroom rather than a real limit in practice — it exists so a
+/// profiler someone pointed at level 2 on a busy, large-document server
+/// cannot turn one on-demand read into an unbounded scan.
+const PROFILE_SCAN_LIMIT: i64 = 5_000;
+
+/// Command names the profiler records that Pulse groups into a "statement" —
+/// the CRUD-shaped operations someone came here to see. Everything else
+/// (`serverStatus`, `collStats`, `profile`, `listCollections`, …) is
+/// introspection — largely Pulse's own reads, on a connection with profiling
+/// turned up to capture everything — and would otherwise pollute the ranking
+/// with noise nobody asked to see.
+const TRACKED_COMMANDS: &[&str] = &[
+    "find",
+    "aggregate",
+    "count",
+    "distinct",
+    "findandmodify",
+    "update",
+    "delete",
+    "insert",
+];
+
+/// The command name a profile entry recorded, read from the embedded original
+/// command rather than the top-level `op` field — `op` collapses several
+/// command shapes onto `"command"` on modern servers, while `command`'s own
+/// first key always names the real operation.
+fn command_name(doc: &Document) -> Option<String> {
+    let cmd = doc.get_document("command").ok()?;
+    cmd.keys().next().map(|k| k.to_ascii_lowercase())
+}
+
+/// One group's running totals while [`build_top_queries`] folds the profiler's
+/// entries. Not `TopQuery` itself: `avg_ms` needs the final count, and the
+/// digest needs to fall back to a synthesised label when no runnable sample
+/// was ever seen for the group.
+struct QueryGroup {
+    schema: String,
+    fallback_label: String,
+    sample: Option<String>,
+    count: u64,
+    total_ms: f64,
+    max_ms: f64,
+    rows_examined: u64,
+    rows_sent: u64,
+    full_scans: u64,
+}
+
+/// Group profiler entries into statement-shaped rows, MySQL digest-table
+/// style.
+///
+/// Pure, so the grouping is testable against a captured `system.profile`
+/// shape without a server — the same reason [`build_health`] is pure. The
+/// grouping key is the server's own `queryHash` (present since 4.2 on the
+/// tracked command shapes) when the entry carries one, falling back to
+/// `namespace + command` for older servers or command shapes `queryHash`
+/// does not cover — a coarser grouping, still useful, never a hard failure.
+pub fn build_top_queries(docs: &[Document], limit: usize) -> Vec<TopQuery> {
+    let mut groups: HashMap<String, QueryGroup> = HashMap::new();
+
+    for doc in docs {
+        let Ok(ns) = doc.get_str("ns") else { continue };
+        // Skip the profiler reading itself and other server-internal
+        // namespaces — never what anyone opened Consultas to see.
+        if ns.contains(".system.") {
+            continue;
+        }
+        let Some(name) = command_name(doc) else {
+            continue;
+        };
+        if !TRACKED_COMMANDS.contains(&name.as_str()) {
+            continue;
+        }
+
+        let (schema, collection) = ns
+            .split_once('.')
+            .map(|(d, c)| (d.to_string(), c.to_string()))
+            .unwrap_or_else(|| (ns.to_string(), String::new()));
+
+        let key = doc
+            .get_str("queryHash")
+            .map(|h| h.to_string())
+            .unwrap_or_else(|_| format!("{ns}|{name}"));
+
+        let millis = num(doc, &["millis"]).unwrap_or(0.0).max(0.0);
+        let examined = num(doc, &["docsExamined"]).unwrap_or(0.0).max(0.0) as u64;
+        let returned = num(doc, &["nreturned"]).unwrap_or(0.0).max(0.0) as u64;
+        let full_scan = doc
+            .get_str("planSummary")
+            .is_ok_and(|p| p.contains("COLLSCAN"));
+
+        let group = groups.entry(key).or_insert_with(|| QueryGroup {
+            schema: schema.clone(),
+            fallback_label: format!("db.{collection}.{name}()"),
+            sample: None,
+            count: 0,
+            total_ms: 0.0,
+            max_ms: 0.0,
+            rows_examined: 0,
+            rows_sent: 0,
+            full_scans: 0,
+        });
+
+        group.count += 1;
+        group.total_ms += millis;
+        group.max_ms = group.max_ms.max(millis);
+        group.rows_examined += examined;
+        group.rows_sent += returned;
+        if full_scan {
+            group.full_scans += 1;
+        }
+
+        // Keep the first runnable filter seen for the group. Only `find`
+        // yields one today — [`explain`] only knows how to replay the
+        // read-shaped operations `shell::parse` understands (see its own doc
+        // comment) — so an `update`/`delete`/`insert` group still shows where
+        // the time went, it just cannot be explained from here.
+        if group.sample.is_none() && name == "find" {
+            if let Some(filter) = doc
+                .get_document("command")
+                .ok()
+                .and_then(|cmd| cmd.get_document("filter").ok())
+            {
+                group.sample = Some(format!(
+                    "db.{collection}.find({})",
+                    bson_to_shell_text(&Bson::Document(filter.clone())),
+                ));
+            }
+        }
+    }
+
+    let mut items: Vec<(f64, TopQuery)> = groups
+        .into_values()
+        .map(|g| {
+            let avg_ms = g.total_ms / g.count.max(1) as f64;
+            let query = TopQuery {
+                digest: truncate(g.sample.as_deref().unwrap_or(&g.fallback_label)),
+                schema: Some(g.schema),
+                count: g.count,
+                avg_ms,
+                max_ms: g.max_ms,
+                rows_examined: g.rows_examined,
+                rows_sent: g.rows_sent,
+                full_scans: g.full_scans,
+                sample: g.sample,
+            };
+            (g.total_ms, query)
+        })
+        .collect();
+
+    items.sort_unstable_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    items.truncate(limit);
+    items.into_iter().map(|(_, q)| q).collect()
+}
+
+/// Statements this connection's profiler has recorded, grouped and ranked by
+/// total time — MongoDB's answer to MySQL's digest table.
+///
+/// Reads `system.profile` directly with a normal `find`, the same collection
+/// `mongosh` itself reads to show recent operations, rather than a
+/// `$collStats`-style privileged command — no more than the built-in `read`
+/// role already grants. An empty or missing collection (profiling off, or
+/// never turned on) is not an error: it means nothing was recorded, and
+/// [`health`]'s own `profilerOff` note already told the user why.
+pub async fn top_queries(conn: &MongoConn, limit: usize) -> AppResult<Vec<TopQuery>> {
+    let db = crate::db::mongo::schema::resolve_db(conn)?;
+    let coll = db.collection::<Document>("system.profile");
+    let mut cursor = coll
+        .find(doc! {})
+        .sort(doc! {"ts": -1})
+        .limit(PROFILE_SCAN_LIMIT)
+        .await?;
+
+    let mut docs = Vec::new();
+    while matches!(cursor.advance().await, Ok(true)) {
+        if let Ok(d) = cursor.deserialize_current() {
+            docs.push(d);
+        }
+    }
+    Ok(build_top_queries(&docs, limit))
+}
+
+/// Read the plan MongoDB would use for one statement, without running it.
+///
+/// `sample` is shell syntax (`db.<collection>.find({…})` today —
+/// [`top_queries`] is the only producer of a Mongo sample right now, and it
+/// only ever writes a `find`), the same grammar the query editor speaks.
+/// Routing it back through [`shell::parse`] here is what keeps that the
+/// *only* Mongo statement parser in the tree rather than growing a second,
+/// subtly different one for this one caller (the rule gotcha #33 documents).
+///
+/// Only the read-shaped operations carry enough of a query for `explain` to
+/// mean anything; anything else is refused rather than silently no-op'd.
+/// `verbosity` is hardcoded to `"queryPlanner"` — never taken from `sample` —
+/// which is what keeps this safe to call on arbitrary shell text: MongoDB's
+/// higher verbosities (`executionStats`, `allPlansExecution`) actually *run*
+/// the statement, and nothing here ever asks for those.
+pub async fn explain(conn: &MongoConn, sample: &str) -> AppResult<ExplainPlan> {
+    let parsed = shell::parse(sample)?;
+    let db = crate::db::mongo::schema::resolve_db(conn)?;
+
+    let target = match parsed.op {
+        MongoOp::Find {
+            filter,
+            projection,
+            sort,
+            skip,
+            limit,
+            ..
+        } => {
+            let mut cmd = doc! {"find": &parsed.collection, "filter": filter};
+            if let Some(p) = projection {
+                cmd.insert("projection", p);
+            }
+            if let Some(s) = sort {
+                cmd.insert("sort", s);
+            }
+            if let Some(s) = skip {
+                cmd.insert("skip", s);
+            }
+            if let Some(l) = limit {
+                cmd.insert("limit", l);
+            }
+            cmd
+        }
+        MongoOp::Aggregate { pipeline } => doc! {
+            "aggregate": &parsed.collection,
+            "pipeline": pipeline,
+            "cursor": {},
+        },
+        MongoOp::Count { filter } => doc! {"count": &parsed.collection, "query": filter},
+        MongoOp::Distinct { field, filter } => doc! {
+            "distinct": &parsed.collection,
+            "key": field,
+            "query": filter,
+        },
+        _ => {
+            return Err(AppError::InvalidInput(
+                "pulse_explain only reads find/aggregate/count/distinct on MongoDB".into(),
+            ))
+        }
+    };
+
+    let reply = db
+        .run_command(doc! {"explain": target, "verbosity": "queryPlanner"})
+        .await?;
+    Ok(ExplainPlan {
+        raw: crate::db::mongo::values::bson_to_json(&Bson::Document(reply)),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,5 +546,131 @@ mod tests {
         // Unreadable level: stay quiet rather than telling someone to switch on
         // something that may already be on.
         assert!(build_health(&status(), None).notes.is_empty());
+    }
+
+    fn find_entry(
+        ns: &str,
+        filter: Document,
+        millis: f64,
+        examined: i64,
+        returned: i64,
+    ) -> Document {
+        doc! {
+            "ns": ns,
+            "millis": millis,
+            "docsExamined": examined,
+            "nreturned": returned,
+            "planSummary": "IXSCAN { a: 1 }",
+            "command": { "find": ns.split('.').next_back().unwrap_or(""), "filter": filter },
+        }
+    }
+
+    #[test]
+    fn groups_profile_entries_by_query_hash() {
+        let docs = vec![
+            {
+                let mut d = find_entry("shop.orders", doc! {"status": "A"}, 12.0, 100, 10);
+                d.insert("queryHash", "ABCD1234");
+                d
+            },
+            {
+                let mut d = find_entry("shop.orders", doc! {"status": "B"}, 8.0, 50, 5);
+                d.insert("queryHash", "ABCD1234");
+                d
+            },
+        ];
+        let items = build_top_queries(&docs, 10);
+        assert_eq!(items.len(), 1, "same queryHash must fold into one row");
+        assert_eq!(items[0].count, 2);
+        assert_eq!(items[0].avg_ms, 10.0);
+        assert_eq!(items[0].max_ms, 12.0);
+        assert_eq!(items[0].rows_examined, 150);
+        assert_eq!(items[0].rows_sent, 15);
+        assert_eq!(items[0].schema.as_deref(), Some("shop"));
+    }
+
+    #[test]
+    fn falls_back_to_namespace_and_command_without_a_query_hash() {
+        // Pre-4.2 servers, or a command shape the server does not hash.
+        let docs = vec![
+            find_entry("shop.orders", doc! {"status": "A"}, 5.0, 1, 1),
+            find_entry("shop.orders", doc! {"status": "B"}, 5.0, 1, 1),
+            find_entry("shop.customers", doc! {}, 5.0, 1, 1),
+        ];
+        let items = build_top_queries(&docs, 10);
+        assert_eq!(
+            items.len(),
+            2,
+            "grouped by namespace + command, not per-document"
+        );
+    }
+
+    #[test]
+    fn flags_a_collection_scan_from_plan_summary() {
+        let mut scanned = find_entry("shop.orders", doc! {}, 1.0, 1000, 1);
+        scanned.insert("planSummary", "COLLSCAN");
+        let items = build_top_queries(&[scanned], 10);
+        assert_eq!(items[0].full_scans, 1);
+
+        let items = build_top_queries(&[find_entry("shop.orders", doc! {}, 1.0, 1, 1)], 10);
+        assert_eq!(items[0].full_scans, 0);
+    }
+
+    #[test]
+    fn captures_a_runnable_sample_for_find_but_not_other_commands() {
+        let find = find_entry("shop.orders", doc! {"status": "A"}, 1.0, 1, 1);
+        let items = build_top_queries(&[find], 10);
+        // `bson_to_shell_text` pretty-prints, so match the shape rather than
+        // pin every whitespace byte to this test.
+        let sample = items[0].sample.as_deref().expect("find yields a sample");
+        assert!(sample.starts_with("db.orders.find({"));
+        assert!(sample.contains("status: \"A\""));
+        assert!(sample.ends_with("})"));
+
+        let update = doc! {
+            "ns": "shop.orders",
+            "millis": 1.0,
+            "command": { "update": "orders", "updates": [] },
+        };
+        let items = build_top_queries(&[update], 10);
+        assert_eq!(items[0].sample, None);
+        // No sample: the digest falls back to a synthesised label rather than
+        // an empty string.
+        assert_eq!(items[0].digest, "db.orders.update()");
+    }
+
+    #[test]
+    fn skips_the_profilers_own_traffic_and_untracked_commands() {
+        let own_read = doc! {
+            "ns": "shop.system.profile",
+            "millis": 1.0,
+            "command": { "find": "system.profile", "filter": {} },
+        };
+        let admin_read = doc! {
+            "ns": "admin.$cmd",
+            "millis": 1.0,
+            "command": { "serverStatus": 1 },
+        };
+        assert!(build_top_queries(&[own_read, admin_read], 10).is_empty());
+    }
+
+    #[test]
+    fn ranks_groups_by_total_time_descending() {
+        let busy = find_entry("shop.orders", doc! {"a": 1}, 100.0, 1, 1);
+        let quiet = find_entry("shop.customers", doc! {"b": 1}, 1.0, 1, 1);
+        let items = build_top_queries(&[quiet, busy], 10);
+        assert_eq!(items[0].schema.as_deref(), Some("shop"));
+        assert_eq!(items[0].max_ms, 100.0, "the busier group must sort first");
+    }
+
+    #[test]
+    fn respects_the_row_limit_after_ranking() {
+        // Distinct collections, so each entry is its own group — the filter
+        // value alone does not fork a group when there is no `queryHash`, by
+        // design (see `falls_back_to_namespace_and_command_without_a_query_hash`).
+        let docs: Vec<Document> = (0..5)
+            .map(|i| find_entry(&format!("shop.coll{i}"), doc! {"n": i}, i as f64, 1, 1))
+            .collect();
+        assert_eq!(build_top_queries(&docs, 2).len(), 2);
     }
 }

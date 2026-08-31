@@ -1771,7 +1771,15 @@
       "avg": "Average",
       "max": "Slowest",
       "examinedSent": "Examined / sent",
-      "signal": "Signal"
+      "signal": "Signal",
+      "plan": "Plan"
+    },
+    "explain": {
+      "show": "Show the plan",
+      "hide": "Hide the plan",
+      "unavailable": "No runnable example kept for this statement.",
+      "loading": "Reading the plan…",
+      "error": "Could not read the plan."
     }
   },
   "query": {

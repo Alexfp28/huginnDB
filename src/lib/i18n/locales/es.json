@@ -1771,7 +1771,15 @@
       "avg": "Media",
       "max": "Más lenta",
       "examinedSent": "Examinadas / devueltas",
-      "signal": "Señal"
+      "signal": "Señal",
+      "plan": "Plan"
+    },
+    "explain": {
+      "show": "Ver el plan",
+      "hide": "Ocultar el plan",
+      "unavailable": "No se guardó ningún ejemplo ejecutable de esta sentencia.",
+      "loading": "Leyendo el plan…",
+      "error": "No se ha podido leer el plan."
     }
   },
   "query": {

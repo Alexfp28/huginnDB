@@ -41,6 +41,7 @@ import type {
   PoolStats,
   Preferences,
   PrivilegeInfo,
+  PulseExplainPlan,
   PulseHealth,
   PulseStorageItem,
   PulseTopQuery,
@@ -1200,6 +1201,15 @@ export const api = {
   /** The connection's biggest relations, largest first. On demand. */
   pulseStorage: (connectionId: string) =>
     invoke<PulseStorageItem[]>("pulse_storage", { connectionId }),
+
+  /**
+   * The plan the server would use for `sample` — one of a `PulseTopQuery`'s
+   * own `sample` values — without running it. Rejects when `sample` is not a
+   * single read-only statement; the panel only ever sends its own captured
+   * samples, so that should never fire in practice.
+   */
+  pulseExplain: (connectionId: string, sample: string) =>
+    invoke<PulseExplainPlan>("pulse_explain", { connectionId, sample }),
 
   /**
    * Open Pulse's expanded view in its own OS window, measuring `connectionId`.

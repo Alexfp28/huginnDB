@@ -10,6 +10,48 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Pulse ya puede lanzar EXPLAIN sobre una sentencia, en los dos motores,
+  directamente desde la tabla de digests.** Cada fila de la vista Consultas en
+  la ventana ampliada tiene ahora una acción Plan; al pulsarla, envuelve el
+  ejemplo capturado de esa fila en `EXPLAIN` y muestra el plan de solo lectura
+  del servidor, sin llegar a ejecutar la sentencia de verdad. Hicieron falta
+  dos piezas a la vez para que esto fuera seguro y no solo cómodo.
+
+  Primero, un ejemplo ejecutable. `DIGEST_TEXT` está normalizado a
+  marcadores `?` precisamente para que ejecuciones distintas se plieguen en
+  una sola fila — lo cual también significa que no se le puede pasar a
+  `EXPLAIN`. `QUERY_SAMPLE_TEXT` de MySQL (5.7.7+) es la sentencia literal
+  detrás de una de esas ejecuciones, capturada junto al digest sin coste
+  extra, y ahora viaja como `TopQuery.sample`. Una fila sin muestra (un
+  servidor antiguo, o una forma de sentencia que `explain` no puede
+  previsualizar) desactiva la acción en vez de mandar una petición condenada
+  a fallar.
+
+  Segundo, que la vista Consultas exista siquiera en MongoDB: `system.profile`
+  se lee ahora y se agrupa en la misma forma `TopQuery` que produce la tabla
+  de digests de MySQL — por el `queryHash` propio del servidor cuando la
+  entrada lo lleva, cayendo a espacio de nombres + comando en servidores más
+  antiguos. El filtro de un `find` se convierte tanto en la etiqueta de la
+  fila como en su `sample`, escrito con la misma sintaxis shell
+  `db.coll.find({…})` que ya habla el editor de consultas — reutilizar ese
+  único parser (en vez de inventar un segundo) es también lo que permite a
+  `pulse_explain` reproducirlo: parsea la muestra de vuelta a un filtro, lo
+  envuelve en el propio comando `explain` de MongoDB con verbosidad
+  `"queryPlanner"` (nunca un nivel que ejecutaría la sentencia), y devuelve la
+  respuesta tal cual. Las entradas de `update`/`delete`/`insert` se siguen
+  agrupando y clasificando con normalidad — dicen a dónde fue el tiempo —
+  simplemente no llevan `sample`, porque nada aquí reproduce una escritura.
+
+  La comprobación que comparten los dos motores vive en un único sitio
+  (`commands::pulse::validate_explain_target`), por delante de cualquier
+  futura herramienta MCP que llegue al mismo `pulse_explain_inner`: solo
+  lectura, rechaza una sentencia que sea ella misma `EXPLAIN`/`ANALYZE` (esto
+  último *ejecuta* de verdad el objetivo, lo que anula el sentido de una
+  previsualización), y rechaza un `;` suelto que podría colar una segunda
+  sentencia más allá de la primera comprobación. Nuevo: `pulse::ExplainPlan`,
+  `db::mysql::pulse::explain`, `db::mongo::pulse::{top_queries, explain}`, el
+  comando `pulse_explain`.
+
 - **Pulse también lee MongoDB.** `serverStatus` rellena las mismas cuatro
   tarjetas y las mismas reglas de aviso que MySQL, y `$collStats` rellena la
   clasificación de almacenamiento — la única llamada `$collStats` que ya hace

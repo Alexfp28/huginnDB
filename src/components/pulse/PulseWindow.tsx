@@ -15,15 +15,24 @@
  * because the live series lives in a store rather than in either component.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
 import {
   Activity,
   AlertTriangle,
+  ChevronRight,
   HardDrive,
   ListOrdered,
+  Loader2,
   RefreshCw,
   ServerCog,
 } from "lucide-react";
@@ -50,6 +59,7 @@ import {
   usePreferences,
 } from "@/stores/preferences/preferences";
 import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
+import type { PulseTopQuery } from "@/types";
 
 /** The views this window can show today. Sessions, indexes and the history
  *  retrospective join the list as their reads land; a rail entry with nothing
@@ -105,9 +115,78 @@ function StatusView({ view }: { view: PulseView }) {
   );
 }
 
-function QueriesView({ view }: { view: PulseView }) {
+/** One digest's fetched (or in-flight, or failed) plan, keyed by `sample` —
+ *  the same string is what `pulseExplain` is called with, so it doubles as
+ *  the cache key without needing a second identifier per row. */
+interface ExplainState {
+  loading: boolean;
+  raw?: unknown;
+  error?: string;
+}
+
+function ExplainPanel({ state }: { state: ExplainState }) {
+  const { t } = useTranslation();
+  if (state.loading) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        {t("pulse.explain.loading")}
+      </div>
+    );
+  }
+  if (state.error) {
+    return (
+      <p className="px-3 py-3 text-xs text-destructive">
+        {t("pulse.explain.error")} {state.error}
+      </p>
+    );
+  }
+  return (
+    <pre className="max-h-80 overflow-auto px-3 py-3 font-mono text-3xs leading-relaxed">
+      {JSON.stringify(state.raw, null, 2)}
+    </pre>
+  );
+}
+
+function QueriesView({
+  view,
+  connectionId,
+}: {
+  view: PulseView;
+  connectionId: string;
+}) {
   const { t } = useTranslation();
   const items = view.topQueries?.items ?? [];
+
+  const [openDigest, setOpenDigest] = useState<string | null>(null);
+  const [explains, setExplains] = useState<Record<string, ExplainState>>({});
+
+  const toggleExplain = useCallback(
+    (query: PulseTopQuery) => {
+      if (openDigest === query.digest) {
+        setOpenDigest(null);
+        return;
+      }
+      setOpenDigest(query.digest);
+      if (!query.sample || explains[query.digest]) return;
+      setExplains((s) => ({ ...s, [query.digest]: { loading: true } }));
+      void api
+        .pulseExplain(connectionId, query.sample)
+        .then((plan) =>
+          setExplains((s) => ({
+            ...s,
+            [query.digest]: { loading: false, raw: plan.raw },
+          })),
+        )
+        .catch((e) =>
+          setExplains((s) => ({
+            ...s,
+            [query.digest]: { loading: false, error: String(e) },
+          })),
+        );
+    },
+    [openDigest, explains, connectionId],
+  );
 
   if (items.length === 0) {
     return (
@@ -156,48 +235,85 @@ function QueriesView({ view }: { view: PulseView }) {
               <th className="px-2 py-1.5 text-left font-medium">
                 {t("pulse.table.signal")}
               </th>
+              <th className="px-2 py-1.5 text-left font-medium">
+                {t("pulse.table.plan")}
+              </th>
             </tr>
           </thead>
           <tbody>
-            {items.map((q) => (
-              <tr key={q.digest} className="border-b border-border last:border-b-0">
-                <td className="max-w-[46ch] px-2 py-1.5 align-top">
-                  {/* `line-clamp` sets `display: -webkit-box`, so the digest
-                      needs its own block and the schema its own line below. */}
-                  <div className="line-clamp-2 font-mono text-2xs" title={q.digest}>
-                    {q.digest}
-                  </div>
-                  {q.schema && (
-                    <div className="font-mono text-3xs text-muted-foreground">
-                      {q.schema}
-                    </div>
+            {items.map((q) => {
+              const open = openDigest === q.digest;
+              return (
+                <Fragment key={q.digest}>
+                  <tr className="border-b border-border last:border-b-0">
+                    <td className="max-w-[46ch] px-2 py-1.5 align-top">
+                      {/* `line-clamp` sets `display: -webkit-box`, so the digest
+                          needs its own block and the schema its own line below. */}
+                      <div className="line-clamp-2 font-mono text-2xs" title={q.digest}>
+                        {q.digest}
+                      </div>
+                      {q.schema && (
+                        <div className="font-mono text-3xs text-muted-foreground">
+                          {q.schema}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-mono tabular-nums">
+                      {formatCount(q.count)}
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-mono tabular-nums">
+                      {q.avgMs < 1 ? "<1" : Math.round(q.avgMs)} ms
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-mono tabular-nums text-muted-foreground">
+                      {q.maxMs < 1 ? "<1" : Math.round(q.maxMs)} ms
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-mono tabular-nums text-muted-foreground">
+                      {formatCount(q.rowsExamined)} / {formatCount(q.rowsSent)}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {q.fullScans > 0 ? (
+                        <span className="rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-3xs text-destructive">
+                          {t("pulse.slowest.noIndexCount", {
+                            count: formatCount(q.fullScans),
+                          })}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-3xs text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <button
+                        type="button"
+                        disabled={!q.sample}
+                        onClick={() => toggleExplain(q)}
+                        title={q.sample ? undefined : t("pulse.explain.unavailable")}
+                        aria-expanded={open}
+                        className={cn(
+                          "flex items-center gap-1 rounded-md px-1.5 py-1 font-mono text-3xs",
+                          "text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
+                          "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
+                        )}
+                      >
+                        <ChevronRight
+                          className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
+                        />
+                        {t("pulse.table.plan")}
+                      </button>
+                    </td>
+                  </tr>
+                  {open && (
+                    <tr className="border-b border-border last:border-b-0">
+                      <td colSpan={7} className="bg-accent/20 p-0">
+                        <ExplainPanel
+                          state={explains[q.digest] ?? { loading: true }}
+                        />
+                      </td>
+                    </tr>
                   )}
-                </td>
-                <td className="px-2 py-1.5 text-right font-mono tabular-nums">
-                  {formatCount(q.count)}
-                </td>
-                <td className="px-2 py-1.5 text-right font-mono tabular-nums">
-                  {q.avgMs < 1 ? "<1" : Math.round(q.avgMs)} ms
-                </td>
-                <td className="px-2 py-1.5 text-right font-mono tabular-nums text-muted-foreground">
-                  {q.maxMs < 1 ? "<1" : Math.round(q.maxMs)} ms
-                </td>
-                <td className="px-2 py-1.5 text-right font-mono tabular-nums text-muted-foreground">
-                  {formatCount(q.rowsExamined)} / {formatCount(q.rowsSent)}
-                </td>
-                <td className="px-2 py-1.5">
-                  {q.fullScans > 0 ? (
-                    <span className="rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-3xs text-destructive">
-                      {t("pulse.slowest.noIndexCount", {
-                        count: formatCount(q.fullScans),
-                      })}
-                    </span>
-                  ) : (
-                    <span className="font-mono text-3xs text-muted-foreground">—</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -356,7 +472,7 @@ function PulseBody({ connectionId }: { connectionId: string }) {
 
       <div className="min-w-0 overflow-y-auto p-3">
         {viewId === "status" && <StatusView view={view} />}
-        {viewId === "queries" && <QueriesView view={view} />}
+        {viewId === "queries" && <QueriesView view={view} connectionId={connectionId} />}
         {viewId === "storage" && <StorageView view={view} />}
       </div>
     </div>

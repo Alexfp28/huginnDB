@@ -1866,6 +1866,18 @@ export interface PulseTopQuery {
   rowsSent: number;
   /** Executions that resolved without using any index. */
   fullScans: number;
+  /** One runnable example, source text in the engine's own grammar — what
+   *  `pulseExplain` wraps in `EXPLAIN`. `null` disables the Explain action:
+   *  the server kept no example, or the statement shape has no well-defined
+   *  plan to preview. */
+  sample: string | null;
+}
+
+/** One `EXPLAIN` read, from `pulse_explain`. The two engines' plan shapes
+ *  share no field, so this stays a single opaque tree the viewer renders
+ *  read-only rather than a modelled type. */
+export interface PulseExplainPlan {
+  raw: unknown;
 }
 
 /** One relation's footprint, from `pulse_storage`. */

@@ -7,8 +7,9 @@
 
 use tauri::State;
 
+use crate::db::sql::StmtClass;
 use crate::error::{AppError, AppResult};
-use crate::pulse::{PulseHealth, StorageItem, TopQuery};
+use crate::pulse::{ExplainPlan, PulseHealth, StorageItem, TopQuery};
 use crate::state::{AppState, DbPool};
 
 /// A driver Pulse does not read yet.
@@ -63,11 +64,61 @@ pub async fn pulse_top_queries_inner(
 ) -> AppResult<Vec<TopQuery>> {
     match state.pool_for(connection_id)? {
         DbPool::Mysql(p) => crate::db::mysql::pulse::top_queries(&p, DETAIL_LIMIT).await,
-        // MongoDB keeps no digest table: the equivalent is the profiler's
-        // `system.profile` collection, whose shape and opt-in are different
-        // enough to be their own piece of work. Health and storage answer for
-        // Mongo already, so this is the one read still missing there.
-        DbPool::Mongo(_) => Err(unsupported("MongoDB")),
+        DbPool::Mongo(conn) => {
+            crate::db::mongo::pulse::top_queries(&conn, DETAIL_LIMIT as usize).await
+        }
+        DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
+        DbPool::Sqlite(_) => Err(unsupported("SQLite")),
+        DbPool::MsSql(_) => Err(unsupported("SQL Server")),
+    }
+}
+
+/// Guard shared by both engines' `EXPLAIN`, applied once here rather than in
+/// either driver module so a second call site (the MCP `pulse_explain` tool,
+/// still to come) inherits it for free instead of having to remember it.
+///
+/// `classify_statement` already picks the right grammar from the text itself
+/// (SQL vs `db.…` shell syntax), so one check covers both engines. Two things
+/// beyond "is this a read": a statement that is itself `EXPLAIN`/`ANALYZE`
+/// would either nest uselessly or — for `ANALYZE`, which actually *runs* the
+/// statement to gather real timings — defeat the entire point of a read-only
+/// preview; and a stray `;` could smuggle a second statement past the
+/// read-only check, since `classify_statement` only looks at the first
+/// keyword.
+fn validate_explain_target(sql: &str) -> AppResult<()> {
+    if crate::db::classify::classify_statement(sql) != StmtClass::Read {
+        return Err(AppError::InvalidInput(
+            "pulse_explain only accepts a read-only statement".into(),
+        ));
+    }
+    let head: String = sql
+        .trim_start()
+        .chars()
+        .take(8)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if head.starts_with("explain") || head.starts_with("analyze") {
+        return Err(AppError::InvalidInput(
+            "pulse_explain refuses a statement that is itself EXPLAIN/ANALYZE".into(),
+        ));
+    }
+    if sql.trim().trim_end_matches(';').contains(';') {
+        return Err(AppError::InvalidInput(
+            "pulse_explain accepts a single statement".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub async fn pulse_explain_inner(
+    state: &AppState,
+    connection_id: &str,
+    sample: &str,
+) -> AppResult<ExplainPlan> {
+    validate_explain_target(sample)?;
+    match state.pool_for(connection_id)? {
+        DbPool::Mysql(p) => crate::db::mysql::pulse::explain(&p, sample).await,
+        DbPool::Mongo(conn) => crate::db::mongo::pulse::explain(&conn, sample).await,
         DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
         DbPool::Sqlite(_) => Err(unsupported("SQLite")),
         DbPool::MsSql(_) => Err(unsupported("SQL Server")),
@@ -121,4 +172,56 @@ pub async fn pulse_storage(
         pulse_storage_inner(state.inner(), &connection_id),
     )
     .await
+}
+
+/// The plan the server would use for one statement from a Consultas row,
+/// without running it. `sample` is always one of that row's own
+/// [`TopQuery::sample`] values in practice — the panel never lets the user
+/// type one in — but the guard applies regardless of who calls this, so a
+/// future MCP `pulse_explain` tool can dispatch straight to
+/// [`pulse_explain_inner`] without re-deriving it.
+#[tauri::command]
+pub async fn pulse_explain(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+    sample: String,
+) -> AppResult<ExplainPlan> {
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::error::with_timeout(
+        "pulse_explain",
+        pulse_explain_inner(state.inner(), &connection_id, &sample),
+    )
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explain_accepts_a_plain_read() {
+        assert!(validate_explain_target("SELECT * FROM orders WHERE id = 1").is_ok());
+        assert!(validate_explain_target("db.orders.find({status: \"A\"})").is_ok());
+    }
+
+    #[test]
+    fn explain_refuses_a_write() {
+        assert!(validate_explain_target("UPDATE orders SET status = 'x'").is_err());
+        assert!(validate_explain_target("db.orders.deleteOne({})").is_err());
+    }
+
+    #[test]
+    fn explain_refuses_nesting_explain_or_analyze() {
+        assert!(validate_explain_target("EXPLAIN SELECT 1").is_err());
+        assert!(validate_explain_target("ANALYZE SELECT 1").is_err());
+    }
+
+    #[test]
+    fn explain_refuses_a_smuggled_second_statement() {
+        assert!(validate_explain_target("SELECT 1; DROP TABLE t").is_err());
+        // A single trailing terminator is fine.
+        assert!(validate_explain_target("SELECT 1;").is_ok());
+    }
 }
