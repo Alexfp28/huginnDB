@@ -832,16 +832,22 @@ mod tests {
 
     #[test]
     fn environments_referencing_finds_only_the_environments_that_hold_the_id() {
-        let mut a = Environment::default();
-        a.id = "env-a".into();
+        let mut a = Environment {
+            id: "env-a".into(),
+            ..Default::default()
+        };
         a.launch.active_connections = vec!["conn-1".into()];
 
-        let mut b = Environment::default();
-        b.id = "env-b".into();
+        let mut b = Environment {
+            id: "env-b".into(),
+            ..Default::default()
+        };
         b.launch.selected_connection_id = Some("conn-2".into());
 
-        let mut c = Environment::default();
-        c.id = "env-c".into();
+        let c = Environment {
+            id: "env-c".into(),
+            ..Default::default()
+        };
         // Doesn't reference either connection.
 
         let environments = vec![a, b, c];
@@ -858,12 +864,16 @@ mod tests {
 
     #[test]
     fn environments_referencing_can_return_more_than_one_environment() {
-        let mut a = Environment::default();
-        a.id = "env-a".into();
+        let mut a = Environment {
+            id: "env-a".into(),
+            ..Default::default()
+        };
         a.launch.active_connections = vec!["shared".into()];
 
-        let mut b = Environment::default();
-        b.id = "env-b".into();
+        let mut b = Environment {
+            id: "env-b".into(),
+            ..Default::default()
+        };
         b.launch.visible_connections = Some(vec!["shared".into()]);
 
         let environments = vec![a, b];
