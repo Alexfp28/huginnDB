@@ -181,7 +181,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   literal statement behind one of those executions, captured alongside the
   digest at no extra cost, and now travels as `TopQuery.sample`. A row with no
   sample (an ancient server, or a statement shape `explain` cannot preview)
-  disables the action instead of sending a request known to fail.
+  disables the action instead of sending a request known to fail. **MariaDB's
+  fork of `performance_schema` never added `QUERY_SAMPLE_TEXT` at all**, so
+  the digest read tries it first and retries once without it on
+  `ER_BAD_FIELD_ERROR` (1054) — without that, a MariaDB server with
+  `performance_schema` genuinely on would fail the whole Consultas read and
+  look exactly like one with it off, which is precisely the failure this
+  view's degrade-don't-fail design exists to avoid.
 
   Second, MongoDB's Consultas view existing at all: `system.profile` is now
   read and grouped into the same `TopQuery` shape MySQL's digest table

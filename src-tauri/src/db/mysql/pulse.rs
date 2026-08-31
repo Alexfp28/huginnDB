@@ -187,6 +187,9 @@ fn text_at(row: &sqlx::mysql::MySqlRow, idx: usize) -> Option<String> {
         .map(|b| String::from_utf8_lossy(&b).into_owned())
 }
 
+/// MySQL's "unknown column" error number (`ER_BAD_FIELD_ERROR`).
+const ER_BAD_FIELD_ERROR: u16 = 1054;
+
 /// Statements the server has spent the most time on.
 ///
 /// Reads `performance_schema`, so it fails outright when that is off — the
@@ -194,25 +197,56 @@ fn text_at(row: &sqlx::mysql::MySqlRow, idx: usize) -> Option<String> {
 /// error, since "switched off" is a state the user can act on and a stack trace
 /// is not. Server-side schemas are excluded: the connector's own catalog reads
 /// and the server's internal statements are not what anyone came here to see.
+///
+/// Tries `QUERY_SAMPLE_TEXT` first and retries once without it on
+/// `ER_BAD_FIELD_ERROR`: the column exists on MySQL 5.7.7+, but **MariaDB's
+/// fork of `performance_schema` never added it at all**, and losing every
+/// row over one optional column would make a MariaDB server with
+/// `performance_schema` genuinely on look exactly like one with it off —
+/// the one failure mode this function's whole shape exists to avoid. The
+/// retry costs a second round trip only on that one fork; every MySQL 5.7.7+
+/// server succeeds on the first try and never pays for it.
 pub async fn top_queries(pool: &MySqlPool, limit: u32) -> AppResult<Vec<TopQuery>> {
+    match top_queries_rows(pool, limit, true).await {
+        Ok(rows) => Ok(rows),
+        Err(sqlx::Error::Database(db))
+            if db
+                .try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>()
+                .is_some_and(|e| e.number() == ER_BAD_FIELD_ERROR) =>
+        {
+            Ok(top_queries_rows(pool, limit, false).await?)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+async fn top_queries_rows(
+    pool: &MySqlPool,
+    limit: u32,
+    include_sample: bool,
+) -> Result<Vec<TopQuery>, sqlx::Error> {
     // `SUM_TIMER_WAIT` and friends are picoseconds. Divided in Rust rather
     // than in SQL so the raw counters stay legible in the query itself.
-    // `QUERY_SAMPLE_TEXT` exists since 5.7.7 and is a literal, runnable
-    // example of the digest — unlike `DIGEST_TEXT`, which is normalised to
-    // `?` placeholders and cannot be handed to `EXPLAIN`.
-    let rows = sqlx::query(
-        "SELECT SCHEMA_NAME, DIGEST_TEXT, QUERY_SAMPLE_TEXT, COUNT_STAR, SUM_TIMER_WAIT, \
+    // `QUERY_SAMPLE_TEXT` is a literal, runnable example of the digest —
+    // unlike `DIGEST_TEXT`, which is normalised to `?` placeholders and
+    // cannot be handed to `EXPLAIN` — included unless the caller already
+    // knows this server doesn't have it.
+    let sample_column = if include_sample {
+        ", QUERY_SAMPLE_TEXT"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "SELECT SCHEMA_NAME, DIGEST_TEXT{sample_column}, COUNT_STAR, SUM_TIMER_WAIT, \
                 MAX_TIMER_WAIT, SUM_ROWS_EXAMINED, SUM_ROWS_SENT, SUM_NO_INDEX_USED \
          FROM performance_schema.events_statements_summary_by_digest \
          WHERE DIGEST_TEXT IS NOT NULL AND COUNT_STAR > 0 \
            AND (SCHEMA_NAME IS NULL OR SCHEMA_NAME NOT IN \
                 ('performance_schema', 'information_schema', 'mysql', 'sys')) \
          ORDER BY SUM_TIMER_WAIT DESC \
-         LIMIT ?",
-    )
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
+         LIMIT ?"
+    );
+    let rows = sqlx::query(&sql).bind(limit).fetch_all(pool).await?;
 
     Ok(rows
         .into_iter()
@@ -228,6 +262,9 @@ pub async fn top_queries(pool: &MySqlPool, limit: u32) -> AppResult<Vec<TopQuery
                 rows_examined: num_at(&r, "SUM_ROWS_EXAMINED"),
                 rows_sent: num_at(&r, "SUM_ROWS_SENT"),
                 full_scans: num_at(&r, "SUM_NO_INDEX_USED"),
+                // Absent from the row on MariaDB (never selected) as much as
+                // from a server that reported it empty — `named_text` reads
+                // `Option` either way, so this needs no extra branch.
                 sample: named_text(&r, "QUERY_SAMPLE_TEXT")
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty()),

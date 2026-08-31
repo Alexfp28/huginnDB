@@ -206,7 +206,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   extra, y ahora viaja como `TopQuery.sample`. Una fila sin muestra (un
   servidor antiguo, o una forma de sentencia que `explain` no puede
   previsualizar) desactiva la acción en vez de mandar una petición condenada
-  a fallar.
+  a fallar. **El fork de `performance_schema` de MariaDB nunca añadió
+  `QUERY_SAMPLE_TEXT`**, así que la lectura del digest la intenta primero y
+  reintenta una vez sin ella ante `ER_BAD_FIELD_ERROR` (1054) — sin esto, un
+  servidor MariaDB con `performance_schema` realmente activado haría fallar
+  toda la lectura de Consultas y se vería exactamente igual que uno con el
+  profiler apagado, justo el fallo que el diseño de "degradar en vez de
+  fallar" de esta vista existe para evitar.
 
   Segundo, que la vista Consultas exista siquiera en MongoDB: `system.profile`
   se lee ahora y se agrupa en la misma forma `TopQuery` que produce la tabla
