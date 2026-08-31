@@ -1728,7 +1728,9 @@
       "alerts": "Alerts",
       "status": "Status",
       "slowest": "Time spent",
-      "storage": "Storage"
+      "storage": "Storage",
+      "collapse": "Collapse section",
+      "expand": "Expand section"
     },
     "metric": {
       "queriesPerSecond": "Queries / s",

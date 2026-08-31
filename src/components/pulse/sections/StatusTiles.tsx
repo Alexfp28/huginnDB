@@ -29,18 +29,28 @@ function Tile({
 }) {
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card px-2 pb-1 pt-1.5">
-      <div className="truncate text-3xs uppercase tracking-wider text-muted-foreground">
+      <div
+        className={cn(
+          "truncate uppercase tracking-wider text-muted-foreground",
+          large ? "text-3xs" : "text-2xs",
+        )}
+      >
         {label}
       </div>
       <div
         className={cn(
           "font-mono font-semibold tabular-nums leading-tight",
-          large ? "text-2xl" : "text-base",
+          large ? "text-2xl" : "text-lg",
         )}
       >
         {value}
         {suffix && (
-          <span className="ml-0.5 text-2xs font-medium text-muted-foreground">
+          <span
+            className={cn(
+              "ml-0.5 font-medium text-muted-foreground",
+              large ? "text-2xs" : "text-xs",
+            )}
+          >
             {suffix}
           </span>
         )}
@@ -48,7 +58,7 @@ function Tile({
       <Sparkline
         values={series}
         color={color}
-        className={cn("mt-0.5 w-full", large ? "h-8" : "h-4")}
+        className={cn("mt-0.5 w-full", large ? "h-8" : "h-5")}
       />
     </div>
   );

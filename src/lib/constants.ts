@@ -33,6 +33,7 @@ export const STORAGE_KEYS = {
   update: "huginndb.update.v1",
   whatsNew: "huginndb.whatsNew.v1",
   panelLayout: "huginndb.panelLayout",
+  pulse: "huginndb.pulse.v1",
 } as const;
 
 /** Superseded by `STORAGE_KEYS.panelLayout` — the old outer dockview's

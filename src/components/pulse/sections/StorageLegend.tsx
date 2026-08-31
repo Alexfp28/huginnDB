@@ -17,7 +17,7 @@ function Swatch({ color, label }: { color: string; label: string }) {
 export function StorageLegend() {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5 text-3xs text-muted-foreground">
+    <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5 text-2xs text-muted-foreground">
       <Swatch color="var(--brand)" label={t("pulse.storage.data")} />
       <Swatch color="var(--fk)" label={t("pulse.storage.indexes")} />
       <Swatch color="var(--warning)" label={t("pulse.storage.free")} />

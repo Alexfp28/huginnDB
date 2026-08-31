@@ -17,6 +17,7 @@ import { type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Activity,
+  ChevronRight,
   Lock,
   LockOpen,
   Maximize2,
@@ -36,7 +37,7 @@ import { parentConnectionId, resolveConnectionLabel } from "@/lib/connectionLabe
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
-import { usePulse } from "@/stores/session/pulse";
+import { usePulse, type PulseSectionId } from "@/stores/session/pulse";
 import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
 import type { PulseStorageItem, PulseTopQuery } from "@/types";
@@ -46,24 +47,45 @@ import type { PulseStorageItem, PulseTopQuery } from "@/types";
 const COMPACT_ROWS = 3;
 
 function Section({
+  id,
   title,
   badge,
   badgeTone,
   children,
 }: {
+  id: PulseSectionId;
   title: string;
   badge?: string;
   badgeTone?: "warn";
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
+  // Absent = expanded (see the store's `collapsedSections` doc comment).
+  const collapsed = usePulse((s) => s.collapsedSections[id] ?? false);
+  const toggleSection = usePulse((s) => s.toggleSection);
+
   return (
-    <section className="flex flex-col gap-1.5 border-b border-border px-2 py-2 last:border-b-0">
-      <h3 className="flex items-center gap-2 text-3xs uppercase tracking-wider text-muted-foreground">
-        {title}
+    <section className="flex flex-col gap-2 border-b border-border px-3 py-2.5 last:border-b-0">
+      <button
+        type="button"
+        onClick={() => toggleSection(id)}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? t("pulse.section.expand") : t("pulse.section.collapse")}
+        className="flex items-center gap-2 text-2xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+      >
+        <ChevronRight
+          className={cn(
+            "h-3 w-3 shrink-0 transition-transform",
+            !collapsed && "rotate-90",
+          )}
+        />
+        <span className="truncate">{title}</span>
+        {/* Stays visible collapsed — folding "Alerts" without losing its
+            count is the whole point of the badge. */}
         {badge && (
           <span
             className={cn(
-              "ml-auto rounded-full px-1.5 font-mono text-3xs normal-case tracking-normal",
+              "ml-auto shrink-0 rounded-full px-2 py-0.5 font-mono text-2xs normal-case tracking-normal",
               badgeTone === "warn"
                 ? "bg-warning/20 text-warning"
                 : "bg-accent text-foreground",
@@ -72,8 +94,8 @@ function Section({
             {badge}
           </span>
         )}
-      </h3>
-      {children}
+      </button>
+      {!collapsed && children}
     </section>
   );
 }
@@ -84,14 +106,14 @@ function QueryRow({ query }: { query: PulseTopQuery }) {
     <div className="flex flex-col gap-0.5">
       <div className="flex items-baseline gap-2">
         <span
-          className="min-w-0 flex-1 truncate font-mono text-2xs text-foreground"
+          className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-foreground"
           title={query.digest}
         >
           {query.digest}
         </span>
         <span
           className={cn(
-            "shrink-0 font-mono text-2xs tabular-nums",
+            "shrink-0 font-mono text-xs tabular-nums",
             // A full scan is the reason a statement is worth looking at even
             // when its average looks harmless, so it is what colours the row.
             query.fullScans > 0 ? "text-destructive" : "text-muted-foreground",
@@ -100,7 +122,7 @@ function QueryRow({ query }: { query: PulseTopQuery }) {
           {query.avgMs < 1 ? "<1" : Math.round(query.avgMs)} ms
         </span>
       </div>
-      <div className="truncate text-3xs text-muted-foreground">
+      <div className="truncate text-2xs text-muted-foreground">
         {t("pulse.slowest.meta", {
           count: formatCount(query.count),
           examined: formatCount(query.rowsExamined),
@@ -119,16 +141,19 @@ function StorageRow({ item, max }: { item: PulseStorageItem; max: number }) {
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-baseline gap-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-2xs" title={item.name}>
+        <span
+          className="min-w-0 flex-1 truncate font-mono text-xs font-medium"
+          title={item.name}
+        >
           {item.name}
         </span>
-        <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
+        <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
           {formatBytes(total)}
         </span>
       </div>
       {/* Scaled against the largest relation, so the bars read as a ranking
           rather than each one filling its own row. */}
-      <div className="h-1.5 w-full overflow-hidden rounded-sm bg-accent">
+      <div className="h-2 w-full overflow-hidden rounded-sm bg-accent">
         <div className="flex h-full" style={{ width: `${(share * 100).toFixed(1)}%` }}>
           <span style={{ width: pct(item.dataBytes), background: "var(--brand)" }} />
           <span style={{ width: pct(item.indexBytes), background: "var(--fk)" }} />
@@ -175,7 +200,7 @@ export function PulsePanel({ active }: { active: boolean }) {
         onExpand={null}
         subtitle=""
       >
-        <EmptyState icon={Activity} title={t("pulse.noConnection")} />
+        <EmptyState size="sm" icon={Activity} title={t("pulse.noConnection")} />
       </PanelFrame>
     );
   }
@@ -193,6 +218,7 @@ export function PulsePanel({ active }: { active: boolean }) {
         subtitle=""
       >
         <EmptyState
+          size="sm"
           icon={ServerCog}
           title={t("pulse.unsupported.title")}
           hint={t("pulse.unsupported.hint")}
@@ -211,6 +237,7 @@ export function PulsePanel({ active }: { active: boolean }) {
         subtitle={t("pulse.following")}
       >
         <EmptyState
+          size="sm"
           icon={Activity}
           title={view.error ? t("pulse.failed") : t("pulse.collecting")}
           hint={view.error}
@@ -234,11 +261,12 @@ export function PulsePanel({ active }: { active: boolean }) {
       subtitle={`${latest.driver} ${latest.serverVersion}`.trim()}
     >
       <div className="flex h-full flex-col overflow-y-auto">
-        <Section title={t("pulse.section.status")}>
+        <Section id="status" title={t("pulse.section.status")}>
           <StatusTiles view={view} columns={2} />
         </Section>
 
         <Section
+          id="alerts"
           title={t("pulse.section.alerts")}
           badge={view.alerts.length ? String(view.alerts.length) : undefined}
           badgeTone="warn"
@@ -247,6 +275,7 @@ export function PulsePanel({ active }: { active: boolean }) {
         </Section>
 
         <Section
+          id="slowest"
           title={t("pulse.section.slowest")}
           badge={
             view.topQueries?.items.length
@@ -271,6 +300,7 @@ export function PulsePanel({ active }: { active: boolean }) {
         </Section>
 
         <Section
+          id="storage"
           title={t("pulse.section.storage")}
           badge={
             view.storageTotalBytes > 0
@@ -324,11 +354,11 @@ function PanelFrame({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border px-2 py-1.5">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <Activity className="h-3.5 w-3.5 shrink-0 text-brand" />
         <span className="shrink-0 text-xs font-semibold">{t("pulse.title")}</span>
         {subtitle && (
-          <span className="truncate font-mono text-3xs text-muted-foreground">
+          <span className="truncate font-mono text-2xs text-muted-foreground">
             {subtitle}
           </span>
         )}
@@ -376,7 +406,7 @@ function HeaderButton({
         aria-pressed={pressed}
         aria-label={label}
         className={cn(
-          "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground",
+          "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground",
           "transition-colors hover:bg-accent/60 hover:text-foreground",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
           pressed && "bg-accent/70 text-brand",

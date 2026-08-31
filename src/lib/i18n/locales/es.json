@@ -1728,7 +1728,9 @@
       "alerts": "Avisos",
       "status": "Estado",
       "slowest": "Dónde va el tiempo",
-      "storage": "Almacenamiento"
+      "storage": "Almacenamiento",
+      "collapse": "Plegar sección",
+      "expand": "Desplegar sección"
     },
     "metric": {
       "queriesPerSecond": "Consultas / s",

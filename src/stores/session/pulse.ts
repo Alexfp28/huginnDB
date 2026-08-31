@@ -7,13 +7,21 @@
  * double the load on the very server they are measuring. One store, one
  * series, one clock; whoever is visible drives it (see `usePulseLive`).
  *
- * Nothing here is persisted. The series is a rolling half hour that only
- * exists while Pulse is being watched; the durable history is the backend's
- * job and lands with the sampler.
+ * Only `collapsedSections` is persisted — a UI fold, not data. Everything
+ * else stays in memory: the series is a rolling half hour that only exists
+ * while Pulse is being watched (the durable history is the backend's job and
+ * lands with the sampler), and the pin is deliberately session-only —
+ * reopening the app pinned to a connection nobody remembers fixing is worse
+ * than having to pin it again.
  */
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { STORAGE_KEYS } from "@/lib/constants";
 import type { PulseHealth, PulseStorageItem, PulseTopQuery } from "@/types";
+
+/** The panel's four collapsible sections, keyed the same as `pulse.section.*`. */
+export type PulseSectionId = "status" | "alerts" | "slowest" | "storage";
 
 /** Half an hour at the five-second live interval. Past that the oldest sample
  *  falls off — the panel's charts cover the last 30 minutes and the expanded
@@ -65,6 +73,11 @@ interface PulseState {
   /** Biggest relations per connection. Absent = never fetched. */
   storage: Record<string, PulseDetail<PulseStorageItem> | undefined>;
 
+  /** Which of the panel's sections are folded. Absent = expanded — this is
+   *  the persisted slice (see `partialize` below). */
+  collapsedSections: Partial<Record<PulseSectionId, boolean>>;
+  toggleSection: (id: PulseSectionId) => void;
+
   setTopQueries: (
     connectionId: string,
     detail: PulseDetail<PulseTopQuery>,
@@ -80,49 +93,65 @@ interface PulseState {
   setPinned: (connectionId: string | null) => void;
 }
 
-export const usePulse = create<PulseState>()((set) => ({
-  samples: {},
-  errors: {},
-  pinnedConnectionId: null,
-  topQueries: {},
-  storage: {},
+export const usePulse = create<PulseState>()(
+  persist(
+    (set) => ({
+      samples: {},
+      errors: {},
+      pinnedConnectionId: null,
+      topQueries: {},
+      storage: {},
+      collapsedSections: {},
 
-  setTopQueries: (connectionId, detail) =>
-    set((s) => ({ topQueries: { ...s.topQueries, [connectionId]: detail } })),
+      setTopQueries: (connectionId, detail) =>
+        set((s) => ({ topQueries: { ...s.topQueries, [connectionId]: detail } })),
 
-  setStorage: (connectionId, detail) =>
-    set((s) => ({ storage: { ...s.storage, [connectionId]: detail } })),
+      setStorage: (connectionId, detail) =>
+        set((s) => ({ storage: { ...s.storage, [connectionId]: detail } })),
 
-  push: (connectionId, health) =>
-    set((s) => {
-      const previous = s.samples[connectionId] ?? [];
-      const last = previous[previous.length - 1];
-      const stale = last && health.sampledAtMs - last.sampledAtMs > STALE_GAP_MS;
-      const next = stale ? [health] : [...previous, health].slice(-MAX_SAMPLES);
-      return {
-        samples: { ...s.samples, [connectionId]: next },
-        errors: { ...s.errors, [connectionId]: undefined },
-      };
+      push: (connectionId, health) =>
+        set((s) => {
+          const previous = s.samples[connectionId] ?? [];
+          const last = previous[previous.length - 1];
+          const stale = last && health.sampledAtMs - last.sampledAtMs > STALE_GAP_MS;
+          const next = stale ? [health] : [...previous, health].slice(-MAX_SAMPLES);
+          return {
+            samples: { ...s.samples, [connectionId]: next },
+            errors: { ...s.errors, [connectionId]: undefined },
+          };
+        }),
+
+      fail: (connectionId, message) =>
+        set((s) => ({ errors: { ...s.errors, [connectionId]: message } })),
+
+      drop: (connectionId) =>
+        set((s) => {
+          const samples = { ...s.samples };
+          const errors = { ...s.errors };
+          const topQueries = { ...s.topQueries };
+          const storage = { ...s.storage };
+          delete samples[connectionId];
+          delete errors[connectionId];
+          delete topQueries[connectionId];
+          delete storage[connectionId];
+          return { samples, errors, topQueries, storage };
+        }),
+
+      setPinned: (connectionId) => set({ pinnedConnectionId: connectionId }),
+
+      toggleSection: (id) =>
+        set((s) => ({
+          collapsedSections: { ...s.collapsedSections, [id]: !s.collapsedSections[id] },
+        })),
     }),
-
-  fail: (connectionId, message) =>
-    set((s) => ({ errors: { ...s.errors, [connectionId]: message } })),
-
-  drop: (connectionId) =>
-    set((s) => {
-      const samples = { ...s.samples };
-      const errors = { ...s.errors };
-      const topQueries = { ...s.topQueries };
-      const storage = { ...s.storage };
-      delete samples[connectionId];
-      delete errors[connectionId];
-      delete topQueries[connectionId];
-      delete storage[connectionId];
-      return { samples, errors, topQueries, storage };
-    }),
-
-  setPinned: (connectionId) => set({ pinnedConnectionId: connectionId }),
-}));
+    {
+      name: STORAGE_KEYS.pulse,
+      // Everything else here is session state (a live series, on-demand
+      // reads, the pin) — see the module doc comment for why.
+      partialize: (s) => ({ collapsedSections: s.collapsedSections }),
+    },
+  ),
+);
 
 /** No samples yet, as a stable reference — returning a fresh `[]` from a
  *  selector would be a new array every call and re-render forever (gotcha #1). */
