@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Compass-style autocomplete in the aggregation editor.** Typing `$` in a
+  stage body now offers the source collection's field names alongside the
+  existing operator/constructor suggestions, and a `$lookup` stage offers
+  collection names for `from`, the source collection's fields for
+  `localField`, and the referenced collection's fields for `foreignField`.
+  Built entirely on data already in memory — `useSchema`'s existing
+  collection/field cache, the same one the schema tree already populates —
+  so opening the editor costs at most one field-sampling query per
+  collection actually referenced, never one per keystroke. See gotcha #57 in
+  `CLAUDE.md` for how the completion provider was extended without
+  reintroducing the "N duplicate providers" bug gotcha #9 already covers.
+
 ### Changed
 
 - **Frontend performance pass (1.20.0), in progress.** A real regression
