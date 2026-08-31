@@ -1715,14 +1715,20 @@
     "following": "following the selection",
     "noConnection": "No connection selected",
     "collecting": "Reading the server…",
+    "loading": "Loading…",
     "failed": "Could not read the server",
+    "refresh": "Refresh now",
     "noAlerts": "Nothing worth flagging.",
+    "showingOf": "{{shown}} of {{total}}",
     "unsupported": {
       "title": "Pulse cannot measure this engine yet",
       "hint": "MySQL and MongoDB only for now. The other drivers report no server statistics Pulse can read."
     },
     "section": {
-      "alerts": "Alerts"
+      "alerts": "Alerts",
+      "status": "Status",
+      "slowest": "Time spent",
+      "storage": "Storage"
     },
     "metric": {
       "queriesPerSecond": "Queries / s",
@@ -1737,6 +1743,19 @@
       "slowQueries": "{{perMinute}} slow queries per minute.",
       "abortedConnects": "{{perMinute}} connection attempts per minute are being refused.",
       "performanceSchemaOff": "performance_schema is off — no per-query statistics available."
+    },
+    "slowest": {
+      "meta": "{{count}} runs · {{examined}} rows examined",
+      "noIndex": "no index",
+      "empty": "The server has recorded no statements yet.",
+      "unavailable": "Not available — performance_schema is off or out of reach."
+    },
+    "storage": {
+      "data": "Data",
+      "indexes": "Indexes",
+      "free": "Free",
+      "empty": "This connection has no default database set.",
+      "unavailable": "Not available — the server would not report table sizes."
     }
   },
   "query": {

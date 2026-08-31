@@ -1715,14 +1715,20 @@
     "following": "siguiendo la selección",
     "noConnection": "Ninguna conexión seleccionada",
     "collecting": "Leyendo el servidor…",
+    "loading": "Cargando…",
     "failed": "No se ha podido leer el servidor",
+    "refresh": "Actualizar ahora",
     "noAlerts": "Nada que señalar.",
+    "showingOf": "{{shown}} de {{total}}",
     "unsupported": {
       "title": "Pulse aún no mide este motor",
       "hint": "De momento solo MySQL y MongoDB. Los demás controladores no exponen estadísticas de servidor que Pulse pueda leer."
     },
     "section": {
-      "alerts": "Avisos"
+      "alerts": "Avisos",
+      "status": "Estado",
+      "slowest": "Dónde va el tiempo",
+      "storage": "Almacenamiento"
     },
     "metric": {
       "queriesPerSecond": "Consultas / s",
@@ -1737,6 +1743,19 @@
       "slowQueries": "{{perMinute}} consultas lentas por minuto.",
       "abortedConnects": "{{perMinute}} intentos de conexión por minuto están siendo rechazados.",
       "performanceSchemaOff": "performance_schema está desactivado: no hay estadísticas por consulta."
+    },
+    "slowest": {
+      "meta": "{{count}} ejecuciones · {{examined}} filas examinadas",
+      "noIndex": "sin índice",
+      "empty": "El servidor todavía no ha registrado ninguna sentencia.",
+      "unavailable": "No disponible: performance_schema está desactivado o fuera de alcance."
+    },
+    "storage": {
+      "data": "Datos",
+      "indexes": "Índices",
+      "free": "Libre",
+      "empty": "Esta conexión no tiene base de datos por defecto.",
+      "unavailable": "No disponible: el servidor no ha informado del tamaño de las tablas."
     }
   },
   "query": {

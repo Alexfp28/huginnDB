@@ -13,7 +13,7 @@
  */
 
 import { create } from "zustand";
-import type { PulseHealth } from "@/types";
+import type { PulseHealth, PulseStorageItem, PulseTopQuery } from "@/types";
 
 /** Half an hour at the five-second live interval. Past that the oldest sample
  *  falls off — the panel's charts cover the last 30 minutes and the expanded
@@ -30,6 +30,21 @@ const MAX_SAMPLES = 360;
  */
 const STALE_GAP_MS = 60_000;
 
+/**
+ * A read that is fetched on demand rather than polled, plus when it happened.
+ *
+ * `atMs` is what makes reopening the panel cheap: a detail younger than the
+ * refresh interval is reused instead of re-issuing the most expensive statement
+ * Pulse knows how to send. `error` and `items` coexist on purpose — a refresh
+ * that fails leaves the last good answer on screen with the failure noted,
+ * rather than blanking a section that was fine a minute ago.
+ */
+export interface PulseDetail<T> {
+  items: T[];
+  atMs: number;
+  error?: string;
+}
+
 interface PulseState {
   /** Oldest first. A connection with no entry has never been sampled. */
   samples: Record<string, PulseHealth[]>;
@@ -45,6 +60,20 @@ interface PulseState {
    */
   pinnedConnectionId: string | null;
 
+  /** Top statements per connection. Absent = never fetched. */
+  topQueries: Record<string, PulseDetail<PulseTopQuery> | undefined>;
+  /** Biggest relations per connection. Absent = never fetched. */
+  storage: Record<string, PulseDetail<PulseStorageItem> | undefined>;
+
+  setTopQueries: (
+    connectionId: string,
+    detail: PulseDetail<PulseTopQuery>,
+  ) => void;
+  setStorage: (
+    connectionId: string,
+    detail: PulseDetail<PulseStorageItem>,
+  ) => void;
+
   push: (connectionId: string, health: PulseHealth) => void;
   fail: (connectionId: string, message: string) => void;
   drop: (connectionId: string) => void;
@@ -55,6 +84,14 @@ export const usePulse = create<PulseState>()((set) => ({
   samples: {},
   errors: {},
   pinnedConnectionId: null,
+  topQueries: {},
+  storage: {},
+
+  setTopQueries: (connectionId, detail) =>
+    set((s) => ({ topQueries: { ...s.topQueries, [connectionId]: detail } })),
+
+  setStorage: (connectionId, detail) =>
+    set((s) => ({ storage: { ...s.storage, [connectionId]: detail } })),
 
   push: (connectionId, health) =>
     set((s) => {
@@ -75,9 +112,13 @@ export const usePulse = create<PulseState>()((set) => ({
     set((s) => {
       const samples = { ...s.samples };
       const errors = { ...s.errors };
+      const topQueries = { ...s.topQueries };
+      const storage = { ...s.storage };
       delete samples[connectionId];
       delete errors[connectionId];
-      return { samples, errors };
+      delete topQueries[connectionId];
+      delete storage[connectionId];
+      return { samples, errors, topQueries, storage };
     }),
 
   setPinned: (connectionId) => set({ pinnedConnectionId: connectionId }),

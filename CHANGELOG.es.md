@@ -10,6 +10,37 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Pulse ocupa el panel: dónde va el tiempo y dónde ha ido el disco.** La
+  primera entrega mostraba cuatro tarjetas y los avisos, y dejaba vacía la
+  mayor parte de un panel alto. Ahora las siguen dos secciones: las sentencias
+  en las que el servidor ha gastado más tiempo (la tabla de digests de
+  `performance_schema` — texto normalizado, latencia media, ejecuciones, filas
+  examinadas, y la cifra en rojo cuando la sentencia se resolvió sin usar
+  ningún índice) y las relaciones más grandes (`SHOW TABLE STATUS`, repartido
+  en datos / índices / espacio libre, con las barras escaladas contra la mayor
+  para que la sección se lea como una clasificación). Tres filas cada una; las
+  diecisiete restantes ya están descargadas, esperando a la ventana ampliada.
+
+  Ninguna de las dos se sondea. Se leen cuando Pulse se hace visible y como
+  mucho cada quince minutos, y una respuesta en caché más reciente que eso se
+  reutiliza: alternar el panel derecho entre Guardadas y Pulse no puede
+  reemitir la sentencia más cara que Pulse sabe mandar. Una actualización
+  fallida deja en pantalla la última respuesta buena con el error anotado al
+  lado, porque un servidor puede rechazar una de las dos lecturas y contestar
+  perfectamente la otra, y vaciar una sección que hace un minuto estaba bien no
+  ayuda a nadie.
+
+  Dos apuntes sobre las cifras. La latencia es la **media**, no el p95: MySQL
+  8.0 sí expone `QUANTILE_95` en la tabla de digests, pero 5.7 no tiene esa
+  columna y una consulta que la nombre falla sin más — una cifra que funciona
+  en todas partes vale más que dos caminos de código, y el percentil
+  corresponde a la vista de Consultas ampliada, donde hay sitio para explicar
+  de qué es percentil. Y `SHOW TABLE STATUS` en lugar de
+  `information_schema.TABLES`, la misma llamada que ya hace el explorador de
+  esquema: `information_schema` puede quedarse esperando indefinidamente por un
+  metadata lock de InnoDB, que es justo el servidor sobre el que alguien tiene
+  Pulse abierto.
+
 - **HuginnDB Pulse: las constantes vitales del servidor en el panel derecho.**
   HuginnDB sabía decir qué hay *dentro* de una base de datos y nada sobre cómo
   está el servidor que la sostiene; responder «¿esto va bien?» obligaba a salir

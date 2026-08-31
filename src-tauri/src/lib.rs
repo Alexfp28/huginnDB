@@ -305,6 +305,8 @@ pub fn run() {
             commands::schema::list_users,
             commands::schema::list_privileges,
             commands::pulse::pulse_health,
+            commands::pulse::pulse_top_queries,
+            commands::pulse::pulse_storage,
             commands::structure::get_table_structure,
             commands::structure::preview_structure_change,
             commands::structure::apply_structure_change,

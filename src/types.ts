@@ -1849,3 +1849,31 @@ export interface PulseHealth {
   metrics: PulseMetricSample[];
   notes: PulseNote[];
 }
+
+/**
+ * One normalised statement the server has spent time on, from
+ * `pulse_top_queries`. Aggregated since the statistics were last reset, not
+ * over an interval — see `pulse::TopQuery` for why that framing is deliberate.
+ */
+export interface PulseTopQuery {
+  digest: string;
+  schema: string | null;
+  count: number;
+  /** Mean, not a percentile: `QUANTILE_95` does not exist before MySQL 8.0. */
+  avgMs: number;
+  maxMs: number;
+  rowsExamined: number;
+  rowsSent: number;
+  /** Executions that resolved without using any index. */
+  fullScans: number;
+}
+
+/** One relation's footprint, from `pulse_storage`. */
+export interface PulseStorageItem {
+  name: string;
+  schema: string | null;
+  dataBytes: number;
+  indexBytes: number;
+  /** Allocated but unused — what a rebuild would hand back. */
+  freeBytes: number;
+}

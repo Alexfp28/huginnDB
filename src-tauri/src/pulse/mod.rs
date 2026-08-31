@@ -192,6 +192,56 @@ pub struct PulseHealth {
     pub notes: Vec<PulseNote>,
 }
 
+/// One normalised statement the server has been spending time on.
+///
+/// Aggregated since the statistics were last reset, not over an interval:
+/// unlike the health counters there is no cheap way to difference these (the
+/// digest table is keyed by a hash whose rows come and go as it fills), so the
+/// honest framing is "what this server has spent its time on", and the view
+/// says so rather than implying a live rate.
+///
+/// Latency is the **average**, not a percentile. MySQL 8.0 does expose
+/// `QUANTILE_95` here, but 5.7 does not have the column at all and a query
+/// naming it simply fails there — one number that works everywhere beats two
+/// code paths, and the percentile belongs with the expanded Queries view where
+/// there is room to explain what it is a percentile *of*.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopQuery {
+    /// The normalised statement text, already truncated by the reader.
+    pub digest: String,
+    pub schema: Option<String>,
+    pub count: u64,
+    pub avg_ms: f64,
+    pub max_ms: f64,
+    pub rows_examined: u64,
+    pub rows_sent: u64,
+    /// Executions that resolved without using any index. The single most
+    /// useful column here: a statement can be fast and still be the reason the
+    /// server is busy, and this is what says which.
+    pub full_scans: u64,
+}
+
+/// One relation's footprint on disk.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageItem {
+    pub name: String,
+    pub schema: Option<String>,
+    pub data_bytes: u64,
+    pub index_bytes: u64,
+    /// Allocated but unused — space a rebuild would hand back. Reported
+    /// separately rather than folded into `data_bytes` because the two lead to
+    /// completely different actions.
+    pub free_bytes: u64,
+}
+
+impl StorageItem {
+    pub fn total(&self) -> u64 {
+        self.data_bytes + self.index_bytes + self.free_bytes
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

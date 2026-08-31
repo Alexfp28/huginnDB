@@ -42,6 +42,8 @@ import type {
   Preferences,
   PrivilegeInfo,
   PulseHealth,
+  PulseStorageItem,
+  PulseTopQuery,
   QueryResult,
   CountResult,
   RowValue,
@@ -1186,4 +1188,16 @@ export const api = {
    */
   pulseHealth: (connectionId: string) =>
     invoke<PulseHealth>("pulse_health", { connectionId }),
+
+  /**
+   * Statements the server has spent the most time on. On demand, never polled:
+   * it reads `performance_schema`, the most expensive statement Pulse issues,
+   * and it rejects outright when that is switched off.
+   */
+  pulseTopQueries: (connectionId: string) =>
+    invoke<PulseTopQuery[]>("pulse_top_queries", { connectionId }),
+
+  /** The connection's biggest relations, largest first. On demand. */
+  pulseStorage: (connectionId: string) =>
+    invoke<PulseStorageItem[]>("pulse_storage", { connectionId }),
 };

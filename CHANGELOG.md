@@ -8,6 +8,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Pulse fills the panel: where the time goes, and where the disk went.** The
+  first cut showed four tiles and the alerts and then left most of a tall
+  panel empty. Two sections now follow them: the statements the server has
+  spent the most time on (`performance_schema`'s digest table — normalised
+  text, average latency, executions, rows examined, and a red figure when the
+  statement resolved without using an index) and the biggest relations
+  (`SHOW TABLE STATUS`, split into data / indexes / free space, bars scaled
+  against the largest so the section reads as a ranking). Three rows each; the
+  remaining seventeen are already fetched and waiting for the expanded window.
+
+  Neither is polled. Both are read when Pulse becomes visible and then at most
+  every fifteen minutes, and a cached answer younger than that is reused — so
+  flipping the right dock between Saved and Pulse cannot re-issue the most
+  expensive statement Pulse knows how to send. A refresh that fails keeps the
+  last good answer on screen with the failure noted beside it, because a server
+  can refuse one of the two reads while answering the other perfectly well, and
+  blanking a section that was fine a minute ago helps nobody.
+
+  Two notes on the numbers. Latency is the **mean**, not p95: MySQL 8.0 does
+  expose `QUANTILE_95` in the digest table but 5.7 has no such column and a
+  query naming it simply fails there — one figure that works everywhere beats
+  two code paths, and the percentile belongs with the expanded Queries view
+  where there is room to say what it is a percentile of. And `SHOW TABLE
+  STATUS` rather than `information_schema.TABLES`, the same call the schema
+  explorer already makes: `information_schema` can wait indefinitely on an
+  InnoDB metadata lock, which is exactly the server someone has Pulse open
+  about.
+
 - **HuginnDB Pulse — the server's vital signs in the right dock.** HuginnDB
   could say what is *in* a database and nothing about how the server holding
   it is doing; answering "is this thing all right?" meant leaving the app.

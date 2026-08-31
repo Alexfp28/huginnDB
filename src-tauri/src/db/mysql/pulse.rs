@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use sqlx::{MySqlPool, Row};
 
 use crate::error::AppResult;
-use crate::pulse::{MetricSample, PulseHealth, PulseNote};
+use crate::pulse::{MetricSample, PulseHealth, PulseNote, StorageItem, TopQuery};
 
 /// `SHOW GLOBAL STATUS` name → canonical metric name.
 ///
@@ -166,6 +166,145 @@ fn text_at(row: &sqlx::mysql::MySqlRow, idx: usize) -> Option<String> {
         .map(|b| String::from_utf8_lossy(&b).into_owned())
 }
 
+/// How much of a normalised statement to keep.
+///
+/// A digest can be tens of kilobytes (a generated `IN (?, ?, ?, …)` list runs
+/// long) and neither the panel row nor the expanded table can show more than a
+/// couple of lines. Truncating in the reader keeps that off the IPC boundary
+/// entirely rather than shipping it and letting CSS hide it.
+const DIGEST_MAX_CHARS: usize = 300;
+
+/// Statements the server has spent the most time on.
+///
+/// Reads `performance_schema`, so it fails outright when that is off — the
+/// caller surfaces the note [`build_health`] already raised instead of an
+/// error, since "switched off" is a state the user can act on and a stack trace
+/// is not. Server-side schemas are excluded: the connector's own catalog reads
+/// and the server's internal statements are not what anyone came here to see.
+pub async fn top_queries(pool: &MySqlPool, limit: u32) -> AppResult<Vec<TopQuery>> {
+    // `SUM_TIMER_WAIT` and friends are picoseconds. Divided in Rust rather
+    // than in SQL so the raw counters stay legible in the query itself.
+    let rows = sqlx::query(
+        "SELECT SCHEMA_NAME, DIGEST_TEXT, COUNT_STAR, SUM_TIMER_WAIT, MAX_TIMER_WAIT, \
+                SUM_ROWS_EXAMINED, SUM_ROWS_SENT, SUM_NO_INDEX_USED \
+         FROM performance_schema.events_statements_summary_by_digest \
+         WHERE DIGEST_TEXT IS NOT NULL AND COUNT_STAR > 0 \
+           AND (SCHEMA_NAME IS NULL OR SCHEMA_NAME NOT IN \
+                ('performance_schema', 'information_schema', 'mysql', 'sys')) \
+         ORDER BY SUM_TIMER_WAIT DESC \
+         LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let count = num_at(&r, "COUNT_STAR").max(1);
+            let total_ps = num_at(&r, "SUM_TIMER_WAIT") as f64;
+            TopQuery {
+                digest: truncate(&named_text(&r, "DIGEST_TEXT").unwrap_or_default()),
+                schema: named_text(&r, "SCHEMA_NAME"),
+                count,
+                avg_ms: total_ps / count as f64 / 1e9,
+                max_ms: num_at(&r, "MAX_TIMER_WAIT") as f64 / 1e9,
+                rows_examined: num_at(&r, "SUM_ROWS_EXAMINED"),
+                rows_sent: num_at(&r, "SUM_ROWS_SENT"),
+                full_scans: num_at(&r, "SUM_NO_INDEX_USED"),
+            }
+        })
+        .collect())
+}
+
+/// The connection's biggest relations, largest first.
+///
+/// `SHOW TABLE STATUS` for the same reason the schema explorer uses it: it does
+/// not wait on InnoDB metadata locks, which `information_schema.TABLES` can do
+/// indefinitely on a busy server — precisely the server someone is looking at
+/// Pulse about. Views report no size (their `Engine` is NULL) and are dropped.
+///
+/// Sorting and the limit happen here rather than in SQL because `SHOW` accepts
+/// neither an `ORDER BY` nor a `LIMIT`. A schema with thousands of tables
+/// therefore costs one full result set to rank, which is why this is an
+/// on-demand read and not part of any sampling loop.
+pub async fn storage(pool: &MySqlPool, limit: usize) -> AppResult<Vec<StorageItem>> {
+    let db: Option<String> = sqlx::query_scalar("SELECT DATABASE()")
+        .fetch_one(pool)
+        .await?;
+    // No default database on the connection: MySQL has nothing to enumerate,
+    // the same empty answer `schema::list_tables` gives (issue #52).
+    let Some(db) = db.filter(|d| !d.is_empty()) else {
+        return Ok(vec![]);
+    };
+
+    let sql = format!(
+        "SHOW TABLE STATUS FROM {}",
+        crate::db::sql::Dialect::Mysql.quote_ident(&db)
+    );
+    let rows = sqlx::query(&sql).fetch_all(pool).await?;
+
+    let mut items: Vec<StorageItem> = rows
+        .into_iter()
+        .filter(|r| {
+            // Engine is NULL for a view, which has no footprint of its own.
+            r.try_get::<Option<String>, _>("Engine")
+                .ok()
+                .flatten()
+                .is_some()
+        })
+        .map(|r| StorageItem {
+            name: r.try_get("Name").unwrap_or_default(),
+            schema: Some(db.clone()),
+            data_bytes: num_at(&r, "Data_length"),
+            index_bytes: num_at(&r, "Index_length"),
+            free_bytes: num_at(&r, "Data_free"),
+        })
+        .collect();
+
+    items.sort_unstable_by_key(|i| std::cmp::Reverse(i.total()));
+    items.truncate(limit);
+    Ok(items)
+}
+
+/// Truncate a digest on a character boundary, marking that it was cut.
+pub fn truncate(digest: &str) -> String {
+    let trimmed = digest.trim();
+    if trimmed.chars().count() <= DIGEST_MAX_CHARS {
+        return trimmed.to_string();
+    }
+    let cut: String = trimmed.chars().take(DIGEST_MAX_CHARS).collect();
+    format!("{cut}…")
+}
+
+/// Read an unsigned counter column whose width and signedness vary by server.
+///
+/// Same hazard `schema::list_tables` documents: `Row::get` panics on a type
+/// mismatch and different MySQL versions and forks disagree about whether these
+/// columns carry the UNSIGNED flag. A panic inside an async Tauri command never
+/// rejects the IPC promise — it hangs it — so every read falls through
+/// `u64 → i64 → 0` instead.
+fn num_at(row: &sqlx::mysql::MySqlRow, col: &str) -> u64 {
+    row.try_get::<u64, _>(col)
+        .or_else(|_| row.try_get::<i64, _>(col).map(|v| v.unsigned_abs()))
+        .or_else(|_| {
+            row.try_get::<Option<u64>, _>(col)
+                .map(|v| v.unwrap_or_default())
+        })
+        .unwrap_or(0)
+}
+
+/// [`text_at`] by column name, tolerating NULL.
+fn named_text(row: &sqlx::mysql::MySqlRow, col: &str) -> Option<String> {
+    if let Ok(s) = row.try_get::<Option<String>, _>(col) {
+        return s;
+    }
+    row.try_get::<Option<Vec<u8>>, _>(col)
+        .ok()
+        .flatten()
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,5 +398,39 @@ mod tests {
             0,
         );
         assert_eq!(h.server_version, "8.0.36");
+    }
+
+    #[test]
+    fn truncate_keeps_a_short_digest_verbatim() {
+        assert_eq!(truncate("  SELECT ? FROM t  "), "SELECT ? FROM t");
+    }
+
+    #[test]
+    fn truncate_cuts_a_long_digest_and_says_so() {
+        let long = "a".repeat(DIGEST_MAX_CHARS + 50);
+        let cut = truncate(&long);
+        assert_eq!(cut.chars().count(), DIGEST_MAX_CHARS + 1);
+        assert!(cut.ends_with('…'));
+    }
+
+    #[test]
+    fn truncate_cuts_on_a_character_boundary() {
+        // A multi-byte digest must not be sliced mid-codepoint — a byte-wise
+        // truncation here would panic on a table named in Japanese.
+        let long = "た".repeat(DIGEST_MAX_CHARS + 10);
+        let cut = truncate(&long);
+        assert_eq!(cut.chars().count(), DIGEST_MAX_CHARS + 1);
+    }
+
+    #[test]
+    fn storage_total_adds_free_space_in() {
+        let item = StorageItem {
+            name: "orders".into(),
+            schema: Some("shop".into()),
+            data_bytes: 100,
+            index_bytes: 40,
+            free_bytes: 10,
+        };
+        assert_eq!(item.total(), 150);
     }
 }

@@ -8,7 +8,7 @@
 use tauri::State;
 
 use crate::error::{AppError, AppResult};
-use crate::pulse::PulseHealth;
+use crate::pulse::{PulseHealth, StorageItem, TopQuery};
 use crate::state::{AppState, DbPool};
 
 /// A driver Pulse does not read yet.
@@ -46,6 +46,75 @@ pub async fn pulse_health(
     crate::error::with_timeout(
         "pulse_health",
         pulse_health_inner(state.inner(), &connection_id),
+    )
+    .await
+}
+
+/// How many rows each on-demand read returns.
+///
+/// One number for both surfaces: the compact panel shows the first three and
+/// the expanded window shows the rest, so a second round trip when someone
+/// widens the panel would be a round trip spent on data already in hand.
+const DETAIL_LIMIT: u32 = 20;
+
+pub async fn pulse_top_queries_inner(
+    state: &AppState,
+    connection_id: &str,
+) -> AppResult<Vec<TopQuery>> {
+    match state.pool_for(connection_id)? {
+        DbPool::Mysql(p) => crate::db::mysql::pulse::top_queries(&p, DETAIL_LIMIT).await,
+        DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
+        DbPool::Sqlite(_) => Err(unsupported("SQLite")),
+        DbPool::Mongo(_) => Err(unsupported("MongoDB")),
+        DbPool::MsSql(_) => Err(unsupported("SQL Server")),
+    }
+}
+
+pub async fn pulse_storage_inner(
+    state: &AppState,
+    connection_id: &str,
+) -> AppResult<Vec<StorageItem>> {
+    match state.pool_for(connection_id)? {
+        DbPool::Mysql(p) => crate::db::mysql::pulse::storage(&p, DETAIL_LIMIT as usize).await,
+        DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
+        DbPool::Sqlite(_) => Err(unsupported("SQLite")),
+        DbPool::Mongo(_) => Err(unsupported("MongoDB")),
+        DbPool::MsSql(_) => Err(unsupported("SQL Server")),
+    }
+}
+
+/// The statements this server has spent the most time on.
+///
+/// On demand, never sampled: it reads `performance_schema`, which is the most
+/// expensive statement Pulse issues, and it answers a question nobody asks
+/// every five seconds.
+#[tauri::command]
+pub async fn pulse_top_queries(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<Vec<TopQuery>> {
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::error::with_timeout(
+        "pulse_top_queries",
+        pulse_top_queries_inner(state.inner(), &connection_id),
+    )
+    .await
+}
+
+/// The connection's biggest relations. On demand, for the same reason.
+#[tauri::command]
+pub async fn pulse_storage(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<Vec<StorageItem>> {
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::error::with_timeout(
+        "pulse_storage",
+        pulse_storage_inner(state.inner(), &connection_id),
     )
     .await
 }
