@@ -8,6 +8,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Autocompletado al estilo Compass en el editor de agregación.** Escribir
+  `$` en el cuerpo de un stage ahora ofrece los nombres de campo reales de la
+  colección de origen junto a las sugerencias de operadores/constructores ya
+  existentes, y un stage `$lookup` ofrece nombres de colección para `from`,
+  los campos de la colección de origen para `localField` y los campos de la
+  colección referenciada para `foreignField`. Construido enteramente sobre
+  datos que ya están en memoria — la caché de colecciones/campos de
+  `useSchema`, la misma que ya rellena el árbol de esquema — así que abrir el
+  editor cuesta como mucho una consulta de muestreo de campos por colección
+  realmente referenciada, nunca una por tecla. Ver el gotcha #57 en
+  `CLAUDE.md` para el detalle de cómo se amplió el proveedor de
+  autocompletado sin reintroducir el bug de "N proveedores duplicados" que
+  ya cubre el gotcha #9.
+
 ### Cambiado
 
 - **Pasada de rendimiento de frontend (1.20.0), en curso.** Una regresión real
