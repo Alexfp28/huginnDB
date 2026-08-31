@@ -33,6 +33,8 @@ import {
 import { buildRailSections } from "@/lib/connection/railSections";
 import { useOrigins } from "@/stores/sync/origins";
 import { usePreferences, selectPulsePrefs } from "@/stores/preferences/preferences";
+import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
+import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import type { ConnectionProfile } from "@/types";
 import { PrefRow } from "./PrefRow";
 import { PulseConnectionTree } from "./PulseConnectionTree";
@@ -306,6 +308,19 @@ export function PulseSection() {
           </>
         )}
       </div>
+
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className="h-auto p-0 text-[12px]"
+        onClick={() => {
+          useSettingsDialog.getState().setOpen(false);
+          useDocsDialog.getState().openTo("pulse");
+        }}
+      >
+        {t("settings.pulse.fullGuide")}
+      </Button>
     </div>
   );
 }

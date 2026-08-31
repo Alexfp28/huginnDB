@@ -28,6 +28,8 @@ import mongodbRaw from "../../../docs/MONGODB.md?raw";
 import mongodbEsRaw from "../../../docs/MONGODB.es.md?raw";
 import sqlServerRaw from "../../../docs/SQL_SERVER.md?raw";
 import sqlServerEsRaw from "../../../docs/SQL_SERVER.es.md?raw";
+import pulseRaw from "../../../docs/PULSE.md?raw";
+import pulseEsRaw from "../../../docs/PULSE.es.md?raw";
 import mcpRaw from "../../../docs/MCP.md?raw";
 import mcpEsRaw from "../../../docs/MCP.es.md?raw";
 import shortcutsRaw from "../../../docs/SHORTCUTS.md?raw";
@@ -108,6 +110,17 @@ export const DOCS: DocEntry[] = [
     path: "docs/SHORTCUTS.md",
     bodies: { en: shortcutsRaw, es: shortcutsEsRaw },
     updated: dates["docs/SHORTCUTS.md"] ?? null,
+  },
+  {
+    // Right before MCP: MCP's own tools table sends the reader here for what
+    // `pulse_metrics` and friends actually answer, so the feature guide
+    // belongs immediately ahead of the connector that also exposes it.
+    id: "pulse",
+    titleKey: "docs.entries.pulse.title",
+    descriptionKey: "docs.entries.pulse.description",
+    path: "docs/PULSE.md",
+    bodies: { en: pulseRaw, es: pulseEsRaw },
+    updated: dates["docs/PULSE.md"] ?? null,
   },
   {
     id: "mcp",

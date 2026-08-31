@@ -20,6 +20,7 @@ const DOC_FILES = [
   "docs/SQL_SERVER.md",
   "docs/MCP.md",
   "docs/SHORTCUTS.md",
+  "docs/PULSE.md",
 ];
 
 /**

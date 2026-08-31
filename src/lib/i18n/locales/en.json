@@ -1363,7 +1363,8 @@
       "noConnections": "No saved connections yet — add one first.",
       "enableAll": "Enable all",
       "disableAll": "Disable all",
-      "enableAllInSection": "Toggle every connection in {{section}}"
+      "enableAllInSection": "Toggle every connection in {{section}}",
+      "fullGuide": "Full guide to Pulse…"
     },
     "about": {
       "tagline": "Minimal desktop database manager for PostgreSQL, MySQL and SQLite.",
@@ -1943,6 +1944,10 @@
       "sqlserver": {
         "title": "SQL Server",
         "description": "Named instances, value types and current limits"
+      },
+      "pulse": {
+        "title": "Pulse",
+        "description": "Server vital signs, history, and index usage"
       },
       "mcp": {
         "title": "MCP connector",

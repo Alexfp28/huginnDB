@@ -1363,7 +1363,8 @@
       "noConnections": "Aún no hay conexiones guardadas — añade una primero.",
       "enableAll": "Activar todas",
       "disableAll": "Desactivar todas",
-      "enableAllInSection": "Alternar todas las conexiones de {{section}}"
+      "enableAllInSection": "Alternar todas las conexiones de {{section}}",
+      "fullGuide": "Guía completa de Pulse…"
     },
     "about": {
       "tagline": "Gestor de bases de datos de escritorio minimalista para PostgreSQL, MySQL y SQLite.",
@@ -1943,6 +1944,10 @@
       "sqlserver": {
         "title": "SQL Server",
         "description": "Instancias con nombre, tipos de valores y límites actuales"
+      },
+      "pulse": {
+        "title": "Pulse",
+        "description": "Constantes vitales del servidor, histórico y uso de índices"
       },
       "mcp": {
         "title": "Conector MCP",
