@@ -33,6 +33,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { DialogActions } from "@/components/ui/dialog-actions";
 import { ProgressBar } from "@/components/common/ProgressBar";
 import { ConflictResolutionStep } from "./ConflictResolutionStep";
 import { useImportWizard } from "@/lib/transfer/useImportWizard";
@@ -159,14 +160,14 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               ))}
             </div>
             {error && <p className="text-[11px] text-destructive">{error}</p>}
-            <DialogFooter>
-              <Button variant="ghost" size="sm" onClick={handleClose}>
-                {t("common.cancel")}
-              </Button>
-              <Button size="sm" onClick={w.reviewNext} loading={loading}>
-                {t("common.continue")}
-              </Button>
-            </DialogFooter>
+            <DialogActions
+              size="sm"
+              onCancel={handleClose}
+              cancelLabel={t("common.cancel")}
+              confirmLabel={t("common.continue")}
+              onConfirm={w.reviewNext}
+              confirming={loading}
+            />
           </div>
         )}
 
@@ -195,19 +196,15 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               />
             </div>
             {error && <p className="text-[11px] text-destructive">{error}</p>}
-            <DialogFooter>
-              <Button variant="ghost" size="sm" onClick={handleClose}>
-                {t("common.cancel")}
-              </Button>
-              <Button
-                size="sm"
-                onClick={w.passphraseNext}
-                disabled={passphrase.length === 0}
-                loading={loading}
-              >
-                {t("common.continue")}
-              </Button>
-            </DialogFooter>
+            <DialogActions
+              size="sm"
+              onCancel={handleClose}
+              cancelLabel={t("common.cancel")}
+              confirmLabel={t("common.continue")}
+              onConfirm={w.passphraseNext}
+              confirming={loading}
+              confirmDisabled={passphrase.length === 0}
+            />
           </div>
         )}
 
@@ -221,16 +218,16 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               onResolveAll={w.setAllResolutions}
               error={error}
             />
-            <DialogFooter>
-              <Button variant="ghost" size="sm" onClick={handleClose}>
-                {t("common.cancel")}
-              </Button>
-              <Button size="sm" onClick={w.conflictsNext} loading={loading}>
-                {t("transfer.importEnvironment.importButton", {
-                  count: analysis.environments.length,
-                })}
-              </Button>
-            </DialogFooter>
+            <DialogActions
+              size="sm"
+              onCancel={handleClose}
+              cancelLabel={t("common.cancel")}
+              confirmLabel={t("transfer.importEnvironment.importButton", {
+                count: analysis.environments.length,
+              })}
+              onConfirm={w.conflictsNext}
+              confirming={loading}
+            />
           </div>
         )}
 

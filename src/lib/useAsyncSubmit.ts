@@ -15,6 +15,22 @@
  *
  * Validation stays at the call site — `if (!name.trim()) return;` belongs with
  * the field, before anything is marked in flight.
+ *
+ * Two shapes look like this hook written out by hand and are not, so the count
+ * of "dialogs still to migrate" is smaller than it appears:
+ *
+ * - **A surface that stays on screen after the action.** Both `Vanished*Notice`
+ *   banners keep their own `run` with a `finally { setBusy(false) }` and report
+ *   failures through a toast. That is correct there for the same reason the
+ *   asymmetry above is correct here: the notice is deliberately left standing
+ *   after a successful click, so a flag that never clears would disable its
+ *   buttons permanently. Read the flag as "in flight until this surface goes
+ *   away" and the two stop looking like one thing written twice.
+ * - **One error slot serving two paths.** Several dialogs (`InferSchemaDialog`,
+ *   for one) show a *loading* failure and a *submit* failure in the same place.
+ *   This hook owns one error, cleared when a task starts, so adopting it there
+ *   would have a submit attempt wipe the message explaining why there is
+ *   nothing to submit.
  */
 
 import { useCallback, useState } from "react";

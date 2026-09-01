@@ -17,15 +17,14 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DialogActions } from "@/components/ui/dialog-actions";
 import { Input } from "@/components/ui/input";
 import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 
@@ -95,14 +94,13 @@ export function NamePromptDialog({
         {error && (
           <div className="text-xs text-destructive">{formatError(error)}</div>
         )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            {t("common.cancel")}
-          </Button>
-          <Button onClick={submit} disabled={submitting || !allowed}>
-            {submitting ? submittingLabel : submitLabel}
-          </Button>
-        </DialogFooter>
+        <DialogActions
+          onCancel={onClose}
+          cancelLabel={t("common.cancel")}
+          confirmLabel={submitting ? submittingLabel : submitLabel}
+          onConfirm={submit}
+          confirmDisabled={submitting || !allowed}
+        />
       </DialogContent>
     </Dialog>
   );

@@ -87,10 +87,10 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DialogActions } from "@/components/ui/dialog-actions";
 import {
   ScopeChip,
   TreeFilterBox,
@@ -859,14 +859,13 @@ function ConnectionVisibilityDialog({
             ))
           )}
         </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-          <Button onClick={submit} disabled={sel.size === 0}>
-            {t("common.save")}
-          </Button>
-        </DialogFooter>
+        <DialogActions
+          onCancel={onClose}
+          cancelLabel={t("common.cancel")}
+          confirmLabel={t("common.save")}
+          onConfirm={submit}
+          confirmDisabled={sel.size === 0}
+        />
       </DialogContent>
     </Dialog>
   );

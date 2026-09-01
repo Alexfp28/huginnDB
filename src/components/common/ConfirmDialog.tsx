@@ -27,11 +27,11 @@ import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { DialogActions } from "@/components/ui/dialog-actions";
 import type { ReactNode } from "react";
 
 export function ConfirmDialog({
@@ -80,27 +80,19 @@ export function ConfirmDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <div className="text-xs text-muted-foreground">{description}</div>
+        <DialogDescription className="text-xs">{description}</DialogDescription>
         {error && <div className="text-xs text-destructive">{error}</div>}
         {children}
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            disabled={confirming}
-            onClick={() => onOpenChange(false)}
-          >
-            {cancelLabel ?? t("common.cancel")}
-          </Button>
-          <Button
-            variant="destructive"
-            autoFocus={confirmAutoFocus}
-            loading={confirming}
-            loadingLabel={confirmingLabel}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </Button>
-        </DialogFooter>
+        <DialogActions
+          onCancel={() => onOpenChange(false)}
+          cancelLabel={cancelLabel ?? t("common.cancel")}
+          confirmLabel={confirmLabel}
+          onConfirm={onConfirm}
+          confirming={confirming}
+          confirmingLabel={confirmingLabel}
+          confirmVariant="destructive"
+          confirmAutoFocus={confirmAutoFocus}
+        />
       </DialogContent>
     </Dialog>
   );

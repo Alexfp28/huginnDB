@@ -26,15 +26,14 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DialogActions } from "@/components/ui/dialog-actions";
 import { Segmented } from "@/components/ui/segmented";
 import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 import { useMultiSelect } from "@/lib/useMultiSelect";
@@ -217,14 +216,13 @@ export function DatabaseVisibilityDialog({
           ))}
         </div>
         {error && <div className="text-xs text-destructive">{error}</div>}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            {t("common.cancel")}
-          </Button>
-          <Button onClick={submit} disabled={submitting || sel.size === 0}>
-            {t("common.save")}
-          </Button>
-        </DialogFooter>
+        <DialogActions
+          onCancel={onClose}
+          cancelLabel={t("common.cancel")}
+          confirmLabel={t("common.save")}
+          onConfirm={submit}
+          confirmDisabled={submitting || sel.size === 0}
+        />
       </DialogContent>
     </Dialog>
   );
