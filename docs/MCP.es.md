@@ -313,6 +313,26 @@ datos a demanda.
 `list_connections` informa del nivel de escritura efectivo de cada conexión,
 para que el asistente sepa de antemano qué puede hacer.
 
+Cada herramienta lleva además un **título** y **anotaciones** MCP:
+`readOnlyHint` en las diecisiete que solo leen, y `destructiveHint` /
+`idempotentHint` en las siete que escriben (`insert_row` y `create_index` se
+marcan como aditivas, no destructivas). Los clientes las usan para decidir
+cuánta fricción merece una llamada, así que un `list_tables` ya no parece tan
+arriesgado como un `delete_rows`.
+
+`run_query` es la única que no se puede fijar con una constante: es un
+ejecutor de sentencias genérico, así que se anota como escritura
+potencialmente destructiva aunque casi todas sus llamadas sean lecturas. Solo
+se reanota como de solo lectura bajo `--read-only`, que es fijo durante toda
+la vida del proceso. Deliberadamente **no** se deriva de los niveles de
+escritura de las conexiones expuestas: un cliente lee `tools/list` una vez al
+arrancar, y esos niveles se releen en cada llamada justamente para poder
+cambiar bajo un cliente en marcha — así que una anotación derivada de ellos
+quedaría obsoleta en la dirección insegura en cuanto se subiera una conexión a
+`data`, diciéndole al cliente que una escritura no necesita confirmación. La
+verja del nivel de escritura siempre aguanta; lo que desaparecería es el aviso
+del lado del cliente.
+
 ### Índices: por qué las dos herramientas de escritura son solo de MongoDB
 
 En los drivers SQL un índice se crea con `CREATE INDEX`, que `run_query` alcanza

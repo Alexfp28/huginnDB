@@ -707,6 +707,55 @@ fn ok_json<T: serde::Serialize>(value: &T) -> Result<CallToolResult, ErrorData> 
 }
 
 /// Map a backend [`crate::error::AppError`] onto an MCP error.
+/// Re-annotate `run_query` as read-only, for a process started with
+/// `--read-only`.
+///
+/// **The only annotation in this server that is not a constant, and the only
+/// one that safely can be.** `run_query` is annotated `destructive_hint = true`
+/// by default because it is a general statement executor: at `data` or `full`
+/// it really can DELETE. That is honest but pessimistic for the common
+/// deployment where everything exposed is `read-only`, and it puts a
+/// write-shaped confirmation in front of the tool that serves nearly every
+/// read.
+///
+/// The tempting fix — derive the annotation from the write policies of the
+/// currently exposed connections — is wrong, and worth spelling out because it
+/// looks obviously right. A client reads `tools/list` **once**, at startup, and
+/// caches it for the life of the session. Every other policy and exposure
+/// decision in this connector is re-read per call precisely so it can change
+/// under a running client (gotcha #58) — so a snapshot-derived hint would go
+/// stale in the *unsafe* direction the moment the user raises a connection to
+/// `data`: the client would keep believing `run_query` cannot write, and an
+/// auto-approving mode would then run an INSERT without the prompt the user
+/// expects. The gate would still hold (`require_class` re-reads the policy),
+/// but the confirmation the user thought they had would be gone.
+///
+/// `--read-only` is the one input that cannot go stale: it is a process
+/// argument, fixed for the life of this sidecar, and it forces every connection
+/// to read-only regardless of what any profile says. When it is set,
+/// `run_query` genuinely cannot write, and saying so is a fact rather than a
+/// snapshot.
+///
+/// Making the general case dynamic would need a `tools/list_changed`
+/// notification driven by a watch on `profiles.json` — a real feature, not a
+/// tweak to this function.
+fn mark_run_query_read_only(router: &mut ToolRouter<Huginn>) {
+    if let Some(route) = router.map.get_mut("run_query") {
+        route.attr.annotations = Some(
+            rmcp::model::ToolAnnotations::new()
+                .read_only(true)
+                .open_world(true),
+        );
+        route.attr.description = Some(
+            "Run a single read-only statement (SELECT / WITH / SHOW / EXPLAIN / PRAGMA for SQL; \
+             find/aggregate/countDocuments/distinct for MongoDB). This server was started with \
+             --read-only, so every write is refused whatever the connection's saved policy says. \
+             Rows are capped by the server's --max-rows."
+                .into(),
+        );
+    }
+}
+
 /// Resolve a client-supplied connection reference — a profile **id or name** —
 /// to the canonical id, among the connections `config` exposes.
 ///
@@ -899,11 +948,15 @@ impl Huginn {
         config: Arc<Config>,
         bridge: Option<Arc<crate::bridge::client::BridgeClient>>,
     ) -> Self {
+        let mut tool_router = Self::tool_router();
+        if config.read_only {
+            mark_run_query_read_only(&mut tool_router);
+        }
         Self {
             state,
             config,
             bridge,
-            tool_router: Self::tool_router(),
+            tool_router,
         }
     }
 
@@ -1219,14 +1272,18 @@ impl Huginn {
         ))
     }
 
-    #[tool(description = "List the databases this server is allowed to reach \
-                          (name, profile id, driver, host, database, whether a \
-                          pool is currently open, and the MCP write policy in \
-                          force: read-only / data / full). Every other tool \
-                          accepts either the name or the id; prefer the name. \
-                          An empty list means the user has not exposed any \
-                          connection yet — they do that in HuginnDB under \
-                          Settings → MCP.")]
+    #[tool(
+        title = "List exposed connections",
+        annotations(read_only_hint = true, open_world_hint = false),
+        description = "List the databases this server is allowed to reach \
+                      (name, profile id, driver, host, database, whether a \
+                      pool is currently open, and the MCP write policy in \
+                      force: read-only / data / full). Every other tool \
+                      accepts either the name or the id; prefer the name. \
+                      An empty list means the user has not exposed any \
+                      connection yet — they do that in HuginnDB under \
+                      Settings → MCP."
+    )]
     async fn list_connections(&self) -> Result<CallToolResult, ErrorData> {
         #[derive(serde::Serialize)]
         struct Conn {
@@ -1269,7 +1326,11 @@ impl Huginn {
         ok_json(&conns)
     }
 
-    #[tool(description = "List databases/schemas/catalogs on a connection.")]
+    #[tool(
+        title = "List databases",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "List databases/schemas/catalogs on a connection."
+    )]
     async fn list_databases(
         &self,
         Parameters(mut a): Parameters<args::Connection>,
@@ -1281,11 +1342,15 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "List tables and views on a connection, with \
-                          approximate row counts and sizes where available. \
-                          For MongoDB, pass `schema` (the database name) when \
-                          the connection has no database bound — otherwise \
-                          this returns an empty list.")]
+    #[tool(
+        title = "List tables and views",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "List tables and views on a connection, with \
+                      approximate row counts and sizes where available. \
+                      For MongoDB, pass `schema` (the database name) when \
+                      the connection has no database bound — otherwise \
+                      this returns an empty list."
+    )]
     async fn list_tables(
         &self,
         Parameters(mut a): Parameters<args::Tables>,
@@ -1297,14 +1362,18 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Describe a relation's full structure: columns, types, \
-                          nullability, primary key, foreign keys, and indexes. \
-                          Works on a view too, and when the relation IS a view \
-                          the reply carries an extra `view` object with what the \
-                          view actually is: `query` (the bare SELECT body) on \
-                          SQL drivers, or `viewOn` plus `pipeline` on MongoDB, \
-                          where a view is a stored aggregation pipeline. Absent \
-                          `view` key means the relation is a plain table.")]
+    #[tool(
+        title = "Describe a table",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Describe a relation's full structure: columns, types, \
+                      nullability, primary key, foreign keys, and indexes. \
+                      Works on a view too, and when the relation IS a view \
+                      the reply carries an extra `view` object with what the \
+                      view actually is: `query` (the bare SELECT body) on \
+                      SQL drivers, or `viewOn` plus `pipeline` on MongoDB, \
+                      where a view is a stored aggregation pipeline. Absent \
+                      `view` key means the relation is a plain table."
+    )]
     async fn describe_table(
         &self,
         Parameters(mut a): Parameters<args::Table>,
@@ -1325,7 +1394,11 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "List indexes on a table, with the columns each covers.")]
+    #[tool(
+        title = "List indexes",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "List indexes on a table, with the columns each covers."
+    )]
     async fn list_indexes(
         &self,
         Parameters(mut a): Parameters<args::Table>,
@@ -1346,14 +1419,23 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Run a single statement. Reads (SELECT / WITH / SHOW / \
-                          EXPLAIN / PRAGMA for SQL; find/aggregate/countDocuments/\
-                          distinct for MongoDB) always work. Writes require the \
-                          connection's MCP write policy to allow them: row-level \
-                          DML (INSERT/UPDATE/DELETE) needs 'data', schema changes \
-                          (CREATE/DROP/ALTER/…) need 'full'. Whole-table \
-                          UPDATE/DELETE with no WHERE are refused. Rows are capped \
-                          by the server's --max-rows.")]
+    #[tool(
+        title = "Run a statement",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        ),
+        description = "Run a single statement. Reads (SELECT / WITH / SHOW / \
+                      EXPLAIN / PRAGMA for SQL; find/aggregate/countDocuments/\
+                      distinct for MongoDB) always work. Writes require the \
+                      connection's MCP write policy to allow them: row-level \
+                      DML (INSERT/UPDATE/DELETE) needs 'data', schema changes \
+                      (CREATE/DROP/ALTER/…) need 'full'. Whole-table \
+                      UPDATE/DELETE with no WHERE are refused. Rows are capped \
+                      by the server's --max-rows."
+    )]
     async fn run_query(
         &self,
         Parameters(mut a): Parameters<args::Query>,
@@ -1414,9 +1496,13 @@ impl Huginn {
         ok_json(&result)
     }
 
-    #[tool(description = "Browse one page of rows from a table without writing \
-                          SQL. Returns columns + rows; limit is clamped to the \
-                          server's --max-rows.")]
+    #[tool(
+        title = "Browse table rows",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Browse one page of rows from a table without writing \
+                      SQL. Returns columns + rows; limit is clamped to the \
+                      server's --max-rows."
+    )]
     async fn browse_table(
         &self,
         Parameters(mut a): Parameters<args::Browse>,
@@ -1443,7 +1529,11 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Return the connected server's engine and version.")]
+    #[tool(
+        title = "Server version",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Return the connected server's engine and version."
+    )]
     async fn server_version(
         &self,
         Parameters(mut a): Parameters<args::Connection>,
@@ -1455,7 +1545,11 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "List server-side users/roles (permission context).")]
+    #[tool(
+        title = "List users and roles",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "List server-side users/roles (permission context)."
+    )]
     async fn list_users(
         &self,
         Parameters(mut a): Parameters<args::Connection>,
@@ -1467,7 +1561,11 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "List the privileges granted to a user/role.")]
+    #[tool(
+        title = "List privileges",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "List the privileges granted to a user/role."
+    )]
     async fn list_privileges(
         &self,
         Parameters(mut a): Parameters<args::Privileges>,
@@ -1486,13 +1584,17 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Read a connection's live vital signs: queries/s, \
-                          connection pressure, cache hit rate and related \
-                          counters, normalised to an engine-independent \
-                          metric catalogue (name kept the same whether the \
-                          server is MySQL or MongoDB). MySQL and MongoDB \
-                          only; fails with an explicit 'unsupported driver' \
-                          on the others.")]
+    #[tool(
+        title = "Server vital signs",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Read a connection's live vital signs: queries/s, \
+                      connection pressure, cache hit rate and related \
+                      counters, normalised to an engine-independent \
+                      metric catalogue (name kept the same whether the \
+                      server is MySQL or MongoDB). MySQL and MongoDB \
+                      only; fails with an explicit 'unsupported driver' \
+                      on the others."
+    )]
     async fn pulse_health(
         &self,
         Parameters(mut a): Parameters<args::Connection>,
@@ -1504,11 +1606,15 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Read one metric's stored history from Pulse's \
-                          on-disk sampler (pulse.db), oldest first. Empty \
-                          unless the connection has Pulse's history sampler \
-                          turned on in Settings; pulse_health's reply names \
-                          the metrics a given engine reports.")]
+    #[tool(
+        title = "Stored metric history",
+        annotations(read_only_hint = true, open_world_hint = false),
+        description = "Read one metric's stored history from Pulse's \
+                      on-disk sampler (pulse.db), oldest first. Empty \
+                      unless the connection has Pulse's history sampler \
+                      turned on in Settings; pulse_health's reply names \
+                      the metrics a given engine reports."
+    )]
     async fn pulse_metrics(
         &self,
         Parameters(mut a): Parameters<args::PulseMetrics>,
@@ -1529,12 +1635,16 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Statements this server has spent the most time on, \
-                          ranked by total time, since the statistics were \
-                          last reset (MySQL) or over what the profiler \
-                          currently retains (MongoDB). Each row's 'sample' \
-                          field, when present, is a runnable example \
-                          pulse_explain accepts.")]
+    #[tool(
+        title = "Slowest statements",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Statements this server has spent the most time on, \
+                      ranked by total time, since the statistics were \
+                      last reset (MySQL) or over what the profiler \
+                      currently retains (MongoDB). Each row's 'sample' \
+                      field, when present, is a runnable example \
+                      pulse_explain accepts."
+    )]
     async fn pulse_top_queries(
         &self,
         Parameters(mut a): Parameters<args::Tables>,
@@ -1550,12 +1660,16 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Read the plan the server would use for one \
-                          statement, without running it — a pulse_top_queries \
-                          row's own 'sample' field in practice. Refuses a \
-                          statement that is not read-only, is itself \
-                          EXPLAIN/ANALYZE, or carries more than one \
-                          statement.")]
+    #[tool(
+        title = "Explain a statement",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Read the plan the server would use for one \
+                      statement, without running it — a pulse_top_queries \
+                      row's own 'sample' field in practice. Refuses a \
+                      statement that is not read-only, is itself \
+                      EXPLAIN/ANALYZE, or carries more than one \
+                      statement."
+    )]
     async fn pulse_explain(
         &self,
         Parameters(mut a): Parameters<args::PulseExplain>,
@@ -1575,8 +1689,12 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "The connection's biggest relations, largest first, \
-                          split into data / index / free space.")]
+    #[tool(
+        title = "Largest relations",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "The connection's biggest relations, largest first, \
+                      split into data / index / free space."
+    )]
     async fn pulse_storage(
         &self,
         Parameters(mut a): Parameters<args::Tables>,
@@ -1592,10 +1710,14 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Every session or operation currently open on the \
-                          server (SHOW FULL PROCESSLIST on MySQL; active or \
-                          lock-waiting ops from currentOp on MongoDB), with a \
-                          best-effort blocking chain on MySQL.")]
+    #[tool(
+        title = "Open sessions",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Every session or operation currently open on the \
+                      server (SHOW FULL PROCESSLIST on MySQL; active or \
+                      lock-waiting ops from currentOp on MongoDB), with a \
+                      best-effort blocking chain on MySQL."
+    )]
     async fn pulse_sessions(
         &self,
         Parameters(mut a): Parameters<args::Connection>,
@@ -1607,12 +1729,16 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Index usage across the connection's biggest \
-                          relations, least-read first — the fastest way to \
-                          spot an index nobody reads. A reads count of 0 \
-                          means genuinely never used since the counters were \
-                          last reset, not unavailable; unavailable reads as \
-                          null.")]
+    #[tool(
+        title = "Index usage",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Index usage across the connection's biggest \
+                      relations, least-read first — the fastest way to \
+                      spot an index nobody reads. A reads count of 0 \
+                      means genuinely never used since the counters were \
+                      last reset, not unavailable; unavailable reads as \
+                      null."
+    )]
     async fn pulse_index_usage(
         &self,
         Parameters(mut a): Parameters<args::Tables>,
@@ -1629,11 +1755,18 @@ impl Huginn {
     }
 
     #[tool(
+        title = "Insert a row",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        ),
         description = "Insert one row into a table. Requires the connection's \
-                          MCP write policy to be 'data' or 'full'. Values travel \
-                          as text and are cast to each column's type; omitted \
-                          columns take their database default. Returns the \
-                          generated primary key when available."
+                      MCP write policy to be 'data' or 'full'. Values travel \
+                      as text and are cast to each column's type; omitted \
+                      columns take their database default. Returns the \
+                      generated primary key when available."
     )]
     async fn insert_row(
         &self,
@@ -1676,11 +1809,20 @@ impl Huginn {
         ok_json(&out)
     }
 
-    #[tool(description = "Update one column of the single row addressed by its \
-                          full primary key. Requires the connection's MCP write \
-                          policy to be 'data' or 'full'. Refuses to touch more \
-                          than one row (an incomplete composite key is an error, \
-                          not a silent multi-row update).")]
+    #[tool(
+        title = "Update one column",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
+        description = "Update one column of the single row addressed by its \
+                      full primary key. Requires the connection's MCP write \
+                      policy to be 'data' or 'full'. Refuses to touch more \
+                      than one row (an incomplete composite key is an error, \
+                      not a silent multi-row update)."
+    )]
     async fn update_cell(
         &self,
         Parameters(mut a): Parameters<args::UpdateCell>,
@@ -1715,11 +1857,20 @@ impl Huginn {
         ok_json(&out)
     }
 
-    #[tool(description = "Delete one or more rows, each addressed by its full \
-                          primary key. Requires the connection's MCP write \
-                          policy to be 'data' or 'full'. Only rows whose full \
-                          key matches a supplied tuple are removed. Returns the \
-                          number of rows deleted.")]
+    #[tool(
+        title = "Delete rows",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
+        description = "Delete one or more rows, each addressed by its full \
+                      primary key. Requires the connection's MCP write \
+                      policy to be 'data' or 'full'. Only rows whose full \
+                      key matches a supplied tuple are removed. Returns the \
+                      number of rows deleted."
+    )]
     async fn delete_rows(
         &self,
         Parameters(mut a): Parameters<args::DeleteRows>,
@@ -1752,21 +1903,28 @@ impl Huginn {
     }
 
     #[tool(
+        title = "Create or replace a view",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
         description = "Create a view, redefine an existing one, or rename one. \
-                       Requires the connection's MCP write policy to be 'full' \
-                       — a view is schema, so this is the same DDL tier \
-                       CREATE/DROP/ALTER need through run_query. Pass just \
-                       `name` and `query`: the tool reads the current definition \
-                       itself to decide whether this is a create or a replace \
-                       and how to express it on this engine (Postgres CREATE OR \
-                       REPLACE, MySQL RENAME TABLE, SQLite drop-and-recreate, \
-                       MongoDB createView/collMod). Set `preview: true` to see \
-                       the statements without running them — that dry run is a \
-                       read and works on any connection. Note a rename plus a \
-                       body change is atomic on Postgres but NOT on MySQL, \
-                       which commits each DDL statement implicitly. Not \
-                       supported on SQL Server, whose T-SQL view DDL is not \
-                       written yet."
+                      Requires the connection's MCP write policy to be 'full' \
+                      — a view is schema, so this is the same DDL tier \
+                      CREATE/DROP/ALTER need through run_query. Pass just \
+                      `name` and `query`: the tool reads the current definition \
+                      itself to decide whether this is a create or a replace \
+                      and how to express it on this engine (Postgres CREATE OR \
+                      REPLACE, MySQL RENAME TABLE, SQLite drop-and-recreate, \
+                      MongoDB createView/collMod). Set `preview: true` to see \
+                      the statements without running them — that dry run is a \
+                      read and works on any connection. Note a rename plus a \
+                      body change is atomic on Postgres but NOT on MySQL, \
+                      which commits each DDL statement implicitly. Not \
+                      supported on SQL Server, whose T-SQL view DDL is not \
+                      written yet."
     )]
     async fn save_view(
         &self,
@@ -1834,15 +1992,22 @@ impl Huginn {
     }
 
     #[tool(
+        title = "Drop a view",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
         description = "Drop a view. Requires the connection's MCP write policy \
-                       to be 'full' (DROP is schema, the same tier run_query \
-                       needs for it — note that deleting *rows* only needs \
-                       'data'). Works on every driver, SQL Server and MongoDB \
-                       included. Refuses to drop anything that is not a view: on \
-                       SQL a DROP VIEW against a table errors, and on MongoDB — \
-                       where a view and a collection are one namespace — the \
-                       catalog is checked first, so a mistyped name cannot \
-                       destroy a collection's documents."
+                      to be 'full' (DROP is schema, the same tier run_query \
+                      needs for it — note that deleting *rows* only needs \
+                      'data'). Works on every driver, SQL Server and MongoDB \
+                      included. Refuses to drop anything that is not a view: on \
+                      SQL a DROP VIEW against a table errors, and on MongoDB — \
+                      where a view and a collection are one namespace — the \
+                      catalog is checked first, so a mistyped name cannot \
+                      destroy a collection's documents."
     )]
     async fn drop_view(
         &self,
@@ -1874,15 +2039,22 @@ impl Huginn {
     }
 
     #[tool(
+        title = "Create an index",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
         description = "Create an index on a MongoDB collection. MongoDB only — on \
-                       the SQL drivers an index is created with CREATE INDEX \
-                       through run_query, which is more expressive than any \
-                       portable form (USING gin, INCLUDE, a partial predicate). \
-                       Requires the connection's MCP write policy to be 'full': \
-                       an index is schema, the same tier run_query needs for \
-                       db.coll.createIndex(...). Read the existing indexes with \
-                       list_indexes first — its 'mongo' object reports each key's \
-                       direction and type, which a bare column list cannot."
+                      the SQL drivers an index is created with CREATE INDEX \
+                      through run_query, which is more expressive than any \
+                      portable form (USING gin, INCLUDE, a partial predicate). \
+                      Requires the connection's MCP write policy to be 'full': \
+                      an index is schema, the same tier run_query needs for \
+                      db.coll.createIndex(...). Read the existing indexes with \
+                      list_indexes first — its 'mongo' object reports each key's \
+                      direction and type, which a bare column list cannot."
     )]
     async fn create_index(
         &self,
@@ -1930,14 +2102,21 @@ impl Huginn {
     }
 
     #[tool(
+        title = "Drop an index",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
         description = "Drop an index from a MongoDB collection. MongoDB only (on \
-                       SQL, use DROP INDEX through run_query). Requires the \
-                       connection's MCP write policy to be 'full'. The `_id_` \
-                       index is refused. There is no 'edit an index' tool \
-                       because MongoDB cannot alter one in place: replacing it \
-                       is drop_index then create_index, and doing it as two \
-                       calls keeps the window where the index is missing \
-                       visible to you."
+                      SQL, use DROP INDEX through run_query). Requires the \
+                      connection's MCP write policy to be 'full'. The `_id_` \
+                      index is refused. There is no 'edit an index' tool \
+                      because MongoDB cannot alter one in place: replacing it \
+                      is drop_index then create_index, and doing it as two \
+                      calls keeps the window where the index is missing \
+                      visible to you."
     )]
     async fn drop_index(
         &self,
@@ -2886,6 +3065,116 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Every tool must carry a human-readable title and an explicit
+    /// `readOnlyHint`.
+    ///
+    /// Nothing in the type system enforces this — `annotations` is optional on
+    /// `Tool`, so a new tool compiles fine with none and simply tells clients
+    /// nothing about whether it writes. The cost is not cosmetic: a client's
+    /// auto-approval mode and its permission rules read these hints, so an
+    /// unannotated read gets treated with the same suspicion as a DELETE, and
+    /// an unannotated write gets no more friction than a SELECT. Same family as
+    /// the unenforced steps gotcha #49 records — the test is the enforcement.
+    #[test]
+    fn every_tool_declares_a_title_and_a_read_only_hint() {
+        for tool in Huginn::tool_router().list_all() {
+            let name = &tool.name;
+            assert!(
+                tool.title.as_deref().is_some_and(|t| !t.trim().is_empty()),
+                "{name}: needs a human-readable title"
+            );
+            let annotations = tool
+                .annotations
+                .as_ref()
+                .unwrap_or_else(|| panic!("{name}: needs annotations"));
+            assert!(
+                annotations.read_only_hint.is_some(),
+                "{name}: must say whether it modifies anything"
+            );
+            assert!(
+                annotations.open_world_hint.is_some(),
+                "{name}: must say whether its domain is closed"
+            );
+        }
+    }
+
+    /// The seven write tools must never advertise themselves as read-only, and
+    /// must each state whether they are destructive — the half of the contract
+    /// a client uses to decide how loudly to ask.
+    #[test]
+    fn the_write_tools_are_annotated_as_writes() {
+        let tools = Huginn::tool_router().list_all();
+        for name in [
+            "insert_row",
+            "update_cell",
+            "delete_rows",
+            "save_view",
+            "drop_view",
+            "create_index",
+            "drop_index",
+        ] {
+            let tool = tools
+                .iter()
+                .find(|t| t.name == name)
+                .unwrap_or_else(|| panic!("tool {name} missing from tool_router"));
+            let a = tool.annotations.as_ref().expect("annotated");
+            assert_eq!(
+                a.read_only_hint,
+                Some(false),
+                "{name}: writes are not read-only"
+            );
+            assert!(
+                a.destructive_hint.is_some(),
+                "{name}: must state whether it destroys or only adds"
+            );
+        }
+        // And the two that only ever add must not be lumped in with the ones
+        // that overwrite or remove: `destructive_hint` defaults to true when it
+        // is absent, so saying "false" out loud is the whole point.
+        for name in ["insert_row", "create_index"] {
+            let tool = tools.iter().find(|t| t.name == name).unwrap();
+            assert_eq!(
+                tool.annotations.as_ref().unwrap().destructive_hint,
+                Some(false),
+                "{name}: additive"
+            );
+        }
+    }
+
+    /// `run_query` is annotated destructive by default and re-annotated
+    /// read-only under `--read-only`. See `mark_run_query_read_only` for why
+    /// that flag is the *only* input allowed to change an annotation.
+    #[test]
+    fn read_only_mode_re_annotates_run_query() {
+        let default = huginn_with_policy("t-ann", McpWritePolicy::ReadOnly, false);
+        let a = default
+            .tool_router
+            .get("run_query")
+            .expect("run_query")
+            .annotations
+            .clone()
+            .expect("annotated");
+        assert_eq!(
+            a.read_only_hint,
+            Some(false),
+            "a statement runner can write"
+        );
+        assert_eq!(a.destructive_hint, Some(true));
+
+        // Note the policy above is already read-only: a per-connection policy
+        // must NOT be what flips this, because it can change under a client
+        // that cached `tools/list` at startup.
+        let killed = huginn_with_policy("t-ann", McpWritePolicy::ReadOnly, true);
+        let a = killed
+            .tool_router
+            .get("run_query")
+            .expect("run_query")
+            .annotations
+            .clone()
+            .expect("annotated");
+        assert_eq!(a.read_only_hint, Some(true), "--read-only cannot go stale");
     }
 
     /// Regression test for issue #83: the write tools' input schemas must

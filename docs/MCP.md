@@ -294,6 +294,24 @@ per-database ones on demand.
 `list_connections` reports each connection's effective write policy so the
 assistant knows up front what it may do.
 
+Every tool also carries a **title** and MCP **annotations** — `readOnlyHint`
+for the seventeen that only read, and `destructiveHint` / `idempotentHint` on
+the seven that write (`insert_row` and `create_index` are marked additive
+rather than destructive). Clients use these to decide how much friction a call
+deserves, so a `list_tables` no longer looks as risky as a `delete_rows`.
+
+`run_query` is the one that cannot be pinned down by a constant: it is a
+general statement executor, so it is annotated as a potentially destructive
+write, even though nearly every call is a read. It is re-annotated read-only
+only under `--read-only`, which is fixed for the life of the process. It is
+deliberately *not* derived from the exposed connections' write policies:
+a client reads `tools/list` once at startup, and those policies are re-read per
+call precisely so they can change under a running client — so a
+policy-derived hint would go stale in the unsafe direction the moment a
+connection was raised to `data`, telling the client no confirmation was needed
+for a write. The policy gate itself always holds; it is the client-side prompt
+that would have gone missing.
+
 ### Indexes: why the two write tools are MongoDB-only
 
 On the SQL drivers an index is created with `CREATE INDEX`, which `run_query`

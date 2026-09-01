@@ -378,7 +378,10 @@ Two prerequisites worth doing on their own merits, whichever route is picked
    accept a connection's *name*, so no uuid appears in a client config or in a
    tool call any more.
 2. **Declare `_meta["anthropic/requiresUserInteraction"] = true` on the write
-   tools.** This is available now, with no marketplace involved: it forces an
+   tools.** *(Partly overtaken: the tools now carry titles and
+   `readOnlyHint`/`destructiveHint` annotations — see gotcha #59 — which is the
+   portable half of this. `requiresUserInteraction` is the Claude-Code-specific
+   half and is still open.)* This is available now, with no marketplace involved: it forces an
    explicit approval prompt on every call, even in auto mode and even when an
    allow rule matches (Claude Code v2.1.199+; older and other clients ignore
    it). `rmcp` 2.2 already models it (`Tool::meta` / `with_meta`), so the
