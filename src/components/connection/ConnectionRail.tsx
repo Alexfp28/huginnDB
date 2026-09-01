@@ -41,6 +41,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MoreHorizontal, Plus, Search, Trash2, X } from "lucide-react";
 
+import { IconButton } from "@/components/ui/icon-button";
 import { ConnectionRailSection } from "@/components/connection/ConnectionRailSection";
 import { Button } from "@/components/ui/button";
 import {
@@ -284,13 +285,12 @@ export function ConnectionRail({
         {allLocal.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button
+              <IconButton
+                icon={MoreHorizontal}
+                label={t("connections.listActions")}
+                className="ml-auto"
                 type="button"
-                aria-label={t("connections.listActions")}
-                className="ml-auto rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
-              >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
+              />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-72">
               <DropdownMenuItem

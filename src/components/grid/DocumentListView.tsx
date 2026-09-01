@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import {
   DraftCellControl,
   firstEditableColumn,
@@ -414,8 +415,10 @@ function DraftDocumentCard({
 
       <div className="space-y-px" style={{ fontSize }}>
         {columns.map((col, idx) => {
-          const cell: DraftCell =
-            draft.row.cells[col.name] ?? { value: null, touched: false };
+          const cell: DraftCell = draft.row.cells[col.name] ?? {
+            value: null,
+            touched: false,
+          };
           const info = infoByName.get(col.name);
           const type = cell.type ?? draftTypeFor(info?.data_type);
           return (
@@ -460,7 +463,10 @@ function DraftDocumentCard({
                     <Select
                       value={typeValue(type)}
                       onValueChange={(v) =>
-                        draft.onChange(col.name, { ...cell, type: v as BsonType })
+                        draft.onChange(col.name, {
+                          ...cell,
+                          type: v as BsonType,
+                        })
                       }
                     >
                       <SelectTrigger className="h-5 w-32 shrink-0 border-0 bg-transparent px-1 text-3xs text-muted-foreground/70 focus:ring-0">
@@ -823,7 +829,9 @@ const DocumentCard = memo(function DocumentCard({
       onExpandField(
         rowValues,
         f.path,
-        f.value === null || f.value === undefined ? "" : editText(f.value, f.type),
+        f.value === null || f.value === undefined
+          ? ""
+          : editText(f.value, f.type),
         f.type,
       );
     },
@@ -846,7 +854,9 @@ const DocumentCard = memo(function DocumentCard({
       onExpandField(
         rowValues,
         f.path,
-        f.value === null || f.value === undefined ? "" : editText(f.value, f.type),
+        f.value === null || f.value === undefined
+          ? ""
+          : editText(f.value, f.type),
         f.type,
       );
     },
@@ -863,10 +873,9 @@ const DocumentCard = memo(function DocumentCard({
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 group-hover/doc:opacity-100">
           {canAddRootField && (
-            <button
-              type="button"
-              className="rounded p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-              title={labels.addField}
+            <IconButton
+              icon={Plus}
+              label={labels.addField}
               onClick={() =>
                 setDraft({
                   parent: [],
@@ -877,29 +886,24 @@ const DocumentCard = memo(function DocumentCard({
                   inArray: false,
                 })
               }
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
+            />
           )}
-          <button
-            type="button"
-            className="rounded p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            title={labels.ctxCopy}
+          <IconButton
+            icon={Copy}
+            label={labels.ctxCopy}
             onClick={() =>
-              callbacksRef.current.copyToClipboard(rowToJson(rowValues, columns))
+              callbacksRef.current.copyToClipboard(
+                rowToJson(rowValues, columns),
+              )
             }
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </button>
+          />
           {hasDeleteRow && (
-            <button
-              type="button"
-              className="rounded p-1 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
-              title={labels.ctxDeleteRow}
+            <IconButton
+              icon={Trash2}
+              tone="destructive"
+              label={labels.ctxDeleteRow}
               onClick={() => callbacksRef.current.onDeleteRow?.(rowValues)}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            />
           )}
         </span>
       </div>
@@ -999,22 +1003,22 @@ const FieldRow = memo(function FieldRow({
       <span className="flex w-10 shrink-0 items-center justify-end gap-0.5">
         {canMutate && (
           <>
-            <button
-              type="button"
-              className="rounded p-0.5 text-muted-foreground/60 opacity-0 hover:text-destructive group-hover/field:opacity-100"
-              title={labels.deleteField}
+            <IconButton
+              size="xs"
+              icon={Trash2}
+              tone="destructive"
+              revealOnHover="field"
+              label={labels.deleteField}
               onClick={() => actionsRef.current.deleteField(f)}
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-            <button
-              type="button"
-              className="rounded border border-border p-0.5 text-muted-foreground/60 opacity-0 hover:text-foreground group-hover/field:opacity-100"
-              title={labels.addField}
+            />
+            <IconButton
+              size="xs"
+              icon={Plus}
+              revealOnHover="field"
+              label={labels.addField}
+              className="border border-border"
               onClick={() => actionsRef.current.addAfter(f)}
-            >
-              <Plus className="h-2.5 w-2.5" />
-            </button>
+            />
           </>
         )}
       </span>
@@ -1101,16 +1105,16 @@ const FieldRow = memo(function FieldRow({
           </span>
         )}
         {canExpand && (
-          <button
-            type="button"
+          <IconButton
+            size="xs"
+            icon={Maximize2}
+            revealOnHover="field"
+            label={labels.expandEditor}
+            className="shrink-0"
             tabIndex={-1}
-            className="shrink-0 rounded px-1 text-muted-foreground/60 opacity-0 hover:text-foreground group-hover/field:opacity-100"
-            title={labels.expandEditor}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => actionsRef.current.expandField(f)}
-          >
-            <Maximize2 className="h-3 w-3" />
-          </button>
+          />
         )}
       </span>
       {showTypes &&
@@ -1272,4 +1276,3 @@ function valueClass(type: string): string {
  * the picker (and the backend's type-hint vocabulary) spells it `"object"`, so
  * that one name is translated rather than silently falling through to `string`.
  */
-

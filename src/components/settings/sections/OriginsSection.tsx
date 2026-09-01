@@ -23,6 +23,7 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { api } from "@/lib/tauri";
 import { pickJsonFile, pickJsonSavePath } from "@/lib/dialogs";
 import { useOriginEditor } from "@/stores/dialogs/originEditor";
@@ -312,27 +313,22 @@ export function OriginsSection() {
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <button
-                  className="text-muted-foreground/60 hover:text-foreground"
-                  title={t("origins.editContent")}
+                <IconButton
+                  icon={SquarePen}
+                  label={t("origins.editContent")}
                   onClick={() => openEditor(o.id)}
-                >
-                  <SquarePen className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  className="text-muted-foreground/60 hover:text-foreground"
-                  title={t("origins.editRegistration")}
+                />
+                <IconButton
+                  icon={PencilLine}
+                  label={t("origins.editRegistration")}
                   onClick={() => beginEdit(o)}
-                >
-                  <PencilLine className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  className="text-muted-foreground/60 hover:text-destructive"
-                  title={t("origins.remove")}
+                />
+                <IconButton
+                  icon={Trash2}
+                  tone="destructive"
+                  label={t("origins.remove")}
                   onClick={() => setPendingRemove(o)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                />
               </div>
             </div>
           ))}

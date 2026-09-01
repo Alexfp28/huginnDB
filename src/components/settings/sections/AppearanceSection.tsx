@@ -17,7 +17,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { save as saveFileDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import {
+  save as saveFileDialog,
+  open as openFileDialog,
+} from "@tauri-apps/plugin-dialog";
+import { IconButton } from "@/components/ui/icon-button";
 import { notify } from "@/lib/notify";
 import { Copy, Download, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,7 +35,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { useThemeStore, selectActiveTheme, selectActiveMode } from "@/stores/preferences/theme";
+import {
+  useThemeStore,
+  selectActiveTheme,
+  selectActiveMode,
+} from "@/stores/preferences/theme";
 import {
   usePreferences,
   selectGridPrefs,
@@ -126,7 +134,9 @@ export function AppearanceSection() {
       const theme = parseThemeFile(raw);
       upsertCustom(theme);
       setThemeId(theme.id);
-      notify.success(t("settings.appearance.importSuccess", { name: theme.name }));
+      notify.success(
+        t("settings.appearance.importSuccess", { name: theme.name }),
+      );
     } catch (e) {
       if (e instanceof ThemeImportError) {
         notify.error(t(`settings.appearance.importError.${e.message}`));
@@ -142,14 +152,14 @@ export function AppearanceSection() {
         <aside className="overflow-y-auto rounded-md border border-border bg-card/40">
           <div className="sticky top-0 flex items-center justify-between gap-1 bg-card/60 px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground backdrop-blur">
             {t("settings.appearance.themes")}
-            <button
+            <IconButton
+              size="xs"
+              icon={Upload}
+              label={t("settings.appearance.importTitle")}
+              className="normal-case"
               type="button"
               onClick={() => void handleImportTheme()}
-              title={t("settings.appearance.importTitle")}
-              className="rounded p-1 normal-case text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <Upload className="h-3 w-3" />
-            </button>
+            />
           </div>
           {themes.map((theme) => (
             <button
@@ -182,10 +192,7 @@ export function AppearanceSection() {
                   : t("settings.appearance.customInfo")}
               </div>
             </div>
-            <Select
-              value={mode}
-              onValueChange={(v) => setMode(v as ThemeMode)}
-            >
+            <Select value={mode} onValueChange={(v) => setMode(v as ThemeMode)}>
               <SelectTrigger className="w-24">
                 <SelectValue />
               </SelectTrigger>
@@ -429,13 +436,19 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
           </span>
           <span
             className="rounded px-1.5 py-0.5 text-[10px]"
-            style={{ background: colors.accent, color: colors.accentForeground }}
+            style={{
+              background: colors.accent,
+              color: colors.accentForeground,
+            }}
           >
             public
           </span>
           <button
             className="ml-auto rounded px-2 py-0.5 text-[10px] font-medium"
-            style={{ background: colors.primary, color: colors.primaryForeground }}
+            style={{
+              background: colors.primary,
+              color: colors.primaryForeground,
+            }}
           >
             Run
           </button>

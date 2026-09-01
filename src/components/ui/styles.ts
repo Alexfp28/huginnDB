@@ -110,13 +110,19 @@ export const MENU_SUBTRIGGER =
   "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent";
 
 /**
- * A row action that appears on hover of its row. Requires the row to declare
- * `group/row`; `focus-visible` is in there so the action is still reachable by
- * keyboard, where there is no hover to trigger it.
+ * An action that appears on hover of its container. `focus-visible` is in there
+ * so the action stays reachable by keyboard, where there is no hover at all.
  *
- * Named `group/row` rather than a bare `group` because rows nest (a tree row
- * inside a section inside a panel) and an unnamed group binds to the nearest
- * one, whichever that happens to be. The app had three spellings of this.
+ * Two named groups rather than one bare `group`, because these genuinely nest:
+ * a document row (`group/row`) holds fields (`group/field`), each with its own
+ * hover actions, and an unnamed group binds to whichever ancestor is nearest.
+ * The app had three spellings of this between them.
+ *
+ * Written out per group for the reason `fieldFocus` documents at length: a
+ * Tailwind class assembled at runtime is never generated.
  */
-export const REVEAL_ON_ROW_HOVER =
-  "opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100";
+export const REVEAL_ON_HOVER = {
+  row: "opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100",
+  field:
+    "opacity-0 transition-opacity group-hover/field:opacity-100 focus-visible:opacity-100",
+} as const;

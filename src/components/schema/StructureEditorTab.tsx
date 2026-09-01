@@ -785,31 +785,26 @@ function ColumnsEditor({
                   <div className="flex items-center justify-center gap-0.5 opacity-0 group-hover/col:opacity-100">
                     {canReorder && (
                       <>
-                        <button
-                          className="text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                        <IconButton
+                          icon={ChevronUp}
+                          label={t("structure.col.moveUp")}
                           onClick={() => onMove(c._key, -1)}
                           disabled={i === 0}
-                          title={t("structure.col.moveUp")}
-                        >
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          className="text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                        />
+                        <IconButton
+                          icon={ChevronDown}
+                          label={t("structure.col.moveDown")}
                           onClick={() => onMove(c._key, 1)}
                           disabled={i === columns.length - 1}
-                          title={t("structure.col.moveDown")}
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </button>
+                        />
                       </>
                     )}
-                    <button
-                      className="text-muted-foreground hover:text-destructive"
+                    <IconButton
+                      icon={Trash2}
+                      tone="destructive"
+                      label={t("structure.col.remove")}
                       onClick={() => onRemove(c._key)}
-                      title={t("structure.col.remove")}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    />
                   </div>
                 </td>
               </tr>

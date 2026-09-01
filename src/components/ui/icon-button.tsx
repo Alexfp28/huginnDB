@@ -3,7 +3,7 @@ import { type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { REVEAL_ON_ROW_HOVER } from "@/components/ui/styles";
+import { REVEAL_ON_HOVER } from "@/components/ui/styles";
 
 /**
  * A square, dense icon control with a themed tooltip — the toolbar and row
@@ -46,9 +46,9 @@ export interface IconButtonProps extends Omit<
   tone?: keyof typeof TONE;
   /** Which side the tooltip opens on. */
   side?: "top" | "right" | "bottom" | "left";
-  /** Hidden until its row is hovered or this button is focused. The row must
-   *  carry `group/row`. */
-  revealOnHover?: boolean;
+  /** Hidden until its container is hovered or this button is focused. The
+   *  container must carry the matching `group/<name>`. */
+  revealOnHover?: keyof typeof REVEAL_ON_HOVER;
   /** Swap the icon for a spinner and disable the button. */
   loading?: boolean;
   /**
@@ -68,7 +68,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       size = "sm",
       tone = "quiet",
       side,
-      revealOnHover = false,
+      revealOnHover,
       loading = false,
       nativeTitle = false,
       className,
@@ -87,7 +87,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
         title={nativeTitle ? label : undefined}
         className={cn(
           TONE[tone],
-          revealOnHover && REVEAL_ON_ROW_HOVER,
+          revealOnHover && REVEAL_ON_HOVER[revealOnHover],
           className,
         )}
         {...props}

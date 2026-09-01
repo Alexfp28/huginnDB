@@ -26,6 +26,7 @@ import { Trash2 } from "lucide-react";
 
 import { useJsonSchemas } from "@/stores/jsonSchemas";
 import { useConnections } from "@/stores/session/connections";
+import { IconButton } from "@/components/ui/icon-button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { JsonSchemaBinding } from "@/types";
@@ -150,14 +151,14 @@ export function BindingsTable({ onEdit }: Props) {
                   className="px-1 py-1 text-center"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <button
+                  <IconButton
+                    icon={Trash2}
+                    tone="destructive"
+                    revealOnHover="row"
+                    label={t("jsonSchemas.bindings.remove")}
                     type="button"
-                    className="text-muted-foreground/40 opacity-0 hover:text-destructive group-hover/row:opacity-100"
-                    title={t("jsonSchemas.bindings.remove")}
                     onClick={() => void deleteBinding(b.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  />
                 </td>
               </tr>
             );

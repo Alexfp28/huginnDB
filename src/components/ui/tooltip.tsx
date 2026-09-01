@@ -2,7 +2,32 @@ import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/utils";
 
-const TooltipProvider = TooltipPrimitive.Provider;
+/**
+ * Marks that a `TooltipPrimitive.Provider` is in scope.
+ *
+ * Radix throws outright when a `Tooltip` renders with no provider above it, and
+ * offers no way to ask whether one is there. That was tolerable while tooltips
+ * were opt-in per call site; it stops being tolerable once `IconButton` puts one
+ * behind every icon button in the app, because those components then become
+ * unrenderable anywhere a provider is missing — in practice, every test that
+ * touches one has to know to wrap it. This sentinel lets `SimpleTooltip` supply
+ * its own provider when it must.
+ *
+ * The app's three window roots still declare one and should keep doing so: a
+ * single provider is what makes the hover delay shared, and what lets one open
+ * tooltip skip the next one's delay while the pointer is still travelling. The
+ * fallback is a safety net, not the intended arrangement.
+ */
+const HasTooltipProvider = React.createContext(false);
+
+const TooltipProvider = ({
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>) => (
+  <HasTooltipProvider.Provider value={true}>
+    <TooltipPrimitive.Provider {...props}>{children}</TooltipPrimitive.Provider>
+  </HasTooltipProvider.Provider>
+);
 const Tooltip = TooltipPrimitive.Root;
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
@@ -57,13 +82,15 @@ export function SimpleTooltip({
    *  strip: the tooltip is how a truncated tab reveals its full name). */
   delayDuration?: number;
 }) {
+  const hasProvider = React.useContext(HasTooltipProvider);
   if (!label) return <>{children}</>;
-  return (
+  const tooltip = (
     <Tooltip delayDuration={delayDuration}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side={side}>{label}</TooltipContent>
     </Tooltip>
   );
+  return hasProvider ? tooltip : <TooltipProvider>{tooltip}</TooltipProvider>;
 }
 
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };

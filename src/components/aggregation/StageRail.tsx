@@ -17,6 +17,7 @@
 
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { operatorOf, type PipelineStage } from "@/lib/mongo/pipeline";
 import { cn } from "@/lib/utils";
 import type { StagePreview } from "@/types";
@@ -38,24 +39,36 @@ export function StageRail({ stages, previews, onSelect, onAdd }: Props) {
     <div className="flex items-center gap-1 overflow-x-auto border-b border-border px-2 py-1.5">
       {stages.map((stage, i) => {
         const preview = previews.get(stage.id);
-        const operator = operatorOf(stage.body) ?? t("aggregation.rail.unnamed");
+        const operator =
+          operatorOf(stage.body) ?? t("aggregation.rail.unnamed");
         const rows = preview?.result?.rows.length;
         const empty = preview?.result != null && rows === 0;
         const errored = !!preview?.error;
 
         return (
           <div key={stage.id} className="flex shrink-0 items-center">
-            {i > 0 && <span className="mx-0.5 h-px w-2 bg-border" aria-hidden />}
+            {i > 0 && (
+              <span className="mx-0.5 h-px w-2 bg-border" aria-hidden />
+            )}
             <button
               onClick={() => onSelect(i)}
               title={t("aggregation.rail.goTo", { index: i + 1 })}
               className={cn(
                 "rounded-md border px-2 py-0.5 font-mono text-[11px] transition-colors",
                 "hover:border-brand/50 hover:bg-brand/10",
-                !stage.enabled && "border-dashed text-muted-foreground opacity-60",
-                stage.enabled && errored && "border-destructive/50 bg-destructive/10 text-destructive",
-                stage.enabled && !errored && empty && "border-warning/50 bg-warning/10 text-warning",
-                stage.enabled && !errored && !empty && "border-border bg-muted/40",
+                !stage.enabled &&
+                  "border-dashed text-muted-foreground opacity-60",
+                stage.enabled &&
+                  errored &&
+                  "border-destructive/50 bg-destructive/10 text-destructive",
+                stage.enabled &&
+                  !errored &&
+                  empty &&
+                  "border-warning/50 bg-warning/10 text-warning",
+                stage.enabled &&
+                  !errored &&
+                  !empty &&
+                  "border-border bg-muted/40",
               )}
             >
               {operator}
@@ -69,13 +82,14 @@ export function StageRail({ stages, previews, onSelect, onAdd }: Props) {
           </div>
         );
       })}
-      <button
+      <IconButton
+        size="xs"
+        icon={Plus}
+        tone="brand"
+        label={t("aggregation.addStage")}
+        className="ml-1 shrink-0 border border-dashed border-border hover:border-brand/50"
         onClick={onAdd}
-        title={t("aggregation.addStage")}
-        className="ml-1 shrink-0 rounded-md border border-dashed border-border px-1.5 py-1 text-muted-foreground transition-colors hover:border-brand/50 hover:text-brand"
-      >
-        <Plus className="h-3 w-3" />
-      </button>
+      />
     </div>
   );
 }

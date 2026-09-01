@@ -57,7 +57,7 @@ describe("IconButton", () => {
   });
 
   it("hides behind its row's hover when asked, but stays reachable by keyboard", () => {
-    mount(<IconButton icon={Trash2} label="a" revealOnHover />);
+    mount(<IconButton icon={Trash2} label="a" revealOnHover="row" />);
     const cls = screen.getByRole("button").className;
     expect(cls).toContain("opacity-0");
     expect(cls).toContain("group-hover/row:opacity-100");
@@ -72,5 +72,17 @@ describe("IconButton", () => {
         "text-muted-foreground",
       );
     }
+  });
+});
+
+describe("the tooltip provider fallback", () => {
+  it("renders with no TooltipProvider above it", () => {
+    // Radix throws when a Tooltip has no provider in scope, and offers no way
+    // to ask. Before the sentinel in `tooltip.tsx`, putting an IconButton in a
+    // component made that component unrenderable in any tree without a
+    // provider — every test touching one had to know to wrap it, and one that
+    // didn't failed with a stack trace pointing at Radix rather than at this.
+    render(<IconButton icon={Trash2} label="Delete row" />);
+    expect(screen.getByRole("button", { name: "Delete row" })).not.toBeNull();
   });
 });
