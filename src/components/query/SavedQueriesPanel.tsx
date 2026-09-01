@@ -6,11 +6,11 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Bookmark, Pencil, Play, Search, SearchX, Trash2 } from "lucide-react";
+import { Bookmark, Pencil, Play, SearchX, Trash2 } from "lucide-react";
+import { SearchField } from "@/components/ui/search-field";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useSavedQueries, type SavedQuery } from "@/stores/query/savedQueries";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
@@ -58,15 +58,13 @@ export function SavedQueriesPanel({
         </span>
       </div>
       <div className="px-3 pb-2">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={t("saved.filterPlaceholder")}
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="h-7 pl-7 text-xs"
-          />
-        </div>
+        <SearchField
+          size="xs"
+          value={filter}
+          onValueChange={setFilter}
+          placeholder={t("saved.filterPlaceholder")}
+          inputClassName="text-xs"
+        />
       </div>
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 && (
@@ -74,7 +72,9 @@ export function SavedQueriesPanel({
             size="sm"
             icon={items.length === 0 ? Bookmark : SearchX}
             title={
-              items.length === 0 ? t("saved.emptyNone") : t("saved.emptyNoMatch")
+              items.length === 0
+                ? t("saved.emptyNone")
+                : t("saved.emptyNoMatch")
             }
           />
         )}

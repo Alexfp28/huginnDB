@@ -44,13 +44,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  DatabaseBackup,
-  DatabaseZap,
-  ListFilter,
-  PlugZap,
-  Search,
-} from "lucide-react";
+import { DatabaseBackup, DatabaseZap, ListFilter, PlugZap } from "lucide-react";
+import { SearchField } from "@/components/ui/search-field";
 import { MICRO_HEADING } from "@/components/ui/styles";
 import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -80,7 +75,6 @@ import { api } from "@/lib/tauri";
 import { bucketByGroup, cn } from "@/lib/utils";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { EmptyState } from "@/components/common/EmptyState";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
@@ -804,17 +798,16 @@ function ConnectionVisibilityDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="mb-1.5 flex items-center gap-1.5">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder={t(
-                "connectionsTree.selectConnections.filterPlaceholder",
-              )}
-              className="h-7 pl-6 text-xs"
-            />
-          </div>
+          <SearchField
+            size="xs"
+            value={filter}
+            onValueChange={setFilter}
+            placeholder={t(
+              "connectionsTree.selectConnections.filterPlaceholder",
+            )}
+            className="flex-1"
+            inputClassName="text-xs"
+          />
           <Button
             type="button"
             variant="outline"

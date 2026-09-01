@@ -23,16 +23,15 @@ import {
   MessageSquarePlus,
   Pause,
   Play,
-  Search,
   SearchX,
   TerminalSquare,
   Trash2,
   X,
 } from "lucide-react";
+import { SearchField } from "@/components/ui/search-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useLogs, type LogKindFilter } from "@/stores/query/logs";
 import { useFeedbackDialog } from "@/stores/dialogs/feedbackDialog";
@@ -237,16 +236,14 @@ export function Console() {
           {t("console.kindConnection")}
         </label>
         <div className="mx-1 h-5 w-px bg-border" />
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("console.filterPlaceholder")}
-            size="sm"
-            className="pl-6 font-mono"
-          />
-        </div>
+        <SearchField
+          size="sm"
+          value={query}
+          onValueChange={setQuery}
+          placeholder={t("console.filterPlaceholder")}
+          className="flex-1"
+          inputClassName="font-mono"
+        />
         <div className="px-1 text-[10px] tabular-nums text-muted-foreground">
           {filtered.length}/{entries.length}
         </div>

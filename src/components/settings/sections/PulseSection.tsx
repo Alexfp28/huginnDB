@@ -16,8 +16,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Search, X } from "lucide-react";
 
+import { SearchField } from "@/components/ui/search-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -32,7 +32,10 @@ import {
 } from "@/lib/connection/origin";
 import { buildRailSections } from "@/lib/connection/railSections";
 import { useOrigins } from "@/stores/sync/origins";
-import { usePreferences, selectPulsePrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectPulsePrefs,
+} from "@/stores/preferences/preferences";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import type { ConnectionProfile } from "@/types";
@@ -99,21 +102,25 @@ export function PulseSection() {
   async function setEnabled(ids: string[], enabled: boolean) {
     const wanted = new Set(ids);
     setProfiles((prev) =>
-      prev.map((p) => (wanted.has(p.id) ? { ...p, pulse_enabled: enabled } : p)),
+      prev.map((p) =>
+        wanted.has(p.id) ? { ...p, pulse_enabled: enabled } : p,
+      ),
     );
     try {
       await api.setPulseEnabled(ids, enabled);
     } catch (e) {
       notify.error(String(e));
-      void api.listProfiles().then(setProfiles).catch(() => {});
+      void api
+        .listProfiles()
+        .then(setProfiles)
+        .catch(() => {});
     }
   }
 
   /** Commit a numeric field, ignoring the intermediate garbage a
    *  partially-typed number produces. */
   const numeric =
-    (apply: (n: number) => void, min: number, max: number) =>
-    (raw: string) => {
+    (apply: (n: number) => void, min: number, max: number) => (raw: string) => {
       const n = Number.parseInt(raw, 10);
       if (Number.isFinite(n) && n >= min && n <= max) apply(n);
     };
@@ -162,9 +169,11 @@ export function PulseSection() {
             max={365}
             value={pulse.retentionDays}
             onChange={(e) =>
-              numeric((n) => updatePulse({ retentionDays: n }), 1, 365)(
-                e.target.value,
-              )
+              numeric(
+                (n) => updatePulse({ retentionDays: n }),
+                1,
+                365,
+              )(e.target.value)
             }
             className="h-8 w-24 text-right font-mono text-xs"
           />
@@ -183,9 +192,11 @@ export function PulseSection() {
             max={10000}
             value={pulse.maxDiskMb}
             onChange={(e) =>
-              numeric((n) => updatePulse({ maxDiskMb: n }), 0, 10000)(
-                e.target.value,
-              )
+              numeric(
+                (n) => updatePulse({ maxDiskMb: n }),
+                0,
+                10000,
+              )(e.target.value)
             }
             className="h-8 w-24 text-right font-mono text-xs"
           />
@@ -251,26 +262,15 @@ export function PulseSection() {
               />
             )}
             <div className="mb-1.5 flex items-center gap-1.5">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  size="xs"
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  placeholder={t("settings.mcp.filterPlaceholder")}
-                  className="pl-6 pr-6"
-                />
-                {filter && (
-                  <button
-                    type="button"
-                    onClick={() => setFilter("")}
-                    aria-label={t("common.clear")}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+              <SearchField
+                size="xs"
+                value={filter}
+                onValueChange={setFilter}
+                placeholder={t("settings.mcp.filterPlaceholder")}
+                onClear={() => setFilter("")}
+                clearLabel={t("common.clear")}
+                className="flex-1"
+              />
               <Button
                 type="button"
                 variant="outline"

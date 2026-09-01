@@ -38,11 +38,11 @@ import {
   Database,
   History,
   Play,
-  Search,
   Trash2,
   X,
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { SearchField } from "@/components/ui/search-field";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
@@ -61,7 +61,6 @@ import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import type { BatchResult, DatabaseInfo, QueryResult } from "@/types";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -639,15 +638,13 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                   </div>
                 </div>
                 <div className="border-b border-border px-3 pb-2">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={historyFilter}
-                      onChange={(e) => setHistoryFilter(e.target.value)}
-                      placeholder={t("query.historyFilterPlaceholder")}
-                      className="h-6 pl-6 text-xs"
-                    />
-                  </div>
+                  <SearchField
+                    size="xs"
+                    value={historyFilter}
+                    onValueChange={setHistoryFilter}
+                    placeholder={t("query.historyFilterPlaceholder")}
+                    inputClassName="text-xs"
+                  />
                 </div>
                 <div className="flex-1 overflow-y-auto pb-12">
                   {filteredHistory.length === 0 && (

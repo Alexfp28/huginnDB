@@ -24,7 +24,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Search } from "lucide-react";
+import { SearchField } from "@/components/ui/search-field";
 import { Spinner } from "@/components/ui/spinner";
 import { isMainWindow } from "@/lib/window";
 import { useConnections } from "@/stores/session/connections";
@@ -38,7 +38,6 @@ import {
 } from "@/stores/session/environments";
 import { connectAndWarm } from "@/lib/connection/connectFlow";
 import { bucketByGroup, cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DriverBadge, driverLabel } from "@/components/common/DriverBadge";
 import { EnvironmentAvatar } from "@/components/connection/EnvironmentAvatar";
@@ -170,15 +169,12 @@ function ConnectionsPane() {
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("connectionDialog.searchPlaceholder")}
-          className="pl-8 text-sm"
-        />
-      </div>
+      <SearchField
+        value={query}
+        onValueChange={setQuery}
+        placeholder={t("connectionDialog.searchPlaceholder")}
+        inputClassName="text-sm"
+      />
       <div className="max-h-96 overflow-y-auto">
         {matches.length === 0 ? (
           <div className="px-2 py-6 text-center text-xs italic text-muted-foreground">
@@ -247,15 +243,12 @@ function EnvironmentsPane() {
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("workspacePicker.searchEnvironments")}
-          className="pl-8 text-sm"
-        />
-      </div>
+      <SearchField
+        value={query}
+        onValueChange={setQuery}
+        placeholder={t("workspacePicker.searchEnvironments")}
+        inputClassName="text-sm"
+      />
       {matches.length === 0 ? (
         <div className="px-2 py-6 text-center text-xs italic text-muted-foreground">
           {t("commandPalette.noResults")}

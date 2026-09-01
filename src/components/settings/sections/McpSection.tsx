@@ -19,10 +19,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
-import { Copy, Search, Terminal, X } from "lucide-react";
+import { Copy, Terminal } from "lucide-react";
+import { SearchField } from "@/components/ui/search-field";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { api } from "@/lib/tauri";
 import {
@@ -207,7 +207,10 @@ export function McpSection() {
       await api.setMcpWritePolicy([id], level);
     } catch {
       notify.error(t("settings.mcp.writePolicySaveError"));
-      void api.listProfiles().then(setProfiles).catch(() => {});
+      void api
+        .listProfiles()
+        .then(setProfiles)
+        .catch(() => {});
     }
   }
 
@@ -300,15 +303,9 @@ export function McpSection() {
   // paste-once — adding a connection later is a tick here, not an edit of every
   // client's config followed by a restart of each. (The flag still exists for
   // pinning one client to a fixed subset; `docs/MCP.md` covers it.)
-  const cliCommand = path
-    ? `claude mcp add huginndb -s user -- ${path}`
-    : "";
+  const cliCommand = path ? `claude mcp add huginndb -s user -- ${path}` : "";
   const jsonSnippet = path
-    ? JSON.stringify(
-        { mcpServers: { huginndb: { command: path } } },
-        null,
-        2,
-      )
+    ? JSON.stringify({ mcpServers: { huginndb: { command: path } } }, null, 2)
     : "";
 
   return (
@@ -388,33 +385,24 @@ export function McpSection() {
               />
             )}
             <div className="mb-1.5 flex items-center gap-1.5">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  size="xs"
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  placeholder={t("settings.mcp.filterPlaceholder")}
-                  className="pl-6 pr-6"
-                />
-                {filter && (
-                  <button
-                    type="button"
-                    onClick={() => setFilter("")}
-                    aria-label={t("common.clear")}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+              <SearchField
+                size="xs"
+                value={filter}
+                onValueChange={setFilter}
+                placeholder={t("settings.mcp.filterPlaceholder")}
+                onClear={() => setFilter("")}
+                clearLabel={t("common.clear")}
+                className="flex-1"
+              />
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 className="h-7 shrink-0 px-2 text-[11px]"
                 disabled={filteredProfiles.length === 0}
-                onClick={() => void toggleAll(filteredProfiles.map((p) => p.id))}
+                onClick={() =>
+                  void toggleAll(filteredProfiles.map((p) => p.id))
+                }
               >
                 {allFilteredSelected
                   ? t("settings.mcp.deselectAll")
