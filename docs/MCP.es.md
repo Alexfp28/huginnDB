@@ -32,6 +32,71 @@ permite. Ver [Seguridad](#seguridad).
 Consulta [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md) para el
 razonamiento de diseño (en inglés).
 
+## Primeros pasos
+
+Cuatro pasos, una sola vez. Nada de esto necesita una terminal salvo que
+quieras usarla.
+
+**1. Instala HuginnDB.** El conector viaja dentro del instalador como binario
+sidecar — no hay nada más que descargar ni nada que compilar.
+
+**2. Elige a qué puede llegar el asistente.** Abre **Ajustes → MCP** y marca
+las conexiones que quieras que vea. **Nada es alcanzable hasta que lo marcas**,
+y esa es toda la decisión de acceso: la configuración del cliente de IA no
+nombra ninguna conexión.
+
+**3. Elige qué puede hacer.** Cada conexión marcada tiene un nivel de escritura
+en el mismo panel:
+
+| Nivel | Qué permite |
+| --- | --- |
+| `read-only` *(por defecto)* | Solo lecturas. Toda herramienta de escritura se rechaza. |
+| `data` | Añade `INSERT` / `UPDATE` / `DELETE`. Sin cambios de esquema. |
+| `full` | Añade `CREATE` / `DROP` / `ALTER`, vistas e índices. |
+
+Déjalo todo en `read-only` hasta que tengas un motivo para no hacerlo. Tanto
+esto como el paso 2 se releen en **cada llamada**, así que puedes cambiar de
+opinión después sin reiniciar nada.
+
+**4. Apunta tu cliente al conector.**
+
+- **Claude Code** — pulsa **Añadir a Claude Code** en Ajustes → MCP. Ese es
+  todo el paso. (Ejecuta `claude mcp add` por ti; ver
+  [Claude Code (CLI)](#claude-code-cli) para hacerlo a mano.)
+- **Claude Desktop** — descarga el `.mcpb` del
+  [último release](https://github.com/Alexfp28/huginnDB/releases) y suéltalo en
+  **Ajustes → Extensiones**. Ver
+  [Claude Desktop (extensión de un clic)](#claude-desktop-extensión-de-un-clic).
+- **Cualquier otro** — copia el snippet JSON de Ajustes → MCP a la
+  configuración de tu cliente. Lleva una ruta y nada más, así que es el mismo
+  en cualquier máquina y se pega una sola vez.
+
+**Comprueba que funciona.** Pídele al asistente: *"con huginndb, lista mis
+conexiones, luego lista las tablas de \<nombre\> y enséñame 5 filas de la
+primera."* Si responde con nombres de tabla reales, ya está.
+
+### Si vienes de una configuración anterior a la 1.21
+
+Tu configuración actual sigue funcionando exactamente igual — no hay que hacer
+nada. Pero conviene saber qué cambió, porque la forma antigua ya no es la
+buena.
+
+Las conexiones expuestas vivían en la configuración del propio cliente como
+`--connections <uuid>,<uuid>`, y por eso añadir una conexión obligaba a editar
+ese fichero (uno por cliente) y reiniciarlo. Esa lista ahora vive en la app, en
+el paso 2 de arriba.
+
+**Un cliente lanzado con `--connections` queda fijado a esa lista** e ignora
+las casillas, a propósito: un argumento que escribiste tú manda sobre una
+casilla, en los dos sentidos. Para pasar un cliente a las casillas, quita el
+flag de su configuración — el comando se queda en una ruta pelada — y marca lo
+que quieras en Ajustes → MCP. Para dejar un cliente deliberadamente más
+estrecho que el resto, deja el flag; ver [Fijar un cliente a un conjunto
+concreto](#fijar-un-cliente-a-un-conjunto-concreto).
+
+Un cambio de comportamiento que conviene conocer: `run_query` ya no acepta
+sentencias que escriban. Esas van por `run_write`, y el rechazo lo dice.
+
 ## Obtener el binario
 
 **Instalaciones empaquetadas (el caso normal):** `huginndb-mcp` se distribuye

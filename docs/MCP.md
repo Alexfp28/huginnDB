@@ -26,6 +26,70 @@ connection's policy allows them. See [Security](#security).
 See [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md) for the design
 rationale.
 
+## Quick start
+
+Four steps, once. Nothing here needs a terminal unless you want one.
+
+**1. Install HuginnDB.** The connector ships inside the installer as a sidecar
+binary — there is nothing extra to download and nothing to build.
+
+**2. Choose what the assistant may reach.** Open **Settings → MCP** and tick
+the connections you want it to see. **Nothing is reachable until you tick
+it**, and that is the whole access decision: the AI client's configuration
+never names a connection.
+
+**3. Choose what it may do.** Each ticked connection has a write policy in the
+same panel:
+
+| Level | What it allows |
+| --- | --- |
+| `read-only` *(default)* | Reads only. Every write tool is refused. |
+| `data` | Adds `INSERT` / `UPDATE` / `DELETE`. No schema changes. |
+| `full` | Adds `CREATE` / `DROP` / `ALTER`, views and indexes. |
+
+Leave everything at `read-only` until you have a reason not to. Both this and
+step 2 are re-read on **every call**, so you can change your mind later
+without restarting anything.
+
+**4. Point your client at it.**
+
+- **Claude Code** — click **Add to Claude Code** in Settings → MCP. That is the
+  whole step. (It runs `claude mcp add` for you; see
+  [Claude Code (CLI)](#claude-code-cli) to do it by hand.)
+- **Claude Desktop** — download the `.mcpb` from the
+  [latest release](https://github.com/Alexfp28/huginnDB/releases) and drop it
+  into **Settings → Extensions**. See
+  [Claude Desktop (one-click extension)](#claude-desktop-one-click-extension).
+- **Anything else** — copy the JSON snippet from Settings → MCP into your
+  client's config. It contains a path and nothing else, so it is the same on
+  every machine and you paste it once.
+
+**Check it worked.** Ask the assistant: *"with huginndb, list my connections,
+then list the tables in \<name\> and show me 5 rows of the first one."* If it
+answers with real table names, you are done.
+
+### Coming from a setup made before 1.21
+
+Your existing configuration keeps working exactly as it is — no action
+required. But it is worth knowing what changed, because the old way is no
+longer the good way.
+
+The exposed connections used to live in the client's own config as
+`--connections <uuid>,<uuid>`, which is why adding a connection meant editing
+that file (per client) and restarting it. That list now lives in the app, in
+step 2 above.
+
+**A client launched with `--connections` is pinned to that list** and ignores
+the checkboxes, deliberately: an argument you typed outranks a checkbox, in
+both directions. To switch a client over to the checkboxes, remove the flag
+from its config — the command becomes a bare path — and tick what you want in
+Settings → MCP. To keep one client deliberately narrower than the rest, leave
+the flag; see [Pinning one client to a fixed
+set](#pinning-one-client-to-a-fixed-set).
+
+One behaviour change to know about: `run_query` no longer accepts statements
+that write. Those go to `run_write`, and the refusal says so.
+
 ## Getting the binary
 
 **Packaged installs (the normal case):** `huginndb-mcp` ships as a Tauri

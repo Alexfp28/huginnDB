@@ -162,6 +162,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   naming a real-but-unexposed connection now says exactly that — with the fix
   that applies to how the server was started — instead of "unknown connection".
 
+  `docs/MCP.md` opens with a **Quick start** — four steps, no terminal — and a
+  "coming from a setup made before 1.21" note, because the old muscle memory
+  (edit the client's JSON, paste a uuid) still *works* and would otherwise
+  never tell anyone it is no longer needed. Both are `##` sections, so the
+  in-app documentation viewer renders them as their own pages in both
+  languages for free.
+
   Under shared pools the app re-checks exposure itself on every bridged
   request rather than trusting the list the sidecar declared at handshake
   (`Exposure` in `src-tauri/src/bridge/server.rs`); a handshake happens once
