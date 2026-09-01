@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -53,9 +54,7 @@ export function EmptyTableDialog({
       }
     >
       <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          className="accent-brand"
+        <Checkbox
           checked={dontAsk}
           onChange={(e) => setDontAsk(e.target.checked)}
         />

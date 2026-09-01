@@ -41,6 +41,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MoreHorizontal, Plus, Search, Trash2, X } from "lucide-react";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { IconButton } from "@/components/ui/icon-button";
 import { ConnectionRailSection } from "@/components/connection/ConnectionRailSection";
 import { Button } from "@/components/ui/button";
@@ -271,12 +272,11 @@ export function ConnectionRail({
       )}
       <div className="mt-1 flex items-center gap-1.5 px-3 py-1">
         {selectableIds.length > 0 && scope !== "shared" && (
-          <input
-            type="checkbox"
+          <Checkbox
+            size="xs"
             checked={allSelectableChecked}
             onChange={() => selection.toggleAll(selectableIds)}
             aria-label={t("connections.selectAll")}
-            className="accent-brand h-3 w-3 cursor-pointer"
           />
         )}
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">

@@ -20,6 +20,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, Folder, FolderSync } from "lucide-react";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { isFromOrigin } from "@/lib/connection/origin";
 import type { RailSection } from "@/lib/connection/railSections";
 import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups";
@@ -58,9 +59,7 @@ export function McpConnectionTree({
         className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent/50"
       >
         <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            className="accent-brand"
+          <Checkbox
             checked={selected.has(p.id)}
             onChange={() => onToggle(p.id)}
           />
@@ -94,15 +93,14 @@ export function McpConnectionTree({
         return (
           <div key={key}>
             <div className="flex items-center gap-1.5 border-y border-border/60 bg-muted/30 px-3 py-1 first:border-t-0">
-              <input
-                type="checkbox"
+              <Checkbox
+                size="xs"
                 checked={allIn}
                 onChange={() => onToggleAll(section.ids)}
                 onClick={(e) => e.stopPropagation()}
                 aria-label={t("settings.mcp.selectAllInSection", {
                   section: section.label,
                 })}
-                className="accent-brand h-3 w-3 cursor-pointer"
               />
               <button
                 type="button"
@@ -131,16 +129,13 @@ export function McpConnectionTree({
                   return (
                     <div key={name}>
                       <div className="flex items-center gap-1.5 px-3 py-1">
-                        <input
-                          type="checkbox"
+                        <Checkbox
+                          size="xs"
                           checked={items.every((p) => selected.has(p.id))}
-                          onChange={() =>
-                            onToggleAll(items.map((p) => p.id))
-                          }
+                          onChange={() => onToggleAll(items.map((p) => p.id))}
                           aria-label={t("settings.mcp.selectAllInSection", {
                             section: name,
                           })}
-                          className="accent-brand h-3 w-3 cursor-pointer"
                         />
                         <button
                           type="button"

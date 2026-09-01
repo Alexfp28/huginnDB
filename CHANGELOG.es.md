@@ -134,6 +134,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Las casillas de verificación son ahora un único control.** Treinta y cinco
+  eran inputs nativos escritos punto por punto, en cuatro tamaños, con el estado
+  mixto («algunos seleccionados») cableado a mano mediante una ref en cuatro
+  sitios y varias sin ningún estilo — así que el mismo control se pintaba en
+  tres tamaños distintos y, hasta antes en esta misma versión, en dos colores
+  distintos. Todas pasan por un solo primitivo. Se nota donde una casilla no
+  tenía estilo: ahora coincide con el resto a 14px en azul de marca, y muestra
+  anillo de foco, algo que las desnudas nunca hicieron.
+
 - **Un botón que está trabajando ahora lo dice de forma coherente.** `Button`
   incorpora `loading`/`loadingLabel` y una prop `icon` para el icono inicial, y
   los quince pies de diálogo que montaban el estado de ocupado a mano —un

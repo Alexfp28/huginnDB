@@ -15,6 +15,7 @@ import { FolderSync } from "lucide-react";
 
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
+import { Checkbox } from "@/components/ui/checkbox";
 import { sqliteFileLabel } from "@/lib/connectionLabel";
 import { isFromOrigin } from "@/lib/connection/origin";
 import { cn } from "@/lib/utils";
@@ -93,8 +94,7 @@ export function ConnectionRailRow({
       {/* Checkbox reveals on hover / when selected; otherwise the live
           "connected" status dot occupies the same slot (grid convention). */}
       <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={checked}
           disabled={protectedRow}
           onChange={onToggle}
@@ -102,8 +102,8 @@ export function ConnectionRailRow({
           aria-label={t("connections.selectConnection", { name: profile.name })}
           title={protectedRow ? protectedTitle : undefined}
           className={cn(
-            "accent-brand",
-            protectedRow ? "cursor-not-allowed opacity-40" : "cursor-pointer",
+            // Only the visibility rule is left here: the disabled cursor and
+            // dimming come from the primitive.
             checked ? "inline-block" : "hidden group-hover/row:inline-block",
           )}
         />

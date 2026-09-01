@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
 
 import { Button } from "@/components/ui/button";
@@ -220,8 +221,7 @@ export function InferSchemaDialog({
             </div>
 
             <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={linkNow}
                 onChange={(e) => setLinkNow(e.target.checked)}
               />

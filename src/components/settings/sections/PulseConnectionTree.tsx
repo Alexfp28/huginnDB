@@ -20,6 +20,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, Folder, FolderSync } from "lucide-react";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { isFromOrigin } from "@/lib/connection/origin";
 import type { RailSection } from "@/lib/connection/railSections";
@@ -63,7 +64,10 @@ export function PulseConnectionTree({
             </span>
           )}
         </label>
-        <Switch checked={!!p.pulse_enabled} onCheckedChange={() => onToggle(p)} />
+        <Switch
+          checked={!!p.pulse_enabled}
+          onCheckedChange={() => onToggle(p)}
+        />
       </div>
     );
   }
@@ -73,20 +77,22 @@ export function PulseConnectionTree({
       {sections.map((section, i) => {
         const key = section.originId ?? `section:${i}`;
         const collapsed = !!foldedSections[key];
-        const all = [...section.ungrouped, ...section.groups.flatMap((g) => g.items)];
+        const all = [
+          ...section.ungrouped,
+          ...section.groups.flatMap((g) => g.items),
+        ];
         const allEnabled = all.length > 0 && all.every((p) => p.pulse_enabled);
         return (
           <div key={key}>
             <div className="flex items-center gap-1.5 border-y border-border/60 bg-muted/30 px-3 py-1 first:border-t-0">
-              <input
-                type="checkbox"
+              <Checkbox
+                size="xs"
                 checked={allEnabled}
                 onChange={() => onToggleAll(section.ids, !allEnabled)}
                 onClick={(e) => e.stopPropagation()}
                 aria-label={t("settings.pulse.enableAllInSection", {
                   section: section.label,
                 })}
-                className="accent-brand h-3 w-3 cursor-pointer"
               />
               <button
                 type="button"
@@ -116,8 +122,8 @@ export function PulseConnectionTree({
                   return (
                     <div key={name}>
                       <div className="flex items-center gap-1.5 px-3 py-1">
-                        <input
-                          type="checkbox"
+                        <Checkbox
+                          size="xs"
                           checked={groupEnabled}
                           onChange={() =>
                             onToggleAll(
@@ -128,7 +134,6 @@ export function PulseConnectionTree({
                           aria-label={t("settings.pulse.enableAllInSection", {
                             section: name,
                           })}
-                          className="accent-brand h-3 w-3 cursor-pointer"
                         />
                         <button
                           type="button"

@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
@@ -110,11 +111,9 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
                   key={p.id}
                   className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/50"
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={selected.has(p.id)}
                     onChange={() => toggle(p.id)}
-                    className="h-3.5 w-3.5 rounded accent-brand"
                   />
                   <span className="flex-1 truncate text-xs">{p.name}</span>
                   <span className="text-[10px] uppercase text-muted-foreground">
@@ -132,7 +131,10 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
               checked={includePasswords}
               onCheckedChange={setIncludePasswords}
             />
-            <Label htmlFor="include-passwords" className="cursor-pointer text-xs">
+            <Label
+              htmlFor="include-passwords"
+              className="cursor-pointer text-xs"
+            >
               {t("transfer.export.includePasswords")}
             </Label>
           </div>

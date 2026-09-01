@@ -20,6 +20,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, Plus, Trash2 } from "lucide-react";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -59,7 +60,8 @@ export function EnvironmentsPane({
 
   const active = useMemo(
     () =>
-      draft.environments.find((e) => e.sourceEnvironmentId === activeId) ?? null,
+      draft.environments.find((e) => e.sourceEnvironmentId === activeId) ??
+      null,
     [draft.environments, activeId],
   );
 
@@ -177,7 +179,10 @@ export function EnvironmentsPane({
                 {t("originEditor.environments.import")}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+            <DropdownMenuContent
+              align="end"
+              className="max-h-72 overflow-y-auto"
+            >
               {importable.map((env) => (
                 <DropdownMenuItem
                   key={env.sourceEnvironmentId}
@@ -361,9 +366,7 @@ export function EnvironmentsPane({
                         key={c.id}
                         className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 hover:bg-accent/30"
                       >
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 shrink-0 rounded accent-brand"
+                        <Checkbox
                           disabled={readOnly}
                           checked={active.connectionIds.includes(c.id)}
                           onChange={() =>

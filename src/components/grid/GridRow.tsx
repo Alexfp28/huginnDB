@@ -45,6 +45,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   toJson as rowToJson,
   toSqlInsert as rowToSqlInsert,
@@ -295,8 +296,7 @@ export const GridRow = memo(function GridRow({
           // lives on the gutter cell rather than the `<tr>` because
           // box-shadow on a table-row box is unreliable across
           // engines, while a `<td>` is an ordinary box.
-          isMultiSelected &&
-            "shadow-[inset_3px_0_0_0_var(--brand)]",
+          isMultiSelected && "shadow-[inset_3px_0_0_0_var(--brand)]",
         )}
         style={{
           ...cellStyle,
@@ -306,8 +306,7 @@ export const GridRow = memo(function GridRow({
       >
         {selectionEnabled && rowKey !== null ? (
           <>
-            <input
-              type="checkbox"
+            <Checkbox
               checked={isMultiSelected}
               onChange={() => callbacksRef.current.toggleRowKey(rowKey)}
               // Stop the row's onClick (a plain click there clears
@@ -315,7 +314,7 @@ export const GridRow = memo(function GridRow({
               onClick={(e) => e.stopPropagation()}
               aria-label={t("dataGrid.selectRow")}
               className={cn(
-                "accent-brand cursor-pointer align-middle",
+                "align-middle",
                 // Every checkbox stays visible while *any* row is
                 // selected, not just the selected ones: once the
                 // user is in a selecting mood the affordance for
@@ -358,8 +357,7 @@ export const GridRow = memo(function GridRow({
         // Ctrl/Cmd+click accelerator, the context-menu entry, and a
         // subtle hover affordance.
         const isFkCell =
-          !!onNavigateFk &&
-          !!columnInfoByName.get(meta.name)?.referenced_table;
+          !!onNavigateFk && !!columnInfoByName.get(meta.name)?.referenced_table;
         const isActiveCell = activeColIdx === cIdx;
         const isPinned = pinnedColumnSet.has(colName);
         const stickyLeft = isPinned ? pinnedLeftAcc : undefined;
@@ -455,8 +453,7 @@ export const GridRow = memo(function GridRow({
                     e.altKey &&
                     !e.shiftKey &&
                     onNavigateFk &&
-                    columnInfoByName.get(meta.name)
-                      ?.referenced_table &&
+                    columnInfoByName.get(meta.name)?.referenced_table &&
                     value !== null &&
                     value !== undefined
                   ) {
@@ -468,12 +465,7 @@ export const GridRow = memo(function GridRow({
                   // OS-style multi-selection; a plain click also
                   // opens the cell preview below.
                   callbacksRef.current.applyRowSelectionClick(rowKey, e);
-                  if (
-                    !e.ctrlKey &&
-                    !e.metaKey &&
-                    !e.shiftKey &&
-                    !e.altKey
-                  ) {
+                  if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
                     setSelectedCell({
                       rowValues,
                       colIndex: colIdx,
@@ -545,7 +537,10 @@ export const GridRow = memo(function GridRow({
                       <ContextMenuItem
                         onSelect={() =>
                           callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(selectedRows, "insert"),
+                            callbacksRef.current.bulkCopy(
+                              selectedRows,
+                              "insert",
+                            ),
                           )
                         }
                       >
@@ -554,7 +549,10 @@ export const GridRow = memo(function GridRow({
                       <ContextMenuItem
                         onSelect={() =>
                           callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(selectedRows, "update"),
+                            callbacksRef.current.bulkCopy(
+                              selectedRows,
+                              "update",
+                            ),
                           )
                         }
                       >
@@ -577,9 +575,9 @@ export const GridRow = memo(function GridRow({
                           onAddFilter({
                             column: meta.name,
                             op: "in",
-                            values: callbacksRef.current.selectedColumnValues(
-                              colIdx,
-                            ).values,
+                            values:
+                              callbacksRef.current.selectedColumnValues(colIdx)
+                                .values,
                           })
                         }
                       />
@@ -595,9 +593,9 @@ export const GridRow = memo(function GridRow({
                           onAddFilter({
                             column: meta.name,
                             op: "not_in",
-                            values: callbacksRef.current.selectedColumnValues(
-                              colIdx,
-                            ).values,
+                            values:
+                              callbacksRef.current.selectedColumnValues(colIdx)
+                                .values,
                           })
                         }
                       />
@@ -618,180 +616,178 @@ export const GridRow = memo(function GridRow({
                   )}
                 </>
               ) : (
-              <>
-              <ContextMenuLabel>
-                {meta.name}
-                {value === null ? " · NULL" : ""}
-              </ContextMenuLabel>
-              {isFkCell &&
-                value !== null &&
-                value !== undefined && (
-                  <>
-                    <ContextMenuAction
-                      icon={ArrowRightCircle}
-                      label={t("dataGrid.ctxGoToReference")}
-                      onSelect={() => onNavigateFk?.(meta.name, value)}
-                    />
-                    <ContextMenuSeparator />
-                  </>
-                )}
-              <ContextMenuAction
-                icon={Copy}
-                label={t("dataGrid.ctxCopy")}
-                onSelect={() =>
-                  callbacksRef.current.copyToClipboard(formatValue(value))
-                }
-              />
-              <ContextMenuAction
-                icon={ClipboardCopy}
-                label={t("dataGrid.ctxCopyWithColumn")}
-                onSelect={() =>
-                  callbacksRef.current.copyToClipboard(
-                    `${meta.name} = ${sqlLiteral(value)}`,
-                  )
-                }
-              />
-              {/* Row-level formatters. We keep the per-cell
+                <>
+                  <ContextMenuLabel>
+                    {meta.name}
+                    {value === null ? " · NULL" : ""}
+                  </ContextMenuLabel>
+                  {isFkCell && value !== null && value !== undefined && (
+                    <>
+                      <ContextMenuAction
+                        icon={ArrowRightCircle}
+                        label={t("dataGrid.ctxGoToReference")}
+                        onSelect={() => onNavigateFk?.(meta.name, value)}
+                      />
+                      <ContextMenuSeparator />
+                    </>
+                  )}
+                  <ContextMenuAction
+                    icon={Copy}
+                    label={t("dataGrid.ctxCopy")}
+                    onSelect={() =>
+                      callbacksRef.current.copyToClipboard(formatValue(value))
+                    }
+                  />
+                  <ContextMenuAction
+                    icon={ClipboardCopy}
+                    label={t("dataGrid.ctxCopyWithColumn")}
+                    onSelect={() =>
+                      callbacksRef.current.copyToClipboard(
+                        `${meta.name} = ${sqlLiteral(value)}`,
+                      )
+                    }
+                  />
+                  {/* Row-level formatters. We keep the per-cell
                   entries above (single value, single value
                   with column name) because they're the most
                   common path; this submenu covers the
                   less-frequent "I want the whole row" use
                   cases without bloating the top level. */}
-              <ContextMenuSub>
-                <ContextMenuSubTrigger>
-                  <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
-                  {t("dataGrid.ctxCopyRowAs")}
-                </ContextMenuSubTrigger>
-                <ContextMenuSubContent>
-                  <ContextMenuItem
-                    onSelect={() =>
-                      callbacksRef.current.copyToClipboard(
-                        rowToJson(rowValues, resultColumns),
-                      )
-                    }
-                  >
-                    JSON
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onSelect={() =>
-                      callbacksRef.current.copyToClipboard(
-                        rowToSqlInsert(
-                          rowValues,
-                          resultColumns,
-                          driver,
-                          tableName,
-                          tableSchema,
-                        ),
-                      )
-                    }
-                  >
-                    SQL INSERT
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onSelect={() =>
-                      callbacksRef.current.copyToClipboard(
-                        rowToSqlUpdate(
-                          rowValues,
-                          resultColumns,
-                          driver,
-                          tableName,
-                          tableSchema,
-                          pkColumnNames,
-                        ),
-                      )
-                    }
-                  >
-                    SQL UPDATE
-                  </ContextMenuItem>
-                </ContextMenuSubContent>
-              </ContextMenuSub>
-              <ContextMenuAction
-                icon={PanelRight}
-                label={t("dataGrid.openInSideEditor")}
-                onSelect={() =>
-                  callbacksRef.current.openSidePanelEditor(
-                    rowValues,
-                    meta,
-                    formatValue(value),
-                  )
-                }
-              />
-              {editable && onCellSave && (
-                <ContextMenuAction
-                  icon={Eraser}
-                  disabled={value === null}
-                  label={t("cellEditor.setNull")}
-                  onSelect={() =>
-                    onCellSave(rowValues, meta.name, null).catch(() => {})
-                  }
-                />
-              )}
-              {onAddFilter && (
-                <>
-                  <ContextMenuSeparator />
+                  <ContextMenuSub>
+                    <ContextMenuSubTrigger>
+                      <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
+                      {t("dataGrid.ctxCopyRowAs")}
+                    </ContextMenuSubTrigger>
+                    <ContextMenuSubContent>
+                      <ContextMenuItem
+                        onSelect={() =>
+                          callbacksRef.current.copyToClipboard(
+                            rowToJson(rowValues, resultColumns),
+                          )
+                        }
+                      >
+                        JSON
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onSelect={() =>
+                          callbacksRef.current.copyToClipboard(
+                            rowToSqlInsert(
+                              rowValues,
+                              resultColumns,
+                              driver,
+                              tableName,
+                              tableSchema,
+                            ),
+                          )
+                        }
+                      >
+                        SQL INSERT
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onSelect={() =>
+                          callbacksRef.current.copyToClipboard(
+                            rowToSqlUpdate(
+                              rowValues,
+                              resultColumns,
+                              driver,
+                              tableName,
+                              tableSchema,
+                              pkColumnNames,
+                            ),
+                          )
+                        }
+                      >
+                        SQL UPDATE
+                      </ContextMenuItem>
+                    </ContextMenuSubContent>
+                  </ContextMenuSub>
                   <ContextMenuAction
-                    icon={Filter}
-                    label={t("dataGrid.ctxFilterBy")}
+                    icon={PanelRight}
+                    label={t("dataGrid.openInSideEditor")}
                     onSelect={() =>
-                      onAddFilter(
-                        value === null
-                          ? { column: meta.name, op: "is_null" }
-                          : {
-                              column: meta.name,
-                              op: "eq",
-                              value,
-                            },
+                      callbacksRef.current.openSidePanelEditor(
+                        rowValues,
+                        meta,
+                        formatValue(value),
                       )
                     }
                   />
-                  <ContextMenuAction
-                    icon={FilterX}
-                    label={t("dataGrid.ctxFilterExcluding")}
-                    onSelect={() =>
-                      onAddFilter(
-                        value === null
-                          ? { column: meta.name, op: "is_not_null" }
-                          : {
-                              column: meta.name,
-                              op: "ne",
-                              value,
-                            },
-                      )
-                    }
-                  />
-                </>
-              )}
-              {(onInsertRow || onDuplicateRow) && (
-                <>
-                  <ContextMenuSeparator />
-                  {onInsertRow && (
+                  {editable && onCellSave && (
                     <ContextMenuAction
-                      icon={Plus}
-                      label={t("dataGrid.ctxInsertRow")}
-                      onSelect={() => onInsertRow()}
+                      icon={Eraser}
+                      disabled={value === null}
+                      label={t("cellEditor.setNull")}
+                      onSelect={() =>
+                        onCellSave(rowValues, meta.name, null).catch(() => {})
+                      }
                     />
                   )}
-                  {onDuplicateRow && (
-                    <ContextMenuAction
-                      icon={CopyPlus}
-                      label={t("dataGrid.ctxDuplicateRow")}
-                      onSelect={() => onDuplicateRow(rowValues)}
-                    />
+                  {onAddFilter && (
+                    <>
+                      <ContextMenuSeparator />
+                      <ContextMenuAction
+                        icon={Filter}
+                        label={t("dataGrid.ctxFilterBy")}
+                        onSelect={() =>
+                          onAddFilter(
+                            value === null
+                              ? { column: meta.name, op: "is_null" }
+                              : {
+                                  column: meta.name,
+                                  op: "eq",
+                                  value,
+                                },
+                          )
+                        }
+                      />
+                      <ContextMenuAction
+                        icon={FilterX}
+                        label={t("dataGrid.ctxFilterExcluding")}
+                        onSelect={() =>
+                          onAddFilter(
+                            value === null
+                              ? { column: meta.name, op: "is_not_null" }
+                              : {
+                                  column: meta.name,
+                                  op: "ne",
+                                  value,
+                                },
+                          )
+                        }
+                      />
+                    </>
+                  )}
+                  {(onInsertRow || onDuplicateRow) && (
+                    <>
+                      <ContextMenuSeparator />
+                      {onInsertRow && (
+                        <ContextMenuAction
+                          icon={Plus}
+                          label={t("dataGrid.ctxInsertRow")}
+                          onSelect={() => onInsertRow()}
+                        />
+                      )}
+                      {onDuplicateRow && (
+                        <ContextMenuAction
+                          icon={CopyPlus}
+                          label={t("dataGrid.ctxDuplicateRow")}
+                          onSelect={() => onDuplicateRow(rowValues)}
+                        />
+                      )}
+                    </>
+                  )}
+                  {onDeleteRow && (
+                    <>
+                      <ContextMenuSeparator />
+                      <ContextMenuAction
+                        icon={Trash2}
+                        destructive
+                        label={t("dataGrid.ctxDeleteRow")}
+                        onSelect={() => onDeleteRow(rowValues)}
+                      />
+                    </>
                   )}
                 </>
-              )}
-              {onDeleteRow && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuAction
-                    icon={Trash2}
-                    destructive
-                    label={t("dataGrid.ctxDeleteRow")}
-                    onSelect={() => onDeleteRow(rowValues)}
-                  />
-                </>
-              )}
-              </>
               )}
             </ContextMenuContent>
           </ContextMenu>

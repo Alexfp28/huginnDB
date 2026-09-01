@@ -19,6 +19,7 @@
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, Folder, FolderSync } from "lucide-react";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConnectionRailRow } from "@/components/connection/ConnectionRailRow";
 import type { GroupCollapse } from "@/lib/connection/useConnectionGroups";
 import type { RailSection } from "@/lib/connection/railSections";
@@ -124,15 +125,15 @@ export function ConnectionRailSection({
         {/* Only a section the user owns gets a select-all: an origin's rows are
             refused by the bulk delete, so the control would do nothing. */}
         {!section.readOnly && (
-          <input
-            type="checkbox"
+          <Checkbox
+            size="xs"
+            className="mr-1"
             checked={allChecked}
             onChange={() => onToggleAll(section.ids)}
             onClick={(e) => e.stopPropagation()}
             aria-label={t("connections.selectAllSection", {
               section: section.label,
             })}
-            className="accent-brand mr-1 h-3 w-3 cursor-pointer"
           />
         )}
         <button

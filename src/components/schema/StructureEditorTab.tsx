@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
 import { IconButton } from "@/components/ui/icon-button";
@@ -716,9 +717,7 @@ function ColumnsEditor({
                   </>
                 )}
                 <td className="px-1 py-0.5 text-center">
-                  <input
-                    type="checkbox"
-                    className="accent-brand"
+                  <Checkbox
                     checked={c.nullable}
                     onChange={(e) =>
                       onPatch(c._key, { nullable: e.target.checked })
@@ -726,9 +725,7 @@ function ColumnsEditor({
                   />
                 </td>
                 <td className="px-1 py-0.5 text-center">
-                  <input
-                    type="checkbox"
-                    className="accent-brand"
+                  <Checkbox
                     checked={c.isPrimaryKey}
                     onChange={(e) =>
                       onPatch(c._key, { isPrimaryKey: e.target.checked })
@@ -736,9 +733,7 @@ function ColumnsEditor({
                   />
                 </td>
                 <td className="px-1 py-0.5 text-center">
-                  <input
-                    type="checkbox"
-                    className="accent-brand"
+                  <Checkbox
                     checked={!!c.autoIncrement}
                     onChange={(e) =>
                       onPatch(c._key, { autoIncrement: e.target.checked })
@@ -968,9 +963,7 @@ function UnsignedZerofillCheckbox({
     .find((ty) => ty.name === parsed.baseType);
   const capable = !!selected?.unsignedCapable;
   return (
-    <input
-      type="checkbox"
-      className="accent-brand disabled:opacity-30"
+    <Checkbox
       disabled={!capable}
       checked={capable && parsed[field]}
       onChange={(e) =>
@@ -1027,9 +1020,7 @@ function IndexesEditor({
             className="h-6 flex-1 font-mono text-xs"
           />
           <label className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              className="accent-brand"
+            <Checkbox
               checked={idx.unique}
               onChange={(e) => patch(i, { unique: e.target.checked })}
             />

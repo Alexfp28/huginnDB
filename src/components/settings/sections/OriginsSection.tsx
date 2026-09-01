@@ -23,6 +23,7 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { IconButton } from "@/components/ui/icon-button";
 import { api } from "@/lib/tauri";
 import { pickJsonFile, pickJsonSavePath } from "@/lib/dialogs";
@@ -494,9 +495,8 @@ export function OriginsSection() {
             {t("origins.passphraseKeepHint")}
           </p>
           <label className="flex items-start gap-2 text-[11px]">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-3.5 w-3.5 rounded accent-brand"
+            <Checkbox
+              className="mt-0.5"
               checked={edit.role === "publisher"}
               onChange={(e) => {
                 // Reversible without ceremony, granted with it.

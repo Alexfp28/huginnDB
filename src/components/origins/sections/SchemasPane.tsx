@@ -19,12 +19,9 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
-import type {
-  JsonSchemaBinding,
-  JsonSchemaEntry,
-  OriginDraft,
-} from "@/types";
+import type { JsonSchemaBinding, JsonSchemaEntry, OriginDraft } from "@/types";
 
 /** How a binding reads in one line: the axes it pins, most specific first. */
 function bindingLabel(b: JsonSchemaBinding): string {
@@ -128,9 +125,8 @@ export function SchemasPane({
             return (
               <div key={schema.id} className="p-2.5">
                 <label className="flex cursor-pointer items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-brand"
+                  <Checkbox
+                    className="mt-0.5"
                     disabled={readOnly}
                     checked={on}
                     onChange={() => toggle(schema)}
@@ -156,9 +152,8 @@ export function SchemasPane({
                           key={b.id}
                           className="flex cursor-pointer items-center gap-2"
                         >
-                          <input
-                            type="checkbox"
-                            className="h-3 w-3 shrink-0 rounded accent-brand"
+                          <Checkbox
+                            size="xs"
                             disabled={readOnly}
                             checked={draft.bindings.some((x) => x.id === b.id)}
                             onChange={() => toggleBinding(b)}

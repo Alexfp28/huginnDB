@@ -19,6 +19,7 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
 import { ImagePlus, X } from "lucide-react";
 import {
@@ -330,9 +331,7 @@ export function EnvironmentEditorDialog() {
               })}
             </div>
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-brand"
+              <Checkbox
                 checked={replicate.connections}
                 onChange={(e) =>
                   setReplicate({ ...replicate, connections: e.target.checked })
@@ -341,9 +340,7 @@ export function EnvironmentEditorDialog() {
               {t("environments.replicateConnections")}
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="accent-brand"
+              <Checkbox
                 checked={replicate.layout}
                 onChange={(e) =>
                   setReplicate({ ...replicate, layout: e.target.checked })

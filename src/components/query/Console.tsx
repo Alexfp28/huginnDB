@@ -29,13 +29,17 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useLogs, type LogKindFilter } from "@/stores/query/logs";
 import { useFeedbackDialog } from "@/stores/dialogs/feedbackDialog";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectEditorPrefs,
+} from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import type { LogEntry } from "@/types";
 import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
@@ -170,7 +174,11 @@ export function Console() {
           onClick={() => setPaused(!paused)}
           title={paused ? t("console.resume") : t("console.pause")}
         >
-          {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+          {paused ? (
+            <Play className="h-3.5 w-3.5" />
+          ) : (
+            <Pause className="h-3.5 w-3.5" />
+          )}
         </Button>
         <Button
           size="icon"
@@ -213,20 +221,18 @@ export function Console() {
         </Button>
         <div className="mx-1 h-5 w-px bg-border" />
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-          <input
-            type="checkbox"
+          <Checkbox
+            size="xs"
             checked={kinds.sql}
             onChange={() => toggleKind("sql")}
-            className="h-3 w-3 accent-brand"
           />
           {t("console.kindSql")}
         </label>
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-          <input
-            type="checkbox"
+          <Checkbox
+            size="xs"
             checked={kinds.connection}
             onChange={() => toggleKind("connection")}
-            className="h-3 w-3 accent-brand"
           />
           {t("console.kindConnection")}
         </label>
@@ -302,7 +308,9 @@ export function Console() {
                 variant="ghost"
                 className="ml-auto h-5 gap-1 px-1.5 text-[11px]"
                 onClick={() =>
-                  useFeedbackDialog.getState().openWith(errorReportPrefill(selected))
+                  useFeedbackDialog
+                    .getState()
+                    .openWith(errorReportPrefill(selected))
                 }
                 title={t("feedback.reportThisError")}
               >
@@ -347,9 +355,7 @@ interface ConsoleRowProps {
 }
 
 function ConsoleRow({ entry, selected, onClick }: ConsoleRowProps) {
-  const preview = entry.sql
-    ? previewSql(entry.sql)
-    : (entry.message ?? "");
+  const preview = entry.sql ? previewSql(entry.sql) : (entry.message ?? "");
   const isError = entry.error != null;
 
   return (

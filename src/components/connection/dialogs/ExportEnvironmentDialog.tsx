@@ -17,9 +17,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
 import { api } from "@/lib/tauri";
-import { useEnvironments, environmentLabel } from "@/stores/session/environments";
+import {
+  useEnvironments,
+  environmentLabel,
+} from "@/stores/session/environments";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -147,15 +151,15 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
                   key={env.id}
                   className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/50"
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={selected.has(env.id)}
                     onChange={() => toggle(env.id)}
-                    className="h-3.5 w-3.5 rounded accent-brand"
                   />
                   <span
                     className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: env.color || "var(--muted-foreground)" }}
+                    style={{
+                      backgroundColor: env.color || "var(--muted-foreground)",
+                    }}
                   />
                   <span className="flex-1 truncate text-xs">
                     {environmentLabel(env, defaultName)}
@@ -172,7 +176,10 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
               checked={includePasswords}
               onCheckedChange={setIncludePasswords}
             />
-            <Label htmlFor="export-env-include-passwords" className="cursor-pointer text-xs">
+            <Label
+              htmlFor="export-env-include-passwords"
+              className="cursor-pointer text-xs"
+            >
               {t("transfer.export.includePasswords")}
             </Label>
           </div>
@@ -217,11 +224,17 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
           >
             {t("common.cancel")}
           </Button>
-          <Button size="sm" onClick={handleExport} disabled={!canExport || loading}>
+          <Button
+            size="sm"
+            onClick={handleExport}
+            disabled={!canExport || loading}
+          >
             <Download className="mr-1.5 h-3.5 w-3.5" />
             {loading
               ? t("transfer.export.exporting")
-              : t("transfer.exportEnvironment.exportButton", { count: selected.size })}
+              : t("transfer.exportEnvironment.exportButton", {
+                  count: selected.size,
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>

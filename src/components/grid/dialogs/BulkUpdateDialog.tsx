@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -41,7 +42,13 @@ import {
   VALUELESS_OPS,
   type FilterConditionDraft,
 } from "./filterConditions";
-import type { BulkUpdatePreview, ColumnFilter, ColumnInfo, FilterOp, RowValue } from "@/types";
+import type {
+  BulkUpdatePreview,
+  ColumnFilter,
+  ColumnInfo,
+  FilterOp,
+  RowValue,
+} from "@/types";
 
 /** Same rationale as `AdvancedFilterDialog`'s `LIST_OPS`: `in`/`not_in`
  *  filters carry a `values` array this row editor has no field for, so they
@@ -102,21 +109,34 @@ export function BulkUpdateDialog({
   const typeByColumn = new Map(columns.map((c) => [c.name, c.data_type]));
 
   const patchMatchRow = (key: number, patch: Partial<FilterConditionDraft>) =>
-    setMatchRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    setMatchRows((prev) =>
+      prev.map((r) => (r.key === key ? { ...r, ...patch } : r)),
+    );
   const removeMatchRow = (key: number) =>
     setMatchRows((prev) => prev.filter((r) => r.key !== key));
   const addMatchRow = () =>
     setMatchRows((prev) => [
       ...prev,
-      { key: nextKey++, column: columnNames[0] ?? "", op: "eq", value: "", value2: "" },
+      {
+        key: nextKey++,
+        column: columnNames[0] ?? "",
+        op: "eq",
+        value: "",
+        value2: "",
+      },
     ]);
 
   const patchSetRow = (key: number, patch: Partial<SetFieldDraft>) =>
-    setSetRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    setSetRows((prev) =>
+      prev.map((r) => (r.key === key ? { ...r, ...patch } : r)),
+    );
   const removeSetRow = (key: number) =>
     setSetRows((prev) => prev.filter((r) => r.key !== key));
   const addSetRow = () =>
-    setSetRows((prev) => [...prev, { key: nextKey++, column: columnNames[0] ?? "", value: "" }]);
+    setSetRows((prev) => [
+      ...prev,
+      { key: nextKey++, column: columnNames[0] ?? "", value: "" },
+    ]);
 
   function buildFilters(): ColumnFilter[] {
     return matchRows
@@ -127,8 +147,13 @@ export function BulkUpdateDialog({
         return {
           column: r.column,
           op: r.op,
-          value: valueless ? undefined : coerceFilterValue(r.value, r.op, dataType),
-          value2: r.op === "between" ? coerceFilterValue(r.value2, r.op, dataType) : undefined,
+          value: valueless
+            ? undefined
+            : coerceFilterValue(r.value, r.op, dataType),
+          value2:
+            r.op === "between"
+              ? coerceFilterValue(r.value2, r.op, dataType)
+              : undefined,
         };
       });
   }
@@ -255,8 +280,7 @@ export function BulkUpdateDialog({
             </Button>
             {!hasMatch && (
               <label className="mt-2 flex items-center gap-1.5 text-xs text-destructive">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={confirmUnfiltered}
                   onChange={(e) => setConfirmUnfiltered(e.target.checked)}
                 />
@@ -286,7 +310,11 @@ export function BulkUpdateDialog({
                       </SelectTrigger>
                       <SelectContent>
                         {columnNames.map((name) => (
-                          <SelectItem key={name} value={name} className="text-xs">
+                          <SelectItem
+                            key={name}
+                            value={name}
+                            className="text-xs"
+                          >
                             {name}
                           </SelectItem>
                         ))}
@@ -296,8 +324,12 @@ export function BulkUpdateDialog({
                       size="xs"
                       className="flex-1"
                       value={r.value}
-                      placeholder={t("tableData.bulkUpdate.setValuePlaceholder")}
-                      onChange={(e) => patchSetRow(r.key, { value: e.target.value })}
+                      placeholder={t(
+                        "tableData.bulkUpdate.setValuePlaceholder",
+                      )}
+                      onChange={(e) =>
+                        patchSetRow(r.key, { value: e.target.value })
+                      }
                     />
                     <Button
                       type="button"
@@ -352,7 +384,9 @@ export function BulkUpdateDialog({
             </div>
           )}
 
-          {applyError && <p className="text-xs text-destructive">{applyError}</p>}
+          {applyError && (
+            <p className="text-xs text-destructive">{applyError}</p>
+          )}
         </div>
 
         <DialogFooter>

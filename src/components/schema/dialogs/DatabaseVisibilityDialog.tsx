@@ -25,6 +25,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -72,10 +73,12 @@ export function DatabaseVisibilityDialog({
   });
   // `selected ?? databases` as the seed: no filter at either layer means
   // "everything", which is what the checklist must open showing.
-  const { selected: sel, allSelected, toggle, toggleAll } = useMultiSelect(
-    databases,
-    selected,
-  );
+  const {
+    selected: sel,
+    allSelected,
+    toggle,
+    toggleAll,
+  } = useMultiSelect(databases, selected);
   const { submitting, error, run } = useAsyncSubmit();
 
   /** Write the launch state so the override survives a restart / switch. */
@@ -111,7 +114,8 @@ export function DatabaseVisibilityDialog({
         // "Show everything here" on top of a connection that already shows
         // everything is an override that overrides nothing — drop the key
         // instead of persisting a no-op that outlives the profile's default.
-        const local = value === null && fromProfile === null ? undefined : value;
+        const local =
+          value === null && fromProfile === null ? undefined : value;
         useUi.getState().setDatabaseVisibilityFor(profileId, local);
         await persist();
       }
@@ -207,12 +211,7 @@ export function DatabaseVisibilityDialog({
               key={name}
               className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/50"
             >
-              <input
-                type="checkbox"
-                checked={sel.has(name)}
-                onChange={() => toggle(name)}
-                className="h-3.5 w-3.5 rounded accent-brand"
-              />
+              <Checkbox checked={sel.has(name)} onChange={() => toggle(name)} />
               <span className="flex-1 truncate text-xs">{name}</span>
             </label>
           ))}

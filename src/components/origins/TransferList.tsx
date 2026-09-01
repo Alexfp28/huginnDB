@@ -25,6 +25,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -107,9 +108,7 @@ function Panel({
               className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 hover:bg-accent/30"
               onDoubleClick={() => onCommit(item.id)}
             >
-              <input
-                type="checkbox"
-                className="h-3.5 w-3.5 shrink-0 rounded accent-brand"
+              <Checkbox
                 checked={selected.has(item.id)}
                 onChange={() => onToggle(item.id)}
               />

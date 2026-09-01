@@ -119,6 +119,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Checkboxes are one control now.** Thirty-five of them were native inputs
+  written out per call site, in four sizes, with the mixed ("some selected")
+  state hand-wired through a ref in four places and several carrying no styling
+  at all — so the same control rendered at three different sizes and, until
+  earlier in this release, in two different colours. They all go through one
+  primitive. Visible where a checkbox previously had no styling: it now matches
+  the rest at 14px in brand blue, and it shows a focus ring, which the bare ones
+  never did.
+
 - **A button that is working now says so consistently.** `Button` grew
   `loading`/`loadingLabel` and a leading `icon` prop, and the fifteen footers
   that assembled a busy state by hand — a `Loader2` child with its own

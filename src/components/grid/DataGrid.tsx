@@ -27,6 +27,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { Checkbox } from "@/components/ui/checkbox";
 import { tableKey } from "@/stores/session/schema";
 import { Inbox, Loader2, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -55,10 +56,7 @@ import {
   GridToolbar,
   type GridToolbarItem,
 } from "@/components/grid/GridToolbar";
-import {
-  GridRow,
-  type GridRowCallbacks,
-} from "@/components/grid/GridRow";
+import { GridRow, type GridRowCallbacks } from "@/components/grid/GridRow";
 import { copyToClipboard } from "@/lib/grid/clipboard";
 import { toBulk } from "@/lib/grid/copyFormats";
 import {
@@ -925,7 +923,6 @@ export function DataGrid({
     });
   }
 
-
   return (
     // `relative` allows CellPreview to be positioned absolute within this container.
     <div className="relative flex h-full flex-col">
@@ -957,348 +954,364 @@ export function DataGrid({
         <div
           ref={scrollRef}
           className="h-full overflow-auto outline-none"
-        // Anything bound at `grid` scope is only audible from in here.
-        data-kb-scope="grid"
-        // Focusable so it can receive keyboard navigation; a cell click focuses
-        // it (below). The active-cell ring is the visible focus affordance, so
-        // the container's own outline is suppressed.
-        tabIndex={0}
-        onKeyDown={viewMode === "list" ? undefined : handleGridKeyDown}
-        // Close the cell preview when clicking outside the table cells.
-        onClick={() => setSelectedCell(null)}
-      >
-        {viewMode === "list" ? (
-          <DocumentListView
-            columns={result.columns}
-            rows={visibleRows}
-            rowTypes={result.row_types}
-            nullDisplay={nullDisplay}
-            zebraStripes={zebraStripes}
-            fontSize={cellStyle.fontSize}
-            expandNested={listExpandNested}
-            showTypes={listShowTypes}
-            lineNumbers={listLineNumbers}
-            onFieldSave={editable ? onFieldSave : undefined}
-            onFieldDelete={editable ? onFieldDelete : undefined}
-            onDeleteRow={onDeleteRow}
-            onExpandField={(rowValues, path, value, type) =>
-              openHeavyEditor(
-                rowValues,
-                // Synthetic column: the heavy editor only reads the name (as
-                // its title) and the commit is routed by `field` below.
-                { name: path.join("."), data_type: type },
-                value,
-                { path, type },
-              )
-            }
-            copyToClipboard={copyToClipboard}
-            emptyLabel={t("dataGrid.noRows")}
-            draft={
-              draftRow && onDraftCellChange && onDraftCommit && onDraftCancel
-                ? {
-                    row: draftRow,
-                    columns: draftColumns ?? [],
-                    // Same switch the cards use: only the MongoDB tab supplies
-                    // the `$unset` callback, and only there is a field's type a
-                    // per-document choice.
-                    documentMode: !!onFieldDelete,
-                    bitDisplay,
-                    connectionId,
-                    tableSchema,
-                    focusRef: firstDraftInputRef,
-                    onChange: onDraftCellChange,
-                    onCommit: onDraftCommit,
-                    onCancel: onDraftCancel,
-                  }
-                : null
-            }
-          />
-        ) : (
-        <>
-        {/* `select-none`: row range-select via Shift+Click otherwise also
+          // Anything bound at `grid` scope is only audible from in here.
+          data-kb-scope="grid"
+          // Focusable so it can receive keyboard navigation; a cell click focuses
+          // it (below). The active-cell ring is the visible focus affordance, so
+          // the container's own outline is suppressed.
+          tabIndex={0}
+          onKeyDown={viewMode === "list" ? undefined : handleGridKeyDown}
+          // Close the cell preview when clicking outside the table cells.
+          onClick={() => setSelectedCell(null)}
+        >
+          {viewMode === "list" ? (
+            <DocumentListView
+              columns={result.columns}
+              rows={visibleRows}
+              rowTypes={result.row_types}
+              nullDisplay={nullDisplay}
+              zebraStripes={zebraStripes}
+              fontSize={cellStyle.fontSize}
+              expandNested={listExpandNested}
+              showTypes={listShowTypes}
+              lineNumbers={listLineNumbers}
+              onFieldSave={editable ? onFieldSave : undefined}
+              onFieldDelete={editable ? onFieldDelete : undefined}
+              onDeleteRow={onDeleteRow}
+              onExpandField={(rowValues, path, value, type) =>
+                openHeavyEditor(
+                  rowValues,
+                  // Synthetic column: the heavy editor only reads the name (as
+                  // its title) and the commit is routed by `field` below.
+                  { name: path.join("."), data_type: type },
+                  value,
+                  { path, type },
+                )
+              }
+              copyToClipboard={copyToClipboard}
+              emptyLabel={t("dataGrid.noRows")}
+              draft={
+                draftRow && onDraftCellChange && onDraftCommit && onDraftCancel
+                  ? {
+                      row: draftRow,
+                      columns: draftColumns ?? [],
+                      // Same switch the cards use: only the MongoDB tab supplies
+                      // the `$unset` callback, and only there is a field's type a
+                      // per-document choice.
+                      documentMode: !!onFieldDelete,
+                      bitDisplay,
+                      connectionId,
+                      tableSchema,
+                      focusRef: firstDraftInputRef,
+                      onChange: onDraftCellChange,
+                      onCommit: onDraftCommit,
+                      onCancel: onDraftCancel,
+                    }
+                  : null
+              }
+            />
+          ) : (
+            <>
+              {/* `select-none`: row range-select via Shift+Click otherwise also
             drags a native text selection across the rows (issue #30). Inline
             cell-edit inputs keep their own selection (form controls override
             an ancestor's user-select), and copying goes through the row
             context menu / cell preview panel rather than raw text selection. */}
-        <table className="w-full table-fixed select-none border-separate border-spacing-0 text-left">
-          <thead
-            className={
-              stickyHeader ? "sticky top-0 z-10 bg-card" : "bg-card"
-            }
-          >
-            {table.getHeaderGroups().map((hg) => {
-              // Left offset of each pinned column's sticky `<th>`, in the
-              // columns' own display order (not pin order) — the gutter is
-              // always pinned first, so every pinned data column starts
-              // counting from its width.
-              const pinnedLeftById = new Map<string, number>();
-              let pinnedLeftAcc = GRID_GUTTER_WIDTH;
-              for (const h of hg.headers) {
-                if (!pinnedColumnSet.has(h.column.id)) continue;
-                pinnedLeftById.set(h.column.id, pinnedLeftAcc);
-                pinnedLeftAcc += h.getSize();
-              }
-              return (
-              <tr key={hg.id}>
-                <th
-                  className="sticky left-0 z-20 border-b border-border border-r border-r-border bg-card px-2 py-1 font-semibold uppercase tracking-wider text-muted-foreground"
-                  style={{ ...headerStyle, width: GRID_GUTTER_WIDTH }}
+              <table className="w-full table-fixed select-none border-separate border-spacing-0 text-left">
+                <thead
+                  className={
+                    stickyHeader ? "sticky top-0 z-10 bg-card" : "bg-card"
+                  }
                 >
-                  {selectionEnabled ? (
-                    <input
-                      type="checkbox"
-                      // Callback ref: native checkboxes only expose the
-                      // "indeterminate" (dash) state via JS, so we set it on
-                      // every render from `someSelected`.
-                      ref={(el) => {
-                        if (el) el.indeterminate = someSelected;
-                      }}
-                      checked={allSelected}
-                      onChange={toggleSelectAll}
-                      aria-label={
-                        allSelected
-                          ? t("dataGrid.deselectAll")
-                          : t("dataGrid.selectAll")
-                      }
-                      title={
-                        allSelected
-                          ? t("dataGrid.deselectAll")
-                          : t("dataGrid.selectAll")
-                      }
-                      className="accent-brand cursor-pointer align-middle"
-                    />
-                  ) : (
-                    "#"
-                  )}
-                </th>
-                {hg.headers.map((h) => {
-                  const isPinned = pinnedColumnSet.has(h.column.id);
-                  return (
-                  <th
-                    key={h.id}
-                    data-col-id={h.column.id}
-                    className={cn(
-                      // Slightly elevated surface (`card` over the grid's
-                      // `background`) + semibold, per the brand language: the
-                      // header is a label strip, not another data row.
-                      "group/th relative border-b border-border border-r border-r-border bg-card px-2 py-1 font-semibold uppercase tracking-wider text-muted-foreground transition-colors duration-150",
-                      resizingColId === h.column.id && "bg-brand/10",
-                      // Pinned columns stick to the offset accumulated above;
-                      // z-20 so their (already-opaque) bg-card paints over
-                      // whatever scrolls underneath, and over the plain
-                      // sticky <thead>'s own z-10.
-                      isPinned && "sticky z-20",
-                    )}
-                    style={{
-                      ...headerStyle,
-                      width: h.getSize(),
-                      ...(isPinned
-                        ? { left: pinnedLeftById.get(h.column.id) }
-                        : {}),
-                    }}
-                  >
-                    <div className="flex items-center gap-1 overflow-hidden">
-                      <div className="min-w-0 flex-1 overflow-hidden">
-                        {flexRender(h.column.columnDef.header, h.getContext())}
-                      </div>
-                      {/* Pin toggle — always visible once pinned (so it
+                  {table.getHeaderGroups().map((hg) => {
+                    // Left offset of each pinned column's sticky `<th>`, in the
+                    // columns' own display order (not pin order) — the gutter is
+                    // always pinned first, so every pinned data column starts
+                    // counting from its width.
+                    const pinnedLeftById = new Map<string, number>();
+                    let pinnedLeftAcc = GRID_GUTTER_WIDTH;
+                    for (const h of hg.headers) {
+                      if (!pinnedColumnSet.has(h.column.id)) continue;
+                      pinnedLeftById.set(h.column.id, pinnedLeftAcc);
+                      pinnedLeftAcc += h.getSize();
+                    }
+                    return (
+                      <tr key={hg.id}>
+                        <th
+                          className="sticky left-0 z-20 border-b border-border border-r border-r-border bg-card px-2 py-1 font-semibold uppercase tracking-wider text-muted-foreground"
+                          style={{ ...headerStyle, width: GRID_GUTTER_WIDTH }}
+                        >
+                          {selectionEnabled ? (
+                            <Checkbox
+                              className="align-middle"
+                              ref={(el) => {
+                                if (el) el.indeterminate = someSelected;
+                              }}
+                              checked={allSelected}
+                              onChange={toggleSelectAll}
+                              aria-label={
+                                allSelected
+                                  ? t("dataGrid.deselectAll")
+                                  : t("dataGrid.selectAll")
+                              }
+                              title={
+                                allSelected
+                                  ? t("dataGrid.deselectAll")
+                                  : t("dataGrid.selectAll")
+                              }
+                            />
+                          ) : (
+                            "#"
+                          )}
+                        </th>
+                        {hg.headers.map((h) => {
+                          const isPinned = pinnedColumnSet.has(h.column.id);
+                          return (
+                            <th
+                              key={h.id}
+                              data-col-id={h.column.id}
+                              className={cn(
+                                // Slightly elevated surface (`card` over the grid's
+                                // `background`) + semibold, per the brand language: the
+                                // header is a label strip, not another data row.
+                                "group/th relative border-b border-border border-r border-r-border bg-card px-2 py-1 font-semibold uppercase tracking-wider text-muted-foreground transition-colors duration-150",
+                                resizingColId === h.column.id && "bg-brand/10",
+                                // Pinned columns stick to the offset accumulated above;
+                                // z-20 so their (already-opaque) bg-card paints over
+                                // whatever scrolls underneath, and over the plain
+                                // sticky <thead>'s own z-10.
+                                isPinned && "sticky z-20",
+                              )}
+                              style={{
+                                ...headerStyle,
+                                width: h.getSize(),
+                                ...(isPinned
+                                  ? { left: pinnedLeftById.get(h.column.id) }
+                                  : {}),
+                              }}
+                            >
+                              <div className="flex items-center gap-1 overflow-hidden">
+                                <div className="min-w-0 flex-1 overflow-hidden">
+                                  {flexRender(
+                                    h.column.columnDef.header,
+                                    h.getContext(),
+                                  )}
+                                </div>
+                                {/* Pin toggle — always visible once pinned (so it
                           reads as a persistent state, not a hover-only
                           affordance), otherwise revealed on hover like the
                           resize handle below. */}
-                      <button
-                        type="button"
-                        tabIndex={-1}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          togglePin(h.column.id);
-                        }}
-                        title={
-                          isPinned
-                            ? t("dataGrid.unpinColumn")
-                            : t("dataGrid.pinColumn")
-                        }
-                        className={cn(
-                          "shrink-0 rounded p-0.5 text-muted-foreground/70 hover:text-foreground",
-                          isPinned
-                            ? "inline-block text-brand"
-                            : "hidden group-hover/th:inline-block",
-                        )}
-                      >
-                        <Pin className={cn("h-3 w-3", isPinned && "fill-current")} />
-                      </button>
-                    </div>
-                    {/* Drag handle — thin strip on the column's trailing edge.
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    togglePin(h.column.id);
+                                  }}
+                                  title={
+                                    isPinned
+                                      ? t("dataGrid.unpinColumn")
+                                      : t("dataGrid.pinColumn")
+                                  }
+                                  className={cn(
+                                    "shrink-0 rounded p-0.5 text-muted-foreground/70 hover:text-foreground",
+                                    isPinned
+                                      ? "inline-block text-brand"
+                                      : "hidden group-hover/th:inline-block",
+                                  )}
+                                >
+                                  <Pin
+                                    className={cn(
+                                      "h-3 w-3",
+                                      isPinned && "fill-current",
+                                    )}
+                                  />
+                                </button>
+                              </div>
+                              {/* Drag handle — thin strip on the column's trailing edge.
                         `select-none` stops text selection while dragging. */}
-                    <div
-                      onMouseDown={(e) =>
-                        startColumnResize(e, h.column.id, h.column.getSize())
-                      }
-                      // Double-click = fit the column to its content
-                      // (HeidiSQL), Ctrl/Cmd held = fit every column at once.
-                      // Routed through `click` + `detail`, not `onDoubleClick`:
-                      // some Linux WebKitGTK builds never fire `dblclick`
-                      // inside a `user-select: none` subtree (this table sets
-                      // it globally), the same quirk the cells work around —
-                      // see the `e.detail >= 2` note in `GridRow`.
-                      onClick={(e) => {
-                        if (e.detail < 2) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        autoFitColumns(
-                          e.ctrlKey || e.metaKey
-                            ? result.columns.map((c) => c.name)
-                            : [h.column.id],
-                        );
-                      }}
-                      title={t("dataGrid.resizeHandleHint")}
-                      className={cn(
-                        "absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-brand/50",
-                        resizingColId === h.column.id && "bg-brand",
-                      )}
-                    />
-                  </th>
-                  );
-                })}
-                {/* Filler column: absorbs any leftover width itself, so
+                              <div
+                                onMouseDown={(e) =>
+                                  startColumnResize(
+                                    e,
+                                    h.column.id,
+                                    h.column.getSize(),
+                                  )
+                                }
+                                // Double-click = fit the column to its content
+                                // (HeidiSQL), Ctrl/Cmd held = fit every column at once.
+                                // Routed through `click` + `detail`, not `onDoubleClick`:
+                                // some Linux WebKitGTK builds never fire `dblclick`
+                                // inside a `user-select: none` subtree (this table sets
+                                // it globally), the same quirk the cells work around —
+                                // see the `e.detail >= 2` note in `GridRow`.
+                                onClick={(e) => {
+                                  if (e.detail < 2) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  autoFitColumns(
+                                    e.ctrlKey || e.metaKey
+                                      ? result.columns.map((c) => c.name)
+                                      : [h.column.id],
+                                  );
+                                }}
+                                title={t("dataGrid.resizeHandleHint")}
+                                className={cn(
+                                  "absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-brand/50",
+                                  resizingColId === h.column.id && "bg-brand",
+                                )}
+                              />
+                            </th>
+                          );
+                        })}
+                        {/* Filler column: absorbs any leftover width itself, so
                     real columns never get proportionally stretched by the
                     browser's fixed-table-layout algorithm (which otherwise
                     makes a resized column's rendered width outrun the
                     cursor — see `startColumnResize`). Needs a matching
                     empty cell in every row below, not just here. */}
-                <th className="border-b border-border bg-card" />
-              </tr>
-              );
-            })}
-          </thead>
-          <tbody>
-            {draftRow && (
-              <DraftRowView
-                rowRef={draftRowRef}
-                firstInputRef={firstDraftInputRef}
-                columns={result.columns}
-                draftColumns={draftColumns ?? []}
-                draft={draftRow}
-                connectionId={connectionId}
-                tableSchema={tableSchema}
-                tableName={tableName}
-                bitDisplay={bitDisplay}
-                onChange={onDraftCellChange}
-                onCommit={onDraftCommit}
-                onCancel={onDraftCancel}
-              />
-            )}
-            {(() => {
-              const virtualRows = rowVirtualizer.getVirtualItems();
-              // +2: the gutter column and the filler `<th>`'s matching `<td>`
-              // (see the header's own comment on the filler column).
-              const colSpan = result.columns.length + 2;
-              return (
-                <>
-                  {virtualRows.length > 0 && (
-                    <tr aria-hidden>
-                      <td
-                        colSpan={colSpan}
-                        style={{ height: virtualRows[0].start, padding: 0, border: 0 }}
-                      />
-                    </tr>
-                  )}
-                  {virtualRows.map((virtualRow) => {
-                    const i = virtualRow.index;
-                    const row = tableRows[i];
-                    // `rowValues` is the underlying payload (CellValue[]) for
-                    // this row — used to resolve identity below rather than
-                    // `i`, which is the *filtered display index*.
-                    const rowValues = row.original as CellValue[];
-                    const rowKey = selectionEnabled
-                      ? (getRowKey?.(rowValues) ?? null)
-                      : null;
-                    // Every prop below is narrowed to "does this concern THIS
-                    // row" (isSelected/isMultiSelected/activeColIdx/
-                    // inlineEditHere/fkEditHere) or already stable across a
-                    // plain click, so `GridRow`'s
-                    // `React.memo` skips re-rendering every row except the (at
-                    // most two) actually affected — see `GridRow`'s doc comment.
-                    return (
-                      <GridRow
-                        key={row.id}
-                        row={row}
-                        rowIndex={i}
-                        isSelected={selectedRowIndex === i}
-                        isMultiSelected={rowKey !== null && selectedKeys.has(rowKey)}
-                        rowKey={rowKey}
-                        activeColIdx={activeCell?.r === i ? activeCell.c : null}
-                        inlineEditHere={
-                          inlineEdit && inlineEdit.rowValues === rowValues
-                            ? inlineEdit
-                            : null
-                        }
-                        fkEditHere={
-                          fkEditCell && fkEditCell.rowValues === rowValues
-                            ? fkEditCell
-                            : null
-                        }
-                        selectionEnabled={selectionEnabled}
-                        hasSelection={hasSelection}
-                        selectedRows={selectedRows}
-                        zebraStripes={zebraStripes}
-                        cellStyle={cellStyle}
-                        pinnedColumnSet={pinnedColumnSet}
-                        resultColumns={result.columns}
-                        columnIndexByName={columnIndexByName}
-                        columnInfoByName={columnInfoByName}
-                        driver={driver}
-                        tableName={tableName}
-                        tableSchema={tableSchema}
-                        pkColumnNames={pkColumnNames}
-                        editable={editable}
-                        onCellSave={onCellSave}
-                        onNavigateFk={onNavigateFk}
-                        onAddFilter={onAddFilter}
-                        onInsertRow={onInsertRow}
-                        onDuplicateRow={onDuplicateRow}
-                        onDeleteRow={onDeleteRow}
-                        onBulkDelete={onBulkDelete}
-                        scrollRef={scrollRef}
-                        setSelectedRowIndex={setSelectedRowIndex}
-                        setActiveCell={setActiveCell}
-                        setSelectedCell={setSelectedCell}
-                        callbacksRef={rowCallbacksRef}
-                      />
+                        <th className="border-b border-border bg-card" />
+                      </tr>
                     );
                   })}
-                  {virtualRows.length > 0 && (
-                    <tr aria-hidden>
-                      <td
-                        colSpan={colSpan}
-                        style={{
-                          height:
-                            rowVirtualizer.getTotalSize() -
-                            virtualRows[virtualRows.length - 1].end,
-                          padding: 0,
-                          border: 0,
-                        }}
-                      />
+                </thead>
+                <tbody>
+                  {draftRow && (
+                    <DraftRowView
+                      rowRef={draftRowRef}
+                      firstInputRef={firstDraftInputRef}
+                      columns={result.columns}
+                      draftColumns={draftColumns ?? []}
+                      draft={draftRow}
+                      connectionId={connectionId}
+                      tableSchema={tableSchema}
+                      tableName={tableName}
+                      bitDisplay={bitDisplay}
+                      onChange={onDraftCellChange}
+                      onCommit={onDraftCommit}
+                      onCancel={onDraftCancel}
+                    />
+                  )}
+                  {(() => {
+                    const virtualRows = rowVirtualizer.getVirtualItems();
+                    // +2: the gutter column and the filler `<th>`'s matching `<td>`
+                    // (see the header's own comment on the filler column).
+                    const colSpan = result.columns.length + 2;
+                    return (
+                      <>
+                        {virtualRows.length > 0 && (
+                          <tr aria-hidden>
+                            <td
+                              colSpan={colSpan}
+                              style={{
+                                height: virtualRows[0].start,
+                                padding: 0,
+                                border: 0,
+                              }}
+                            />
+                          </tr>
+                        )}
+                        {virtualRows.map((virtualRow) => {
+                          const i = virtualRow.index;
+                          const row = tableRows[i];
+                          // `rowValues` is the underlying payload (CellValue[]) for
+                          // this row — used to resolve identity below rather than
+                          // `i`, which is the *filtered display index*.
+                          const rowValues = row.original as CellValue[];
+                          const rowKey = selectionEnabled
+                            ? (getRowKey?.(rowValues) ?? null)
+                            : null;
+                          // Every prop below is narrowed to "does this concern THIS
+                          // row" (isSelected/isMultiSelected/activeColIdx/
+                          // inlineEditHere/fkEditHere) or already stable across a
+                          // plain click, so `GridRow`'s
+                          // `React.memo` skips re-rendering every row except the (at
+                          // most two) actually affected — see `GridRow`'s doc comment.
+                          return (
+                            <GridRow
+                              key={row.id}
+                              row={row}
+                              rowIndex={i}
+                              isSelected={selectedRowIndex === i}
+                              isMultiSelected={
+                                rowKey !== null && selectedKeys.has(rowKey)
+                              }
+                              rowKey={rowKey}
+                              activeColIdx={
+                                activeCell?.r === i ? activeCell.c : null
+                              }
+                              inlineEditHere={
+                                inlineEdit && inlineEdit.rowValues === rowValues
+                                  ? inlineEdit
+                                  : null
+                              }
+                              fkEditHere={
+                                fkEditCell && fkEditCell.rowValues === rowValues
+                                  ? fkEditCell
+                                  : null
+                              }
+                              selectionEnabled={selectionEnabled}
+                              hasSelection={hasSelection}
+                              selectedRows={selectedRows}
+                              zebraStripes={zebraStripes}
+                              cellStyle={cellStyle}
+                              pinnedColumnSet={pinnedColumnSet}
+                              resultColumns={result.columns}
+                              columnIndexByName={columnIndexByName}
+                              columnInfoByName={columnInfoByName}
+                              driver={driver}
+                              tableName={tableName}
+                              tableSchema={tableSchema}
+                              pkColumnNames={pkColumnNames}
+                              editable={editable}
+                              onCellSave={onCellSave}
+                              onNavigateFk={onNavigateFk}
+                              onAddFilter={onAddFilter}
+                              onInsertRow={onInsertRow}
+                              onDuplicateRow={onDuplicateRow}
+                              onDeleteRow={onDeleteRow}
+                              onBulkDelete={onBulkDelete}
+                              scrollRef={scrollRef}
+                              setSelectedRowIndex={setSelectedRowIndex}
+                              setActiveCell={setActiveCell}
+                              setSelectedCell={setSelectedCell}
+                              callbacksRef={rowCallbacksRef}
+                            />
+                          );
+                        })}
+                        {virtualRows.length > 0 && (
+                          <tr aria-hidden>
+                            <td
+                              colSpan={colSpan}
+                              style={{
+                                height:
+                                  rowVirtualizer.getTotalSize() -
+                                  virtualRows[virtualRows.length - 1].end,
+                                padding: 0,
+                                border: 0,
+                              }}
+                            />
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })()}
+                  {visibleRows.length === 0 && !draftRow && (
+                    <tr>
+                      <td colSpan={result.columns.length + 2}>
+                        <EmptyState
+                          size="sm"
+                          icon={Inbox}
+                          title={t("dataGrid.noRows")}
+                          className="h-auto"
+                        />
+                      </td>
                     </tr>
                   )}
-                </>
-              );
-            })()}
-            {visibleRows.length === 0 && !draftRow && (
-              <tr>
-                <td colSpan={result.columns.length + 2}>
-                  <EmptyState
-                    size="sm"
-                    icon={Inbox}
-                    title={t("dataGrid.noRows")}
-                    className="h-auto"
-                  />
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        </>
-        )}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
         {/* Refetch overlay: dims the (stale) rows and shows a spinner so a
             reload doesn't look frozen. pointer-events-none keeps the stale
@@ -1406,4 +1419,3 @@ export function DataGrid({
     </div>
   );
 }
-

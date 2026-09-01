@@ -28,6 +28,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
 import { baseName } from "@/lib/filePath";
 import { withExportProgress } from "@/lib/bridges/export-progress-bridge";
@@ -172,7 +173,8 @@ export function ExportDatabaseDialog({
 
   function toggleTable(dbName: string, tableName: string) {
     const row = rows[dbName];
-    const base = row.selectedTables ?? new Set((row.tables ?? []).map((tb) => tb.name));
+    const base =
+      row.selectedTables ?? new Set((row.tables ?? []).map((tb) => tb.name));
     const next = new Set(base);
     if (next.has(tableName)) next.delete(tableName);
     else next.add(tableName);
@@ -204,7 +206,10 @@ export function ExportDatabaseDialog({
     const handle = notify.progress(t("schema.exportDatabaseDialog.exporting"), {
       description: baseName(destPath),
       formatProgress: (p) =>
-        t("schema.exportDatabaseDialog.progress", { done: p.done, total: p.total }),
+        t("schema.exportDatabaseDialog.progress", {
+          done: p.done,
+          total: p.total,
+        }),
     });
     onClose();
 
@@ -222,7 +227,9 @@ export function ExportDatabaseDialog({
           targets.push({
             connectionId,
             databaseName: name,
-            tables: row.selectedTables ? Array.from(row.selectedTables) : undefined,
+            tables: row.selectedTables
+              ? Array.from(row.selectedTables)
+              : undefined,
           });
         }
         const path = await withExportProgress(handle.update, () =>
@@ -230,7 +237,9 @@ export function ExportDatabaseDialog({
         );
         handle.file(t("notifications.fileSaved.database"), { path });
       } catch (e) {
-        handle.error(t("schema.exportDatabaseDialog.title"), { description: String(e) });
+        handle.error(t("schema.exportDatabaseDialog.title"), {
+          description: String(e),
+        });
       }
     })();
   }
@@ -261,14 +270,14 @@ export function ExportDatabaseDialog({
                     ) : (
                       <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
                     )}
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={row.checked}
                       disabled={row.locked}
                       onChange={() => toggleDb(name)}
-                      className="h-3.5 w-3.5 rounded accent-brand disabled:opacity-70"
                     />
-                    <span className="flex-1 truncate text-xs font-medium">{name}</span>
+                    <span className="flex-1 truncate text-xs font-medium">
+                      {name}
+                    </span>
                   </label>
                   {row.checked && (
                     <div className="ml-8 space-y-0.5 border-l border-border/50 pl-3">
@@ -277,7 +286,9 @@ export function ExportDatabaseDialog({
                           {t("schema.exportDatabaseDialog.loadingTables")}
                         </p>
                       ) : row.error ? (
-                        <p className="py-1 text-2xs text-destructive">{row.error}</p>
+                        <p className="py-1 text-2xs text-destructive">
+                          {row.error}
+                        </p>
                       ) : (
                         row.tables?.map((tb) => {
                           const checked = row.selectedTables
@@ -288,11 +299,10 @@ export function ExportDatabaseDialog({
                               key={tb.name}
                               className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-muted/40"
                             >
-                              <input
-                                type="checkbox"
+                              <Checkbox
+                                size="xs"
                                 checked={checked}
                                 onChange={() => toggleTable(name, tb.name)}
-                                className="h-3 w-3 rounded accent-brand"
                               />
                               <span className="truncate text-2xs text-muted-foreground">
                                 {tb.name}
@@ -314,7 +324,10 @@ export function ExportDatabaseDialog({
                 <label className="text-xs font-medium text-muted-foreground">
                   {t("schema.exportDatabaseDialog.dataMode")}
                 </label>
-                <Select value={dataMode} onValueChange={(v) => setDataMode(v as DataMode)}>
+                <Select
+                  value={dataMode}
+                  onValueChange={(v) => setDataMode(v as DataMode)}
+                >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -339,7 +352,9 @@ export function ExportDatabaseDialog({
                     className="min-w-0 flex-1"
                     value={destPath}
                     readOnly
-                    placeholder={t("schema.exportDatabaseDialog.destPathPlaceholder")}
+                    placeholder={t(
+                      "schema.exportDatabaseDialog.destPathPlaceholder",
+                    )}
                     onClick={() => void pickDestination()}
                   />
                   <Button
@@ -354,7 +369,6 @@ export function ExportDatabaseDialog({
                   </Button>
                 </div>
               </div>
-
             </div>
 
             <div className="border-t border-border px-4 py-3">

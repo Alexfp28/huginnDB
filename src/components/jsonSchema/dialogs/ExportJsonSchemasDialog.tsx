@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
 
 import { api } from "@/lib/tauri";
@@ -88,11 +89,7 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
             <span className="text-xs text-muted-foreground">
               {t("jsonSchemas.library.bindingCount", { count: selected.size })}
             </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={toggleAll}
-            >
+            <Button size="sm" variant="ghost" onClick={toggleAll}>
               {allSelected
                 ? t("transfer.export.deselectAll")
                 : t("transfer.export.selectAll")}
@@ -105,8 +102,7 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
                 key={s.id}
                 className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-xs hover:bg-accent/40"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={selected.has(s.id)}
                   onChange={() => toggle(s.id)}
                 />
@@ -135,7 +131,10 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
           <Button variant="outline" onClick={onClose}>
             {t("common.cancel")}
           </Button>
-          <Button onClick={() => void run()} disabled={selected.size === 0 || busy}>
+          <Button
+            onClick={() => void run()}
+            disabled={selected.size === 0 || busy}
+          >
             <Download className="mr-1 h-3.5 w-3.5" />
             {t("transfer.exportJsonSchemas.exportButton")}
           </Button>

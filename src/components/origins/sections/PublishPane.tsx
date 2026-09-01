@@ -17,6 +17,7 @@
 
 import { useTranslation } from "react-i18next";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/common/PasswordInput";
@@ -113,9 +114,7 @@ export function PublishPane({
             {t("originEditor.publish.passphrase")}
           </span>
           <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 rounded accent-brand"
+            <Checkbox
               disabled={readOnly}
               checked={passphrase.rotating}
               onChange={(e) =>

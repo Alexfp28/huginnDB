@@ -52,6 +52,7 @@ import {
   PlugZap,
   Search,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
 import { useUi } from "@/stores/session/ui";
@@ -89,7 +90,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScopeChip, TreeFilterBox } from "@/components/connection/TreeFilterBox";
+import {
+  ScopeChip,
+  TreeFilterBox,
+} from "@/components/connection/TreeFilterBox";
 import {
   ConnectionTreeRow,
   type ConnectionRowActions,
@@ -184,7 +188,10 @@ export function ConnectionsTree() {
     () => profiles.filter((p) => !visibleSet || visibleSet.has(p.id)),
     [profiles, visibleSet],
   );
-  const buckets = useMemo(() => bucketByGroup(visibleProfiles), [visibleProfiles]);
+  const buckets = useMemo(
+    () => bucketByGroup(visibleProfiles),
+    [visibleProfiles],
+  );
 
   // Inputs for the match counter: only *live* connections, since an idle one has
   // nothing to search and its row says so instead of showing a misleading `0`.
@@ -208,7 +215,10 @@ export function ConnectionsTree() {
     [visibleProfiles, active, databaseVisibility],
   );
   const matchCounts = useTreeMatchCounts(treeConnections, patterns, scope);
-  const totals = useMemo(() => totalMatches(matchCounts.values()), [matchCounts]);
+  const totals = useMemo(
+    () => totalMatches(matchCounts.values()),
+    [matchCounts],
+  );
 
   /**
    * A scope whose connection left the tree is dropped automatically.
@@ -222,11 +232,16 @@ export function ConnectionsTree() {
   useEffect(() => {
     useTreeSearch
       .getState()
-      .pruneScopeAgainst((id) => active.has(id) && (!visibleSet || visibleSet.has(id)));
+      .pruneScopeAgainst(
+        (id) => active.has(id) && (!visibleSet || visibleSet.has(id)),
+      );
   }, [active, visibleSet]);
 
   const scopeProfile = useMemo(
-    () => (scope.kind === "all" ? null : profiles.find((p) => p.id === scope.connectionId)),
+    () =>
+      scope.kind === "all"
+        ? null
+        : profiles.find((p) => p.id === scope.connectionId),
     [profiles, scope],
   );
 
@@ -269,7 +284,9 @@ export function ConnectionsTree() {
                 void api
                   .releaseIdlePools()
                   .then((closed) => {
-                    notify.success(t("schema.releasedIdlePools", { count: closed }));
+                    notify.success(
+                      t("schema.releasedIdlePools", { count: closed }),
+                    );
                     setLimitReached(false);
                   })
                   .catch((err) => notify.error(String(err)));
@@ -294,9 +311,12 @@ export function ConnectionsTree() {
    * would leave the user with permanent folds they never chose. Dropped as soon
    * as the filter is gone, which is also when the automatic folds disappear.
    */
-  const [foldOverrides, setFoldOverrides] = useState<Set<string>>(() => new Set());
+  const [foldOverrides, setFoldOverrides] = useState<Set<string>>(
+    () => new Set(),
+  );
   useEffect(() => {
-    if (!filtering) setFoldOverrides((prev) => (prev.size === 0 ? prev : new Set()));
+    if (!filtering)
+      setFoldOverrides((prev) => (prev.size === 0 ? prev : new Set()));
   }, [filtering]);
 
   /** Id currently connecting, so its row can show a spinner and refuse clicks. */
@@ -386,7 +406,9 @@ export function ConnectionsTree() {
    * answering. That is the same wait the "disconnect all" button now reports;
    * one row's ✕ was the last affordance still silently ignoring the click.
    */
-  const [disconnecting, setDisconnecting] = useState<Set<string>>(() => new Set());
+  const [disconnecting, setDisconnecting] = useState<Set<string>>(
+    () => new Set(),
+  );
   function markDisconnecting(id: string, value: boolean) {
     setDisconnecting((prev) => {
       if (prev.has(id) === value) return prev;
@@ -558,7 +580,9 @@ export function ConnectionsTree() {
               aria-label={t("connectionsTree.selectConnections.action")}
               className="relative shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
             >
-              <ListFilter className={cn("h-3.5 w-3.5", visibleSet && "text-brand")} />
+              <ListFilter
+                className={cn("h-3.5 w-3.5", visibleSet && "text-brand")}
+              />
               {visibleSet && (
                 <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-brand ring-2 ring-background" />
               )}
@@ -586,7 +610,9 @@ export function ConnectionsTree() {
                 title={
                   scope.kind === "database"
                     ? t("schema.filterScopedTo", { db: scope.database })
-                    : t("schema.filterScopedToConnection", { name: scopeProfile.name })
+                    : t("schema.filterScopedToConnection", {
+                        name: scopeProfile.name,
+                      })
                 }
                 onClear={clearScope}
                 clearLabel={t("connectionsTree.filter.clearScope")}
@@ -602,7 +628,9 @@ export function ConnectionsTree() {
                 aria-live="polite"
                 className="min-w-0 text-muted-foreground"
               >
-                {totals.matches === 0 && !totals.pending && totals.cold === 0 ? (
+                {totals.matches === 0 &&
+                !totals.pending &&
+                totals.cold === 0 ? (
                   <>
                     <span>{t("connectionsTree.filter.noMatchesAnywhere")}</span>{" "}
                     {/* The honest confession of what this filter actually looks
@@ -616,7 +644,9 @@ export function ConnectionsTree() {
                   // Scoped: the chip right next to this already names where, so
                   // repeating it here would be the same sentence twice on a line
                   // that has no width to spare.
-                  t("connectionsTree.filter.summaryCount", { matches: totals.matches })
+                  t("connectionsTree.filter.summaryCount", {
+                    matches: totals.matches,
+                  })
                 ) : (
                   t("connectionsTree.filter.summary", {
                     matches: totals.matches,
@@ -765,7 +795,9 @@ function ConnectionVisibilityDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t("connectionsTree.selectConnections.title")}</DialogTitle>
+          <DialogTitle>
+            {t("connectionsTree.selectConnections.title")}
+          </DialogTitle>
           <DialogDescription>
             {t("connectionsTree.selectConnections.description")}
           </DialogDescription>
@@ -776,7 +808,9 @@ function ConnectionVisibilityDialog({
             <Input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder={t("connectionsTree.selectConnections.filterPlaceholder")}
+              placeholder={t(
+                "connectionsTree.selectConnections.filterPlaceholder",
+              )}
               className="h-7 pl-6 text-xs"
             />
           </div>
@@ -804,7 +838,9 @@ function ConnectionVisibilityDialog({
         <div className="max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border">
           {filtered.length === 0 ? (
             <p className="px-3 py-2 text-xs text-muted-foreground">
-              {t("connectionsTree.selectConnections.noMatches", { query: filter })}
+              {t("connectionsTree.selectConnections.noMatches", {
+                query: filter,
+              })}
             </p>
           ) : (
             filtered.map((p) => (
@@ -812,11 +848,9 @@ function ConnectionVisibilityDialog({
                 key={p.id}
                 className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/50"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={sel.has(p.id)}
                   onChange={() => toggle(p.id)}
-                  className="h-3.5 w-3.5 rounded accent-brand"
                 />
                 <span className="flex-1 truncate text-xs">{p.name}</span>
                 <DriverBadge driver={p.driver} />
