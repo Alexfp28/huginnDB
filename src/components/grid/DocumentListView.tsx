@@ -403,7 +403,7 @@ function DraftDocumentCard({
           </Button>
           <button
             type="button"
-            className="rounded p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            className="rounded-sm p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
             title={t("common.cancel")}
             disabled={saving}
             onClick={draft.onCancel}
@@ -1074,7 +1074,7 @@ const FieldRow = memo(function FieldRow({
               type="button"
               tabIndex={-1}
               title={labels.setNull}
-              className="shrink-0 rounded px-1 text-3xs text-muted-foreground/60 hover:text-foreground"
+              className="shrink-0 rounded-sm px-1 text-3xs text-muted-foreground/60 hover:text-foreground"
               // Keep focus on the input: a blur here would commit the old
               // text before the NULL ever lands.
               onMouseDown={(e) => e.preventDefault()}
@@ -1210,7 +1210,7 @@ function DraftRow({
         />
         <button
           type="button"
-          className="shrink-0 rounded px-1 text-3xs text-brand hover:underline"
+          className="shrink-0 rounded-sm px-1 text-3xs text-brand hover:underline"
           onMouseDown={(e) => e.preventDefault()}
           onClick={onCommit}
         >
@@ -1218,7 +1218,7 @@ function DraftRow({
         </button>
         <button
           type="button"
-          className="shrink-0 rounded px-1 text-muted-foreground/70 hover:text-foreground"
+          className="shrink-0 rounded-sm px-1 text-muted-foreground/70 hover:text-foreground"
           onMouseDown={(e) => e.preventDefault()}
           onClick={onCancel}
           title={t("common.cancel")}

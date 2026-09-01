@@ -47,7 +47,7 @@ export function DdlPreviewPane({ title, ddl, error, warning, prefs }: Props) {
         <RefreshCw className="h-3 w-3" />
         {title}
         {warning && (
-          <span className="rounded bg-warning/20 px-1.5 py-0.5 text-warning">
+          <span className="rounded-sm bg-warning/20 px-1.5 py-0.5 text-warning">
             {warning}
           </span>
         )}

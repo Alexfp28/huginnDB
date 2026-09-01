@@ -54,7 +54,7 @@ export function ShortcutRow({
           squeezes the label otherwise. */}
       <div className="flex max-w-[20rem] flex-wrap items-center justify-end gap-1">
         <span
-          className="rounded border border-border/60 px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground/70"
+          className="rounded-sm border border-border/60 px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground/70"
           title={t(`settings.shortcuts.scopes.${action.scope}`)}
         >
           {action.scope}
@@ -64,7 +64,7 @@ export function ShortcutRow({
           <button
             type="button"
             onClick={() => onEdit(null)}
-            className="rounded border border-dashed border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-brand hover:text-foreground"
+            className="rounded-sm border border-dashed border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-brand hover:text-foreground"
           >
             {t("settings.shortcuts.unassigned")}
           </button>
@@ -73,7 +73,7 @@ export function ShortcutRow({
         {bindings.map((binding) => (
           <span
             key={binding}
-            className="group flex items-center rounded border border-border bg-muted font-mono text-[11px] text-muted-foreground focus-within:border-brand hover:border-brand"
+            className="group flex items-center rounded-sm border border-border bg-muted font-mono text-[11px] text-muted-foreground focus-within:border-brand hover:border-brand"
           >
             <button
               type="button"
@@ -98,7 +98,7 @@ export function ShortcutRow({
           <span
             key={binding}
             title={t("settings.shortcuts.fixedHint")}
-            className="rounded border border-border/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground/50"
+            className="rounded-sm border border-border/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground/50"
           >
             {formatForDisplay(binding)}
           </span>

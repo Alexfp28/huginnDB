@@ -319,7 +319,7 @@ export function McpSection() {
           {t("settings.mcp.binaryLabel")}
         </div>
         <div className="mt-1 flex items-center justify-between gap-2">
-          <code className="break-all rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">
+          <code className="break-all rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[11px]">
             {path || "—"}
           </code>
           {path && <CopyButton text={path} />}

@@ -1,7 +1,7 @@
 /**
  * Teams-style environment avatar: a custom image if the environment has one,
  * otherwise initials over its accent colour (or a neutral fallback when no
- * colour is set), as a rounded square (not a circle — the user asked for the
+ * colour is set), as a rounded-sm square (not a circle — the user asked for the
  * squarer, app-icon-like shape). See `environmentInitials` in
  * `stores/session/environments.ts` for the initials algorithm.
  *

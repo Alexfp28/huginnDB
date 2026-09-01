@@ -239,7 +239,7 @@ export function CommandPalette() {
       inputRef={inputRef}
       inputLeading={
         mode !== ALL_MODE && (
-          <span className="flex shrink-0 items-center gap-1 rounded bg-brand/15 px-1.5 py-0.5 text-2xs font-medium text-brand">
+          <span className="flex shrink-0 items-center gap-1 rounded-sm bg-brand/15 px-1.5 py-0.5 text-2xs font-medium text-brand">
             <span className="font-mono">{mode.prefix}</span>
             {t(mode.labelKey)}
           </span>
@@ -280,7 +280,7 @@ export function CommandPalette() {
               key={m.prefix}
               type="button"
               onClick={() => applyMode(m.prefix)}
-              className="flex items-center gap-1 rounded border border-border/60 px-1.5 py-0.5 text-3xs text-muted-foreground transition-colors hover:border-brand/60 hover:text-foreground"
+              className="flex items-center gap-1 rounded-sm border border-border/60 px-1.5 py-0.5 text-3xs text-muted-foreground transition-colors hover:border-brand/60 hover:text-foreground"
             >
               <span className="font-mono text-brand">{m.prefix}</span>
               {t(m.labelKey)}
@@ -361,7 +361,7 @@ export function CommandPalette() {
                             )}
                           </span>
                           {cmd.current && (
-                            <span className="shrink-0 rounded bg-brand/15 px-1 text-3xs font-medium uppercase tracking-wide text-brand">
+                            <span className="shrink-0 rounded-sm bg-brand/15 px-1 text-3xs font-medium uppercase tracking-wide text-brand">
                               {t("commandPalette.current")}
                             </span>
                           )}
@@ -373,7 +373,7 @@ export function CommandPalette() {
                         )}
                       </span>
                       {cmd.badge && (
-                        <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
+                        <span className="ml-auto shrink-0 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
                           {cmd.badge}
                         </span>
                       )}

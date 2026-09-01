@@ -400,7 +400,7 @@ export function StructureEditorTab({
             />
           )}
           {isReadOnly ? (
-            <span className="rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+            <span className="rounded-sm bg-muted px-2 py-1 text-[11px] text-muted-foreground">
               {ddlReadOnlyReason(driver) === "mssql"
                 ? t("structure.readOnlySqlServer")
                 : t("structure.readOnlyMongo")}
@@ -463,7 +463,7 @@ export function StructureEditorTab({
                   TTL or a partial filter. The index manager is that surface;
                   pointing at it beats leaving the section looking inert. */}
               {supportsIndexManager(driver) && table && (
-                <div className="mb-3 flex items-center justify-between gap-3 rounded border border-border/50 bg-muted/30 px-3 py-2 text-xs">
+                <div className="mb-3 flex items-center justify-between gap-3 rounded-sm border border-border/50 bg-muted/30 px-3 py-2 text-xs">
                   <span className="text-muted-foreground">
                     {t("structure.indexManagerHint")}
                   </span>
@@ -990,7 +990,7 @@ function IndexesEditor({
       {indexes.map((idx, i) => (
         <div
           key={i}
-          className="flex items-center gap-2 rounded border border-border/50 p-2 text-xs"
+          className="flex items-center gap-2 rounded-sm border border-border/50 p-2 text-xs"
         >
           <Input
             value={idx.name ?? ""}
@@ -1068,7 +1068,7 @@ function ForeignKeysEditor({
       {fks.map((fk, i) => (
         <div
           key={i}
-          className="space-y-1 rounded border border-border/50 p-2 text-xs"
+          className="space-y-1 rounded-sm border border-border/50 p-2 text-xs"
         >
           <div className="flex items-center gap-2">
             <Input

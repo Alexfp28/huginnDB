@@ -395,7 +395,7 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
 function KeyChip({ field, value }: { field: string; value: string }) {
   const direction = value === "1" ? "asc" : value === "-1" ? "desc" : null;
   return (
-    <span className="inline-flex items-center gap-1 rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[11px]">
+    <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[11px]">
       {field}
       {direction === "asc" ? (
         <ArrowUp className="h-3 w-3 text-muted-foreground" />

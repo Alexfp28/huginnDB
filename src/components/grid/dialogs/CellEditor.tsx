@@ -359,10 +359,10 @@ export function CellEditor({
               {typeLabel}
             </span>
             <span className="hidden shrink-0 items-center gap-1 text-2xs tabular-nums text-muted-foreground sm:flex">
-              <span className="rounded bg-muted px-1.5 py-0.5">
+              <span className="rounded-sm bg-muted px-1.5 py-0.5">
                 {t("cellEditor.chars", { count: value.length })}
               </span>
-              <span className="rounded bg-muted px-1.5 py-0.5">
+              <span className="rounded-sm bg-muted px-1.5 py-0.5">
                 {formatNumber(bytes)} B
               </span>
             </span>
@@ -446,7 +446,7 @@ function JsonValidationBadge({ value }: { value: string }) {
   try {
     JSON.parse(value);
     return (
-      <span className="rounded bg-success/10 px-1.5 py-0.5 text-2xs font-medium text-success">
+      <span className="rounded-sm bg-success/10 px-1.5 py-0.5 text-2xs font-medium text-success">
         {t("cellEditor.jsonValid")}
       </span>
     );
@@ -455,7 +455,7 @@ function JsonValidationBadge({ value }: { value: string }) {
     // being dumped raw into the toolbar row.
     return (
       <span
-        className="rounded bg-destructive/10 px-1.5 py-0.5 text-2xs font-medium text-destructive"
+        className="rounded-sm bg-destructive/10 px-1.5 py-0.5 text-2xs font-medium text-destructive"
         title={(e as Error).message}
       >
         {t("cellEditor.jsonInvalidShort")}

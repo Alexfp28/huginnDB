@@ -74,7 +74,7 @@ const DropdownMenuContent = React.forwardRef<
         // by Radix's `size` middleware on the floating wrapper and inherits
         // down to this element, so the cap tracks the real gap to the viewport
         // edge. Horizontal clipping is kept so long labels can't escape the
-        // rounded corners. Consumers that pass their own `max-h-*` still win
+        // rounded-sm corners. Consumers that pass their own `max-h-*` still win
         // (`cn` is tailwind-merge).
         MENU_PANEL,
         "min-w-[8rem]",

@@ -534,7 +534,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                   ? t("query.runAll", { count: statements.length })
                   : t("query.run")}
               {!running && (
-                <kbd className="ml-0.5 rounded border border-brand-foreground/30 bg-brand-foreground/10 px-1 py-px text-[10px] font-medium leading-none">
+                <kbd className="ml-0.5 rounded-sm border border-brand-foreground/30 bg-brand-foreground/10 px-1 py-px text-[10px] font-medium leading-none">
                   {runHint}
                 </kbd>
               )}
@@ -707,11 +707,11 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           {/* Editor info bar: keyboard hint · db name · line/char count · encoding */}
           <div className="flex items-center gap-0 border-t border-border bg-card px-3 py-1 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1">
-              <kbd className="rounded bg-muted px-1 font-mono text-[10px]">
+              <kbd className="rounded-sm bg-muted px-1 font-mono text-[10px]">
                 Ctrl
               </kbd>
               <span>+</span>
-              <kbd className="rounded bg-muted px-1 font-mono text-[10px]">
+              <kbd className="rounded-sm bg-muted px-1 font-mono text-[10px]">
                 Enter
               </kbd>
               <span className="ml-1 text-muted-foreground/70">

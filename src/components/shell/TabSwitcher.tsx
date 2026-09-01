@@ -272,7 +272,7 @@ export function TabSwitcher() {
                       <span className="flex items-center gap-1.5 truncate">
                         <span className="truncate">{e.leaf}</span>
                         {isCurrent && (
-                          <span className="shrink-0 rounded bg-brand/15 px-1 text-3xs font-medium uppercase tracking-wide text-brand">
+                          <span className="shrink-0 rounded-sm bg-brand/15 px-1 text-3xs font-medium uppercase tracking-wide text-brand">
                             {t("tabSwitcher.current")}
                           </span>
                         )}

@@ -29,7 +29,7 @@ export function ConflictBulkActions({ onSelect }: Props) {
           <button
             key={action}
             onClick={() => onSelect(action)}
-            className="rounded px-2 py-0.5 text-[10px] uppercase font-medium text-muted-foreground bg-muted hover:bg-muted/80 transition-colors"
+            className="rounded-sm px-2 py-0.5 text-[10px] uppercase font-medium text-muted-foreground bg-muted hover:bg-muted/80 transition-colors"
           >
             {t(`transfer.import.action.${action}`)}
           </button>

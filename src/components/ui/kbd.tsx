@@ -21,7 +21,7 @@ export const Kbd = React.forwardRef<
   <kbd
     ref={ref}
     className={cn(
-      "rounded border border-border bg-muted px-1 font-mono leading-none",
+      "rounded-sm border border-border bg-muted px-1 font-mono leading-none",
       className,
     )}
     {...props}

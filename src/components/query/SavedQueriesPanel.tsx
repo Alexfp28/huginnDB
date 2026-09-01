@@ -97,7 +97,7 @@ export function SavedQueriesPanel({
                     {q.tags.map((t) => (
                       <span
                         key={t}
-                        className="rounded bg-muted px-1 py-px text-[9px] text-muted-foreground"
+                        className="rounded-sm bg-muted px-1 py-px text-[9px] text-muted-foreground"
                       >
                         {t}
                       </span>

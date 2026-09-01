@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
  * quietly becoming the place a call site reaches for an arbitrary hue.
  */
 const badgeVariants = cva(
-  "inline-flex shrink-0 items-center gap-1 rounded border font-medium",
+  "inline-flex shrink-0 items-center gap-1 rounded-sm border font-medium",
   {
     variants: {
       tone: {

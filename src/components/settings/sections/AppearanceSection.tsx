@@ -442,7 +442,7 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
             HuginnDB
           </span>
           <span
-            className="rounded px-1.5 py-0.5 text-[10px]"
+            className="rounded-sm px-1.5 py-0.5 text-[10px]"
             style={{
               background: colors.accent,
               color: colors.accentForeground,
@@ -451,7 +451,7 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
             public
           </span>
           <button
-            className="ml-auto rounded px-2 py-0.5 text-[10px] font-medium"
+            className="ml-auto rounded-sm px-2 py-0.5 text-[10px] font-medium"
             style={{
               background: colors.primary,
               color: colors.primaryForeground,
@@ -474,7 +474,7 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
             </div>
           </div>
           <span
-            className="self-start rounded px-1.5 py-0.5 text-[10px]"
+            className="self-start rounded-sm px-1.5 py-0.5 text-[10px]"
             style={{
               background: colors.destructive,
               color: colors.destructiveForeground,
@@ -489,7 +489,7 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
         {swatches.map((s) => (
           <div key={s.key} className="flex items-center gap-1">
             <span
-              className="h-4 w-4 rounded border"
+              className="h-4 w-4 rounded-sm border"
               style={{ background: colors[s.key], borderColor: colors.border }}
             />
             <span className="text-[10px] text-muted-foreground">{s.label}</span>
@@ -516,7 +516,7 @@ function ColorRow({
         type="color"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-9 cursor-pointer rounded border border-input bg-transparent"
+        className="h-7 w-9 cursor-pointer rounded-sm border border-input bg-transparent"
       />
       <Input
         value={value}

@@ -65,7 +65,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
         ref={attach}
         type="checkbox"
         className={cn(
-          "shrink-0 cursor-pointer rounded accent-brand disabled:cursor-not-allowed disabled:opacity-50",
+          "shrink-0 cursor-pointer rounded-sm accent-brand disabled:cursor-not-allowed disabled:opacity-50",
           fieldFocus(),
           SIZE[size],
           className,

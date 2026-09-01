@@ -516,7 +516,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps) {
               type="color"
               value={tabColor ?? "#888888"}
               onChange={(e) => setColor(e.target.value)}
-              className="h-4 w-6 cursor-pointer rounded border border-border/50 bg-transparent p-0"
+              className="h-4 w-6 cursor-pointer rounded-sm border border-border/50 bg-transparent p-0"
               title={t("tabs.colorCustom")}
             />
           </div>

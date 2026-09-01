@@ -110,8 +110,8 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
             // underneath show through while scrolling.
             className={
               schemaBound
-                ? "sticky right-1 z-[1] shrink-0 rounded bg-background px-1 text-brand hover:text-brand/80"
-                : "sticky right-1 z-[1] shrink-0 rounded bg-background px-1 text-muted-foreground/80 hover:text-foreground"
+                ? "sticky right-1 z-[1] shrink-0 rounded-sm bg-background px-1 text-brand hover:text-brand/80"
+                : "sticky right-1 z-[1] shrink-0 rounded-sm bg-background px-1 text-muted-foreground/80 hover:text-foreground"
             }
             // Keep focus on the input so blur-commit doesn't fire before we
             // hand the current value off to the modal editor.
@@ -132,7 +132,7 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
             title={t("cellEditor.setNull")}
             disabled={disabled}
             className={cn(
-              "shrink-0 rounded px-1 text-[10px]",
+              "shrink-0 rounded-sm px-1 text-[10px]",
               nullActive
                 ? "bg-primary/20 text-primary"
                 : "text-muted-foreground/50 hover:text-foreground",

@@ -55,7 +55,7 @@ export function OriginEditorHeader({
           <h2 className="truncate text-base font-semibold">{doc.name}</h2>
           <span
             className={cn(
-              "inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px]",
+              "inline-flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px]",
               readOnly
                 ? "bg-muted text-muted-foreground"
                 : "bg-primary/10 text-primary",

@@ -69,7 +69,7 @@ function ColumnSkeleton({ label }: { label: string }) {
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="h-2.5 animate-pulse rounded bg-muted-foreground/15"
+          className="h-2.5 animate-pulse rounded-sm bg-muted-foreground/15"
           style={{ width: `${70 - i * 12}%` }}
         />
       ))}
@@ -208,7 +208,7 @@ export const TableRow = memo(function TableRow({
               // the row opens the table in a tab (below). A single click
               // anywhere used to expand columns, which surprised users
               // coming from IDEs where clicking a table row opens it.
-              className="-my-1 -ml-1 shrink-0 rounded p-1.5 hover:bg-accent"
+              className="-my-1 -ml-1 shrink-0 rounded-sm p-1.5 hover:bg-accent"
               aria-label={
                 tableOpen
                   ? ct("schema.collapseColumns")

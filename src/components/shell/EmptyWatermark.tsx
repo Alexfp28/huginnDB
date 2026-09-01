@@ -148,7 +148,7 @@ export function EmptyWatermark() {
         <button
           type="button"
           onClick={() => togglePalette()}
-          className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:text-foreground"
+          className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:text-foreground"
         >
           <Kbd className="px-1.5 py-0.5 text-[10px] font-medium leading-normal text-muted-foreground">
             {formatComboForDisplay(paletteCombo)}
@@ -158,7 +158,7 @@ export function EmptyWatermark() {
         <button
           type="button"
           onClick={() => openSettings()}
-          className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:text-foreground"
+          className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:text-foreground"
         >
           <Kbd className="px-1.5 py-0.5 text-[10px] font-medium leading-normal text-muted-foreground">
             {formatComboForDisplay(settingsCombo)}

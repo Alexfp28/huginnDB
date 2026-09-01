@@ -277,7 +277,7 @@ export function OriginsSection() {
                       matter what this says. */}
                   <span
                     className={cn(
-                      "inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px]",
+                      "inline-flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px]",
                       (o.role ?? "consumer") === "publisher"
                         ? "bg-primary/10 text-primary"
                         : "bg-muted text-muted-foreground",

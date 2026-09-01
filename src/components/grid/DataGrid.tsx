@@ -1115,7 +1115,7 @@ export function DataGrid({
                                       : t("dataGrid.pinColumn")
                                   }
                                   className={cn(
-                                    "shrink-0 rounded p-0.5 text-muted-foreground/70 hover:text-foreground",
+                                    "shrink-0 rounded-sm p-0.5 text-muted-foreground/70 hover:text-foreground",
                                     isPinned
                                       ? "inline-block text-brand"
                                       : "hidden group-hover/th:inline-block",

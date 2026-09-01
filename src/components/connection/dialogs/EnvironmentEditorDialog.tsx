@@ -244,7 +244,7 @@ export function EnvironmentEditorDialog() {
             <button
               type="button"
               onClick={() => void chooseImage()}
-              className="flex items-center gap-1.5 self-start rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex items-center gap-1.5 self-start rounded-sm px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <ImagePlus className="h-3.5 w-3.5" />
               {hasImage
@@ -280,7 +280,7 @@ export function EnvironmentEditorDialog() {
             <button
               type="button"
               className={cn(
-                "ml-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent",
+                "ml-1 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent",
                 !editing?.color && "text-foreground",
               )}
               onClick={() => patchDraft({ color: null })}

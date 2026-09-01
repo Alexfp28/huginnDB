@@ -109,7 +109,7 @@ export function CellPreview({
           <span className="font-medium">{columnName}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
             {LANG_BADGE[lang] ?? "TEXT"}
           </span>
           <button

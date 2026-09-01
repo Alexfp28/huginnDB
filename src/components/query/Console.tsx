@@ -92,7 +92,7 @@ function Chip({
   return (
     <span
       className={cn(
-        "shrink-0 rounded px-1 py-0.5 text-[9px] uppercase",
+        "shrink-0 rounded-sm px-1 py-0.5 text-[9px] uppercase",
         className,
       )}
     >

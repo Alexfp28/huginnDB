@@ -326,7 +326,7 @@ export function GridToolbar({
             in `src-tauri/src/commands/query.rs`. */}
         {truncated && (
           <span
-            className="flex items-center gap-1 rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs font-medium text-warning"
+            className="flex items-center gap-1 rounded-sm border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs font-medium text-warning"
             title={t("dataGrid.truncatedHint")}
           >
             <AlertTriangle className="h-3 w-3 shrink-0" />

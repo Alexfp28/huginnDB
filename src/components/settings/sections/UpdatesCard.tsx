@@ -113,7 +113,7 @@ export function UpdatesCard({ currentVersion }: Props) {
               <summary className="cursor-pointer hover:text-foreground">
                 {t("update.releaseNotes")}
               </summary>
-              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted/40 p-2 font-mono text-[10px]">
+              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-sm bg-muted/40 p-2 font-mono text-[10px]">
                 {releaseNotes}
               </pre>
             </details>
@@ -151,7 +151,7 @@ export function UpdatesCard({ currentVersion }: Props) {
           </div>
           {isDownloading && downloadProgress && (
             <div className="mt-1 space-y-1">
-              <div className="h-1 w-full overflow-hidden rounded bg-muted">
+              <div className="h-1 w-full overflow-hidden rounded-sm bg-muted">
                 <div
                   className="h-full bg-primary transition-[width]"
                   style={{ width: `${progressPct ?? 0}%` }}

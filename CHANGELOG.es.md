@@ -134,6 +134,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Sesenta y nueve esquinas siguen ahora el radio del tema.** El `rounded` a
+  secas de Tailwind son 4px fijos que quedan fuera de la escala de radios de la
+  app, así que esas esquinas eran las únicas de toda la interfaz que nunca podían
+  moverse con el tema: ahora son `rounded-sm` (6px), el primer escalón de la
+  escala. Dos píxeles más redondeadas en esos sitios, y una cosa menos que deja
+  de funcionar el día en que el radio de las esquinas sea algo configurable.
+
 - **Un solo color de hover en vez de cinco.** Al pasar el puntero por una fila,
   un elemento de menú o un botón de barra, el tinte podía ser cualquiera de
   cinco intensidades —opaco en 29 sitios, y al 30%, 40%, 50% o 60% en otros 50—,

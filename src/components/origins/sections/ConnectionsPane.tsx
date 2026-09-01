@@ -242,7 +242,7 @@ export function ConnectionsPane({
                 type="button"
                 disabled={readOnly}
                 title={t(`originEditor.secret.${c.secret.kind}`)}
-                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                className="shrink-0 rounded-sm p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
                 onClick={(e) => {
                   // The row is a <label>: without this the click also toggles
                   // the checkbox it wraps.

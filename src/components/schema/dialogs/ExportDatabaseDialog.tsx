@@ -264,7 +264,7 @@ export function ExportDatabaseDialog({
               const row = rows[name];
               return (
                 <div key={name}>
-                  <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-muted/50">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-muted/50">
                     {row.checked ? (
                       <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
                     ) : (
@@ -297,7 +297,7 @@ export function ExportDatabaseDialog({
                           return (
                             <label
                               key={tb.name}
-                              className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-muted/40"
+                              className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 hover:bg-muted/40"
                             >
                               <Checkbox
                                 size="xs"

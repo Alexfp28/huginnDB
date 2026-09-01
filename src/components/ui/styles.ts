@@ -91,7 +91,7 @@ export const CONTROL_FOCUS_TIGHT =
  * cut-off items. `--radix-popper-available-height` is set by Radix's `size`
  * middleware on the floating wrapper and inherits down to this element, so the
  * cap tracks the real gap to the viewport edge. Horizontal clipping is kept so
- * long labels can't escape the rounded corners.
+ * long labels can't escape the rounded-sm corners.
  */
 export const MENU_PANEL =
   "z-50 max-h-[var(--radix-popper-available-height)] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-elevation-3 duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.98]";

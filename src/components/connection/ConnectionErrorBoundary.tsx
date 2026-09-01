@@ -60,7 +60,7 @@ export class ConnectionErrorBoundary extends Component<Props, State> {
           <div className="font-semibold text-destructive">
             {i18n.t("common.errorPanelCrashed")}
           </div>
-          <pre className="whitespace-pre-wrap break-words rounded bg-muted/40 p-2 font-mono text-[11px] text-muted-foreground">
+          <pre className="whitespace-pre-wrap break-words rounded-sm bg-muted/40 p-2 font-mono text-[11px] text-muted-foreground">
             {error.message}
             {error.stack ? `\n\n${error.stack}` : ""}
           </pre>

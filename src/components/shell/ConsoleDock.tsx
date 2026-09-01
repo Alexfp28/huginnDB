@@ -53,7 +53,7 @@ export function ConsoleDock() {
               <button
                 type="button"
                 onClick={toggleConsole}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
+                className="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
               >
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>

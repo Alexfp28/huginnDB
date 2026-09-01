@@ -121,7 +121,7 @@ export function AboutSection() {
               className="flex items-center justify-between gap-4 px-3 py-2"
             >
               <span className="text-xs">{p.os}</span>
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">
+              <code className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[11px]">
                 {p.path}
               </code>
             </div>

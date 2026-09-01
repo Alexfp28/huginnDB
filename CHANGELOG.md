@@ -119,6 +119,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Sixty-nine corners now follow the theme's radius.** Tailwind's bare
+  `rounded` is a fixed 4px that sits outside the app's radius scale, so those
+  corners were the only ones in the interface that could never move with the
+  theme — they are `rounded-sm` (6px) now, which is the scale's first step.
+  Two pixels rounder in those places, and one fewer thing that stops working the
+  day the corner radius becomes something you can set.
+
 - **One hover colour instead of five.** A pointer over a row, a menu item or a
   toolbar button used to tint it at any of five strengths — fully opaque in 29
   places, and at 30%, 40%, 50% or 60% in 50 others — so the same gesture read

@@ -809,7 +809,7 @@ export function ConnectionDialog({
                             />
                           </Field>
                           {mongoUriManual ? (
-                            <p className="-mt-1 rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-2xs text-warning">
+                            <p className="-mt-1 rounded-sm border border-warning/40 bg-warning/10 px-2 py-1.5 text-2xs text-warning">
                               {t(
                                 "connectionDialog.fields.connectionStringWarning",
                               )}

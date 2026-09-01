@@ -1451,7 +1451,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               {Array.from({ length: 10 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-6 animate-pulse rounded bg-muted-foreground/10"
+                  className="h-6 animate-pulse rounded-sm bg-muted-foreground/10"
                 />
               ))}
             </div>
