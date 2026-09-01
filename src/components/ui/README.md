@@ -55,22 +55,30 @@ It gives an objective answer to the question that used to be settled by feel:
 
 ## What's here
 
-| File               | Exports                             | Notes                                                             |
-| ------------------ | ----------------------------------- | ----------------------------------------------------------------- |
-| `button.tsx`       | `Button`, `buttonVariants`          | `cva`; the base every other control borrows from                  |
-| `input.tsx`        | `Input`, `inputVariants`            | `cva`; the density canon                                          |
-| `textarea.tsx`     | `Textarea`                          | shares the field focus language                                   |
-| `select.tsx`       | `Select*`                           | Radix; `focus`, not `focus-visible` — its trigger is a `<button>` |
-| `label.tsx`        | `Label`                             | Radix passthrough                                                 |
-| `switch.tsx`       | `Switch`                            | Radix passthrough                                                 |
-| `segmented.tsx`    | `Segmented`                         | generic over the value union; single-choice toggle strip          |
-| `tabs.tsx`         | `Tabs*`                             | Radix                                                             |
-| `dialog.tsx`       | `Dialog*`                           | Radix; `DialogContent` supplies the overlay and the close button  |
-| `dropdown.tsx`     | `DropdownMenu*`                     | Radix; `text-sm`, `min-w-[8rem]`                                  |
-| `context-menu.tsx` | `ContextMenu*`, `ContextMenuAction` | Radix; denser than the dropdown by design                         |
-| `tooltip.tsx`      | `Tooltip*`, `SimpleTooltip`         | read its docstring before replacing a native `title=`             |
-| `kbd.tsx`          | `Kbd`                               |                                                                   |
-| `styles.ts`        | class fragments                     | strings only, no `cva`, no JSX                                    |
+| File                  | Exports                                | Notes                                                                                                       |
+| --------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `button.tsx`          | `Button`, `buttonVariants`             | `cva`; the base every other control borrows from. `icon` takes the component, `loading` owns the busy state |
+| `icon-button.tsx`     | `IconButton`                           | square, dense, `label` required and `title` omitted from the type                                           |
+| `input.tsx`           | `Input`, `inputVariants`               | `cva`; the density canon                                                                                    |
+| `textarea.tsx`        | `Textarea`                             | shares the field focus language                                                                             |
+| `checkbox.tsx`        | `Checkbox`                             | the native input, with `indeterminate` via ref; no wrapper unless given a `label`                           |
+| `native-select.tsx`   | `NativeSelect`, `nativeSelectVariants` | the OS dropdown, themed; holds the WebView2 popup fix                                                       |
+| `select.tsx`          | `Select*`                              | Radix; `focus`, not `focus-visible` — its trigger is a `<button>`                                           |
+| `search-field.tsx`    | `SearchField`                          | magnifier + input + optional clear, geometry paired by `size`                                               |
+| `label.tsx`           | `Label`                                | Radix passthrough                                                                                           |
+| `switch.tsx`          | `Switch`                               | Radix passthrough                                                                                           |
+| `segmented.tsx`       | `Segmented`                            | generic over the value union; single-choice toggle strip                                                    |
+| `tabs.tsx`            | `Tabs*`                                | Radix                                                                                                       |
+| `badge.tsx`           | `Badge`, `badgeVariants`               | `tone` names the meaning, not a colour                                                                      |
+| `spinner.tsx`         | `Spinner`                              | `aria-hidden` unless given a `label`                                                                        |
+| `kbd.tsx`             | `Kbd`                                  |                                                                                                             |
+| `dialog.tsx`          | `Dialog*`                              | Radix; `DialogContent` supplies the overlay and the close button                                            |
+| `dialog-actions.tsx`  | `DialogActions`                        | the Cancel/confirm footer pair; separate file so Dialog's consumers don't pull in `Button`                  |
+| `dropdown.tsx`        | `DropdownMenu*`                        | Radix; `text-sm`, `min-w-[8rem]`                                                                            |
+| `context-menu.tsx`    | `ContextMenu*`, `ContextMenuAction`    | Radix; denser than the dropdown by design                                                                   |
+| `tooltip.tsx`         | `Tooltip*`, `SimpleTooltip`            | read its docstring before replacing a native `title=`                                                       |
+| `styles.ts`           | class fragments                        | strings and lookups only, no `cva`, no JSX                                                                  |
+| `uiContracts.test.ts` | —                                      | the drift guards, with the rejected rules listed and reasoned                                               |
 
 `ui/` has no barrel `index.ts`, deliberately. Call sites import by path
 (`@/components/ui/button`), which is what lets a file move inside this directory
