@@ -24,7 +24,7 @@ import { notify } from "@/lib/notify";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
-import { RefreshButton } from "@/components/common/RefreshButton";
+import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataGrid } from "@/components/grid/DataGrid";
@@ -32,14 +32,14 @@ import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectEditorPrefs,
+} from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
-import {
-  ensureSqlProviders,
-  registerSqlEditor,
-} from "@/lib/monaco/monacoSql";
+import { ensureSqlProviders, registerSqlEditor } from "@/lib/monaco/monacoSql";
 import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
@@ -66,7 +66,13 @@ function previewSql(query: string): string {
   return `SELECT * FROM (${query.trim().replace(/;\s*$/, "")}) AS ${PREVIEW_ALIAS} LIMIT 100`;
 }
 
-export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props) {
+export function ViewEditorTab({
+  tabId,
+  connectionId,
+  schema,
+  view,
+  mode,
+}: Props) {
   const { t } = useTranslation();
   const editorPrefs = usePreferences(selectEditorPrefs);
   const refreshSchema = useSchema((s) => s.refresh);
@@ -154,7 +160,11 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
       return;
     }
     api
-      .previewViewChange({ connectionId, original, desired: desiredRef.current })
+      .previewViewChange({
+        connectionId,
+        original,
+        desired: desiredRef.current,
+      })
       .then((p) => {
         setDdl(joinStatements(p.statements));
         setDropAndRecreate(p.dropAndRecreate);
@@ -212,7 +222,11 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
       if (mode === "new") {
         closeTab(tabId);
       } else {
-        const v = await api.getViewDefinition(connectionId, schema, desired.name);
+        const v = await api.getViewDefinition(
+          connectionId,
+          schema,
+          desired.name,
+        );
         setOriginal(v);
         setQuery(v.query);
       }
@@ -231,9 +245,9 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
     const editor = _editor as {
       addCommand: (keybinding: number, handler: () => void) => string | null;
       getModel: () => { uri: { toString: () => string } } | null;
-      onKeyDown: (
-        fn: (e: { browserEvent: KeyboardEvent }) => void,
-      ) => { dispose: () => void };
+      onKeyDown: (fn: (e: { browserEvent: KeyboardEvent }) => void) => {
+        dispose: () => void;
+      };
     };
     ensureSqlProviders(monaco);
     const uri = editor.getModel?.()?.uri.toString();
@@ -315,18 +329,20 @@ export function ViewEditorTab({ tabId, connectionId, schema, view, mode }: Props
         />
         <div className="ml-auto flex items-center gap-2">
           {mode === "edit" && (
-            <RefreshButton
-              className="h-7 w-7"
+            <IconButton
+              icon={RefreshCw}
               onClick={() => void reload()}
               loading={loading}
               disabled={applying}
-              title={t("view.refresh")}
+              label={t("view.refresh")}
             />
           )}
           <Button
             size="sm"
             onClick={() => void doApply()}
-            disabled={applying || !name.trim() || !query.trim() || !!previewError}
+            disabled={
+              applying || !name.trim() || !query.trim() || !!previewError
+            }
           >
             {applying ? t("view.applying") : t("view.apply")}
           </Button>

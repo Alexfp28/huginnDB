@@ -13,10 +13,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { KeyRound, Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  KeyRound,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { notify } from "@/lib/notify";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
-import { RefreshButton } from "@/components/common/RefreshButton";
+import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
@@ -35,7 +42,10 @@ import { useSchema } from "@/stores/session/schema";
 import { useTabs, retitleTabsForTableRename } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectEditorPrefs,
+} from "@/stores/preferences/preferences";
 import { useReloadable } from "@/lib/useReloadable";
 import { DdlPreviewPane } from "@/components/schema/DdlPreviewPane";
 import { joinStatements } from "@/lib/sql/formatStatements";
@@ -286,7 +296,11 @@ export function StructureEditorTab({
       } else {
         // Reload the structure so the editor reflects the applied state and
         // future diffs start from the new baseline.
-        const s = await api.getTableStructure(connectionId, schema, desired.name);
+        const s = await api.getTableStructure(
+          connectionId,
+          schema,
+          desired.name,
+        );
         currentTableNameRef.current = s.name;
         setOriginal(s);
         setColumns(s.columns.map((c) => ({ ...c, _key: nextKey() })));
@@ -375,12 +389,12 @@ export function StructureEditorTab({
         />
         <div className="ml-auto flex items-center gap-2">
           {mode === "edit" && (
-            <RefreshButton
-              className="h-7 w-7"
+            <IconButton
+              icon={RefreshCw}
               onClick={() => void reload()}
               loading={loading}
               disabled={applying}
-              title={t("structure.refresh")}
+              label={t("structure.refresh")}
             />
           )}
           {isReadOnly ? (
@@ -843,7 +857,9 @@ function TypeCell({
       onPatch(column._key, { dataType: parsed.custom || column.dataType });
       return;
     }
-    const next = categories.flatMap((cat) => cat.types).find((ty) => ty.name === name);
+    const next = categories
+      .flatMap((cat) => cat.types)
+      .find((ty) => ty.name === name);
     onPatch(column._key, {
       dataType: composeColumnType({
         ...parsed,
@@ -898,10 +914,15 @@ function TypeCell({
           disabled={!selected?.hasLength}
           onChange={(e) =>
             onPatch(column._key, {
-              dataType: composeColumnType({ ...parsed, length: e.target.value }),
+              dataType: composeColumnType({
+                ...parsed,
+                length: e.target.value,
+              }),
             })
           }
-          placeholder={selected?.hasLength ? selected.defaultLength ?? "" : "—"}
+          placeholder={
+            selected?.hasLength ? (selected.defaultLength ?? "") : "—"
+          }
           className={cn(cellInputClass, "font-mono disabled:opacity-30")}
         />
       </td>

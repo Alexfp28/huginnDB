@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { RefreshButton } from "@/components/common/RefreshButton";
+import { IconButton } from "@/components/ui/icon-button";
 import { IndexEditorDialog } from "@/components/indexes/dialogs/IndexEditorDialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +47,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 
@@ -189,10 +190,11 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <RefreshButton
+          <IconButton
+            icon={RefreshCw}
             onClick={refresh}
             loading={loading}
-            title={t("indexes.refresh")}
+            label={t("indexes.refresh")}
           />
           <Button
             size="sm"
@@ -243,7 +245,10 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
           <tbody>
             {indexes === null && !error && (
               <tr>
-                <td colSpan={6} className="px-3 py-4 text-xs italic text-muted-foreground">
+                <td
+                  colSpan={6}
+                  className="px-3 py-4 text-xs italic text-muted-foreground"
+                >
                   {t("indexes.loading")}
                 </td>
               </tr>
@@ -266,15 +271,25 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
                 <td className="px-3 py-1.5">
                   <div className="flex flex-wrap gap-1">
                     {index.keys.map((key) => (
-                      <KeyChip key={key.field} field={key.field} value={key.value} />
+                      <KeyChip
+                        key={key.field}
+                        field={key.field}
+                        value={key.value}
+                      />
                     ))}
                   </div>
                 </td>
                 <td className="px-3 py-1.5">
                   <div className="flex flex-wrap gap-1">
-                    {index.unique && <Badge label={t("indexes.flags.unique")} />}
-                    {index.sparse && <Badge label={t("indexes.flags.sparse")} />}
-                    {index.hidden && <Badge label={t("indexes.flags.hidden")} />}
+                    {index.unique && (
+                      <Badge label={t("indexes.flags.unique")} />
+                    )}
+                    {index.sparse && (
+                      <Badge label={t("indexes.flags.sparse")} />
+                    )}
+                    {index.hidden && (
+                      <Badge label={t("indexes.flags.hidden")} />
+                    )}
                     {index.expireAfterSeconds != null && (
                       <Badge
                         label={t("indexes.badge.ttl", {
@@ -307,7 +322,9 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
                 </td>
                 {hasStats.size && (
                   <td className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground">
-                    {index.sizeBytes != null ? formatBytes(index.sizeBytes) : "—"}
+                    {index.sizeBytes != null
+                      ? formatBytes(index.sizeBytes)
+                      : "—"}
                   </td>
                 )}
                 {hasStats.usage && (
@@ -348,9 +365,7 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
                         ) : (
                           <EyeOff className="mr-2 h-3.5 w-3.5" />
                         )}
-                        {index.hidden
-                          ? t("indexes.unhide")
-                          : t("indexes.hide")}
+                        {index.hidden ? t("indexes.unhide") : t("indexes.hide")}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"

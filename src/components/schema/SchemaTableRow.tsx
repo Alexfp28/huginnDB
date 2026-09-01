@@ -78,7 +78,10 @@ function ColumnSkeleton({ label }: { label: string }) {
 }
 
 /** Renders the right-aligned per-table metric badge (row count or size). */
-export function tableMetricLabel(t: TableInfo, metric: SchemaTableMetric): string | null {
+export function tableMetricLabel(
+  t: TableInfo,
+  metric: SchemaTableMetric,
+): string | null {
   // `!= null` covers both `undefined` (field omitted) and `null` (older
   // payloads / drivers that serialized a null stat). `formatCount`/`formatBytes`
   // additionally guard non-finite input, so a stray null can never crash here.
@@ -198,7 +201,8 @@ export const TableRow = memo(function TableRow({
                 // Don't auto-relaunch a failed load on every toggle — the
                 // retry button below is the explicit way to try again while
                 // the error is still showing.
-                if (!cols && !colError) loadColumns(connectionId, t.schema, t.name);
+                if (!cols && !colError)
+                  loadColumns(connectionId, t.schema, t.name);
               }}
               // Only the chevron toggles the column list now — the rest of
               // the row opens the table in a tab (below). A single click
@@ -206,9 +210,15 @@ export const TableRow = memo(function TableRow({
               // coming from IDEs where clicking a table row opens it.
               className="-my-1 -ml-1 shrink-0 rounded p-1.5 hover:bg-accent/60"
               aria-label={
-                tableOpen ? ct("schema.collapseColumns") : ct("schema.expandColumns")
+                tableOpen
+                  ? ct("schema.collapseColumns")
+                  : ct("schema.expandColumns")
               }
-              title={tableOpen ? ct("schema.collapseColumns") : ct("schema.expandColumns")}
+              title={
+                tableOpen
+                  ? ct("schema.collapseColumns")
+                  : ct("schema.expandColumns")
+              }
             >
               {tableOpen ? (
                 <ChevronDown className="h-3 w-3" />
@@ -334,7 +344,9 @@ export const TableRow = memo(function TableRow({
                   title={colError}
                 >
                   <RefreshCw className="h-2.5 w-2.5 shrink-0" />
-                  <span className="truncate">{ct("schema.columnsLoadError")}</span>
+                  <span className="truncate">
+                    {ct("schema.columnsLoadError")}
+                  </span>
                 </button>
               ) : (
                 <ColumnSkeleton label={loadingLabel} />

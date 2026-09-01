@@ -41,12 +41,8 @@ import {
 import { notify } from "@/lib/notify";
 
 import { SingleDbExplorer } from "@/components/schema/SingleDbExplorer";
-import {
-  CreateCollectionDialog,
-} from "@/components/schema/dialogs/CreateCollectionDialog";
-import {
-  ExportDatabaseDialog,
-} from "@/components/schema/dialogs/ExportDatabaseDialog";
+import { CreateCollectionDialog } from "@/components/schema/dialogs/CreateCollectionDialog";
+import { ExportDatabaseDialog } from "@/components/schema/dialogs/ExportDatabaseDialog";
 import { ImportSqlDialog } from "@/components/schema/dialogs/ImportSqlDialog";
 import {
   ContextMenu,
@@ -188,7 +184,12 @@ export const MultiDbExplorer = memo(function MultiDbExplorer({
           scopeIncludesDatabase(scope, parentId, db.name),
       );
     if (!filterActive) {
-      return visible.map((db) => ({ db, count: 0, cold: false, nameMatch: false }));
+      return visible.map((db) => ({
+        db,
+        count: 0,
+        cold: false,
+        nameMatch: false,
+      }));
     }
     const cold = new Set(summary?.coldDatabases ?? []);
     const nameMatches = new Set(summary?.databaseNameMatches ?? []);
@@ -274,7 +275,11 @@ export const MultiDbExplorer = memo(function MultiDbExplorer({
             expanded={cs.expanded.has(`db:${db.name}`)}
             onToggle={() => toggleNode(parentId, `db:${db.name}`)}
             onScopeHere={() => {
-              narrowTo({ kind: "database", connectionId: parentId, database: db.name });
+              narrowTo({
+                kind: "database",
+                connectionId: parentId,
+                database: db.name,
+              });
               requestSearchFocus();
             }}
             onTableOpen={() => activateDb(db.name)}
@@ -292,7 +297,9 @@ export const MultiDbExplorer = memo(function MultiDbExplorer({
             // Only dim siblings when a concrete database is the accent. With
             // none, every database is equally in play and dimming would be
             // misleading.
-            dimmed={activeDatabaseName != null && activeDatabaseName !== db.name}
+            dimmed={
+              activeDatabaseName != null && activeDatabaseName !== db.name
+            }
           />
         ))}
       </div>
@@ -670,7 +677,11 @@ function DatabaseRoot({
       )}
       {exportTargetId && (
         <ExportDatabaseDialog
-          scope={{ kind: "single", connectionId: exportTargetId, databaseName: dbName }}
+          scope={{
+            kind: "single",
+            connectionId: exportTargetId,
+            databaseName: dbName,
+          }}
           onClose={() => setExportTargetId(null)}
         />
       )}
@@ -692,7 +703,9 @@ function DatabaseRoot({
       {effectiveExpanded && (
         <div className="ml-3 border-l border-border/35 pl-0.5">
           {error && (
-            <div className="px-3 py-1 text-[11px] text-destructive">{error}</div>
+            <div className="px-3 py-1 text-[11px] text-destructive">
+              {error}
+            </div>
           )}
           {opening && !childId && (
             <div className="px-3 py-1 text-[11px] italic text-muted-foreground">

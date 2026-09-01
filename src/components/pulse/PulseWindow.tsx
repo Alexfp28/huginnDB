@@ -41,6 +41,7 @@ import {
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
@@ -53,7 +54,11 @@ import { StorageLegend } from "@/components/pulse/sections/StorageLegend";
 import { slowestHint } from "@/lib/pulse/hints";
 import { usePulseLive } from "@/lib/pulse/usePulseLive";
 import { usePulseDetail } from "@/lib/pulse/usePulseDetail";
-import { isUnsupported, usePulseView, type PulseView } from "@/lib/pulse/usePulseView";
+import {
+  isUnsupported,
+  usePulseView,
+  type PulseView,
+} from "@/lib/pulse/usePulseView";
 import { setLanguage } from "@/lib/i18n";
 import { api } from "@/lib/tauri";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
@@ -73,7 +78,8 @@ import type {
   PulseTopQuery,
 } from "@/types";
 
-type ViewId = "status" | "queries" | "storage" | "sessions" | "indexes" | "retro";
+type ViewId =
+  "status" | "queries" | "storage" | "sessions" | "indexes" | "retro";
 
 const VIEWS: { id: ViewId; icon: LucideIcon; labelKey: string }[] = [
   { id: "status", icon: Activity, labelKey: "pulse.section.status" },
@@ -103,30 +109,40 @@ function Panel({
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
         <h2 className="text-xs font-semibold">{title}</h2>
         {hint && (
-          <span className={cn("font-mono text-3xs text-muted-foreground", !action && "ml-auto")}>
+          <span
+            className={cn(
+              "font-mono text-3xs text-muted-foreground",
+              !action && "ml-auto",
+            )}
+          >
             {hint}
           </span>
         )}
-        {action && <span className="ml-auto flex items-center gap-1">{action}</span>}
+        {action && (
+          <span className="ml-auto flex items-center gap-1">{action}</span>
+        )}
       </header>
       <div className="p-3">{children}</div>
     </section>
   );
 }
 
-function RefreshButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+function RefreshButton({
+  onClick,
+  loading,
+}: {
+  onClick: () => void;
+  loading: boolean;
+}) {
   const { t } = useTranslation();
   return (
-    <button
-      type="button"
+    <IconButton
+      size="xs"
+      icon={RefreshCw}
+      label={t("pulse.refresh")}
+      loading={loading}
       onClick={onClick}
-      disabled={loading}
-      title={t("pulse.refresh")}
-      aria-label={t("pulse.refresh")}
-      className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50"
-    >
-      <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-    </button>
+    />
   );
 }
 
@@ -138,9 +154,7 @@ function StatusView({ view }: { view: PulseView }) {
       <Panel
         title={t("pulse.section.alerts")}
         hint={
-          view.alerts.length
-            ? String(view.alerts.length)
-            : t("pulse.noAlerts")
+          view.alerts.length ? String(view.alerts.length) : t("pulse.noAlerts")
         }
       >
         <AlertList alerts={view.alerts} />
@@ -283,7 +297,10 @@ function QueriesView({
                     <td className="max-w-[46ch] px-2 py-1.5 align-top">
                       {/* `line-clamp` sets `display: -webkit-box`, so the digest
                           needs its own block and the schema its own line below. */}
-                      <div className="line-clamp-2 font-mono text-2xs" title={q.digest}>
+                      <div
+                        className="line-clamp-2 font-mono text-2xs"
+                        title={q.digest}
+                      >
                         {q.digest}
                       </div>
                       {q.schema && (
@@ -312,7 +329,9 @@ function QueriesView({
                           })}
                         </span>
                       ) : (
-                        <span className="font-mono text-3xs text-muted-foreground">—</span>
+                        <span className="font-mono text-3xs text-muted-foreground">
+                          —
+                        </span>
                       )}
                     </td>
                     <td className="px-2 py-1.5">
@@ -320,7 +339,9 @@ function QueriesView({
                         type="button"
                         disabled={!q.sample}
                         onClick={() => toggleExplain(q)}
-                        title={q.sample ? undefined : t("pulse.explain.unavailable")}
+                        title={
+                          q.sample ? undefined : t("pulse.explain.unavailable")
+                        }
                         aria-expanded={open}
                         className={cn(
                           "flex items-center gap-1 rounded-md px-1.5 py-1 font-mono text-3xs",
@@ -330,7 +351,10 @@ function QueriesView({
                         )}
                       >
                         <ChevronRight
-                          className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
+                          className={cn(
+                            "h-3 w-3 transition-transform",
+                            open && "rotate-90",
+                          )}
                         />
                         {t("pulse.table.plan")}
                       </button>
@@ -402,13 +426,22 @@ function StorageView({ view }: { view: PulseView }) {
                   style={{ width: `${((total / max) * 100).toFixed(1)}%` }}
                 >
                   <span
-                    style={{ width: pct(item.dataBytes), background: "var(--brand)" }}
+                    style={{
+                      width: pct(item.dataBytes),
+                      background: "var(--brand)",
+                    }}
                   />
                   <span
-                    style={{ width: pct(item.indexBytes), background: "var(--fk)" }}
+                    style={{
+                      width: pct(item.indexBytes),
+                      background: "var(--fk)",
+                    }}
                   />
                   <span
-                    style={{ width: pct(item.freeBytes), background: "var(--warning)" }}
+                    style={{
+                      width: pct(item.freeBytes),
+                      background: "var(--warning)",
+                    }}
                   />
                 </span>
               </span>
@@ -436,7 +469,11 @@ function SessionsView({ connectionId }: { connectionId: string }) {
   }
   if (error && items.length === 0) {
     return (
-      <EmptyState icon={AlertTriangle} title={t("pulse.sessions.unavailable")} hint={error} />
+      <EmptyState
+        icon={AlertTriangle}
+        title={t("pulse.sessions.unavailable")}
+        hint={error}
+      />
     );
   }
   if (items.length === 0) {
@@ -453,11 +490,21 @@ function SessionsView({ connectionId }: { connectionId: string }) {
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr className="border-b border-border text-3xs uppercase tracking-wider text-muted-foreground">
-              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.id")}</th>
-              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.user")}</th>
-              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.command")}</th>
-              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.state")}</th>
-              <th className="px-2 py-1.5 text-right font-medium">{t("pulse.table.duration")}</th>
+              <th className="px-2 py-1.5 text-left font-medium">
+                {t("pulse.table.id")}
+              </th>
+              <th className="px-2 py-1.5 text-left font-medium">
+                {t("pulse.table.user")}
+              </th>
+              <th className="px-2 py-1.5 text-left font-medium">
+                {t("pulse.table.command")}
+              </th>
+              <th className="px-2 py-1.5 text-left font-medium">
+                {t("pulse.table.state")}
+              </th>
+              <th className="px-2 py-1.5 text-right font-medium">
+                {t("pulse.table.duration")}
+              </th>
               <th className="px-2 py-1.5 text-left font-medium">
                 {t("pulse.table.statement")}
               </th>
@@ -466,7 +513,9 @@ function SessionsView({ connectionId }: { connectionId: string }) {
           <tbody>
             {items.map((s) => (
               <tr key={s.id} className="border-b border-border last:border-b-0">
-                <td className="px-2 py-1.5 font-mono text-2xs text-muted-foreground">{s.id}</td>
+                <td className="px-2 py-1.5 font-mono text-2xs text-muted-foreground">
+                  {s.id}
+                </td>
                 <td className="px-2 py-1.5 align-top">
                   <div className="font-mono text-2xs">{s.user ?? "—"}</div>
                   {(s.host || s.db) && (
@@ -481,7 +530,9 @@ function SessionsView({ connectionId }: { connectionId: string }) {
                     <span className="font-mono text-2xs">{s.state ?? "—"}</span>
                     {s.blockedBy && (
                       <span
-                        title={t("pulse.sessions.blockedByTitle", { id: s.blockedBy })}
+                        title={t("pulse.sessions.blockedByTitle", {
+                          id: s.blockedBy,
+                        })}
                         className="flex items-center gap-0.5 rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-3xs text-destructive"
                       >
                         <Link2 className="h-2.5 w-2.5" />
@@ -494,7 +545,10 @@ function SessionsView({ connectionId }: { connectionId: string }) {
                   {s.durationSecs < 1 ? "<1" : Math.round(s.durationSecs)} s
                 </td>
                 <td className="max-w-[46ch] px-2 py-1.5">
-                  <div className="line-clamp-2 font-mono text-2xs" title={s.query ?? undefined}>
+                  <div
+                    className="line-clamp-2 font-mono text-2xs"
+                    title={s.query ?? undefined}
+                  >
                     {s.query ?? "—"}
                   </div>
                 </td>
@@ -519,7 +573,11 @@ function IndexesView({ connectionId }: { connectionId: string }) {
   }
   if (error && items.length === 0) {
     return (
-      <EmptyState icon={AlertTriangle} title={t("pulse.indexes.unavailable")} hint={error} />
+      <EmptyState
+        icon={AlertTriangle}
+        title={t("pulse.indexes.unavailable")}
+        hint={error}
+      />
     );
   }
   if (items.length === 0) {
@@ -536,10 +594,18 @@ function IndexesView({ connectionId }: { connectionId: string }) {
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr className="border-b border-border text-3xs uppercase tracking-wider text-muted-foreground">
-              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.table")}</th>
-              <th className="px-2 py-1.5 text-left font-medium">{t("pulse.table.index")}</th>
-              <th className="px-2 py-1.5 text-right font-medium">{t("pulse.table.reads")}</th>
-              <th className="px-2 py-1.5 text-right font-medium">{t("pulse.table.size")}</th>
+              <th className="px-2 py-1.5 text-left font-medium">
+                {t("pulse.table.table")}
+              </th>
+              <th className="px-2 py-1.5 text-left font-medium">
+                {t("pulse.table.index")}
+              </th>
+              <th className="px-2 py-1.5 text-right font-medium">
+                {t("pulse.table.reads")}
+              </th>
+              <th className="px-2 py-1.5 text-right font-medium">
+                {t("pulse.table.size")}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -551,13 +617,19 @@ function IndexesView({ connectionId }: { connectionId: string }) {
                 <td className="px-2 py-1.5 align-top">
                   <div className="font-mono text-2xs">{i.table}</div>
                   {i.schema && (
-                    <div className="font-mono text-3xs text-muted-foreground">{i.schema}</div>
+                    <div className="font-mono text-3xs text-muted-foreground">
+                      {i.schema}
+                    </div>
                   )}
                 </td>
-                <td className="px-2 py-1.5 font-mono text-2xs">{i.indexName}</td>
+                <td className="px-2 py-1.5 font-mono text-2xs">
+                  {i.indexName}
+                </td>
                 <td className="px-2 py-1.5 text-right">
                   {i.reads === null ? (
-                    <span className="font-mono text-3xs text-muted-foreground">—</span>
+                    <span className="font-mono text-3xs text-muted-foreground">
+                      —
+                    </span>
                   ) : i.reads === 0 ? (
                     <span className="rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-3xs text-destructive">
                       {t("pulse.indexes.unused")}
@@ -595,7 +667,11 @@ const RETRO_RANGE_MS: Record<RetroRange, number> = {
  *  history for). Queries/s and connection pressure are the two figures
  *  worth asking "what did this look like a week ago" about. */
 const RETRO_METRICS: { metric: string; labelKey: string; color: string }[] = [
-  { metric: "queries", labelKey: "pulse.metric.queriesPerSecond", color: "var(--brand)" },
+  {
+    metric: "queries",
+    labelKey: "pulse.metric.queriesPerSecond",
+    color: "var(--brand)",
+  },
   {
     metric: "connections_active",
     labelKey: "pulse.metric.connections",
@@ -652,7 +728,11 @@ function RetroChart({
       <div className="mb-1 flex items-center justify-between">
         <span className="text-2xs text-muted-foreground">{t(labelKey)}</span>
         <span className="font-mono text-xs tabular-nums">
-          {latest === null ? "—" : latest < 10 ? latest.toFixed(1) : Math.round(latest)}
+          {latest === null
+            ? "—"
+            : latest < 10
+              ? latest.toFixed(1)
+              : Math.round(latest)}
         </span>
       </div>
       {loading && values.length === 0 ? (
@@ -668,7 +748,13 @@ function RetroChart({
           {t("pulse.retro.empty")}
         </div>
       ) : (
-        <Sparkline values={values} color={color} width={480} height={64} className="w-full" />
+        <Sparkline
+          values={values}
+          color={color}
+          width={480}
+          height={64}
+          className="w-full"
+        />
       )}
     </div>
   );
@@ -800,7 +886,9 @@ function PulseBody({ connectionId }: { connectionId: string }) {
 
       <div className="min-w-0 overflow-y-auto p-3">
         {viewId === "status" && <StatusView view={view} />}
-        {viewId === "queries" && <QueriesView view={view} connectionId={connectionId} />}
+        {viewId === "queries" && (
+          <QueriesView view={view} connectionId={connectionId} />
+        )}
         {viewId === "storage" && <StorageView view={view} />}
         {viewId === "sessions" && <SessionsView connectionId={connectionId} />}
         {viewId === "indexes" && <IndexesView connectionId={connectionId} />}

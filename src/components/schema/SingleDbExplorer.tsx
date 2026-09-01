@@ -31,9 +31,7 @@ import { IndexesSectionHeader } from "@/components/schema/IndexesSectionHeader";
 import { TableSection } from "@/components/schema/SchemaTableSection";
 import { DropObjectDialog } from "@/components/schema/dialogs/DropObjectDialog";
 import { EmptyTableDialog } from "@/components/schema/dialogs/EmptyTableDialog";
-import {
-  RenameObjectDialog,
-} from "@/components/schema/dialogs/RenameObjectDialog";
+import { RenameObjectDialog } from "@/components/schema/dialogs/RenameObjectDialog";
 import {
   ContextMenu,
   ContextMenuAction,
@@ -135,10 +133,8 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
   // render of the surviving explorers (CLAUDE.md gotcha #1).
   const filtering = patterns.length > 0;
   const { bySchema, schemas } = useMemo(() => {
-    const grouped: Record<
-      string,
-      { tables: TableInfo[]; views: TableInfo[] }
-    > = {};
+    const grouped: Record<string, { tables: TableInfo[]; views: TableInfo[] }> =
+      {};
     for (const tbl of cs?.tables ?? []) {
       if (!matchesPatterns(tbl.name, patterns)) continue;
       grouped[tbl.schema] ??= { tables: [], views: [] };
@@ -327,9 +323,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                       <ContextMenuAction
                         icon={SquareTerminal}
                         label={t("schema.context.newQueryHere")}
-                        onSelect={() =>
-                          openQueryTab(connectionId)
-                        }
+                        onSelect={() => openQueryTab(connectionId)}
                       />
                     </ContextMenuContent>
                   </ContextMenu>
@@ -340,7 +334,9 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                     {/* Tables section */}
                     <TableSection
                       label={t("schema.sectionTables")}
-                      icon={<TableIcon className="h-3 w-3 text-muted-foreground/70" />}
+                      icon={
+                        <TableIcon className="h-3 w-3 text-muted-foreground/70" />
+                      }
                       items={tables}
                       sectionKey={`${schemaNodeKey}:tables`}
                       connectionId={connectionId}
@@ -357,7 +353,9 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                     {views.length > 0 && (
                       <TableSection
                         label={t("schema.sectionViews")}
-                        icon={<Eye className="h-3 w-3 text-muted-foreground/70" />}
+                        icon={
+                          <Eye className="h-3 w-3 text-muted-foreground/70" />
+                        }
                         items={views}
                         sectionKey={`${schemaNodeKey}:views`}
                         connectionId={connectionId}

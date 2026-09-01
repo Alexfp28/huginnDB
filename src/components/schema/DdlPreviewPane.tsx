@@ -36,7 +36,10 @@ interface Props {
 }
 
 export function DdlPreviewPane({ title, ddl, error, warning, prefs }: Props) {
-  const editorOptions = useEditorOptions(() => readOnlyEditorOptions(prefs), [prefs]);
+  const editorOptions = useEditorOptions(
+    () => readOnlyEditorOptions(prefs),
+    [prefs],
+  );
 
   return (
     <div className="flex h-48 flex-col border-t border-border">

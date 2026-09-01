@@ -108,3 +108,15 @@ export const MENU_ITEM =
  */
 export const MENU_SUBTRIGGER =
   "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent";
+
+/**
+ * A row action that appears on hover of its row. Requires the row to declare
+ * `group/row`; `focus-visible` is in there so the action is still reachable by
+ * keyboard, where there is no hover to trigger it.
+ *
+ * Named `group/row` rather than a bare `group` because rows nest (a tree row
+ * inside a section inside a panel) and an unnamed group binds to the nearest
+ * one, whichever that happens to be. The app had three spellings of this.
+ */
+export const REVEAL_ON_ROW_HOVER =
+  "opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100";

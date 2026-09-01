@@ -28,9 +28,10 @@ import {
   ArrowUpDown,
   ChevronDown,
   ChevronRight,
+  RefreshCw,
   ShieldCheck,
 } from "lucide-react";
-import { RefreshButton } from "@/components/common/RefreshButton";
+import { IconButton } from "@/components/ui/icon-button";
 import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { PrivilegeInfo, UserInfo } from "@/types";
@@ -50,7 +51,9 @@ export function SecurityTab({
 
   // Privileges cache, keyed by `UserInfo.name`. `undefined` = not fetched
   // yet, `"loading"` sentinel handled separately via `loadingUser`.
-  const [privileges, setPrivileges] = useState<Record<string, PrivilegeInfo[]>>({});
+  const [privileges, setPrivileges] = useState<Record<string, PrivilegeInfo[]>>(
+    {},
+  );
   const [loadingUser, setLoadingUser] = useState<string | null>(null);
 
   const refresh = () => {
@@ -79,12 +82,8 @@ export function SecurityTab({
           setLoadingUser(user.name);
           api
             .listPrivileges(connectionId, user.name)
-            .then((rows) =>
-              setPrivileges((p) => ({ ...p, [user.name]: rows })),
-            )
-            .catch(() =>
-              setPrivileges((p) => ({ ...p, [user.name]: [] })),
-            )
+            .then((rows) => setPrivileges((p) => ({ ...p, [user.name]: rows })))
+            .catch(() => setPrivileges((p) => ({ ...p, [user.name]: [] })))
             .finally(() => setLoadingUser(null));
         }
       }
@@ -167,10 +166,11 @@ export function SecurityTab({
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t("security.title")}
         </div>
-        <RefreshButton
+        <IconButton
+          icon={RefreshCw}
           onClick={refresh}
           loading={loading}
-          title={t("security.refresh")}
+          label={t("security.refresh")}
         />
       </div>
 
@@ -197,12 +197,16 @@ export function SecurityTab({
                         key={header.id}
                         className={cn(
                           "px-3 py-1.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
-                          header.column.getCanSort() && "cursor-pointer select-none",
+                          header.column.getCanSort() &&
+                            "cursor-pointer select-none",
                         )}
                         onClick={header.column.getToggleSortingHandler()}
                       >
                         <span className="inline-flex items-center gap-1">
-                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
                           {header.column.getCanSort() &&
                             (sort === "asc" ? (
                               <ArrowUp className="h-3 w-3" />
@@ -239,7 +243,10 @@ export function SecurityTab({
                     >
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id} className="px-3 py-1.5">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
                         </td>
                       ))}
                     </tr>

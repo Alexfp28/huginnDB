@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
-import { RefreshButton } from "@/components/common/RefreshButton";
+import { IconButton } from "@/components/ui/icon-button";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
@@ -1013,10 +1013,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     {
       id: "refresh",
       bar: (
-        <RefreshButton
-          onClick={fetchData}
+        <IconButton
+          icon={RefreshCw}
+          label={t("tableData.refresh")}
           loading={loading}
-          title={t("tableData.refresh")}
+          onClick={fetchData}
         />
       ),
       menu: (
