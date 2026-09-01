@@ -5,6 +5,7 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -14,7 +15,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectEditorPrefs,
+} from "@/stores/preferences/preferences";
 import {
   MONACO_THEME_OPTIONS,
   getMonacoPreviewColors,
@@ -131,8 +135,10 @@ export function EditorSection() {
         />
       </PrefRow>
 
-      <PrefRow label={t("settings.editor.lineNumbers")}
-        prefId="editor.lineNumbers">
+      <PrefRow
+        label={t("settings.editor.lineNumbers")}
+        prefId="editor.lineNumbers"
+      >
         <Switch
           checked={editor.lineNumbers}
           onCheckedChange={(v) => updateEditor({ lineNumbers: v })}
@@ -157,14 +163,8 @@ export function EditorSection() {
 type Tok = { text: string; kind?: "keyword" | "string" | "number" | "comment" };
 const SAMPLE: Tok[][] = [
   [{ text: "-- recent active users", kind: "comment" }],
-  [
-    { text: "SELECT", kind: "keyword" },
-    { text: " id, name, created_at" },
-  ],
-  [
-    { text: "FROM", kind: "keyword" },
-    { text: " users" },
-  ],
+  [{ text: "SELECT", kind: "keyword" }, { text: " id, name, created_at" }],
+  [{ text: "FROM", kind: "keyword" }, { text: " users" }],
   [
     { text: "WHERE", kind: "keyword" },
     { text: " status = " },
@@ -188,8 +188,7 @@ const SAMPLE: Tok[][] = [
 function EditorPreview({ editor }: { editor: EditorPrefs }) {
   const { t } = useTranslation();
   const c = getMonacoPreviewColors(editor.theme);
-  const colorFor = (kind?: Tok["kind"]) =>
-    kind ? c[kind] : c.foreground;
+  const colorFor = (kind?: Tok["kind"]) => (kind ? c[kind] : c.foreground);
   return (
     <div className="mb-3">
       <div className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -216,9 +215,13 @@ function EditorPreview({ editor }: { editor: EditorPrefs }) {
             </div>
           )}
           <pre
-            className={`flex-1 py-2 pr-3 ${editor.lineNumbers ? "pl-1" : "pl-3"} ${
-              editor.wordWrap ? "whitespace-pre-wrap break-words" : "overflow-x-auto"
-            }`}
+            className={cn(
+              "flex-1 py-2 pr-3",
+              editor.lineNumbers ? "pl-1" : "pl-3",
+              editor.wordWrap
+                ? "whitespace-pre-wrap break-words"
+                : "overflow-x-auto",
+            )}
             style={{
               color: c.foreground,
               fontFamily: editor.fontFamily,

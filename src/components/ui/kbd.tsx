@@ -10,25 +10,21 @@
  * appears as ⌘ on macOS.
  */
 
-import type { ReactNode } from "react";
+import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-export function Kbd({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <kbd
-      className={cn(
-        "rounded border border-border bg-muted px-1 font-mono leading-none",
-        className,
-      )}
-    >
-      {children}
-    </kbd>
-  );
-}
+export const Kbd = React.forwardRef<
+  HTMLElement,
+  React.HTMLAttributes<HTMLElement>
+>(({ className, ...props }, ref) => (
+  <kbd
+    ref={ref}
+    className={cn(
+      "rounded border border-border bg-muted px-1 font-mono leading-none",
+      className,
+    )}
+    {...props}
+  />
+));
+Kbd.displayName = "Kbd";

@@ -19,6 +19,7 @@
 import { forwardRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Braces, Maximize2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface CellInputProps {
   /** Current value; `null` renders a "NULL" placeholder. */
@@ -130,11 +131,12 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
             tabIndex={-1}
             title={t("cellEditor.setNull")}
             disabled={disabled}
-            className={`shrink-0 rounded px-1 text-[10px] ${
+            className={cn(
+              "shrink-0 rounded px-1 text-[10px]",
               nullActive
                 ? "bg-primary/20 text-primary"
-                : "text-muted-foreground/50 hover:text-foreground"
-            }`}
+                : "text-muted-foreground/50 hover:text-foreground",
+            )}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onChange(null)}
           >

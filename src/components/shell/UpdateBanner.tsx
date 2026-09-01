@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { Sparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { useUpdateStore } from "@/stores/update";
 import { Button } from "@/components/ui/button";
@@ -70,9 +71,10 @@ export function UpdateBanner({ version }: Props) {
       className="pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center px-4"
     >
       <div
-        className={`pointer-events-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-border bg-card/95 px-4 py-3 shadow-elevation-4 backdrop-blur transition-all duration-300 ease-out ${
-          shown ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"
-        }`}
+        className={cn(
+          "pointer-events-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-border bg-card/95 px-4 py-3 shadow-elevation-4 backdrop-blur transition-all duration-300 ease-out",
+          shown ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0",
+        )}
       >
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
           <Sparkles className="h-4 w-4" />

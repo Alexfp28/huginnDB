@@ -16,14 +16,9 @@
  */
 
 import { useTranslation } from "react-i18next";
-import {
-  AlertTriangle,
-  Eye,
-  PencilLine,
-  RotateCcw,
-  Save,
-} from "lucide-react";
+import { AlertTriangle, Eye, PencilLine, RotateCcw, Save } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { OriginDocument } from "@/types";
 
@@ -59,11 +54,12 @@ export function OriginEditorHeader({
         <div className="flex items-center gap-2">
           <h2 className="truncate text-base font-semibold">{doc.name}</h2>
           <span
-            className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] ${
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px]",
               readOnly
                 ? "bg-muted text-muted-foreground"
-                : "bg-primary/10 text-primary"
-            }`}
+                : "bg-primary/10 text-primary",
+            )}
             title={
               doc.role === "publisher" && !doc.writable.writable
                 ? (doc.writable.reason ?? undefined)

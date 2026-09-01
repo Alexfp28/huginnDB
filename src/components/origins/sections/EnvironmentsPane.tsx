@@ -20,6 +20,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, Plus, Trash2 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -232,11 +233,12 @@ export function EnvironmentsPane({
                 <button
                   key={env.sourceEnvironmentId}
                   onClick={() => setActiveId(env.sourceEnvironmentId)}
-                  className={`flex w-full items-center gap-2 border-l-2 px-2.5 py-2 text-left ${
+                  className={cn(
+                    "flex w-full items-center gap-2 border-l-2 px-2.5 py-2 text-left",
                     selected
                       ? "border-primary bg-accent/40"
-                      : "border-transparent hover:bg-accent/30"
-                  }`}
+                      : "border-transparent hover:bg-accent/30",
+                  )}
                 >
                   <span
                     aria-hidden

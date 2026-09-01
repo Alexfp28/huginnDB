@@ -21,6 +21,7 @@ import {
   save as saveFileDialog,
   open as openFileDialog,
 } from "@tauri-apps/plugin-dialog";
+import { cn } from "@/lib/utils";
 import { IconButton } from "@/components/ui/icon-button";
 import { notify } from "@/lib/notify";
 import { Copy, Download, Trash2, Upload } from "lucide-react";
@@ -165,11 +166,12 @@ export function AppearanceSection() {
             <button
               key={theme.id}
               onClick={() => setThemeId(theme.id)}
-              className={`flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left text-sm ${
+              className={cn(
+                "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left text-sm",
                 theme.id === active.id
                   ? "border-primary bg-accent/40"
-                  : "border-transparent hover:bg-accent/30"
-              }`}
+                  : "border-transparent hover:bg-accent/30",
+              )}
             >
               <ThemeSwatch colors={theme[mode]} />
               <span className="flex-1 truncate">{theme.name}</span>

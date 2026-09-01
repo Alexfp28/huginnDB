@@ -49,6 +49,7 @@ import {
   selectUpdateNotificationVisible,
   useUpdateStore,
 } from "@/stores/update";
+import { cn } from "@/lib/utils";
 import { GeneralSection } from "@/components/settings/sections/GeneralSection";
 import { EditorSection } from "@/components/settings/sections/EditorSection";
 import { GridSection } from "@/components/settings/sections/GridSection";
@@ -140,11 +141,12 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
                 <button
                   key={s.id}
                   onClick={() => setSection(s.id)}
-                  className={`flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left ${
+                  className={cn(
+                    "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left",
                     active
                       ? "border-primary bg-accent/40"
-                      : "border-transparent hover:bg-accent/30"
-                  }`}
+                      : "border-transparent hover:bg-accent/30",
+                  )}
                 >
                   <div className="relative">
                     <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

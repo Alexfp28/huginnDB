@@ -143,6 +143,29 @@ describe("E — every literal CSS variable names a real token", () => {
   });
 });
 
+describe("F — className resolves conflicts", () => {
+  // An interpolated template literal just concatenates, so a class from one of
+  // its branches and one from the literal part both land in the attribute and
+  // the browser picks by specificity — not by what the author meant. `cn` is
+  // tailwind-merge and settles it. A template with no `${}` is only a string
+  // and has nothing to resolve, so the rule is about interpolation alone.
+  it("no interpolated template literal in a className", () => {
+    const bad: string[] = [];
+    for (const file of ALL) {
+      // Read the raw source: `code()` blanks template literals, which is
+      // exactly what this rule looks for. And scan whole-file rather than
+      // line-by-line, because the interpolation is often on the line *after*
+      // the opening backtick once Prettier has wrapped a long class string.
+      const src = readFileSync(file, "utf8");
+      for (const m of src.matchAll(/className=\{`[^`]*?\$\{/gs)) {
+        const line = src.slice(0, m.index).split("\n").length;
+        bad.push(`${file}:${line}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
 describe("G — the patterns that now have a primitive", () => {
   it("no raw select outside ui/native-select", () => {
     expect(hits(OUTSIDE_UI, /<select[\s/>]/)).toEqual([]);
@@ -184,7 +207,4 @@ describe("G — the patterns that now have a primitive", () => {
  *   moves pixels app-wide while `--radius` is not theme-editable, so the
  *   incoherence is purely aesthetic today. If `--radius` ever becomes a
  *   preference, this becomes a real rule.
- * - **Ban interpolated template literals in `className`.** Thirteen files still
- *   have one, so the rule cannot start green; it belongs with the wave that
- *   cleans them up.
  */

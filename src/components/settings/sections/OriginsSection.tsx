@@ -40,6 +40,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/common/PasswordInput";
 import type { Origin, OriginRole } from "@/types";
 import { formatDateTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export function OriginsSection() {
   const { t } = useTranslation();
@@ -275,11 +276,12 @@ export function OriginsSection() {
                       itself and opens read-only if the OS refuses a write, no
                       matter what this says. */}
                   <span
-                    className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] ${
+                    className={cn(
+                      "inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px]",
                       (o.role ?? "consumer") === "publisher"
                         ? "bg-primary/10 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}
+                        : "bg-muted text-muted-foreground",
+                    )}
                   >
                     {(o.role ?? "consumer") === "publisher" ? (
                       <PencilLine className="h-3 w-3" />

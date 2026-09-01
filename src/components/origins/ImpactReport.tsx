@@ -24,6 +24,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { MICRO_HEADING } from "@/components/ui/styles";
 import type { OriginEntityImpact, OriginPublishImpact } from "@/types";
 
@@ -43,7 +44,7 @@ function Row({
         ? "text-destructive"
         : "text-muted-foreground";
   return (
-    <div className={`flex items-start gap-2 text-[11px] ${toneClass}`}>
+    <div className={cn("flex items-start gap-2 text-[11px]", toneClass)}>
       <Icon className="mt-0.5 h-3 w-3 shrink-0" />
       <div className="min-w-0 flex-1">{children}</div>
     </div>

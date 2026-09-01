@@ -833,7 +833,10 @@ function BatchSummary({ summary }: { summary: BatchResult }) {
   return (
     <div className="shrink-0 border-b border-border bg-card/40">
       <div
-        className={`px-3 py-1 text-[11px] ${ok ? "text-muted-foreground" : "text-destructive"}`}
+        className={cn(
+          "px-3 py-1 text-[11px]",
+          ok ? "text-muted-foreground" : "text-destructive",
+        )}
       >
         {ok
           ? t("query.batchOk", {
@@ -860,7 +863,10 @@ function BatchSummary({ summary }: { summary: BatchResult }) {
               {s.preview}
             </span>
             <span
-              className={`shrink-0 tabular-nums ${s.error ? "text-destructive" : "text-muted-foreground/70"}`}
+              className={cn(
+                "shrink-0 tabular-nums",
+                s.error ? "text-destructive" : "text-muted-foreground/70",
+              )}
             >
               {s.error
                 ? s.error

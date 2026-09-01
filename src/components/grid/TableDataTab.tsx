@@ -90,6 +90,7 @@ import { runExport } from "@/lib/grid/exportTable";
 import { clampRowHeight } from "@/lib/grid/rowHeight";
 import { nextOffset, pageWindow, prevOffset } from "@/lib/grid/pagination";
 import { pickJsonFile } from "@/lib/dialogs";
+import { cn } from "@/lib/utils";
 import {
   registerTableRefresh,
   unregisterTableRefresh,
@@ -1045,7 +1046,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             className="relative"
           >
             <ListFilter
-              className={`h-3.5 w-3.5 ${serverFilters.length ? "text-brand" : ""}`}
+              className={cn(
+                "h-3.5 w-3.5",
+                serverFilters.length ? "text-brand" : "",
+              )}
             />
             {serverFilters.length > 0 && (
               <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold text-white">
@@ -1060,9 +1064,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onSelect={() => setAdvancedOpen(true)}
           >
             <ListFilter
-              className={`mr-2 h-3.5 w-3.5 ${
-                serverFilters.length ? "text-brand" : ""
-              }`}
+              className={cn(
+                "mr-2 h-3.5 w-3.5",
+                serverFilters.length ? "text-brand" : "",
+              )}
             />
             {t("tableData.filter.title")}
             {serverFilters.length > 0 && (
@@ -1222,9 +1227,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               size="icon"
               onClick={() => setDocumentViewMode("table")}
               title={t("dataGrid.viewModeTable")}
-              className={`h-7 w-7 rounded-none ${
-                documentViewMode === "table" ? "bg-accent text-brand" : ""
-              }`}
+              className={cn(
+                "h-7 w-7 rounded-none",
+                documentViewMode === "table" ? "bg-accent text-brand" : "",
+              )}
             >
               <Table2 className="h-3.5 w-3.5" />
             </Button>
@@ -1233,9 +1239,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               size="icon"
               onClick={() => setDocumentViewMode("list")}
               title={t("dataGrid.viewModeList")}
-              className={`h-7 w-7 rounded-none ${
-                documentViewMode === "list" ? "bg-accent text-brand" : ""
-              }`}
+              className={cn(
+                "h-7 w-7 rounded-none",
+                documentViewMode === "list" ? "bg-accent text-brand" : "",
+              )}
             >
               <Rows3 className="h-3.5 w-3.5" />
             </Button>

@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Cable, FileJson, Layers, Send } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { api } from "@/lib/tauri";
@@ -274,11 +275,12 @@ export function OriginEditorOverlay() {
                     <button
                       key={p.id}
                       onClick={() => setPane(p.id)}
-                      className={`flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left ${
+                      className={cn(
+                        "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left",
                         active
                           ? "border-primary bg-accent/40"
-                          : "border-transparent hover:bg-accent/30"
-                      }`}
+                          : "border-transparent hover:bg-accent/30",
+                      )}
                     >
                       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <div className="flex flex-1 flex-col leading-tight">

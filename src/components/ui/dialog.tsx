@@ -74,15 +74,16 @@ const DialogContent = React.forwardRef<
 ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
-const DialogHeader = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
+const DialogHeader = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
   <div
+    ref={ref}
     className={cn("flex flex-col space-y-1.5 text-left", className)}
     {...props}
   />
-);
+));
 DialogHeader.displayName = "DialogHeader";
 
 /**
@@ -95,15 +96,16 @@ DialogHeader.displayName = "DialogHeader";
  * `gap-2` renders identically to `space-x-2` for a row that does not wrap, so
  * this changes nothing for the footers that already fit.
  */
-const DialogFooter = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
+const DialogFooter = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
   <div
+    ref={ref}
     className={cn("flex flex-wrap justify-end gap-2", className)}
     {...props}
   />
-);
+));
 DialogFooter.displayName = "DialogFooter";
 
 const DialogTitle = React.forwardRef<
