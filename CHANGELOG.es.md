@@ -8,6 +8,38 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Ocultar una conexión en el selector de un entorno sincronizado no se
+  mantenía — la siguiente sincronización del origen la volvía a mostrar sin
+  avisar.** `visible_connections` (`LaunchState`, el mismo filtro "al estilo
+  DataGrip" que el #107 añadió para un entorno normal) era un único campo
+  cumpliendo dos funciones incompatibles en un entorno espejado:
+  `sync_environment_bundles` lo trataba como la membership real de conexiones
+  del origen y lo sobrescribía entero en cada sincronización, mientras que el
+  árbol de conexiones trataba ese mismo campo como la elección del usuario de
+  qué ocultar o mostrar. Los dos solo coincidían por casualidad, hasta que la
+  siguiente sincronización programada (o un "Sincronizar ahora" manual)
+  devolvía el filtro a "mostrar todo lo que publica el origen".
+
+  `Environment` incorpora un quinto override local, `local_visible_connections`,
+  junto al cuarteto ya existente `local_name`/`local_color`/`local_icon`/`local_theme_id`
+  — misma forma: `Some(lista)` gana sobre el valor sincronizado y `None`
+  significa "seguir al origen". `sync_environment_bundles` sigue sobrescribiendo
+  `launch.visible_connections` con la membership real del paquete (esa parte
+  nunca fue el problema — una conexión recién compartida tiene que seguir
+  apareciendo sola), pero ya nada lee ese campo directamente:
+  `Environment::effective_visible_connections` resuelve primero el override, y
+  tanto `get_launch_state` como `list_environments` devuelven el valor ya
+  resuelto. `save_launch_state` desvía el filtro que llega hacia el override en
+  vez de hacia el campo sincronizado siempre que el entorno activo esté
+  espejado desde un origen, de modo que la siguiente sincronización tenga la
+  membership real con la que comparar en vez del último subconjunto elegido
+  por el usuario. Volver a marcar "mostrar todo" también limpia el override,
+  que es exactamente "volver a seguir al origen" — una sincronización nunca
+  publica una membership más estrecha que el paquete completo, así que nunca
+  hubo un caso en el que "sin override" tuviera que significar otra cosa.
+
 ## [1.20.0] — 2026-08-31
 
 ### Añadido
