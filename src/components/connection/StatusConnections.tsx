@@ -12,7 +12,8 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronUp, Loader2, PlugZap, RotateCw } from "lucide-react";
+import { Check, ChevronUp, PlugZap, RotateCw } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
@@ -23,6 +24,7 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuItem,
 } from "@/components/ui/dropdown";
 import { DriverBadge } from "@/components/common/DriverBadge";
@@ -59,7 +61,7 @@ export function StatusConnections() {
   const current = useMemo(
     () =>
       selected
-        ? profiles.find((p) => p.id === selected && active.has(p.id)) ?? null
+        ? (profiles.find((p) => p.id === selected && active.has(p.id)) ?? null)
         : null,
     [selected, profiles, active],
   );
@@ -97,7 +99,9 @@ export function StatusConnections() {
   /** Ids being torn down, so their row can say so — see the tree's own note:
    *  closing a pool is several round trips, and a control that looks ignored
    *  invites a second click. */
-  const [disconnecting, setDisconnecting] = useState<Set<string>>(() => new Set());
+  const [disconnecting, setDisconnecting] = useState<Set<string>>(
+    () => new Set(),
+  );
   function markDisconnecting(id: string, value: boolean) {
     setDisconnecting((prev) => {
       if (prev.has(id) === value) return prev;
@@ -158,7 +162,9 @@ export function StatusConnections() {
             "flex-1 truncate text-xs",
             selected === p.id && "font-semibold",
           )}
-          title={isLost ? t("connections.lost", { message: lostError }) : undefined}
+          title={
+            isLost ? t("connections.lost", { message: lostError }) : undefined
+          }
         >
           {p.name}
         </span>
@@ -203,7 +209,7 @@ export function StatusConnections() {
             }}
           >
             {disconnecting.has(p.id) ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Spinner size="sm" />
             ) : (
               <PlugZap className="h-3.5 w-3.5" />
             )}
@@ -227,34 +233,30 @@ export function StatusConnections() {
             )}
           >
             {current ? (
-            <DriverBadge driver={current.driver} />
-          ) : (
-            <span
-              className={cn(
-                "h-1.5 w-1.5 rounded-full",
-                count > 0 ? "bg-brand" : "bg-muted-foreground/40",
-              )}
-            />
-          )}
-          <span className="max-w-[12rem] truncate">
-            {current
-              ? current.name
-              : count > 0
-                ? t("statusBar.connections", { count })
-                : t("statusBar.disconnected")}
-          </span>
-          <ChevronUp className="h-3 w-3 opacity-60" />
-        </button>
+              <DriverBadge driver={current.driver} />
+            ) : (
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  count > 0 ? "bg-brand" : "bg-muted-foreground/40",
+                )}
+              />
+            )}
+            <span className="max-w-[12rem] truncate">
+              {current
+                ? current.name
+                : count > 0
+                  ? t("statusBar.connections", { count })
+                  : t("statusBar.disconnected")}
+            </span>
+            <ChevronUp className="h-3 w-3 opacity-60" />
+          </button>
         </DropdownMenuTrigger>
       </SimpleTooltip>
-      <DropdownMenuContent
-        side="top"
-        align="start"
-        className="w-72"
-      >
-        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <DropdownMenuContent side="top" align="start" className="w-72">
+        <DropdownMenuLabel>
           {t("statusBar.connectionsActive")}
-        </div>
+        </DropdownMenuLabel>
         {activeProfiles.length === 0 ? (
           <div className="px-2 py-1.5 text-xs text-muted-foreground">
             {t("statusBar.noConnections")}

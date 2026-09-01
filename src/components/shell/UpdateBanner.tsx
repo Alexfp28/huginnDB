@@ -11,8 +11,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { Loader2, Sparkles, X } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Spinner } from "@/components/ui/spinner";
 import { useUpdateStore } from "@/stores/update";
 import { Button } from "@/components/ui/button";
 
@@ -94,7 +95,7 @@ export function UpdateBanner({ version }: Props) {
             {t("update.later")}
           </Button>
           <Button size="sm" onClick={install} disabled={isInstalling}>
-            {isInstalling && <Loader2 className="h-3 w-3 animate-spin" />}
+            {isInstalling && <Spinner size="xs" />}
             {installLabel}
           </Button>
           <button

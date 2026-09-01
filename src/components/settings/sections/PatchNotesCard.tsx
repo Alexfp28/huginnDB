@@ -11,6 +11,8 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { MICRO_HEADING } from "@/components/ui/styles";
+import { cn } from "@/lib/utils";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { getReleases } from "@/lib/appInfo/changelog";
 import {
@@ -67,10 +69,7 @@ export function PatchNotesCard({ currentVersion }: Props) {
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
           {t("settings.about.patchNotes")}
         </div>
-        <Select
-          value={activeVersion}
-          onValueChange={(v) => setSelected(v)}
-        >
+        <Select value={activeVersion} onValueChange={(v) => setSelected(v)}>
           <SelectTrigger className="h-7 w-40 text-xs">
             <SelectValue aria-label={activeVersion}>
               {activeVersion === "Unreleased"
@@ -94,8 +93,7 @@ export function PatchNotesCard({ currentVersion }: Props) {
       </div>
 
       <div className="mt-3 max-h-72 space-y-3 overflow-y-auto pr-1 text-[12px] leading-relaxed">
-        {!release ||
-        (release.sections.length === 0 && !release.intro) ? (
+        {!release || (release.sections.length === 0 && !release.intro) ? (
           <div className="text-muted-foreground">
             {t("settings.about.patchNotesNone")}
           </div>
@@ -113,7 +111,7 @@ export function PatchNotesCard({ currentVersion }: Props) {
             )}
             {release.sections.map((s) => (
               <div key={s.heading}>
-                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand">
+                <div className={cn(MICRO_HEADING, "mb-1 text-brand")}>
                   {s.heading}
                 </div>
                 <ul className="space-y-1">

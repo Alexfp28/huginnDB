@@ -48,10 +48,11 @@ import {
   DatabaseBackup,
   DatabaseZap,
   ListFilter,
-  Loader2,
   PlugZap,
   Search,
 } from "lucide-react";
+import { MICRO_HEADING } from "@/components/ui/styles";
+import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
@@ -540,7 +541,7 @@ export function ConnectionsTree() {
             dragged to, and the labels are now their tooltips. That pays for the
             vertical space the scope chip and the search summary need. */}
         <div className="mb-1.5 flex items-center gap-1">
-          <span className="flex-1 truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className={cn("flex-1 truncate", MICRO_HEADING)}>
             {t("panels.schema")}
           </span>
           <SimpleTooltip label={t("menu.file.disconnectAll")}>
@@ -555,7 +556,7 @@ export function ConnectionsTree() {
                   per database, so this is not always instant — the button says
                   it is working instead of looking ignored. */}
               {disconnectingAll ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Spinner size="sm" />
               ) : (
                 <PlugZap className="h-3.5 w-3.5" />
               )}
@@ -674,7 +675,7 @@ export function ConnectionsTree() {
                 className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
               >
                 {warming ? (
-                  <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                  <Spinner size="xs" className="shrink-0" />
                 ) : (
                   <DatabaseBackup className="h-3 w-3 shrink-0 text-brand" />
                 )}

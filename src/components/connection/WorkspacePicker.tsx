@@ -24,7 +24,8 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2, Search } from "lucide-react";
+import { Search } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { isMainWindow } from "@/lib/window";
 import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
@@ -158,7 +159,7 @@ function ConnectionsPane() {
         subtitle={driverLabel(p.driver)}
         icon={
           connecting === p.id ? (
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Spinner size="lg" className="text-muted-foreground" />
           ) : (
             <DriverBadge driver={p.driver} size="lg" />
           )
@@ -181,7 +182,9 @@ function ConnectionsPane() {
       <div className="max-h-96 overflow-y-auto">
         {matches.length === 0 ? (
           <div className="px-2 py-6 text-center text-xs italic text-muted-foreground">
-            {needle ? t("commandPalette.noResults") : t("connectionsTree.empty")}
+            {needle
+              ? t("commandPalette.noResults")
+              : t("connectionsTree.empty")}
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -268,7 +271,7 @@ function EnvironmentsPane() {
               label={environmentLabel(env, defaultName)}
               icon={
                 switchingTo === env.id ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <Spinner size="lg" className="text-muted-foreground" />
                 ) : (
                   <EnvironmentAvatar
                     name={environmentLabel(env, defaultName)}
@@ -308,7 +311,10 @@ export function WorkspacePicker({ className }: { className?: string }) {
   }
 
   return (
-    <Tabs defaultValue="connections" className={cn("flex flex-col gap-3", className)}>
+    <Tabs
+      defaultValue="connections"
+      className={cn("flex flex-col gap-3", className)}
+    >
       <TabsList className="h-auto self-center p-1">
         <TabsTrigger value="connections" className="px-4 py-1.5 text-sm">
           {t("workspacePicker.connectionsTab")}

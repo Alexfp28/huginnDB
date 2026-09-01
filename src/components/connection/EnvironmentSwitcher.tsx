@@ -16,7 +16,8 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Download, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { isMainWindow } from "@/lib/window";
 import {
   DropdownMenu,
@@ -79,7 +80,7 @@ export function EnvironmentSwitcher() {
           title={t("environments.switcherTooltip")}
         >
           {switching ? (
-            <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+            <Spinner size="xs" className="shrink-0" />
           ) : (
             <EnvironmentMark env={active} />
           )}
@@ -160,7 +161,10 @@ export function EnvironmentSwitcher() {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    openDeleteConfirm(env.id, environmentLabel(env, defaultName));
+                    openDeleteConfirm(
+                      env.id,
+                      environmentLabel(env, defaultName),
+                    );
                   }}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -212,7 +216,9 @@ function EnvironmentMark({ env }: { env: Environment }) {
   return (
     <span
       className="h-2 w-2 shrink-0 rounded-full"
-      style={{ backgroundColor: effectiveColor(env) || "var(--muted-foreground)" }}
+      style={{
+        backgroundColor: effectiveColor(env) || "var(--muted-foreground)",
+      }}
     />
   );
 }

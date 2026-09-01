@@ -119,6 +119,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Loading spinners, status pills and section headings are three shared
+  primitives instead of three habits.** The spinner appeared in 39 places at
+  three sizes; section headings in 24, in four spellings of the same 10px
+  uppercase style — including two that disagreed on letter-spacing; and status
+  pills were one private component plus about thirty hand-rolled spans. Section
+  headings inside menus now use a real menu label, which is what they always
+  wanted. Visible where a heading was 11px: it settles at the shared 10px.
+
 - **The native dropdowns are one control, and the theme fix behind them exists
   once.** WebView2 paints a `<select>`'s popup using the trigger's own
   background colour, so a transparent trigger opens an OS-light popup however

@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
@@ -47,20 +48,14 @@ export function ViewMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-xs"
-        >
+        <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs">
           <Eye className="h-3.5 w-3.5" />
           {t("menu.view.label")}
           <ChevronDown className="h-3 w-3 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-60">
-        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("menu.view.sectionPanels")}
-        </div>
+        <DropdownMenuLabel>{t("menu.view.sectionPanels")}</DropdownMenuLabel>
         <DropdownMenuCheckboxItem
           checked={schemaOpen}
           onSelect={(e) => {
@@ -104,9 +99,9 @@ export function ViewMenu() {
 
         <DropdownMenuSeparator />
 
-        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <DropdownMenuLabel>
           {t("menu.view.sectionSchemaTree")}
-        </div>
+        </DropdownMenuLabel>
         {METRIC_OPTIONS.map((opt) => (
           <DropdownMenuCheckboxItem
             key={opt.value}

@@ -15,6 +15,8 @@
 
 import { useTranslation } from "react-i18next";
 import { FlaskConical } from "lucide-react";
+import { MICRO_HEADING } from "@/components/ui/styles";
+import { cn } from "@/lib/utils";
 import { useAppFlavor } from "@/stores/preferences/appFlavor";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
@@ -28,14 +30,22 @@ export function SandboxRibbon() {
   if (!canary) return null;
 
   return (
-    <SimpleTooltip label={t("sandbox.tooltip", { dir: stateDir })} side="bottom">
+    <SimpleTooltip
+      label={t("sandbox.tooltip", { dir: stateDir })}
+      side="bottom"
+    >
       <div
         role="status"
         aria-live="polite"
-        className="flex h-6 shrink-0 items-center justify-center gap-2 border-b border-amber-500/40 bg-amber-400 px-3 text-[11px] font-semibold uppercase tracking-wider text-amber-950 dark:bg-amber-500 dark:text-black"
+        className={cn(
+          MICRO_HEADING,
+          "flex h-6 shrink-0 items-center justify-center gap-2 border-b border-amber-500/40 bg-amber-400 px-3 text-amber-950 dark:bg-amber-500 dark:text-black",
+        )}
       >
         <FlaskConical className="h-3.5 w-3.5" />
-        <span className="truncate">{t("sandbox.ribbon", { product: productName })}</span>
+        <span className="truncate">
+          {t("sandbox.ribbon", { product: productName })}
+        </span>
         <span className="hidden opacity-70 sm:inline">·</span>
         <span className="hidden font-mono normal-case tracking-normal opacity-70 sm:inline">
           {t("sandbox.ribbonDetail", { dir: stateDir })}

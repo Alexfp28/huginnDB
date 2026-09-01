@@ -35,12 +35,12 @@ import {
   Link2,
   ListOrdered,
   ListTree,
-  Loader2,
   RefreshCw,
   ServerCog,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { IconButton } from "@/components/ui/icon-button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
@@ -177,7 +177,7 @@ function ExplainPanel({ state }: { state: ExplainState }) {
   if (state.loading) {
     return (
       <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <Spinner size="sm" />
         {t("pulse.explain.loading")}
       </div>
     );

@@ -37,18 +37,21 @@ import {
   Clock,
   Database,
   History,
-  Loader2,
   Play,
   Search,
   Trash2,
   X,
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectEditorPrefs,
+} from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import { useQueryHistory } from "@/stores/query/queryHistory";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
@@ -68,7 +71,11 @@ import {
 } from "@/components/ui/select";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { splitSql } from "@/lib/sql/sqlSplit";
-import { databaseOfViewId, parentConnectionId, sqliteFileLabel } from "@/lib/connectionLabel";
+import {
+  databaseOfViewId,
+  parentConnectionId,
+  sqliteFileLabel,
+} from "@/lib/connectionLabel";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
 import { cn, formatDuration, formatTime } from "@/lib/utils";
@@ -104,7 +111,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
 
   /** Parent connection id (a query tab may be opened against a `::db::`
    *  child already). Database listing / switching always works off the parent. */
-  const parentId = useMemo(() => parentConnectionId(connectionId), [connectionId]);
+  const parentId = useMemo(
+    () => parentConnectionId(connectionId),
+    [connectionId],
+  );
 
   /** The id the query actually runs against. Starts as the tab's connection
    *  and is repointed to a `parent::db::<name>` child when the user picks a
@@ -115,7 +125,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   useEffect(() => setEffectiveId(connectionId), [connectionId]);
 
   /** Database currently targeted, parsed back out of `effectiveId`. */
-  const selectedDb = useMemo(() => databaseOfViewId(effectiveId), [effectiveId]);
+  const selectedDb = useMemo(
+    () => databaseOfViewId(effectiveId),
+    [effectiveId],
+  );
 
   const schemaState = useSchema((s) => s.byConnection[effectiveId]);
 
@@ -177,9 +190,9 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     } | null;
     onDidChangeModelContent: (fn: () => void) => { dispose: () => void };
     addCommand: (keybinding: number, handler: () => void) => string | null;
-    onKeyDown: (
-      fn: (e: { browserEvent: KeyboardEvent }) => void,
-    ) => { dispose: () => void };
+    onKeyDown: (fn: (e: { browserEvent: KeyboardEvent }) => void) => {
+      dispose: () => void;
+    };
   } | null>(null);
 
   /** Disposer returned by `registerSqlEditor`; removes this editor's entry
@@ -409,13 +422,17 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     // Seed initial stats.
     const model = editor?.getModel();
     if (model) {
-      setEditorStats({ lines: model.getLineCount(), chars: model.getValueLength() });
+      setEditorStats({
+        lines: model.getLineCount(),
+        chars: model.getValueLength(),
+      });
     }
 
     // Keep stats in sync as the user types.
     editor?.onDidChangeModelContent(() => {
       const m = editor.getModel();
-      if (m) setEditorStats({ lines: m.getLineCount(), chars: m.getValueLength() });
+      if (m)
+        setEditorStats({ lines: m.getLineCount(), chars: m.getValueLength() });
     });
 
     // runQuery / toggleCommandPalette / toggleTabSwitcher are all
@@ -427,21 +444,24 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     // which is why they need an editor-scoped listener at all (gotcha #9).
     if (editor) {
       editorShortcutsDisposeRef.current?.();
-      editorShortcutsDisposeRef.current = registerEditorActionRedispatch(editor, [
-        { id: "runQuery", run: () => runDefaultRef.current() },
-        {
-          id: "toggleCommandPalette",
-          run: () => useCommandPalette.getState().toggle(),
-        },
-        {
-          id: "openCommandActions",
-          run: () => useCommandPalette.getState().openWith(">"),
-        },
-        {
-          id: "toggleTabSwitcher",
-          run: () => useTabSwitcher.getState().toggle(),
-        },
-      ]);
+      editorShortcutsDisposeRef.current = registerEditorActionRedispatch(
+        editor,
+        [
+          { id: "runQuery", run: () => runDefaultRef.current() },
+          {
+            id: "toggleCommandPalette",
+            run: () => useCommandPalette.getState().toggle(),
+          },
+          {
+            id: "openCommandActions",
+            run: () => useCommandPalette.getState().openWith(">"),
+          },
+          {
+            id: "toggleTabSwitcher",
+            run: () => useTabSwitcher.getState().toggle(),
+          },
+        ],
+      );
     }
 
     // The SQL completion + per-statement "▶ Run" CodeLens providers are
@@ -495,13 +515,17 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 and shows a busy state so the tab doesn't look inert mid-query. */}
             <Button
               size="sm"
-              onClick={() => (multiStatement ? void runBatch() : void runQuery())}
+              onClick={() =>
+                multiStatement ? void runBatch() : void runQuery()
+              }
               disabled={!sql.trim() || running}
-              title={multiStatement ? t("query.runAllTitle") : t("query.runTitle")}
+              title={
+                multiStatement ? t("query.runAllTitle") : t("query.runTitle")
+              }
               className="gap-1.5"
             >
               {running ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Spinner size="sm" />
               ) : (
                 <Play className="h-3.5 w-3.5" />
               )}
@@ -555,7 +579,11 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                       {t("query.defaultDatabase")}
                     </SelectItem>
                     {databases.map((db) => (
-                      <SelectItem key={db.name} value={db.name} className="text-xs">
+                      <SelectItem
+                        key={db.name}
+                        value={db.name}
+                        className="text-xs"
+                      >
                         {db.name}
                       </SelectItem>
                     ))}
@@ -689,7 +717,9 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               <kbd className="rounded bg-muted px-1 font-mono text-[10px]">
                 Enter
               </kbd>
-              <span className="ml-1 text-muted-foreground/70">{t("query.run")}</span>
+              <span className="ml-1 text-muted-foreground/70">
+                {t("query.run")}
+              </span>
             </span>
             <span className="mx-3 text-muted-foreground/30">|</span>
             <span className="truncate">{dbName}</span>

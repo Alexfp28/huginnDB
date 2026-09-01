@@ -2,7 +2,12 @@ import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MENU_ITEM, MENU_PANEL, MENU_SUBTRIGGER } from "@/components/ui/styles";
+import {
+  MENU_ITEM,
+  MENU_PANEL,
+  MENU_SUBTRIGGER,
+  MICRO_HEADING,
+} from "@/components/ui/styles";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
@@ -81,6 +86,20 @@ const DropdownMenuContent = React.forwardRef<
 ));
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
 
+/** Section heading inside menu content. Inherits the menu row padding, which
+ *  is what distinguishes it from `SectionLabel` (see that component). */
+const DropdownMenuLabel = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Label>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label>
+>(({ className, ...props }, ref) => (
+  <DropdownMenuPrimitive.Label
+    ref={ref}
+    className={cn("px-2 py-1", MICRO_HEADING, className)}
+    {...props}
+  />
+));
+DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName;
+
 const DropdownMenuItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item>
@@ -152,6 +171,7 @@ export {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuItem,
   DropdownMenuGroup,
   DropdownMenuCheckboxItem,

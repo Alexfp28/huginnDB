@@ -43,6 +43,7 @@
  * draggable; this rail is the one place order can be changed.
  */
 
+import { Spinner } from "@/components/ui/spinner";
 import { EnvironmentAvatar } from "@/components/connection/EnvironmentAvatar";
 import {
   ContextMenu,
@@ -79,7 +80,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { isMainWindow } from "@/lib/window";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -111,7 +112,9 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   // Only the main window may create/rename/delete/reorder — those write
@@ -179,7 +182,10 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
                     })
                   }
                   onDelete={() =>
-                    openDeleteConfirm(env.id, environmentLabel(env, defaultName))
+                    openDeleteConfirm(
+                      env.id,
+                      environmentLabel(env, defaultName),
+                    )
                   }
                   renameLabel={t("environments.rename")}
                   deleteLabel={t("environments.delete")}
@@ -279,7 +285,7 @@ function EnvironmentButton({
         )}
         {switching && isActive ? (
           <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted">
-            <Loader2 className="h-[18px] w-[18px] animate-spin text-muted-foreground" />
+            <Spinner size="lg" className="text-muted-foreground" />
           </div>
         ) : (
           <EnvironmentAvatar
@@ -336,8 +342,14 @@ function SortableEnvironmentButton({
   renameLabel,
   deleteLabel,
 }: SortableEnvironmentButtonProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: env.id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: env.id });
 
   const style = {
     // X is zeroed deliberately. The rail scrolls now, and a scroll container
@@ -388,7 +400,7 @@ function SortableEnvironmentButton({
             )}
             {switching && isActive ? (
               <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted">
-                <Loader2 className="h-[18px] w-[18px] animate-spin text-muted-foreground" />
+                <Spinner size="lg" className="text-muted-foreground" />
               </div>
             ) : (
               <EnvironmentAvatar

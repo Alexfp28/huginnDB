@@ -33,6 +33,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
+import { MICRO_HEADING } from "@/components/ui/styles";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { NOTIFICATION_KIND_VISUALS } from "@/components/shell/NotificationCard";
 import { api } from "@/lib/tauri";
@@ -60,7 +61,10 @@ export function NotificationCenter() {
   const prefs = usePreferences(selectNotificationPrefs);
   const [open, setOpen] = useState(false);
 
-  const unread = useMemo(() => entries.filter((e) => !e.read).length, [entries]);
+  const unread = useMemo(
+    () => entries.filter((e) => !e.read).length,
+    [entries],
+  );
 
   // One pass, in store order (already newest-first), so a bucket header is
   // emitted the first time its day appears.
@@ -106,7 +110,9 @@ export function NotificationCenter() {
             className={cn(
               "relative flex h-7 w-7 items-center justify-center rounded-md transition-colors",
               "hover:bg-foreground/[0.06] hover:text-foreground",
-              open ? "bg-foreground/[0.08] text-foreground" : "text-muted-foreground",
+              open
+                ? "bg-foreground/[0.08] text-foreground"
+                : "text-muted-foreground",
             )}
           >
             <Bell className="h-4 w-4" />
@@ -158,7 +164,12 @@ export function NotificationCenter() {
           <div className="max-h-80 overflow-auto">
             {sections.map((section) => (
               <div key={section.bucket}>
-                <div className="bg-background/40 px-3.5 pb-1 pt-1.5 text-3xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                <div
+                  className={cn(
+                    "bg-background/40 px-3.5 pb-1 pt-1.5 /70",
+                    MICRO_HEADING,
+                  )}
+                >
                   {t(`notifications.center.${section.bucket}`)}
                 </div>
                 {section.items.map((entry) => (

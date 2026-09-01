@@ -24,7 +24,8 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Download, Loader2, RefreshCw } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { useUpdateStore } from "@/stores/update";
 
@@ -91,7 +92,7 @@ export function UpdatesCard({ currentVersion }: Props) {
           className="h-7 gap-1.5 text-xs"
         >
           {isChecking ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Spinner size="xs" />
           ) : (
             <RefreshCw className="h-3 w-3" />
           )}
@@ -127,7 +128,7 @@ export function UpdatesCard({ currentVersion }: Props) {
               className="h-7 gap-1.5 text-xs"
             >
               {isDownloading || isInstalling ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Spinner size="xs" />
               ) : (
                 <Download className="h-3 w-3" />
               )}

@@ -19,6 +19,7 @@
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, Folder, FolderSync } from "lucide-react";
 
+import { MICRO_HEADING } from "@/components/ui/styles";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConnectionRailRow } from "@/components/connection/ConnectionRailRow";
 import type { GroupCollapse } from "@/lib/connection/useConnectionGroups";
@@ -94,7 +95,10 @@ export function ConnectionRailSection({
             <button
               type="button"
               onClick={() => groupCollapse.toggle(name)}
-              className="flex w-full items-center gap-1 px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+              className={cn(
+                MICRO_HEADING,
+                "flex w-full items-center gap-1 px-3 py-1 text-left text-muted-foreground hover:text-foreground",
+              )}
             >
               {groupCollapsed ? (
                 <ChevronRight className="h-3 w-3 shrink-0" />

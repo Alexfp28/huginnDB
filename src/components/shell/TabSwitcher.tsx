@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
 import { useTranslation } from "react-i18next";
+import { MICRO_HEADING } from "@/components/ui/styles";
 import { OverlayPalette } from "@/components/shell/OverlayPalette";
 import { useListNavigation } from "@/lib/useListNavigation";
 import {
@@ -122,7 +123,9 @@ export function TabSwitcher() {
       };
     };
 
-    const pinned = tabs.filter((x) => x.pinned).map((x) => toEntry(x, pinnedLabel));
+    const pinned = tabs
+      .filter((x) => x.pinned)
+      .map((x) => toEntry(x, pinnedLabel));
 
     const rest: Entry[] = [];
     const seen = new Set<string>();
@@ -207,133 +210,131 @@ export function TabSwitcher() {
         }
       }}
     >
-
-          <div ref={listRef} className="max-h-80 overflow-y-auto p-1">
-            {filtered.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 px-3 py-8 text-center text-sm text-muted-foreground">
-                <Search className="h-5 w-5 opacity-40" />
-                {tabs.length === 0
-                  ? t("tabSwitcher.noneOpen")
-                  : t("tabSwitcher.noResults")}
-              </div>
-            ) : (
-              filtered.map((e, i) => {
-                const showHeader = e.group !== lastGroup;
-                lastGroup = e.group;
-                const activeRow = i === highlight;
-                const isCurrent = e.tab.id === activeId;
-                return (
-                  <div key={e.tab.id}>
-                    {showHeader && (
-                      <div className="flex items-center justify-between px-2 pb-1 pt-2 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        <span className="truncate">{e.group}</span>
-                        <span className="tabular-nums text-muted-foreground/60">
-                          {groupCounts.get(e.group)}
-                        </span>
-                      </div>
+      <div ref={listRef} className="max-h-80 overflow-y-auto p-1">
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 px-3 py-8 text-center text-sm text-muted-foreground">
+            <Search className="h-5 w-5 opacity-40" />
+            {tabs.length === 0
+              ? t("tabSwitcher.noneOpen")
+              : t("tabSwitcher.noResults")}
+          </div>
+        ) : (
+          filtered.map((e, i) => {
+            const showHeader = e.group !== lastGroup;
+            lastGroup = e.group;
+            const activeRow = i === highlight;
+            const isCurrent = e.tab.id === activeId;
+            return (
+              <div key={e.tab.id}>
+                {showHeader && (
+                  <div
+                    className={cn(
+                      "flex items-center justify-between px-2 pb-1 pt-2",
+                      MICRO_HEADING,
                     )}
-                    <div
-                      data-index={i}
-                      onMouseMove={() => setHighlight(i)}
+                  >
+                    <span className="truncate">{e.group}</span>
+                    <span className="tabular-nums text-muted-foreground/60">
+                      {groupCounts.get(e.group)}
+                    </span>
+                  </div>
+                )}
+                <div
+                  data-index={i}
+                  onMouseMove={() => setHighlight(i)}
+                  className={cn(
+                    "group/row flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors",
+                    activeRow
+                      ? "bg-accent text-accent-foreground shadow-[inset_2px_0_0_var(--brand)]"
+                      : "text-foreground",
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => jump(e.tab)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none"
+                  >
+                    <span
                       className={cn(
-                        "group/row flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors",
-                        activeRow
-                          ? "bg-accent text-accent-foreground shadow-[inset_2px_0_0_var(--brand)]"
-                          : "text-foreground",
+                        "shrink-0",
+                        activeRow ? "text-brand" : "text-muted-foreground",
                       )}
                     >
-                      <button
-                        type="button"
-                        onClick={() => jump(e.tab)}
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none"
-                      >
-                        <span
-                          className={cn(
-                            "shrink-0",
-                            activeRow ? "text-brand" : "text-muted-foreground",
-                          )}
-                        >
-                          {KIND_ICON[e.tab.kind]}
-                        </span>
-                        {e.tab.color && (
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: e.tab.color }}
-                          />
-                        )}
-                        <span className="flex min-w-0 flex-col">
-                          <span className="flex items-center gap-1.5 truncate">
-                            <span className="truncate">{e.leaf}</span>
-                            {isCurrent && (
-                              <span className="shrink-0 rounded bg-brand/15 px-1 text-3xs font-medium uppercase tracking-wide text-brand">
-                                {t("tabSwitcher.current")}
-                              </span>
-                            )}
+                      {KIND_ICON[e.tab.kind]}
+                    </span>
+                    {e.tab.color && (
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: e.tab.color }}
+                      />
+                    )}
+                    <span className="flex min-w-0 flex-col">
+                      <span className="flex items-center gap-1.5 truncate">
+                        <span className="truncate">{e.leaf}</span>
+                        {isCurrent && (
+                          <span className="shrink-0 rounded bg-brand/15 px-1 text-3xs font-medium uppercase tracking-wide text-brand">
+                            {t("tabSwitcher.current")}
                           </span>
-                          <span className="truncate text-2xs text-muted-foreground">
-                            {e.subtitle}
-                          </span>
-                        </span>
-                      </button>
-
-                      <button
-                        type="button"
-                        title={
-                          e.tab.pinned
-                            ? t("tabSwitcher.unpin")
-                            : t("tabSwitcher.pin")
-                        }
-                        onClick={() =>
-                          useTabs.getState().setPinned(e.tab.id, !e.tab.pinned)
-                        }
-                        className={cn(
-                          "shrink-0 rounded-sm p-1 transition-colors hover:bg-accent hover:text-foreground",
-                          e.tab.pinned
-                            ? "text-brand"
-                            : "text-muted-foreground/60 opacity-0 group-hover/row:opacity-100",
                         )}
-                      >
-                        {e.tab.pinned ? (
-                          <PinOff className="h-3.5 w-3.5" />
-                        ) : (
-                          <Pin className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        title={t("tabSwitcher.close")}
-                        onClick={() => closeTab(e.tab.id)}
-                        className="shrink-0 rounded-sm p-1 text-muted-foreground/60 opacity-0 transition-colors hover:bg-destructive/15 hover:text-destructive group-hover/row:opacity-100"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+                      </span>
+                      <span className="truncate text-2xs text-muted-foreground">
+                        {e.subtitle}
+                      </span>
+                    </span>
+                  </button>
 
-          <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-3xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Kbd>
-                ↑↓
-              </Kbd>
-              {t("tabSwitcher.hintNavigate")}
-            </span>
-            <span className="flex items-center gap-1">
-              <Kbd>
-                ↵
-              </Kbd>
-              {t("tabSwitcher.hintJump")}
-            </span>
-            <span className="flex items-center gap-1">
-              <Kbd>
-                del
-              </Kbd>
-              {t("tabSwitcher.hintClose")}
-            </span>
-          </div>
+                  <button
+                    type="button"
+                    title={
+                      e.tab.pinned
+                        ? t("tabSwitcher.unpin")
+                        : t("tabSwitcher.pin")
+                    }
+                    onClick={() =>
+                      useTabs.getState().setPinned(e.tab.id, !e.tab.pinned)
+                    }
+                    className={cn(
+                      "shrink-0 rounded-sm p-1 transition-colors hover:bg-accent hover:text-foreground",
+                      e.tab.pinned
+                        ? "text-brand"
+                        : "text-muted-foreground/60 opacity-0 group-hover/row:opacity-100",
+                    )}
+                  >
+                    {e.tab.pinned ? (
+                      <PinOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Pin className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    title={t("tabSwitcher.close")}
+                    onClick={() => closeTab(e.tab.id)}
+                    className="shrink-0 rounded-sm p-1 text-muted-foreground/60 opacity-0 transition-colors hover:bg-destructive/15 hover:text-destructive group-hover/row:opacity-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-3xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <Kbd>↑↓</Kbd>
+          {t("tabSwitcher.hintNavigate")}
+        </span>
+        <span className="flex items-center gap-1">
+          <Kbd>↵</Kbd>
+          {t("tabSwitcher.hintJump")}
+        </span>
+        <span className="flex items-center gap-1">
+          <Kbd>del</Kbd>
+          {t("tabSwitcher.hintClose")}
+        </span>
+      </div>
     </OverlayPalette>
   );
 }

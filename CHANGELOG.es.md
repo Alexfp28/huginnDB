@@ -134,6 +134,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Los indicadores de carga, las etiquetas de estado y los títulos de sección
+  son tres primitivos compartidos en vez de tres costumbres.** El indicador de
+  carga aparecía en 39 sitios con tres tamaños; los títulos de sección en 24,
+  con cuatro grafías del mismo estilo de 10px en mayúsculas —dos de ellas
+  discrepando incluso en el espaciado entre letras—; y las etiquetas de estado
+  eran un componente privado más una treintena de spans a mano. Los títulos de
+  sección que van dentro de un menú usan ahora una etiqueta de menú de verdad,
+  que es lo que siempre quisieron ser. Se nota donde un título medía 11px: pasa
+  a los 10px compartidos.
+
 - **Los desplegables nativos son un único control, y el arreglo de tema que
   hay detrás existe una sola vez.** WebView2 pinta el popup de un `<select>`
   con el color de fondo del propio disparador, así que un disparador

@@ -13,9 +13,12 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { DocumentListView } from "@/components/grid/DocumentListView";
-import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectGridPrefs,
+} from "@/stores/preferences/preferences";
 import { cn } from "@/lib/utils";
 import type { QueryResult } from "@/types";
 
@@ -62,7 +65,7 @@ export function PipelineOutput({
           className,
         )}
       >
-        {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+        {loading && <Spinner size="sm" />}
         {loading ? t("aggregation.running") : emptyLabel}
       </div>
     );
@@ -86,7 +89,10 @@ export function PipelineOutput({
           zebraStripes={grid.zebraStripes}
           // Same derivation the data grid uses for its cells, so a preview and
           // a collection read at the same size under the grid "zoom" pref.
-          fontSize={Math.min(22, Math.max(10, Math.round(grid.rowHeight * 0.46)))}
+          fontSize={Math.min(
+            22,
+            Math.max(10, Math.round(grid.rowHeight * 0.46)),
+          )}
           expandNested={grid.listExpandNested}
           showTypes={grid.listShowTypes}
           lineNumbers={grid.listLineNumbers}

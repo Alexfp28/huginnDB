@@ -126,3 +126,11 @@ export const REVEAL_ON_HOVER = {
   field:
     "opacity-0 transition-opacity group-hover/field:opacity-100 focus-visible:opacity-100",
 } as const;
+
+/**
+ * The small uppercase heading that titles a group inside a panel. `text-3xs`
+ * rather than `text-[10px]`: same pixel size, but with the line-height pinned,
+ * which is what makes two adjacent section headers align.
+ */
+export const MICRO_HEADING =
+  "text-3xs font-semibold uppercase tracking-wider text-muted-foreground";

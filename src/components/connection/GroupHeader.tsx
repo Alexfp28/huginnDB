@@ -18,6 +18,8 @@
  */
 
 import { memo } from "react";
+import { MICRO_HEADING } from "@/components/ui/styles";
+import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight, Folder, FolderOpen } from "lucide-react";
 
 interface GroupHeaderProps {
@@ -38,7 +40,10 @@ export const GroupHeader = memo(function GroupHeader({
     <button
       type="button"
       onClick={() => onToggle(name)}
-      className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+      className={cn(
+        MICRO_HEADING,
+        "flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-muted-foreground hover:text-foreground",
+      )}
     >
       {collapsed ? (
         <ChevronRight className="h-3 w-3 shrink-0" />

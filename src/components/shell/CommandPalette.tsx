@@ -30,6 +30,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Command as CommandIcon, Search } from "lucide-react";
+import { MICRO_HEADING } from "@/components/ui/styles";
 import { OverlayPalette } from "@/components/shell/OverlayPalette";
 import { useListNavigation } from "@/lib/useListNavigation";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
@@ -132,7 +133,8 @@ export function CommandPalette() {
       const recentIds = new Set(
         (buckets.get("recent") ?? []).map((s) => s.cmd.id),
       );
-      const limit = mode === ALL_MODE ? PREVIEW_PER_GROUP : Number.POSITIVE_INFINITY;
+      const limit =
+        mode === ALL_MODE ? PREVIEW_PER_GROUP : Number.POSITIVE_INFINITY;
       for (const cmd of inMode) {
         if (recentIds.has(cmd.id)) continue;
         if ((buckets.get(cmd.group)?.length ?? 0) >= limit) continue;
@@ -262,169 +264,164 @@ export function CommandPalette() {
           e.preventDefault();
           const order = [ALL_MODE, ...MODES];
           const at = order.findIndex((m) => m.prefix === mode.prefix);
-          const next = order[(at + (e.shiftKey ? -1 + order.length : 1)) % order.length]!;
+          const next =
+            order[(at + (e.shiftKey ? -1 + order.length : 1)) % order.length]!;
           applyMode(next.prefix);
         }
       }}
     >
-
-          {/* Mode discovery: the sigils, clickable, only while the field is
+      {/* Mode discovery: the sigils, clickable, only while the field is
               empty so they never compete with results. */}
-          {!raw && (
-            <div className="flex flex-wrap items-center gap-1 border-b border-border/60 px-3 py-1.5">
-              <CommandIcon className="mr-0.5 h-3 w-3 text-muted-foreground/60" />
-              {MODES.map((m) => (
-                <button
-                  key={m.prefix}
-                  type="button"
-                  onClick={() => applyMode(m.prefix)}
-                  className="flex items-center gap-1 rounded border border-border/60 px-1.5 py-0.5 text-3xs text-muted-foreground transition-colors hover:border-brand/60 hover:text-foreground"
+      {!raw && (
+        <div className="flex flex-wrap items-center gap-1 border-b border-border/60 px-3 py-1.5">
+          <CommandIcon className="mr-0.5 h-3 w-3 text-muted-foreground/60" />
+          {MODES.map((m) => (
+            <button
+              key={m.prefix}
+              type="button"
+              onClick={() => applyMode(m.prefix)}
+              className="flex items-center gap-1 rounded border border-border/60 px-1.5 py-0.5 text-3xs text-muted-foreground transition-colors hover:border-brand/60 hover:text-foreground"
+            >
+              <span className="font-mono text-brand">{m.prefix}</span>
+              {t(m.labelKey)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div ref={listRef} className="max-h-[26rem] overflow-y-auto p-1">
+        {rows.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 px-3 py-10 text-center text-sm text-muted-foreground">
+            <Search className="h-5 w-5 opacity-40" />
+            {t("commandPalette.noResults")}
+            <span className="text-2xs text-muted-foreground/70">
+              {t("commandPalette.noResultsHint")}
+            </span>
+          </div>
+        ) : (
+          (() => {
+            // Running index across sections so the flat keyboard order and
+            // the rendered rows agree.
+            let index = -1;
+            return sections.map((section) => (
+              <div key={section.group}>
+                <div
+                  className={cn(
+                    "flex items-center justify-between px-2 pb-1 pt-2",
+                    MICRO_HEADING,
+                  )}
                 >
-                  <span className="font-mono text-brand">{m.prefix}</span>
-                  {t(m.labelKey)}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div ref={listRef} className="max-h-[26rem] overflow-y-auto p-1">
-            {rows.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 px-3 py-10 text-center text-sm text-muted-foreground">
-                <Search className="h-5 w-5 opacity-40" />
-                {t("commandPalette.noResults")}
-                <span className="text-2xs text-muted-foreground/70">
-                  {t("commandPalette.noResultsHint")}
-                </span>
-              </div>
-            ) : (
-              (() => {
-                // Running index across sections so the flat keyboard order and
-                // the rendered rows agree.
-                let index = -1;
-                return sections.map((section) => (
-                  <div key={section.group}>
-                    <div className="flex items-center justify-between px-2 pb-1 pt-2 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      <span>{t(section.labelKey)}</span>
-                      <span className="tabular-nums text-muted-foreground/60">
-                        {section.items.length}
+                  <span>{t(section.labelKey)}</span>
+                  <span className="tabular-nums text-muted-foreground/60">
+                    {section.items.length}
+                  </span>
+                </div>
+                {section.items.map(({ cmd, ranges }) => {
+                  index += 1;
+                  const i = index;
+                  const activeRow = i === highlight;
+                  return (
+                    <button
+                      key={cmd.id}
+                      type="button"
+                      data-index={i}
+                      onClick={(e) => (e.altKey ? runAltAt(i) : runAt(i))}
+                      onMouseMove={() => setHighlight(i)}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors",
+                        activeRow
+                          ? "bg-accent text-accent-foreground shadow-[inset_2px_0_0_var(--brand)]"
+                          : "text-foreground",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "shrink-0",
+                          activeRow ? "text-brand" : "text-muted-foreground",
+                        )}
+                      >
+                        {cmd.icon}
                       </span>
-                    </div>
-                    {section.items.map(({ cmd, ranges }) => {
-                      index += 1;
-                      const i = index;
-                      const activeRow = i === highlight;
-                      return (
-                        <button
-                          key={cmd.id}
-                          type="button"
-                          data-index={i}
-                          onClick={(e) => (e.altKey ? runAltAt(i) : runAt(i))}
-                          onMouseMove={() => setHighlight(i)}
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors",
-                            activeRow
-                              ? "bg-accent text-accent-foreground shadow-[inset_2px_0_0_var(--brand)]"
-                              : "text-foreground",
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "shrink-0",
-                              activeRow ? "text-brand" : "text-muted-foreground",
-                            )}
-                          >
-                            {cmd.icon}
-                          </span>
-                          <span className="flex min-w-0 flex-1 flex-col">
-                            <span className="flex items-center gap-1.5 truncate">
-                              <span className="truncate">
-                                {highlightChunks(cmd.label, ranges).map(
-                                  (chunk, ci) => (
-                                    <span
-                                      key={ci}
-                                      className={
-                                        chunk.match
-                                          ? "font-semibold text-brand"
-                                          : undefined
-                                      }
-                                    >
-                                      {chunk.text}
-                                    </span>
-                                  ),
-                                )}
-                              </span>
-                              {cmd.current && (
-                                <span className="shrink-0 rounded bg-brand/15 px-1 text-3xs font-medium uppercase tracking-wide text-brand">
-                                  {t("commandPalette.current")}
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="flex items-center gap-1.5 truncate">
+                          <span className="truncate">
+                            {highlightChunks(cmd.label, ranges).map(
+                              (chunk, ci) => (
+                                <span
+                                  key={ci}
+                                  className={
+                                    chunk.match
+                                      ? "font-semibold text-brand"
+                                      : undefined
+                                  }
+                                >
+                                  {chunk.text}
                                 </span>
-                              )}
-                            </span>
-                            {cmd.detail && (
-                              <span className="truncate text-2xs text-muted-foreground">
-                                {cmd.detail}
-                              </span>
+                              ),
                             )}
                           </span>
-                          {cmd.badge && (
-                            <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
-                              {cmd.badge}
+                          {cmd.current && (
+                            <span className="shrink-0 rounded bg-brand/15 px-1 text-3xs font-medium uppercase tracking-wide text-brand">
+                              {t("commandPalette.current")}
                             </span>
                           )}
-                          {cmd.combo && (
-                            <Kbd className="shrink-0 text-[10px] text-muted-foreground">
-                              {cmd.combo}
-                            </Kbd>
-                          )}
-                          {activeRow && (
-                            <Kbd className="shrink-0 text-[10px] text-muted-foreground">
-                              ↵
-                            </Kbd>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ));
-              })()
-            )}
-          </div>
+                        </span>
+                        {cmd.detail && (
+                          <span className="truncate text-2xs text-muted-foreground">
+                            {cmd.detail}
+                          </span>
+                        )}
+                      </span>
+                      {cmd.badge && (
+                        <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
+                          {cmd.badge}
+                        </span>
+                      )}
+                      {cmd.combo && (
+                        <Kbd className="shrink-0 text-[10px] text-muted-foreground">
+                          {cmd.combo}
+                        </Kbd>
+                      )}
+                      {activeRow && (
+                        <Kbd className="shrink-0 text-[10px] text-muted-foreground">
+                          ↵
+                        </Kbd>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ));
+          })()
+        )}
+      </div>
 
-          {/* Footer legend — reinforces the keyboard-first identity. The alt
+      {/* Footer legend — reinforces the keyboard-first identity. The alt
               hint is per-row, so it only appears when there is one. */}
-          <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-3xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Kbd>
-                ↑↓
-              </Kbd>
-              {t("commandPalette.hintNavigate")}
-            </span>
-            <span className="flex items-center gap-1">
-              <Kbd>
-                ↵
-              </Kbd>
-              {t("commandPalette.hintRun")}
-            </span>
-            {current?.alt && (
-              <span className="flex items-center gap-1 text-brand">
-                <Kbd className="border-brand/40 bg-brand/10">
-                  alt+↵
-                </Kbd>
-                {t(current.alt.hintKey)}
-              </span>
-            )}
-            <span className="flex items-center gap-1">
-              <Kbd>
-                tab
-              </Kbd>
-              {t("commandPalette.hintMode")}
-            </span>
-            <span className="ml-auto flex items-center gap-1">
-              <Kbd>
-                esc
-              </Kbd>
-              {t("commandPalette.hintClose")}
-            </span>
-          </div>
+      <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-3xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <Kbd>↑↓</Kbd>
+          {t("commandPalette.hintNavigate")}
+        </span>
+        <span className="flex items-center gap-1">
+          <Kbd>↵</Kbd>
+          {t("commandPalette.hintRun")}
+        </span>
+        {current?.alt && (
+          <span className="flex items-center gap-1 text-brand">
+            <Kbd className="border-brand/40 bg-brand/10">alt+↵</Kbd>
+            {t(current.alt.hintKey)}
+          </span>
+        )}
+        <span className="flex items-center gap-1">
+          <Kbd>tab</Kbd>
+          {t("commandPalette.hintMode")}
+        </span>
+        <span className="ml-auto flex items-center gap-1">
+          <Kbd>esc</Kbd>
+          {t("commandPalette.hintClose")}
+        </span>
+      </div>
     </OverlayPalette>
   );
 }

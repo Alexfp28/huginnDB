@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/ui/icon-button";
 import { IndexEditorDialog } from "@/components/indexes/dialogs/IndexEditorDialog";
 import { Button } from "@/components/ui/button";
@@ -281,40 +282,34 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
                 </td>
                 <td className="px-3 py-1.5">
                   <div className="flex flex-wrap gap-1">
-                    {index.unique && (
-                      <Badge label={t("indexes.flags.unique")} />
-                    )}
-                    {index.sparse && (
-                      <Badge label={t("indexes.flags.sparse")} />
-                    )}
-                    {index.hidden && (
-                      <Badge label={t("indexes.flags.hidden")} />
-                    )}
+                    {index.unique && <Badge>{t("indexes.flags.unique")}</Badge>}
+                    {index.sparse && <Badge>{t("indexes.flags.sparse")}</Badge>}
+                    {index.hidden && <Badge>{t("indexes.flags.hidden")}</Badge>}
                     {index.expireAfterSeconds != null && (
-                      <Badge
-                        label={t("indexes.badge.ttl", {
+                      <Badge>
+                        {t("indexes.badge.ttl", {
                           seconds: index.expireAfterSeconds,
                         })}
-                      />
+                      </Badge>
                     )}
                     {index.partialFilterExpression && (
                       <SimpleTooltip label={index.partialFilterExpression}>
                         <span>
-                          <Badge label={t("indexes.badge.partial")} />
+                          <Badge>{t("indexes.badge.partial")}</Badge>
                         </span>
                       </SimpleTooltip>
                     )}
                     {index.collation && (
                       <SimpleTooltip label={index.collation}>
                         <span>
-                          <Badge label={t("indexes.badge.collation")} />
+                          <Badge>{t("indexes.badge.collation")}</Badge>
                         </span>
                       </SimpleTooltip>
                     )}
                     {index.extraOptions && (
                       <SimpleTooltip label={index.extraOptions}>
                         <span>
-                          <Badge label={t("indexes.badge.extra")} />
+                          <Badge>{t("indexes.badge.extra")}</Badge>
                         </span>
                       </SimpleTooltip>
                     )}
@@ -409,14 +404,6 @@ function KeyChip({ field, value }: { field: string; value: string }) {
       ) : (
         <span className="text-muted-foreground">{value}</span>
       )}
-    </span>
-  );
-}
-
-function Badge({ label }: { label: string }) {
-  return (
-    <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-      {label}
     </span>
   );
 }

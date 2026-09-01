@@ -24,7 +24,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Loader2, Trash2, Unlink } from "lucide-react";
+import { Check, Trash2, Unlink } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import { useConnections } from "@/stores/session/connections";
 import { useOriginSync } from "@/stores/sync/originSync";
@@ -95,7 +96,8 @@ export function VanishedOriginNotice({
               // was already gone (app restart before deciding, or the whole
               // environment holding it was deleted) — its name is unrecoverable
               // by then. See `reconcileOrphans` in `stores/sync/originSync.ts`.
-              origin: notice.originName || t("origins.vanished.unknownOriginName"),
+              origin:
+                notice.originName || t("origins.vanished.unknownOriginName"),
             })}
           </p>
         </div>
@@ -108,11 +110,7 @@ export function VanishedOriginNotice({
           className="flex items-center gap-1 rounded-sm border border-border bg-background px-2 py-1 text-[11px] font-medium transition-colors hover:bg-accent disabled:opacity-50"
           onClick={() => void run(() => adopt(profileId))}
         >
-          {busy ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Check className="h-3 w-3" />
-          )}
+          {busy ? <Spinner size="xs" /> : <Check className="h-3 w-3" />}
           {t("origins.vanished.keep")}
         </button>
         <button
@@ -122,7 +120,9 @@ export function VanishedOriginNotice({
           onClick={() => {
             if (
               !confirmIrreversible(
-                t("origins.vanished.retireConfirm", { name: name ?? profileId }),
+                t("origins.vanished.retireConfirm", {
+                  name: name ?? profileId,
+                }),
               )
             ) {
               return;

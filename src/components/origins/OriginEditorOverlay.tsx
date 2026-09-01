@@ -29,8 +29,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Cable, FileJson, Layers, Loader2, Send } from "lucide-react";
+import { Cable, FileJson, Layers, Send } from "lucide-react";
 
+import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { api } from "@/lib/tauri";
 import {
@@ -230,7 +231,7 @@ export function OriginEditorOverlay() {
       <DialogContent className="flex h-[92vh] max-w-[min(1400px,95vw)] flex-col gap-0 overflow-hidden p-0">
         {loading && !doc ? (
           <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Spinner size="lg" className="text-muted-foreground" />
           </div>
         ) : loadError ? (
           <div className="flex flex-1 items-center justify-center p-6 text-center text-xs text-destructive">

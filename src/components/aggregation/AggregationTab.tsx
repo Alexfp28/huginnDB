@@ -31,12 +31,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import {
   Braces,
   Code2,
   Database,
-  Loader2,
   Plus,
   RefreshCw,
   Save,
@@ -75,7 +75,11 @@ import {
 } from "@/lib/mongo/pipeline";
 import { api } from "@/lib/tauri";
 import type { MongoCompletionEntry } from "@/lib/monaco/monacoMongo";
-import { tableKey, useEnsureSchemaLoaded, useSchema } from "@/stores/session/schema";
+import {
+  tableKey,
+  useEnsureSchemaLoaded,
+  useSchema,
+} from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { cn } from "@/lib/utils";
 import type { QueryResult, StagePreview, StructureMode } from "@/types";
@@ -118,10 +122,11 @@ export function AggregationTab({
     mode === "edit" ? view : undefined,
   );
 
-  const [stages, setStages] = useState<PipelineStage[]>(() => [newStage("$match")]);
+  const [stages, setStages] = useState<PipelineStage[]>(() => [
+    newStage("$match"),
+  ]);
   const [text, setText] = useState("[\n  { $match: {} }\n]");
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-
 
   const [showPreview, setShowPreview] = useState(true);
   const [sampleSize, setSampleSize] = useState(10);
@@ -473,7 +478,7 @@ export function AggregationTab({
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Spinner size="md" />
         {t("aggregation.loading")}
       </div>
     );
@@ -665,7 +670,9 @@ export function AggregationTab({
                 showPreview={showPreview}
                 collapsed={collapsed.has(stage.id)}
                 dragging={dragIndex === i}
-                dropTarget={dropIndex === i && dragIndex !== null && dragIndex !== i}
+                dropTarget={
+                  dropIndex === i && dragIndex !== null && dragIndex !== i
+                }
                 onChange={(body) => updateStage(stage.id, body)}
                 onToggleEnabled={() =>
                   setStages((prev) =>

@@ -11,13 +11,23 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { History, Moon, Rows3, SquareTerminal, Sun, Trash2 } from "lucide-react";
+import {
+  History,
+  Moon,
+  Rows3,
+  SquareTerminal,
+  Sun,
+  Trash2,
+} from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabs } from "@/stores/session/tabs";
 import { useQueryHistory } from "@/stores/query/queryHistory";
 import { useGridSelection } from "@/stores/grid/gridSelection";
-import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectGridPrefs,
+} from "@/stores/preferences/preferences";
 import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useUi } from "@/stores/session/ui";
@@ -29,6 +39,7 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
@@ -42,11 +53,16 @@ function Sep() {
 }
 
 /** Row-height presets driving the grid "density" quick toggle. */
-const DENSITY_PRESETS: { key: string; labelKey: string; rowHeight: number }[] = [
-  { key: "compact", labelKey: "statusBar.densityCompact", rowHeight: 20 },
-  { key: "cosy", labelKey: "statusBar.densityCosy", rowHeight: 26 },
-  { key: "comfortable", labelKey: "statusBar.densityComfortable", rowHeight: 32 },
-];
+const DENSITY_PRESETS: { key: string; labelKey: string; rowHeight: number }[] =
+  [
+    { key: "compact", labelKey: "statusBar.densityCompact", rowHeight: 20 },
+    { key: "cosy", labelKey: "statusBar.densityCosy", rowHeight: 26 },
+    {
+      key: "comfortable",
+      labelKey: "statusBar.densityComfortable",
+      rowHeight: 32,
+    },
+  ];
 
 export function StatusBar() {
   const { t } = useTranslation();
@@ -72,7 +88,9 @@ export function StatusBar() {
     activeId ? s.byTab[activeId] : undefined,
   );
 
-  const serverVersion = activeConnectionId ? versions[activeConnectionId] : undefined;
+  const serverVersion = activeConnectionId
+    ? versions[activeConnectionId]
+    : undefined;
 
   return (
     <div className="flex h-7 items-center justify-between border-t border-border bg-card/60 px-2 text-[11px] text-muted-foreground">
@@ -159,9 +177,7 @@ function HistoryMenu({ count }: { count: number }) {
         </DropdownMenuTrigger>
       </SimpleTooltip>
       <DropdownMenuContent side="top" align="end" className="w-96">
-        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("statusBar.recentQueries")}
-        </div>
+        <DropdownMenuLabel>{t("statusBar.recentQueries")}</DropdownMenuLabel>
         {entries.length === 0 ? (
           <div className="px-2 py-1.5 text-xs text-muted-foreground">
             {t("statusBar.noHistory")}
@@ -220,9 +236,7 @@ function DensityMenu() {
         </DropdownMenuTrigger>
       </SimpleTooltip>
       <DropdownMenuContent side="top" align="end" className="w-40">
-        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("statusBar.density")}
-        </div>
+        <DropdownMenuLabel>{t("statusBar.density")}</DropdownMenuLabel>
         {DENSITY_PRESETS.map((d) => (
           <DropdownMenuItem
             key={d.key}

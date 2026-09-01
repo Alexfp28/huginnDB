@@ -28,6 +28,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { MICRO_HEADING } from "@/components/ui/styles";
 import { useWhatsNew } from "@/stores/dialogs/whatsNew";
 import { getReleaseNote } from "@/lib/appInfo/releaseNotes";
 import { api } from "@/lib/tauri";
@@ -123,7 +124,12 @@ export function WhatsNewDialog() {
                 draggable={false}
               />
               <div className="min-w-0">
-                <span className="inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-brand">
+                <span
+                  className={cn(
+                    MICRO_HEADING,
+                    "inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-brand",
+                  )}
+                >
                   {t("whatsNew.versionLabel", { version: note.version })}
                 </span>
                 <DialogTitle className="mt-1 text-xl">

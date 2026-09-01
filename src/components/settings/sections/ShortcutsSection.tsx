@@ -14,13 +14,21 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, Keyboard, RotateCcw, Search, Upload } from "lucide-react";
-import { save as saveFileDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import {
+  save as saveFileDialog,
+  open as openFileDialog,
+} from "@tauri-apps/plugin-dialog";
+import { MICRO_HEADING } from "@/components/ui/styles";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
-import { usePreferences, selectKeybindings } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectKeybindings,
+} from "@/stores/preferences/preferences";
 import {
   ACTIONS,
   CATEGORY_ORDER,
@@ -238,7 +246,9 @@ export function ShortcutsSection() {
             >
               <Keyboard className="h-3.5 w-3.5 shrink-0 text-brand" />
               {keyQuery ? (
-                <span className="font-mono text-brand">{formatForDisplay(keyQuery)}</span>
+                <span className="font-mono text-brand">
+                  {formatForDisplay(keyQuery)}
+                </span>
               ) : (
                 <span className="text-muted-foreground">
                   {t("settings.shortcuts.pressKey")}
@@ -258,13 +268,19 @@ export function ShortcutsSection() {
           <Keyboard className="h-3 w-3" />
           {t("settings.shortcuts.searchByKey")}
         </FilterChip>
-        <FilterChip active={modifiedOnly} onClick={() => setModifiedOnly((v) => !v)}>
+        <FilterChip
+          active={modifiedOnly}
+          onClick={() => setModifiedOnly((v) => !v)}
+        >
           {t("settings.shortcuts.modifiedOnly", { count: modifiedCount })}
         </FilterChip>
       </div>
 
       <div className="flex flex-wrap gap-1">
-        <FilterChip active={category === "all"} onClick={() => setCategory("all")}>
+        <FilterChip
+          active={category === "all"}
+          onClick={() => setCategory("all")}
+        >
           {t("settings.shortcuts.categories.all")}
         </FilterChip>
         {CATEGORY_ORDER.map((cat) => (
@@ -289,7 +305,7 @@ export function ShortcutsSection() {
         ) : (
           grouped.map((group) => (
             <div key={group.category}>
-              <div className="px-1 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className={cn("px-1 pb-1 pt-3", MICRO_HEADING)}>
                 {t(`settings.shortcuts.categories.${group.category}`)}
               </div>
               {group.actions.map((action) => (
@@ -302,7 +318,9 @@ export function ShortcutsSection() {
                   onRemove={(binding) =>
                     setBindings(
                       action.id,
-                      userBindings(keybindings, action.id).filter((b) => b !== binding),
+                      userBindings(keybindings, action.id).filter(
+                        (b) => b !== binding,
+                      ),
                     )
                   }
                   onReset={() => updateKeybindings({ [action.id]: undefined })}
@@ -343,7 +361,9 @@ export function ShortcutsSection() {
         open={confirmReset}
         onOpenChange={setConfirmReset}
         title={t("settings.shortcuts.resetAll")}
-        description={t("settings.shortcuts.resetAllConfirm", { count: modifiedCount })}
+        description={t("settings.shortcuts.resetAllConfirm", {
+          count: modifiedCount,
+        })}
         confirmLabel={t("settings.shortcuts.resetAll")}
         onConfirm={() => {
           resetKeybindings();

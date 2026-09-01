@@ -27,9 +27,10 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { tableKey } from "@/stores/session/schema";
-import { Inbox, Loader2, Pin } from "lucide-react";
+import { Inbox, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/common/EmptyState";
 import { isBitType, isNumericType } from "@/lib/grid/columnKinds";
@@ -1321,7 +1322,7 @@ export function DataGrid({
             className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center bg-background/40"
             aria-hidden
           >
-            <Loader2 className="mt-6 h-5 w-5 animate-spin text-brand" />
+            <Spinner size="lg" className="mt-6 text-brand" />
           </div>
         )}
       </div>

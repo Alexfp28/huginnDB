@@ -20,6 +20,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, Folder, FolderSync } from "lucide-react";
 
+import { MICRO_HEADING } from "@/components/ui/styles";
+import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { isFromOrigin } from "@/lib/connection/origin";
@@ -138,7 +140,10 @@ export function PulseConnectionTree({
                         <button
                           type="button"
                           onClick={() => groupCollapse.toggle(name)}
-                          className="flex min-w-0 flex-1 items-center gap-1 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                          className={cn(
+                            MICRO_HEADING,
+                            "flex min-w-0 flex-1 items-center gap-1 text-left text-muted-foreground hover:text-foreground",
+                          )}
                         >
                           {groupCollapsed ? (
                             <ChevronRight className="h-3 w-3 shrink-0" />

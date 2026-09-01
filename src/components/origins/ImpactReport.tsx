@@ -15,8 +15,16 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Info, KeyRound, Minus, Plus, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Info,
+  KeyRound,
+  Minus,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 
+import { MICRO_HEADING } from "@/components/ui/styles";
 import type { OriginEntityImpact, OriginPublishImpact } from "@/types";
 
 function Row({
@@ -55,7 +63,12 @@ function EntitySummary({
   labels,
 }: {
   impact: OriginEntityImpact;
-  labels: { added: string; refreshed: string; vanished: string; silent: string };
+  labels: {
+    added: string;
+    refreshed: string;
+    vanished: string;
+    silent: string;
+  };
 }) {
   const quiet =
     impact.added.length === 0 &&
@@ -101,7 +114,7 @@ export function ImpactReport({ impact }: { impact: OriginPublishImpact }) {
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h4 className={MICRO_HEADING}>
           {t("originEditor.impact.forConsumers")}
         </h4>
         {nothing ? (
@@ -143,10 +156,11 @@ export function ImpactReport({ impact }: { impact: OriginPublishImpact }) {
       </div>
 
       <div className="space-y-1">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t("originEditor.impact.cost")}
-        </h4>
-        <Row icon={KeyRound} tone={impact.reencryption.slots > 0 ? "warning" : "default"}>
+        <h4 className={MICRO_HEADING}>{t("originEditor.impact.cost")}</h4>
+        <Row
+          icon={KeyRound}
+          tone={impact.reencryption.slots > 0 ? "warning" : "default"}
+        >
           {impact.reencryption.slots === 0
             ? t("originEditor.impact.noReencryption")
             : t("originEditor.impact.reencryption", {
@@ -189,7 +203,7 @@ export function ImpactReport({ impact }: { impact: OriginPublishImpact }) {
       </div>
 
       <div className="space-y-1">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h4 className={MICRO_HEADING}>
           {t("originEditor.impact.freshMachine")}
         </h4>
         <Row icon={Info}>

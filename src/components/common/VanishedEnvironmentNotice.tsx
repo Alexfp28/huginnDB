@@ -11,9 +11,13 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Loader2, Trash2, Unlink } from "lucide-react";
+import { Check, Trash2, Unlink } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
-import { useEnvironments, environmentLabel } from "@/stores/session/environments";
+import {
+  useEnvironments,
+  environmentLabel,
+} from "@/stores/session/environments";
 import { useOriginSync } from "@/stores/sync/originSync";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { cn } from "@/lib/utils";
@@ -70,7 +74,8 @@ export function VanishedEnvironmentNotice({
               // Same fallback as `VanishedOriginNotice`: blank when the
               // reconciliation sweep raised this after the origin's name was
               // already unrecoverable. See `reconcileOrphans`.
-              origin: notice.originName || t("origins.vanished.unknownOriginName"),
+              origin:
+                notice.originName || t("origins.vanished.unknownOriginName"),
             })}
           </p>
         </div>
@@ -83,11 +88,7 @@ export function VanishedEnvironmentNotice({
           className="flex items-center gap-1 rounded-sm border border-border bg-background px-2 py-1 text-[11px] font-medium transition-colors hover:bg-accent disabled:opacity-50"
           onClick={() => void run(() => adoptEnvironment(environmentId))}
         >
-          {busy ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Check className="h-3 w-3" />
-          )}
+          {busy ? <Spinner size="xs" /> : <Check className="h-3 w-3" />}
           {t("origins.vanishedEnvironments.keep")}
         </button>
         <button

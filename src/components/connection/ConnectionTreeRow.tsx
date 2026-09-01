@@ -38,18 +38,21 @@ import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
-  Loader2,
   ListFilter,
   Plug,
   PlugZap,
   RotateCw,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import { ConnectionActionsMenu } from "@/components/connection/ConnectionActionsMenu";
 import { SchemaExplorer } from "@/components/schema/SchemaExplorer";
 import { cn } from "@/lib/utils";
-import type { ConnectionMatchSummary, RowMatchState } from "@/lib/schema/treeMatches";
+import type {
+  ConnectionMatchSummary,
+  RowMatchState,
+} from "@/lib/schema/treeMatches";
 import type { ConnectionProfile } from "@/types";
 
 export interface ConnectionRowActions {
@@ -97,7 +100,9 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
   // connect it or to narrow the search to it, so the filter may quieten it
   // but must not take it away.
   const dimmedByFilter =
-    filtering && isActive && (matchState === "none" || matchState === "out-of-scope");
+    filtering &&
+    isActive &&
+    (matchState === "none" || matchState === "out-of-scope");
 
   return (
     <div>
@@ -118,12 +123,19 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
               return;
             }
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-              if (actionsRef.current.moveRowFocus(e.currentTarget, e.key === "ArrowDown" ? 1 : -1)) {
+              if (
+                actionsRef.current.moveRowFocus(
+                  e.currentTarget,
+                  e.key === "ArrowDown" ? 1 : -1,
+                )
+              ) {
                 e.preventDefault();
               }
             }
           }}
-          title={isLost ? t("connections.lost", { message: lostMessage }) : p.name}
+          title={
+            isLost ? t("connections.lost", { message: lostMessage }) : p.name
+          }
           className={cn(
             "group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-brand/40",
             isLost && "bg-destructive/10",
@@ -138,7 +150,7 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
           )}
         >
           {isBusy ? (
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+            <Spinner size="sm" className="shrink-0 text-muted-foreground" />
           ) : expanded ? (
             <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           ) : (
@@ -234,7 +246,7 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
                   connection", which is a different and much worse action
                   than closing its pool. */}
               {isDisconnecting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Spinner size="sm" />
               ) : (
                 <PlugZap className="h-3.5 w-3.5" />
               )}
@@ -265,9 +277,16 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
           // matters before this subtree has ever been measured once; the
           // browser remembers the real size afterward and re-estimates
           // only if it goes offscreen again before ever being painted.
-          style={{ contentVisibility: "auto", containIntrinsicSize: "auto 300px" }}
+          style={{
+            contentVisibility: "auto",
+            containIntrinsicSize: "auto 300px",
+          }}
         >
-          <SchemaExplorer connectionId={p.id} patterns={patterns} summary={summary} />
+          <SchemaExplorer
+            connectionId={p.id}
+            patterns={patterns}
+            summary={summary}
+          />
         </div>
       )}
     </div>
@@ -345,11 +364,15 @@ function MatchBadge({
   return (
     <span
       title={
-        partial ? t("connectionsTree.filter.partialCount", { count, cold }) : undefined
+        partial
+          ? t("connectionsTree.filter.partialCount", { count, cold })
+          : undefined
       }
       className={cn(
         base,
-        count > 0 ? "bg-brand/15 text-brand" : "bg-muted text-muted-foreground/60",
+        count > 0
+          ? "bg-brand/15 text-brand"
+          : "bg-muted text-muted-foreground/60",
       )}
     >
       {count}

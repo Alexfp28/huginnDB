@@ -28,7 +28,6 @@ import {
   ChevronRight,
   Download,
   ListFilter,
-  Loader2,
   RefreshCw,
   ReplaceAll,
   Rows3,
@@ -38,6 +37,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Spinner } from "@/components/ui/spinner";
 import { NativeSelect } from "@/components/ui/native-select";
 import { notify } from "@/lib/notify";
 import { IconButton } from "@/components/ui/icon-button";
@@ -1437,7 +1437,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           // is handled by the grid's own dim overlay (the `loading` prop above).
           <div className="flex h-full flex-col">
             <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+              <Spinner size="sm" className="shrink-0" />
               {t("schema.loading")}
             </div>
             <div className="flex-1 space-y-1.5 p-3" aria-hidden>
