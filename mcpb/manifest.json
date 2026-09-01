@@ -1,0 +1,71 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/dist/mcpb-manifest.schema.json",
+  "manifest_version": "0.3",
+  "name": "huginndb",
+  "display_name": "HuginnDB",
+  "version": "1.20.0",
+  "description": "Let an AI client inspect and query the databases HuginnDB already knows about — PostgreSQL, MySQL, SQLite, MongoDB and SQL Server — with a per-connection write policy.",
+  "long_description": "HuginnDB's headless MCP connector exposes the connections saved in the HuginnDB desktop app, reading their passwords from the OS keychain. An assistant can inspect real schema, browse rows, run read-only statements, read server health and — only where you allow it — write.\n\nRequires the HuginnDB desktop app on the same machine: this extension reads its saved connection profiles and their keychain entries. Which connections it may reach is chosen in the app under Settings → MCP, and re-read on every call, so nothing is reachable until you tick it and no client restart is needed after you do.\n\nEverything stays on your machine. The connector opens database connections directly from this computer; it has no server, no account and no telemetry.",
+  "author": {
+    "name": "Alexfp28",
+    "email": "alexlopezdelafuente@gmail.com",
+    "url": "https://github.com/Alexfp28"
+  },
+  "homepage": "https://github.com/Alexfp28/huginnDB",
+  "documentation": "https://github.com/Alexfp28/huginnDB/blob/main/docs/MCP.md",
+  "support": "https://github.com/Alexfp28/huginnDB/issues",
+  "icon": "icon.png",
+  "license": "MIT",
+  "keywords": [
+    "database",
+    "sql",
+    "postgresql",
+    "mysql",
+    "sqlite",
+    "mongodb",
+    "sqlserver"
+  ],
+  "privacy_policies": [
+    "https://github.com/Alexfp28/huginnDB/blob/main/docs/PRIVACY.md"
+  ],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/huginndb-mcp",
+    "mcp_config": {
+      "command": "${__dirname}${/}server${/}huginndb-mcp",
+      "args": [],
+      "env": {}
+    }
+  },
+  "compatibility": {
+    "platforms": ["win32", "linux"]
+  },
+  "tools_generated": false,
+  "tools": [
+    { "name": "list_connections", "description": "Which databases this server is allowed to reach." },
+    { "name": "list_databases", "description": "Databases / schemas / catalogs on a connection." },
+    { "name": "list_tables", "description": "Tables and views, with approximate row counts and sizes." },
+    { "name": "describe_table", "description": "Columns, types, nullability, primary key, foreign keys and indexes." },
+    { "name": "list_indexes", "description": "Indexes on a table and the columns each covers." },
+    { "name": "run_query", "description": "Run a single read-only statement and return its rows." },
+    { "name": "run_write", "description": "Run a single statement that changes the database, where the connection's write policy allows it." },
+    { "name": "browse_table", "description": "Browse one page of rows without writing SQL." },
+    { "name": "server_version", "description": "The connected engine and version." },
+    { "name": "list_users", "description": "Server-side users and roles." },
+    { "name": "list_privileges", "description": "The privileges granted to a user or role." },
+    { "name": "pulse_health", "description": "Live vital signs: queries/s, connection pressure, cache hit rate." },
+    { "name": "pulse_metrics", "description": "One metric's stored history from the on-disk sampler." },
+    { "name": "pulse_top_queries", "description": "Statements the server has spent the most time on." },
+    { "name": "pulse_explain", "description": "The plan the server would use for one statement, without running it." },
+    { "name": "pulse_storage", "description": "The biggest relations, split into data, index and free space." },
+    { "name": "pulse_sessions", "description": "Sessions or operations currently open on the server." },
+    { "name": "pulse_index_usage", "description": "Index usage across the biggest relations, least-read first." },
+    { "name": "insert_row", "description": "Insert one row. Needs the 'data' write policy." },
+    { "name": "update_cell", "description": "Update one column of the row addressed by its full primary key. Needs 'data'." },
+    { "name": "delete_rows", "description": "Delete rows addressed by their full primary keys. Needs 'data'." },
+    { "name": "save_view", "description": "Create, redefine or rename a view. Needs the 'full' write policy." },
+    { "name": "drop_view", "description": "Drop a view. Needs 'full'." },
+    { "name": "create_index", "description": "MongoDB only. Create one index. Needs 'full'." },
+    { "name": "drop_index", "description": "MongoDB only. Drop one index by name. Needs 'full'." }
+  ]
+}

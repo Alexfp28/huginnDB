@@ -17,6 +17,10 @@ language that has none.
 | [SQL Server](SQL_SERVER.md) · [es](SQL_SERVER.es.md) | `HOST\INSTANCE` and the SQL Browser, certificate trust, Windows auth, how values are rendered, and the surfaces not implemented yet. |
 | [MCP connector](MCP.md) · [es](MCP.es.md) | Exposing your databases to an AI client: the binary, per-client config, the per-connection write policy, the audit log, and what to do when the client itself blocks a call. |
 
+Policy documents, not guides — they are read on GitHub rather than in the app:
+[`PRIVACY.md`](PRIVACY.md) (what HuginnDB collects: nothing, and what the MCP
+connector reads and never sends).
+
 Repo-level documents outside this folder: [`README.md`](../README.md),
 [`ROADMAP.md`](../ROADMAP.md), [`CHANGELOG.md`](../CHANGELOG.md),
 [`SECURITY.md`](../SECURITY.md), [`CONTRIBUTING.md`](../CONTRIBUTING.md).

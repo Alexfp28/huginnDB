@@ -60,6 +60,10 @@ Go to **Settings → Secrets and variables → Actions → New repository secret
    - `src-tauri/mcp-server/Cargo.toml` → `[package].version` (the MCP connector's own crate; not load-bearing for the release, but kept in sync for sanity)
    - `src-tauri/tauri.conf.json` → `version`
    - `package.json` → `version`
+
+   `mcpb/manifest.json` is deliberately **not** on that list: `scripts/build-mcpb.sh`
+   overwrites its `version` from `package.json` when it packages the bundle, so
+   the committed value is a placeholder and cannot drift.
 2. Move the matching block from `## [Unreleased]` to a new dated section in `CHANGELOG.md`.
 3. Commit, push, then tag:
 

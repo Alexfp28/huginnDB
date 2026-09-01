@@ -178,6 +178,16 @@ Then in HuginnDB: **+** in the Connections panel → **SQLite** → paste the pa
 
 `huginndb-mcp` is a headless [Model Context Protocol](https://modelcontextprotocol.io) server so an AI coding assistant works against your *actual* schema instead of guessing. Any MCP client (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …), read-only by default with a per-connection write policy, every write audited. Ships as a sidecar — nothing to build. Full reference in [docs/MCP.md](docs/MCP.md).
 
+Which connections it can reach is picked in **Settings → MCP** and re-read on every call, so the client config carries no ids and never needs editing again. Claude Code is one button; Claude Desktop installs the `.mcpb` bundle attached to each release in one click.
+
+## Privacy
+
+HuginnDB collects nothing. No analytics, no telemetry, no crash reports, no
+account — there is no service of ours for your data to pass through.
+Credentials live in your OS keychain and everything else in local files. The
+full statement, including what the MCP connector reads and what it never sends,
+is in [docs/PRIVACY.md](docs/PRIVACY.md).
+
 ## Docs
 
 User guides live in [`docs/`](docs/README.md), and the same files are readable
@@ -185,7 +195,7 @@ inside the app under **Help → Documentation**. Each one has a Spanish twin.
 
 [Connections](docs/CONNECTIONS.md) · [Environments](docs/ENVIRONMENTS.md) · [MongoDB](docs/MONGODB.md) · [SQL Server](docs/SQL_SERVER.md) · [MCP connector](docs/MCP.md)
 
-[Roadmap](ROADMAP.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+[Roadmap](ROADMAP.md) · [Security](SECURITY.md) · [Privacy](docs/PRIVACY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 PRs welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) first. Newcomer-friendly issues are labelled `good first issue`.
 

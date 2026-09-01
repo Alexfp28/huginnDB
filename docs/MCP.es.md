@@ -115,7 +115,24 @@ de proyecto):
 }
 ```
 
-### Claude Desktop
+### Claude Desktop (extensión de un clic)
+
+Cada release adjunta un **MCP Bundle** — `huginndb-mcp-<versión>-win32.mcpb`
+(y uno `-linux`) en la
+[página de releases](https://github.com/Alexfp28/huginnDB/releases).
+Descárgalo y abre **Ajustes → Extensiones** en Claude Desktop: arrastra el
+fichero o usa *Instalar extensión*. Ni ruta que copiar ni JSON que editar.
+
+El bundle lleva su propia copia del conector, pero no es autónomo:
+**HuginnDB tiene que estar instalado en la misma máquina**, porque ahí es donde
+viven los perfiles de conexión y sus entradas del llavero. Qué conexiones puede
+alcanzar sigue siendo Ajustes → MCP en la app, y se sigue releyendo en cada
+llamada — la extensión no tiene ajustes propios, que es justo la gracia.
+
+Usa la vía manual de abajo si quieres fijar un cliente a un subconjunto con
+`--connections`, que el bundle no pasa.
+
+### Claude Desktop (manual)
 
 Ajustes → Developer → **Edit Config** abre `claude_desktop_config.json`
 (`%APPDATA%\Claude\` en Windows, `~/Library/Application Support/Claude/` en

@@ -3144,6 +3144,39 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// The MCP Bundle manifest must list exactly the tools the router serves.
+    ///
+    /// `mcpb/manifest.json` is what an MCPB-aware client (and Anthropic's
+    /// directory review) reads to describe this extension before ever starting
+    /// it, so a tool added here and forgotten there makes the bundle lie about
+    /// itself — silently, and in the one place nobody re-reads. Nothing links
+    /// the two files, so this test is the link.
+    #[test]
+    fn the_mcpb_manifest_lists_exactly_the_tools_we_serve() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../mcpb/manifest.json");
+        let raw = std::fs::read_to_string(path).expect("mcpb/manifest.json");
+        let manifest: serde_json::Value = serde_json::from_str(&raw).expect("valid JSON");
+        let mut declared: Vec<String> = manifest["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .map(|t| t["name"].as_str().expect("tool name").to_string())
+            .collect();
+        declared.sort();
+
+        let mut served: Vec<String> = Huginn::tool_router()
+            .list_all()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        served.sort();
+
+        assert_eq!(
+            declared, served,
+            "mcpb/manifest.json's tool list has drifted from the router"
+        );
+    }
+
     /// Every tool must carry a human-readable title and an explicit
     /// `readOnlyHint`.
     ///

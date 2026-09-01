@@ -105,7 +105,24 @@ Equivalent hand-written config (`~/.claude.json`, or a project `.mcp.json`):
 }
 ```
 
-### Claude Desktop
+### Claude Desktop (one-click extension)
+
+Each release attaches an **MCP Bundle** — `huginndb-mcp-<version>-win32.mcpb`
+(and a `-linux` one) on the
+[releases page](https://github.com/Alexfp28/huginnDB/releases). Download it and
+open Claude Desktop's **Settings → Extensions**, then drag the file in or use
+*Install extension*. No path to copy and no JSON to edit.
+
+The bundle carries its own copy of the connector, but it is not standalone:
+**HuginnDB must be installed on the same machine**, because that is where the
+connection profiles and their keychain entries live. Which connections it may
+reach is still Settings → MCP in the app, and still re-read per call — the
+extension has no settings of its own, which is the point.
+
+Prefer the manual route below if you want one client pinned to a subset of
+connections with `--connections`, which the bundle does not pass.
+
+### Claude Desktop (manual)
 
 Settings → Developer → **Edit Config** opens `claude_desktop_config.json`
 (`%APPDATA%\Claude\` on Windows, `~/Library/Application Support/Claude/` on

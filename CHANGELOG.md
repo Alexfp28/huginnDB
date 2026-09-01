@@ -8,6 +8,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The connector ships as an MCP Bundle (`.mcpb`), so Claude Desktop installs
+  it in one click.** Claude Desktop has no CLI, so its setup was the worst of
+  the lot: open a JSON config file by hand, paste an absolute path with doubled
+  backslashes, restart the app. Every release now attaches
+  `huginndb-mcp-<version>-win32.mcpb` (and a `-linux` one) alongside the
+  installers; **Settings → Extensions** takes the file and does the rest.
+
+  One bundle per platform, because the payload is a precompiled binary and a
+  fat bundle would charge every install for architectures it will never run.
+  The bundle carries the sidecar but is deliberately **not** standalone:
+  HuginnDB must be installed on the same machine, since that is where the
+  connection profiles and their keychain entries live. It declares no
+  `user_config` at all — which is only possible because exposure moved into the
+  app earlier in this release, so there is nothing left for an extension
+  installer to ask.
+
+  `mcpb/manifest.json` is source and `scripts/build-mcpb.sh` assembles the zip.
+  Two details in that script are load-bearing rather than incidental: the
+  version is read from `package.json` so this is not a fifth place to bump on a
+  release (RELEASING.md lists the four that are), and each zip entry's mode is
+  set explicitly, because a zip carries its own permissions and the default
+  loses the executable bit — the same trap as the release workflow's sidecar
+  `cp`, one layer out. A test asserts the manifest's tool list is exactly what
+  the router serves, since nothing else links the two files and a bundle that
+  lies about its own tools would do so silently.
+
+  Also new: `docs/PRIVACY.md`, the policy an MCPB directory submission requires
+  and which the product needed anyway. It is short because there is little to
+  say — HuginnDB collects nothing, has no backend, and the only thing the
+  connector writes is a local audit log — but the one paragraph worth reading
+  is the one about the AI client: query results go to the application that
+  asked for them, and what *it* does with them is governed by its policy, not
+  ours.
+
 - **Settings → MCP can register the connector with Claude Code in one click.**
   The last manual step in the setup was copying an absolute path out of the
   panel and into a terminal (or, worse, into a JSON file). The new button runs
