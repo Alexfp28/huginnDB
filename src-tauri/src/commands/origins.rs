@@ -519,6 +519,14 @@ pub(crate) fn merge_into(
                 // not something a publisher two machines away should be able
                 // to flip back on with an unrelated refresh.
                 profile.pulse_enabled = existing.pulse_enabled;
+                // And one level up from `mcp_write`: whether the connector can
+                // reach this connection at all. A publisher who happened to
+                // have it exposed on their machine must not switch it on here,
+                // and — the direction that actually bites — a refresh must not
+                // switch *off* a connection the user exposed locally, which
+                // would take an AI client's access away mid-session with no
+                // visible cause.
+                profile.mcp_exposed = existing.mcp_exposed;
                 *existing = profile.clone();
                 report.updated.push(profile.id);
             }
@@ -878,6 +886,43 @@ mod tests {
 
         assert!(after[0].pulse_enabled, "the opt-in is local");
         assert_eq!(after[0].host, "newhost", "everything else is the file's");
+    }
+
+    /// And one level up from the write policy: whether the MCP connector can
+    /// reach the connection at all. Both directions matter — a publisher who
+    /// had it exposed must not switch it on here, and a refresh must not take
+    /// away access an AI client is using right now.
+    #[test]
+    fn a_sync_preserves_the_local_mcp_exposure() {
+        let local = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            mcp_exposed: true,
+            ..testkit::profile("shared")
+        };
+        let incoming = published(ConnectionProfile {
+            host: "newhost".into(),
+            mcp_exposed: false,
+            ..testkit::profile("shared")
+        });
+
+        let after = merge(vec![local], &[incoming]);
+
+        assert!(after[0].mcp_exposed, "exposure is this machine's call");
+        assert_eq!(after[0].host, "newhost", "everything else is the file's");
+
+        // The other direction: the publisher's `true` must not expose a
+        // connection this machine never ticked.
+        let local = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            mcp_exposed: false,
+            ..testkit::profile("shared")
+        };
+        let incoming = published(ConnectionProfile {
+            mcp_exposed: true,
+            ..testkit::profile("shared")
+        });
+        let after = merge(vec![local], &[incoming]);
+        assert!(!after[0].mcp_exposed, "a publisher cannot expose for us");
     }
 
     /// A profile arriving for the first time has no local decision to keep, so

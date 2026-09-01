@@ -155,6 +155,14 @@ export interface ConnectionProfile {
    *  reasoning as `mcp_write`: an upgrade must never silently start polling
    *  and storing data about a server the user didn't ask to be tracked. */
   pulse_enabled?: boolean;
+  /** Whether the headless MCP connector may reach this connection at all.
+   *  Opt-in, `false`/absent by default, and ticked in Settings → MCP. The
+   *  sidecar re-reads it per call, so a change takes effect without restarting
+   *  the MCP client; a client started with an explicit `--connections` list is
+   *  pinned to it instead. Strictly local: preserved across a shared-origin
+   *  sync and cleared on import, since what your AI clients may reach is a
+   *  decision about this machine. */
+  mcp_exposed?: boolean;
 }
 
 /** How far the MCP connector may write to a connection. Mirrors

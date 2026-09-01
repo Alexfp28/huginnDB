@@ -23,9 +23,15 @@
 //!   require at least `data`; DDL requires `full`. A global `--read-only`
 //!   kill-switch forces read-only regardless of saved policy. (The old
 //!   `--allow-writes` flag is deprecated and inert.)
-//! * **Opt-in per profile.** Nothing is reachable until the user names a
-//!   profile id via `--connections id1,id2`. An empty allowlist exposes
-//!   nothing.
+//! * **Opt-in per profile.** Nothing is reachable until the user ticks a
+//!   connection in the app's Settings → MCP, which sets
+//!   [`crate::state::ConnectionProfile::mcp_exposed`]; like the write policy,
+//!   it is re-read from disk per call, so the choice takes effect without
+//!   restarting the MCP client. A `--connections id1,id2` argument still pins
+//!   an explicit set for one client, and wins when present.
+//! * **Addressed by name.** Every tool takes the connection's *name* or its
+//!   profile id ([`Huginn::canonical_connection`]); the uuid is an internal
+//!   identity the user never chose and should not have to see.
 //! * **Lazy pools.** No database is touched until a tool call names a
 //!   connection; the pool is then opened via [`crate::db::pool::open_pool`]
 //!   (password from the keychain) and cached in the shared [`AppState`]. It is
@@ -91,9 +97,23 @@ const POOL_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Runtime configuration parsed from the process arguments.
 struct Config {
-    /// Profile ids the client is allowed to reach. Opt-in: empty means
-    /// nothing is exposed.
-    allowed: HashSet<String>,
+    /// Profile ids pinned on the command line with `--connections`, or `None`
+    /// when the flag was absent and exposure is therefore the *app's* to
+    /// decide (`ConnectionProfile::mcp_exposed`, ticked in Settings → MCP and
+    /// re-read fresh on every call).
+    ///
+    /// Three states, all load-bearing. `None` defers to disk — the normal case
+    /// now, and what lets the client's command be a bare `huginndb-mcp` with no
+    /// uuids in it. `Some(set)` pins exactly that set for the life of the
+    /// process: an argument the user typed outranks a checkbox, and every
+    /// pre-1.21 client config keeps behaving exactly as it did. `Some(empty)`
+    /// — `--connections ""` — is an explicit "expose nothing", which is *not*
+    /// the same as `None` and must not collapse into it.
+    ///
+    /// Opt-in survives either way: a profile is exposed only if the user ticked
+    /// it or named it, and `mcp_exposed` defaults to `false` on every profile
+    /// that predates the field.
+    pinned: Option<HashSet<String>>,
     /// Global read-only kill-switch (`--read-only`). When set, every
     /// connection is forced to [`McpWritePolicy::ReadOnly`] regardless of its
     /// saved per-connection policy — a way to expose the sidecar in a
@@ -116,12 +136,26 @@ struct Config {
 }
 
 impl Config {
+    /// Whether `profile` is reachable through this server.
+    ///
+    /// The exposure rule, in one place: a `--connections` list the user typed
+    /// wins outright, and otherwise the answer is the profile's own
+    /// `mcp_exposed` flag from Settings → MCP. Lives on `Config` rather than on
+    /// `Huginn` because [`serve`] has to answer the same question for its
+    /// startup banner and the bridge handshake, before any `Huginn` exists.
+    fn exposes(&self, profile: &crate::state::ConnectionProfile) -> bool {
+        match &self.pinned {
+            Some(ids) => ids.contains(&profile.id),
+            None => profile.mcp_exposed,
+        }
+    }
+
     /// Parse `--connections a,b,c`, `--read-only`, `--max-rows N`, and the
     /// deprecated `--allow-writes` from `argv` (program name at index 0).
     /// Accepts both `--flag value` and `--flag=value`, mirroring the desktop
     /// CLI parser.
     fn from_args(argv: &[String]) -> Self {
-        let mut allowed = HashSet::new();
+        let mut pinned: Option<HashSet<String>> = None;
         let mut read_only = false;
         let mut max_rows = DEFAULT_MAX_ROWS;
         let mut max_connections = DEFAULT_MAX_CONNECTIONS;
@@ -141,8 +175,13 @@ impl Config {
             match flag {
                 "--connections" | "--connection" => {
                     if let Some(v) = value(&mut iter) {
+                        // Seeing the flag at all pins the set, even when the
+                        // value is empty: `--connections ""` means "expose
+                        // nothing", which has to stay distinguishable from
+                        // omitting the flag and deferring to the app.
+                        let set = pinned.get_or_insert_with(HashSet::new);
                         for id in v.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-                            allowed.insert(id.to_string());
+                            set.insert(id.to_string());
                         }
                     }
                 }
@@ -178,7 +217,7 @@ impl Config {
         }
 
         Config {
-            allowed,
+            pinned,
             read_only,
             max_rows,
             max_connections,
@@ -221,13 +260,17 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Connection {
-        /// Profile id of a database exposed to this server (see
-        /// `list_connections`).
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
     }
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Tables {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// For MongoDB only: the database to list collections from, when the
         /// connection has no database bound; see [`Table::schema`]. Ignored
@@ -238,6 +281,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Table {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Schema / namespace. Omit for the driver default (Postgres
         /// `public`, MySQL current database, SQLite `main`). For MongoDB,
@@ -251,6 +297,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Query {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// A single read-only statement: SQL (SELECT / WITH / SHOW / EXPLAIN
         /// / PRAGMA) for Postgres/MySQL/SQLite, or mongosh syntax
@@ -266,6 +315,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Browse {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Schema / namespace. For MongoDB, this is the **database name** —
         /// required when the connection has no database bound; see
@@ -286,6 +338,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Privileges {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// User/role as returned by `list_users` (MySQL: `user@host`).
         pub user: String,
@@ -293,6 +348,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct PulseMetrics {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Canonical metric name from Pulse's catalogue (`pulse_health`'s
         /// reply lists which ones this connection's engine reports), e.g.
@@ -304,6 +362,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct PulseExplain {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// One runnable statement to EXPLAIN — a `pulse_top_queries` row's
         /// own `sample` field in practice. Must be read-only and a single
@@ -376,6 +437,9 @@ mod args {
     /// Arguments for the `insert_row` write tool.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct InsertRow {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Schema / namespace (see [`Table::schema`]; MongoDB database name).
         #[serde(default)]
@@ -393,6 +457,9 @@ mod args {
     /// single row addressed by the full primary key.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct UpdateCell {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         #[serde(default)]
         pub schema: Option<String>,
@@ -416,6 +483,9 @@ mod args {
     /// `pk_value_rows` is one full-PK tuple, parallel to `pk_columns`.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct DeleteRows {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         #[serde(default)]
         pub schema: Option<String>,
@@ -439,6 +509,9 @@ mod args {
     /// its own note).
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct SaveView {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Schema / namespace. Omit for the driver default. For MongoDB this is
         /// the **database name** — required when the connection has no database
@@ -478,6 +551,9 @@ mod args {
     /// Arguments for the `drop_view` write tool.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct DropView {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Schema / namespace; the **database name** for MongoDB. See
         /// [`Table::schema`].
@@ -500,6 +576,9 @@ mod args {
     /// by the tool body.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct CreateIndex {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// MongoDB database to target on a multi-database connection. See
         /// [`Table::schema`].
@@ -552,6 +631,9 @@ mod args {
     /// Arguments for the `drop_index` write tool (MongoDB only).
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct DropIndex {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// MongoDB database to target on a multi-database connection. See
         /// [`Table::schema`].
@@ -625,6 +707,125 @@ fn ok_json<T: serde::Serialize>(value: &T) -> Result<CallToolResult, ErrorData> 
 }
 
 /// Map a backend [`crate::error::AppError`] onto an MCP error.
+/// Resolve a client-supplied connection reference — a profile **id or name** —
+/// to the canonical id, among the connections `config` exposes.
+///
+/// Names are accepted because the id is a uuid the user never chose and should
+/// never have to see: `list_connections` reports both, and asking a model to
+/// copy a uuid across every subsequent call only invited it to get one
+/// character wrong. The id stays the identity — names are neither unique nor
+/// stable, and a rename must not silently repoint a saved reference — so an id
+/// always wins over a name that happens to equal it, and an ambiguous name is
+/// an error naming the candidates rather than a guess.
+///
+/// Resolution is scoped to *exposed* connections throughout: a name must not be
+/// able to reach a profile the user did not expose, and — the more useful half
+/// — a reference naming a real but unexposed connection is told exactly that,
+/// with the fix that applies to how this server was started, instead of
+/// "unknown connection".
+fn resolve_connection(
+    config: &Config,
+    reference: &str,
+    profiles: &[crate::state::ConnectionProfile],
+) -> Result<String, ErrorData> {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        return Err(ErrorData::invalid_params(
+            "connection_id is required: pass the name or id of a connection from \
+             `list_connections`"
+                .to_string(),
+            None,
+        ));
+    }
+    let exposed: Vec<&crate::state::ConnectionProfile> =
+        profiles.iter().filter(|p| config.exposes(p)).collect();
+
+    if let Some(p) = exposed.iter().find(|p| p.id == reference) {
+        return Ok(p.id.clone());
+    }
+    let by_name: Vec<&&crate::state::ConnectionProfile> = exposed
+        .iter()
+        .filter(|p| p.name.eq_ignore_ascii_case(reference))
+        .collect();
+    match by_name.as_slice() {
+        [one] => return Ok(one.id.clone()),
+        [] => {}
+        many => {
+            let candidates = many
+                .iter()
+                .map(|p| format!("{:?} (id {}, host {})", p.name, p.id, p.host))
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(ErrorData::invalid_params(
+                format!(
+                    "{reference:?} matches {} exposed connections — pass the id instead: \
+                     {candidates}",
+                    many.len()
+                ),
+                None,
+            ));
+        }
+    }
+
+    // Known but not exposed is a different problem with a different fix, and by
+    // far the likelier of the two.
+    if let Some(p) = profiles
+        .iter()
+        .find(|p| p.id == reference || p.name.eq_ignore_ascii_case(reference))
+    {
+        return Err(ErrorData::invalid_params(
+            if config.pinned.is_some() {
+                format!(
+                    "connection {:?} exists but this MCP server was started with an explicit \
+                     --connections list that does not include it (id {})",
+                    p.name, p.id
+                )
+            } else {
+                format!(
+                    "connection {:?} exists but is not exposed to MCP — tick it in HuginnDB → \
+                     Settings → MCP (id {})",
+                    p.name, p.id
+                )
+            },
+            None,
+        ));
+    }
+    Err(ErrorData::invalid_params(
+        format!(
+            "unknown connection {reference:?}. Exposed: {}",
+            summarize_names(&exposed)
+        ),
+        None,
+    ))
+}
+
+/// Render an exposed-connection list for an error message, bounded.
+///
+/// Names, not ids: the whole point of accepting a name is that the caller need
+/// never see a uuid, so the recovery hint must not hand it one. Capped because
+/// this goes into a model's context on every miss, and a machine with forty
+/// exposed connections would spend more of it on the apology than on the work.
+fn summarize_names(exposed: &[&crate::state::ConnectionProfile]) -> String {
+    const MAX: usize = 10;
+    if exposed.is_empty() {
+        return "none — tick the connections you want reachable in HuginnDB → Settings → MCP"
+            .to_string();
+    }
+    let mut names: Vec<&str> = exposed.iter().map(|p| p.name.as_str()).collect();
+    names.sort_unstable();
+    let shown = names
+        .iter()
+        .take(MAX)
+        .map(|n| format!("{n:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if names.len() > MAX {
+        format!("{shown}, and {} more", names.len() - MAX)
+    } else {
+        shown
+    }
+}
+
 fn to_err(e: crate::error::AppError) -> ErrorData {
     ErrorData::internal_error(e.to_string(), None)
 }
@@ -762,9 +963,19 @@ impl Huginn {
     /// the OS keychain, and caches the pool in the shared [`AppState`] with no
     /// keepalive heartbeat (a short-lived headless process doesn't need one).
     async fn ensure_connected(&self, id: &str) -> AppResult<()> {
-        if !self.config.allowed.contains(id) {
+        // Second line of defence. Every tool canonicalises its argument through
+        // `canonical_connection` first, which already resolves only among
+        // exposed profiles — but that is a convention a new tool can forget,
+        // and this is the gate, so it re-asks the question against disk here
+        // where no caller can skip it.
+        if !self
+            .all_profiles()
+            .iter()
+            .any(|p| p.id == id && self.is_exposed(p))
+        {
             return Err(crate::error::AppError::InvalidInput(format!(
-                "connection {id:?} is not exposed to this MCP server (pass --connections {id})"
+                "connection {id:?} is not exposed to this MCP server (tick it in HuginnDB → \
+                 Settings → MCP, or pass --connections {id})"
             )));
         }
         // With the bridge up, pool ownership belongs to the desktop app: ask it
@@ -932,6 +1143,34 @@ impl Huginn {
         ok_json(&out)
     }
 
+    /// Every profile on this machine, read **fresh from `profiles.json`** with
+    /// the startup snapshot as a fallback — see [`Self::write_policy`] for why
+    /// the disk is the authority while this process is running.
+    fn all_profiles(&self) -> Vec<crate::state::ConnectionProfile> {
+        crate::store::load_profiles().unwrap_or_else(|_| self.state.profiles.read().clone())
+    }
+
+    /// Whether this server may reach `profile` at all.
+    ///
+    /// The exposure gate, and the one place that knows the two sources rank:
+    /// a `--connections` list the user typed wins outright, and otherwise the
+    /// answer is the profile's own `mcp_exposed`, ticked in Settings → MCP.
+    fn is_exposed(&self, profile: &crate::state::ConnectionProfile) -> bool {
+        self.config.exposes(profile)
+    }
+
+    /// Resolve a client-supplied connection reference — a profile **id or
+    /// name** — to the canonical id every layer below this one speaks.
+    ///
+    /// Thin wrapper: the rules live in the free [`resolve_connection`] so they
+    /// can be tested without an [`AppState`] and without reading the real
+    /// `profiles.json` (gotcha #52 — a test that reaches this function's own
+    /// disk read is a test whose answer depends on the developer's saved
+    /// connections).
+    fn canonical_connection(&self, reference: &str) -> Result<String, ErrorData> {
+        resolve_connection(&self.config, reference, &self.all_profiles())
+    }
+
     /// The write policy in force for `connection_id`, read **fresh from
     /// `profiles.json`** so a change made in the desktop app (Settings → MCP)
     /// takes effect without restarting the MCP client. Falls back to the
@@ -981,9 +1220,13 @@ impl Huginn {
     }
 
     #[tool(description = "List the databases this server is allowed to reach \
-                          (profile id, name, driver, host, database, whether a \
+                          (name, profile id, driver, host, database, whether a \
                           pool is currently open, and the MCP write policy in \
-                          force: read-only / data / full).")]
+                          force: read-only / data / full). Every other tool \
+                          accepts either the name or the id; prefer the name. \
+                          An empty list means the user has not exposed any \
+                          connection yet — they do that in HuginnDB under \
+                          Settings → MCP.")]
     async fn list_connections(&self) -> Result<CallToolResult, ErrorData> {
         #[derive(serde::Serialize)]
         struct Conn {
@@ -1003,12 +1246,9 @@ impl Huginn {
         // `write_policy` (which re-reads profiles.json) without holding the
         // `profiles` read-lock across the call.
         let ids: Vec<crate::state::ConnectionProfile> = self
-            .state
-            .profiles
-            .read()
-            .iter()
-            .filter(|p| self.config.allowed.contains(&p.id))
-            .cloned()
+            .all_profiles()
+            .into_iter()
+            .filter(|p| self.is_exposed(p))
             .collect();
         let conns: Vec<Conn> = ids
             .into_iter()
@@ -1032,8 +1272,9 @@ impl Huginn {
     #[tool(description = "List databases/schemas/catalogs on a connection.")]
     async fn list_databases(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(mut a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, None, |connection_id| {
             BridgeRequest::ListDatabases { connection_id }
         })
@@ -1047,8 +1288,9 @@ impl Huginn {
                           this returns an empty list.")]
     async fn list_tables(
         &self,
-        Parameters(a): Parameters<args::Tables>,
+        Parameters(mut a): Parameters<args::Tables>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, a.schema.as_deref(), |connection_id| {
             BridgeRequest::ListTables { connection_id }
         })
@@ -1065,8 +1307,9 @@ impl Huginn {
                           `view` key means the relation is a plain table.")]
     async fn describe_table(
         &self,
-        Parameters(a): Parameters<args::Table>,
+        Parameters(mut a): Parameters<args::Table>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Table {
             connection_id,
             schema,
@@ -1085,8 +1328,9 @@ impl Huginn {
     #[tool(description = "List indexes on a table, with the columns each covers.")]
     async fn list_indexes(
         &self,
-        Parameters(a): Parameters<args::Table>,
+        Parameters(mut a): Parameters<args::Table>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Table {
             connection_id,
             schema,
@@ -1112,8 +1356,9 @@ impl Huginn {
                           by the server's --max-rows.")]
     async fn run_query(
         &self,
-        Parameters(a): Parameters<args::Query>,
+        Parameters(mut a): Parameters<args::Query>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1174,8 +1419,9 @@ impl Huginn {
                           server's --max-rows.")]
     async fn browse_table(
         &self,
-        Parameters(a): Parameters<args::Browse>,
+        Parameters(mut a): Parameters<args::Browse>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let limit = a
             .limit
             .unwrap_or(self.config.max_rows)
@@ -1200,8 +1446,9 @@ impl Huginn {
     #[tool(description = "Return the connected server's engine and version.")]
     async fn server_version(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(mut a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, None, |connection_id| {
             BridgeRequest::ServerVersion { connection_id }
         })
@@ -1211,8 +1458,9 @@ impl Huginn {
     #[tool(description = "List server-side users/roles (permission context).")]
     async fn list_users(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(mut a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, None, |connection_id| {
             BridgeRequest::ListUsers { connection_id }
         })
@@ -1222,8 +1470,9 @@ impl Huginn {
     #[tool(description = "List the privileges granted to a user/role.")]
     async fn list_privileges(
         &self,
-        Parameters(a): Parameters<args::Privileges>,
+        Parameters(mut a): Parameters<args::Privileges>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Privileges {
             connection_id,
             user,
@@ -1246,8 +1495,9 @@ impl Huginn {
                           on the others.")]
     async fn pulse_health(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(mut a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, None, |connection_id| {
             BridgeRequest::PulseHealth { connection_id }
         })
@@ -1261,8 +1511,9 @@ impl Huginn {
                           the metrics a given engine reports.")]
     async fn pulse_metrics(
         &self,
-        Parameters(a): Parameters<args::PulseMetrics>,
+        Parameters(mut a): Parameters<args::PulseMetrics>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::PulseMetrics {
             connection_id,
             metric,
@@ -1286,8 +1537,9 @@ impl Huginn {
                           pulse_explain accepts.")]
     async fn pulse_top_queries(
         &self,
-        Parameters(a): Parameters<args::Tables>,
+        Parameters(mut a): Parameters<args::Tables>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Tables {
             connection_id,
             schema,
@@ -1306,8 +1558,9 @@ impl Huginn {
                           statement.")]
     async fn pulse_explain(
         &self,
-        Parameters(a): Parameters<args::PulseExplain>,
+        Parameters(mut a): Parameters<args::PulseExplain>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::PulseExplain {
             connection_id,
             sample,
@@ -1326,8 +1579,9 @@ impl Huginn {
                           split into data / index / free space.")]
     async fn pulse_storage(
         &self,
-        Parameters(a): Parameters<args::Tables>,
+        Parameters(mut a): Parameters<args::Tables>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Tables {
             connection_id,
             schema,
@@ -1344,8 +1598,9 @@ impl Huginn {
                           best-effort blocking chain on MySQL.")]
     async fn pulse_sessions(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(mut a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, None, |connection_id| {
             BridgeRequest::PulseSessions { connection_id }
         })
@@ -1360,8 +1615,9 @@ impl Huginn {
                           null.")]
     async fn pulse_index_usage(
         &self,
-        Parameters(a): Parameters<args::Tables>,
+        Parameters(mut a): Parameters<args::Tables>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Tables {
             connection_id,
             schema,
@@ -1381,8 +1637,9 @@ impl Huginn {
     )]
     async fn insert_row(
         &self,
-        Parameters(a): Parameters<args::InsertRow>,
+        Parameters(mut a): Parameters<args::InsertRow>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1426,8 +1683,9 @@ impl Huginn {
                           not a silent multi-row update).")]
     async fn update_cell(
         &self,
-        Parameters(a): Parameters<args::UpdateCell>,
+        Parameters(mut a): Parameters<args::UpdateCell>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1464,8 +1722,9 @@ impl Huginn {
                           number of rows deleted.")]
     async fn delete_rows(
         &self,
-        Parameters(a): Parameters<args::DeleteRows>,
+        Parameters(mut a): Parameters<args::DeleteRows>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1511,8 +1770,9 @@ impl Huginn {
     )]
     async fn save_view(
         &self,
-        Parameters(a): Parameters<args::SaveView>,
+        Parameters(mut a): Parameters<args::SaveView>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         if a.preview {
             // A dry run executes nothing, so it goes through the shared
             // read-only body: `call(.., false)` skips the audit log, which is
@@ -1586,8 +1846,9 @@ impl Huginn {
     )]
     async fn drop_view(
         &self,
-        Parameters(a): Parameters<args::DropView>,
+        Parameters(mut a): Parameters<args::DropView>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1625,8 +1886,9 @@ impl Huginn {
     )]
     async fn create_index(
         &self,
-        Parameters(a): Parameters<args::CreateIndex>,
+        Parameters(mut a): Parameters<args::CreateIndex>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1679,8 +1941,9 @@ impl Huginn {
     )]
     async fn drop_index(
         &self,
-        Parameters(a): Parameters<args::DropIndex>,
+        Parameters(mut a): Parameters<args::DropIndex>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1803,21 +2066,42 @@ pub async fn serve() -> anyhow::Result<()> {
              governed per connection by the write policy set in HuginnDB → Settings → MCP."
         );
     }
-    if config.allowed.is_empty() {
+    let state = Arc::new(AppState::new());
+
+    // The exposed set as it stands *right now*. Only a banner and the bridge
+    // handshake below read it: every enforcement path re-reads `profiles.json`
+    // per call, so ticking a connection in Settings → MCP takes effect without
+    // restarting the client and this snapshot going stale costs nothing.
+    let exposed: Vec<crate::state::ConnectionProfile> = state
+        .profiles
+        .read()
+        .iter()
+        .filter(|p| config.exposes(p))
+        .cloned()
+        .collect();
+    if exposed.is_empty() {
         eprintln!(
-            "[huginndb-mcp] no connections exposed — pass --connections <profile-id>[,<id>...]"
+            "[huginndb-mcp] no connections exposed yet — tick the ones you want reachable in \
+             HuginnDB → Settings → MCP (or pass --connections <profile-id>[,<id>...] to pin a \
+             set for this client only)"
         );
     } else {
-        let mut ids: Vec<&String> = config.allowed.iter().collect();
-        ids.sort();
+        let mut names: Vec<String> = exposed
+            .iter()
+            .map(|p| format!("{} ({})", p.name, p.id))
+            .collect();
+        names.sort();
         eprintln!(
-            "[huginndb-mcp] exposing {} connection(s): {} (write policy: per-connection{}, \
-             max-rows: {}, max-connections: {} per connection, idle pools closed after {}s)",
-            ids.len(),
-            ids.iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .join(", "),
+            "[huginndb-mcp] exposing {} connection(s) from {}: {} (write policy: \
+             per-connection{}, max-rows: {}, max-connections: {} per connection, idle pools \
+             closed after {}s)",
+            names.len(),
+            if config.pinned.is_some() {
+                "--connections"
+            } else {
+                "Settings → MCP"
+            },
+            names.join(", "),
             if config.read_only {
                 ", forced read-only via --read-only"
             } else {
@@ -1829,14 +2113,19 @@ pub async fn serve() -> anyhow::Result<()> {
         );
     }
 
-    let state = Arc::new(AppState::new());
-
     // Attach to a running desktop app when its bridge is up, so this process
     // borrows the app's pools instead of opening its own. `None` — no app, or
     // the bridge disabled — is the ordinary case and keeps the pre-bridge
     // behaviour exactly.
-    let allowed: Vec<String> = config.allowed.iter().cloned().collect();
-    let bridge = crate::bridge::client::BridgeClient::connect(allowed)
+    // The handshake still carries a concrete list, even when exposure is the
+    // app's to decide: an app older than this change enforces exactly that
+    // snapshot, which is the pre-1.21 behaviour rather than a refusal, and a
+    // refusal is the one failure the sidecar cannot fall back from (it arrives
+    // as an error reply mid-tool-call, not as `Unreachable`). A current app
+    // ignores the snapshot and re-reads `mcp_exposed` per request — that is
+    // what `defer_exposure` asks it to do.
+    let allowed: Vec<String> = exposed.iter().map(|p| p.id.clone()).collect();
+    let bridge = crate::bridge::client::BridgeClient::connect(allowed, config.pinned.is_none())
         .await
         .map(Arc::new);
     if bridge.is_some() {
@@ -1870,7 +2159,10 @@ mod tests {
     #[test]
     fn config_defaults_expose_nothing() {
         let c = Config::from_args(&args(&[]));
-        assert!(c.allowed.is_empty(), "opt-in: no connections by default");
+        assert!(
+            c.pinned.is_none(),
+            "no --connections defers to the app's own mcp_exposed flags"
+        );
         assert!(!c.read_only);
         assert!(!c.saw_allow_writes);
         assert_eq!(c.max_rows, DEFAULT_MAX_ROWS);
@@ -1911,12 +2203,141 @@ mod tests {
             "--read-only",
             "--max-rows=50",
         ]));
-        assert!(c.allowed.contains("alpha"));
-        assert!(c.allowed.contains("beta"));
-        assert!(c.allowed.contains("gamma"));
-        assert_eq!(c.allowed.len(), 3);
+        let pinned = c.pinned.as_ref().expect("the flag pins a set");
+        assert!(pinned.contains("alpha"));
+        assert!(pinned.contains("beta"));
+        assert!(pinned.contains("gamma"));
+        assert_eq!(pinned.len(), 3);
         assert!(c.read_only);
         assert_eq!(c.max_rows, 50);
+    }
+
+    #[test]
+    fn an_empty_connections_value_pins_an_empty_set() {
+        // Distinct from omitting the flag: `--connections ""` is an explicit
+        // "expose nothing", while no flag at all defers to Settings → MCP.
+        // Collapsing the two would turn a deliberate lockdown into a wide-open
+        // one on upgrade.
+        let c = Config::from_args(&args(&["--connections", ""]));
+        let pinned = c.pinned.as_ref().expect("the flag was seen");
+        assert!(pinned.is_empty());
+    }
+
+    /// Config for the resolver tests: `None` defers to `mcp_exposed`, `Some`
+    /// pins that set.
+    fn resolver_config(pinned: Option<&[&str]>) -> Config {
+        Config {
+            pinned: pinned.map(|ids| ids.iter().map(|s| s.to_string()).collect()),
+            read_only: false,
+            max_rows: DEFAULT_MAX_ROWS,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
+            saw_allow_writes: false,
+        }
+    }
+
+    fn exposed_profile(id: &str, name: &str) -> crate::state::ConnectionProfile {
+        crate::state::ConnectionProfile {
+            name: name.into(),
+            mcp_exposed: true,
+            ..crate::testkit::profile(id)
+        }
+    }
+
+    #[test]
+    fn a_connection_resolves_by_id_or_by_name() {
+        let profiles = vec![exposed_profile("uuid-1", "Producción MySQL")];
+        let config = resolver_config(None);
+        assert_eq!(
+            resolve_connection(&config, "uuid-1", &profiles).unwrap(),
+            "uuid-1"
+        );
+        assert_eq!(
+            resolve_connection(&config, "Producción MySQL", &profiles).unwrap(),
+            "uuid-1"
+        );
+        // Case-insensitively, and tolerating the whitespace a model pads with.
+        assert_eq!(
+            resolve_connection(&config, "  producción mysql  ", &profiles).unwrap(),
+            "uuid-1"
+        );
+    }
+
+    #[test]
+    fn an_id_wins_over_a_name_that_collides_with_it() {
+        // Nothing stops a user naming one connection after another's uuid. The
+        // id is the identity, so it must win — resolving to the *named* profile
+        // would send the write somewhere the caller never asked for.
+        let profiles = vec![
+            exposed_profile("beta", "Alpha"),
+            exposed_profile("uuid-2", "beta"),
+        ];
+        assert_eq!(
+            resolve_connection(&resolver_config(None), "beta", &profiles).unwrap(),
+            "beta"
+        );
+    }
+
+    #[test]
+    fn an_ambiguous_name_is_refused_and_names_the_candidates() {
+        // Profile names are not unique, so this is reachable with two clients'
+        // servers both called "Producción". Guessing either would be a write to
+        // the wrong database.
+        let profiles = vec![
+            exposed_profile("uuid-1", "Producción"),
+            exposed_profile("uuid-2", "producción"),
+        ];
+        let err = resolve_connection(&resolver_config(None), "Producción", &profiles)
+            .expect_err("ambiguous");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("uuid-1"), "{msg}");
+        assert!(msg.contains("uuid-2"), "{msg}");
+    }
+
+    #[test]
+    fn an_unexposed_connection_is_told_apart_from_an_unknown_one() {
+        // The two need different fixes, and "unknown connection" sent the user
+        // hunting for a typo when the answer was a checkbox.
+        let profiles = vec![crate::testkit::profile("uuid-1")];
+        let err = resolve_connection(&resolver_config(None), "uuid-1", &profiles)
+            .expect_err("not exposed");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("Settings"), "{msg}");
+
+        // Same connection, but this client pinned its own list: the fix is the
+        // command line, not the app.
+        let err = resolve_connection(&resolver_config(Some(&["other"])), "uuid-1", &profiles)
+            .expect_err("not in the pinned list");
+        assert!(format!("{err:?}").contains("--connections"));
+
+        let err =
+            resolve_connection(&resolver_config(None), "nope", &profiles).expect_err("unknown");
+        assert!(format!("{err:?}").contains("unknown connection"));
+    }
+
+    #[test]
+    fn pinning_a_list_overrides_the_apps_own_flags_in_both_directions() {
+        // `--connections` is an argument the user typed; a checkbox must not
+        // widen it, and must not narrow it either.
+        let profiles = vec![
+            exposed_profile("uuid-1", "Ticked"),
+            crate::testkit::profile("uuid-2"), // mcp_exposed: false
+        ];
+        let config = resolver_config(Some(&["uuid-2"]));
+        assert_eq!(
+            resolve_connection(&config, "uuid-2", &profiles).unwrap(),
+            "uuid-2",
+            "pinned wins over an unticked flag"
+        );
+        assert!(
+            resolve_connection(&config, "uuid-1", &profiles).is_err(),
+            "a ticked flag must not widen a pinned list"
+        );
+    }
+
+    #[test]
+    fn an_empty_reference_is_refused() {
+        let profiles = vec![exposed_profile("uuid-1", "Alpha")];
+        assert!(resolve_connection(&resolver_config(None), "   ", &profiles).is_err());
     }
 
     #[test]
@@ -1976,13 +2397,14 @@ mod tests {
                 max_connections: None,
                 origin_id: None,
                 pulse_enabled: false,
+                mcp_exposed: true,
             });
         let mut allowed = HashSet::new();
         allowed.insert(id.to_string());
         Huginn::new(
             Arc::new(state),
             Arc::new(Config {
-                allowed,
+                pinned: Some(allowed),
                 read_only,
                 max_rows: DEFAULT_MAX_ROWS,
                 max_connections: DEFAULT_MAX_CONNECTIONS,

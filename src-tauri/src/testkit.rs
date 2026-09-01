@@ -42,5 +42,6 @@ pub fn profile(id: &str) -> ConnectionProfile {
         max_connections: None,
         origin_id: None,
         pulse_enabled: false,
+        mcp_exposed: false,
     }
 }

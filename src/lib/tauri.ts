@@ -143,6 +143,18 @@ export const api = {
     invoke<number>("set_pulse_enabled", { ids, enabled }),
 
   /**
+   * Expose or hide several connections from the headless MCP connector in one
+   * write. Same "how many actually changed" return as `setMcpWritePolicy`.
+   *
+   * This is what the Settings → MCP checkboxes write. The sidecar re-reads the
+   * flag per call, so it takes effect without restarting the MCP client —
+   * unless that client was started with an explicit `--connections` list, which
+   * pins it for the life of the process.
+   */
+  setMcpExposed: (ids: string[], exposed: boolean) =>
+    invoke<number>("set_mcp_exposed", { ids, exposed }),
+
+  /**
    * Open a throwaway pool, run `SELECT 1`, then close it. `sshSecret` is
    * resolved from the keychain when omitted, mirroring `password`.
    */

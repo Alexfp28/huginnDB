@@ -1309,7 +1309,7 @@
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",
-      "sharedIdsHint": "Una conexión publicada por un origen compartido conserva el mismo id en todas las máquinas, así que un snippet hecho con conexiones compartidas sirve tal cual para todo el equipo.",
+      "sharedIdsHint": "Qué conexiones se exponen es una decisión de esta máquina: no viaja en las exportaciones y una sincronización de origen compartido nunca la cambia, así que cada compañero marca las suyas. El snippet no lleva ningún id de conexión, así que es el mismo en todas las máquinas y solo se pega una vez.",
       "selectAllInSection": "Seleccionar todas las conexiones de {{section}}",
       "localSection": "Locales",
       "scopeAll": "Todas",
@@ -1325,9 +1325,9 @@
       "connectionsLabel": "Conexiones a exponer",
       "noConnections": "Aún no hay conexiones guardadas — añade una primero.",
       "filterPlaceholder": "Filtrar conexiones…",
-      "selectAll": "Seleccionar todas",
-      "deselectAll": "Deseleccionar todas",
-      "selectedCount": "{{selected}} de {{total}} seleccionadas",
+      "selectAll": "Exponer todas",
+      "deselectAll": "Ocultar todas",
+      "selectedCount": "{{selected}} de {{total}} expuestas",
       "noMatches": "Ninguna conexión coincide con “{{query}}”.",
       "writePolicyLabel": "Acceso de escritura",
       "level": {
@@ -1339,9 +1339,11 @@
       "writePolicySaveError": "No se pudo guardar el nivel de escritura.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / otros clientes (JSON)",
-      "selectHint": "Selecciona al menos una conexión arriba.",
       "copied": "Copiado al portapapeles.",
-      "fullGuide": "Guía completa de configuración (Codex, Claude Desktop, flags, herramientas)…"
+      "fullGuide": "Guía completa de configuración (Codex, Claude Desktop, flags, herramientas)…",
+      "exposureSaveError": "No se pudo guardar qué conexiones están expuestas.",
+      "noBinaryHint": "No se encontró el binario del conector, así que no hay nada a lo que apuntar un cliente.",
+      "nothingExposedHint": "Todavía no hay ninguna conexión marcada — el conector arrancará sin nada a lo que llegar. Marca una arriba; surte efecto sin reiniciar el cliente de IA."
     },
     "pulse": {
       "intro": "Con qué frecuencia Pulse muestrea las constantes vitales de una conexión hacia su histórico en disco, cuánto se conserva ese histórico, y qué conexiones vigila — opt-in por conexión, desactivado por defecto.",

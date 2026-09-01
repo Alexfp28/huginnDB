@@ -355,9 +355,9 @@ allow rules. That exception is also the route we can't take:
 
 | Route | Verdict |
 | --- | --- |
-| **claude.ai connector directory** | **Not viable.** Connectors are *remote* servers (HTTP/SSE + OAuth). This connector reads `profiles.json` and the OS keychain and opens pools against the user's own host/LAN. Listing it would require a hosted relay — credentials leaving the machine, plus cloud sync of profiles, both explicitly out of scope. |
+| **claude.ai connector directory (remote)** | **Not viable.** A remote connector is a public HTTPS endpoint speaking Streamable HTTP with OAuth 2.0, and submissions go through a portal that needs a Team/Enterprise org. This connector reads `profiles.json` and the OS keychain and opens pools against the user's own host/LAN. Listing it would require a hosted relay — credentials leaving the machine, plus cloud sync of profiles, both explicitly out of scope. |
 | **Claude Code plugin marketplace** | **Viable today.** A plugin is a git repo with `.claude-plugin/plugin.json` and a root `.mcp.json`, which supports `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}` and a `bin/` directory placed on the Bash `PATH`. Anthropic runs a reviewed community marketplace (`anthropics/claude-plugins-community`) with a submission form and a `claude plugin validate` check. Install becomes `/plugin marketplace add Alexfp28/huginnDB` + `/plugin install`, with no hand-edited JSON. |
-| **Claude Desktop extension (`.mcpb`)** | **Viable**, and the closest thing to a marketplace for *local* servers: a zip + `manifest.json`, one-click install from Settings → Extensions with a per-extension toggle. Whether Anthropic accepts `.mcpb` submissions into a curated directory (as opposed to sideloading) is unconfirmed — check the current `claude.com/docs/connectors/custom/desktop-extensions`. |
+| **Claude Desktop extension (`.mcpb`)** | **Viable, and the route to the directory.** A zip + `manifest.json`, one-click install from Settings → Extensions with a per-extension toggle. The open question here — whether Anthropic accepts `.mcpb` into a *curated* directory rather than only sideloading — resolved yes: local MCPB submissions go through their own form (no portal, no paid org), and no OAuth, since a local stdio server authenticates nothing. Manifest 0.3 has a `binary` server type for a precompiled executable plus `platform_overrides`, which is the shape this sidecar needs. Extra rules for the local flavour: a Privacy Policy section in `README.md`, a `privacy_policies` array in the manifest, HTTPS policy URLs. Verify against `claude.com/docs/connectors/building/submission` before committing to it. |
 
 Neither viable route can bundle the binary: `huginndb-mcp` is a compiled
 per-target sidecar shipped by the app's own installer (gotcha #22), and
@@ -366,18 +366,17 @@ need a small launcher that resolves the *installed* sidecar — the same
 `current_exe()`-relative logic `get_mcp_connector_info` already implements,
 plus a `HUGINNDB_MCP_PATH` escape hatch.
 
-Two prerequisites worth doing on their own merits, whichever route is picked:
+Two prerequisites worth doing on their own merits, whichever route is picked
+(the first is done):
 
-1. **Move `--connections` out of argv.** The exposed profile list currently
-   lives in the client's config, so changing *which* connections are reachable
-   means editing that config and restarting the client — while the write
-   policy, the more security-relevant half, is already re-read from disk on
-   every write attempt. If the sidecar read the list from HuginnDB's own state
-   (a file written by Settings → MCP, with argv still winning when passed),
-   the client-side command collapses to a bare `huginndb-mcp`. That is exactly
-   what a plugin or `.mcpb` needs in order to be a single artifact that works
-   for everyone, and it moves exposure control into the app that owns the
-   profiles.
+1. ~~**Move `--connections` out of argv.**~~ **Done** (see the `Unreleased`
+   CHANGELOG entry and gotcha #58). The exposed set is
+   `ConnectionProfile::mcp_exposed`, ticked in Settings → MCP and re-read per
+   call; argv still wins when passed. The client-side command is now a bare
+   `huginndb-mcp`, which is exactly what a plugin or `.mcpb` needs in order to
+   be a single artifact that works for everyone. The same change made the tools
+   accept a connection's *name*, so no uuid appears in a client config or in a
+   tool call any more.
 2. **Declare `_meta["anthropic/requiresUserInteraction"] = true` on the write
    tools.** This is available now, with no marketplace involved: it forces an
    explicit approval prompt on every call, even in auto mode and even when an

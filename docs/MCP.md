@@ -56,17 +56,27 @@ Settings → MCP in a packaged install, or see [Getting the
 binary](#getting-the-binary) for a source build (on Windows,
 `…\target\release\huginndb-mcp.exe`).
 
-Wherever a snippet says `<profile-id>`, use the stable UUID `id` of the
-connection you want to expose. Find it in the desktop app, or read it from
-`profiles.json` in your platform config dir (`%APPDATA%\HuginnDB` on Windows,
-`~/.config/HuginnDB` on Linux, `~/Library/Application Support/HuginnDB` on
-macOS) — it's the `id` field, not the display `name`. Expose several at once
-with a comma-separated list (`--connections id1,id2`).
+**Which connections it can reach is picked in the app**, not in the client
+config: open **Settings → MCP** and tick them. The connector re-reads that
+choice from `profiles.json` on every call, so exposing one more connection is a
+checkbox — no config to edit, no client to restart. Nothing is exposed until you
+tick it.
+
+That is why none of the snippets below carry a connection id: they are the same
+on every machine, and you paste them once. (Before 1.21 the exposed set lived
+here as `--connections <uuid>,<uuid>`; those configs keep working — see
+[Pinning one client to a fixed set](#pinning-one-client-to-a-fixed-set).)
+
+**Addressing a connection in a prompt.** Every tool takes the connection's
+**name** as shown in HuginnDB — *"with huginndb, list the tables in Producción
+MySQL"* — or its profile id. `list_connections` reports both. Names are matched
+case-insensitively; if two exposed connections share one, the connector says so
+and asks for the id instead of guessing.
 
 ### Claude Code (CLI)
 
 ```bash
-claude mcp add huginndb -s user -- /absolute/path/to/huginndb-mcp --connections <profile-id>
+claude mcp add huginndb -s user -- /absolute/path/to/huginndb-mcp
 ```
 
 - The `--` separates the server's command+args from `claude`'s own flags.
@@ -82,7 +92,7 @@ Equivalent hand-written config (`~/.claude.json`, or a project `.mcp.json`):
   "mcpServers": {
     "huginndb": {
       "command": "/absolute/path/to/huginndb-mcp",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -99,7 +109,7 @@ macOS). Add the server and **restart the app**:
   "mcpServers": {
     "huginndb": {
       "command": "C:\\path\\to\\huginndb-mcp.exe",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -118,7 +128,7 @@ project) or `~/.cursor/mcp.json` (global, every project):
   "mcpServers": {
     "huginndb": {
       "command": "/absolute/path/to/huginndb-mcp",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -141,7 +151,7 @@ raw config**, then paste:
   "mcpServers": {
     "huginndb": {
       "command": "/absolute/path/to/huginndb-mcp",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -160,14 +170,14 @@ Add a `[mcp_servers.<name>]` table:
 ```toml
 [mcp_servers.huginndb]
 command = "C:\\path\\to\\huginndb-mcp.exe"
-args = ["--connections", "<profile-id>"]
+args = []
 # optional: startup_timeout_sec = 20
 ```
 
 Or add it from the CLI (stdio servers take a `--`-separated command):
 
 ```bash
-codex mcp add huginndb -- /absolute/path/to/huginndb-mcp --connections <profile-id>
+codex mcp add huginndb -- /absolute/path/to/huginndb-mcp
 ```
 
 The tools then show up under the `huginndb` server inside Codex.
@@ -176,13 +186,32 @@ The tools then show up under the `huginndb` server inside Codex.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--connections <a,b,c>` | *(none)* | Profile ids the server may reach. **Opt-in**: with none set, nothing is exposed. |
+| `--connections <a,b,c>` | *(none)* | Pin this client to exactly these profile ids, ignoring the Settings → MCP checkboxes. Without the flag the server defers to those checkboxes and re-reads them per call, which is the normal setup. `--connections ""` pins an empty set — an explicit "expose nothing". |
 | `--max-rows <n>` | `1000` | Upper bound on rows returned by a single `run_query` / `browse_table` call, so a tool call can't dump a whole table into the model's context. |
 | `--max-connections <n>` | `2` | Budget per **server**, within this process. See [Connection footprint](#connection-footprint) — the default is deliberately well below the desktop app's. A connection that pins its own limit in HuginnDB still wins when it is the stricter of the two. |
 | `--read-only[=true\|false]` | `false` | Global kill-switch: force **every** connection to read-only regardless of its saved write policy. A quick way to expose the connector in a guaranteed-safe mode without touching any profile. |
 | `--allow-writes` | — | **Deprecated and ignored.** Writes are now governed per connection by the write policy set in Settings → MCP (see [Security](#security)); this flag no longer grants anything and only prints a one-time deprecation notice. |
 
 Flags accept both `--flag value` and `--flag=value`.
+
+### Pinning one client to a fixed set
+
+`--connections id1,id2` overrides the Settings → MCP checkboxes for that client
+only, for the life of the process. Use it when one client should see a narrower
+set than the rest — a scratch agent restricted to a staging database, say — or
+to keep a pre-1.21 config working unchanged.
+
+The pin is absolute in both directions: ticking a connection in the app will not
+widen a pinned client, and unticking one will not narrow it. An argument the
+user typed outranks a checkbox, so the only way to change what a pinned client
+sees is to edit its config and restart it — which is exactly the friction the
+checkboxes exist to remove, so prefer them unless you specifically want one
+client held to a different set.
+
+Find a profile id in Settings → MCP, or in `profiles.json` in your platform
+config dir (`%APPDATA%\HuginnDB` on Windows, `~/.config/HuginnDB` on Linux,
+`~/Library/Application Support/HuginnDB` on macOS) — it's the `id` field, not
+the display `name`.
 
 ## Connection footprint
 
@@ -380,8 +409,13 @@ only needed when `list_connections` shows an empty `database`.
   `DROP TABLE`.
 - **Global kill-switch.** `--read-only` forces every connection to read-only
   regardless of its saved policy.
-- **Opt-in exposure.** Only the profile ids you pass to `--connections` are
-  reachable; every other tool call for an unnamed connection is refused.
+- **Opt-in exposure.** Only connections ticked in Settings → MCP (or named by
+  `--connections`) are reachable; a tool call for any other is refused, and a
+  connection's *name* can only ever resolve to one that is already exposed.
+  Exposure is re-read per call, so unticking one takes access away from a
+  running client immediately. It is also strictly local: it is never changed by
+  a shared-origin sync, and it is cleared on profile import, so neither a
+  publisher nor a file you imported can expose a database on your machine.
 - **No new plaintext.** Passwords are read from the OS keychain at connect time,
   exactly like the desktop app. The connector never logs or persists them (the
   audit log records statements and row counts, never credentials).

@@ -6,6 +6,61 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **The MCP connector's exposed connections are now picked in the app, and the
+  tools take a connection's *name*.** Two halves of the same complaint: the
+  client config carried an internal uuid the user never chose and should not
+  have had to see.
+
+  Which connections the connector may reach used to live *only* in the MCP
+  client's own config, as `--connections <uuid>,<uuid>`. Adding a connection
+  therefore meant creating it in the app, looking its `id` up in
+  `profiles.json`, hand-editing `~/.claude.json` (and Cursor's, and Codex's,
+  …), then restarting each client — and a profile deleted later left a dead id
+  in every one of those files with nothing to detect it. The asymmetry was the
+  giveaway: `mcp_write`, the *more* security-relevant half, already lived on
+  the profile and was already re-read from disk on every write attempt, so the
+  coarser knob was the one nailed down. Exposure is now
+  `ConnectionProfile::mcp_exposed`, ticked in **Settings → MCP** — which until
+  now could offer that choice but not make it, since its checkboxes only fed
+  the generated snippet — and re-read per call, so exposing one more connection
+  takes effect without restarting the AI client. The generated snippets carry
+  no ids at all and are the same on every machine.
+
+  `--connections` still works and still wins when passed, pinning one client to
+  a fixed set for the life of the process (see *Pinning one client to a fixed
+  set* in `docs/MCP.md`); every pre-1.21 config keeps behaving exactly as it
+  did. Nothing is exposed on upgrade: `mcp_exposed` defaults to `false` on
+  every existing profile, so a client launched without the flag starts with
+  nothing to reach until the user ticks something.
+
+  Exposure is strictly local. `merge_into` preserves it across a shared-origin
+  sync in both directions (a publisher cannot expose a database on your
+  machine, and a refresh cannot take access away from a client mid-session),
+  and `apply_profile_imports` clears it, so importing a colleague's bundle to
+  look at it never hands your AI clients live access. The write policy rides
+  along untouched — it grants nothing while the connection is unreachable.
+
+  Every tool now accepts the connection's **name** as shown in HuginnDB, not
+  just its profile id (`resolve_connection`, `src-tauri/src/mcp/mod.rs`).
+  `list_connections` always reported both, and the model was still obliged to
+  copy the uuid into every subsequent call. Ids still win over a colliding
+  name, resolution is scoped to exposed connections only, an ambiguous name is
+  refused with the candidates listed rather than guessed at, and a reference
+  naming a real-but-unexposed connection now says exactly that — with the fix
+  that applies to how the server was started — instead of "unknown connection".
+
+  Under shared pools the app re-checks exposure itself on every bridged
+  request rather than trusting the list the sidecar declared at handshake
+  (`Exposure` in `src-tauri/src/bridge/server.rs`); a handshake happens once
+  and a client holds its sidecar for days, so a snapshot would have reproduced
+  the very staleness this change removes. The `Hello` frame gained an additive
+  `deferExposure` flag with no protocol bump — an app that predates it enforces
+  the snapshot the sidecar still sends, which is the old behaviour rather than
+  a refusal, and a refusal is the one outcome the sidecar cannot degrade from
+  gracefully.
+
 ## [1.20.0] — 2026-08-31
 
 ### Added

@@ -277,6 +277,7 @@ pub fn run() {
             commands::connection::delete_profiles,
             commands::connection::set_mcp_write_policy,
             commands::connection::set_pulse_enabled,
+            commands::connection::set_mcp_exposed,
             commands::connection::test_connection,
             commands::connection::connect,
             commands::connection::disconnect,

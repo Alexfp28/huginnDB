@@ -62,18 +62,29 @@ Ajustes → MCP en una instalación empaquetada, o mira [Obtener el
 binario](#obtener-el-binario) para una compilación desde fuente (en Windows,
 `…\target\release\huginndb-mcp.exe`).
 
-Donde una plantilla diga `<profile-id>`, usa el `id` UUID estable de la
-conexión que quieras exponer. Búscalo en la app de escritorio, o léelo de
-`profiles.json` en el directorio de configuración de tu plataforma
-(`%APPDATA%\HuginnDB` en Windows, `~/.config/HuginnDB` en Linux,
-`~/Library/Application Support/HuginnDB` en macOS) — es el campo `id`, no el
-`name` visible. Expón varias a la vez con una lista separada por comas
-(`--connections id1,id2`).
+**A qué conexiones puede llegar se elige en la app**, no en la configuración
+del cliente: abre **Ajustes → MCP** y márcalas. El conector relee esa elección
+de `profiles.json` en cada llamada, así que exponer una conexión más es marcar
+una casilla — sin editar configuración ni reiniciar el cliente. Nada queda
+expuesto hasta que lo marcas.
+
+Por eso ninguna de las plantillas de abajo lleva un id de conexión: son las
+mismas en cualquier máquina y se pegan una sola vez. (Antes de 1.21 el conjunto
+expuesto vivía aquí como `--connections <uuid>,<uuid>`; esas configuraciones
+siguen funcionando — ver [Fijar un cliente a un conjunto
+concreto](#fijar-un-cliente-a-un-conjunto-concreto).)
+
+**Cómo nombrar una conexión en un prompt.** Cada herramienta acepta el
+**nombre** de la conexión tal y como aparece en HuginnDB — *"con huginndb, lista
+las tablas de Producción MySQL"* — o su id de perfil. `list_connections`
+devuelve ambos. Los nombres se comparan sin distinguir mayúsculas; si dos
+conexiones expuestas comparten uno, el conector lo dice y pide el id en vez de
+adivinar.
 
 ### Claude Code (CLI)
 
 ```bash
-claude mcp add huginndb -s user -- /ruta/absoluta/a/huginndb-mcp --connections <profile-id>
+claude mcp add huginndb -s user -- /ruta/absoluta/a/huginndb-mcp
 ```
 
 - El `--` separa el comando+args del servidor de los flags propios de
@@ -91,7 +102,7 @@ de proyecto):
   "mcpServers": {
     "huginndb": {
       "command": "/ruta/absoluta/a/huginndb-mcp",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -108,7 +119,7 @@ macOS). Añade el servidor y **reinicia la app**:
   "mcpServers": {
     "huginndb": {
       "command": "C:\\ruta\\a\\huginndb-mcp.exe",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -128,7 +139,7 @@ proyectos):
   "mcpServers": {
     "huginndb": {
       "command": "/ruta/absoluta/a/huginndb-mcp",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -151,7 +162,7 @@ Manage MCP Servers → View raw config**, y pega:
   "mcpServers": {
     "huginndb": {
       "command": "/ruta/absoluta/a/huginndb-mcp",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -171,7 +182,7 @@ Claude). Añade una tabla `[mcp_servers.<nombre>]`:
 ```toml
 [mcp_servers.huginndb]
 command = "C:\\ruta\\a\\huginndb-mcp.exe"
-args = ["--connections", "<profile-id>"]
+args = []
 # opcional: startup_timeout_sec = 20
 ```
 
@@ -179,7 +190,7 @@ O añádelo desde la CLI (los servidores stdio toman un comando separado por
 `--`):
 
 ```bash
-codex mcp add huginndb -- /ruta/absoluta/a/huginndb-mcp --connections <profile-id>
+codex mcp add huginndb -- /ruta/absoluta/a/huginndb-mcp
 ```
 
 Las herramientas aparecen entonces bajo el servidor `huginndb` dentro de
@@ -189,12 +200,32 @@ Codex.
 
 | Flag | Por defecto | Significado |
 | --- | --- | --- |
-| `--connections <a,b,c>` | *(ninguna)* | IDs de perfil a los que el servidor puede acceder. **Opt-in**: sin ninguno configurado, no se expone nada. |
+| `--connections <a,b,c>` | *(ninguna)* | Fija este cliente exactamente a estos IDs de perfil, ignorando las casillas de Ajustes → MCP. Sin el flag, el servidor se remite a esas casillas y las relee en cada llamada, que es el montaje normal. `--connections ""` fija un conjunto vacío — un "no expongas nada" explícito. |
 | `--max-rows <n>` | `1000` | Límite superior de filas devueltas por una llamada a `run_query` / `browse_table`, para que una llamada no vuelque una tabla entera en el contexto del modelo. |
 | `--read-only[=true\|false]` | `false` | Kill-switch global: fuerza **todas** las conexiones a solo lectura sin importar su nivel de escritura guardado. Una forma rápida de exponer el conector en modo garantizado-seguro sin tocar ningún perfil. |
 | `--allow-writes` | — | **Obsoleto e ignorado.** Las escrituras ahora se gobiernan por conexión mediante el nivel de escritura configurado en Ajustes → MCP (ver [Seguridad](#seguridad)); este flag ya no concede nada y solo imprime un aviso de obsolescencia. |
 
 Los flags aceptan tanto `--flag valor` como `--flag=valor`.
+
+### Fijar un cliente a un conjunto concreto
+
+`--connections id1,id2` sobreescribe las casillas de Ajustes → MCP solo para ese
+cliente, durante toda la vida del proceso. Úsalo cuando un cliente deba ver un
+conjunto más estrecho que el resto — un agente de pruebas limitado a una base de
+staging, por ejemplo — o para que una configuración anterior a 1.21 siga
+funcionando sin tocarla.
+
+La fijación es absoluta en ambos sentidos: marcar una conexión en la app no
+amplía un cliente fijado, y desmarcarla no lo estrecha. Un argumento que
+escribió el usuario manda sobre una casilla, así que la única forma de cambiar
+lo que ve un cliente fijado es editar su configuración y reiniciarlo — que es
+justo la fricción que las casillas existen para quitar, así que prefiérelas
+salvo que quieras expresamente un cliente con un conjunto distinto.
+
+El id de un perfil está en Ajustes → MCP, o en `profiles.json` dentro del
+directorio de configuración de tu plataforma (`%APPDATA%\HuginnDB` en Windows,
+`~/.config/HuginnDB` en Linux, `~/Library/Application Support/HuginnDB` en
+macOS) — es el campo `id`, no el `name` visible.
 
 ## Huella de conexiones
 
@@ -410,9 +441,14 @@ conexión son baratas. Una conexión de una sola base de datos (con
   ambiguo y ya está detrás de `full`, exactamente como `DROP TABLE`.
 - **Kill-switch global.** `--read-only` fuerza todas las conexiones a solo
   lectura sin importar su nivel guardado.
-- **Exposición opt-in.** Solo los IDs de perfil que pases a `--connections`
-  son alcanzables; cualquier otra llamada a una conexión no nombrada se
-  rechaza.
+- **Exposición opt-in.** Solo son alcanzables las conexiones marcadas en
+  Ajustes → MCP (o nombradas por `--connections`); cualquier otra llamada se
+  rechaza, y el *nombre* de una conexión solo puede resolver a una que ya esté
+  expuesta. La exposición se relee en cada llamada, así que desmarcar una le
+  quita el acceso a un cliente en marcha de inmediato. Además es estrictamente
+  local: una sincronización de origen compartido nunca la cambia y se limpia al
+  importar perfiles, así que ni un publicador ni un fichero que hayas importado
+  pueden exponer una base de datos en tu máquina.
 - **Sin texto plano nuevo.** Las contraseñas se leen del llavero del sistema
   en el momento de conectar, igual que la app de escritorio. El conector
   nunca las registra ni las persiste (el log de auditoría registra sentencias
