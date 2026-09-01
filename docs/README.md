@@ -35,6 +35,7 @@ out of the in-app viewer:
 | [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md) | Why the MCP connector is a headless stdio sidecar, phase-by-phase, plus the open question of distributing it through a marketplace. |
 | [`MONGODB_ROADMAP.md`](MONGODB_ROADMAP.md) | Full done/deferred split for the MongoDB driver, with the implementation hook for each open item. |
 | [`CONNECTION_POOLING_ANALYSIS.md`](CONNECTION_POOLING_ANALYSIS.md) | How the connection footprint got bounded: endpoint budgets, child pools, the reaper. |
+| [`MCPB_SUBMISSION.md`](MCPB_SUBMISSION.md) | Everything Anthropic's connector-directory review asks about the `.mcpb` bundle: server basics, how to stand up a review environment, verified example prompts, and where each requirement is met. |
 | [`CANARY.md`](CANARY.md) | The side-by-side pre-release channel: what it isolates, what it shares, how it's built. |
 
 ## Adding a guide

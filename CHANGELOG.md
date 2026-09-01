@@ -34,6 +34,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the router serves, since nothing else links the two files and a bundle that
   lies about its own tools would do so silently.
 
+  Also new: `docs/MCPB_SUBMISSION.md`, the dossier a directory submission asks
+  for — server basics, how to stand up a review environment from the Chinook
+  sample, example prompts verified against a real MCP handshake rather than
+  imagined, and a table mapping each stated requirement to where it is met. It
+  lives in the repo so it stays in step with the code instead of being a form
+  somebody filled in once.
+
   Also new: `docs/PRIVACY.md`, the policy an MCPB directory submission requires
   and which the product needed anyway. It is short because there is little to
   say — HuginnDB collects nothing, has no backend, and the only thing the
