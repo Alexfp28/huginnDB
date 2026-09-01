@@ -94,6 +94,11 @@ When in doubt, read `src-tauri/src/lib.rs` and `src/App.tsx` first — they're t
   `pnpm test:watch` while you work.
 - Stores live in `src/stores/`, command wrappers in `src/lib/tauri.ts`. Components never call `invoke` directly.
 - Zustand selectors must return reference-stable values. If you need a derived array/object, subscribe to the raw state and memoise in the component. See the warning at the bottom of `src/stores/preferences/theme.ts` for the historical reason.
+- The component library is `src/components/ui/`, and it has a rule: those files may import `react`, Radix, lucide, `cva` and `cn` — never a store, `@/lib/tauri`, `react-i18next` or `@/types`. A shared component that carries its own copy belongs in `common/`; one that does IO belongs in its domain folder. `src/components/ui/README.md` has the table, and `uiContracts.test.ts` enforces it.
+- Density is one vocabulary across primitives: a `size` of `xs`/`sm`/`md` (`h-7`/`h-8`/`h-9`). Where the native HTML `size` attribute collides, `Omit` it from the props type rather than renaming the prop.
+- `brand` is the colour of an action; `primary` is not (it is near-black in light themes). Checkboxes, links and active states take `brand`.
+- Repeated class fragments live in `src/components/ui/styles.ts`, which only takes fragments with two or more consumers inside that directory. **Never assemble a Tailwind class at runtime** — the JIT scans source as text, so an interpolated class produces no CSS and fails silently.
+- A new primitive is created on first adoption, never speculatively, and arrives with its own `*.test.tsx`. Note that `cva` does not merge classes: assert "the consumer's `className` wins" against rendered output, not against the variant function's return value.
 - Avoid CDN-loaded assets. Anything needed at runtime must be bundled (Monaco is the canonical example — see `src/lib/monaco/monaco-setup.ts`).
 
 ### Commits
