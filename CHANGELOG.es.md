@@ -8,6 +8,199 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **El conector se distribuye como un MCP Bundle (`.mcpb`), así que Claude
+  Desktop lo instala en un clic.** Claude Desktop no tiene CLI, así que era el
+  peor caso: abrir un fichero JSON a mano, pegar una ruta absoluta con las
+  barras invertidas duplicadas, reiniciar la app. Cada versión adjunta ahora
+  `huginndb-mcp-<versión>-win32.mcpb` (y uno `-linux`) junto a los
+  instaladores; **Configuración → Extensiones** toma el fichero y hace el
+  resto.
+
+  Un bundle por plataforma, porque el contenido es un binario precompilado y
+  un bundle único cargaría a cada instalación con arquitecturas que nunca va
+  a ejecutar. El bundle lleva el sidecar pero deliberadamente **no** es
+  autónomo: HuginnDB tiene que estar instalado en la misma máquina, ya que ahí
+  es donde viven los perfiles de conexión y sus entradas del keychain. No
+  declara ningún `user_config` — algo que solo es posible porque la
+  exposición se movió dentro de la app antes en esta misma versión, así que
+  no queda nada que un instalador de extensión tenga que preguntar.
+
+  `mcpb/manifest.json` es la fuente y `scripts/build-mcpb.sh` ensambla el
+  zip. Dos detalles de ese script son estructurales y no incidentales: la
+  versión se lee de `package.json`, así que no es un quinto sitio donde
+  actualizar el número en cada versión (RELEASING.md lista los cuatro que sí
+  lo son), y el modo de cada entrada del zip se fija explícitamente, porque un
+  zip lleva sus propios permisos y el valor por defecto pierde el bit de
+  ejecución — la misma trampa que el `cp` del sidecar en el workflow de
+  release, un nivel más abajo. Un test comprueba que la lista de herramientas
+  del manifiesto es exactamente la que sirve el router, ya que nada más
+  vincula los dos ficheros y un bundle que mienta sobre sus propias
+  herramientas lo haría en silencio.
+
+  También nuevo: `docs/MCPB_SUBMISSION.md`, el dossier que pide una solicitud
+  de directorio — información básica del servidor, cómo levantar un entorno
+  de revisión a partir de la muestra Chinook, prompts de ejemplo verificados
+  contra un handshake MCP real en vez de imaginado, y una tabla que asocia
+  cada requisito exigido con el sitio donde se cumple. Vive en el repositorio
+  para que se mantenga alineado con el código en vez de ser un formulario que
+  alguien rellenó una vez.
+
+  También nuevo: `docs/PRIVACY.md`, la política que exige una solicitud de
+  directorio MCPB y que el producto necesitaba de todos modos. Es corta
+  porque hay poco que decir — HuginnDB no recopila nada, no tiene backend, y
+  lo único que escribe el conector es un log de auditoría local — pero el
+  párrafo que merece la pena leer es el del cliente de IA: los resultados de
+  las consultas van a la aplicación que los pidió, y lo que *ella* haga con
+  ellos lo rige su propia política, no la nuestra.
+
+- **Configuración → MCP puede registrar el conector con Claude Code en un
+  clic.** El último paso manual de la configuración era copiar una ruta
+  absoluta del panel y pegarla en una terminal (o, peor, en un fichero JSON).
+  El nuevo botón ejecuta exactamente el comando que el panel ya mostraba —
+  `claude mcp add huginndb -s user -- <sidecar>` — y lo notifica en el propio
+  panel. Pulsarlo dos veces es inofensivo: "ya estaba registrado" se informa
+  como un estado, no como un fallo, porque eso es sencillamente lo que parece
+  un segundo clic. Si el CLI `claude` no está en el `PATH`, lo dice y el
+  comando copiable queda como alternativa, que es el caso habitual de quien
+  solo usa Claude Desktop. Deshacer con `claude mcp remove huginndb`.
+
+  Implementado sin `tauri-plugin-shell`. Ese plugin existe para que el
+  *frontend* lance procesos, algo que este código no hace de todos modos —
+  toda la E/S vive en comandos de Rust — así que habría añadido una
+  dependencia y una superficie de capacidades sin aportar nada más;
+  `is_mcp_sidecar_running` ya había resuelto lo mismo. La sutileza de Windows
+  que explica por qué existe `find_in_path` en vez de un `Command::new("claude")`
+  directo es que `CreateProcess` no aplica `PATHEXT`, así que `claude.cmd` le
+  resulta invisible, y resolver el ejecutable nosotros mismos también permite
+  que la ruta del sidecar viaje como una entrada normal de argv en vez de ir
+  entrecomillada dentro de una cadena `cmd /C` — habitualmente contiene
+  espacios.
+
+- **Todas las herramientas MCP llevan ahora un título y anotaciones MCP.** El
+  conector distribuía veinticuatro herramientas con solo una descripción, así
+  que un cliente solo tenía el nombre para decidir cuánta fricción merecía
+  cada llamada: `list_tables` recibía la misma desconfianza que
+  `delete_rows`, y ese coste recaía entero sobre las diecisiete herramientas
+  que solo leen. Ahora declaran `readOnlyHint`, y las siete de escritura
+  declaran `destructiveHint`/`idempotentHint` — con `insert_row` y
+  `create_index` marcadas como *aditivas* en vez de destructivas, algo que
+  importa porque `destructiveHint` es `true` por defecto cuando está ausente.
+  `openWorldHint` está fijado en todas (`false` en las dos que solo leen
+  estado local: `list_connections` y `pulse_metrics`).
+
+  `run_query` era la única herramienta que ninguna constante describía con
+  honestidad, y el arreglo fue dejar de pedírselo: **leer y escribir son
+  ahora dos herramientas.** `run_query` ejecuta sentencias de solo lectura y
+  está anotada `readOnlyHint`; la nueva `run_write` ejecuta las que cambian
+  algo y está anotada `destructiveHint`. Cada una rechaza el tráfico de la
+  otra y nombra la herramienta correcta a usar — rechazar *lecturas* en
+  `run_write` importa tanto como lo contrario, o un modelo enruta todo por la
+  herramienta de escritura y la separación no sirve de nada. Ambas siguen
+  pasando por el mismo ejecutor y la misma barrera de política, que sigue
+  releyendo `mcp_write` de disco en cada llamada.
+
+  Esa separación surgió de una idea que merece quedar registrada como
+  trampa, porque a primera vista parece obviamente correcta: derivar la
+  anotación de `run_query` a partir de las políticas de escritura de las
+  conexiones expuestas en ese momento. Un cliente lee `tools/list` **una
+  vez**, al arrancar, mientras que aquí cada decisión de política y de
+  exposición se relee en cada llamada precisamente para que pueda cambiar con
+  un cliente en marcha — así que una anotación derivada de una foto fija se
+  quedaría obsoleta en la dirección *insegura* en el momento en que una
+  conexión pasara a `data`, dejando a un cliente que auto-aprueba convencido
+  de que no hacía falta confirmar una escritura. La barrera seguiría
+  aguantando; lo que desaparecería es la confirmación que el usuario creía
+  tener. Dos herramientas con anotaciones constantes no tienen ese fallo, y
+  además consiguen algo que la herramienta única nunca podría: las reglas de
+  permisos de un cliente se basan en el *nombre* de la herramienta, así que
+  "deja pasar los SELECT, pregúntame por el resto" ahora es expresable.
+
+  `--read-only` sigue siendo la única entrada que puede variar la superficie,
+  porque es un argumento del proceso fijo durante toda la vida del sidecar:
+  con él, las ocho herramientas de escritura se retiran de `tools/list`
+  directamente en vez de quedarse para responder con un rechazo.
+  `ToolRouter::call` también rechaza una ruta desactivada, así que es una
+  barrera real y no un truco de presentación.
+
+  Reforzado con tests en vez de por el compilador (`annotations` es opcional
+  en `Tool`, así que una herramienta sin anotar compila igual y simplemente
+  no le cuenta nada a los clientes): un test comprueba que todas tienen
+  título, `readOnlyHint` y `openWorldHint`, otro que ninguna herramienta de
+  escritura se declara de solo lectura y que las dos aditivas lo dicen
+  explícitamente, y un tercero que `--read-only` de verdad retira las ocho de
+  la superficie.
+
+### Cambiado
+
+- **Las conexiones expuestas al conector MCP ahora se eligen desde la propia
+  app, y las herramientas aceptan el *nombre* de una conexión.** Dos mitades
+  de la misma queja: la configuración del cliente llevaba un uuid interno que
+  el usuario nunca eligió y no debería haber tenido que ver.
+
+  Qué conexiones podía alcanzar el conector vivía *solo* en la configuración
+  propia del cliente MCP, como `--connections <uuid>,<uuid>`. Añadir una
+  conexión implicaba entonces crearla en la app, buscar su `id` en
+  `profiles.json`, editar a mano `~/.claude.json` (y el de Cursor, y el de
+  Codex, …), y reiniciar cada cliente — y un perfil borrado más tarde dejaba
+  un id muerto en cada uno de esos ficheros sin nada que lo detectara. La
+  asimetría era la pista: `mcp_write`, la mitad *más* relevante para la
+  seguridad, ya vivía en el perfil y ya se releía de disco en cada intento de
+  escritura, así que el interruptor más grueso era el que había quedado fijo.
+  La exposición es ahora `ConnectionProfile::mcp_exposed`, activable en
+  **Configuración → MCP** — que hasta ahora podía ofrecer esa elección pero no
+  aplicarla, ya que sus casillas solo alimentaban el fragmento generado — y se
+  relee en cada llamada, así que exponer una conexión más surte efecto sin
+  reiniciar el cliente de IA. Los fragmentos generados ya no llevan ningún id
+  y son iguales en cualquier máquina.
+
+  `--connections` sigue funcionando y sigue ganando cuando se pasa, fijando un
+  cliente a un conjunto concreto durante toda la vida del proceso (ver *Fijar
+  un cliente a un conjunto concreto* en `docs/MCP.md`); cualquier
+  configuración anterior a la 1.21 sigue comportándose exactamente igual. Al
+  actualizar no queda nada expuesto: `mcp_exposed` vale `false` por defecto en
+  todos los perfiles existentes, así que un cliente lanzado sin el flag
+  arranca sin nada que alcanzar hasta que el usuario marque algo.
+
+  La exposición es estrictamente local. `merge_into` la conserva en ambos
+  sentidos durante una sincronización de origen compartido (un publicador no
+  puede exponer una base de datos en tu máquina, y una actualización no puede
+  quitarle acceso a un cliente en mitad de una sesión), y `apply_profile_imports`
+  la limpia, así que importar el paquete de un compañero para echarle un
+  vistazo nunca le da acceso en vivo a tus clientes de IA. La política de
+  escritura viaja intacta — no concede nada mientras la conexión es
+  inalcanzable.
+
+  Todas las herramientas aceptan ahora el **nombre** de la conexión tal como
+  aparece en HuginnDB, no solo el id del perfil (`resolve_connection`,
+  `src-tauri/src/mcp/mod.rs`). `list_connections` ya informaba de ambos, y el
+  modelo seguía obligado a copiar el uuid en cada llamada siguiente. Un id
+  sigue ganando sobre un nombre que coincida, la resolución solo cubre las
+  conexiones expuestas, un nombre ambiguo se rechaza listando los candidatos
+  en vez de adivinar, y una referencia a una conexión real pero no expuesta
+  ahora lo dice exactamente así — con el arreglo que corresponde según cómo
+  se arrancó el servidor — en vez de "conexión desconocida".
+
+  `docs/MCP.md` abre con un **Inicio rápido** — cuatro pasos, sin terminal —
+  y una nota "vienes de una configuración anterior a la 1.21", porque el
+  hábito antiguo (editar el JSON del cliente, pegar un uuid) todavía
+  *funciona* y de otro modo nunca le diría a nadie que ya no hace falta.
+  Ambas son secciones `##`, así que el visor de documentación integrado en la
+  app las renderiza como páginas propias en los dos idiomas sin coste
+  adicional.
+
+  Bajo los pools compartidos la app vuelve a comprobar la exposición por sí
+  misma en cada petición puenteada en vez de fiarse de la lista que el
+  sidecar declaró en el handshake (`Exposure` en `src-tauri/src/bridge/server.rs`);
+  un handshake ocurre una vez y un cliente mantiene su sidecar durante días,
+  así que una foto fija habría reproducido justo la obsolescencia que este
+  cambio elimina. El frame `Hello` incorporó un flag aditivo `deferExposure`
+  sin subir de versión el protocolo — una app anterior a él aplica la foto
+  fija que el sidecar sigue enviando, que es el comportamiento antiguo y no
+  un rechazo, y un rechazo es el único resultado del que el sidecar no puede
+  degradarse con elegancia.
+
 ### Corregido
 
 - **Ocultar una conexión en el selector de un entorno sincronizado no se
