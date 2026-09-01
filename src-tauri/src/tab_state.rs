@@ -212,6 +212,30 @@ pub struct Environment {
     pub local_icon: Option<String>,
     #[serde(default)]
     pub local_theme_id: Option<String>,
+    /// Local override of `launch.visible_connections`, same shape and
+    /// reasoning as the four fields above — except what it shadows is not a
+    /// cosmetic, it's `sync_environment_bundles`'s notion of "this
+    /// environment's true membership" (the reported bug: hiding a connection
+    /// via the picker was undone by the very next sync, because that function
+    /// treats `visible_connections` as *part of the shared resource* and
+    /// overwrites it unconditionally on every pull — see its own doc).
+    ///
+    /// `Some(list)` wins over whatever the last sync wrote into
+    /// `launch.visible_connections`; `None` means "no override, show
+    /// everything the origin says belongs here" — which is also how a user
+    /// clears their hide/show choices, since a sync's `visible_connections` is
+    /// never a narrower subset than the bundle's full membership to begin
+    /// with. Resolved by `Environment::effective_visible_connections`, read
+    /// through `get_launch_state`/`list_environments` — never this field nor
+    /// `launch.visible_connections` directly.
+    ///
+    /// Only meaningful when `origin_id` is set. Written by `save_launch_state`
+    /// (diverted there instead of into `launch.visible_connections` so the
+    /// next sync has something true to overwrite); folded into
+    /// `launch.visible_connections` and cleared by `adopt_local_overrides`,
+    /// same as the cosmetic overrides.
+    #[serde(default)]
+    pub local_visible_connections: Option<Vec<String>>,
 }
 
 /// A shared folder this environment imports connections from (#108).
@@ -789,6 +813,22 @@ impl Environment {
         if let Some(theme_id) = self.local_theme_id.take() {
             self.theme_id = Some(theme_id);
         }
+        if let Some(visible) = self.local_visible_connections.take() {
+            self.launch.visible_connections = Some(visible);
+        }
+    }
+
+    /// The `visible_connections` a caller should actually show for this
+    /// environment: `local_visible_connections` when this machine has one,
+    /// otherwise whatever `launch.visible_connections` already holds (the
+    /// last sync's membership for a mirrored environment, or simply the
+    /// user's own filter for an ordinary one — the override is always `None`
+    /// there). See `local_visible_connections`'s doc for why a sync can never
+    /// stomp this.
+    pub fn effective_visible_connections(&self) -> Option<Vec<String>> {
+        self.local_visible_connections
+            .clone()
+            .or_else(|| self.launch.visible_connections.clone())
     }
 }
 
@@ -943,6 +983,53 @@ mod tests {
         assert!(env.local_name.is_none(), "the override is consumed");
         assert!(env.local_color.is_none());
         assert!(env.local_theme_id.is_none());
+    }
+
+    #[test]
+    fn adopt_local_overrides_promotes_visible_connections_too() {
+        let mut env = Environment {
+            launch: LaunchState {
+                visible_connections: Some(vec!["c1".into(), "c2".into()]),
+                ..LaunchState::default()
+            },
+            local_visible_connections: Some(vec!["c1".into()]),
+            ..Environment::default()
+        };
+
+        env.adopt_local_overrides();
+
+        assert_eq!(
+            env.launch.visible_connections,
+            Some(vec!["c1".into()]),
+            "the hide/show choice becomes the real value, not the origin's last-synced membership"
+        );
+        assert!(
+            env.local_visible_connections.is_none(),
+            "the override is consumed"
+        );
+    }
+
+    #[test]
+    fn effective_visible_connections_prefers_the_local_override() {
+        let mut env = Environment {
+            launch: LaunchState {
+                visible_connections: Some(vec!["c1".into(), "c2".into()]),
+                ..LaunchState::default()
+            },
+            ..Environment::default()
+        };
+        assert_eq!(
+            env.effective_visible_connections(),
+            Some(vec!["c1".into(), "c2".into()]),
+            "no override → falls back to whatever launch.visible_connections holds"
+        );
+
+        env.local_visible_connections = Some(vec!["c1".into()]);
+        assert_eq!(
+            env.effective_visible_connections(),
+            Some(vec!["c1".into()]),
+            "an override wins even though the synced membership still lists both"
+        );
     }
 
     #[test]

@@ -179,6 +179,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   a refusal, and a refusal is the one outcome the sidecar cannot degrade from
   gracefully.
 
+### Fixed
+
+- **Hiding a connection in a synced environment's picker didn't stick — the**
+  **next sync from the origin quietly showed it again.** `visible_connections`
+  (`LaunchState`, the same "DataGrip-style" filter #107 added for an ordinary
+  environment) was one field doing two incompatible jobs for a mirrored
+  environment: `sync_environment_bundles` treated it as the origin's true
+  connection membership and overwrote it wholesale on every pull, while the
+  connections tree treated the very same field as the user's own hide/show
+  choice. The two only ever agreed by accident, until the next scheduled sync
+  (or a manual "Sync now") reset the filter back to "show everything the
+  origin publishes."
+
+  `Environment` gained a fifth local override, `local_visible_connections`,
+  alongside the existing `local_name`/`local_color`/`local_icon`/`local_theme_id`
+  quartet — same shape, `Some(list)` wins over the synced value and `None`
+  means "keep following the origin." `sync_environment_bundles` keeps
+  overwriting `launch.visible_connections` with the bundle's real membership
+  (that part was never the bug — a newly-shared connection still needs to
+  show up on its own), but nothing reads that field directly anymore:
+  `Environment::effective_visible_connections` resolves the override first,
+  and both `get_launch_state` and `list_environments` return the resolved
+  value. `save_launch_state` diverts an incoming filter into the override
+  instead of the synced field whenever the active environment mirrors an
+  origin, so the next sync has the real membership to compare against rather
+  than the user's last chosen subset. Clearing the filter back to "show all"
+  clears the override too, which is exactly "go back to following the
+  origin" — a sync never publishes a narrower membership than the full
+  bundle, so there was never a case where "no override" needed to mean
+  anything else.
+
 ## [1.20.0] — 2026-08-31
 
 ### Added

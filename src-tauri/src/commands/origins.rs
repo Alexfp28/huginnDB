@@ -680,6 +680,17 @@ fn sync_environment_bundles(
                 // `set_environment_local_overrides`. See their doc on
                 // `Environment` — the same "never revert a local decision"
                 // reasoning as `merge_into`'s `mcp_write`/`pulse_enabled`.
+                //
+                // Also untouched: `local_visible_connections`, this machine's
+                // own hide/show choice within the mirror — `launch.visible_connections`
+                // just above is deliberately overwritten with the bundle's true
+                // membership every sync (unlike the cosmetics), but the *effective*
+                // value a caller sees is resolved through that override, via
+                // `Environment::effective_visible_connections`
+                // (`get_launch_state`/`list_environments`) — never read off
+                // `launch.visible_connections` directly. Writing straight to it
+                // here, unconditionally, used to erase a user's "hide this
+                // connection" choice on every sync (the reported bug).
                 updated.push(existing.id.clone());
             }
             None => {
@@ -1084,6 +1095,60 @@ mod tests {
         assert_eq!(
             env.launch.visible_connections,
             Some(vec!["conn-1".to_string(), "conn-2".to_string()])
+        );
+    }
+
+    /// The reported bug: hiding a connection in a mirrored environment via
+    /// the picker got undone by the very next sync, because
+    /// `launch.visible_connections` (the origin's true membership) and "what
+    /// the user chose to see" used to be the same field. `local_visible_connections`
+    /// is that user choice now, and a sync must leave it alone exactly like it
+    /// already leaves `local_name`/`local_color`/`local_icon`/`local_theme_id`
+    /// alone — even while `launch.visible_connections` keeps tracking the
+    /// origin's membership underneath it.
+    #[test]
+    fn a_sync_never_touches_the_local_visible_connections_override() {
+        let mut state = tab_state::PersistedTabState::default();
+        let (added, ..) = sync_environment_bundles(
+            &mut state,
+            "origin-1",
+            &[bundle(
+                "src-a",
+                "Producción",
+                vec!["conn-1".into(), "conn-2".into()],
+            )],
+        );
+        let env_id = added[0].clone();
+
+        // The user hides `conn-2` — same mechanism `save_launch_state` uses.
+        state
+            .environments
+            .iter_mut()
+            .find(|e| e.id == env_id)
+            .unwrap()
+            .local_visible_connections = Some(vec!["conn-1".to_string()]);
+
+        // The origin still publishes both connections on the next sync.
+        sync_environment_bundles(
+            &mut state,
+            "origin-1",
+            &[bundle(
+                "src-a",
+                "Producción",
+                vec!["conn-1".into(), "conn-2".into()],
+            )],
+        );
+
+        let env = state.environments.iter().find(|e| e.id == env_id).unwrap();
+        assert_eq!(
+            env.launch.visible_connections,
+            Some(vec!["conn-1".to_string(), "conn-2".to_string()]),
+            "the true membership keeps tracking the origin"
+        );
+        assert_eq!(
+            env.effective_visible_connections(),
+            Some(vec!["conn-1".to_string()]),
+            "but the user's hide/show choice must survive the sync"
         );
     }
 

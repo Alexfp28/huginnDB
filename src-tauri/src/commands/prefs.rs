@@ -159,12 +159,21 @@ pub fn save_workspace_layout(
 /// The DTO used to be declared here; it now lives in `tab_state` next to the
 /// rest of the persisted shape, so there is one definition instead of two kept
 /// in sync by hand.
+///
+/// `visible_connections` is resolved through `effective_visible_connections`
+/// rather than read off `env.launch` verbatim — a mirrored environment's own
+/// hide/show choice (`local_visible_connections`) must win over the true
+/// membership a sync last wrote there. See that method's doc.
 #[tauri::command]
 pub fn get_launch_state(state: State<'_, AppState>) -> AppResult<LaunchState> {
     let guard = state.tab_state.read();
     Ok(guard
         .active_environment()
-        .map(|env| env.launch.clone())
+        .map(|env| {
+            let mut launch = env.launch.clone();
+            launch.visible_connections = env.effective_visible_connections();
+            launch
+        })
         .unwrap_or_default())
 }
 
@@ -175,9 +184,32 @@ pub fn get_launch_state(state: State<'_, AppState>) -> AppResult<LaunchState> {
 #[tauri::command]
 pub fn save_launch_state(state: State<'_, AppState>, launch_state: LaunchState) -> AppResult<()> {
     tab_state::mutate(&state.tab_state, |ts| {
-        ts.active_environment_mut().launch = launch_state;
+        apply_launch_state(ts.active_environment_mut(), launch_state);
         Ok(())
     })
+}
+
+/// The part of [`save_launch_state`] worth testing without an `AppState`
+/// (CLAUDE.md gotcha #52) — a pure function over the one `Environment` it
+/// touches.
+///
+/// For a mirrored environment, `visible_connections` is diverted into
+/// `local_visible_connections` instead of `launch.visible_connections`: the
+/// latter is `sync_environment_bundles`'s notion of this environment's true
+/// membership, and letting a plain save overwrite it there would leave the
+/// next sync with nothing genuine to compare against (and, worse, would erase
+/// itself the moment that sync runs — the reported bug this whole mechanism
+/// exists to fix). Every other field of the incoming state still lands in
+/// `launch` normally.
+fn apply_launch_state(env: &mut Environment, launch_state: LaunchState) {
+    if env.origin_id.is_some() {
+        let synced_membership = env.launch.visible_connections.clone();
+        env.local_visible_connections = launch_state.visible_connections.clone();
+        env.launch = launch_state;
+        env.launch.visible_connections = synced_membership;
+    } else {
+        env.launch = launch_state;
+    }
 }
 
 // --- Environments ------------------------------------------------------------
@@ -194,6 +226,12 @@ pub fn list_environments(state: State<'_, AppState>) -> AppResult<EnvironmentLis
     let guard = state.tab_state.read();
     let mut environments = guard.environments.clone();
     environments.sort_by_key(|e| e.order);
+    // Same resolution `get_launch_state` applies: a secondary window seeds its
+    // own filters straight from this list's `launch` field (`applyLocalView`),
+    // so it needs the effective value too, not the raw synced membership.
+    for env in &mut environments {
+        env.launch.visible_connections = env.effective_visible_connections();
+    }
     Ok(EnvironmentList {
         active_environment_id: guard
             .active_environment()
@@ -415,6 +453,9 @@ pub(crate) fn referenced_profile_ids(env: &Environment) -> std::collections::Has
         ids.insert(sel.clone());
     }
     if let Some(visible) = &env.launch.visible_connections {
+        ids.extend(visible.iter().cloned());
+    }
+    if let Some(visible) = &env.local_visible_connections {
         ids.extend(visible.iter().cloned());
     }
     ids.extend(env.launch.database_visibility.keys().cloned());
@@ -870,6 +911,84 @@ mod tests {
     #[test]
     fn referenced_profile_ids_is_empty_for_a_fresh_environment() {
         assert!(referenced_profile_ids(&Environment::default()).is_empty());
+    }
+
+    #[test]
+    fn apply_launch_state_writes_straight_through_for_an_ordinary_environment() {
+        let mut env = Environment::default();
+        apply_launch_state(
+            &mut env,
+            LaunchState {
+                visible_connections: Some(vec!["c1".into()]),
+                ..LaunchState::default()
+            },
+        );
+        assert_eq!(env.launch.visible_connections, Some(vec!["c1".into()]));
+        assert!(
+            env.local_visible_connections.is_none(),
+            "no origin to shadow, so there is nothing to override"
+        );
+    }
+
+    #[test]
+    fn apply_launch_state_diverts_visibility_into_the_override_for_a_mirrored_environment() {
+        let mut env = Environment {
+            origin_id: Some("origin-1".into()),
+            launch: LaunchState {
+                visible_connections: Some(vec!["c1".into(), "c2".into()]),
+                ..LaunchState::default()
+            },
+            ..Environment::default()
+        };
+
+        // The user hides `c2`.
+        apply_launch_state(
+            &mut env,
+            LaunchState {
+                visible_connections: Some(vec!["c1".into()]),
+                ..LaunchState::default()
+            },
+        );
+
+        assert_eq!(
+            env.launch.visible_connections,
+            Some(vec!["c1".into(), "c2".into()]),
+            "the true membership is left exactly as the last sync wrote it"
+        );
+        assert_eq!(
+            env.local_visible_connections,
+            Some(vec!["c1".into()]),
+            "the hide/show choice lands in the override instead"
+        );
+        assert_eq!(env.effective_visible_connections(), Some(vec!["c1".into()]));
+    }
+
+    #[test]
+    fn apply_launch_state_clears_the_override_when_the_user_shows_everything_again() {
+        let mut env = Environment {
+            origin_id: Some("origin-1".into()),
+            launch: LaunchState {
+                visible_connections: Some(vec!["c1".into(), "c2".into()]),
+                ..LaunchState::default()
+            },
+            local_visible_connections: Some(vec!["c1".into()]),
+            ..Environment::default()
+        };
+
+        apply_launch_state(
+            &mut env,
+            LaunchState {
+                visible_connections: None,
+                ..LaunchState::default()
+            },
+        );
+
+        assert!(env.local_visible_connections.is_none());
+        assert_eq!(
+            env.effective_visible_connections(),
+            Some(vec!["c1".into(), "c2".into()]),
+            "falls back to the origin's full membership, i.e. \"show all\""
+        );
     }
 
     #[test]

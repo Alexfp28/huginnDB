@@ -1171,6 +1171,20 @@ export interface Environment {
   localColor?: string | null;
   localIcon?: string | null;
   localThemeId?: string | null;
+  /**
+   * This machine's own hide/show override for a mirrored environment's
+   * connections picker, shadowing `launch.visibleConnections` the same way
+   * the four fields above shadow the cosmetics — except what it protects
+   * from a sync isn't a display choice, it's the fact that
+   * `launch.visibleConnections` doubles as `sync_origin`'s notion of this
+   * environment's true membership. Hiding a connection here used to be
+   * undone by the very next sync before this field existed.
+   *
+   * Never read directly: `getLaunchState`/`listEnvironments` already resolve
+   * it into `launch.visibleConnections` on the Rust side, so `useUi`'s
+   * `visibleConnections` is always the effective value.
+   */
+  localVisibleConnections?: string[] | null;
 }
 
 /**
