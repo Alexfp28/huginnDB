@@ -119,6 +119,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **A button that is working now says so consistently.** `Button` grew
+  `loading`/`loadingLabel` and a leading `icon` prop, and the fifteen footers
+  that assembled a busy state by hand — a `Loader2` child with its own
+  `mr-1.5`, a separate `disabled`, and in one case a spinner that appeared only
+  when the button had *no* busy label — now hand all of it to the primitive.
+  Two small visible consequences: the spacing between a button's icon and its
+  label comes from the shared `gap-2` rather than a per-call-site margin, so it
+  is uniform (and 2px wider in those fifteen places); and a confirmation button
+  reading "Dropping…" now spins while it does, where it used to show the words
+  alone.
+
 - **`DialogContent` defaults to `max-w-md`, and the size prop is called `size`
   on every primitive.** Of the 31 dialogs that overrode the modal width, 15
   asked for `max-w-md` and only 3 wanted shadcn's `max-w-lg` default — the

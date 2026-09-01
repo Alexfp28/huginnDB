@@ -13,13 +13,7 @@
  */
 
 import { useTranslation } from "react-i18next";
-import {
-  Upload,
-  KeyRound,
-  AlertTriangle,
-  CheckCircle2,
-  Loader2,
-} from "lucide-react";
+import { Upload, KeyRound, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
 import { Button } from "@/components/ui/button";
@@ -73,7 +67,12 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) handleClose();
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
@@ -137,16 +136,15 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && passphrase.length > 0) void w.passphraseNext();
+                  if (e.key === "Enter" && passphrase.length > 0)
+                    void w.passphraseNext();
                 }}
                 placeholder={t("transfer.import.passphrasePlaceholder")}
                 className="h-8 text-xs"
                 autoFocus
               />
             </div>
-            {error && (
-              <p className="text-[11px] text-destructive">{error}</p>
-            )}
+            {error && <p className="text-[11px] text-destructive">{error}</p>}
             <DialogFooter>
               <Button variant="ghost" size="sm" onClick={handleClose}>
                 {t("common.cancel")}
@@ -154,9 +152,9 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
               <Button
                 size="sm"
                 onClick={w.passphraseNext}
-                disabled={passphrase.length === 0 || loading}
+                disabled={passphrase.length === 0}
+                loading={loading}
               >
-                {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {t("common.continue")}
               </Button>
             </DialogFooter>
@@ -179,8 +177,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
               <Button variant="ghost" size="sm" onClick={handleClose}>
                 {t("common.cancel")}
               </Button>
-              <Button size="sm" onClick={w.conflictsNext} disabled={loading}>
-                {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              <Button size="sm" onClick={w.conflictsNext} loading={loading}>
                 {t("transfer.import.importButton", { count: analysis.total })}
               </Button>
             </DialogFooter>
@@ -198,13 +195,23 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
             </div>
             <div className="space-y-1 text-xs text-muted-foreground">
               <p>
-                {t("transfer.import.summaryImported", { count: result.imported.length })}
+                {t("transfer.import.summaryImported", {
+                  count: result.imported.length,
+                })}
               </p>
               {result.skipped.length > 0 && (
-                <p>{t("transfer.import.summarySkipped", { count: result.skipped.length })}</p>
+                <p>
+                  {t("transfer.import.summarySkipped", {
+                    count: result.skipped.length,
+                  })}
+                </p>
               )}
               {result.renamed.length > 0 && (
-                <p>{t("transfer.import.summaryRenamed", { count: result.renamed.length })}</p>
+                <p>
+                  {t("transfer.import.summaryRenamed", {
+                    count: result.renamed.length,
+                  })}
+                </p>
               )}
             </div>
             {result.needs_password.length > 0 && (

@@ -20,13 +20,7 @@
  */
 
 import { useTranslation } from "react-i18next";
-import {
-  Upload,
-  KeyRound,
-  AlertTriangle,
-  CheckCircle2,
-  Loader2,
-} from "lucide-react";
+import { Upload, KeyRound, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useEnvironments } from "@/stores/session/environments";
 import { Button } from "@/components/ui/button";
@@ -56,20 +50,21 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
   const { t } = useTranslation();
   const switchTo = useEnvironments((s) => s.switchTo);
 
-  const w = useImportWizard<
-    EnvironmentImportAnalysis,
-    EnvironmentImportResult
-  >({
-    pickTitle: t("transfer.importEnvironment.pickTitle"),
-    analyze: api.analyzeEnvironmentImport,
-    run: api.importEnvironment,
-    reviewStep: true,
-    afterImport: () => useEnvironments.getState().load(),
-    open,
-    notifyTitle: t("transfer.importEnvironment.title"),
-    notifySuccess: (result) =>
-      t("transfer.importEnvironment.done", { count: result.environments.length }),
-  });
+  const w = useImportWizard<EnvironmentImportAnalysis, EnvironmentImportResult>(
+    {
+      pickTitle: t("transfer.importEnvironment.pickTitle"),
+      analyze: api.analyzeEnvironmentImport,
+      run: api.importEnvironment,
+      reviewStep: true,
+      afterImport: () => useEnvironments.getState().load(),
+      open,
+      notifyTitle: t("transfer.importEnvironment.title"),
+      notifySuccess: (result) =>
+        t("transfer.importEnvironment.done", {
+          count: result.environments.length,
+        }),
+    },
+  );
   const {
     step,
     analysis,
@@ -88,7 +83,12 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) handleClose();
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
@@ -142,7 +142,10 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
             </p>
             <div className="divide-y divide-border rounded-md border border-border max-h-56 overflow-y-auto">
               {analysis.environments.map((env, i) => (
-                <div key={i} className="flex items-center justify-between gap-2 px-3 py-2">
+                <div
+                  key={i}
+                  className="flex items-center justify-between gap-2 px-3 py-2"
+                >
                   <span className="truncate text-xs font-medium">
                     {env.name || t("environments.defaultName")}
                   </span>
@@ -160,8 +163,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               <Button variant="ghost" size="sm" onClick={handleClose}>
                 {t("common.cancel")}
               </Button>
-              <Button size="sm" onClick={w.reviewNext} disabled={loading}>
-                {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              <Button size="sm" onClick={w.reviewNext} loading={loading}>
                 {t("common.continue")}
               </Button>
             </DialogFooter>
@@ -184,7 +186,8 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && passphrase.length > 0) void w.passphraseNext();
+                  if (e.key === "Enter" && passphrase.length > 0)
+                    void w.passphraseNext();
                 }}
                 placeholder={t("transfer.import.passphrasePlaceholder")}
                 className="h-8 text-xs"
@@ -199,9 +202,9 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               <Button
                 size="sm"
                 onClick={w.passphraseNext}
-                disabled={passphrase.length === 0 || loading}
+                disabled={passphrase.length === 0}
+                loading={loading}
               >
-                {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {t("common.continue")}
               </Button>
             </DialogFooter>
@@ -222,8 +225,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               <Button variant="ghost" size="sm" onClick={handleClose}>
                 {t("common.cancel")}
               </Button>
-              <Button size="sm" onClick={w.conflictsNext} disabled={loading}>
-                {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              <Button size="sm" onClick={w.conflictsNext} loading={loading}>
                 {t("transfer.importEnvironment.importButton", {
                   count: analysis.environments.length,
                 })}
@@ -237,7 +239,9 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
           <div className="space-y-4 py-2">
             <div className="flex items-center gap-2 text-sm font-medium text-success">
               <CheckCircle2 className="h-4 w-4" />
-              {t("transfer.importEnvironment.done", { count: result.environments.length })}
+              {t("transfer.importEnvironment.done", {
+                count: result.environments.length,
+              })}
             </div>
             <div className="space-y-1 text-xs text-muted-foreground">
               {result.environments.map((env) => (
@@ -248,12 +252,24 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                   })}
                 </p>
               ))}
-              <p>{t("transfer.import.summaryImported", { count: result.profiles.imported.length })}</p>
+              <p>
+                {t("transfer.import.summaryImported", {
+                  count: result.profiles.imported.length,
+                })}
+              </p>
               {result.profiles.skipped.length > 0 && (
-                <p>{t("transfer.import.summarySkipped", { count: result.profiles.skipped.length })}</p>
+                <p>
+                  {t("transfer.import.summarySkipped", {
+                    count: result.profiles.skipped.length,
+                  })}
+                </p>
               )}
               {result.profiles.renamed.length > 0 && (
-                <p>{t("transfer.import.summaryRenamed", { count: result.profiles.renamed.length })}</p>
+                <p>
+                  {t("transfer.import.summaryRenamed", {
+                    count: result.profiles.renamed.length,
+                  })}
+                </p>
               )}
               {result.json_schemas && (
                 <p className="text-muted-foreground">
@@ -270,7 +286,9 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
             {result.profiles.needs_password.length > 0 && (
               <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/40 px-3 py-2 text-2xs text-warning">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {t("transfer.import.needsPassword", { count: result.profiles.needs_password.length })}
+                {t("transfer.import.needsPassword", {
+                  count: result.profiles.needs_password.length,
+                })}
               </div>
             )}
             <DialogFooter>

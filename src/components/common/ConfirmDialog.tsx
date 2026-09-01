@@ -13,12 +13,17 @@
  * details: an `error` slot (a failed DROP has to say why, in the dialog — the
  * modal stays open, so a toast would be the wrong surface), `children` for the
  * odd extra control (`EmptyTableDialog`'s "don't ask again"), and
- * `confirmingLabel` for a dialog that says "Dropping…" instead of showing a
- * spinner. Pair it with `useAsyncSubmit`, which owns `confirming`/`error`.
+ * `confirmingLabel` for a dialog that says "Dropping…" while it works. Pair it
+ * with `useAsyncSubmit`, which owns `confirming`/`error`.
+ *
+ * The busy state itself is `Button`'s: `confirming`/`confirmingLabel` map
+ * straight onto its `loading`/`loadingLabel`, so the spinner, the `disabled`
+ * and the `aria-busy` all come from the primitive rather than being assembled
+ * here. One visible change came with that — the button spins even when it has
+ * a busy label, where this used to show the label alone.
  */
 
 import { useTranslation } from "react-i18next";
-import { Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -67,7 +72,10 @@ export function ConfirmDialog({
   const { t } = useTranslation();
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !confirming && onOpenChange(next)}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !confirming && onOpenChange(next)}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -86,13 +94,11 @@ export function ConfirmDialog({
           <Button
             variant="destructive"
             autoFocus={confirmAutoFocus}
-            disabled={confirming}
+            loading={confirming}
+            loadingLabel={confirmingLabel}
             onClick={onConfirm}
           >
-            {confirming && !confirmingLabel && (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            )}
-            {confirming ? (confirmingLabel ?? confirmLabel) : confirmLabel}
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

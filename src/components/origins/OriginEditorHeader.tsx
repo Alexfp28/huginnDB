@@ -16,7 +16,13 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Eye, Loader2, PencilLine, RotateCcw, Save } from "lucide-react";
+import {
+  AlertTriangle,
+  Eye,
+  PencilLine,
+  RotateCcw,
+  Save,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { OriginDocument } from "@/types";
@@ -107,20 +113,21 @@ export function OriginEditorHeader({
           <Button
             size="sm"
             variant="outline"
+            icon={RotateCcw}
             disabled={!dirty || saving}
             onClick={onDiscard}
           >
-            <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
             {t("originEditor.discard")}
           </Button>
         )}
         {!readOnly && (
-          <Button size="sm" disabled={!dirty || saving || stale} onClick={onSave}>
-            {saving ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Save className="mr-1.5 h-3.5 w-3.5" />
-            )}
+          <Button
+            size="sm"
+            icon={Save}
+            loading={saving}
+            disabled={!dirty || stale}
+            onClick={onSave}
+          >
             {t("originEditor.save")}
           </Button>
         )}

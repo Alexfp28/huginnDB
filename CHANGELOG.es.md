@@ -134,6 +134,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Un botón que está trabajando ahora lo dice de forma coherente.** `Button`
+  incorpora `loading`/`loadingLabel` y una prop `icon` para el icono inicial, y
+  los quince pies de diálogo que montaban el estado de ocupado a mano —un
+  `Loader2` como hijo con su propio `mr-1.5`, un `disabled` aparte y, en un
+  caso, un spinner que solo aparecía cuando el botón *no* tenía etiqueta de
+  ocupado— se lo delegan ahora al primitivo. Dos consecuencias visibles
+  pequeñas: la separación entre el icono de un botón y su texto sale del `gap-2`
+  compartido en vez de un margen por punto de uso, así que es uniforme (y 2px
+  mayor en esos quince sitios); y un botón de confirmación que dice
+  «Eliminando…» ahora gira mientras lo hace, donde antes mostraba solo el texto.
+
 - **`DialogContent` usa `max-w-md` por defecto, y la prop de tamaño se llama
   `size` en todos los primitivos.** De los 31 diálogos que sobrescribían el
   ancho del modal, 15 pedían `max-w-md` y solo 3 querían el `max-w-lg` que

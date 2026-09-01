@@ -17,7 +17,6 @@ import {
   FilePlus2,
   FolderOpen,
   FolderSync,
-  Loader2,
   PencilLine,
   Plus,
   RefreshCw,
@@ -241,13 +240,9 @@ export function OriginsSection() {
           // reconciliation sweep (`reconcileOrphans`), which is useful even
           // with zero origins left — e.g. right after removing the last one,
           // before its connections' vanished notice has had a chance to run.
-          disabled={syncing}
+          icon={RefreshCw}
+          loading={syncing}
         >
-          {syncing ? (
-            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-          )}
           {t("origins.syncNow")}
         </Button>
         <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
@@ -357,14 +352,11 @@ export function OriginsSection() {
               <Button
                 size="sm"
                 variant="outline"
-                disabled={bulkAdopting || bulkRetiring}
+                icon={Check}
+                loading={bulkAdopting}
+                disabled={bulkRetiring}
                 onClick={() => void performBulkAdopt()}
               >
-                {bulkAdopting ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Check className="mr-1.5 h-3.5 w-3.5" />
-                )}
                 {t("origins.vanished.keepAll")}
               </Button>
               <Button
@@ -412,7 +404,9 @@ export function OriginsSection() {
               autoFocus
               placeholder={t("origins.pathPlaceholder")}
               value={draft.path}
-              onChange={(e) => setDraft((d) => ({ ...d, path: e.target.value }))}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, path: e.target.value }))
+              }
             />
             {/* Typing a UNC path by hand is how a registration ends up
                 pointing one character away from the share. */}
@@ -445,10 +439,18 @@ export function OriginsSection() {
             {t("origins.passphraseHint")}
           </p>
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setAdding(false)}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setAdding(false)}
+            >
               {t("common.cancel")}
             </Button>
-            <Button size="sm" disabled={busy || !draft.path.trim()} onClick={() => void submit()}>
+            <Button
+              size="sm"
+              disabled={busy || !draft.path.trim()}
+              onClick={() => void submit()}
+            >
               {busy ? t("origins.adding") : t("common.save")}
             </Button>
           </div>
@@ -472,7 +474,8 @@ export function OriginsSection() {
               variant="outline"
               onClick={() =>
                 void pickJsonFile(t("origins.browseTitle")).then(
-                  (picked) => picked && setEdit((d) => ({ ...d, path: picked })),
+                  (picked) =>
+                    picked && setEdit((d) => ({ ...d, path: picked })),
                 )
               }
             >
@@ -513,15 +516,19 @@ export function OriginsSection() {
             </span>
           </label>
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setEditing(null)}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setEditing(null)}
+            >
               {t("common.cancel")}
             </Button>
             <Button
               size="sm"
-              disabled={busy || !edit.path.trim()}
+              loading={busy}
+              disabled={!edit.path.trim()}
               onClick={() => void saveEdit()}
             >
-              {busy && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
               {t("common.save")}
             </Button>
           </div>
@@ -583,10 +590,10 @@ export function OriginsSection() {
             </Button>
             <Button
               size="sm"
-              disabled={busy || !newDoc.path.trim()}
+              loading={busy}
+              disabled={!newDoc.path.trim()}
               onClick={() => void createDocument()}
             >
-              {busy && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
               {t("origins.newDocumentCreate")}
             </Button>
           </div>
@@ -614,13 +621,16 @@ export function OriginsSection() {
       <ConfirmDialog
         open={!!pendingRemove}
         onOpenChange={(open) => !open && setPendingRemove(null)}
-        title={t("origins.removeConfirmTitle", { name: pendingRemove?.name ?? "" })}
+        title={t("origins.removeConfirmTitle", {
+          name: pendingRemove?.name ?? "",
+        })}
         description={
           <div className="space-y-1">
             <p>{t("origins.removeConfirmPassphraseNote")}</p>
-            {affectedConnectionCount === 0 && affectedEnvironmentCount === 0 && (
-              <p>{t("origins.removeConfirmNothingNote")}</p>
-            )}
+            {affectedConnectionCount === 0 &&
+              affectedEnvironmentCount === 0 && (
+                <p>{t("origins.removeConfirmNothingNote")}</p>
+              )}
             {affectedConnectionCount > 0 && (
               <p>
                 {t("origins.removeConfirmConnectionsNote", {
